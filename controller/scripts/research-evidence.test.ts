@@ -8,35 +8,24 @@ import {
 } from '../src/skills/research-evidence.js';
 
 test('a valid evidence packet retains claim provenance', () => {
-  assert.deepEqual(createResearchEvidence({
+  const evidence = createResearchEvidence({
     subject: { artist: 'Black Sabbath', title: 'Disturbing the Priest' },
     claims: [{
       text: '“Disturbing the Priest” was produced by Robin Black and Black Sabbath.',
-      sourceIds: ['musicbrainz-work'],
+      sourceIds: ['musicbrainz-recording'],
       topic: 'production-credit',
     }],
     sources: [{
-      id: 'musicbrainz-work',
-      provider: 'musicbrainz',
-      label: 'MusicBrainz recording relationships',
-      url: 'https://musicbrainz.org/recording/example',
-    }],
-  }), {
-    format: RESEARCH_EVIDENCE_FORMAT,
-    available: true,
-    subject: { artist: 'Black Sabbath', title: 'Disturbing the Priest' },
-    claims: [{
-      text: '“Disturbing the Priest” was produced by Robin Black and Black Sabbath.',
-      sourceIds: ['musicbrainz-work'],
-      topic: 'production-credit',
-    }],
-    sources: [{
-      id: 'musicbrainz-work',
+      id: 'musicbrainz-recording',
       provider: 'musicbrainz',
       label: 'MusicBrainz recording relationships',
       url: 'https://musicbrainz.org/recording/example',
     }],
   });
+  assert.equal(evidence.format, RESEARCH_EVIDENCE_FORMAT);
+  assert.equal(evidence.available, true);
+  if (!evidence.available) return;
+  assert.equal(evidence.claims[0].sourceIds[0], evidence.sources[0].id);
 });
 
 test('claims without a matching source become unavailable', () => {

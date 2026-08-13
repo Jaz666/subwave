@@ -40,6 +40,11 @@ export interface UnavailableResearchEvidence {
 
 export type ResearchEvidence = AvailableResearchEvidence | UnavailableResearchEvidence;
 
+function cleanSubject(subject: ResearchSubject): ResearchSubject {
+  const artist = String(subject?.artist || '').trim();
+  const title = String(subject?.title || '').trim();
+  return title ? { artist, title } : { artist };
+}
 export function unavailableResearchEvidence(
   subject: ResearchSubject,
   reason: string,
@@ -50,12 +55,6 @@ export function unavailableResearchEvidence(
     subject: cleanSubject(subject),
     reason: String(reason || 'no supported claim').trim(),
   };
-}
-
-function cleanSubject(subject: ResearchSubject): ResearchSubject {
-  const artist = String(subject?.artist || '').trim();
-  const title = String(subject?.title || '').trim();
-  return title ? { artist, title } : { artist };
 }
 
 // Reject malformed provenance rather than letting an adapter accidentally

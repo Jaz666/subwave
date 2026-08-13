@@ -39,7 +39,13 @@ import { buildSegmentTools, fetchSegmentData } from '../llm/segment-tools.js';
 import { recordCuriosity, recentAiredCuriosity } from './curiosity.js';
 import { loadedCapabilities } from './loader.js';
 import { skillEligible } from './eligibility.js';
-import { researchAttemptDelayMs, researchAttemptsFromToolCalls, type SkillResearchAttempt } from './attempt-policy.js';
+import {
+  directResearchAttempt,
+  hasRequiredEvidence,
+  researchAttemptDelayMs,
+  researchAttemptsFromToolCalls,
+  type SkillResearchAttempt,
+} from './attempt-policy.js';
 import { createResearchEvidence, isResearchEvidence, personaResearchEvidence, unavailableResearchEvidence } from './research-evidence.js';
 import * as sfx from '../broadcast/sfx.js';
 
@@ -170,7 +176,7 @@ ${list}`;
 
 let tickBusy = false;
 const lastFired = new Map<string, number>(); // kind → ms timestamp of last aired segment
-const researchBlockedUntil = new Map<string, number>(); // kind → next eligible ms after a tool attempt
+const attemptedUntil = new Map<string, number>(); // opt-in research cadence
 
 // Dedup memory carried across ticks — passed straight into the segment tools.
 // Curiosity dedup is NOT here anymore: it lives in the durable ledger in
@@ -217,6 +223,7 @@ function availableCapabilities(ctx, now: Date) {
     // and reaches runCapability() without passing through here.
     if (!skillEligible({
       seeded: cap.seeded,
+      defaultEnabled: cap.defaultEnabled,
       skill: cap.skill,
       enabled,
       personaSkills: persona?.skills,
@@ -226,8 +233,7 @@ function availableCapabilities(ctx, now: Date) {
     // (scheduler.ts syncSkillCrons), which bypasses this function altogether.
     if (cap.cronOnly) continue;
     const firedUntil = (lastFired.get(cap.kind) || 0) + cap.cooldownMs;
-    const attemptedUntil = researchBlockedUntil.get(cap.kind) || 0;
-    if (now.getTime() < Math.max(firedUntil, attemptedUntil)) continue;
+    if (now.getTime() < Math.max(firedUntil, attemptedUntil.get(cap.kind) || 0)) continue;
     // Window gating: custom skills opt into commute-hours-only firing via
     // `window: commute` in their SKILL.md frontmatter. (No built-in is
     // commute-gated by default since the traffic skill was retired.)
@@ -636,10 +642,11 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   const cap = chooseCapability(caps, ctx);
   if (!cap) return { seg: null, reason: 'nothing fresh to say', attempts: [] };
   const data = await fetchSegmentData(cap, ctx, segmentState);
-  const attempts: SkillResearchAttempt[] = typeof cap.toolFn === 'function'
-    ? [{ kind: cap.kind, outcome: data?.error ? 'infrastructure-failure' : 'completed' }]
-    : [];
+  const attempts = directResearchAttempt(cap, data);
   if (data?.error) return { seg: null, reason: `${cap.kind} data fetch failed (${data.error})`, attempts };
+  if (cap.requiresEvidence && data?.available !== true) {
+    return { seg: null, reason: `${cap.kind} returned no usable evidence`, attempts };
+  }
   const recentCuriosity = cap.kind === 'curiosity' ? recentAiredCuriosity() : undefined;
   const out = await deadlinedSegmentObject({
     system: simpleSystem(speaker, cap, freq, sfxCatalog),
@@ -653,16 +660,15 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   return { seg: { kind: cap.kind, text, sfx: out?.sfx ?? null }, reason: out?.reason, attempts };
 }
 
-function applyResearchAttemptCooldowns(caps, attempts: SkillResearchAttempt[], now: number) {
+function applyAttemptCooldowns(caps, attempts: SkillResearchAttempt[], now: number): string[] {
   const notes: string[] = [];
   for (const attempt of attempts) {
     const cap = caps.find((candidate) => candidate.kind === attempt.kind);
     if (!cap) continue;
     const delay = researchAttemptDelayMs(attempt.outcome, cap.cooldownMs);
-    const blockedUntil = now + delay;
-    researchBlockedUntil.set(attempt.kind, Math.max(researchBlockedUntil.get(attempt.kind) || 0, blockedUntil));
-    const minutes = Math.ceil(delay / 60_000);
-    notes.push(`${attempt.kind} ${attempt.outcome === 'completed' ? 'completed' : 'infrastructure retry'} (${minutes}m)`);
+    attemptedUntil.set(attempt.kind, Math.max(attemptedUntil.get(attempt.kind) || 0, now + delay));
+    const minutes = Math.max(0, Math.round(delay / 60_000));
+    notes.push(`${attempt.kind} ${attempt.outcome === 'completed' ? 'completed' : 'retry'} (${minutes}m)`);
   }
   return notes;
 }
@@ -737,16 +743,18 @@ export async function agenticTick(ctx) {
       seg = object?.air ? object?.segment : null;
       silentReason = object?.reason;
       attempts = researchAttemptsFromToolCalls(caps, toolCalls);
+      const selected = seg ? caps.find((cap) => cap.kind === seg?.kind) : null;
+      if (selected && !hasRequiredEvidence(selected, toolCalls)) {
+        seg = null;
+        silentReason = `${selected.kind} returned no usable evidence`;
+      }
     }
 
-    // A completed research call consumes the normal skill cooldown even when
-    // its evidence is empty or rejected. Tool/provider errors get a shorter
-    // retry window. Rehearsals never reach this mutation point.
-    const researchCooldowns = applyResearchAttemptCooldowns(caps, attempts, Date.now());
+    const attemptNotes = applyAttemptCooldowns(caps, attempts, Date.now());
 
     if (!seg || !seg.text || !seg.text.trim()) {
-      const cooldownNote = researchCooldowns.length ? ` · research cooldown: ${researchCooldowns.join(', ')}` : '';
-      queue.log('scheduler', `Segment agent stayed silent — ${silentReason || 'nothing to add'}${cooldownNote}`);
+      const suffix = attemptNotes.length ? `; research cooldown: ${attemptNotes.join(', ')}` : '';
+      queue.log('scheduler', `Segment agent stayed silent — ${silentReason || 'nothing to add'}${suffix}`);
       return;
     }
 
@@ -922,7 +930,8 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
     // only such capability today, and only when a keyed provider is active.
     let hint = '';
     const searchProvider = settings.get().search?.provider;
-    if (cap.kind === 'web-search' && (searchProvider === 'tavily' || searchProvider === 'brave')) {
+    if ((cap.kind === 'web-search' || cap.kind === 'web-search-v2')
+        && (searchProvider === 'tavily' || searchProvider === 'brave')) {
       const name = searchProvider === 'brave' ? 'Brave Search' : 'Tavily';
       hint = ` — set SEARCH_API_KEY or paste a ${name} key into the admin UI`;
     } else if (cap.requiresKey) {
@@ -946,6 +955,9 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
     // capability brief and the moment alone, the same "straight talk"
     // degradation the programme feature uses for a stale kind.
     const data = await fetchSegmentData(cap, ctx, segmentState);
+    if (cap.requiresEvidence && data?.available !== true) {
+      throw new Error(`skill "${cap.skill}" returned no usable evidence`);
+    }
     object = await deadlinedSegmentObject({
       system: forcedSystem(speaker, cap, sfxCatalog),
       prompt: situation + (data && !data.error ? dataBlock(data) : ''),
@@ -954,11 +966,15 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
       kind: 'generateSegment',
     });
   } else {
-    ({ object } = await forcedDirectorAgent.run({
+    const run = await forcedDirectorAgent.run({
       messages: [{ role: 'user', content: situation }],
       persona: speaker, cap, sfxCatalog,
       ctx, segmentState,
-    }));
+    });
+    if (!hasRequiredEvidence(cap, run.toolCalls)) {
+      throw new Error(`skill "${cap.skill}" returned no usable evidence`);
+    }
+    object = run.object;
   }
 
   const text = object?.text?.trim();
@@ -1007,7 +1023,7 @@ export function skillCatalog() {
     let requiresKey = c.requiresKey || null;
     let keyUrl = c.keyUrl || null;
     let hint: string | null = null;
-    if (c.kind === 'web-search') {
+    if (c.kind === 'web-search' || c.kind === 'web-search-v2') {
       if (searchProvider === 'tavily') {
         requiresKey = 'SEARCH_API_KEY';
         keyUrl = 'https://app.tavily.com/home';
@@ -1029,9 +1045,9 @@ export function skillCatalog() {
       description: c.desc || '',
       kind: c.kind,
       cooldownMs: c.cooldownMs || 0,
-      // Seeded built-ins default on; operator skills are discovered-but-disabled
-      // and only count as enabled once the operator explicitly flips them on.
-      enabled: c.seeded ? enabledMap[c.skill] !== false : enabledMap[c.skill] === true,
+      // Established built-ins default on; operator and shipped opt-in skills
+      // count as enabled only after the operator explicitly flips them on.
+      enabled: enabledMap[c.skill] ?? c.defaultEnabled,
       // Marks an operator-authored skill vs a shipped built-in, so the admin UI
       // can badge it and explain the off-by-default behaviour. (`custom` is the
       // API's name for "not seeded".)
