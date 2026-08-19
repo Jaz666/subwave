@@ -40,6 +40,7 @@ import { getFullContext, getClockContext, energyForDaypart } from '../context.js
 import * as settings from '../settings.js';
 import { TRANSITION_EFFECTS } from '../settings/vocab.js';
 import { logEvent } from '../observability/events.js';
+import { logDjSpeech } from '../observability/dj-speech-log.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { holdsForClosingTrack } from './handover-policy.js';
@@ -132,6 +133,8 @@ interface SegmentDesc {
   logText?: string | null;
   /** Whether this segment also fires the legacy dj.say/dj.link event. */
   legacy?: boolean;
+  /** Track the segment accompanies, captured before the asynchronous air wait. */
+  track?: Track | null;
 }
 
 // A rendered segment waiting for the next track boundary — the one slot behind
@@ -1763,7 +1766,7 @@ class Queue {
       const targetFile = channel === 'intro'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
-      const seg: SegmentDesc = { kind, channel, text, meta, persona };
+      const seg: SegmentDesc = { kind, channel, text, meta, persona, track: this.current?.track ?? null };
       const handoff = await airVoice(targetFile, wavPath, text, voiceGainDb(kind, persona), {
         onQueued: q => this.onQueued(q, seg),
       });
@@ -1815,12 +1818,25 @@ class Queue {
   }
 
   onSpoken(handoff: VoiceHandoff, {
-    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true,
+    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true, track = null,
   }: SegmentDesc) {
     void handoff.aired.then(airedAt => {
       try {
         this.log(kind, logText ?? text);
         this.noteHandoverSpeech(kind);
+        // Keep this separately from events.jsonl: it is an operator-facing
+        // transcript of what reached the DJ speech path, not diagnostic JSON.
+        // Use the measured live-edge time when the mixer supplied one.
+        const timestamp = airedAt ?? Date.now();
+        const show = settings.resolveActiveShow(new Date(timestamp))?.name || 'Auto DJ';
+        logDjSpeech({
+          airedAt: timestamp,
+          speaker: persona?.name ?? (meta.personaName as string | undefined) ?? 'DJ',
+          show,
+          kind,
+          text,
+          track,
+        });
         session.appendTurn({
           role: 'segment',
           kind,
@@ -2073,8 +2089,8 @@ class Queue {
         // channel changes, because the channel is a fact about the boundary and
         // not about the line.
         const seg: SegmentDesc = p.exchange
-          ? { ...exchangeSegment(clip, p.kind), channel: 'intro' }
-          : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona };
+          ? { ...exchangeSegment(clip, p.kind), channel: 'intro', track: this.current?.track ?? null }
+          : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona, track: this.current?.track ?? null };
         const handoff = await airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
           onQueued: q => this.onQueued(q, seg),
         });
@@ -2208,6 +2224,7 @@ class Queue {
         meta: item.introPersona
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
+        track: item.track,
       };
       const handoff = await airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),
