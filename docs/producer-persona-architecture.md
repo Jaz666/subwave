@@ -421,3 +421,17 @@ Do not add creative guardrails merely to compensate for irrelevant context.
 First remove the context. Preserve a plain baseline so later Persona-model and
 prompt experiments measure the model and user-authored Soul rather than hidden
 house style.
+
+## FunctionGemma integration boundary
+
+`codex/functiongemma-v3-live-test` is a downstream experiment built on this
+Producer/Persona architecture. Generic split-path capabilities must be designed,
+implemented, and validated here first, then merged into the FunctionGemma branch
+for tiny-router evaluation.
+
+The FunctionGemma branch may add adapter-specific policy only where the tiny
+router needs an availability constraint that the normal Producer does not. For
+example, its preferred-playlist cooldown temporarily removes
+`showPlaylistTracks` after a playlist-sourced pick; strict playlists remain
+unaffected. That policy depends on the optional FunctionGemma router boundary
+and is not a general Producer-routing backport.
