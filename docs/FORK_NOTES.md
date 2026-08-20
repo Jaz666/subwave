@@ -45,3 +45,33 @@ The remote naming and history show that this checkout was configured with the or
 - Refresh both remotes before making release or divergence decisions.
 - Keep experimental changes in separate branch worktrees.
 - Document opt-in configuration, fallback behavior, evaluation results, and rollback steps before proposing producer/persona changes upstream.
+
+## Local admin stats diagnostics
+
+`codex/dj-speech-debug-log` carries a deliberately local-only Admin → Stats
+diagnostics panel. It sits between **LLM usage** and **Voice / TTS usage** and
+keeps two in-memory, since-controller-boot windows of 120 events:
+
+- **Tool calls** lists every picker tool plus every currently loaded skill data
+  tool, including zero-use rows. It includes calls made before a failed LLM
+  attempt and shows a separate failed count. Rows sort by call count, then
+  name.
+- **Track transitions** lists the eleven combinations that can actually be
+  armed on-air (normal; six individual effects; and the four entry-effect plus
+  automatic-washout pairs). Rows also sort by count, then name.
+
+The controller records the final, validated transition flags rather than the
+model's original request. The `done` structured-output helper is intentionally
+excluded from the tool list.
+
+For the local live-test station at `/home/jaz666/Docker/subwave`, the
+production Compose stack serves built controller and web images. After applying
+source changes, rebuild both services with:
+
+```bash
+sudo docker compose -f docker-compose.yml up -d --build controller web
+```
+
+The runtime checkout can contain unrelated live-test work; keep this feature's
+commit on its own branch and do not include it in an upstream PR unless that
+policy changes.
