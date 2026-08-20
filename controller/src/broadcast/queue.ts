@@ -41,6 +41,7 @@ import * as settings from '../settings.js';
 import { TRANSITION_EFFECTS } from '../settings/vocab.js';
 import { logEvent } from '../observability/events.js';
 import { logDjSpeech } from '../observability/dj-speech-log.js';
+import { recordTrackTransition } from '../stats.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { holdsForClosingTrack } from './handover-policy.js';
@@ -1162,6 +1163,18 @@ class Queue {
       const why = item.track.washoutAuto ? ' (length-cap exit)' : '';
       this.log('mix', `washout armed${why}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap → ${item.track.title}`);
     }
+    // Record the final effect combination after every validation/strip above.
+    // This is the actual seam the queue will hand to Liquidsoap, rather than
+    // the model's earlier request which may have been vetoed.
+    const transition = [
+      item.track.sweep && 'sweep',
+      item.track.washout && 'washout',
+      item.track.blend && 'blend',
+      item.track.dissolve && 'dissolve',
+      item.track.chop && 'chop',
+      item.track.loop && 'loop',
+    ].filter(Boolean).join(' + ') || 'normal';
+    recordTrackTransition(transition);
     const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
 
     // Feature 2 — transition FX, spaced by the chattiness ladder and gated on
