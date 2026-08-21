@@ -74,3 +74,49 @@ Only VERIFIED CONTEXT may be presented as externally verifiable fact. EDITORIAL 
 That could be transformative for Stheno because we're no longer saying “don't hallucinate music knowledge” while leaving an information vacuum. We're giving it interesting grounded material to talk about instead.
 I'd also resist the temptation to fill every field on every track. Sparse context is good. Three genuinely interesting facts/hooks are probably better than dumping twenty metadata fields into every link. The Producer could choose the handful most relevant to the particular link.
 Longer term, I think this could become one of the strongest parts of the Producer/Persona architecture: Producer doesn't tell Persona what to say; it gives Persona a small box of things worth knowing. Persona decides what makes good radio from them.
+
+###
+In your opinion, do you think expanding the track pick function with the above will lead to a more complex setup?
+
+Yes — it can make the setup more complex, but only if we attach all of that context-generation directly to the track-pick decision itself. I wouldn't do that.
+The cleanest architecture is to keep track selection and spoken-context preparation as two distinct outputs, even if they originate from the same Producer stage.
+FunctionGemma's upcoming job is already ambitious enough:
+discover candidates → evaluate candidates → choose the record
+
+If we simultaneously ask it to choose the record and decide which verified facts, editorial hooks, show-state details, pronunciation hints and transition observations should be passed to Persona, we're broadening the task substantially. That makes training harder and muddies evaluation: when a test fails, was the track choice bad, or was the context packet bad?
+I'd keep the first FunctionGemma selection experiment deliberately narrow:
+Input: grounded candidate set + show/selection context
+Output: chosen track + transition
+Then, after a track has been selected, have a separate lightweight Persona-context assembly step. Much of that doesn't even need an LLM:
+- time/day/season → deterministic station state;
+- show progress / next show / guests → scheduler state;
+- runway → audio analysis;
+- track/album/year → verified metadata/research backend;
+- library history → Navidrome/Subwave data;
+- pronunciation → lookup/cache;
+- weather → trusted source if enabled.
+The only genuinely “intelligent” addition is something like editorial intent:
+less obvious catalogue choice
+deliberate energy lift
+sonic continuation
+palate-cleansing contrast
+
+Even that could often be derived from the selection route and candidate comparison rather than requiring a new creative generation.
+So I'd think of the eventual flow as:
+FunctionGemma/Qwen chooses record
+→ Context Builder gathers verified facts/state
+→ Persona receives selected track + compact context packet
+→ Persona writes speech
+That actually makes the system more modular, not less, even though there are more components.
+It also protects the FunctionGemma experiment. If 270M can learn final editorial selection, that's a major result on its own. We shouldn't accidentally conclude it “can't choose records” because it struggled to simultaneously produce a beautifully curated Persona briefing.
+And there's another advantage: the Context Builder can be model-agnostic. Whether tomorrow's selector is FunctionGemma, Qwen, or some future model, Persona receives the same contract.
+So my recommendation would be:
+Don't expand pickTrack into “pick track + write DJ context.”
+Expand the architecture around it with a separate post-selection context packet.
+That preserves the lovely division we've already established:
+FunctionGemma finds the shelf.
+Producer chooses the record.
+Context Builder puts the sleeve notes on the desk.
+Persona presents it on air.
+
+And if FunctionGemma later replaces Qwen for routine selection, nothing else has to change.
