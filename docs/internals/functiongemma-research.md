@@ -749,4 +749,75 @@ show constraints, transition choice, musical continuity, and safe fallback;
 router validity alone is not evidence for that promotion.
 
 The architecture document on `codex/producer-routing` currently lists
-programme planning as Qwen3-4B-only while it is under evaluation. When
+programme planning as Qwen3-4B-only while it remains under evaluation.
+
+## Producer-route recovery investigation handover — 2026-08-22
+
+### Observation
+
+During the station run from the afternoon of 2026-08-21 through 10pm, then
+again from 6am on 2026-08-22, seven of 32 `djProducerRoute` calls failed. Each
+reported the same terminal recovery outcome:
+
+```
+Producer Router discovery and recovery returned no candidates
+```
+
+The failures occurred on shows with **Strict filter** enabled. The local debug
+summary also showed unsuccessful discovery-tool paths, principally
+`showPlaylistTracks → tracksTowardJourney` (six occurrences) and
+`similarSongs → tracksTowardJourney` (one occurrence).
+
+### What the show-count check established
+
+The temporary, upstream-bound Edit Show diagnostic was used on a show that had
+failed that morning. It reported **1,129 matching tracks** under that show's
+strict configuration. This rules out the simplest explanation: the configured
+strict music filters and excluded playlists do not leave the Producer with an
+empty or implausibly narrow library pool.
+
+The count is intentionally a configuration check, not a live eligibility
+check. It does **not** apply no-repeat protection, the current on-air track,
+or the live sonic journey. It therefore cannot prove that every one of those
+tracks was eligible at a particular failed pick, but it makes a filter-only
+failure unlikely.
+
+A second check on the show then on air reported **3,727** matching tracks. With
+Strict filter enabled, that post-exclusion set is the show's selection pool.
+With it disabled, the same set is a preference and the DJ may pick outside it
+for flow.
+
+### Working conclusion
+
+Do not loosen Strict filter or change its user-facing semantics in response to
+these failures. The next investigation is a **Producer Router recovery**
+problem on the live-test station, not an upstream library-filter problem.
+
+The evidence currently favours one of two explanations:
+
+1. A recovery tool path returns no usable candidates or fails to preserve valid
+   candidates, especially the `showPlaylistTracks` / `tracksTowardJourney`
+   path; or
+2. The live-only eligibility checks (recent-play exclusion, current track,
+   journey constraints, and any relevant rules) genuinely exhaust the smaller
+   runtime set after discovery.
+
+### Next-session diagnostic plan
+
+For every failed `djProducerRoute`, capture the following together in one
+structured record before changing routing or model behaviour:
+
+1. The initial discovery call, validated arguments, returned candidate ids, and
+   the recovery call/result (including the concrete tool error where present).
+2. Active show state: strict flags, music filters, playlist anchor and
+   excluded playlists.
+3. Candidate counts at each funnel stage: configured filter match,
+   post-exclusion match, and post-live-eligibility match. Record which
+   runtime rule removes candidates.
+4. Current on-air track and the journey/recency inputs used for that decision.
+5. The final recovery decision and fallback path taken.
+
+Use those records to decide whether recovery is discarding valid candidates or
+whether a bounded runtime-pool fallback is needed. Keep the work isolated to
+the FunctionGemma/Producer live-test branch until it is understood; it is not
+part of the vanilla upstream candidate-count PR.
