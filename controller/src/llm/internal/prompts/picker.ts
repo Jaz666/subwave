@@ -101,7 +101,7 @@ ${instruction('pool-picker', 'source-tags')}
 ${instruction('pool-picker', 'recent-plays')}`;
 }
 
-export async function pickNextTrack({ candidates, recentPlays, context, show = null, current = null, recentTransitions = [] }: {
+export async function pickNextTrack({ candidates, recentPlays, context, show = null, current = null, recentTransitions = [], editorialInfluence = null }: {
   candidates: any[];
   recentPlays: any;
   context: any;
@@ -116,6 +116,7 @@ export async function pickNextTrack({ candidates, recentPlays, context, show = n
   // third identical choice either way, this just keeps the model from wasting
   // picks on choices that will be stripped. Only used when effects are active.
   recentTransitions?: string[];
+  editorialInfluence?: { soul?: string; musicLeanings?: string } | null;
 }) {
   // Compact serialization on purpose: the old 2-space pretty-print spent a
   // few hundred tokens on whitespace per pick, and models read dense JSON
@@ -132,6 +133,7 @@ export async function pickNextTrack({ candidates, recentPlays, context, show = n
     },
     recentPlays,
     candidates,
+    editorialInfluence: editorialInfluence || undefined,
   });
 
   // The id is a plain string, NOT z.enum(candidateIds), deliberately (#939):

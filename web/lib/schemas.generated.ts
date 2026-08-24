@@ -659,6 +659,10 @@ export const PERSONA_LANGUAGE_MAX = 60;
 // Every persona's soul rides in the system prompt on every call, so this is a
 // recurring per-call token cost rather than a structural limit.
 export const PERSONA_SOUL_MAX = 2000;
+// Unlike Soul, musical leanings are a compact backstage selection cue. Keeping
+// this deliberately shorter prevents a second persona prompt from growing into
+// an unbounded editorial brief on every pick.
+export const PERSONA_MUSIC_LEAN_MAX = 500;
 export const PERSONA_SKILLS_LIMIT = 64;
 
 export const PERSONA_FREQUENCIES = [
@@ -988,6 +992,7 @@ export interface PersonaParsed {
   localColour: number;
   warmth: number;
   soul: string;
+  musicLean: string;
   language: string;
   avatar: string;
   tts: TtsVoiceSlot;
@@ -1004,7 +1009,7 @@ export interface PersonaParsed {
  * persona-server.ts's resolvePersonaIds mints the replacement.
  *
  * Field ORDER matters — zod reports issues in declaration order, and the
- * hand-rolled validator checked name → soul → tagline → language → frequency →
+ * hand-rolled validator checked name → soul → musicLean → tagline → language → frequency →
  * scriptLength → djMode → tts → skills → avatar. An operator with two bad
  * fields must still be told about the same one first.
  */
@@ -1012,6 +1017,9 @@ export const personaSchema = z
   .object({
     name: personaCoercedText('name', 1, PERSONA_NAME_MAX),
     soul: personaCoercedText('soul', 1, PERSONA_SOUL_MAX),
+    // An optional backstage steer for final track selection. It is never a
+    // speaking instruction and never overrides show filters or safety policy.
+    musicLean: personaCoercedText('musicLean', 0, PERSONA_MUSIC_LEAN_MAX),
     tagline: personaCoercedText('tagline', 0, PERSONA_TAGLINE_MAX),
     // language — optional free text ("Turkish", "Türkçe", …). Absent/empty → ''
     // (English, no directive injected). Unlike name/soul this one REFUSES a
@@ -1116,6 +1124,7 @@ export const personaSchema = z
       localColour: p.localColour,
       warmth: p.warmth,
       soul: p.soul,
+      musicLean: p.musicLean,
       language: p.language,
       avatar: p.avatar,
       tts: p.tts,
@@ -1155,6 +1164,9 @@ export function repairPersonaForLoad(
     id: typeof raw.id === 'string' && PERSONA_ID_RE.test(raw.id) ? raw.id : undefined,
     name: typeof raw.name === 'string' ? raw.name.trim().slice(0, PERSONA_NAME_MAX) : undefined,
     soul: typeof raw.soul === 'string' ? raw.soul.trim().slice(0, PERSONA_SOUL_MAX) : undefined,
+    musicLean: typeof raw.musicLean === 'string'
+      ? raw.musicLean.trim().slice(0, PERSONA_MUSIC_LEAN_MAX)
+      : '',
     tagline:
       typeof raw.tagline === 'string' ? raw.tagline.trim().slice(0, PERSONA_TAGLINE_MAX) : '',
     language:

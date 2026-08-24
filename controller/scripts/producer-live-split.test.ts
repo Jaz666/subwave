@@ -27,6 +27,7 @@ const {
   generatePersonaSegment,
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
+const { sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
 const { buildProducerSituation, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
@@ -124,11 +125,15 @@ test('Persona handover prompts keep the conversational bridge but drop generic c
   assert.equal(typeof generatePersonaHandoffGreeting, 'function');
 });
 
-test('the Producer picker system excludes the on-air Persona preamble', () => {
+test('the Producer picker accepts DJ editorial influence only as a soft tie-breaker', () => {
   const system = producerPickerSystem(null, false);
-  const personaPreamble = settings.agentPersonaPreamble(settings.getEffectivePersona());
+  const persona = settings.getEffectivePersona();
+  const personaPreamble = settings.agentPersonaPreamble(persona);
   assert.ok(personaPreamble.length > 20);
   assert.ok(!system.includes(personaPreamble));
+  assert.ok(!system.includes(persona.soul), 'Soul is structured per pick, not Persona prose in the system prompt');
+  assert.match(system, /editorialInfluence/i);
+  assert.match(system, /only to break ties/i);
   assert.match(system, /backstage Producer/i);
   assert.ok(!system.includes('speechBrief'));
   assert.ok(!system.includes('Keep your talk'));
@@ -159,7 +164,7 @@ test('the Producer receives structured operational history without Persona prose
 
 test('the Stage C Persona prompt contains only approved facts and negative memory', () => {
   const prompt = personaLinkPrompt({
-    current: { title: 'Headlong', artist: 'Queen', introMs: 12_000, bpm: 134, musicalKey: 'D' },
+    current: { title: 'Headlong', artist: 'Queen', album: 'Innuendo', year: 1991, introMs: 12_000, bpm: 134, musicalKey: 'D' },
     context: {
       date: { dayLabel: 'Wednesday', dayOfMonth: 12, monthLabel: 'August', season: 'summer' },
       clock: { display: '16:29' },
@@ -179,6 +184,14 @@ test('the Stage C Persona prompt contains only approved facts and negative memor
   });
   assert.match(prompt, /Headlong/);
   assert.match(prompt, /Queen/);
+  assert.match(prompt, /Album: Innuendo/);
+  assert.match(prompt, /Release year: 1991/);
+  assert.match(prompt, /do not add or infer further music-history claims/i);
+  assert.deepEqual(
+    sleeveNotesFor({ title: 'Headlong', album: 'Innuendo', year: 1991 }, 3),
+    ['Album: Innuendo.', 'Release year: 1991.', 'Station plays before today: 3.'],
+  );
+  assert.deepEqual(sleeveNotesFor({ title: 'Headlong', album: 'Headlong', year: 'unknown' }, 0), []);
   assert.match(prompt, /The Scenic Route/);
   assert.match(prompt, /Take the longer way home/);
   assert.match(prompt, /around half past 4pm/);
