@@ -14,6 +14,7 @@ import * as blocklist from './blocklist.js';
 import { resolveEmbeddingDim } from './embeddings.js';
 import { openingKeyFrom, endingKeyFrom } from './mix.js';
 import { DEEP_CUT_DAYS, EMPTY_AIRED_INDEX, type AiredIndex } from './airing.js';
+import { trackKey, type CandidateLike } from './recency.js';
 
 let loaded = false;
 
@@ -499,6 +500,54 @@ const AIRED_WARN_THROTTLE_MS = 10 * 60 * 1000;
 // into library-db/lifecycle.ts.
 function invalidateAiredIndex(): void {
   airedIndexCache = null;
+  invalidateArtistPlayStats();
+}
+
+export function trackPlayStatsFor(song: CandidateLike): db.TrackPlayStats | null {
+  const index = lastAiredInfo();
+  if (song?.id != null) {
+    const byId = index.playStatsById?.get(song.id);
+    if (byId) return byId;
+  }
+  return song?.title ? (index.playStatsByKey?.get(trackKey(song)) ?? null) : null;
+}
+
+// Same staleness/failure posture as lastAiredInfo, over the artist-grouped
+// query — see library-db/plays.ts's artistPlayIndex. A separate cache (not
+// folded into airedIndexCache) because the two are read independently: most
+// tool calls want per-track airing, only slim()'s artist fields want this.
+const ARTIST_PLAY_TTL_MS = 5 * 60 * 1000;
+let artistPlayCache: { at: number; val: Map<string, db.ArtistPlayStats> } | null = null;
+let artistPlayWarnedAt = 0;
+
+function invalidateArtistPlayStats(): void {
+  artistPlayCache = null;
+}
+
+export function artistPlayStats(): Map<string, db.ArtistPlayStats> {
+  if (!loaded) return new Map();
+  if (artistPlayCache && Date.now() - artistPlayCache.at < ARTIST_PLAY_TTL_MS) {
+    return artistPlayCache.val;
+  }
+  try {
+    const val = db.artistPlayIndex();
+    artistPlayCache = { at: Date.now(), val };
+    return val;
+  } catch (err) {
+    const now = Date.now();
+    if (now - artistPlayWarnedAt > AIRED_WARN_THROTTLE_MS) {
+      artistPlayWarnedAt = now;
+      console.warn(`[library] artist play index unavailable: ${(err as Error).message} — picks drop artist play-frequency signal`);
+    }
+    return new Map();
+  }
+}
+
+// Lookup for one artist name, case/whitespace-insensitive — what slim() calls
+// per candidate rather than round-tripping the whole Map at each call site.
+export function artistPlayStatsFor(artist: string | null | undefined): db.ArtistPlayStats | null {
+  if (!artist) return null;
+  return artistPlayStats().get(artist.toLowerCase().trim()) ?? null;
 }
 
 export function lastAiredInfo(): AiredIndex {
