@@ -917,3 +917,39 @@ failed narrow continuation demonstrates that over-weighting one argument-copy
 boundary can erode a neighbouring structured-field boundary; any further
 experiment needs a deliberately balanced corrective matrix for genre and mood
 copying, with the existing recovery fixture retained as a hard gate.
+
+
+## Live-router hand-off — 2026-08-24
+
+Friday 2026-08-22 exposed a historical transport/protocol failure during the
+early preferred-playlist window. Twelve traces emitted both
+`showPlaylistTracks` and `tracksTowardJourney` in one native FunctionGemma
+response. That was not valid recovery: the two tools were recorded at the same
+timestamp, before either result could inform the second choice. Six traces
+eventually had journey candidates and were incorrectly recorded as successful;
+the other six returned no candidates and fell back.
+
+This is not evidence to retrain the router. The checked-in adapter has rejected
+multiple native calls before tool execution since 2026-08-17. The previous
+controller deployment was no longer running when the investigation resumed on
+2026-08-24; the current controller had been created roughly 20 hours earlier.
+Its recent telemetry showed `djProducerRoute` at 33/33 successful calls, with
+FunctionGemma latency averaging 1.9s. The tool-level empty-result counts for
+`showPlaylistTracks` and `tracksTowardJourney` are expected recovery inputs,
+not failed router calls.
+
+Before starting any final-selection experiment, add and run a direct regression
+that feeds the adapter both native calls in one response and asserts that the
+route fails and neither tool executes. Then replay the current empty-tool cases
+to verify the failed tool is removed from the next round, rerun the frozen
+router suite and a short CPU soak, and inspect preferred-playlist source
+diversity.
+
+The next distinct experiment is `djProducerSelect`, not a router promotion.
+Evaluate it as candidate commitment over a fixed surfaced set, with hard
+grounding, artist and flow traps, and human editorial comparison. FunctionGemma
+must not write listener-facing text. In the separate `codex/producer-routing`
+task, the immediate design goal is a grounded, non-listener-facing liner-notes
+function that restores DJ Soul's soft editorial influence to the configured
+Producer's final selection without giving the small router final-pick authority
+or allowing Persona prose to invent library facts.
