@@ -47,6 +47,22 @@ export function effectsActive(persona: unknown = getEffectivePersona()): boolean
   return !!(persona as { djMode?: unknown } | null | undefined)?.djMode;
 }
 
+// The compact editorial input shared by every final track-selection route.
+// Soul remains a soft influence for parity with the original all-in-one picker;
+// Musical Leanings gives operators a clean, music-specific alternative to
+// embedding taste in the presenter's on-air voice instructions.
+export function personaEditorialInfluence(persona: unknown = getEffectivePersona()) {
+  const p = persona as { soul?: unknown; musicLean?: unknown } | null | undefined;
+  const soul = String(p?.soul || '').trim();
+  const musicLeanings = String(p?.musicLean || '').trim();
+  return (soul || musicLeanings)
+    ? {
+        ...(soul ? { soul } : {}),
+        ...(musicLeanings ? { musicLeanings } : {}),
+      }
+    : null;
+}
+
 // Effective track-length cap in SECONDS for the moment a pick is made, or null
 // for "no cap". A scheduled show's maxTrackSeconds (when set) overrides the
 // station default; 0 at the winning level means unlimited. This is the single

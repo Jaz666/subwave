@@ -2,7 +2,7 @@
 import type { Control } from 'react-hook-form';
 import type { Persona, PersonasFormValues } from './types';
 import type { AdminAuth } from '../../../lib/adminAuth';
-import { NAME_MAX, TAGLINE_MAX, SOUL_MAX, LANGUAGE_MAX } from './constants';
+import { NAME_MAX, TAGLINE_MAX, SOUL_MAX, MUSIC_LEAN_MAX, LANGUAGE_MAX } from './constants';
 import { Card } from '../ui';
 import { TextField, TextareaField } from '@/lib/form-fields';
 import { AiFill } from '../AiFill';
@@ -113,6 +113,13 @@ export function PersonaIdentityCard({
           <div className="field-hint">
             One short personality sketch. Injected into the prompt as <code>{'{soul}'}</code>.
             <span className="ml-2 text-muted">{soulLen} / {SOUL_MAX}</span>
+          </div>
+          <div className="mt-4">
+            <TextareaField control={control} name={`personas.${index}.musicLean`} label="Musical Leanings" rows={5} placeholder="e.g. curious post-punk, leftfield pop, and overlooked album tracks; favour warmth over polish" />
+            <div className="field-hint">
+              Optional preferences that gently guide the Producer when several tracks fit. They never override show rules, listener requests, station rotation or safety.
+              <span className="ml-2 text-muted">{persona.musicLean.trim().length} / {MUSIC_LEAN_MAX}</span>
+            </div>
           </div>
         </div>
       </div>

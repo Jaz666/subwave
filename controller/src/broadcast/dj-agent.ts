@@ -114,7 +114,10 @@ async function repickFromSeen({ seen, badId, wantLink, showAt = null, playlistRe
       // system prompt) — acceptable because `seen` was discovered under the
       // favourites-aware run this salvages.
       system: pickSystem(showAt, playlistResolved),
-      prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
+      prompt: JSON.stringify({
+        editorialInfluence: settings.personaEditorialInfluence(session.onAirPersona()) || undefined,
+        candidates: [...seen.values()],
+      }, null, 2)
         + `\n\n${why}`
         + (wantLink
             ? ' Write the "say" link for the track you choose, following the same rules.'
@@ -690,7 +693,10 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
   // tempo/key target instead of the current track. null → today's behaviour.
   // A sonic journey (Phase 2) additionally anchors the audio-KNN source to the
   // run's current waypoint vector, drifting the pool toward the destination.
-  const result = await picker.pickViaPool(queue, ctx, rankTarget, audioWaypoint, opts);
+  const result = await picker.pickViaPool(queue, ctx, rankTarget, audioWaypoint, {
+    ...opts,
+    persona: session.onAirPersona(),
+  });
   if (!result) {
     queue.log('picker', 'pool produced no pick');
     return 'empty';
@@ -969,7 +975,11 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
       + (previous ? ` (after "${previous.title}" by ${previous.artist})` : '')
       + '. Pick the track to play next.'
       + linkClause;
-    const promptSuffix = `${clockClause}${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
+    const musicLean = settings.personaEditorialInfluence(session.onAirPersona())?.musicLeanings;
+    const musicLeanClause = musicLean
+      ? ` Musical Leanings (a soft tie-breaker only; never override show rules, safety or flow): ${musicLean}`
+      : '';
+    const promptSuffix = `${clockClause}${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}${musicLeanClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
       meta: promptSuffix ? { promptSuffix } : {},

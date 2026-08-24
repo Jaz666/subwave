@@ -219,6 +219,7 @@ export {
   getScheduleOverride,
   languageDirective,
   onAirRosterClause,
+  personaEditorialInfluence,
   pickOnAirSpeaker,
   renderDjPrompt,
   resolveActiveShow,

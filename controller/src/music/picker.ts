@@ -797,7 +797,7 @@ function slimAlbum(album: string | null | undefined, title: string | null | unde
 // genuinely holds no other artist is the RIGHT answer there: the caller then
 // keeps its own pick and logs the relaxation. Unset on every other call, which
 // leaves the ordinary pool byte-identical.
-export async function pickViaPool(queue, ctx, rankTarget: { bpm: number | null; key: string | null } | null = null, audioWaypoint: number[] | null = null, opts: { avoidArtist?: string | null } = {}) {
+export async function pickViaPool(queue, ctx, rankTarget: { bpm: number | null; key: string | null } | null = null, audioWaypoint: number[] | null = null, opts: { avoidArtist?: string | null; persona?: unknown } = {}) {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total`, which counts only TAGGED tracks.
@@ -1013,6 +1013,7 @@ export async function pickViaPool(queue, ctx, rankTarget: { bpm: number | null; 
         };
       })() : null,
       recentTransitions,
+      editorialInfluence: settings.personaEditorialInfluence(opts.persona),
     });
   } catch (err) {
     // The LLM pick failed outright (e.g. unparseable structured output even

@@ -5,6 +5,7 @@
 // Part of the dj-agent/ split - see ../dj-agent.ts for the pick/request runs.
 
 import * as settings from '../../settings.js';
+import * as session from '../session.js';
 import { defineAgent } from '../../llm/agent.js';
 import { buildPickerTools, type PickerScope } from '../../llm/tools.js';
 import {
@@ -57,6 +58,7 @@ export function producerPickMessage({
   recentArtists = [],
   recentTransitions = [],
   selectionContext = null,
+  editorialInfluence = settings.personaEditorialInfluence(session.onAirPersona()),
   instructions = [],
 }: {
   current?: any;
@@ -64,6 +66,7 @@ export function producerPickMessage({
   recentArtists?: string[];
   recentTransitions?: string[];
   selectionContext?: any;
+  editorialInfluence?: { soul?: string; musicLeanings?: string } | null;
   instructions?: string[];
 } = {}): string {
   const track = (value: any) => value ? {
@@ -84,6 +87,7 @@ export function producerPickMessage({
       weather: selectionContext.weather?.condition ?? null,
       festival: selectionContext.festival?.name ?? null,
     } : null,
+    editorialInfluence: editorialInfluence || undefined,
   };
   const coaching = instructions.map((line) => String(line || '').trim()).filter(Boolean);
   return `Operational pick request:\n${JSON.stringify(payload, null, 2)}`
@@ -91,8 +95,10 @@ export function producerPickMessage({
 }
 
 // The live Producer sees the same editorial/show constraints and transition
-// vocabulary as the established picker, but none of the Persona preamble,
-// speech style, listener-facing schema text or request-to-perform wording.
+// vocabulary as the established picker. The current DJ's Soul and Musical
+// Leanings instead arrive as structured per-pick editorial influence, so this
+// stable system prompt contains no Persona prose. It deliberately excludes
+// speech style, listener-facing schema text and request-to-perform wording.
 // That separation is the point of the split: this prompt chooses; the later
 // generatePersonaLink call independently performs the on-air task.
 export function producerPickerSystem(showAt: Date | null = null, playlistResolved = true): string {
@@ -103,7 +109,9 @@ export function producerPickerSystem(showAt: Date | null = null, playlistResolve
   const playlistLine = activeShow?.playlistIds?.length && playlistResolved
     ? `\n\nThe current show has a ${activeShow.playlistStrict ? 'strict' : 'preferred'} pinned playlist. Use the playlist-aware discovery tool and ${activeShow.playlistStrict ? 'stay inside it' : 'treat it as the strong first source'}.`
     : '';
-  return `${producerPickSystem(producerPromptDiscoverySteps())}${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
+  return `${producerPickSystem(producerPromptDiscoverySteps())}
+
+When an operational request supplies editorialInfluence, use it only to break ties between otherwise suitable candidates. It is never a hard constraint and never overrides station safety, rotation, show rules, library eligibility or transition requirements.${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
 
 ${PICKER_CRITERIA}${effectsGuidance()}`;
 }
@@ -265,5 +273,3 @@ export const requestAgent = defineAgent<RequestRunArgs, PickerExtras>({
   // same model through the same harness, so it fabricates the same way.
   validateObject: (object, extras) => !!(object?.id && extras?.seen?.has(object.id)),
 });
-
-

@@ -10,8 +10,10 @@ import { buildContextLines, decoratePrompt, randomSeed } from './context.js';
 import { speakClockAllowed } from '../../../broadcast/clock-policy.js';
 import { isNamedRequester } from '../../../util/request-guard.js';
 import { introBudgetPhrase, introMsFor, firstVocalMsFor, bpmKeyFor } from './intro-budget.js';
+import * as library from '../../../music/library.js';
 import { trackEraYear } from '../../../music/show-filter.js';
 import { trackFeelSuffix } from './track-feel.js';
+import { sleeveNotesFor } from './sleeve-notes.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
 // Without this the model reads the label out — "high-energy" spoken flat is
@@ -356,6 +358,7 @@ export function personaLinkPrompt({
   const rules = [
     'Output only the words to be spoken on air.',
     'The named track is already playing. Focus on it and do not refer to the previous track.',
+    'Treat supplied sleeve notes as verified facts, but do not add or infer further music-history claims.',
     lengthPhrase('link', speaker) + '.',
   ];
   // Automatic links are attached to the track start, where measured intro and
@@ -370,6 +373,8 @@ export function personaLinkPrompt({
   const facts = [
     `Track: "${current?.title || 'Unknown'}" by ${current?.artist || 'unknown'}.`,
   ];
+  const sleeveNotes = sleeveNotesFor(current, library.trackPlayStatsFor(current)?.count ?? null);
+  if (sleeveNotes.length) facts.push(...sleeveNotes);
   const show = context?.activeShow;
   if (show?.name) facts.push(`Show: "${show.name}".`);
   if (show?.topic) facts.push(`Show brief: ${show.topic}`);
