@@ -30,7 +30,7 @@ const {
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
 const { selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
-const { buildProducerSituation, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
+const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
 const { queue } = await import('../src/broadcast/queue.js');
