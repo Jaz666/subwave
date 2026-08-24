@@ -161,6 +161,7 @@ export default function PersonasPanel() {
       id: newId, name: 'New persona', tagline: '',
       frequency: 'moderate', scriptLength: 'concise', djMode: false,
       humour: DIAL_NEUTRAL, localColour: DIAL_NEUTRAL, warmth: DIAL_NEUTRAL, soul: '',
+      musicLean: '',
       language: '',
       avatar: '',
       tts: { engine: 'piper', cloudProvider: 'openai', voice: 'bf_isabella', gainDb: 0, speed: 1 },
