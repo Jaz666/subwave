@@ -389,7 +389,7 @@ export function personaLinkPrompt({
   const sections = [
     'Task: Give a brief spoken introduction to the track now playing.',
     `Rules:\n${rules.map((rule) => `- ${rule}`).join('\n')}`,
-    `Facts:\n${facts.map((fact) => `- ${fact}`).join('\n')}`,
+    `Verified facts (including Sleeve Notes):\n${facts.map((fact) => `- ${fact}`).join('\n')}`,
   ];
   if (recap) {
     sections.push('Recent speech by this presenter, supplied only to prevent repetition. Do not reuse its wording, topics, anecdotes, metaphors or sentence structures:\n' + recap);

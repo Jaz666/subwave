@@ -186,6 +186,7 @@ test('the Stage C Persona prompt contains only approved facts and negative memor
   assert.match(prompt, /Queen/);
   assert.match(prompt, /Album: Innuendo/);
   assert.match(prompt, /Release year: 1991/);
+  assert.match(prompt, /Verified facts \(including Sleeve Notes\)/);
   assert.match(prompt, /do not add or infer further music-history claims/i);
   assert.deepEqual(
     sleeveNotesFor({ title: 'Headlong', album: 'Innuendo', year: 1991 }, 3),
