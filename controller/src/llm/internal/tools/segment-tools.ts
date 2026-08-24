@@ -24,27 +24,26 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { buildStationServices, rehearsalStationServices } from './station-services.js';
 
+// `onResult(kind, data)` reports what each tool handed back, including the
+// `{ error }` degradation. The forced segment path needs it because the AGENT
+// calls the tool, not the caller: without it, "did this skill actually get
+// anything to write from" could only be asserted in the prompt, and a model
+// that speaks anyway would face no check (issue #1412). Optional — the
+// autonomous director reads the same results in its own window and passes none.
+
 export function buildSegmentTools(
   ctx: any,
   state: any,
   caps: any[],
   nowPlayingTrack: any = undefined,
-  { rehearsal = false }: { rehearsal?: boolean } = {},
+  { rehearsal = false, onResult }: { rehearsal?: boolean; onResult?: (kind: string, data: any) => void } = {},
 ) {
   const baseServices = buildStationServices();
-  // A split Producer→Persona run spans two model calls. Pin track-aware tools
-  // to the identity present when the run began so a seam during research cannot
-  // silently retarget artist/track lookup halfway through the packet.
   let services = nowPlayingTrack === undefined
     ? baseServices
     : { ...baseServices, nowPlaying: () => nowPlayingTrack };
-  // Off-air rehearsals may read durable recall so they see the same evidence
-  // as a live run, but must not burn an item merely by testing it. The cloned
-  // per-run state handles headline/artist memory; this wrapper covers the
-  // curiosity ledger and custom tools using the curated log hook.
-  if (rehearsal) {
-    services = rehearsalStationServices(services);
-  }
+  if (rehearsal) services = rehearsalStationServices(services);
+
   const tools: any = {};
 
   for (const cap of caps as any[]) {
@@ -63,12 +62,19 @@ export function buildSegmentTools(
       description: cap.toolDesc,
       inputSchema: z.object(shape),
       execute: async (input: any) => {
+        let data: any;
         try {
           const p = Promise.resolve(cap.toolFn(ctx, state, services, cap.config, input || {}));
-          return await withTimeout(p, 8000);
+          data = await withTimeout(p, 8000);
         } catch (err: any) {
-          return { error: err?.message || String(err) };
+          data = { error: err?.message || String(err) };
         }
+        // Reported inside execute, after the catch, so the observer sees the
+        // degraded shape too — a tool that threw is exactly the case the
+        // grounding check exists for. A throwing observer must not turn a
+        // usable tool result into a tool error.
+        try { onResult?.(cap.kind, data); } catch { /* observation is never fatal */ }
+        return data;
       },
     });
   }
