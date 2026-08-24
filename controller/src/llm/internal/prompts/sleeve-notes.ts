@@ -18,3 +18,12 @@ export function sleeveNotesFor(track: any, playCount: number | null = null): str
   }
   return notes;
 }
+
+// A link needs a little colour, not a metadata checklist. Keep the complete
+// verified set available to future context builders, but give the Persona one
+// varied fact per link. The caller supplies no Producer reasoning here.
+export function selectSleeveNotes(notes: readonly string[], random: () => number = Math.random): string[] {
+  if (notes.length < 2) return [...notes];
+  const index = Math.min(notes.length - 1, Math.floor(random() * notes.length));
+  return [notes[index]!];
+}

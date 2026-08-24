@@ -13,7 +13,7 @@ import { introBudgetPhrase, introMsFor, firstVocalMsFor, bpmKeyFor } from './int
 import * as library from '../../../music/library.js';
 import { trackEraYear } from '../../../music/show-filter.js';
 import { trackFeelSuffix } from './track-feel.js';
-import { sleeveNotesFor } from './sleeve-notes.js';
+import { selectSleeveNotes, sleeveNotesFor } from './sleeve-notes.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
 // Without this the model reads the label out — "high-energy" spoken flat is
@@ -373,7 +373,9 @@ export function personaLinkPrompt({
   const facts = [
     `Track: "${current?.title || 'Unknown'}" by ${current?.artist || 'unknown'}.`,
   ];
-  const sleeveNotes = sleeveNotesFor(current, library.trackPlayStatsFor(current)?.count ?? null);
+  const sleeveNotes = selectSleeveNotes(
+    sleeveNotesFor(current, library.trackPlayStatsFor(current)?.count ?? null),
+  );
   if (sleeveNotes.length) facts.push(...sleeveNotes);
   const show = context?.activeShow;
   if (show?.name) facts.push(`Show: "${show.name}".`);
