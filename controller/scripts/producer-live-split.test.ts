@@ -29,8 +29,8 @@ const {
   generatePersonaSegment,
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
-const { sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
-const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
+const { selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
+const { buildProducerSituation, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
 const { queue } = await import('../src/broadcast/queue.js');
@@ -205,8 +205,7 @@ test('the Stage C Persona prompt contains only approved facts and negative memor
   });
   assert.match(prompt, /Headlong/);
   assert.match(prompt, /Queen/);
-  assert.match(prompt, /Album: Innuendo/);
-  assert.match(prompt, /Release year: 1991/);
+  assert.match(prompt, /(?:Album: Innuendo|Release year: 1991)/);
   assert.match(prompt, /Verified facts \(including Sleeve Notes\)/);
   assert.match(prompt, /do not add or infer further music-history claims/i);
   assert.deepEqual(
@@ -214,6 +213,10 @@ test('the Stage C Persona prompt contains only approved facts and negative memor
     ['Album: Innuendo.', 'Release year: 1991.', 'Station plays before today: 3.'],
   );
   assert.deepEqual(sleeveNotesFor({ title: 'Headlong', album: 'Headlong', year: 'unknown' }, 0), []);
+  const sleeveNotes = ['Album: Innuendo.', 'Release year: 1991.', 'Station plays before today: 3.'];
+  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0), [sleeveNotes[0]]);
+  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0.5), [sleeveNotes[1]]);
+  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0.99), [sleeveNotes[2]]);
   assert.match(prompt, /The Scenic Route/);
   assert.match(prompt, /Take the longer way home/);
   assert.match(prompt, /around half past 4pm/);
