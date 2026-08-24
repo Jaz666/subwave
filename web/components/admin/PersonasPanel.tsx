@@ -341,6 +341,7 @@ export default function PersonasPanel() {
             localColour: p.localColour,
             warmth: p.warmth,
             soul: p.soul.trim(),
+            musicLean: p.musicLean.trim(),
             language: p.language.trim(),
             avatar: p.avatar || '',
             tts: {
