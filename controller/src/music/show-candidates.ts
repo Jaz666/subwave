@@ -3,9 +3,24 @@ import * as subsonic from './subsonic.js';
 import { applyStrictLocks, hasEraBound, type VocalMode } from './show-filter.js';
 import { resolveExcludedPlaylistIds, resolveShowPlaylistPool } from './show-playlist.js';
 
-type Candidate = { id?: string; title?: string | null; artist?: string | null; year?: number | null; originalYear?: number | null; isCompilation?: boolean | null; genres?: string[] | null; genre?: string | null; moods?: string[] | null; audioMoods?: string[] | null; energy?: string | null; vocalRanges?: unknown[] | null };
+export type Candidate = { id?: string; title?: string | null; artist?: string | null; year?: number | null; originalYear?: number | null; isCompilation?: boolean | null; yearUntrusted?: boolean | null; genres?: string[] | null; genre?: string | null; moods?: string[] | null; audioMoods?: string[] | null; energy?: string | null; vocalRanges?: unknown[] | null };
 type Locks = { genres: string[]; eras: Array<{ fromYear?: number | null; toYear?: number | null }>; moods: string[]; energies: string[]; vocals: VocalMode | null };
 export interface ShowCandidateDiagnostic { strict: boolean; library: { indexed: number; matchingFilters: number; afterExclusions: number; effective: number }; playlist: null | { total: number; matchingFilters: number; afterExclusions: number; effective: number }; warnings: string[] }
+export type CandidateCoverage = { mood: boolean; energy: boolean; vocal: boolean };
+
+export function candidateCoverage(rows: Candidate[]): CandidateCoverage {
+  let mood = false;
+  let energy = false;
+  let vocal = false;
+  for (const row of rows) {
+    mood ||= !!(row.moods?.length || row.audioMoods?.length);
+    energy ||= !!row.energy;
+    vocal ||= row.vocalRanges != null;
+    if (mood && energy && vocal) break;
+  }
+  return { mood, energy, vocal };
+}
+
 
 function hasMusicFilter(show: any): boolean { return !!(show?.genres?.length || show?.moods?.length || show?.energies?.length || show?.vocals || hasEraBound(show?.eras)); }
 function filtered(rows: Candidate[], locks: Locks): Candidate[] { return applyStrictLocks(rows, locks, { starve: true }); }

@@ -3,7 +3,7 @@
 
 import { SQL_HAS_MOODS, SQL_NO_MOODS, requireDb } from './handle.js';
 import type { EnergyValue, TrackRecord, TrackRow } from './types.js';
-import { rowToTrack, safeParseArray } from './rows.js';
+import { parseSpans, rowToTrack, safeParseArray } from './rows.js';
 
 // ---------------------------------------------------------------------------
 // Blocklist-rule match counting (admin Blocked tab)
@@ -155,11 +155,19 @@ export function embeddedIds(): string[] {
 }
 
 // Bucket every untagged track by (genre, decade). Used by seed-selector to
-// stratify so rare-mood corners of the library each get a seed pick.
+// stratify so rare-mood corners of the library each get a seed pick. The CASE
+// is the SQL twin of era-year.resolveEraYear: original wins, an unresolved
+// compilation/anthology is unknown, then a trusted file year may fall through.
 export function trackIdsByGenreDecade(): Map<string, string[]> {
   const rows = requireDb()
     .prepare(
-      `SELECT id, COALESCE(genre, '') AS g, (COALESCE(original_year, year, 0) / 10) * 10 AS decade
+      `SELECT id, COALESCE(genre, '') AS g,
+              CASE
+                WHEN original_year > 0 THEN (original_year / 10) * 10
+                WHEN is_compilation = 1 OR era_untrusted = 1 THEN 0
+                WHEN year > 0 THEN (year / 10) * 10
+                ELSE 0
+              END AS decade
        FROM tracks WHERE moods IS NULL`,
     )
     .all() as Array<{ id: string; g: string; decade: number }>;
@@ -214,9 +222,6 @@ export function genreCentroids(): Array<{ genre: string; count: number; centroid
   }
   return out;
 }
-
-
-
 // Lean, whole-library projection for the explicit Show-editor candidate
 // diagnostic. It avoids the heavyweight analysis JSON that full track reads
 // carry while retaining every field used by the strict show locks.
@@ -227,6 +232,7 @@ export function candidateFilterTracks(): Array<{
   year: number | null;
   originalYear: number | null;
   isCompilation: boolean | null;
+  yearUntrusted: boolean | null;
   genres: string[];
   genre: string | null;
   moods: string[];
@@ -234,8 +240,24 @@ export function candidateFilterTracks(): Array<{
   energy: EnergyValue;
   vocalRanges: unknown[] | null;
 }> {
+  type CandidateFilterRow = {
+    id: string;
+    title: string | null;
+    artist: string | null;
+    year: number | null;
+    original_year: number | null;
+    is_compilation: number | null;
+    era_untrusted: number | null;
+    genres: string | null;
+    genre: string | null;
+    moods: string | null;
+    audio_moods: string | null;
+    energy: EnergyValue;
+    vocal_ranges_json: string | null;
+  };
   const rows = requireDb().prepare(`SELECT id, title, artist, year, original_year,
-    is_compilation, genres, genre, moods, audio_moods, energy, vocal_ranges_json FROM tracks`).all() as Array<Record<string, any>>;
+    is_compilation, era_untrusted, genres, genre, moods, audio_moods, energy,
+    vocal_ranges_json FROM tracks`).all() as CandidateFilterRow[];
   return rows.map((row) => ({
     id: row.id,
     title: row.title ?? null,
@@ -243,11 +265,14 @@ export function candidateFilterTracks(): Array<{
     year: row.year ?? null,
     originalYear: row.original_year ?? null,
     isCompilation: row.is_compilation == null ? null : !!row.is_compilation,
+    yearUntrusted: (row.is_compilation === 1 || row.era_untrusted === 1)
+      ? true
+      : (row.is_compilation == null && row.era_untrusted == null ? null : false),
     genres: row.genres ? safeParseArray(row.genres) : [],
     genre: row.genre ?? null,
     moods: row.moods ? safeParseArray(row.moods) : [],
     audioMoods: row.audio_moods ? safeParseArray(row.audio_moods) : [],
     energy: row.energy ?? null,
-    vocalRanges: row.vocal_ranges_json == null ? null : safeParseArray(row.vocal_ranges_json),
+    vocalRanges: row.vocal_ranges_json == null ? null : parseSpans(row.vocal_ranges_json),
   }));
 }

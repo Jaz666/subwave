@@ -19,6 +19,14 @@ export function rowToTrack(row: TrackRow): TrackRecord {
     originalYearSource: row.original_year_source ?? null,
     originalYearCheckedAt: row.original_year_checked_at ?? null,
     isCompilation: row.is_compilation == null ? null : !!row.is_compilation,
+    eraUntrusted: row.era_untrusted == null ? null : !!row.era_untrusted,
+    // The composed answer every era consumer reads. OR, not COALESCE: the two
+    // columns are independent evidence and either one alone is enough. A row
+    // not yet re-walked since the #1418 migration has era_untrusted NULL and
+    // still behaves exactly as it did under #842.
+    yearUntrusted: (row.is_compilation === 1 || row.era_untrusted === 1)
+      ? true
+      : (row.is_compilation == null && row.era_untrusted == null ? null : false),
     genres: row.genres ? safeParseArray(row.genres) : [],
     genre: row.genre,
     durationSec: row.duration_sec,
@@ -147,7 +155,7 @@ export function parsePaceSpans(s: string): TrackPaceSpan[] | null {
 
 // Parse a JSON span column into clean TrackSection[] (possibly empty). Drops
 // malformed/zero-length spans; returns [] on any parse error.
-function parseSpans(s: string): TrackSection[] {
+export function parseSpans(s: string): TrackSection[] {
   try {
     const v = JSON.parse(s);
     if (!Array.isArray(v)) return [];
