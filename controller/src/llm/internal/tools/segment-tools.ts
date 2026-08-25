@@ -102,9 +102,18 @@ export function buildSegmentTools(
 // the agent-facing wrapper above, so a slow or throwing skill yields
 // `{ error }` rather than hanging the tick. Inputs are the skill's own
 // defaults ({} — the agent-steerable `inputs` params are a tool-loop nicety).
-export async function fetchSegmentData(cap: any, ctx: any, state: any): Promise<any> {
+export async function fetchSegmentData(
+  cap: any,
+  ctx: any,
+  state: any,
+  { rehearsal = false, nowPlayingTrack = undefined }: { rehearsal?: boolean; nowPlayingTrack?: any } = {},
+): Promise<any> {
   if (typeof cap?.toolFn !== 'function') return null;
-  const services = buildStationServices();
+  const baseServices = buildStationServices();
+  let services = nowPlayingTrack === undefined
+    ? baseServices
+    : { ...baseServices, nowPlaying: () => nowPlayingTrack };
+  if (rehearsal) services = rehearsalStationServices(services);
   try {
     const p = Promise.resolve(cap.toolFn(ctx, state, services, cap.config, {}));
     return await withTimeout(p, 8000);

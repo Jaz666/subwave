@@ -33,7 +33,7 @@ const {
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
 const { contextSleeveNotesFor, selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
-const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerCapabilityBrief, producerCapabilityList, producerRoutingSkillDelivery, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
+const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, functionGemmaResearchCapabilities, producerRoutingSkillDelivery, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
 const { skillEnabled } = await import('../src/skills/eligibility.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
@@ -346,21 +346,6 @@ test('recent speech and openers can be isolated to one Persona', () => {
   assert.deepEqual(chrisOpeners, ['Chris opens with a bicycle']);
 });
 
-test('the segment Producer has no listener-facing text field', () => {
-  assert.equal(producerDirectorAgent.kind, 'djProducerSegment');
-  assert.equal(producerDirectorAgent.role, 'producer');
-  const parsed = producerDirectorAgent.schema.parse({
-    air: true,
-    kind: 'weather',
-    reason: 'conditions changed',
-    sfx: null,
-    text: 'This must not cross the boundary.',
-    angle: 'Nor this.',
-  });
-  assert.ok(!('text' in parsed));
-  assert.ok(!('angle' in parsed));
-});
-
 test('the segment Producer receives operational history, not Persona prose', () => {
   queue.djLog = [
     { id: 1, kind: 'weather', message: 'The rain is holding its breath over the valley.', meta: {}, t: new Date().toISOString() },
@@ -375,19 +360,19 @@ test('V2 enable display uses the same effective rule as scheduling', () => {
   assert.equal(skillEnabled({ seeded: true, defaultEnabled: false, skill: 'news-v2', enabled: { 'news-v2': true } }), true);
 });
 
+test('FunctionGemma receives only fixed built-in research tools', () => {
+  const offered = functionGemmaResearchCapabilities([
+    { kind: 'news-v2', seeded: true },
+    { kind: 'maria-memory-box', seeded: false },
+    { kind: 'custom-prompt', seeded: false },
+  ]);
+  assert.deepEqual(offered.map(cap => cap.kind), ['news-v2']);
+});
+
 test('Run now uses Producer delivery only when the split has no episode brief', () => {
   assert.equal(producerRoutingSkillDelivery({ producer: { enabled: false } }), false);
   assert.equal(producerRoutingSkillDelivery({ producer: { enabled: true } }), true);
   assert.equal(producerRoutingSkillDelivery({ producer: { enabled: true } }, 'episode angle'), false);
-});
-
-test('the Producer sees a compact V2 editorial brief, never its Persona brief', () => {
-  const personaBrief = 'PERSONA-ONLY: paraphrase without mentioning sources.';
-  const cap = { kind: 'weather-v2', desc: personaBrief, requiresEvidence: true };
-  const system = producerCapabilityList([cap]);
-  assert.match(system, /meaningful current or next-12-hour weather change/);
-  assert.ok(!system.includes(personaBrief));
-  assert.match(producerCapabilityBrief({ kind: 'news-v2' }), /safe, show-relevant or general music headline/);
 });
 
 test('the Persona segment packet contains evidence but no Producer rationale', () => {

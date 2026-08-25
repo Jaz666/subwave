@@ -43,11 +43,8 @@ import {
   personaExpressionCueHint,
 } from '../llm/dj.js';
 import {
-  ProducerSegmentSchema,
   producerRouterConfig,
   producerSegmentRouterEnabled,
-  producerSegmentSelectSystem,
-  producerSegmentSystem,
   routeProducerResearch,
 } from '../llm/producer.js';
 import { buildSegmentTools, fetchSegmentData } from '../llm/segment-tools.js';
@@ -384,31 +381,6 @@ export const directorAgent = defineAgent({
   }),
 });
 
-function producerSfxBlock(sfxCatalog) {
-  if (!sfxCatalog?.length) return '\n\nNo production sound effects are offered; return sfx: null.';
-  const names = sfxCatalog.map((item) => `- ${item.name}: ${item.description || 'no description'}`).join('\n');
-  return `\n\nOptional production sound effects:\n${names}\nChoose at most one exact name. Usually return null.`;
-}
-
-// Split-mode director: the backstage model decides, researches and optionally
-// selects production SFX, but has no Persona prompt and no listener-facing text
-// field in its schema. Its selected tool result is recovered from `toolCalls`,
-// grounded by controller policy and handed to generatePersonaSegment.
-export const producerDirectorAgent = defineAgent({
-  kind: 'djProducerSegment',
-  schema: ProducerSegmentSchema,
-  maxSteps: 2,
-  timeoutMs: segmentDeadline,
-  role: 'producer',
-  buildSystem: ({ caps, freq, sfxCatalog }) => {
-    const capList = producerCapabilityList(caps);
-    return `${producerSegmentSystem()}\n\nStation cadence: ${stationTone(freq)}\n\nOffered segment kinds:\n${capList}${producerSfxBlock(sfxCatalog)}`;
-  },
-  buildTools: ({ ctx, segmentState, caps, currentTrack, rehearsal }) => ({
-    tools: buildSegmentTools(ctx, segmentState, caps, currentTrack, { rehearsal }),
-  }),
-});
-
 export function producerRoutingSkillDelivery(llm: any, brief: string | null = null): boolean {
   return !!llm?.producer?.enabled && !brief;
 }
@@ -596,22 +568,8 @@ export function changedWeatherCapability(caps, ctx, state: SegmentState) {
   return caps.find(isWeatherCapability) || null;
 }
 
-function segmentSelectorSystem(cap, freq: string, sfxCatalog) {
-  return `${producerSegmentSelectSystem()}\n\nStation cadence: ${stationTone(freq)}\n\nOnly offered segment kind:\n- ${cap.kind}: ${producerCapabilityBrief(cap)}${producerSfxBlock(sfxCatalog)}`;
-}
-
-async function selectProducerSegment({ cap, evidence, situation, freq, sfxCatalog }) {
-  const schema = ProducerSegmentSchema.extend({
-    kind: z.union([z.literal(cap.kind), z.null()]),
-  });
-  return deadlinedSegmentObject({
-    system: segmentSelectorSystem(cap, freq, sfxCatalog),
-    prompt: `${situation}\n\nResearch result for "${cap.kind}":\n${JSON.stringify(evidence, null, 2)}\n\nDecide whether this exact researched segment is worth airing. Return production fields only.`,
-    schema,
-    temperature: 0.4,
-    kind: 'djProducerSegmentSelect',
-    role: 'producer',
-  });
+export function functionGemmaResearchCapabilities(caps: any[]) {
+  return caps.filter(candidate => !isWeatherCapability(candidate) && candidate.seeded);
 }
 
 async function runHybridSegmentResearch(ctx, {
@@ -628,12 +586,12 @@ async function runHybridSegmentResearch(ctx, {
   } else {
     // Unchanged weather is not a useful alternative. The established simple
     // path applies the same freshness rule.
-    const routeCaps = caps.filter(candidate => !isWeatherCapability(candidate));
+    // FunctionGemma has a fixed, trained vocabulary. Never offer it an
+    // operator-defined tool name: custom skill tools run through the
+    // controller fallback below, where their code and evidence stay local.
+    const routeCaps = functionGemmaResearchCapabilities(caps);
     if (!routeCaps.length) {
-      return {
-        object: { air: false, kind: null, reason: 'Weather has not changed since the last update', sfx: null },
-        toolCalls: [],
-      };
+      throw new Error('No fixed built-in research tool is available for FunctionGemma');
     }
     if (!routeCaps.every(candidate => typeof candidate.toolFn === 'function' && candidate.toolName)) {
       throw new Error('Producer Research Router cannot safely represent a prompt-only offered skill');
@@ -668,14 +626,55 @@ async function runHybridSegmentResearch(ctx, {
       toolCalls,
     };
   }
-  const situation = buildProducerSituation(
-    ctx,
-    [cap],
-    currentTrack,
-    'The controller has completed the research. Decide whether it is worth airing; never write the line.',
-  );
-  const object = await selectProducerSegment({ cap, evidence, situation, freq, sfxCatalog });
-  return { object, toolCalls };
+  // Evidence availability is a controller fact, not an open-ended Qwen
+  // approval task. Persona may still stand down by returning no copy.
+  return {
+    object: { air: true, kind: cap.kind, reason: 'Controller accepted usable research evidence', sfx: null },
+    toolCalls,
+  };
+}
+
+function controllerFallbackCapability(caps, ctx, state: SegmentState) {
+  const changedWeather = changedWeatherCapability(caps, ctx, state);
+  if (changedWeather) return changedWeather;
+  // Weather without a known change is intentionally deprioritised; its own tool
+  // can still be selected when it is the only available capability.
+  const pool = caps.filter(cap => !isWeatherCapability(cap));
+  const candidates = pool.length ? pool : caps;
+  if (!candidates.length) return null;
+  let oldest = Infinity;
+  let selected: any[] = [];
+  for (const cap of candidates) {
+    const fired = lastFired.get(cap.kind) || 0;
+    if (fired < oldest) { oldest = fired; selected = [cap]; }
+    else if (fired === oldest) selected.push(cap);
+  }
+  return selected[Math.floor(Math.random() * selected.length)] || null;
+}
+
+async function runControllerSegmentResearch(ctx, { caps, state, currentTrack, rehearsal = false }) {
+  const cap = controllerFallbackCapability(caps, ctx, state);
+  if (!cap) return {
+    object: { air: false, kind: null, reason: 'No controller-eligible skill is available', sfx: null },
+    toolCalls: [],
+  };
+  if (typeof cap.toolFn !== 'function' || !cap.toolName) {
+    return {
+      object: { air: true, kind: cap.kind, reason: 'Controller selected prompt-only skill', sfx: null },
+      toolCalls: [],
+    };
+  }
+  const result = await fetchSegmentData(cap, ctx, state, { rehearsal, nowPlayingTrack: currentTrack });
+  const evidence = groundedSearchEvidence(cap.kind, result);
+  const toolCalls = [{ name: cap.toolName, args: {}, result }];
+  if (!usableSegmentEvidence(evidence)) return {
+    object: { air: false, kind: null, reason: cap.kind + ' returned no usable evidence', sfx: null },
+    toolCalls,
+  };
+  return {
+    object: { air: true, kind: cap.kind, reason: 'Controller accepted usable research evidence', sfx: null },
+    toolCalls,
+  };
 }
 
 async function runSplitDirector(ctx, { caps, speaker, freq, sfxCatalog, state = segmentState, rehearsal = false }): Promise<SplitSegmentResult> {
@@ -689,17 +688,16 @@ async function runSplitDirector(ctx, { caps, speaker, freq, sfxCatalog, state = 
       ({ object, toolCalls } = await runHybridSegmentResearch(ctx, {
         caps, freq, sfxCatalog, state, currentTrack, routerConfig,
       }));
-    } catch (error: any) {
-      // Segment routing is optional. Unfamiliar prompt-only custom skills,
-      // endpoint failures and malformed tiny-model calls all return to the
-      // complete established Producer agent for this tick.
-      queue.log('scheduler', `Producer Research Router unavailable (${error?.message || error}) — using full Producer segment agent`);
+    } catch {
+      // Router failure, prompt-only skills and operator-created tools all use
+      // the controller path. No Qwen fallback: the controller chooses, runs
+      // the tool and applies the same evidence gate before Persona delivery.
+      queue.log('scheduler', 'Producer Research Router unavailable — using controller skill policy');
     }
   }
   if (!object || !toolCalls) {
-    ({ object, toolCalls } = await producerDirectorAgent.run({
-      messages: [{ role: 'user', content: buildProducerSituation(ctx, caps, currentTrack) }],
-      caps, freq, sfxCatalog, ctx, segmentState: state, currentTrack, rehearsal,
+    ({ object, toolCalls } = await runControllerSegmentResearch(ctx, {
+      caps, state, currentTrack, rehearsal,
     }));
   }
   const attempts = researchAttemptsFromToolCalls(caps, toolCalls);
