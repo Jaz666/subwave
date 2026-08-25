@@ -73,6 +73,59 @@ the Producer failover leg and their administration/UI paths after replacements
 are proven. Do not leave a hidden Qwen fallback behind and call the result a
 two-model architecture.
 
+## Skill segments: retained V2 infrastructure and Producer boundary
+
+The useful runtime infrastructure formerly developed on `codex/skills-v2` is
+already incorporated in `codex/producer-routing`; do not re-merge that branch.
+It includes the shared research services for exact-track facts, artist news,
+album anniversaries, weather outlook, sourced curiosity, music-news selection
+and research-evidence packets. These are controller services. They are dormant
+until a skill calls them and are not themselves a new listener-facing feature.
+
+### Persona skill delivery
+
+Once a segment is selected, the Creative model writes it through
+`generatePersonaSegment`. It receives the full operator-authored skill brief,
+the selected tool's controller-approved evidence, compact relevant context and
+Persona-specific anti-repeat memory. The creative model never receives Qwen's
+reasoning or tool-loop prose.
+
+Skill delivery also inherits the selected Persona's tone directives, allowed
+TTS expression cues and length ceiling. Speech is bounded before TTS. These
+are safe improvements to normal skill delivery as well as Producer-delivered
+segments: they do not require Producer routing to be enabled.
+
+### What the temporary Producer does — and must stop doing
+
+The current Qwen `djProducerSegment` path still receives every full skill brief
+while selecting a research tool and deciding air/silence. That is the wrong
+boundary: a Producer needs only compact operational metadata (eligibility,
+required evidence and a short editorial airtime rule), not listener-facing
+voice, format, comedy examples or writing constraints. The full brief belongs
+only to the Creative delivery call.
+
+The immediate design target is therefore:
+
+```text
+FunctionGemma: choose one offered research tool
+Controller: enforce availability, evidence, cooldown and speaker eligibility
+Creative model: use the full skill brief and approved payload to write or stand down
+```
+
+Do not replace Qwen with FunctionGemma for open-ended creative approval. If a
+future bounded FunctionGemma airtime decision is wanted, it needs a separately
+evaluated tool/schema contract.
+
+### Legacy compatibility
+
+Producer routing remains optional. When it is disabled, unavailable or declines
+to route, the established skill director/simple path remains responsible for
+selection and delivery. Existing skills keep their normal enablement,
+cooldown and prompt behaviour; the extra research and evidence policies only
+apply when a skill explicitly opts into their frontmatter contracts. Do not
+make an ordinary station configure FunctionGemma, a Producer model or a
+research-evidence format merely to use its existing skills.
+
 ## Built-in FunctionGemma work
 
 The current router is an externally configured OpenAI-compatible endpoint via
