@@ -16,6 +16,9 @@ const {
   producerRouterMessage,
   producerSelectorSystem,
 } = await import('../src/broadcast/dj-agent/agents.js');
+const { showHandoverContext } = await import("../src/context.js");
+const { zonedParts } = await import("../src/time.js");
+const { enqueuePick } = await import("../src/broadcast/dj-agent/enqueue.js");
 const {
   fuzzyAirTime,
   generatePersonaStationId,
@@ -29,7 +32,7 @@ const {
   generatePersonaSegment,
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
-const { selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
+const { contextSleeveNotesFor, selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
 const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
@@ -41,7 +44,7 @@ test('live picker agents declare separate Persona and Producer routes', () => {
   assert.equal(producerPickerAgent.kind, 'djProducerPick');
 });
 
-test('Persona station ids receive only identity, show name and anti-repeat memory', () => {
+test('Persona station ids receive verified weekday alongside identity and anti-repeat memory', () => {
   const prompt = personaStationIdPrompt({
     persona: { name: 'Chris', scriptLength: 'concise' },
     context: {
@@ -63,14 +66,13 @@ test('Persona station ids receive only identity, show name and anti-repeat memor
   assert.match(prompt, /Presenter: Chris/);
   assert.match(prompt, /Lunchtime Rocks/);
   assert.match(prompt, /previous Chris ident/);
-  assert.ok(!prompt.includes('Wednesday'));
+  assert.match(prompt, /FACTUAL GROUNDING/);
+  assert.match(prompt, /Current Context:/);
+  assert.match(prompt, /Day: Wednesday./);
   assert.ok(!prompt.includes('13:15'));
   assert.ok(!prompt.includes('afternoon'));
   assert.ok(!prompt.includes('drive home'));
-  assert.ok(!prompt.includes('Example Festival'));
   assert.ok(!prompt.includes('Listeners'));
-  assert.ok(!prompt.includes('Big guitars'));
-  assert.ok(!prompt.includes('history of distortion'));
   assert.ok(!prompt.includes('energetic'));
   assert.ok(!prompt.includes('Tone for this segment'));
   assert.equal(typeof generatePersonaStationId, 'function');
@@ -114,17 +116,17 @@ test('Persona handover prompts keep the conversational bridge but drop generic c
   assert.match(greeting, /How distortion changed rock/);
   assert.match(greeting, /Carrie already used this opener/);
   for (const prompt of [signoff, greeting]) {
-    assert.ok(!prompt.includes('Wednesday'));
-    assert.ok(!prompt.includes('10:59'));
-    assert.ok(!prompt.includes('slow start'));
-    assert.ok(!prompt.includes('Example Festival'));
-    assert.ok(!prompt.includes('Listeners'));
-    assert.ok(!prompt.includes('Wrong implicit show'));
-    assert.ok(!prompt.includes('calm'));
-    assert.ok(!prompt.includes('Tone for this segment'));
+    assert.match(prompt, /FACTUAL GROUNDING/);
+    assert.match(prompt, /Current Context:/);
+    assert.match(prompt, /Day: Wednesday./);
+    assert.ok(!prompt.includes("10:59"));
+    assert.ok(!prompt.includes("slow start"));
+    assert.ok(!prompt.includes("Listeners"));
+    assert.ok(!prompt.includes("calm"));
+    assert.ok(!prompt.includes("Tone for this segment"));
   }
-  assert.equal(typeof generatePersonaSignoff, 'function');
-  assert.equal(typeof generatePersonaHandoffGreeting, 'function');
+  assert.equal(typeof generatePersonaSignoff, "function");
+  assert.equal(typeof generatePersonaHandoffGreeting, "function");
 });
 
 test('the Producer picker accepts DJ editorial influence only as a soft tie-breaker', () => {
@@ -172,16 +174,31 @@ test('the Producer receives structured operational history without Persona prose
     recentTracks: [{ id: 'old-1', title: 'Survivors', artist: 'Levellers', energy: 0.4 }],
     recentArtists: ['Levellers'],
     recentTransitions: ['normal', 'washout'],
+    guestEditorialNudge: { persona: { id: 'terry', name: 'Terry' }, musicLeanings: 'favour warm electronic edges' },
     instructions: ['Use a normal transition if no effect is justified.'],
   });
   assert.match(message, /pick_next_track/);
   assert.match(message, /Headlong/);
   assert.match(message, /Survivors/);
   assert.match(message, /washout/);
+  assert.match(message, /guestEditorialNudge/);
+  assert.match(message, /Terry/);
   assert.ok(!message.includes('driving'));
   assert.ok(!message.includes('energy'));
   assert.ok(!message.includes('holding its breath'));
 });
+test("host links receive guest credit only as verified editorial context", () => {
+  const prompt = personaLinkPrompt({
+    current: { title: "Echoes", artist: "Sorry" },
+    context: {},
+    guestContribution: { name: "Terry" },
+    persona: { name: "Chris", scriptLength: "concise" },
+  });
+  assert.match(prompt, /Editorial Context:/);
+  assert.match(prompt, /Terry had a verified editorial hand/);
+  assert.match(prompt, /do not call it a favourite/);
+});
+
 
 test('the Stage C Persona prompt contains only approved facts and negative memory', () => {
   const prompt = personaLinkPrompt({
@@ -205,42 +222,48 @@ test('the Stage C Persona prompt contains only approved facts and negative memor
   });
   assert.match(prompt, /Headlong/);
   assert.match(prompt, /Queen/);
-  assert.match(prompt, /(?:Album: Innuendo|Release year: 1991)/);
-  assert.match(prompt, /Verified facts \(including Sleeve Notes\)/);
+  assert.match(prompt, /Verified Facts:/);
+  assert.match(prompt, /Current Context:/);
+  assert.match(prompt, /Sleeve Notes:/);
+  assert.match(prompt, /Day: Wednesday./);
+  assert.match(prompt, /around half past 4pm/);
+  assert.match(prompt, /The Scenic Route/);
   assert.match(prompt, /do not add or infer further music-history claims/i);
   assert.deepEqual(
-    sleeveNotesFor({ title: 'Headlong', album: 'Innuendo', year: 1991 }, 3),
-    ['Album: Innuendo.', 'Release year: 1991.', 'Station plays before today: 3.'],
+    sleeveNotesFor({ title: "Headlong", album: "Innuendo", year: 1991 }, 3),
+    ["Album: Innuendo.", "Release year: 1991.", "Station plays before today: 3."],
   );
-  assert.deepEqual(sleeveNotesFor({ title: 'Headlong', album: 'Headlong', year: 'unknown' }, 0), []);
-  const sleeveNotes = ['Album: Innuendo.', 'Release year: 1991.', 'Station plays before today: 3.'];
+  assert.deepEqual(sleeveNotesFor({ title: "Headlong", album: "Headlong", year: "unknown" }, 0), []);
+  assert.deepEqual(
+    contextSleeveNotesFor(
+      { title: "Headlong", album: "Innuendo", year: 1991 },
+      { date: { season: "summer" }, weather: { condition: "rainy", location: "Ribble Valley" }, activeShow: { topic: "Take the longer way home." } },
+      3,
+    ),
+    ["Album: Innuendo.", "Release year: 1991.", "Station plays before today: 3.", "Season: summer.", "Weather in Ribble Valley: rainy.", "Show theme: Take the longer way home."],
+  );
+  const sleeveNotes = ["Album: Innuendo.", "Release year: 1991.", "Station plays before today: 3."];
   assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0), [sleeveNotes[0]]);
-  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0.5), [sleeveNotes[1]]);
-  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0.99), [sleeveNotes[2]]);
-  assert.match(prompt, /The Scenic Route/);
-  assert.match(prompt, /Take the longer way home/);
-  assert.match(prompt, /around half past 4pm/);
-  assert.ok(!prompt.includes('16:29'));
-  assert.match(prompt, /do not turn it into an exact minute/i);
+  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0.5), [sleeveNotes[1], sleeveNotes[2]]);
+  assert.deepEqual(selectSleeveNotes(sleeveNotes, () => 0.99), [sleeveNotes[2], sleeveNotes[1]]);
   assert.match(prompt, /supplied only to prevent repetition/i);
-  assert.ok(!prompt.includes('Wednesday'));
-  assert.ok(!prompt.includes('summer'));
-  assert.ok(!prompt.includes('afternoon'));
-  assert.ok(!prompt.includes('Example Festival'));
-  assert.ok(!prompt.includes('Listeners'));
-  assert.ok(!prompt.includes('driving'));
-  assert.ok(!prompt.includes('focus'));
-  assert.ok(!prompt.includes('134'));
-  assert.ok(!prompt.includes('musicalKey'));
-  assert.ok(!prompt.includes('Tone for this segment'));
-  assert.ok(!prompt.includes('Backstage editorial direction'));
-  assert.equal(typeof generatePersonaLink, 'function');
+  assert.match(prompt, /FACTUAL GROUNDING/);
+  assert.match(prompt, /Intro-runway guidance is production-only/);
+  assert.ok(!prompt.includes("16:29"));
+  assert.ok(!prompt.includes("afternoon"));
+  assert.ok(!prompt.includes("Listeners"));
+  assert.ok(!prompt.includes("driving"));
+  assert.ok(!prompt.includes("134"));
+  assert.ok(!prompt.includes("Tone for this segment"));
+  assert.ok(!prompt.includes("Backstage editorial direction"));
+  assert.equal(typeof generatePersonaLink, "function");
 });
 
 test('queued Persona links receive resilient fuzzy time landmarks', () => {
   assert.equal(fuzzyAirTime({ display: '10:56' }), 'approaching 11am');
   assert.equal(fuzzyAirTime({ hhmm: '11:55' }), 'approaching noon');
   assert.equal(fuzzyAirTime({ display: '23:55' }), 'approaching midnight');
+
   assert.equal(fuzzyAirTime({ display: '00:08' }), 'just after midnight');
   assert.equal(fuzzyAirTime({ display: 'broken' }), null);
 });
@@ -254,8 +277,57 @@ test('an on-demand Persona link does not reuse the track opening as live runway'
     persona: { scriptLength: 'concise' },
   });
   assert.match(prompt, /approaching 11am/);
+  assert.match(prompt, /FACTUAL GROUNDING/);
   assert.ok(!prompt.includes('9s'));
-  assert.ok(!prompt.includes('vocals'));
+  assert.match(prompt, /Intro-runway guidance is production-only/);
+  assert.match(prompt, /Sleeve Notes are optional material for natural conversation, not a checklist/);
+  assert.match(prompt, /Style or Tone instructions never override these factual-grounding rules/);
+});
+
+test("Persona handover context appears only in the final half hour and names the scheduled presenter", () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() + ((45 - zonedParts(now).minute + 60) % 60));
+  const boundary = new Date(now.getTime() + 15 * 60_000);
+  const resolveShow = (at: Date) => at.getTime() < boundary.getTime()
+    ? { id: "current", name: "The Scenic Route", persona: { name: "Chris" } }
+    : { id: "next", name: "Lunchtime Rocks", persona: { name: "Carrie" } };
+  const handover = showHandoverContext(now, resolveShow);
+  assert.equal(handover?.phase, "final-half-hour");
+  assert.equal(handover?.nextShow.name, "Lunchtime Rocks");
+  assert.equal(handover?.nextShow.presenter, "Carrie");
+
+  const prompt = personaLinkPrompt({
+    current: { title: "Headlong", artist: "Queen" },
+    context: { activeShow: { name: "The Scenic Route" }, showHandover: handover },
+    persona: { scriptLength: "concise" },
+  });
+  assert.match(prompt, /Show progress: final half hour/);
+  assert.match(prompt, /Following show: "Lunchtime Rocks" with Carrie/);
+  assert.match(prompt, /following-show detail naturally/);
+
+  const early = new Date(now.getTime() - 20 * 60_000);
+  assert.equal(showHandoverContext(early, resolveShow), null);
+});
+
+test("queued Persona links preserve the selected guest voice", async () => {
+  const guest = { id: "guest-lucy", name: "Lucy" };
+  let queued: any = null;
+  const fakeQueue = {
+    push: async (item: any) => { queued = item; return 0; },
+    log: () => {},
+  };
+  await enqueuePick(
+    fakeQueue,
+    { id: "track-1", title: "Echoes", artist: "Sorry" },
+    "guest link test",
+    "agent",
+    "Lucy takes this one.",
+    null,
+    {},
+    { introPersona: guest },
+  );
+  assert.equal(queued.introPersona, guest);
 });
 
 test('recent speech and openers can be isolated to one Persona', () => {
@@ -263,9 +335,11 @@ test('recent speech and openers can be isolated to one Persona', () => {
   queue.djLog = [
     { id: 1, kind: 'link', message: 'Chris opens with a bicycle story.', t: now, meta: { personaId: 'chris' } },
     { id: 2, kind: 'link', message: 'Lucy opens with a new discovery.', t: now, meta: { personaId: 'lucy' } },
+
   ];
   const chrisRecap = queue.getDjRecap({ personaId: 'chris' }) || '';
   const chrisOpeners = queue.getRecentOpeners(6, 'chris');
+
   assert.match(chrisRecap, /bicycle story/);
   assert.ok(!chrisRecap.includes('new discovery'));
   assert.deepEqual(chrisOpeners, ['Chris opens with a bicycle']);
@@ -308,6 +382,7 @@ test('the Persona segment packet contains evidence but no Producer rationale', (
   });
   assert.match(prompt, /changedSinceLastMention/);
   assert.match(prompt, /approaching 11am/);
+  assert.match(prompt, /FACTUAL GROUNDING/);
   assert.ok(!prompt.includes('Producer thinks'));
   assert.equal(typeof generatePersonaSegment, 'function');
 });

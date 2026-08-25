@@ -215,6 +215,7 @@ export {
   effectsActive,
   getActivePersona,
   getEffectivePersona,
+  guestEditorialNudge,
   getOnAirRoster,
   getScheduleOverride,
   languageDirective,

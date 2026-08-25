@@ -63,6 +63,8 @@ export interface QueueItem {
   intent?: string | null;
   introScript?: string | null;
   introKind?: string;
+  // Internal generation path for an attached link, recorded only in the operator transcript.
+  introSpeechLogOrigin?: string | null;
   // Who WROTE introScript. Carried on the item because the line is rendered in
   // drainToLiquidsoap and aired in airIntro, both later than generation and
   // both of which used to re-resolve the speaker from the wall clock — so

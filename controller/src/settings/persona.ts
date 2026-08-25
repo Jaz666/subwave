@@ -62,6 +62,18 @@ export function personaEditorialInfluence(persona: unknown = getEffectivePersona
       }
     : null;
 }
+// A guest may occasionally offer a music-specific secondary nudge. It is
+// deliberately limited to configured Music Leanings: a guest Soul is on-air
+// character, not a programming instruction. The host remains the primary
+// editorial influence in every Producer request.
+export function guestEditorialNudge(date: Date = new Date(), random = Math.random) {
+  const { guests } = getOnAirRoster(date);
+  const eligible = guests.filter((guest: any) => String(guest?.musicLean || "").trim());
+  if (!eligible.length || random() >= 0.25) return null;
+  const guest: any = eligible[Math.floor(random() * eligible.length)];
+  return { persona: { id: guest.id, name: guest.name }, musicLeanings: String(guest.musicLean).trim() };
+}
+
 
 // Effective track-length cap in SECONDS for the moment a pick is made, or null
 // for "no cap". A scheduled show's maxTrackSeconds (when set) overrides the

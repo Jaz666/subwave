@@ -59,6 +59,7 @@ export function producerPickMessage({
   recentTransitions = [],
   selectionContext = null,
   editorialInfluence = settings.personaEditorialInfluence(session.onAirPersona()),
+  guestEditorialNudge = null,
   instructions = [],
 }: {
   current?: any;
@@ -67,6 +68,7 @@ export function producerPickMessage({
   recentTransitions?: string[];
   selectionContext?: any;
   editorialInfluence?: { soul?: string; musicLeanings?: string } | null;
+  guestEditorialNudge?: { persona: { id?: string; name?: string }; musicLeanings: string } | null;
   instructions?: string[];
 } = {}): string {
   const track = (value: any) => value ? {
@@ -88,6 +90,7 @@ export function producerPickMessage({
       festival: selectionContext.festival?.name ?? null,
     } : null,
     editorialInfluence: editorialInfluence || undefined,
+    guestEditorialNudge: guestEditorialNudge || undefined,
   };
   const coaching = instructions.map((line) => String(line || '').trim()).filter(Boolean);
   return `Operational pick request:\n${JSON.stringify(payload, null, 2)}`
@@ -111,7 +114,7 @@ export function producerPickerSystem(showAt: Date | null = null, playlistResolve
     : '';
   return `${producerPickSystem(producerPromptDiscoverySteps())}
 
-When an operational request supplies editorialInfluence, use it only to break ties between otherwise suitable candidates. It is never a hard constraint and never overrides station safety, rotation, show rules, library eligibility or transition requirements.${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
+When an operational request supplies editorialInfluence, use it only to break ties between otherwise suitable candidates. It is never a hard constraint and never overrides station safety, rotation, show rules, library eligibility or transition requirements. A guestEditorialNudge is weaker still: consider it only after the host influence, and set guestInfluenceApplied true only when it materially broke a close tie; never select a track merely to credit a guest.${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
 
 ${PICKER_CRITERIA}${effectsGuidance()}`;
 }

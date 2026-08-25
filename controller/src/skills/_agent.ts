@@ -700,6 +700,7 @@ async function runSplitDirector(ctx, { caps, speaker, freq, sfxCatalog, state = 
     brief: cap.desc,
     evidence: personaResearchEvidence(evidence),
     contextFacts: facts,
+    context: ctx,
     current: includeTrack ? currentTrack : null,
     recap: queue.getDjRecap({ maxChars, personaId }),
     recentOpeners: queue.getRecentOpeners(6, personaId),

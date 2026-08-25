@@ -24,6 +24,17 @@ test('formats a parseable DJ speech transcript block', () => {
   ].join('\n'));
 });
 
+test('records a non-aired generation origin when supplied', () => {
+  assert.match(formatDjSpeech({
+    airedAt: new Date(2026, 7, 18, 13, 31, 13).getTime(),
+    speaker: 'Chris Sittins',
+    show: 'Another Day, Another Spin',
+    kind: 'link',
+    origin: 'producer-persona-link',
+    text: 'A grounded link.',
+  }), /ORIGIN: producer-persona-link/);
+});
+
 test('keeps the 14-day horizon and ignores unrelated log files', async () => {
   const logs = await mkdtemp(join(tmpdir(), 'subwave-dj-speech-log-'));
   const today = new Date().toISOString().slice(0, 10);

@@ -13,6 +13,8 @@ export type DjSpeechLogEntry = {
   speaker: string;
   show: string;
   kind: string;
+  /** Internal generation path for operator analysis; never listener-facing. */
+  origin?: string | null;
   text: string;
   track?: { artist?: string | null; title?: string | null } | null;
 };
@@ -39,6 +41,7 @@ export function formatDjSpeech(entry: DjSpeechLogEntry): string {
     `${timestampFor(entry.airedAt)} | ${entry.speaker || 'DJ'} | ${entry.show || 'Auto DJ'}`,
     `TYPE: ${entry.kind || 'announcement'}`,
   ];
+  if (entry.origin) lines.push(`ORIGIN: ${entry.origin}`);
   const track = trackLabel(entry.track);
   if (track) lines.push(`TRACK: ${track}`);
   lines.push('', entry.text.trim(), '', '');

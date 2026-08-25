@@ -245,7 +245,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, producerMessage = null, producerExplore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; producerMessage?: string | null; producerExplore?: boolean }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, producerMessage = null, producerExplore = false, guestEditorialNudge = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; producerMessage?: string | null; producerExplore?: boolean; guestEditorialNudge?: any }): Promise<boolean> {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -582,15 +582,21 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   }
 
   let rawSay = '';
+  // Producer/Persona links join the existing guest rotation; legacy links stay with the host.
+  const linkSpeaker = splitProducer ? settings.pickOnAirSpeaker(linkAirAt ?? undefined) : session.onAirPersona();
+  const guestContribution = splitProducer && object?.guestInfluenceApplied === true && guestEditorialNudge?.persona?.id && linkSpeaker?.id !== guestEditorialNudge.persona.id
+    ? { name: String(guestEditorialNudge.persona.name || "").trim() }
+    : null;
   if (splitProducer && wantLink) {
     try {
-      const speaker = session.onAirPersona();
+      const speaker = linkSpeaker;
       const personaId = speaker?.id || null;
       rawSay = (await dj.generatePersonaLink({
         current: song,
         context: linkAirContext(ctx, linkAirAt),
         clockIsAirTime: !!linkAirAt,
         persona: speaker,
+        guestContribution,
         recap: queue.getDjRecap({ personaId }),
         recentOpeners: queue.getRecentOpeners(6, personaId),
       })).trim();
@@ -644,7 +650,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // the track on-air now), instead of immediately over that on-air track (#189).
   // Stamp `current` as the link's back-announce target so the queue can drop the
   // link if a request jumps ahead of this pick before it airs.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkAirAt });
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, {
+    linkClockAt: linkAirAt,
+    speechLogOrigin: splitProducer ? 'producer-persona-link' : 'agent-legacy-link',
+    introPersona: linkSpeaker,
+  });
   // Pick was already queued/on-air and got deduped — don't record a session turn
   // for a track that never airs. Returning false lets runTrackEvent fall through
   // to the pool for a fresh pick.
@@ -710,9 +720,24 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
   // already spent part of the runway, and linkClockAt reads the live clock, so
   // asking now is the most honest the forecast can be on this path (#1314).
   const airAt = linkClockAt(showAt, Date.now());
+  const producerRouting = settings.get().llm?.producer?.enabled === true;
+  let speechLogOrigin = producerRouting ? 'producer-persona-link' : 'pool-legacy-link';
+  // Keep automatic Persona links conversationally shared with scheduled guests.
+  const linkSpeaker = producerRouting ? settings.pickOnAirSpeaker(airAt ?? undefined) : session.onAirPersona();
   if (wantLink && current) {
+    const speaker = linkSpeaker;
     try {
-      link = await dj.generateLink({
+      if (producerRouting) {
+        link = await dj.generatePersonaLink({
+          current: result.song,
+          context: linkAirContext(ctx, airAt),
+          clockIsAirTime: !!airAt,
+          persona: speaker,
+          recap: queue.getDjRecap({ personaId: speaker?.id || null }),
+          recentOpeners: queue.getRecentOpeners(6, speaker?.id || null),
+        });
+      } else {
+        link = await dj.generateLink({
         // ctx with the clock stepped to the link's air moment — showAt's own
         // clock carries the show-attribution padding and ran two minutes fast
         // on air (#1282). Only with the look-ahead resolved AND enough runway
@@ -725,13 +750,25 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
         // back to getEffectivePersona() on the wall clock, which disagrees with
         // the session inside the look-ahead window — the incoming DJ's line
         // written in the outgoing DJ's voice.
-        persona: session.onAirPersona(),
+        persona: speaker,
         recap: queue.getDjRecap(),
         recentTracks: queue.getRecentTracks(),
         recentOpeners: queue.getRecentOpeners(),
       });
+      }
     } catch (err) {
-      queue.log('error', `DJ link failed: ${err.message}`);
+      if (!producerRouting) {
+        queue.log('error', `DJ link failed: ${err.message}`);
+      } else {
+        queue.log('producer', `Persona pool delivery failed: ${err.message} — trying the legacy link contract`);
+        logEvent('producer.fallback', { stage: 'pool-delivery', reason: err.message, trackId: result.song.id });
+        try {
+        speechLogOrigin = 'pool-legacy-link';
+          link = await dj.generateLink({ previous: current, current: result.song, context: linkAirContext(ctx, airAt), clockIsAirTime: !!airAt, persona: speaker, recap: queue.getDjRecap(), recentTracks: queue.getRecentTracks(), recentOpeners: queue.getRecentOpeners() });
+        } catch (legacyErr) {
+          queue.log('error', `DJ link failed: ${legacyErr.message}`);
+        }
+      }
     }
   }
   // Talk-within-the-intro rides enqueuePick's trimLinkToIntro chokepoint —
@@ -764,6 +801,8 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
   // air time — "after dark" stays accurate even when the numerals are withheld.
   const queued = await enqueuePick(queue, result.song, result.reason, result.source || 'pool', link, current, fx, {
     linkClockAt: linkClockStampFor(airAt, speakClockAllowed()),
+    speechLogOrigin,
+    introPersona: linkSpeaker,
   });
   // Even the pool landed on an already-queued track (a tiny library whose pool
   // collapsed to recents). Skip the session turn and let auto.m3u backstop the
@@ -962,12 +1001,14 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
       && Math.random() < EXPLORE_SEED_PROBABILITY
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';
+    const guestNudge = settings.guestEditorialNudge(showAt ?? undefined);
     const producerMessage = producerPickMessage({
       current,
       recentTracks: queue.getRecentTracks(),
       recentArtists: queue.getRecentArtists(),
       recentTransitions: recentT,
       selectionContext: ctx,
+      guestEditorialNudge: guestNudge,
       instructions: [favClause, effectClause, producerRunClause, journeyClause, exploreClause],
     });
     const eventText = `Now playing "${current?.title}" by ${current?.artist}`
@@ -999,6 +1040,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
           linkAirAt: linkClockStampFor(airAt, !!airClock),
           producerMessage,
           producerExplore: !!exploreClause,
+          guestEditorialNudge: guestNudge,
         });
         breakerSuccess();
         if (queued) return;
@@ -1320,7 +1362,7 @@ export async function runPersonaHandoff(queue: any, _ctx: any): Promise<void> {
     try {
       const personaOutId = personaOut.id || null;
       signoffText = await dj.generatePersonaSignoff({
-        personaOut, personaIn, showIn,
+        personaOut, personaIn, showIn, context: _ctx, current: queue.current?.track ?? null,
         recap: queue.getDjRecap({ personaId: personaOutId }),
         recentOpeners: queue.getRecentOpeners(6, personaOutId),
       });
@@ -1341,7 +1383,7 @@ export async function runPersonaHandoff(queue: any, _ctx: any): Promise<void> {
     try {
       const personaInId = personaIn.id || null;
       const greeting = await dj.generatePersonaHandoffGreeting({
-        personaIn, personaOut, signoffText, showIn,
+        personaIn, personaOut, signoffText, showIn, context: _ctx, current: queue.current?.track ?? null,
         showBrief: cur?.show?.topic || null,
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         recap: queue.getDjRecap({ personaId: personaInId }),

@@ -127,6 +127,8 @@ interface SegmentDesc {
   legacy?: boolean;
   /** Track the segment accompanies, captured before the asynchronous air wait. */
   track?: Track | null;
+  // Internal speech-generation path, recorded only in the operator transcript.
+  speechLogOrigin?: string | null;
 }
 
 // Re-exported so every existing `from './queue.js'` import keeps working.
@@ -1405,7 +1407,7 @@ class Queue {
   }
 
   onSpoken(handoff: VoiceHandoff, {
-    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true, track = null,
+    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true, track = null, speechLogOrigin = null,
   }: SegmentDesc) {
     void handoff.aired.then(airedAt => {
       try {
@@ -1426,6 +1428,7 @@ class Queue {
           speaker: persona?.name ?? (meta.personaName as string | undefined) ?? 'DJ',
           show,
           kind,
+          origin: speechLogOrigin,
           text,
           track,
         });
@@ -1716,6 +1719,7 @@ class Queue {
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
         track: item.track,
+        speechLogOrigin: item.introSpeechLogOrigin,
       };
       const handoff = await airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),
