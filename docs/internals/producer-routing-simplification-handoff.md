@@ -180,3 +180,7 @@ Read this document, `functiongemma-research.md`,
 `functiongemma-training-handoff.md` and `producer-persona-architecture.md`
 before changing architecture. Do not discard the local training artifact
 archive or revive the retired live-test branches.
+
+## Additional Notes from user
+- Explore timings of show Handoffs, quite often an outgoing DJ can sign off, the incoming DJ introduce themselves, then the outgoing DJ has one or two more spoken segments.
+- Verified Facts need introducing to Handoffs, to prevent the incoming DJ inventing an upcoming track that isn't queued up.
