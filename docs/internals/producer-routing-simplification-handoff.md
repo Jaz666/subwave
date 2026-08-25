@@ -184,3 +184,4 @@ archive or revive the retired live-test branches.
 ## Additional Notes from user
 - Explore timings of show Handoffs, quite often an outgoing DJ can sign off, the incoming DJ introduce themselves, then the outgoing DJ has one or two more spoken segments.
 - Verified Facts need introducing to Handoffs, to prevent the incoming DJ inventing an upcoming track that isn't queued up.
+- Factual error claim in link "Well now, the sound of wet dreams being chased certainly seems like a Tuesday afternoon mood-booster to me! Here's Wet Leg with their catchy debut single..." (it was their second single, not debut)
