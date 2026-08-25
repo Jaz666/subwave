@@ -281,6 +281,40 @@ Required checks:
 - Apply the uniform `Verified Facts` packet where appropriate and add prompt
   regressions for conflicting Persona tone/Soul instructions.
 
+## FunctionGemma autonomous-skill routing follow-up
+
+On 2026-08-25 the live `djProducerSegmentRoute` call twice returned the
+incomplete, unoffered native response
+`<start_function_call>call:skill_moment`. `skill_moment` is neither an
+installed nor a built-in capability. The native parser correctly recorded zero
+valid calls and the controller fallback then selected, executed and grounded
+the segment normally. This was safe, but added roughly 1–2 seconds and noisy
+failed-router telemetry.
+
+This is a bounded FunctionGemma training gap, not a custom-skill escape or a
+reason to restore Qwen. Segment fixtures currently ask for an explicit purpose
+(for example, track research or a headline); the live autonomous prompt asks
+the router to choose one appropriate offered research capability from the
+current operational moment.
+
+For the next FunctionGemma training pass:
+
+- add autonomous segment-selection examples using realistic live context and
+  the exact offered tool set;
+- require exactly one offered tool name and a complete native no-argument call
+  such as `call:skill_news_v2{}`;
+- include sets with V2 alternatives only, vanilla alternatives only, and the
+  combinations production can actually offer — do not globally exclude vanilla
+  names; and
+- add a held-out regression based on this failure: a generic autonomous prompt
+  with V2-only tools must produce one complete offered call, never
+  `skill_moment` or another invented name.
+
+Keep the controller selection/dispatch fallback in place until the candidate
+passes that regression, the existing frozen suite and a short live-shaped
+soak. Manual **Run now** calls that identify one capability already bypass this
+autonomous router and need no change.
+
 ## Suggested execution order
 
 1. Preserve the current live branch and FunctionGemma artifacts. Monitor the
