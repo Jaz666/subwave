@@ -1,5 +1,13 @@
 # Producer Routing handover
 
+> **2026-08-25 current-status note:** this is the earlier research handover.
+> Read `producer-routing-simplification-handoff.md` first for the current live
+> architecture. In particular, Qwen segment approval has been removed: skills
+> now use fixed-vocabulary FunctionGemma or controller dispatch, controller
+> evidence policy, then Creative Persona delivery. The only remaining Qwen
+> work is track commitment/fallback/repair and `generateProgrammePlan`.
+
+
 ## Current state
 
 Producer Routing separates track selection from on-air delivery. The final

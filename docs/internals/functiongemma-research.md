@@ -1,5 +1,12 @@
 # FunctionGemma Producer research
 
+> **Current architecture note (2026-08-25):** this is a chronological research
+> record. For the live handover, read `producer-routing-simplification-handoff.md`
+> first. Qwen has been removed from the skill path; FunctionGemma now receives
+> only fixed built-in skill tools, while the controller dispatches custom tools
+> and the Creative model delivers approved results.
+
+
 This document defines the experimental boundary for testing a small,
 CPU-resident FunctionGemma model as part of SUB/WAVE's optional
 Producer/Persona architecture. It is research scaffolding, not a commitment to

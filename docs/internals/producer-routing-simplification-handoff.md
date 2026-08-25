@@ -13,7 +13,10 @@ FunctionGemma router -> configured Qwen Producer -> Creative Persona
 The intended product architecture is:
 
 ```text
-Built-in FunctionGemma -> configured Creative model
+Built-in FunctionGemma (fixed bounded routing only, when available)
+    or controller deterministic policy
+-> Controller executes and validates tools/evidence
+-> configured Creative model
 ```
 
 FunctionGemma owns bounded, structured backstage operations. The Creative
@@ -54,6 +57,81 @@ middle-layer fallback or operator decision.
    upstream migration is staged. Removing Qwen must not make an unavailable
    built-in model produce dead air.
 
+## Live update — 2026-08-25
+
+The live Producer-routing branch now has a real three-layer skill path:
+
+```text
+FunctionGemma (optional, fixed built-in research vocabulary only)
+    or controller selection/dispatch
+-> Controller executes tools, enforces evidence and cadence policy
+-> Creative Persona writes the on-air line
+```
+
+This replaces both Qwen skill calls. `djProducerSegment` and
+`djProducerSegmentSelect` have been removed from the live split skill path.
+A successful segment is now the research/tool time plus
+`generatePersonaSegment`; there is no Qwen approval stage and no
+Qwen-selected under-voice SFX. Persona may still stand down by returning no
+copy.
+
+### Custom-skill boundary
+
+A user-authored prompt-only skill has no tool. A user-authored skill with
+`tool.mjs` still exposes a runtime `skill_<slug>` implementation, but that
+dynamic name is **never offered to FunctionGemma**. The controller selects it
+by deterministic rotation/freshness policy, executes it locally, validates its
+result, then gives the Creative model the full skill brief and approved packet.
+
+FunctionGemma is offered only seeded built-in research capabilities. Router
+failure, prompt-only skills and custom tools all fall back to the controller,
+not Qwen. This is the required upstream boundary: adding a user skill must not
+expand FunctionGemma training or give the Creative model tool access.
+
+### Manual Run now
+
+`POST /dj/skill` remains an operator override of enablement, Persona ownership,
+frequency and cooldown gates. With Producer Routing enabled and no programme
+episode brief, it now uses the same controller/Persona skill path as autonomous
+segments. With Producer Routing disabled it retains vanilla forced delivery.
+Programme feature calls carrying an episode brief deliberately retain their
+existing specialised path until that brief is modelled in a split packet.
+
+### Observed latency before this change
+
+The small live sample made the Qwen cost unambiguous:
+
+| Call | Runs | Average |
+| --- | ---: | ---: |
+| `djProducerRoute` (FunctionGemma) | 7 | 2.5s |
+| `djProducerSegment` (Qwen) | 3 | 22.2s |
+| `djProducerSegmentSelect` (Qwen) | 3 | 17.8s |
+| `generatePersonaSegment` | 6 | 10.7s |
+| `djProducerSelect` (Qwen track commitment) | 7 | 28.5s |
+
+The former skill path could therefore take roughly 28–33 seconds before tool
+time, causing segments to reach air after their relevant track. After the
+change, watch for `generatePersonaSegment` plus any bounded tool/router time,
+and confirm that no new `djProducerSegment*` telemetry appears.
+
+### Remaining Qwen inventory
+
+Qwen remains only for the following transitional Producer operations:
+
+| Operation | Current Qwen call | Intended replacement direction |
+| --- | --- | --- |
+| Final track commitment | `djProducerSelect` | Controller supplies a grounded candidate set; Creative model chooses an allowed ID and bounded transition unless a deterministic controller choice applies. FunctionGemma final selection remains an experiment, not a requirement. |
+| Full track-pick fallback | `djProducerPick` | Controller runs deterministic discovery fallback; Creative model makes any remaining editorial choice. |
+| Invalid choice repair | `djProducerRepick` | Controller removes invalid candidates and reapplies hard rules; Creative model reselects only if more than one editorially valid candidate remains. |
+| Programme episode plan | `generateProgrammePlan` | Rebuild as controller-owned structure plus Creative model episode angle/beat interpretation. Do not force this creative task into FunctionGemma. |
+
+### Live-development caution
+
+`docker-compose.dev.yml` bind-mounts `controller/src` and runs `tsx watch`.
+Every source edit restarts the live controller in place; several controller
+restarts were observed during this session. Batch edits before writing them, or
+work away from the mounted live checkout, when listening is in progress.
+
 ## Current implementation: what is temporary
 
 The following Qwen-backed `role: 'producer'` work is transitional and must be
@@ -62,10 +140,10 @@ classified, replaced or removed:
 | Current operation | Current temporary implementation | Target investigation |
 | --- | --- | --- |
 | Discovery routing | FunctionGemma already selects one tool and validated arguments, with bounded recovery | Keep; package as built-in |
-| Track commitment | Qwen `djProducerSelect` / `djProducerPick` chooses grounded ID and transition | Evaluate FunctionGemma candidate commitment before replacement |
-| Invalid-ID / artist-guard re-pick | Qwen tool-less re-selection | Deterministic repair where possible; otherwise FunctionGemma candidate-selection contract |
+| Track commitment | Qwen `djProducerSelect` / `djProducerPick` chooses grounded ID and transition | Prefer controller-grounded candidates plus Creative choice; evaluate FunctionGemma commitment as an optional experiment |
+| Invalid-ID / artist-guard re-pick | Qwen tool-less re-selection | Deterministic repair where possible; otherwise Creative re-selection from the remaining valid candidates |
 | Segment research routing | FunctionGemma already selects one research tool | Keep; package as built-in |
-| Segment approval | Qwen decides air/silence/kind/SFX after evidence | Rebuild around deterministic evidence/cadence policy plus Creative delivery; do not blindly give this open-ended judgement to FunctionGemma |
+| Segment approval | **Completed:** controller accepts usable evidence and Persona writes or stands down; no Qwen segment call | Keep controller evidence/cadence policy; do not give open-ended approval to FunctionGemma |
 | Programme episode plan | Qwen generates angle, features and beat notes | Rebuild from the ground up; see below |
 
 Qwen removal also means deleting the end-user Producer settings/provider leg,
@@ -95,32 +173,31 @@ TTS expression cues and length ceiling. Speech is bounded before TTS. These
 are safe improvements to normal skill delivery as well as Producer-delivered
 segments: they do not require Producer routing to be enabled.
 
-### What the temporary Producer does — and must stop doing
+### Completed Qwen skill removal
 
-The current Qwen `djProducerSegment` path still receives every full skill brief
-while selecting a research tool and deciding air/silence. That is the wrong
-boundary: a Producer needs only compact operational metadata (eligibility,
-required evidence and a short editorial airtime rule), not listener-facing
-voice, format, comedy examples or writing constraints. The full brief belongs
-only to the Creative delivery call.
-
-The immediate design target is therefore:
+The former Qwen `djProducerSegment` and `djProducerSegmentSelect` calls are
+removed from the live Producer skill path. Full operator-authored briefs never
+reach FunctionGemma or a Producer model: only `generatePersonaSegment` receives
+them after controller selection and evidence policy.
 
 ```text
-FunctionGemma: choose one offered research tool
-Controller: enforce availability, evidence, cooldown and speaker eligibility
+FunctionGemma: choose one fixed built-in research tool, when available
+Controller: select/execute custom or prompt-only skills; enforce availability,
+            evidence, cooldown and speaker policy
 Creative model: use the full skill brief and approved payload to write or stand down
 ```
 
-Do not replace Qwen with FunctionGemma for open-ended creative approval. If a
-future bounded FunctionGemma airtime decision is wanted, it needs a separately
-evaluated tool/schema contract.
+Do not reintroduce a model approval layer for routine skills. A future bounded
+FunctionGemma airtime decision would need a separately evaluated schema and
+must not accept dynamic user tool names.
 
 ### Legacy compatibility
 
-Producer routing remains optional. When it is disabled, unavailable or declines
-to route, the established skill director/simple path remains responsible for
-selection and delivery. Existing skills keep their normal enablement,
+Producer routing remains optional. When it is disabled, the established
+skill director/simple path remains responsible for selection and delivery. When
+FunctionGemma is unavailable or cannot route while Producer Routing is enabled,
+the controller uses its own skill-selection and tool-dispatch policy; it does
+not fall back to Qwen. Existing skills keep their normal enablement,
 cooldown and prompt behaviour; the extra research and evidence policies only
 apply when a skill explicitly opts into their frontmatter contracts. Do not
 make an ordinary station configure FunctionGemma, a Producer model or a
@@ -163,8 +240,10 @@ experiment on `codex/functiongemma-training` first:
 5. Require 100% grounded IDs, no hard editorial regressions and queue-safe CPU
    latency before any guarded live experiment.
 
-Only a passing selector may replace `djProducerSelect`, `djProducerPick` and
-their re-pick paths. Router success alone is not evidence for this promotion.
+A passing FunctionGemma selector may replace those calls, but it is not the only
+exit path. The preferred non-FunctionGemma fallback is controller-grounded
+candidates plus a Creative-model choice, with deterministic controller repair.
+Router success alone is not evidence for either promotion.
 
 ## Programme: rebuild before migration
 
@@ -204,17 +283,23 @@ Required checks:
 
 ## Suggested execution order
 
-1. Preserve the current live branch and artifacts; document/ship no model
-   migration yet.
-2. Complete the grounding regressions for Station ID and hourly check.
-3. Design and test the Programme replacement as data contracts and deterministic
-   policy before deciding which narrow actions warrant FunctionGemma training.
-4. Run the final-selection evaluation on the training branch.
-5. Package FunctionGemma as a built-in runtime and migrate router configuration
-   behind an internal compatibility layer.
-6. Replace Qwen operations one proven contract at a time; then remove the
-   Qwen Producer settings, provider leg, UI and fallback paths in one explicit
-   compatibility migration.
+1. Preserve the current live branch and FunctionGemma artifacts. Monitor the
+   new no-Qwen skill path for grounded, timely output and absence of
+   `djProducerSegment*` calls.
+2. Complete the grounding regressions for Station ID, hourly check and
+   handoffs. Carry the user observations below into tests: correct station
+   name, no invented upcoming track, no invented day/music-history claims and
+   no outgoing speech after handoff completion.
+3. Rebuild Programme from controller-owned structure plus Creative episode
+   planning/delivery; it is expected to be a Creative-model task.
+4. Evaluate FunctionGemma final track selection on the training branch, but
+   design the Creative-selector replacement in parallel. FunctionGemma is not
+   a prerequisite for Qwen removal.
+5. Package FunctionGemma as a built-in router and migrate its endpoint
+   configuration behind an internal compatibility layer.
+6. Replace Qwen track commitment/fallback/repair with controller plus Creative
+   selection, then remove the Producer settings, provider leg, UI and failover
+   paths in one explicit compatibility migration.
 
 ## Fresh-chat starting checks
 
