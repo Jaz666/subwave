@@ -33,8 +33,9 @@ const {
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
 const { contextSleeveNotesFor, selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
-const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
+const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerCapabilityBrief, producerCapabilityList, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
+const { skillEnabled } = await import('../src/skills/eligibility.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
 const { queue } = await import('../src/broadcast/queue.js');
 
@@ -367,6 +368,20 @@ test('the segment Producer receives operational history, not Persona prose', () 
   const situation = buildProducerSituation({}, [{ kind: 'weather', contextFields: [] }], null);
   assert.match(situation, /weather \(0m ago\)/);
   assert.ok(!situation.includes('holding its breath'));
+});
+
+test('V2 enable display uses the same effective rule as scheduling', () => {
+  assert.equal(skillEnabled({ seeded: true, defaultEnabled: false, skill: 'news-v2', enabled: {} }), false);
+  assert.equal(skillEnabled({ seeded: true, defaultEnabled: false, skill: 'news-v2', enabled: { 'news-v2': true } }), true);
+});
+
+test('the Producer sees a compact V2 editorial brief, never its Persona brief', () => {
+  const personaBrief = 'PERSONA-ONLY: paraphrase without mentioning sources.';
+  const cap = { kind: 'weather-v2', desc: personaBrief, requiresEvidence: true };
+  const system = producerCapabilityList([cap]);
+  assert.match(system, /meaningful current or next-12-hour weather change/);
+  assert.ok(!system.includes(personaBrief));
+  assert.match(producerCapabilityBrief({ kind: 'news-v2' }), /safe, show-relevant or general music headline/);
 });
 
 test('the Persona segment packet contains evidence but no Producer rationale', () => {

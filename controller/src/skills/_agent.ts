@@ -53,7 +53,7 @@ import {
 import { buildSegmentTools, fetchSegmentData } from '../llm/segment-tools.js';
 import { recordCuriosity, recentAiredCuriosity } from './curiosity.js';
 import { loadedCapabilities } from './loader.js';
-import { skillEligible } from './eligibility.js';
+import { skillEligible, skillEnabled } from './eligibility.js';
 import { enforceSkillSpeech, skillSpeechLimits } from './speech-policy.js';
 import {
   directResearchAttempt,
@@ -401,13 +401,40 @@ export const producerDirectorAgent = defineAgent({
   timeoutMs: segmentDeadline,
   role: 'producer',
   buildSystem: ({ caps, freq, sfxCatalog }) => {
-    const capList = caps.map((cap) => `- ${cap.kind}: ${cap.desc}`).join('\n');
+    const capList = producerCapabilityList(caps);
     return `${producerSegmentSystem()}\n\nStation cadence: ${stationTone(freq)}\n\nOffered segment kinds:\n${capList}${producerSfxBlock(sfxCatalog)}`;
   },
   buildTools: ({ ctx, segmentState, caps, currentTrack, rehearsal }) => ({
     tools: buildSegmentTools(ctx, segmentState, caps, currentTrack, { rehearsal }),
   }),
 });
+
+export function producerCapabilityList(caps: any[]): string {
+  return caps.map((cap) => '- ' + cap.kind + ': ' + producerCapabilityBrief(cap)).join('\n');
+}
+
+// The Producer needs eligibility and editorial purpose, not the listener-facing
+// creative brief. Keeping this policy in code prevents a custom skill's whole
+// Persona prompt from being mistaken for routing instructions. The Persona
+// still receives cap.desc after a grounded selection.
+export function producerCapabilityBrief(cap: any): string {
+  const explicit = String(cap?.producerBrief || '').trim();
+  if (explicit) return explicit;
+  switch (skillFamily(cap?.kind)) {
+    case 'album-anniversary':
+      return 'Research only when the current album may have a qualifying exact original-release anniversary; air only an available evidence packet.';
+    case 'curiosity':
+      return 'Research one fresh, provenance-bearing historical event; air only when it is genuinely light and distinct from recent output.';
+    case 'news':
+      return 'Research one fresh, safe, show-relevant or general music headline; air only an available evidence packet that earns the interruption.';
+    case 'weather':
+      return 'Research only a meaningful current or next-12-hour weather change; routine conditions are not a segment.';
+    default:
+      return cap?.requiresEvidence
+        ? 'Research this only when it can return usable evidence; air only if that evidence gives listeners a worthwhile, fresh segment.'
+        : 'Air only when this offers a worthwhile, fresh segment; otherwise stay silent.';
+  }
+}
 
 export function buildProducerSituation(
   ctx,
@@ -566,7 +593,7 @@ export function changedWeatherCapability(caps, ctx, state: SegmentState) {
 }
 
 function segmentSelectorSystem(cap, freq: string, sfxCatalog) {
-  return `${producerSegmentSelectSystem()}\n\nStation cadence: ${stationTone(freq)}\n\nOnly offered segment kind:\n- ${cap.kind}: ${cap.desc}${producerSfxBlock(sfxCatalog)}`;
+  return `${producerSegmentSelectSystem()}\n\nStation cadence: ${stationTone(freq)}\n\nOnly offered segment kind:\n- ${cap.kind}: ${producerCapabilityBrief(cap)}${producerSfxBlock(sfxCatalog)}`;
 }
 
 async function selectProducerSegment({ cap, evidence, situation, freq, sfxCatalog }) {
@@ -1345,9 +1372,16 @@ export function skillCatalog() {
       description: c.desc || '',
       kind: c.kind,
       cooldownMs: c.cooldownMs || 0,
-      // Seeded built-ins default on; operator skills are discovered-but-disabled
-      // and only count as enabled once the operator explicitly flips them on.
-      enabled: c.seeded ? enabledMap[c.skill] !== false : enabledMap[c.skill] === true,
+      // The catalogue must show the same effective state as autonomous
+      // scheduling. In particular, a seeded alternative may deliberately set
+      // defaultEnabled: false (the V2 skills) and must not look enabled merely
+      // because it is shipped with the controller.
+      enabled: skillEnabled({
+        seeded: c.seeded,
+        defaultEnabled: c.defaultEnabled,
+        skill: c.skill,
+        enabled: enabledMap,
+      }),
       // Marks an operator-authored skill vs a shipped built-in, so the admin UI
       // can badge it and explain the off-by-default behaviour. (`custom` is the
       // API's name for "not seeded".)
