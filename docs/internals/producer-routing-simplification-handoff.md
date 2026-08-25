@@ -358,3 +358,4 @@ archive or revive the retired live-test branches.
 - Verified Facts need introducing to Handoffs, to prevent the incoming DJ inventing an upcoming track that isn't queued up.
 - Factual error claim in link "Well now, the sound of wet dreams being chased certainly seems like a Tuesday afternoon mood-booster to me! Here's Wet Leg with their catchy debut single..." (it was their second single, not debut)
 - Once instance of stationId calling the station "Three Acres FM" instead of "Four Acres FM" - this was in the lead up to "three in the afternoon".
+- Release date context should be specifically banned for Compilation releases
