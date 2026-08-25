@@ -968,6 +968,7 @@ export async function load() {
     },
     beds: {
       enabled: typeof stored.beds?.enabled === 'boolean' ? stored.beds.enabled : DEFAULTS.beds.enabled,
+      requestIntros: typeof stored.beds?.requestIntros === 'boolean' ? stored.beds.requestIntros : DEFAULTS.beds.requestIntros,
       thresholdSec: Number.isFinite(stored.beds?.thresholdSec) ? stored.beds.thresholdSec : DEFAULTS.beds.thresholdSec,
       crossSec: Number.isFinite(stored.beds?.crossSec) ? stored.beds.crossSec : DEFAULTS.beds.crossSec,
     },
@@ -1890,11 +1891,15 @@ export async function update(patch) {
   if ('beds' in patch) {
     const bd = parseSettingsPatchKey<{
       enabled?: boolean;
+      requestIntros?: boolean;
       thresholdSec?: number;
       crossSec?: number;
     }>('beds', patch.beds);
     if (bd.enabled !== undefined) {
       next.beds.enabled = bd.enabled;
+    }
+    if (bd.requestIntros !== undefined) {
+      next.beds.requestIntros = bd.requestIntros;
     }
     if (bd.thresholdSec !== undefined) {
       next.beds.thresholdSec = bd.thresholdSec;
