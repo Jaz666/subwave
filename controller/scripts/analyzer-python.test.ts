@@ -19,6 +19,7 @@ const SUITES = [
   'vocal_gate_test.py', // vocal-stem gate thresholds (#1125)
   'test_chatterbox_chunk.py', // chatterbox chunk_text (#1130)
   'analyzer_noise_test.py', // decode-noise filter + capability loss (#1300)
+  'analyzer_silence_test.py', // edge dead-air measurement (silence trim)
 ];
 
 const probe = spawnSync('python3', ['--version'], { stdio: 'ignore' });

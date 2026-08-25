@@ -257,9 +257,15 @@ export interface RequestsForm {
   onePendingPerIp: boolean;
 }
 
+export interface SilenceTrimForm {
+  enabled: boolean;
+  minGapMs: string;
+}
+
 export interface FormState {
   crossfadeDuration: string;
   maxTrackSeconds: string;
+  silenceTrim: SilenceTrimForm;
   transitions: TransitionsForm;
   archive: ArchiveForm;
   stream: StreamForm;
@@ -311,6 +317,7 @@ export interface SettingsData {
       idleAfterMinutes?: number;
     };
     loudness?: { targetLufs?: number; maxBoostDb?: number; source?: LoudnessSource };
+    silenceTrim?: { enabled?: boolean; minGapMs?: number };
     station?: string;
     stationDescription?: string;
     timezone?: string;
@@ -356,7 +363,7 @@ export interface SettingsData {
       enrichment?: Partial<EmbeddingEnrichmentForm>;
     };
     sfx?: { enabled?: boolean };
-    beds?: { enabled?: boolean; thresholdSec?: number; crossSec?: number };
+    beds?: { enabled?: boolean; requestIntros?: boolean; thresholdSec?: number; crossSec?: number };
     ui?: { boothBuddy?: boolean; skin?: string; tuneInOverlay?: boolean };
     privacy?: {
       privatePlayer?: boolean;
