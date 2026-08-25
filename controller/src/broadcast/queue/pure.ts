@@ -403,7 +403,8 @@ export function voiceChannelFor(
 }
 
 // Per-target-file write chain. Liquidsoap polls each handoff file (say.txt,
-// intro.txt, sfx.txt, next.txt) on a 0.5-1.0s interval and DELETES the file
+// intro.txt, sfx.txt, next.txt, jingle-now.txt) on a 0.5-1.0s interval and
+// DELETES the file
 // after reading it (see liquidsoap/radio.liq poll_voice/poll_intro/poll_sfx/
 // poll_queue). Without serialisation, two writes inside one poll window
 // silently lose the first one — exactly the failure in issue #140 where a
@@ -422,5 +423,3 @@ export function formatAgo(ms: number) {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
-
-
