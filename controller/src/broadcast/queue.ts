@@ -21,12 +21,14 @@ import * as subsonic from '../music/subsonic.js';
 import * as mix from '../music/mix.js';
 import * as library from '../music/library.js';
 import * as loudness from '../music/loudness.js';
+import * as silenceTrim from '../music/silence-trim.js';
 import * as blocklist from '../music/blocklist.js';
 import { artistRootKey, trackKey } from '../music/recency.js';
 import { speak, voiceGainDb } from '../audio/tts.js';
 import * as djAgent from './dj-agent.js';
 import * as programme from './programme.js';
 import * as sfx from './sfx.js';
+import * as jingles from './jingles.js';
 import * as beds from './beds.js';
 import * as bedPolicy from './bed-policy.js';
 import * as session from './session.js';
@@ -34,8 +36,6 @@ import type { TurnMeta } from './session.js';
 import { getFullContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
 import { logEvent } from '../observability/events.js';
-import { logDjSpeech } from '../observability/dj-speech-log.js';
-import { recordTrackTransition } from '../stats.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import * as webhooks from './webhooks.js';
@@ -44,15 +44,11 @@ import * as liquidsoapControl from './liquidsoap-control.js';
 import {
   drainAction,
   introRenderBudgetSec,
+  playableDurationSec,
   remainingSec,
   shouldDeadlinePick,
   DEADLINE_PICK_COOLDOWN_SEC,
 } from './drain-policy.js';
-import {
-  MIN_PLAIN_TRANSITIONS_BETWEEN_EFFECTS,
-  editorialEffectAllowed,
-  nextPlainTransitionsSinceEffect,
-} from './transition-effect-policy.js';
 import {
   commitSatisfied,
   skipPrepAction,
@@ -82,6 +78,7 @@ import {
   playAlreadyRecorded,
   shouldDropStaleLink,
   sleep,
+  voiceChannelFor,
 } from './queue/pure.js';
 import {
   PUSH_PROBE_INTERVAL_MS,
@@ -102,6 +99,7 @@ import {
   airVoice,
   speechDurationMs,
   writeHandoff,
+  jingleAiredAtMs,
   type QueuedVoice,
   type VoiceHandoff,
 } from './queue/voice-io.js';
@@ -125,16 +123,22 @@ interface SegmentDesc {
   logText?: string | null;
   /** Whether this segment also fires the legacy dj.say/dj.link event. */
   legacy?: boolean;
-  /** Track the segment accompanies, captured before the asynchronous air wait. */
-  track?: Track | null;
-  // Internal speech-generation path, recorded only in the operator transcript.
-  speechLogOrigin?: string | null;
 }
 
 // Re-exported so every existing `from './queue.js'` import keeps working.
 export { BACKFILL_DEDUP_MAX_GAP_MS, boundaryCarriesTrackVoice, playAlreadyRecorded, shouldDropStaleLink } from './queue/pure.js';
 export { registerSkillKinds } from './queue/kinds.js';
 export type { NowPlaying, QueueItem, Track } from './queue/types.js';
+
+// Manual jingle presses that may be pending at once (see playJingle). A bound on
+// a runaway loop across different filenames, not a policy on how many
+// announcements an operator may line up.
+const PENDING_JINGLE_MAX = 3;
+// How long a press stays pending before it is assumed lost. A mixer restart
+// empties jingle_now_queue and drops the request with no signal, so this is what
+// stops that from wedging the button shut. Generously past any single track, so
+// it never retires a press that is merely waiting for its boundary.
+const PENDING_JINGLE_TTL_MS = 30 * 60 * 1000;
 
 // transitions far more often — a working DJ talks across most of them.
 class Queue {
@@ -154,8 +158,7 @@ class Queue {
   _transitionsSinceSfx = 999;  // DJ-mode transition-FX spacing counter (see drainToLiquidsoap)
   _lastBed: string | null = null;      // last bed aired — anti-repeat for bed-policy.pickBed
   _lastBedStartedAt = 0;               // bed-playing.json's last-seen startedAt — the edge onBedStarted fires on
-  _recentEffects: string[] = [];  // final transition treatments, oldest first — fed back into the next pick
-  _plainTransitionsSinceEffect = MIN_PLAIN_TRANSITIONS_BETWEEN_EFFECTS; // cold start may honour an editorial effect
+  _recentEffects: string[] = [];  // the model's last few transition CHOICES — anti-streak guard + fed back into the pick event turn
   _persistTimer: NodeJS.Timeout | null = null; // debounce for the queue.json snapshot
   _recentPlaysTimer: NodeJS.Timeout | null = null; // debounce for the recent-plays.json sidecar
   _recentPlays: RecentPlay[] = [];
@@ -164,6 +167,7 @@ class Queue {
   _deadlinePickAt = 0;          // last deadline-pick ATTEMPT (ms epoch) — failure-retry cooldown, see maybeDeadlinePick
   _pendingVoice: { text: string; kind: string; wavPath: string; persona: Persona | null; meta: TurnMeta; t: number } | null = null; // one boundary-deferred segment awaiting the next track start — see announceAtNextTrack
   _introRenders = new IntroRenderTracker<QueueItem>(); // timed-out pre-renders stay reusable by airIntro
+  _pendingJingles = new Map<string, number>(); // manual jingle presses handed over but not yet heard — see playJingle
 
   // Snapshot upcoming/current/history to disk. The queue is otherwise purely
   // in-memory, so a controller restart (every `--build controller` rebuild)
@@ -431,9 +435,12 @@ class Queue {
   // `introScript` is tied to THIS track but is NOT aired at queue time:
   // drainToLiquidsoap renders it to a WAV ahead of time and airIntro() writes
   // that WAV only when the track actually starts, so the voice lands over the
-  // right song. `introKind` picks the engine routing and the duck channel —
-  // 'dj-speak' → say.txt (HEAVY duck, request intros), 'link' → intro.txt
-  // (LIGHT duck, between-track links).
+  // right song. `introKind` picks the engine routing (voice slot, gain trim)
+  // and the DEFAULT duck channel — 'dj-speak' → say.txt (HEAVY duck, request
+  // intros), 'link' → intro.txt (LIGHT duck, between-track links). It no longer
+  // decides the channel outright: since #1465 a clip airing on a bed takes the
+  // light duck whatever its kind, because the channel follows what the clip
+  // plays OVER (airIntro's `overBed`).
   //
   // `linkPrev` is the track the intro BACK-ANNOUNCES. Deferring the line to air
   // time (#189) is only valid while this pick is still immediately-next; a
@@ -584,8 +591,10 @@ class Queue {
     return Infinity;
   }
 
-  // Final transition treatments, oldest first. The picker must see what aired,
-  // not the discarded effect requests a model happened to make.
+  // The model's recent transition choices, oldest first — surfaced into the
+  // pick event turn so the model can SEE its own habit and break it (it has
+  // no other way to know what it recently chose; session-history imitation is
+  // how both the all-normal and all-blend monocultures formed).
   recentTransitionChoices(): string[] {
     return [...this._recentEffects];
   }
@@ -603,36 +612,20 @@ class Queue {
     this.log('mix', `${kind} dropped (${reason})`);
   }
 
-  // Preserve a deterministic length-cap washout while dropping only a model's
-  // editorial request. A forced exit is a safety treatment, not a creative
-  // choice subject to the spacing policy.
-  stripEditorialEffects(track: Track, reason: string) {
-    const kind = track.sweep ? 'sweep' : track.blend ? 'blend' : track.dissolve ? 'dissolve' : track.chop ? 'chop' : track.loop ? 'loop' : 'washout';
-    delete track.sweep;
-    delete track.blend;
-    delete track.dissolve;
-    delete track.chop;
-    delete track.chopPeriod;
-    delete track.loop;
-    delete track.loopBar;
-    if (!track.washoutAuto) {
-      delete track.washout;
-      delete track.washoutDelay;
-    }
-    this.log('mix', `${kind} dropped (${reason})`);
-  }
-
-  // Push an instrumental bed into dj_queue ahead of `item` when its link would
-  // outlast the song's own intro, so the DJ talks over the bed rather than over
-  // the song. Sets item.bedded, which is how the bed's start event
-  // (onBedStarted) finds the item whose link it should air.
+  // Push an instrumental bed into dj_queue ahead of `item` — when its link
+  // would outlast the song's own intro, or when the song is a listener request
+  // and its opening is not the DJ's to talk over — so the DJ talks over the bed
+  // rather than over the song. Sets item.bedded, which is how the bed's start
+  // event (onBedStarted) finds the item whose link it should air — and only
+  // that. The light-duck channel is onBedStarted's `overBed` to give, because
+  // the flag says a bed was HANDED OVER while the marker says one is on air.
   //
   // Ordering is what makes this a controller-side feature rather than a mixer
   // one: the link's WAV was rendered a few lines up, so its real length is
   // readable here, before the track URI is written.
   //
-  // Silent no-op on every path that isn't a bedded link — beds off, a request
-  // intro (heavy duck by design), no script, a script that fits the intro, or no
+  // Silent no-op on every path that isn't a bedded link or a bedded request —
+  // beds off, request bedding off, no script, a link that fits the intro, or no
   // bed long enough.
   async maybePushBed(item: QueueItem) {
     const cfg = settings.get()?.beds;
@@ -641,10 +634,21 @@ class Queue {
     // this item unsent, and the recovery re-drain would otherwise queue a
     // SECOND bed ahead of it (~bedSec of voiceless filler between them).
     if (item.bedded) return;
-    // v1 is links only. Request intros ride the HEAVY duck by design, and a bed
-    // under a heavy duck is inaudible — bedding them means reworking the duck
-    // routing, which is its own change.
-    if (item.introKind !== 'link') return;
+    // Two reasons to bed, and they are gated separately (bed-policy.BedReason).
+    // A LINK beds when the DJ would outlast the incoming intro. A listener
+    // REQUEST beds because somebody asked for this track, so its opening bars
+    // are theirs — front-pad the intro instead of talking over them (#1465).
+    // `requestedBy` is the discriminator rather than introKind, because every
+    // request path pushes 'dj-speak' and so does the studio's own bare push
+    // (which carries no script and falls out one line down).
+    const reason: bedPolicy.BedReason = item.requestedBy ? 'request' : 'link';
+    if (reason === 'request') {
+      if (!cfg.requestIntros) return;
+    } else if (item.introKind !== 'link') {
+      // An unrequested 'dj-speak' intro — nothing routes here today, and it
+      // has no listener whose opening bars are being protected.
+      return;
+    }
     if (!item.introWav || !item.introScript || item.introAired) return;
 
     // Whatever plays right before this item is what the bed crosses in under —
@@ -664,10 +668,23 @@ class Queue {
       // DJ talk before trampling its vocal? Analysis rides the track object when
       // present, else the library row (queued items hold only id/title/artist).
       const rec = item.track?.id ? library.get(item.track.id) : null;
-      const budgetMs = bedPolicy.rampBudgetMs({
+      // The onset is measured from byte zero, and the drain may be about to cut
+      // a leading blank off this very track — so shift it onto the trimmed
+      // timeline before asking whether the link outlasts it. This is the same
+      // correction intro-budget's firstVocalMsFor applies to the SAME
+      // measurement; leaving it out here made the two disagree about one track,
+      // with the prompt told the runway is 2s while the bed decision still
+      // thought it was 8s and declined a bed the link needed. null (unknown)
+      // and Infinity (instrumental) carry their meanings through untouched.
+      const rawBudgetMs = bedPolicy.rampBudgetMs({
         vocalRanges: item.track?.vocalRanges ?? rec?.vocalRanges ?? null,
       });
-      if (!bedPolicy.bedWanted(voiceMs, budgetMs, cfg)) return;
+      const budgetMs = rawBudgetMs != null && Number.isFinite(rawBudgetMs)
+        ? silenceTrim.shiftOnsetMs(item.track, rawBudgetMs)
+        : rawBudgetMs;
+      // `reason` outranks the budget entirely for a request (bed-policy), so
+      // the trim correction above only ever decides a LINK's bed.
+      if (!bedPolicy.bedWanted(voiceMs, budgetMs, cfg, reason)) return;
 
       // The bed's marker (and its cue_out clock) starts at cross-FEED time, a
       // full predecessor-exit-canvas before the bed is dominant — so that
@@ -714,9 +731,10 @@ class Queue {
       }
       if (item.transitionSfx) delete item.transitionSfx;
 
-      const why = budgetMs == null ? `no vocal onset, over ${cfg.thresholdSec}s`
-        : budgetMs === Infinity ? 'instrumental'
-          : `vocals at ${Math.round(budgetMs / 1000)}s`;
+      const why = reason === 'request' ? `requested by ${item.requestedBy}`
+        : budgetMs == null ? `no vocal onset, over ${cfg.thresholdSec}s`
+          : budgetMs === Infinity ? 'instrumental'
+            : `vocals at ${Math.round(budgetMs / 1000)}s`;
       this.log('beds', `bed "${pick.name}" ${bedSec}s (${entryCrossSec}s entry cross) → ${crossSec}s ramp into "${item.track?.title}" (${Math.round(voiceMs / 1000)}s link, ${why})`);
     } catch (err) {
       // A bed is a garnish — never let it cost the station a track.
@@ -790,8 +808,17 @@ class Queue {
     if (!cappedExit) {
       const outro = item.track.outro ?? (item.track.id ? library.get(item.track.id)?.outro : null) ?? null;
       if (outro) {
-        const windDownSec = durSec > 0 && Number.isFinite(outro.startMs)
-          ? Math.max(0, durSec - outro.startMs / 1000)
+        // Measure the wind-down to the end that will actually AIR, not the
+        // tagged one. A trailing blank drags outro.startMs earlier (the RMS
+        // decay into silence reads as a fade), so an untrimmed durSec counts
+        // the silence we are about to cut as part of the ramp and sizes the
+        // exit canvas longer than the track has left.
+        const trimEndSec = silenceTrim.resolveSilenceTrim(item.track).cueOutSec;
+        const endSec = trimEndSec != null && durSec > 0
+          ? Math.min(durSec, trimEndSec)
+          : (trimEndSec ?? durSec);
+        const windDownSec = endSec > 0 && Number.isFinite(outro.startMs)
+          ? Math.max(0, endSec - outro.startMs / 1000)
           : null;
         // Body loudness for the tail-drop shaping — same resolution ladder as
         // applyLoudnessGain (track object first, else the library row).
@@ -825,6 +852,34 @@ class Queue {
       }
     }
 
+    // The two flags are independent boundaries — sweep shapes ENTRY, washout
+    // EXIT — so both can ride one pick and are validated separately. No cooldown
+    // by design: pacing is the DJ's call, and the analyzer veto only judges
+    // whether a sweep is musically wrong between locked tracks, never frequency.
+    //
+    // Anti-streak: the model imitates its own session history, so once it finds
+    // a defensible favourite it repeats it mechanically (observed as all-normal,
+    // then all-blend). The third consecutive IDENTICAL choice is stripped —
+    // variety is a station rule, not a model virtue. The ledger tracks what the
+    // model ASKED FOR, not what aired, so a stripped blend still evidences
+    // monoculture and a stuck model stays stripped until it genuinely varies.
+    // Auto (length-cap) washouts are deterministic, not choices, and are
+    // invisible to the ledger in both directions.
+    const choice: string | null =
+      item.track.sweep ? 'sweep' : item.track.blend ? 'blend'
+        : item.track.dissolve ? 'dissolve'
+        : item.track.chop ? 'chop'
+        : item.track.loop ? 'loop'
+        : (item.track.washout && !item.track.washoutAuto) ? 'washout'
+        : item.track.washoutAuto ? null : 'normal';
+    const last2 = this._recentEffects.slice(-2);
+    if (choice && choice !== 'normal' && last2.length >= 2 && last2.every(k => k === choice)) {
+      this.stripEffect(item.track, `variety — third ${choice} in a row`);
+    }
+    if (choice) {
+      this._recentEffects.push(choice);
+      if (this._recentEffects.length > 4) this._recentEffects.shift();
+    }
     // Entry-side effects (sweep/dissolve/chop) garnish the PREVIOUS track's
     // ending — a loop exit already armed on that track IS the transition, so
     // they all yield to it (radio.liq enforces the same precedence; stripping
@@ -904,41 +959,13 @@ class Queue {
       item.track.loopBar = mix.loopBarFor(next.bpm);
       this.log('mix', `loop armed: ${item.track.crossSec}s canvas, ${item.track.loopBar}s bar → ${item.track.title}`);
     }
-    const editorialEffectRequested = !!(
-      item.track.sweep || item.track.blend || item.track.dissolve || item.track.chop
-      || item.track.loop || (item.track.washout && !item.track.washoutAuto)
-    );
-    if (editorialEffectRequested && !editorialEffectAllowed(this._plainTransitionsSinceEffect)) {
-      this.stripEditorialEffects(
-        item.track,
-        `pacing — require ${MIN_PLAIN_TRANSITIONS_BETWEEN_EFFECTS} plain transitions after an effect`,
-      );
-    }
     if (item.track.washout) {
       item.track.crossSec = mix.washoutCrossSecondsFor(next, maxSec);
       item.track.washoutDelay = mix.washoutDelayFor(next.bpm);
       const why = item.track.washoutAuto ? ' (length-cap exit)' : '';
       this.log('mix', `washout armed${why}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap → ${item.track.title}`);
     }
-    // Record the final effect combination after every validation/strip above.
-    // This is the actual seam the queue will hand to Liquidsoap, rather than
-    // the model's earlier request which may have been vetoed.
-    const transition = [
-      item.track.sweep && 'sweep',
-      item.track.washout && 'washout',
-      item.track.blend && 'blend',
-      item.track.dissolve && 'dissolve',
-      item.track.chop && 'chop',
-      item.track.loop && 'loop',
-    ].filter(Boolean).join(' + ') || 'normal';
-    recordTrackTransition(transition);
     const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
-    this._recentEffects.push(transition);
-    if (this._recentEffects.length > 4) this._recentEffects.shift();
-    this._plainTransitionsSinceEffect = nextPlainTransitionsSinceEffect({
-      plainTransitionsSinceEffect: this._plainTransitionsSinceEffect,
-      effectFired,
-    });
 
     // Feature 2 — transition FX, spaced by the chattiness ladder and gated on
     // settings.sfx.enabled; never two transitions in a row, and never a riser
@@ -974,6 +1001,7 @@ class Queue {
       Number.isFinite(startedMs) ? startedMs : null,
       durSec > 0 ? durSec : null,
       cur.cueOutSec ?? null,
+      cur.cueInSec ?? null,
     );
   }
 
@@ -992,7 +1020,9 @@ class Queue {
       let d = Number(ahead.track?.duration) || 0;
       if (!d && ahead.track?.id) d = Number(library.get(ahead.track.id)?.durationSec) || 0;
       if (!d) return null;
-      remaining += ahead.cueOutSec != null ? Math.min(d, ahead.cueOutSec) : d;
+      const playable = playableDurationSec(d, ahead.cueOutSec ?? null, ahead.cueInSec ?? null);
+      if (playable == null) return null;
+      remaining += playable;
     }
     return remaining;
   }
@@ -1041,6 +1071,9 @@ class Queue {
     try { energyDelta = energyForDaypart().speed - 1; } catch { /* context optional */ }
     let nextIntroMs = successor.track.introMs;
     if (nextIntroMs == null && successor.track.id) nextIntroMs = library.get(successor.track.id)?.introMs ?? null;
+    // Onto the trimmed timeline: the blend is sized against the runway the
+    // successor will actually have on air, not the one its file starts with.
+    nextIntroMs = silenceTrim.shiftOnsetMs(successor.track, nextIntroMs);
     const maxSec = settings.get()?.crossfadeDuration ?? null;
     const secs = mix.crossSecondsFor(cur, next, { energyDelta, nextIntroMs, maxSec });
     if (secs == null) return;
@@ -1188,6 +1221,16 @@ class Queue {
         const itemDurSec = knownDurationSec(item.track);
         const cappedExit = !!(maxDurationSec && itemDurSec > maxDurationSec);
 
+        // Dead-air trim: cut the near-silent head/tail off this track so a bad
+        // rip's leading blank doesn't air as silence. Resolved through the
+        // policy module, never inlined — the auto.m3u rewrite asks the same
+        // question and the two must not drift. Off / unmeasured → nulls, i.e.
+        // no cue stamps and today's behaviour.
+        //
+        // Resolved HERE, above the stem-blend attempt, because the blend is
+        // rendered FROM the two regions the trim can remove and has to be told.
+        const trim = silenceTrim.resolveSilenceTrim(item.track);
+
         // Pair stamps for THIS item's own exit (the seam into its successor)
         // — only when the successor is known at annotate time. Resolved fresh
         // after the awaits above: an operator cancel during the TTS render
@@ -1208,8 +1251,20 @@ class Queue {
               // from the hold decision above: the TTS await between them can
               // run tens of seconds on a slow engine, and a stale window
               // would let the render overrun the drain's hard fallback.
+              // Both trim edges are blend vetoes, for the same reason
+              // outCapped is: the clip is mixed FROM the outgoing tail and the
+              // incoming head, so a cut that lands inside either region makes
+              // the rendered seam describe audio that no longer airs. The
+              // incoming side is the sharper one — a successor's leading blank
+              // is baked into the clip, so the blend would air the very silence
+              // the trim exists to remove.
+              const inTrim = silenceTrim.resolveSilenceTrim(successor.track);
               const blend = await stemBlend.maybeRenderBlend(
-                item.track, successor.track, this.remainingUntilItemAirs(item), { outCapped: cappedExit },
+                item.track, successor.track, this.remainingUntilItemAirs(item), {
+                  outCapped: cappedExit,
+                  outTrimEndSec: trim.cueOutSec,
+                  inHeadTrimmed: inTrim.cueInSec != null,
+                },
               );
               if (blend && this.upcoming.includes(item) && this.upcoming.includes(successor)) {
                 // The rendered seam owns this ending: strip exit gestures
@@ -1236,7 +1291,12 @@ class Queue {
 
         // Record the effective early end for the pair-drain deadline math —
         // rides into `current` when the item airs (onTrackStarted spreads it).
+        // Both early ends fold in: the length cap and the trimmed tail shorten
+        // the track for the SAME reason as far as the seam clock is concerned,
+        // and a deadline computed off the untrimmed length would hand over
+        // late by exactly the silence we just cut.
         if (cappedExit) item.cueOutSec = Math.min(item.cueOutSec ?? Infinity, maxDurationSec!);
+        if (trim.cueOutSec != null) item.cueOutSec = Math.min(item.cueOutSec ?? Infinity, trim.cueOutSec);
         // Stem-seam cue points: the blend's cut on the way out, the clip's
         // hand-off on the way in (stamped when the INCOMING item drains).
         // Per-attempt identity for proto_subhttp's explicit completion signal.
@@ -1246,12 +1306,26 @@ class Queue {
         item.resolveProbeId = subsonic.getLocalPath(item.track)
           ? undefined
           : randomBytes(8).toString('hex');
+        // A rendered blend's cut and the trimmed tail are both "stop early";
+        // whichever comes first wins, exactly as getAnnotatedUri already
+        // arbitrates those against the #447 cap. On the way in, the stem
+        // seam's cue-in is DEEPER into the track than any leading silence (the
+        // clip already played that head), so the later of the two is the one
+        // that leaves no audio played twice.
+        const cueOutCandidates = [item.stemBlend?.blendStartSec, trim.cueOutSec]
+          .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+        const cueInCandidates = [item.stemSeam ? item.stemCueInSec : null, trim.cueInSec]
+          .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+        item.cueInSec = cueInCandidates.length ? Math.max(...cueInCandidates) : undefined;
         const uri = subsonic.getAnnotatedUri(item.track, {
           maxDurationSec,
-          cueOutSec: item.stemBlend?.blendStartSec ?? null,
-          cueInSec: item.stemSeam ? item.stemCueInSec ?? null : null,
+          cueOutSec: cueOutCandidates.length ? Math.min(...cueOutCandidates) : null,
+          cueInSec: item.cueInSec ?? null,
           resolveProbeId: item.resolveProbeId,
         });
+        if (trim.cueInSec != null || trim.cueOutSec != null) {
+          this.log('mix', `silence trimmed on "${item.track.title}"${trim.cueInSec != null ? ` head ${trim.cueInSec}s` : ''}${trim.cueOutSec != null ? ` tail from ${trim.cueOutSec}s` : ''}`);
+        }
         // Queue-file writes wait longer than the default 1.5s: with a clip
         // following, two back-to-back writes are the norm and one missed
         // 1.0s poll must not overwrite an unconsumed handoff.
@@ -1352,10 +1426,13 @@ class Queue {
     if (!text || !text.trim()) return;
     try {
       const wavPath = await speak(text, { kind, persona });
-      const targetFile = kind === 'link'
+      // No bed here by construction — announce() speaks without queueing a
+      // track, so there is nothing for maybePushBed to have bedded.
+      const channel = voiceChannelFor(kind);
+      const targetFile = channel === 'intro'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
-      const seg: SegmentDesc = { kind, channel: kind === 'link' ? 'intro' : 'say', text, meta, persona, track: this.current?.track ?? null };
+      const seg: SegmentDesc = { kind, channel, text, meta, persona };
       const handoff = await airVoice(targetFile, wavPath, text, voiceGainDb(kind, persona), {
         onQueued: q => this.onQueued(q, seg),
       });
@@ -1407,31 +1484,11 @@ class Queue {
   }
 
   onSpoken(handoff: VoiceHandoff, {
-    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true, track = null, speechLogOrigin = null,
+    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true,
   }: SegmentDesc) {
     void handoff.aired.then(airedAt => {
       try {
-        const voiceMeta: TurnMeta = {
-          ...meta,
-          ...(persona?.id && !meta.personaId ? { personaId: persona.id } : {}),
-          ...(persona?.name && !meta.personaName ? { personaName: persona.name } : {}),
-          ...(airedAt != null ? { airedAt: new Date(airedAt).toISOString() } : {}),
-        };
-        this.log(kind, logText ?? text, voiceMeta);
-        // Keep this separately from events.jsonl: it is an operator-facing
-        // transcript of what reached the DJ speech path, not diagnostic JSON.
-        // Use the measured live-edge time when the mixer supplied one.
-        const timestamp = airedAt ?? Date.now();
-        const show = settings.resolveActiveShow(new Date(timestamp))?.name || 'Auto DJ';
-        logDjSpeech({
-          airedAt: timestamp,
-          speaker: persona?.name ?? (meta.personaName as string | undefined) ?? 'DJ',
-          show,
-          kind,
-          origin: speechLogOrigin,
-          text,
-          track,
-        });
+        this.log(kind, logText ?? text);
         session.appendTurn({
           role: 'segment',
           kind,
@@ -1440,7 +1497,9 @@ class Queue {
           // player showing this line to a LISTENER has to add
           // stream.bufferSeconds on top (#1114). Absent when unmeasured, so a
           // consumer can tell "not known" from "aired at the epoch".
-          meta: voiceMeta,
+          meta: airedAt != null
+            ? { ...meta, airedAt: new Date(airedAt).toISOString() }
+            : meta,
         });
         notifySpoken({
           voiceId: handoff.voiceId,
@@ -1610,7 +1669,7 @@ class Queue {
     try {
       // Deferred idents ride the INTRO file (light duck at a track boundary),
       // whatever their kind — see announceAtNextTrack.
-      const seg: SegmentDesc = { kind: p.kind, channel: 'intro', text: p.text, meta: p.meta, persona: p.persona, track: this.current?.track ?? null };
+      const seg: SegmentDesc = { kind: p.kind, channel: 'intro', text: p.text, meta: p.meta, persona: p.persona };
       const handoff = await airVoice(config.liquidsoap.introFile, p.wavPath, p.text, voiceGainDb(p.kind, p.persona), {
         onQueued: q => this.onQueued(q, seg),
       });
@@ -1626,7 +1685,18 @@ class Queue {
   // (issue #189). The WAV was rendered ahead of time in drainToLiquidsoap, so
   // this just writes the path to the duck channel and mirrors the bookkeeping
   // announce() does (djLog feeds the opener anti-repeat; session + webhook).
-  async airIntro(item: QueueItem, predecessor: Track | null = null) {
+  // `overBed` is the CALLER's statement that an instrumental bed is feeding the
+  // music chain right now — onBedStarted saw the marker. It is not read off
+  // item.bedded, which only means a bed URI reached next.txt: a pushed item is
+  // handed over, never playable (a URI Liquidsoap can't resolve is dropped in
+  // silence, and a marker missed by more than BED_MARKER_FRESH_MS never fires
+  // the event). In that case the song itself starts and onTrackStarted airs the
+  // line over ITS opening — which is a song to talk over, so it takes the heavy
+  // duck like any other request intro. Inferring the channel from the flag
+  // would hand the one failure case this feature exists to prevent a LIGHTER
+  // duck than it had before #1465. Same rule as onSpoken's channel: passed by
+  // whoever knows, never re-derived (#1382).
+  async airIntro(item: QueueItem, predecessor: Track | null = null, { overBed = false }: { overBed?: boolean } = {}) {
     // Station voice off (settings.tts.enabled). The generation sites already
     // skip writing intros, so this only catches an item queued BEFORE the
     // switch was flipped — it must not air its script now. Backstop, not the
@@ -1699,7 +1769,12 @@ class Queue {
       }
     }
     const kind = item.introKind || 'dj-speak';
-    const targetFile = kind === 'link'
+    // Channel is chosen by what this clip is playing OVER, not by its kind —
+    // the same split the boundary-deferred ident already relies on (#1382).
+    // `overBed` comes from onBedStarted, which SAW the bed start; see
+    // voiceChannelFor for why it can't be read off item.bedded here.
+    const channel = voiceChannelFor(kind, { overBed });
+    const targetFile = channel === 'intro'
       ? config.liquidsoap.introFile
       : config.liquidsoap.sayFile;
     try {
@@ -1709,7 +1784,7 @@ class Queue {
       // still resolving from the wall clock.
       const seg: SegmentDesc = {
         kind,
-        channel: kind === 'link' ? 'intro' : 'say',
+        channel,
         text: item.introScript!,
         persona: item.introPersona || null,
         // Attribute the turn so windowMessages() can name the real speaker when
@@ -1718,8 +1793,6 @@ class Queue {
         meta: item.introPersona
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
-        track: item.track,
-        speechLogOrigin: item.introSpeechLogOrigin,
       };
       const handoff = await airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),
@@ -1758,6 +1831,67 @@ class Queue {
       session.appendTurn({ role: 'segment', kind: 'sfx', text: name });
     } catch (err) {
       this.log('error', `playSfx failed: ${(err as Error).message}`);
+    }
+  }
+
+  // Air a jingle NOW — the on-demand counterpart to the rotate, for the station
+  // ident or event announcement an operator fires by hand or from a dashboard
+  // (POST /jingles/:filename/play, subwave_play_jingle). Manual trigger, so it
+  // ignores jingleRatio: turning the rotate off silences the automatic draw,
+  // never an explicit press.
+  //
+  // Deliberately NOT the sfx path, which is where this request first arrived:
+  // an effect is amplified to 0.7 and mixed UNDER the programme with only a
+  // light duck, so anything past a stinger's length drones on over the music —
+  // which is exactly what SFX_MAX_SEC exists to prevent, and why raising that
+  // cap would not have given anyone a usable announcement. A jingle instead
+  // rides the music chain as its own item: full level, the programme yields to
+  // it, and nothing bounds its length.
+  //
+  // It goes through its own handoff file and priority request.queue. That source
+  // sits ahead of dj_queue, so an already-queued track cannot delay the press;
+  // Liquidsoap keeps it unavailable while voice or a bed is active, preserving
+  // the request until the next SAFE boundary rather than mixing over speech or
+  // splitting a bed from the track it carries.
+  //
+  // Presses are DE-DUPLICATED, not rate-limited. jingle_now_queue is a FIFO with
+  // no remove path (dj_queue has cancelQueued via dj_queue.remove; this has
+  // nothing), and the fallback keeps selecting it while it is non-empty — so
+  // every extra push is another announcement aired back-to-back with no music
+  // between, and the only way out is /restart-mixer. An agent retrying a tool
+  // call or a double-clicked dashboard button is enough to stack them. Pressing
+  // the SAME jingle while it is still pending is that accident and is refused;
+  // two DIFFERENT announcements queue normally, because an explicit operator
+  // action always fires. PENDING_JINGLE_MAX bounds a runaway loop across files.
+  async playJingle(filename: string) {
+    if (!filename) throw new Error('Jingle filename is required');
+    const path = await jingles.getPath(filename);
+    if (!path) throw new Error(`Unknown jingle: ${filename}`);
+    this.retirePendingJingles();
+    if (this._pendingJingles.has(filename)) return { ok: false as const, reason: 'already-queued' as const };
+    if (this._pendingJingles.size >= PENDING_JINGLE_MAX) return { ok: false as const, reason: 'queue-full' as const };
+    await writeHandoff(config.liquidsoap.jingleFile, jingles.jingleUri(path), { maxWaitMs: 5000 });
+    this._pendingJingles.set(filename, Date.now());
+    // The sidecar's own script, not the hashed filename: every other segment
+    // turn in the booth log and the DJ's chat history carries prose, and
+    // `jingle_a1b2c3d4.wav` reads as noise next to them (playSfx logs its
+    // effect NAME for the same reason).
+    const label = (await jingles.list()).find(j => j.filename === filename)?.text || filename;
+    this.log('jingle', `"${label}" queued — airs at the next safe boundary`);
+    session.appendTurn({ role: 'segment', kind: 'jingle', text: label });
+    return { ok: true as const };
+  }
+
+  // Retire presses that have been heard, or that are old enough that they never
+  // will be. A mixer restart empties jingle_now_queue and loses the request
+  // silently, so every entry has to expire on its own — the button must never
+  // wedge shut on bookkeeping.
+  retirePendingJingles() {
+    const now = Date.now();
+    for (const [name, at] of this._pendingJingles) {
+      if (now - at > PENDING_JINGLE_TTL_MS || jingleAiredAtMs(name) >= at) {
+        this._pendingJingles.delete(name);
+      }
     }
   }
 
@@ -2562,7 +2696,10 @@ class Queue {
     const waitMs = Math.max(0, startedMs + (item.bedEntrySec || 0) * 1000 - Date.now());
     this.log('beds', `bed on air → airing the link for "${item.track?.title}"${
       waitMs > 0 ? ` in ${(waitMs / 1000).toFixed(1)}s (entry cross)` : ''}`);
-    const fire = () => void this.airIntro(item, this.current?.track || null);
+    // overBed: the marker above IS the bed feeding the music chain, so this is
+    // the one call site that can state it as a fact rather than infer it from
+    // item.bedded (see airIntro).
+    const fire = () => void this.airIntro(item, this.current?.track || null, { overBed: true });
     if (waitMs > 0) setTimeout(fire, waitMs);
     else fire();
   }
