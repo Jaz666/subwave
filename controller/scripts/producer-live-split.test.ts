@@ -33,7 +33,7 @@ const {
   personaSegmentPrompt,
 } = await import('../src/llm/internal/prompts/scripts.js');
 const { contextSleeveNotesFor, selectSleeveNotes, sleeveNotesFor } = await import('../src/llm/internal/prompts/sleeve-notes.js');
-const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerCapabilityBrief, producerCapabilityList, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
+const { buildProducerSituation, changedWeatherCapability, groundedSearchEvidence, isolatedSegmentState, personaSegmentContext, producerCapabilityBrief, producerCapabilityList, producerRoutingSkillDelivery, producerDirectorAgent, usableSegmentEvidence } = await import('../src/skills/_agent.js');
 const { rehearsalStationServices } = await import('../src/llm/internal/tools/station-services.js');
 const { skillEnabled } = await import('../src/skills/eligibility.js');
 const { showMusicLean } = await import('../src/llm/internal/prompts/picker.js');
@@ -373,6 +373,12 @@ test('the segment Producer receives operational history, not Persona prose', () 
 test('V2 enable display uses the same effective rule as scheduling', () => {
   assert.equal(skillEnabled({ seeded: true, defaultEnabled: false, skill: 'news-v2', enabled: {} }), false);
   assert.equal(skillEnabled({ seeded: true, defaultEnabled: false, skill: 'news-v2', enabled: { 'news-v2': true } }), true);
+});
+
+test('Run now uses Producer delivery only when the split has no episode brief', () => {
+  assert.equal(producerRoutingSkillDelivery({ producer: { enabled: false } }), false);
+  assert.equal(producerRoutingSkillDelivery({ producer: { enabled: true } }), true);
+  assert.equal(producerRoutingSkillDelivery({ producer: { enabled: true } }, 'episode angle'), false);
 });
 
 test('the Producer sees a compact V2 editorial brief, never its Persona brief', () => {

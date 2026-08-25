@@ -409,6 +409,10 @@ export const producerDirectorAgent = defineAgent({
   }),
 });
 
+export function producerRoutingSkillDelivery(llm: any, brief: string | null = null): boolean {
+  return !!llm?.producer?.enabled && !brief;
+}
+
 export function producerCapabilityList(caps: any[]): string {
   return caps.map((cap) => '- ' + cap.kind + ': ' + producerCapabilityBrief(cap)).join('\n');
 }
@@ -1189,7 +1193,11 @@ export async function testCapability(which, ctx): Promise<SkillTestResult> {
 }
 
 // Operator override — fire one capability on demand, bypassing cooldowns, the
-// frequency floor, persona ownership and the enable toggle. Backs POST
+// frequency floor, persona ownership and the enable toggle. Direct skill runs use
+// the same Producer → Persona delivery path as autonomous segments when Producer
+// Routing is enabled; a programme feature with its own episode brief retains its
+// specialised historical path until that brief is represented in the split packet.
+// Backs POST
 // /dj/skill, the per-skill cron (broadcast/scheduler.ts), and the programme
 // feature beat (broadcast/programme.ts), which passes `brief` (the episode
 // plan's feature topic, appended to the situation so the segment is built
@@ -1240,7 +1248,19 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
   };
 
   let object: { reason?: string; air?: boolean; text?: string; sfx?: string | null } | undefined;
-  if (!settings.get().llm?.pickerAgent) {
+  if (producerRoutingSkillDelivery(settings.get().llm, brief)) {
+    // Producer Routing is the active architecture: the backstage model chooses
+    // and researches, then the Persona writes only from its approved evidence.
+    // This remains an operator override of eligibility and cooldown gates, not
+    // an override of factual grounding or the Producer's right to decline.
+    const split = await runSplitDirector(ctx, {
+      caps: [cap], speaker, freq: settings.effectiveFrequency(speaker), sfxCatalog,
+    });
+    if (!split.seg) return standDown(split.reason);
+    object = {
+      air: true, text: split.seg.text, sfx: split.seg.sfx, reason: split.reason,
+    };
+  } else if (!settings.get().llm?.pickerAgent) {
     // Pool mode: fetch the capability's data directly and make one structured
     // call (same swap as the autonomous tick). A skill that writes from the
     // moment survives a failed fetch — the model writes from the capability
