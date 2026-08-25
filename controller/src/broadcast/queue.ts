@@ -34,6 +34,8 @@ import type { TurnMeta } from './session.js';
 import { getFullContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
 import { logEvent } from '../observability/events.js';
+import { logDjSpeech } from '../observability/dj-speech-log.js';
+import { recordTrackTransition } from '../stats.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import * as webhooks from './webhooks.js';
@@ -123,6 +125,10 @@ interface SegmentDesc {
   logText?: string | null;
   /** Whether this segment also fires the legacy dj.say/dj.link event. */
   legacy?: boolean;
+  /** Track the segment accompanies, captured before the asynchronous air wait. */
+  track?: Track | null;
+  // Internal speech-generation path, recorded only in the operator transcript.
+  speechLogOrigin?: string | null;
 }
 
 // Re-exported so every existing `from './queue.js'` import keeps working.
@@ -914,7 +920,9 @@ class Queue {
       const why = item.track.washoutAuto ? ' (length-cap exit)' : '';
       this.log('mix', `washout armed${why}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap → ${item.track.title}`);
     }
-    const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
+    // Record the final effect combination after every validation/strip above.
+    // This is the actual seam the queue will hand to Liquidsoap, rather than
+    // the model's earlier request which may have been vetoed.
     const transition = [
       item.track.sweep && 'sweep',
       item.track.washout && 'washout',
@@ -923,6 +931,8 @@ class Queue {
       item.track.chop && 'chop',
       item.track.loop && 'loop',
     ].filter(Boolean).join(' + ') || 'normal';
+    recordTrackTransition(transition);
+    const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
     this._recentEffects.push(transition);
     if (this._recentEffects.length > 4) this._recentEffects.shift();
     this._plainTransitionsSinceEffect = nextPlainTransitionsSinceEffect({
@@ -1345,7 +1355,7 @@ class Queue {
       const targetFile = kind === 'link'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
-      const seg: SegmentDesc = { kind, channel: kind === 'link' ? 'intro' : 'say', text, meta, persona };
+      const seg: SegmentDesc = { kind, channel: kind === 'link' ? 'intro' : 'say', text, meta, persona, track: this.current?.track ?? null };
       const handoff = await airVoice(targetFile, wavPath, text, voiceGainDb(kind, persona), {
         onQueued: q => this.onQueued(q, seg),
       });
@@ -1397,7 +1407,7 @@ class Queue {
   }
 
   onSpoken(handoff: VoiceHandoff, {
-    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true,
+    kind, channel, text, meta = {}, persona = null, logText = null, legacy = true, track = null, speechLogOrigin = null,
   }: SegmentDesc) {
     void handoff.aired.then(airedAt => {
       try {
@@ -1408,6 +1418,20 @@ class Queue {
           ...(airedAt != null ? { airedAt: new Date(airedAt).toISOString() } : {}),
         };
         this.log(kind, logText ?? text, voiceMeta);
+        // Keep this separately from events.jsonl: it is an operator-facing
+        // transcript of what reached the DJ speech path, not diagnostic JSON.
+        // Use the measured live-edge time when the mixer supplied one.
+        const timestamp = airedAt ?? Date.now();
+        const show = settings.resolveActiveShow(new Date(timestamp))?.name || 'Auto DJ';
+        logDjSpeech({
+          airedAt: timestamp,
+          speaker: persona?.name ?? (meta.personaName as string | undefined) ?? 'DJ',
+          show,
+          kind,
+          origin: speechLogOrigin,
+          text,
+          track,
+        });
         session.appendTurn({
           role: 'segment',
           kind,
@@ -1586,7 +1610,7 @@ class Queue {
     try {
       // Deferred idents ride the INTRO file (light duck at a track boundary),
       // whatever their kind — see announceAtNextTrack.
-      const seg: SegmentDesc = { kind: p.kind, channel: 'intro', text: p.text, meta: p.meta, persona: p.persona };
+      const seg: SegmentDesc = { kind: p.kind, channel: 'intro', text: p.text, meta: p.meta, persona: p.persona, track: this.current?.track ?? null };
       const handoff = await airVoice(config.liquidsoap.introFile, p.wavPath, p.text, voiceGainDb(p.kind, p.persona), {
         onQueued: q => this.onQueued(q, seg),
       });
@@ -1694,6 +1718,8 @@ class Queue {
         meta: item.introPersona
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
+        track: item.track,
+        speechLogOrigin: item.introSpeechLogOrigin,
       };
       const handoff = await airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),

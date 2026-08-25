@@ -124,7 +124,7 @@ export async function enqueuePick(
   link: string | null = null,
   linkPrev: any = null,
   { sweep = false, washout = false, blend = false, dissolve = false, chop = false, loop = false }: { sweep?: boolean; washout?: boolean; blend?: boolean; dissolve?: boolean; chop?: boolean; loop?: boolean } = {},
-  { linkClockAt = null }: { linkClockAt?: Date | null } = {},
+  { linkClockAt = null, speechLogOrigin = null, introPersona = null }: { linkClockAt?: Date | null; speechLogOrigin?: string | null; introPersona?: any } = {},
 ): Promise<number> {
   // Single chokepoint for the intro budget: every pick path (agent, pool, any
   // future producer) funnels its link through here, so enforcement can't be
@@ -156,9 +156,10 @@ export async function enqueuePick(
     intent: reason || 'ai pick',
     introScript: introLink,
     introKind: 'link',
+    introSpeechLogOrigin: speechLogOrigin,
     // Pin the voice to whoever wrote the line — the render (drainToLiquidsoap)
     // and the air (airIntro) both happen later and used to re-resolve it.
-    introPersona: session.onAirPersona(),
+    introPersona: introPersona || session.onAirPersona(),
     aiPicked: true,
     linkPrev,
     linkClockAt,

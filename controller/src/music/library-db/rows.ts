@@ -155,7 +155,7 @@ export function parsePaceSpans(s: string): TrackPaceSpan[] | null {
 
 // Parse a JSON span column into clean TrackSection[] (possibly empty). Drops
 // malformed/zero-length spans; returns [] on any parse error.
-function parseSpans(s: string): TrackSection[] {
+export function parseSpans(s: string): TrackSection[] {
   try {
     const v = JSON.parse(s);
     if (!Array.isArray(v)) return [];

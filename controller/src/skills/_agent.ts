@@ -33,16 +33,42 @@ import { queue } from '../broadcast/queue.js';
 import * as settings from '../settings.js';
 import { defineAgent } from '../llm/agent.js';
 import { djObject, modelTolerant } from '../llm/sdk.js';
-import { buildContextLines, CONTEXT_FIELDS, fuzzyAirTime, generatePersonaSegment, lengthMode, lengthPhrase } from '../llm/dj.js';
-import { ProducerSegmentSchema, producerSegmentSystem } from '../llm/producer.js';
+import {
+  buildContextLines,
+  CONTEXT_FIELDS,
+  fuzzyAirTime,
+  generatePersonaSegment,
+  lengthMode,
+  lengthPhrase,
+  personaExpressionCueHint,
+} from '../llm/dj.js';
+import {
+  ProducerSegmentSchema,
+  producerRouterConfig,
+  producerSegmentRouterEnabled,
+  producerSegmentSelectSystem,
+  producerSegmentSystem,
+  routeProducerResearch,
+} from '../llm/producer.js';
 import { buildSegmentTools, fetchSegmentData } from '../llm/segment-tools.js';
 import { recordCuriosity, recentAiredCuriosity } from './curiosity.js';
 import { loadedCapabilities } from './loader.js';
 import { skillEligible } from './eligibility.js';
-import { researchAttemptDelayMs, researchAttemptsFromToolCalls, type SkillResearchAttempt } from "./attempt-policy.js";
-import { createResearchEvidence, isResearchEvidence, personaResearchEvidence, unavailableResearchEvidence } from "./research-evidence.js";
-import { requiresGrounding, standDownReason } from "./abstain-policy.js";
+import { enforceSkillSpeech, skillSpeechLimits } from './speech-policy.js';
+import {
+  directResearchAttempt,
+  hasRequiredEvidence,
+  researchAttemptDelayMs,
+  researchAttemptsFromToolCalls,
+  type SkillResearchAttempt,
+} from './attempt-policy.js';
+import { createResearchEvidence, isResearchEvidence, personaResearchEvidence, unavailableResearchEvidence } from './research-evidence.js';
+import { requiresGrounding, standDownReason } from './abstain-policy.js';
 import * as sfx from '../broadcast/sfx.js';
+
+function isCuriosityKind(kind: string): boolean {
+  return kind === 'curiosity' || kind.startsWith('curiosity-');
+}
 
 // The capability registry now lives entirely in skills/loader.js, which loads
 // every skill — shipped and operator-added — from a directory (SKILL.md +
@@ -103,7 +129,7 @@ function unionContextFields(caps): string[] {
 // nullable nested object alone, emitting bare top-level `null` or prose instead
 // (isBareNullSilent / isSilentFailure below); `air: false` gives them an
 // unambiguous silence token.
-function segmentSchema() {
+function segmentSchema(persona = settings.getEffectivePersona()) {
   return modelTolerant(z.object({
     reason: z.string().describe('one short internal sentence on why this segment (or why silent) — never shown to the listener; write this BEFORE deciding the segment'),
     air: z.boolean().describe('true to air one segment now, false to stay silent — silence is a perfectly good answer, often the best one, when the data is dull, stale, unchanged, or there is nothing fresh worth a listener\'s attention'),
@@ -118,7 +144,7 @@ function segmentSchema() {
       // the system prompt, and agenticTick drops any kind it wasn't offered.
       kind: z.string()
         .describe('the segment kind — MUST be one of the kinds offered in the system prompt for this tick'),
-      text: z.string().describe(`the spoken line in the DJ voice — ${lengthPhrase('segment')}`),
+      text: z.string().describe(`the spoken line in the DJ voice — ${lengthPhrase('segment', persona)}`),
       sfx: z.string().nullable().describe('the exact name of one sound effect from the catalogue in the system prompt to play under this line, or null for no effect (null is usually right — most segments need none)'),
     }).describe('the segment to air when air is true; ignored when air is false (empty strings for kind/text, null sfx when silent)'),
   }), {
@@ -155,9 +181,19 @@ function segmentSchema() {
 // ABSENT, not merely false, on a run that can't abstain — offering a silence
 // token to a weather segment the operator explicitly asked for would be a new
 // way for an explicit action to produce nothing.
-export function forcedSchema({ mayAbstain = false }: { mayAbstain?: boolean } = {}) {
+export function forcedSchema(
+  personaOrOptions: any = settings.getEffectivePersona(),
+  options: { mayAbstain?: boolean } = {},
+) {
+  // Keep the historical forcedSchema({ mayAbstain: true }) test/bench API,
+  // while allowing live calls to pass the active Persona for its length cap.
+  const optionsOnly = personaOrOptions && typeof personaOrOptions === 'object'
+    && Object.prototype.hasOwnProperty.call(personaOrOptions, 'mayAbstain')
+    && !Object.prototype.hasOwnProperty.call(personaOrOptions, 'name');
+  const persona = optionsOnly ? settings.getEffectivePersona() : personaOrOptions;
+  const mayAbstain = optionsOnly ? !!personaOrOptions.mayAbstain : !!options.mayAbstain;
   const line = {
-    text: z.string().describe(`the spoken line in the DJ voice — ${lengthPhrase('segment')}`),
+    text: z.string().describe(`the spoken line in the DJ voice — ${lengthPhrase('segment', persona)}`),
     sfx: z.string().nullable().describe('the exact name of one sound effect from the catalogue in the system prompt to play under this line, or null for no effect'),
   };
   if (!mayAbstain) return modelTolerant(z.object(line));
@@ -188,17 +224,6 @@ ${list}`;
 let tickBusy = false;
 const lastFired = new Map<string, number>(); // kind → ms timestamp of last aired segment
 const researchBlockedUntil = new Map<string, number>(); // kind → next eligible ms after a tool attempt
-const lastUnavailable = new Map<string, number>(); // kind → ms timestamp of last unusable pool-mode fetch
-
-// An unavailable source should not consume another retrieval + scheduler slot
-// on the next 5-minute tick, but it also should not inherit a multi-hour
-// on-air cooldown when the next track may change its answer.
-const UNAVAILABLE_RETRY_BACKOFF_MS = 15 * 60 * 1000;
-function unavailableRetryBackoffMs(cap: { cooldownMs?: unknown }): number {
-  const cooldownMs = Number(cap.cooldownMs);
-  if (!Number.isFinite(cooldownMs) || cooldownMs < 0) return UNAVAILABLE_RETRY_BACKOFF_MS;
-  return Math.min(cooldownMs, UNAVAILABLE_RETRY_BACKOFF_MS);
-}
 
 // Dedup memory carried across ticks — passed straight into the segment tools.
 // Curiosity dedup is NOT here anymore: it lives in the durable ledger in
@@ -245,6 +270,7 @@ function availableCapabilities(ctx, now: Date) {
     // and reaches runCapability() without passing through here.
     if (!skillEligible({
       seeded: cap.seeded,
+      defaultEnabled: cap.defaultEnabled,
       skill: cap.skill,
       enabled,
       personaSkills: persona?.skills,
@@ -256,7 +282,6 @@ function availableCapabilities(ctx, now: Date) {
     const firedUntil = (lastFired.get(cap.kind) || 0) + cap.cooldownMs;
     const attemptedUntil = researchBlockedUntil.get(cap.kind) || 0;
     if (now.getTime() < Math.max(firedUntil, attemptedUntil)) continue;
-    if (now.getTime() - (lastUnavailable.get(cap.kind) || 0) < unavailableRetryBackoffMs(cap)) continue;
     // Window gating: custom skills opt into commute-hours-only firing via
     // `window: commute` in their SKILL.md frontmatter. (No built-in is
     // commute-gated by default since the traffic skill was retired.)
@@ -277,12 +302,37 @@ function directorSystem(persona, caps, freq: string, sfxCatalog) {
   const capList = caps.map((c) => `- ${c.kind}: ${c.desc}`).join('\n');
   const tone = stationTone(freq);
 
-  return `${settings.agentPersonaPreamble(persona)}
+  return `${skillPersonaPreamble(persona)}
 
 Your job: decide whether to air ONE between-track segment, or stay silent. You are NOT choosing music. ${tone}
 
 Capabilities available this tick (pick one of these kinds, or stay silent):
 ${capList}${sfxBlock(sfxCatalog)}${settings.agentLanguageReminder(persona, 'the "text" line')}`;
+}
+
+// Listener-facing skill calls inherit the selected speaker's existing Persona
+// controls without leaking those creative settings into Producer decisions.
+export function skillPersonaPreamble(persona) {
+  return settings.agentPersonaPreamble(persona)
+    + settings.personaToneDirectives(persona)
+    + personaExpressionCueHint(persona)
+    + `\n\nLength ceiling for this skill: ${lengthPhrase('segment', persona)}. Treat this as a maximum, not a target; follow a shorter requirement in the skill brief.`;
+}
+
+function skillAgentOutputTokens(persona): number {
+  return Math.max(512, skillSpeechLimits(persona).maxOutputTokens + 256);
+}
+
+function boundedSkillSpeech(text: unknown, persona, kind: string): string {
+  const result = enforceSkillSpeech(text, persona);
+  if (result.clipped) {
+    const limits = skillSpeechLimits(persona);
+    queue.log(
+      'scheduler',
+      `Skill speech bounded for ${kind} (${result.originalWords} words/${result.originalChars} chars → max ${limits.maxWords}/${limits.maxChars})`,
+    );
+  }
+  return result.text;
 }
 
 // 'silent' never reaches the auto tick (the frequency floor blocks it), but a
@@ -309,7 +359,7 @@ function segmentDeadline(): number {
 // caller (agenticTick) only feeds the dynamic per-tick state.
 export const directorAgent = defineAgent({
   kind: 'djAgentSegment',
-  schema: () => segmentSchema(),
+  schema: (args: any = {}) => segmentSchema(args.persona),
   // Discovery (step 0) + exactly one committed done-tool attempt (step 1),
   // same reasoning as pickerAgent.maxSteps in dj-agent.ts: a taller budget
   // just grows an increasingly "I already declined" trail on providers that
@@ -326,6 +376,7 @@ export const directorAgent = defineAgent({
   // into a multi-step stall (86s observed in issue #555) and hang the tick;
   // the deadline turns that into a clean throw → handled as silence below.
   timeoutMs: segmentDeadline,
+  maxOutputTokens: (args: any = {}) => skillAgentOutputTokens(args.persona),
   buildSystem: ({ persona, caps, freq, sfxCatalog }) =>
     directorSystem(persona, caps, freq, sfxCatalog),
   buildTools: ({ ctx, segmentState, caps }) => ({
@@ -358,7 +409,12 @@ export const producerDirectorAgent = defineAgent({
   }),
 });
 
-export function buildProducerSituation(ctx, caps, currentTrack) {
+export function buildProducerSituation(
+  ctx,
+  caps,
+  currentTrack,
+  instruction = 'Research one offered kind, then decide whether it is worth airing. Return production fields only; never write the line.',
+) {
   const lines = ['Operational moment:'];
   lines.push(...buildContextLines(ctx, { contextFields: unionContextFields(caps) }));
   if (currentTrack) lines.push(`Track on air: "${currentTrack.title}" by ${currentTrack.artist || 'unknown'}`);
@@ -372,7 +428,7 @@ export function buildProducerSituation(ctx, caps, currentTrack) {
     .slice(0, 8)
     .map((entry) => `${entry.kind} (${Math.max(0, Math.round((now - new Date(entry.t).getTime()) / 60_000))}m ago)`);
   if (recentKinds.length) lines.push(`\nRecent segment kinds already aired:\n${recentKinds.map((item) => `- ${item}`).join('\n')}`);
-  lines.push('\nResearch one offered kind, then decide whether it is worth airing. Return production fields only; never write the line.');
+  lines.push(`\n${instruction}`);
   return lines.join('\n');
 }
 
@@ -399,13 +455,14 @@ function mentions(value: unknown, subject: unknown): boolean {
 // biography fact to whichever song happened to be on air.
 export function groundedSearchEvidence(kind: string, value: any): any {
   if (!value || typeof value !== 'object') return value;
-  if (kind !== 'now-playing-dig' && kind !== 'web-search') return value;
+  const family = skillFamily(kind);
+  if (family !== 'now-playing-dig' && family !== 'web-search') return value;
   // Specialist adapters already return the controller's provenance-bearing
   // contract; the legacy search normalizer below exists only during migration.
   if (isResearchEvidence(value)) return value;
   const artist = String(value.artist || '').trim();
   const title = String(value.title || '').trim();
-  const supports = (text: unknown) => kind === 'now-playing-dig'
+  const supports = (text: unknown) => family === 'now-playing-dig'
     ? mentions(text, artist) && mentions(text, title)
     : mentions(text, artist);
   const answer = supports(value.answer) ? String(value.answer).trim() : '';
@@ -452,8 +509,13 @@ export function usableSegmentEvidence(value: any): boolean {
 }
 
 const TRACK_CONTEXT_SEGMENTS = new Set([
-  'album-anniversary', 'library-deep-cut', 'now-playing-dig',
+  'album-anniversary', 'album-anniversary-v2', 'library-deep-cut',
+  'now-playing-dig', 'now-playing-dig-v2',
 ]);
+
+function skillFamily(kind: unknown): string {
+  return String(kind || '').replace(/-v\d+$/i, '');
+}
 
 // Context crossing into Persona is selected by code, not copied from the
 // Producer prompt. Built-ins get the smallest known requirement; custom skills
@@ -465,8 +527,9 @@ export function personaSegmentContext(cap, ctx): { facts: string[]; includeTrack
   if (show?.topic) facts.push(`Show brief: ${show.topic}`);
 
   let fields: string[] = [];
-  if (cap?.kind === 'curiosity') fields = ['date'];
-  else if (cap?.kind === 'weather') fields = ['clock'];
+  const family = skillFamily(cap?.kind);
+  if (family === 'curiosity') fields = ['date'];
+  else if (family === 'weather') fields = ['clock'];
   else if (!cap?.seeded && cap?.contextFields != null) fields = effectiveContextFields(cap);
 
   if (fields.includes('date') && ctx?.date) {
@@ -480,7 +543,7 @@ export function personaSegmentContext(cap, ctx): { facts: string[]; includeTrack
   if (fields.includes('festival') && ctx?.festival?.name) {
     facts.push(`Festival: ${ctx.festival.name}${ctx.festival.description ? ` — ${ctx.festival.description}` : ''}.`);
   }
-  return { facts, includeTrack: TRACK_CONTEXT_SEGMENTS.has(cap?.kind) };
+  return { facts, includeTrack: TRACK_CONTEXT_SEGMENTS.has(family) };
 }
 
 export type SplitSegmentStatus = 'draft' | 'producer-declined' | 'producer-invalid' | 'evidence-rejected' | 'stale' | 'persona-empty';
@@ -492,18 +555,131 @@ interface SplitSegmentResult {
   attempts: SkillResearchAttempt[];
 }
 
+function isWeatherCapability(cap): boolean {
+  return skillFamily(cap?.kind) === 'weather';
+}
+
+export function changedWeatherCapability(caps, ctx, state: SegmentState) {
+  const condition = ctx?.weather?.condition;
+  if (!condition || condition === 'unknown' || condition === state.lastWeatherCondition) return null;
+  return caps.find(isWeatherCapability) || null;
+}
+
+function segmentSelectorSystem(cap, freq: string, sfxCatalog) {
+  return `${producerSegmentSelectSystem()}\n\nStation cadence: ${stationTone(freq)}\n\nOnly offered segment kind:\n- ${cap.kind}: ${cap.desc}${producerSfxBlock(sfxCatalog)}`;
+}
+
+async function selectProducerSegment({ cap, evidence, situation, freq, sfxCatalog }) {
+  const schema = ProducerSegmentSchema.extend({
+    kind: z.union([z.literal(cap.kind), z.null()]),
+  });
+  return deadlinedSegmentObject({
+    system: segmentSelectorSystem(cap, freq, sfxCatalog),
+    prompt: `${situation}\n\nResearch result for "${cap.kind}":\n${JSON.stringify(evidence, null, 2)}\n\nDecide whether this exact researched segment is worth airing. Return production fields only.`,
+    schema,
+    temperature: 0.4,
+    kind: 'djProducerSegmentSelect',
+    role: 'producer',
+  });
+}
+
+async function runHybridSegmentResearch(ctx, {
+  caps, freq, sfxCatalog, state, currentTrack, routerConfig,
+}) {
+  let cap = changedWeatherCapability(caps, ctx, state);
+  let routed;
+
+  if (cap) {
+    // Changed weather is already an authoritative controller fact. Asking a
+    // tiny model to rediscover it adds ambiguity without editorial judgement.
+    const result = await fetchSegmentData(cap, ctx, state);
+    routed = { name: cap.toolName, args: {}, result };
+  } else {
+    // Unchanged weather is not a useful alternative. The established simple
+    // path applies the same freshness rule.
+    const routeCaps = caps.filter(candidate => !isWeatherCapability(candidate));
+    if (!routeCaps.length) {
+      return {
+        object: { air: false, kind: null, reason: 'Weather has not changed since the last update', sfx: null },
+        toolCalls: [],
+      };
+    }
+    if (!routeCaps.every(candidate => typeof candidate.toolFn === 'function' && candidate.toolName)) {
+      throw new Error('Producer Research Router cannot safely represent a prompt-only offered skill');
+    }
+
+    if (routeCaps.length === 1) {
+      cap = routeCaps[0];
+      const result = await fetchSegmentData(cap, ctx, state);
+      routed = { name: cap.toolName, args: {}, result };
+    } else {
+      const tools = buildSegmentTools(ctx, state, routeCaps, currentTrack);
+      routed = await routeProducerResearch({
+        prompt: buildProducerSituation(
+          ctx,
+          routeCaps,
+          currentTrack,
+          'Choose exactly one offered research function. Do not decide airtime or write the line.',
+        ),
+        tools,
+        config: routerConfig,
+      });
+      cap = routeCaps.find(candidate => candidate.toolName === routed.name) || null;
+      if (!cap) throw new Error(`Producer Research Router returned unmapped tool "${routed.name}"`);
+    }
+  }
+
+  const toolCalls = [routed];
+  const evidence = groundedSearchEvidence(cap.kind, routed.result);
+  if (typeof cap.toolFn === 'function' && !usableSegmentEvidence(evidence)) {
+    return {
+      object: { air: false, kind: null, reason: `${cap.kind} returned no usable evidence`, sfx: null },
+      toolCalls,
+    };
+  }
+  const situation = buildProducerSituation(
+    ctx,
+    [cap],
+    currentTrack,
+    'The controller has completed the research. Decide whether it is worth airing; never write the line.',
+  );
+  const object = await selectProducerSegment({ cap, evidence, situation, freq, sfxCatalog });
+  return { object, toolCalls };
+}
+
 async function runSplitDirector(ctx, { caps, speaker, freq, sfxCatalog, state = segmentState, rehearsal = false }): Promise<SplitSegmentResult> {
   const currentTrack = queue.current?.track ?? null;
-  const { object, toolCalls } = await producerDirectorAgent.run({
-    messages: [{ role: 'user', content: buildProducerSituation(ctx, caps, currentTrack) }],
-    caps, freq, sfxCatalog, ctx, segmentState: state, currentTrack, rehearsal,
-  });
+  let object;
+  let toolCalls;
+  const routerConfig = producerRouterConfig();
+  const useResearchRouter = !rehearsal && producerSegmentRouterEnabled() && !!routerConfig;
+  if (useResearchRouter) {
+    try {
+      ({ object, toolCalls } = await runHybridSegmentResearch(ctx, {
+        caps, freq, sfxCatalog, state, currentTrack, routerConfig,
+      }));
+    } catch (error: any) {
+      // Segment routing is optional. Unfamiliar prompt-only custom skills,
+      // endpoint failures and malformed tiny-model calls all return to the
+      // complete established Producer agent for this tick.
+      queue.log('scheduler', `Producer Research Router unavailable (${error?.message || error}) — using full Producer segment agent`);
+    }
+  }
+  if (!object || !toolCalls) {
+    ({ object, toolCalls } = await producerDirectorAgent.run({
+      messages: [{ role: 'user', content: buildProducerSituation(ctx, caps, currentTrack) }],
+      caps, freq, sfxCatalog, ctx, segmentState: state, currentTrack, rehearsal,
+    }));
+  }
   const attempts = researchAttemptsFromToolCalls(caps, toolCalls);
   if (!object?.air) return { status: 'producer-declined', seg: null, reason: object?.reason || 'Producer chose silence', attempts };
   const cap = caps.find((candidate) => candidate.kind === object?.kind);
   if (!cap) return { status: 'producer-invalid', seg: null, reason: `Producer returned unoffered kind "${object?.kind || ''}"`, attempts };
 
   const evidence = groundedSearchEvidence(cap.kind, evidenceForCapability(cap, toolCalls));
+  if (cap.requiresEvidence && (!isResearchEvidence(evidence) || !evidence.available)) {
+    return { status: 'evidence-rejected', seg: null, reason: `${cap.kind} returned no usable evidence`, attempts };
+  }
   if (typeof cap.toolFn === 'function' && !usableSegmentEvidence(evidence)) {
     return { status: 'evidence-rejected', seg: null, reason: `${cap.kind} returned no usable evidence`, attempts };
   }
@@ -524,6 +700,7 @@ async function runSplitDirector(ctx, { caps, speaker, freq, sfxCatalog, state = 
     brief: cap.desc,
     evidence: personaResearchEvidence(evidence),
     contextFacts: facts,
+    context: ctx,
     current: includeTrack ? currentTrack : null,
     recap: queue.getDjRecap({ maxChars, personaId }),
     recentOpeners: queue.getRecentOpeners(6, personaId),
@@ -619,17 +796,17 @@ export function dataBlock(data: unknown) {
 // Same decision surface as segmentSchema minus `kind` (code already chose it)
 // and minus the nested object (nothing here needs the agent path's GLM
 // armour — djObject's own repair layers cover a flat shape fine).
-export function simpleSegmentSchema() {
+export function simpleSegmentSchema(persona = settings.getEffectivePersona()) {
   return modelTolerant(z.object({
     reason: z.string().describe('one short internal sentence on why this segment (or why silent) — never shown to the listener; write this BEFORE deciding'),
     air: z.boolean().describe('true to air this segment now, false to stay silent — silence is a perfectly good answer when the data is dull, stale, unchanged, or not worth a listener\'s attention'),
-    text: z.string().describe(`the spoken line in the DJ voice — ${lengthPhrase('segment')}; empty string when air is false`),
+    text: z.string().describe(`the spoken line in the DJ voice — ${lengthPhrase('segment', persona)}; empty string when air is false`),
     sfx: z.string().nullable().describe('the exact name of one sound effect from the catalogue in the system prompt to play under this line, or null for no effect (null is usually right)'),
   }));
 }
 
 export function simpleSystem(persona, cap, freq: string, sfxCatalog) {
-  return `${settings.agentPersonaPreamble(persona)}
+  return `${skillPersonaPreamble(persona)}
 
 Your job: decide whether to air ONE between-track "${cap.kind}" segment, or stay silent. You are NOT choosing music. ${stationTone(freq)}
 
@@ -657,34 +834,25 @@ async function deadlinedSegmentObject(args: Record<string, unknown>) {
   }
 }
 
-// Runs the simple path for one tick: choose, fetch, and, only when the source is
-// usable (or the skill explicitly permits free generation), one djObject call.
+// Runs the simple path for one tick: choose, fetch, one djObject call.
 // Returns { seg, reason } in the same shape agenticTick consumes from the
-// agent — seg is null for silence. Unusable data is silence without a model
-// call: the model can't say anything true about data it never got.
+// agent — seg is null for silence. A failed data fetch is silence without a
+// model call: the model can't say anything true about data it never got.
 async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   const cap = chooseCapability(caps, ctx);
   if (!cap) return { seg: null, reason: 'nothing fresh to say', attempts: [] };
   const data = await fetchSegmentData(cap, ctx, segmentState);
-  const attempts: SkillResearchAttempt[] = typeof cap.toolFn === "function"
-    ? [{ kind: cap.kind, outcome: data?.error ? "infrastructure-failure" : "completed" }]
-    : [];
-  const blocked = standDownReason(cap, data);
-  if (blocked || data?.error) {
-    lastUnavailable.set(cap.kind, Date.now());
-    return {
-      seg: null,
-      reason: blocked || `${cap.kind} data fetch failed (${data.error})`,
-      attempts,
-      skippedBeforeLlm: cap.kind,
-    };
+  const attempts = directResearchAttempt(cap, data);
+  if (data?.error) return { seg: null, reason: `${cap.kind} data fetch failed (${data.error})`, attempts };
+  if (cap.requiresEvidence && data?.available !== true) {
+    return { seg: null, reason: `${cap.kind} returned no usable evidence`, attempts };
   }
-  lastUnavailable.delete(cap.kind);
-  const recentCuriosity = cap.kind === 'curiosity' ? recentAiredCuriosity() : undefined;
+  const recentCuriosity = isCuriosityKind(cap.kind) ? recentAiredCuriosity() : undefined;
   const out = await deadlinedSegmentObject({
     system: simpleSystem(speaker, cap, freq, sfxCatalog),
     prompt: buildSituation(ctx, { contextFields: effectiveContextFields(cap), recentCuriosity }) + dataBlock(data),
-    schema: simpleSegmentSchema(),
+    schema: simpleSegmentSchema(speaker),
+    maxOutputTokens: skillSpeechLimits(speaker).maxOutputTokens,
     temperature: 0.9,
     kind: 'generateSegment',
   });
@@ -755,18 +923,18 @@ export async function agenticTick(ctx) {
     let seg: { kind: string; text: string; sfx: string | null } | null = null;
     let silentReason: string | undefined;
     let attempts: SkillResearchAttempt[] = [];
-    let skippedBeforeLlm: string | undefined;
     if (settings.get().llm?.producer?.enabled) {
       // Advanced split mode: Producer chooses and researches; Persona receives
-      // only the selected skill’s grounded evidence and writes the spoken line.
+      // only the selected skill's grounded evidence and writes the spoken line.
       ({ seg, reason: silentReason, attempts } = await runSplitDirector(ctx, { caps, speaker, freq, sfxCatalog }));
     } else if (!settings.get().llm?.pickerAgent) {
-      // Pool mode: code fetches once rather than asking a weak model to loop.
-      ({ seg, reason: silentReason, attempts, skippedBeforeLlm } = await runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }));
+      // Pool mode: the operator's model isn't trusted with tool loops, so the
+      // director runs the code-driven single-call path instead of the agent.
+      ({ seg, reason: silentReason, attempts } = await runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }));
     } else {
       // When curiosity is on offer, brief the agent with what it already aired so
       // a pool-exhausted fallback doesn't repeat itself (issue #577).
-      const recentCuriosity = caps.some(c => c.kind === 'curiosity') ? recentAiredCuriosity() : undefined;
+      const recentCuriosity = caps.some(c => isCuriosityKind(c.kind)) ? recentAiredCuriosity() : undefined;
       const { object, toolCalls } = await directorAgent.run({
         messages: [{ role: 'user', content: buildSituation(ctx, { contextFields: unionContextFields(caps), recentCuriosity }) }],
         persona: speaker, caps, freq, sfxCatalog,
@@ -777,6 +945,11 @@ export async function agenticTick(ctx) {
       seg = object?.air ? object?.segment : null;
       silentReason = object?.reason;
       attempts = researchAttemptsFromToolCalls(caps, toolCalls);
+      const selected = seg ? caps.find((cap) => cap.kind === seg?.kind) : null;
+      if (selected && !hasRequiredEvidence(selected, toolCalls)) {
+        seg = null;
+        silentReason = `${selected.kind} returned no usable evidence`;
+      }
     }
 
     // A completed research call consumes the normal skill cooldown even when
@@ -785,12 +958,8 @@ export async function agenticTick(ctx) {
     const researchCooldowns = applyResearchAttemptCooldowns(caps, attempts, Date.now());
 
     if (!seg || !seg.text || !seg.text.trim()) {
-      const cooldownNote = researchCooldowns.length ? ` · research cooldown: ${researchCooldowns.join(", ")}` : "";
-      if (skippedBeforeLlm) {
-        queue.log("scheduler", `[segment] ${skippedBeforeLlm} → unavailable → skipped before LLM — ${silentReason}${cooldownNote}`);
-      } else {
-        queue.log("scheduler", `Segment agent stayed silent — ${silentReason || "nothing to add"}${cooldownNote}`);
-      }
+      const cooldownNote = researchCooldowns.length ? ` · research cooldown: ${researchCooldowns.join(', ')}` : '';
+      queue.log('scheduler', `Segment agent stayed silent — ${silentReason || 'nothing to add'}${cooldownNote}`);
       return;
     }
 
@@ -810,13 +979,15 @@ export async function agenticTick(ctx) {
     // queue.announce appends the segment turn into the live session. The
     // speaker's id rides in meta so session.windowMessages names a guest's
     // turn as theirs rather than the host's own words.
-    await queue.announce(seg.text.trim(), seg.kind, {
+    const spoken = boundedSkillSpeech(seg.text, speaker, seg.kind);
+    if (!spoken) return;
+    await queue.announce(spoken, seg.kind, {
       persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name },
     });
 
     // Record what actually aired so the durable ledger can keep both the tool
     // and the fallback path from repeating it after a restart (issue #577).
-    if (seg.kind === 'curiosity') recordCuriosity(seg.text.trim(), { aired: true });
+    if (isCuriosityKind(seg.kind)) recordCuriosity(spoken, { aired: true });
 
     // Optional sound effect mixed under the voice. Only honour a name the
     // agent was actually offered — anything else is dropped, like an
@@ -897,7 +1068,7 @@ export function forcedSystem(persona, cap, sfxCatalog, { mayAbstain = false }: {
   const mandate = mayAbstain
     ? 'write it from the source data you were given, and nothing else. If that data is empty, or turns out to be about something other than what this segment covers, set "air" to false and say nothing — standing down is the right answer, and a fabricated line is far worse than no segment. Never fill the gap from memory, from what you said earlier in the show, or from what sounds plausible.'
     : 'you must produce a line, silence is not an option.';
-  return `${settings.agentPersonaPreamble(persona)}
+  return `${skillPersonaPreamble(persona)}
 
 The operator asked you to air ONE ${cap.kind} segment now — ${mandate} You are NOT choosing music.
 
@@ -921,9 +1092,10 @@ ${cap.desc}${sfxBlock(sfxCatalog)}${settings.agentLanguageReminder(persona, 'the
 function defineForcedAgent(mayAbstain: boolean) {
   return defineAgent({
     kind: 'djAgentSegment',
-    schema: () => forcedSchema({ mayAbstain }),
+    schema: (args: any = {}) => forcedSchema(args.persona, { mayAbstain }),
     // Same wall-clock ceiling as the autonomous director (issue #555).
     timeoutMs: segmentDeadline,
+    maxOutputTokens: (args: any = {}) => skillAgentOutputTokens(args.persona),
     buildSystem: ({ persona, cap, sfxCatalog }) =>
       forcedSystem(persona, cap, sfxCatalog, { mayAbstain }),
     buildTools: ({ ctx, segmentState, cap, onData }) => ({
@@ -1011,7 +1183,8 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
     // only such capability today, and only when a keyed provider is active.
     let hint = '';
     const searchProvider = settings.get().search?.provider;
-    if (cap.kind === 'web-search' && (searchProvider === 'tavily' || searchProvider === 'brave')) {
+    if ((cap.kind === 'web-search' || cap.kind === 'web-search-v2')
+        && (searchProvider === 'tavily' || searchProvider === 'brave')) {
       const name = searchProvider === 'brave' ? 'Brave Search' : 'Tavily';
       hint = ` — set SEARCH_API_KEY or paste a ${name} key into the admin UI`;
     } else if (cap.requiresKey) {
@@ -1023,7 +1196,7 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
   const speaker = persona || settings.getEffectivePersona(new Date());
   // Empty catalogue when SFX are disabled — the agent is never offered effects.
   const sfxCatalog = settings.get().sfx?.enabled === false ? [] : await sfx.catalog();
-  const recentCuriosity = cap.kind === 'curiosity' ? recentAiredCuriosity() : undefined;
+  const recentCuriosity = isCuriosityKind(cap.kind) ? recentAiredCuriosity() : undefined;
   const situation = buildSituation(ctx, { forced: true, contextFields: effectiveContextFields(cap), recentCuriosity })
     + (brief ? `\n\n${brief}` : '');
 
@@ -1051,10 +1224,14 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
     const data = await fetchSegmentData(cap, ctx, segmentState);
     const blocked = standDownReason(cap, data);
     if (blocked) return standDown(blocked);
+    if (cap.requiresEvidence && data?.available !== true) {
+      return standDown(`skill "${cap.skill}" returned no usable evidence`);
+    }
     object = await deadlinedSegmentObject({
       system: forcedSystem(speaker, cap, sfxCatalog, { mayAbstain }),
       prompt: situation + (data && !data.error ? dataBlock(data) : ''),
-      schema: forcedSchema({ mayAbstain }),
+      schema: forcedSchema(speaker, { mayAbstain }),
+      maxOutputTokens: skillSpeechLimits(speaker).maxOutputTokens,
       temperature: 0.9,
       kind: 'generateSegment',
     });
@@ -1071,7 +1248,7 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
     // failure for the log.
     let usableSeen = false;
     let blocked: string | null = null;
-    ({ object } = await (mayAbstain ? groundedDirectorAgent : forcedDirectorAgent).run({
+    const run = await (mayAbstain ? groundedDirectorAgent : forcedDirectorAgent).run({
       messages: [{ role: 'user', content: situation }],
       persona: speaker, cap, sfxCatalog,
       ctx, segmentState,
@@ -1079,8 +1256,12 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
         const why = standDownReason(cap, data as never);
         if (why) blocked = why; else usableSeen = true;
       },
-    }));
+    });
+    object = run.object;
     if (!usableSeen && blocked) return standDown(blocked);
+    if (!hasRequiredEvidence(cap, run.toolCalls)) {
+      return standDown(`skill "${cap.skill}" returned no usable evidence`);
+    }
   }
 
   // An explicit decline. Only reachable when the schema offered `air` at all,
@@ -1089,7 +1270,7 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
     return standDown(object?.reason?.trim() || 'nothing usable to write the segment from');
   }
 
-  const text = object?.text?.trim();
+  const text = boundedSkillSpeech(object?.text, speaker, cap.kind);
   if (!text) {
     // A grounded skill that returns nothing has effectively declined — the
     // listener-facing outcome is the same silence, and reporting it as a
@@ -1115,7 +1296,7 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
 
   // Record an operator-fired curiosity line in the durable ledger too, so a
   // later autonomous tick doesn't repeat it (issue #577).
-  if (cap.kind === 'curiosity') recordCuriosity(text, { aired: true });
+  if (isCuriosityKind(cap.kind)) recordCuriosity(text, { aired: true });
 
   // Optional sound effect under the voice — only a name the agent was offered.
   const pick = object?.sfx;
@@ -1142,7 +1323,7 @@ export function skillCatalog() {
     let requiresKey = c.requiresKey || null;
     let keyUrl = c.keyUrl || null;
     let hint: string | null = null;
-    if (c.kind === 'web-search') {
+    if (c.kind === 'web-search' || c.kind === 'web-search-v2') {
       if (searchProvider === 'tavily') {
         requiresKey = 'SEARCH_API_KEY';
         keyUrl = 'https://app.tavily.com/home';

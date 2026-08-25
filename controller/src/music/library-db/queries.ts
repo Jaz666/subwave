@@ -3,7 +3,7 @@
 
 import { SQL_HAS_MOODS, SQL_NO_MOODS, requireDb } from './handle.js';
 import type { EnergyValue, TrackRecord, TrackRow } from './types.js';
-import { rowToTrack, safeParseArray } from './rows.js';
+import { parseSpans, rowToTrack, safeParseArray } from './rows.js';
 
 // ---------------------------------------------------------------------------
 // Blocklist-rule match counting (admin Blocked tab)
@@ -253,17 +253,11 @@ export function candidateFilterTracks(): Array<{
     moods: string | null;
     audio_moods: string | null;
     energy: EnergyValue;
-    vocal_range_count: number | null;
+    vocal_ranges_json: string | null;
   };
   const rows = requireDb().prepare(`SELECT id, title, artist, year, original_year,
     is_compilation, era_untrusted, genres, genre, moods, audio_moods, energy,
-    CASE
-      WHEN vocal_ranges_json IS NULL THEN NULL
-      WHEN json_valid(vocal_ranges_json) AND json_type(vocal_ranges_json) = 'array'
-        THEN json_array_length(vocal_ranges_json)
-      ELSE NULL
-    END AS vocal_range_count
-    FROM tracks`).all() as CandidateFilterRow[];
+    vocal_ranges_json FROM tracks`).all() as CandidateFilterRow[];
   return rows.map((row) => ({
     id: row.id,
     title: row.title ?? null,
@@ -279,11 +273,6 @@ export function candidateFilterTracks(): Array<{
     moods: row.moods ? safeParseArray(row.moods) : [],
     audioMoods: row.audio_moods ? safeParseArray(row.audio_moods) : [],
     energy: row.energy ?? null,
-    // The show filter only reads this field's tri-state: null = unmeasured,
-    // [] = instrumental, non-empty = vocal. Keep the projection lean by
-    // carrying presence rather than parsing every stored span object.
-    vocalRanges: row.vocal_range_count == null
-      ? null
-      : row.vocal_range_count === 0 ? [] : [{}],
+    vocalRanges: row.vocal_ranges_json == null ? null : parseSpans(row.vocal_ranges_json),
   }));
 }

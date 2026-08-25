@@ -9,6 +9,7 @@ export const ProducerPickSchema = z.object({
   id: z.string().describe('exact id returned by a library discovery tool in this run'),
   reason: z.string().max(160).describe('brief internal editorial reason; never listener-facing copy'),
   transition: z.enum(PRODUCER_TRANSITIONS).nullable().describe('transition treatment, or null for the station default'),
+  guestInfluenceApplied: z.boolean().optional().describe("true only when the supplied guest editorial nudge materially broke a close tie; otherwise omit"),
 });
 
 export const ProducerSegmentSchema = z.object({
@@ -24,8 +25,16 @@ export function producerPickSystem(rounds: number): string {
   })}`;
 }
 
+export function producerSelectSystem(): string {
+  return `${instruction('producer', 'frame')}\n\n${instruction('producer', 'select')}`;
+}
+
 export function producerSegmentSystem(): string {
   return `${instruction('producer', 'frame')}\n\n${instruction('producer', 'segment')}`;
+}
+
+export function producerSegmentSelectSystem(): string {
+  return `${instruction('producer', 'frame')}\n\n${instruction('producer', 'segment-select')}`;
 }
 
 export function checkProducerPick(

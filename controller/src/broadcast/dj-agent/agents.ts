@@ -14,7 +14,7 @@ import {
   producerPromptDiscoverySteps,
   showMusicLean,
 } from '../../llm/dj.js';
-import { ProducerPickSchema, producerPickSystem } from '../../llm/producer.js';
+import { ProducerPickSchema, producerPickSystem, producerSelectSystem } from '../../llm/producer.js';
 import { pickSchema, pickSystem, requestSchema, requestSystem } from './schemas.js';
 import { agentDeadline } from './breaker.js';
 
@@ -59,6 +59,7 @@ export function producerPickMessage({
   recentTransitions = [],
   selectionContext = null,
   editorialInfluence = settings.personaEditorialInfluence(session.onAirPersona()),
+  guestEditorialNudge = null,
   instructions = [],
 }: {
   current?: any;
@@ -67,6 +68,7 @@ export function producerPickMessage({
   recentTransitions?: string[];
   selectionContext?: any;
   editorialInfluence?: { soul?: string; musicLeanings?: string } | null;
+  guestEditorialNudge?: { persona: { id?: string; name?: string }; musicLeanings: string } | null;
   instructions?: string[];
 } = {}): string {
   const track = (value: any) => value ? {
@@ -88,6 +90,7 @@ export function producerPickMessage({
       festival: selectionContext.festival?.name ?? null,
     } : null,
     editorialInfluence: editorialInfluence || undefined,
+    guestEditorialNudge: guestEditorialNudge || undefined,
   };
   const coaching = instructions.map((line) => String(line || '').trim()).filter(Boolean);
   return `Operational pick request:\n${JSON.stringify(payload, null, 2)}`
@@ -111,9 +114,74 @@ export function producerPickerSystem(showAt: Date | null = null, playlistResolve
     : '';
   return `${producerPickSystem(producerPromptDiscoverySteps())}
 
-When an operational request supplies editorialInfluence, use it only to break ties between otherwise suitable candidates. It is never a hard constraint and never overrides station safety, rotation, show rules, library eligibility or transition requirements.${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
+When an operational request supplies editorialInfluence, use it only to break ties between otherwise suitable candidates. It is never a hard constraint and never overrides station safety, rotation, show rules, library eligibility or transition requirements. A guestEditorialNudge is weaker still: consider it only after the host influence, and set guestInfluenceApplied true only when it materially broke a close tie; never select a track merely to credit a guest.${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
 
 ${PICKER_CRITERIA}${effectsGuidance()}`;
+}
+
+// Tool-less second half of the experimental split Producer picker. Discovery
+// has already produced a grounded candidate set, so this prompt deliberately
+// omits every instruction to call a library tool. The configured Producer LLM
+// retains the editorial work: show fit, musical flow and transition choice.
+export function producerSelectorSystem(showAt: Date | null = null, playlistResolved = true): string {
+  const activeShow = settings.resolveActiveShow(showAt ?? undefined);
+  const showLine = activeShow?.topic
+    ? `\n\nCurrent show brief: ${activeShow.topic}`
+    : '';
+  const playlistLine = activeShow?.playlistIds?.length && playlistResolved
+    ? `\n\nThe candidates were discovered under the current show's ${activeShow.playlistStrict ? 'strict' : 'preferred'} pinned-playlist policy.`
+    : '';
+  return `${producerSelectSystem()}${showLine}${showMusicLean(activeShow, { includeTalk: false })}${playlistLine}
+
+${PICKER_CRITERIA}${effectsGuidance()}`;
+}
+
+// Compact operational request for the tiny Producer Router. It gets only the
+// facts needed to choose a discovery mechanism; it does not see Persona prose,
+// transition coaching, listener-facing history or the later candidate list.
+export function producerRouterMessage({
+  current = null,
+  activeShow = null,
+  playlistAvailable = false,
+  playlistCoolingDown = false,
+  journeyActive = false,
+  explore = false,
+}: {
+  current?: any;
+  activeShow?: any;
+  playlistAvailable?: boolean;
+  playlistCoolingDown?: boolean;
+  journeyActive?: boolean;
+  explore?: boolean;
+} = {}): string {
+  const direction = playlistCoolingDown
+    ? 'The current track already came from the show\'s preferred pinned playlist. Deliberately use a different library discovery axis for this pick so the playlist remains an anchor, not the only source.'
+    : playlistAvailable
+    ? 'This programme has an operator-pinned playlist. Begin discovery inside that curated source.'
+    : journeyActive
+      ? 'The active sonic journey has a current waypoint. Discover music toward that waypoint.'
+      : explore
+        ? 'Explore neglected catalogue tracks that have never aired or have been absent for a long time.'
+        : current?.id
+          ? `Use the library semantic index to find music like the current track [id: ${current.id}]. If that source is unavailable, choose the closest offered similarity source.`
+          : 'No usable current-track seed is available. Return a broad library sample.';
+  return `${direction}\n\n${JSON.stringify({
+    currentTrack: current ? {
+      id: current.id ?? null,
+      title: current.title ?? null,
+      artist: current.artist ?? null,
+    } : null,
+    show: activeShow ? {
+      name: activeShow.name ?? null,
+      topic: activeShow.topic ?? null,
+      genres: activeShow.genres ?? [],
+      moods: activeShow.moods ?? [],
+      energies: activeShow.energies ?? [],
+      eras: activeShow.eras ?? [],
+      filtersStrict: activeShow.filtersStrict === true,
+      playlistStrict: activeShow.playlistStrict === true,
+    } : null,
+  }, null, 2)}`;
 }
 
 export const pickerAgent = defineAgent<PickerRunArgs, PickerExtras>({

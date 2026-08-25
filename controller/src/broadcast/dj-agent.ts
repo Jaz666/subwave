@@ -35,9 +35,9 @@ import { linkClockAt, linkClockStampFor } from './queue/pure.js';
 import { djObject, nearestId, modelTolerant } from '../llm/sdk.js';
 import * as budget from './dj-budget.js';
 import { withTrace, logEvent } from '../observability/events.js';
-import { recencyWindowsForLibrary, effectiveNoRepeatWindow } from '../music/recency.js';
+import { recencyWindowsForLibrary, effectiveNoRepeatWindow, artistRootKey } from '../music/recency.js';
 import { EXPLORE_SEED_PROBABILITY } from '../music/airing.js';
-import { ARTIST_VARIETY_WINDOW, runArtistGuard } from './dj-agent/artist-guard.js';
+import { ARTIST_VARIETY_WINDOW, alternativeCandidates } from './dj-agent/artist-guard.js';
 import { hasEraBound, genreResolutionWarningOnce, type VocalMode } from '../music/show-filter.js';
 import { djCallsAllowed } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
@@ -46,10 +46,11 @@ import {
   pickerAgent,
   producerPickMessage,
   producerPickerAgent,
-  producerPickerSystem,
+  producerRouterMessage,
+  producerSelectorSystem,
   requestAgent,
 } from './dj-agent/agents.js';
-import { ProducerPickSchema } from '../llm/producer.js';
+import { ProducerPickSchema, producerRouterConfig, routeProducerDiscovery } from '../llm/producer.js';
 import { pickerScope } from '../llm/tools.js';
 import {
   HANDOFF_MAX_AGE_MS,
@@ -71,7 +72,10 @@ export { runActive } from './dj-agent/runs.js';
 export {
   PICK_SCHEMA, PICK_SCHEMA_NO_FX, pickSchema, pickSystem, requestSchema, requestSystem,
 } from './dj-agent/schemas.js';
-export { pickerAgent, producerPickMessage, producerPickerAgent, producerPickerSystem, requestAgent } from './dj-agent/agents.js';
+export {
+  pickerAgent, producerPickMessage, producerPickerAgent, producerPickerSystem,
+  producerRouterMessage, producerSelectorSystem, requestAgent,
+} from './dj-agent/agents.js';
 
 // ---------------------------------------------------------------------------
 // Track event — a track started; pick the next one and maybe air a link.
@@ -153,7 +157,7 @@ async function repickProducerFromSeen({
     ?? `The id ${badId ? `"${badId}"` : 'you returned'} is not one of the candidates surfaced in this run. Choose the best exact candidate id.`;
   try {
     return await djObject({
-      system: producerPickerSystem(showAt, playlistResolved),
+      system: producerSelectorSystem(showAt, playlistResolved),
       prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
         + `\n\n${why}`,
       schema,
@@ -164,6 +168,37 @@ async function repickProducerFromSeen({
   } catch {
     return null;
   }
+}
+
+// The hybrid picker's editorial half. FunctionGemma has already selected and
+// executed discovery; this call gives the configured Producer model the full
+// operational pick request plus only grounded candidates, with no tools and no
+// Persona speech history. Unlike corrective re-pick this throws, so the caller
+// can retry the complete established Producer agent on any failure.
+async function selectProducerFromSeen({
+  seen,
+  producerMessage,
+  showAt = null,
+  playlistResolved = true,
+}: {
+  seen: Map<string, any>;
+  producerMessage: string;
+  showAt?: Date | null;
+  playlistResolved?: boolean;
+}) {
+  const ids = [...seen.keys()];
+  if (!ids.length) throw new Error('Producer Router supplied no candidates for final selection');
+  const schema = modelTolerant(ProducerPickSchema.extend({
+    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one supplied candidate'),
+  }));
+  return djObject({
+    system: producerSelectorSystem(showAt, playlistResolved),
+    prompt: `${producerMessage}\n\nGrounded candidates discovered for this pick:\n${JSON.stringify([...seen.values()], null, 2)}`,
+    schema,
+    temperature: 0.4,
+    kind: 'djProducerSelect',
+    role: 'producer',
+  });
 }
 
 // Request-flavoured corrective re-pick (D1): mirrors repickFromSeen above, for
@@ -210,7 +245,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, producerMessage = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; producerMessage?: string | null }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, producerMessage = null, producerExplore = false, guestEditorialNudge = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; producerMessage?: string | null; producerExplore?: boolean; guestEditorialNudge?: any }): Promise<boolean> {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -247,6 +282,15 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   const playlistPool = activeShow ? await resolveShowPlaylistPool(activeShow) : null;
   const playlistLock = playlistPool && activeShow?.playlistStrict ? playlistPool.ids : null;
   const playlistTracks = playlistPool?.tracks ?? null;
+  // Soft playlists are an editorial preference, not an exclusive source. Once
+  // a playlist track is on air, make the next FunctionGemma discovery round
+  // take a different library axis. Strict playlists remain unchanged.
+  const playlistCoolingDown = !!(
+    playlistPool?.ids.size
+    && !activeShow?.playlistStrict
+    && current?.id
+    && playlistPool.ids.has(current.id)
+  );
   const excludedIds = activeShow ? await resolveExcludedPlaylistIds(activeShow) : null;
 
   // Strict music locks for the discovery tools (filtersStrict). Resolved HERE,
@@ -333,7 +377,45 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
       // request assembled by runTrackEvent. It must never inherit the shared
       // session window, which contains listener-facing Persona prose.
       const producerMessages = [{ role: 'user' as const, content: producerMessage || 'Pick the next track using the offered discovery tools.' }];
-      run = await producerPickerAgent.run({ messages: producerMessages, scope, showAt });
+      const routerConfig = producerRouterConfig();
+      if (routerConfig) {
+        try {
+          const routed = await routeProducerDiscovery({
+            scope,
+            config: routerConfig,
+            excludeToolNames: playlistCoolingDown ? new Set(['showPlaylistTracks']) : undefined,
+            prompt: producerRouterMessage({
+              current,
+              activeShow,
+              playlistAvailable: !!playlistTracks?.length && !playlistCoolingDown,
+              playlistCoolingDown,
+              journeyActive: !!audioWaypoint,
+              explore: producerExplore,
+            }),
+          });
+          const object = await selectProducerFromSeen({
+            seen: routed.seen,
+            producerMessage: producerMessages[0].content,
+            showAt,
+            playlistResolved: !!playlistTracks?.length,
+          });
+          run = {
+            object,
+            steps: routed.steps + 1,
+            toolCalls: routed.toolCalls,
+            extras: { seen: routed.seen },
+          };
+        } catch (routerError: any) {
+          // The experimental router is never allowed to turn a missed call
+          // into a missed pick. Retry the complete current Producer agent; its
+          // own failure still falls through to the all-in-one Persona below.
+          queue.log('producer', `Producer Router failed: ${routerError.message} — retrying with the complete Producer picker`);
+          logEvent('producer.fallback', { stage: 'route', reason: routerError.message });
+          run = await producerPickerAgent.run({ messages: producerMessages, scope, showAt });
+        }
+      } else {
+        run = await producerPickerAgent.run({ messages: producerMessages, scope, showAt });
+      }
       splitProducer = true;
     } catch (err) {
       // A failed backstage decision drops back to the complete established
@@ -439,51 +521,82 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // plays, because a re-pick that knows only the on-air artist keeps returning to
   // whoever ranks next-highest — the every-other-slot repeat this guard exists
   // to prevent.
-  //
-  // #1406 widened the ENTRY condition to that same window. Until then it only
-  // narrowed the re-pick pool, so the guard never fired on a pick three slots
-  // after the same artist and the window was never consulted — every occurrence
-  // legal, and the same artist across a whole morning show. The two causes are
-  // escalated differently on purpose (see below): back-to-back is a fault worth
-  // a pool rescue, spacing is a preference that yields to the run.
-  const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
-  const guarded = await runArtistGuard<any>({
-    song, object, current,
-    seen: extras.seen,
-    // Every queue read stays here; the policy module is handed values only.
-    recentRoots: queue.neighbourArtistRoots(varietyWindow),
-    window: varietyWindow,
-    repick: (alt, reason) => (splitProducer ? repickProducerFromSeen : repickFromSeen)({
-      seen: alt, badId: null, wantLink, showAt,
-      playlistResolved: !!playlistTracks?.length,
-      reason,
-    }),
-    poolRescue: (avoidArtist) => pickViaPool(
-      queue, ctx, { wantLink, current, showAt }, rankTarget, audioWaypoint,
-      { avoidArtist },
-    ),
-    log: (line) => queue.log('picker', line),
-    logEvent,
-  });
-  // The pool rescue enqueues, links and records its own session turn, so a
-  // rescued slot is a filled slot — runTrackEvent must treat it as done.
-  if (guarded.kind === 'rescued') return true;
-  if (guarded.kind === 'repicked') {
-    object = guarded.object;
-    song = guarded.song;
-
+  const curArtist = artistRootKey(current || {});
+  if (curArtist && artistRootKey(song) === curArtist) {
+    const { alt, dropped, starved } = alternativeCandidates<any>(
+      extras.seen, curArtist, queue.neighbourArtistRoots(ARTIST_VARIETY_WINDOW),
+    );
+    let altSong: any = null;
+    if (alt.size) {
+      const repickArgs = {
+        seen: alt, badId: null, wantLink, showAt,
+        playlistResolved: !!playlistTracks?.length,
+        reason: `The track you chose is by ${song.artist}, the artist already on air — never play the same artist twice in a row. Choose a DIFFERENT artist from the candidates above.`,
+      };
+      const repicked = splitProducer
+        ? await repickProducerFromSeen(repickArgs)
+        : await repickFromSeen(repickArgs);
+      // Resolved from `alt`, not `extras.seen`: the re-pick's id is constrained
+      // to the alternatives by construction (z.enum), and reading it back out of
+      // the narrower map is what keeps that true if the schema ever gains a
+      // tolerance for ids it didn't offer.
+      altSong = repicked?.id ? alt.get(repicked.id) : null;
+      if (altSong) {
+        logEvent('pick.artistGuard', { relaxed: false, from: song.artist, to: altSong.artist, candidates: alt.size, recencySkipped: dropped, recencyStarved: starved });
+        queue.log('picker', `back-to-back artist "${song.artist}" avoided — re-picked "${altSong.title}" by ${altSong.artist} from ${alt.size} other-artist candidate(s)${dropped ? `, ${dropped} more skipped as recently-played artists` : ''}${starved ? ' (every alternative was recently played — recency window waived)' : ''}`);
+        object = repicked;
+        song = altSong;
+      }
+    }
+    if (!altSong) {
+      // Pool rescue. This enqueues (and links, and records its own session turn)
+      // on success, so there is nothing left for this run to do — return true
+      // and let runTrackEvent treat the slot as filled. `enqueuePick`'s dedup
+      // still applies: a pool pick that collides with something already queued
+      // reports 'collision' and we fall through to the relaxation below rather
+      // than silently dropping the slot.
+      const rescued = await pickViaPool(
+        queue, ctx, { wantLink, current, showAt }, rankTarget, audioWaypoint,
+        { avoidArtist: song.artist },
+      );
+      // Why the rescue ran, phrased for the booth log: the run either surfaced
+      // no other artist at all, or surfaced some and the constrained re-pick
+      // call over them failed — two different stations of the same rescue.
+      const runWasThin = alt.size
+        ? `re-pick from ${alt.size} other-artist candidate(s) didn't land`
+        : 'every agent candidate was that artist';
+      if (rescued === 'queued') {
+        logEvent('pick.artistGuard', { relaxed: false, reason: 'pool-rescue', artist: song.artist, candidates: alt.size });
+        queue.log('picker', `back-to-back artist "${song.artist}" avoided — ${runWasThin}, so the pick came from the fallback pool instead`);
+        return true;
+      }
+      // poolRescue distinguishes 'empty' (the pool truly holds no other artist)
+      // from 'collision' (it produced a pick that deduped against something
+      // already queued) — an operator reading #1187-style reports must be able
+      // to tell "the library really had nothing" from "a request slipped in
+      // mid-pick".
+      const reason = alt.size ? 'repick-failed' : 'no-other-artist';
+      logEvent('pick.artistGuard', { relaxed: true, reason, artist: song.artist, candidates: alt.size, poolRescue: rescued });
+      queue.log('picker', `back-to-back artist "${song.artist}" allowed — ${runWasThin} and the fallback pool ${rescued === 'collision' ? 'pick was already queued' : 'had none either'} (relaxed)`);
+    }
   }
 
   let rawSay = '';
+  // Producer/Persona links join the existing guest rotation; legacy links stay with the host.
+  const linkSpeaker = splitProducer ? settings.pickOnAirSpeaker(linkAirAt ?? undefined) : session.onAirPersona();
+  const guestContribution = splitProducer && object?.guestInfluenceApplied === true && guestEditorialNudge?.persona?.id && linkSpeaker?.id !== guestEditorialNudge.persona.id
+    ? { name: String(guestEditorialNudge.persona.name || "").trim() }
+    : null;
   if (splitProducer && wantLink) {
     try {
-      const speaker = session.onAirPersona();
+      const speaker = linkSpeaker;
       const personaId = speaker?.id || null;
       rawSay = (await dj.generatePersonaLink({
         current: song,
         context: linkAirContext(ctx, linkAirAt),
         clockIsAirTime: !!linkAirAt,
         persona: speaker,
+        guestContribution,
         recap: queue.getDjRecap({ personaId }),
         recentOpeners: queue.getRecentOpeners(6, personaId),
       })).trim();
@@ -537,7 +650,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // the track on-air now), instead of immediately over that on-air track (#189).
   // Stamp `current` as the link's back-announce target so the queue can drop the
   // link if a request jumps ahead of this pick before it airs.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkAirAt });
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, {
+    linkClockAt: linkAirAt,
+    speechLogOrigin: splitProducer ? 'producer-persona-link' : 'agent-legacy-link',
+    introPersona: linkSpeaker,
+  });
   // Pick was already queued/on-air and got deduped — don't record a session turn
   // for a track that never airs. Returning false lets runTrackEvent fall through
   // to the pool for a fresh pick.
@@ -603,9 +720,24 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
   // already spent part of the runway, and linkClockAt reads the live clock, so
   // asking now is the most honest the forecast can be on this path (#1314).
   const airAt = linkClockAt(showAt, Date.now());
+  const producerRouting = settings.get().llm?.producer?.enabled === true;
+  let speechLogOrigin = producerRouting ? 'producer-persona-link' : 'pool-legacy-link';
+  // Keep automatic Persona links conversationally shared with scheduled guests.
+  const linkSpeaker = producerRouting ? settings.pickOnAirSpeaker(airAt ?? undefined) : session.onAirPersona();
   if (wantLink && current) {
+    const speaker = linkSpeaker;
     try {
-      link = await dj.generateLink({
+      if (producerRouting) {
+        link = await dj.generatePersonaLink({
+          current: result.song,
+          context: linkAirContext(ctx, airAt),
+          clockIsAirTime: !!airAt,
+          persona: speaker,
+          recap: queue.getDjRecap({ personaId: speaker?.id || null }),
+          recentOpeners: queue.getRecentOpeners(6, speaker?.id || null),
+        });
+      } else {
+        link = await dj.generateLink({
         // ctx with the clock stepped to the link's air moment — showAt's own
         // clock carries the show-attribution padding and ran two minutes fast
         // on air (#1282). Only with the look-ahead resolved AND enough runway
@@ -618,13 +750,25 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
         // back to getEffectivePersona() on the wall clock, which disagrees with
         // the session inside the look-ahead window — the incoming DJ's line
         // written in the outgoing DJ's voice.
-        persona: session.onAirPersona(),
+        persona: speaker,
         recap: queue.getDjRecap(),
         recentTracks: queue.getRecentTracks(),
         recentOpeners: queue.getRecentOpeners(),
       });
+      }
     } catch (err) {
-      queue.log('error', `DJ link failed: ${err.message}`);
+      if (!producerRouting) {
+        queue.log('error', `DJ link failed: ${err.message}`);
+      } else {
+        queue.log('producer', `Persona pool delivery failed: ${err.message} — trying the legacy link contract`);
+        logEvent('producer.fallback', { stage: 'pool-delivery', reason: err.message, trackId: result.song.id });
+        try {
+        speechLogOrigin = 'pool-legacy-link';
+          link = await dj.generateLink({ previous: current, current: result.song, context: linkAirContext(ctx, airAt), clockIsAirTime: !!airAt, persona: speaker, recap: queue.getDjRecap(), recentTracks: queue.getRecentTracks(), recentOpeners: queue.getRecentOpeners() });
+        } catch (legacyErr) {
+          queue.log('error', `DJ link failed: ${legacyErr.message}`);
+        }
+      }
     }
   }
   // Talk-within-the-intro rides enqueuePick's trimLinkToIntro chokepoint —
@@ -657,6 +801,8 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
   // air time — "after dark" stays accurate even when the numerals are withheld.
   const queued = await enqueuePick(queue, result.song, result.reason, result.source || 'pool', link, current, fx, {
     linkClockAt: linkClockStampFor(airAt, speakClockAllowed()),
+    speechLogOrigin,
+    introPersona: linkSpeaker,
   });
   // Even the pool landed on an already-queued track (a tiny library whose pool
   // collapsed to recents). Skip the session turn and let auto.m3u backstop the
@@ -855,12 +1001,14 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
       && Math.random() < EXPLORE_SEED_PROBABILITY
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';
+    const guestNudge = settings.guestEditorialNudge(showAt ?? undefined);
     const producerMessage = producerPickMessage({
       current,
       recentTracks: queue.getRecentTracks(),
       recentArtists: queue.getRecentArtists(),
       recentTransitions: recentT,
       selectionContext: ctx,
+      guestEditorialNudge: guestNudge,
       instructions: [favClause, effectClause, producerRunClause, journeyClause, exploreClause],
     });
     const eventText = `Now playing "${current?.title}" by ${current?.artist}`
@@ -891,6 +1039,8 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
           wantLink, audioWaypoint, current, showAt, rankTarget,
           linkAirAt: linkClockStampFor(airAt, !!airClock),
           producerMessage,
+          producerExplore: !!exploreClause,
+          guestEditorialNudge: guestNudge,
         });
         breakerSuccess();
         if (queued) return;
@@ -1212,7 +1362,7 @@ export async function runPersonaHandoff(queue: any, _ctx: any): Promise<void> {
     try {
       const personaOutId = personaOut.id || null;
       signoffText = await dj.generatePersonaSignoff({
-        personaOut, personaIn, showIn,
+        personaOut, personaIn, showIn, context: _ctx, current: queue.current?.track ?? null,
         recap: queue.getDjRecap({ personaId: personaOutId }),
         recentOpeners: queue.getRecentOpeners(6, personaOutId),
       });
@@ -1233,7 +1383,7 @@ export async function runPersonaHandoff(queue: any, _ctx: any): Promise<void> {
     try {
       const personaInId = personaIn.id || null;
       const greeting = await dj.generatePersonaHandoffGreeting({
-        personaIn, personaOut, signoffText, showIn,
+        personaIn, personaOut, signoffText, showIn, context: _ctx, current: queue.current?.track ?? null,
         showBrief: cur?.show?.topic || null,
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         recap: queue.getDjRecap({ personaId: personaInId }),

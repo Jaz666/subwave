@@ -30,20 +30,33 @@ import { buildStationServices, rehearsalStationServices } from './station-servic
 // anything to write from" could only be asserted in the prompt, and a model
 // that speaks anyway would face no check (issue #1412). Optional — the
 // autonomous director reads the same results in its own window and passes none.
-
 export function buildSegmentTools(
   ctx: any,
   state: any,
   caps: any[],
   nowPlayingTrack: any = undefined,
-  { rehearsal = false, onResult }: { rehearsal?: boolean; onResult?: (kind: string, data: any) => void } = {},
+  {
+    rehearsal = false,
+    onResult,
+  }: {
+    rehearsal?: boolean;
+    onResult?: (kind: string, data: any) => void;
+  } = {},
 ) {
   const baseServices = buildStationServices();
+  // A split Producer→Persona run spans two model calls. Pin track-aware tools
+  // to the identity present when the run began so a seam during research cannot
+  // silently retarget artist/track lookup halfway through the packet.
   let services = nowPlayingTrack === undefined
     ? baseServices
     : { ...baseServices, nowPlaying: () => nowPlayingTrack };
-  if (rehearsal) services = rehearsalStationServices(services);
-
+  // Off-air rehearsals may read durable recall so they see the same evidence
+  // as a live run, but must not burn an item merely by testing it. The cloned
+  // per-run state handles headline/artist memory; this wrapper covers the
+  // curiosity ledger and custom tools using the curated log hook.
+  if (rehearsal) {
+    services = rehearsalStationServices(services);
+  }
   const tools: any = {};
 
   for (const cap of caps as any[]) {

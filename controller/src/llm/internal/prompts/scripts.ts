@@ -13,7 +13,7 @@ import { introBudgetPhrase, introMsFor, firstVocalMsFor, bpmKeyFor } from './int
 import * as library from '../../../music/library.js';
 import { trackEraYear } from '../../../music/show-filter.js';
 import { trackFeelSuffix } from './track-feel.js';
-import { selectSleeveNotes, sleeveNotesFor } from './sleeve-notes.js';
+import { contextSleeveNotesFor, selectSleeveNotes } from './sleeve-notes.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
 // Without this the model reads the label out — "high-energy" spoken flat is
@@ -142,14 +142,46 @@ export async function generateIntro({ track, context, requestedBy = null, reques
   });
 }
 
+const PERSONA_GROUNDING_RULE = 'FACTUAL GROUNDING: Treat supplied facts, including Sleeve Notes, as the factual ground truth for the current task. For factual claims about music, supplied facts are your only source of truth. Do not supplement them with your own knowledge of an artist, track, album or music history, even when you believe that knowledge is correct. You may naturally rephrase supplied facts, but do not expand them into unsupported factual claims, explanations, causes, relationships or historical context. Do not invent or assume release dates, albums, chart history, credits, artist biography, lyrics, instrumentation, production details or other music trivia unless supplied. Sleeve Notes are optional material for natural conversation, not a checklist. Use only what helps the current on-air line. You do not need to mention them at all. You may freely express subjective, in-character reactions and musical impressions provided they are not presented as additional facts. Do not invent weather, season, date, clock time, programme state, people being present or events around the station. If approximate air time is supplied, you may infer the corresponding time of day but never make it more precise than supplied. Style or Tone instructions never override these factual-grounding rules. Use local colour, time, weather or other contextual texture only when the necessary information has been supplied.';
+
+function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false): string {
+  const moment: string[] = [];
+  const day = String(context?.date?.dayLabel || "").trim();
+  if (day) moment.push("Day: " + day + ".");
+  const airTime = clockIsAirTime ? fuzzyAirTime(context?.clock) : null;
+  if (airTime) moment.push("Approximate air time: " + airTime + ".");
+  const showName = String(context?.activeShow?.name || "").trim();
+  if (showName) moment.push("Current show: \"" + showName + "\".");
+  const handover = context?.showHandover;
+  const hasFollowingShow = handover?.phase === "final-half-hour" && handover?.nextShow?.name && handover?.nextShow?.presenter && handover?.nextShow?.startsAt;
+  if (hasFollowingShow) {
+    moment.push("Show progress: final half hour.");
+    moment.push("Following show: \"" + String(handover.nextShow.name).trim() + "\" with " + String(handover.nextShow.presenter).trim() + ", starting " + String(handover.nextShow.startsAt).trim() + ".");
+  }
+  const playCount = current ? (library.trackPlayStatsFor(current)?.count ?? null) : null;
+  const sleeves = selectSleeveNotes(contextSleeveNotesFor(current, context, playCount));
+  const sections = [
+    "Verified Facts:",
+    "Current Context:\n" + (moment.length ? moment.map((fact) => "- " + fact).join("\n") : "- No additional verified moment facts."),
+    "Sleeve Notes:\n" + (sleeves.length ? sleeves.map((fact) => "- " + fact).join("\n") : "- None selected for this line."),
+  ];
+  if (current?.title || current?.artist) {
+    sections.push("Track on air:\n- " + String(current?.title || "Unknown") + " by " + String(current?.artist || "unknown") + ".");
+  }
+  if (hasFollowingShow) {
+    sections.push("Use the following-show detail naturally when it fits; do not make it a required signpost or repeat it mechanically.");
+  }
+  return sections.join("\n\n");
+}
+
 export function personaStationIdPrompt({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
   const speaker = persona || settings.getEffectivePersona();
   const djName = speaker?.name || 'your host';
   const stationName = settings.get().station;
-  const showName = context?.activeShow?.name;
   const lines = [`Station: "${stationName}".`, `Presenter: ${djName}.`];
-  if (showName) lines.push(`Current show: "${showName}".`);
-  lines.push(`Task: ${lengthPhrase('stationId', speaker)} identifying the station and presenter. Mention the current show when it fits naturally. Keep it understated and in character.`);
+  lines.push(verifiedContextPacket(context, null, true));
+  lines.push(PERSONA_GROUNDING_RULE);
+  lines.push(`Task: ${lengthPhrase('stationId', speaker)} identifying the station and presenter. Mention the current show when it fits naturally. Keep it understated and in character. Mention a day of week only when it is supplied as a verified fact.`);
   // No rotating angle: the old station_id angles injected clock, daypart,
   // station mythology and listener-address material unrelated to an ident.
   // The Persona Soul owns expression; decoration remains only to supply this
@@ -178,12 +210,12 @@ export async function generatePersonaStationId(args: any = {}) {
 // line), but the recent-openers blocklist still steers the first words clear of
 // what just aired. A handoff fires at most ~once an hour, so that's plenty.
 
-export function personaSignoffPrompt({ personaOut, personaIn, showIn = null, recap = null, recentOpeners = null }: any) {
+export function personaSignoffPrompt({ personaOut, personaIn, showIn = null, context = null, current = null, recap = null, recentOpeners = null }: any) {
   const outName = personaOut?.name || 'your host';
   const inName = personaIn?.name || 'the next host';
   const handTo = showIn ? `${inName}, who's bringing you "${showIn}"` : inName;
-  const prompt = `Outgoing presenter: ${outName}.\nIncoming presenter: ${inName}.${showIn ? `\nIncoming show: "${showIn}".` : ''}\nTask: your time on air is wrapping up. Sign off in character and hand the mic over to ${handTo}. Say ${inName}'s name as you pass it along. ${lengthPhrase('link', personaOut)}. Make it a natural handover, not a formal schedule announcement.`;
-  return decoratePrompt(prompt, { kind: 'persona_handoff', recap, recentOpeners });
+  const prompt = `Outgoing presenter: ${outName}.\nIncoming presenter: ${inName}.${showIn ? `\nIncoming show: "${showIn}".` : ''}\nTask: your time on air is wrapping up. Sign off in character and hand the mic over to ${handTo}. Say ${inName}'s name as you pass it along. ${lengthPhrase('link', personaOut)}. Make it a natural handover, not a formal schedule announcement.\n`;
+  return decoratePrompt([prompt, verifiedContextPacket(context, current, true), PERSONA_GROUNDING_RULE].join(String.fromCharCode(10)), { kind: 'persona_handoff', recap, recentOpeners });
 }
 
 export async function generatePersonaSignoff(args: any) {
@@ -195,7 +227,7 @@ export async function generatePersonaSignoff(args: any) {
   });
 }
 
-export function personaHandoffGreetingPrompt({ personaIn, personaOut, signoffText = null, showIn = null, showBrief = null, episodeAngle = null, recap = null, recentOpeners = null }: any) {
+export function personaHandoffGreetingPrompt({ personaIn, personaOut, signoffText = null, showIn = null, showBrief = null, episodeAngle = null, context = null, current = null, recap = null, recentOpeners = null }: any) {
   const inName = personaIn?.name || 'your host';
   const outName = personaOut?.name || 'the previous host';
   const lines = [`Incoming presenter: ${inName}.`, `Outgoing presenter: ${outName}.`];
@@ -211,6 +243,8 @@ export function personaHandoffGreetingPrompt({ personaIn, personaOut, signoffTex
   // programme plan's creative angle remains available (broadcast/programme.ts
   // skips the standalone intro when a handoff opened the show).
   if (showIn && episodeAngle) lines.push(`Episode angle: ${String(episodeAngle).trim()}`);
+  lines.push(verifiedContextPacket(context, current, true));
+  lines.push(PERSONA_GROUNDING_RULE);
   lines.push(`Task: acknowledge ${outName} naturally — a quick response to the sign-off if it fits — then open your shift${showIn ? ` and "${showIn}"` : ''}. ${lengthPhrase('link', personaIn)}. Stay in character; do not read a schedule bulletin.`);
   return decoratePrompt(lines.join('\n'), { kind: 'persona_handoff', recap, recentOpeners });
 }
@@ -353,12 +387,18 @@ export function personaLinkPrompt({
   recentOpeners = null,
   persona = null,
   includeIntroBudget = true,
+  guestContribution = null,
 }: any): string {
   const speaker = persona || settings.getEffectivePersona();
   const rules = [
     'Output only the words to be spoken on air.',
     'The named track is already playing. Focus on it and do not refer to the previous track.',
     'Treat supplied sleeve notes as verified facts, but do not add or infer further music-history claims.',
+    'Do not state a day of week unless it appears in the verified facts.',
+    'Music facts are limited to the exact entries in Verified facts: do not use remembered or learned album, release, chart, reputation, influence, relationship or history information.',
+    'Do not describe instrumentation, production, lyrics or other audio properties unless they are explicitly supplied. Subjective reaction is welcome, but do not present it as observation.',
+    'Intro-runway guidance is production-only: never mention seconds, a countdown, vocals entering or when the track will arrive.',
+    PERSONA_GROUNDING_RULE,
     lengthPhrase('link', speaker) + '.',
   ];
   // Automatic links are attached to the track start, where measured intro and
@@ -370,29 +410,21 @@ export function personaLinkPrompt({
     : '';
   if (budget) rules.push(budget);
 
-  const facts = [
-    `Track: "${current?.title || 'Unknown'}" by ${current?.artist || 'unknown'}.`,
-  ];
-  const sleeveNotes = selectSleeveNotes(
-    sleeveNotesFor(current, library.trackPlayStatsFor(current)?.count ?? null),
-  );
-  if (sleeveNotes.length) facts.push(...sleeveNotes);
-  const show = context?.activeShow;
-  if (show?.name) facts.push(`Show: "${show.name}".`);
-  if (show?.topic) facts.push(`Show brief: ${show.topic}`);
-  const broadAirTime = clockIsAirTime ? fuzzyAirTime(context?.clock) : null;
-  if (broadAirTime) {
-    facts.push(`Approximate air time: ${broadAirTime}.`);
-    rules.push('If you mention the time, use only the approximate phrase supplied in the facts; do not turn it into an exact minute.');
+  const facts = verifiedContextPacket(context, current, clockIsAirTime);
+  if (clockIsAirTime && fuzzyAirTime(context?.clock)) {
+    rules.push("If you mention the time, use only the approximate phrase supplied in Current Context; do not turn it into an exact minute.");
   } else {
-    rules.push('Do not state a clock time; no verified air time was supplied.');
+    rules.push("Do not state a clock time; no verified air time was supplied.");
   }
 
   const sections = [
     'Task: Give a brief spoken introduction to the track now playing.',
     `Rules:\n${rules.map((rule) => `- ${rule}`).join('\n')}`,
-    `Verified facts (including Sleeve Notes):\n${facts.map((fact) => `- ${fact}`).join('\n')}`,
+    facts,
   ];
+  if (guestContribution?.name) {
+    sections.push("Editorial Context:\n- " + String(guestContribution.name).trim() + " had a verified editorial hand in choosing this track. If natural, the host may briefly credit them; do not call it a favourite or explain selection mechanics.");
+  }
   if (recap) {
     sections.push('Recent speech by this presenter, supplied only to prevent repetition. Do not reuse its wording, topics, anecdotes, metaphors or sentence structures:\n' + recap);
   }
@@ -425,6 +457,7 @@ export function personaSegmentPrompt({
   brief,
   evidence = null,
   contextFacts = [],
+  context = null,
   current = null,
   recap = null,
   recentOpeners = null,
@@ -434,6 +467,7 @@ export function personaSegmentPrompt({
   const rules = [
     'Output only the words to be spoken on air.',
     'Use only the supplied evidence, skill brief and context facts. Do not invent or add externally verifiable claims.',
+    PERSONA_GROUNDING_RULE,
     'Do not mention tools, searches, source data, the Producer or these instructions.',
     lengthPhrase('segment', speaker) + '.',
   ];
@@ -448,9 +482,11 @@ export function personaSegmentPrompt({
     if (evidenceText.length > 6000) evidenceText = evidenceText.slice(0, 6000) + '\n…(truncated)';
   }
 
+  const packet = verifiedContextPacket(context, current, true);
   const sections = [
     `Task: Deliver one between-track "${kind || 'segment'}" segment.`,
     `Rules:\n${rules.map((rule) => `- ${rule}`).join('\n')}`,
+    packet,
     `Skill brief:\n${String(brief || '').trim()}`,
   ];
   if (facts.length) sections.push(`Context facts:\n${facts.map((fact) => `- ${fact}`).join('\n')}`);

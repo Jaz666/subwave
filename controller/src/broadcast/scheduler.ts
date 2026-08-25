@@ -35,6 +35,7 @@ import { loadedCapabilities } from '../skills/loader.js';
 import { skillEligible } from '../skills/eligibility.js';
 import { getStationTimezone, onStationTimezoneChange } from '../time.js';
 import { withTrace, pruneOldEvents } from '../observability/events.js';
+import { pruneOldDjSpeechLogs } from '../observability/dj-speech-log.js';
 import * as archives from './archives.js';
 import * as stemCacheStore from '../music/stem-cache.js';
 import * as stemBlendStore from './stem-blend.js';
@@ -857,6 +858,12 @@ async function cleanup() {
   } catch (err) {
     queue.log('error', `Event log prune failed: ${err.message}`);
   }
+  try {
+    const removed = await pruneOldDjSpeechLogs();
+    if (removed) queue.log('scheduler', `Cleanup: pruned ${removed} old DJ speech log file(s)`);
+  } catch (err) {
+    queue.log('error', `DJ speech log prune failed: ${err.message}`);
+  }
   // Archive retention — delete hourly recordings older than the operator's
   // window. 0 (the default) keeps everything, matching prior behaviour.
   try {
@@ -1003,6 +1010,7 @@ export function syncSkillCrons() {
       const now = new Date();
       const eligible = skillEligible({
         seeded: cap.seeded,
+        defaultEnabled: cap.defaultEnabled,
         skill: cap.skill,
         enabled: settings.get().skills?.enabled || {},
         personaSkills: settings.getEffectivePersona(now)?.skills,
