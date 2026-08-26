@@ -573,7 +573,7 @@ export function functionGemmaResearchCapabilities(caps: any[]) {
 }
 
 async function runHybridSegmentResearch(ctx, {
-  caps, freq, sfxCatalog, state, currentTrack, routerConfig,
+  caps, freq: _freq, sfxCatalog: _sfxCatalog, state, currentTrack, routerConfig,
 }) {
   let cap = changedWeatherCapability(caps, ctx, state);
   let routed;

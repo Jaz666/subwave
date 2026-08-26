@@ -179,9 +179,15 @@ export function personaStationIdPrompt({ recap = null, context = null, recentOpe
   const djName = speaker?.name || 'your host';
   const stationName = settings.get().station;
   const lines = [`Station: "${stationName}".`, `Presenter: ${djName}.`];
-  lines.push(verifiedContextPacket(context, null, true, false));
+  lines.push(verifiedContextPacket(context, null, false, false));
   lines.push(PERSONA_GROUNDING_RULE);
-  lines.push(`Task: ${lengthPhrase('stationId', speaker)} identifying the station and presenter. The Station and Presenter lines are the only identity source: repeat their names exactly, never abbreviate, substitute, rhyme, or derive an alternative station name from the time. Mention the current show when it fits naturally. Keep it understated and in character. Mention a day of week only when it is supplied as a verified fact.`);
+  const daypart = context?.clock?.spokenDaypart;
+  const clockRule = speakClockAllowed()
+    ? (daypart
+        ? ` If you nod to the clock, say only "${daypart}" — never the hour and never the minutes.`
+        : ' If you nod to the clock, name only the part of the day — never the hour and never the minutes.')
+    : '';
+  lines.push(`Task: ${lengthPhrase('stationId', speaker)} identifying the station and presenter. The Station and Presenter lines are the only identity source: repeat their names exactly, never abbreviate, substitute, rhyme, or derive an alternative station name from the time. Mention the current show when it fits naturally. Keep it understated and in character. Mention a day of week only when it is supplied as a verified fact.${clockRule}`);
   // No rotating angle: the old station_id angles injected clock, daypart,
   // station mythology and listener-address material unrelated to an ident.
   // The Persona Soul owns expression; decoration remains only to supply this
@@ -227,27 +233,25 @@ export async function generatePersonaSignoff(args: any) {
   });
 }
 
-export function personaHandoffGreetingPrompt({ personaIn, personaOut, signoffText = null, showIn = null, showBrief = null, episodeAngle = null, context = null, current = null, recap = null, recentOpeners = null }: any) {
+export function personaHandoffGreetingPrompt({ personaIn, personaOut, showIn = null, showBrief = null, episodeAngle = null, context = null, current = null, recap = null, recentOpeners = null }: any) {
   const inName = personaIn?.name || 'your host';
   const outName = personaOut?.name || 'the previous host';
   const lines = [`Incoming presenter: ${inName}.`, `Outgoing presenter: ${outName}.`];
   if (showIn) lines.push(`Current show: "${showIn}".`);
   if (showBrief) lines.push(`Show brief: ${String(showBrief).trim()}`);
-  // The predecessor's actual sign-off rides in the prompt so the greeting can
-  // genuinely respond to it ("Cheers Johnny…") rather than a generic hello.
-  if (signoffText) {
-    const clipped = String(signoffText).replace(/\s+/g, ' ').trim().slice(0, 240);
-    if (clipped) lines.push(`${outName} just signed off with: "${clipped}"`);
-  }
   // Programme shows: this greeting doubles as the episode's intro, so the
   // programme plan's creative angle remains available (broadcast/programme.ts
   // skips the standalone intro when a handoff opened the show).
   if (showIn && episodeAngle) lines.push(`Episode angle: ${String(episodeAngle).trim()}`);
   lines.push(verifiedContextPacket(context, current, true));
   lines.push(PERSONA_GROUNDING_RULE);
-  lines.push(`Task: acknowledge ${outName} naturally — a quick response to the sign-off if it fits — then open your shift${showIn ? ` and "${showIn}"` : ''}. ${lengthPhrase('link', personaIn)}. Stay in character; do not read a schedule bulletin. No upcoming track is supplied: do not name, introduce, promise or imply one.`);
+  lines.push(`Task: you're taking over the mic from ${outName}. Acknowledge them naturally by name, then open your shift${showIn ? ` and "${showIn}"` : ''}. ${lengthPhrase('link', personaIn)}. Stay in character; do not read a schedule bulletin. No upcoming track is supplied: do not name, introduce, promise or imply one.`);
   return decoratePrompt(lines.join('\n'), { kind: 'persona_handoff', recap, recentOpeners });
 }
+
+// Kept as the boundary test's explicit public seam. The Producer-specific
+// spelling above makes the delivery role clear at its live call sites.
+export const handoffGreetingPrompt = personaHandoffGreetingPrompt;
 
 export async function generatePersonaHandoffGreeting(args: any) {
   return djText({

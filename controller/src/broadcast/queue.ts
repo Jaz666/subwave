@@ -337,14 +337,14 @@ class Queue {
   // null when nothing relevant has aired. Wider window catches slow-firing
   // kinds (hourly, station ID) so the DJ doesn't echo something it said
   // an hour ago.
-  getDjRecap({ limit = 10, withinMinutes = 120, maxChars = 140, personaId = null }: { limit?: number; withinMinutes?: number; maxChars?: number; personaId?: string | null } = {}) {
+  getDjRecap({ limit = 10, withinMinutes = 120, maxChars = 140, prior = false }: { limit?: number; withinMinutes?: number; maxChars?: number; prior?: boolean; personaId?: string | null } = {}) {
     const cutoff = Date.now() - withinMinutes * 60_000;
     const seenDedupe = new Set<string>();
-    const picked: DjLogEntry[] = [];
-    for (const entry of this.djLog) {
+    const picked: ReturnType<typeof session.promptMemory>[number][] = [];
+    const entries = prior ? session.priorPromptMemory() : session.promptMemory();
+    for (const entry of entries) {
       if (!VOICE_KINDS.has(entry.kind)) continue;
       if (new Date(entry.t).getTime() < cutoff) break;
-      if (personaId && entry.meta?.personaId !== personaId) continue;
       if (DEDUPE_KINDS.has(entry.kind)) {
         if (seenDedupe.has(entry.kind)) continue;
         seenDedupe.add(entry.kind);
@@ -389,12 +389,14 @@ class Queue {
   // First ~5 words of recent DJ utterances — fed to the prompt as an
   // explicit "don't open with any of these" list. Catches repeated openers
   // that the recap text alone glosses over.
-  getRecentOpeners(n = 6, personaId: string | null = null) {
+  getRecentOpeners(n = 6, options: string | null | { prior?: boolean; personaId?: string | null } = null) {
+    const { prior = false } = typeof options === 'string'
+      ? {}
+      : (options || {});
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const entry of this.djLog) {
+    for (const entry of prior ? session.priorPromptMemory() : session.promptMemory()) {
       if (!VOICE_KINDS.has(entry.kind)) continue;
-      if (personaId && entry.meta?.personaId !== personaId) continue;
       const msg = (entry.message || '').replace(/^["'\s]+/, '').replace(/\s+/g, ' ').trim();
       if (!msg) continue;
       const opener = msg.split(/\s+/).slice(0, 5).join(' ');

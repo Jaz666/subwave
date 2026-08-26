@@ -30,6 +30,7 @@ import { shouldFire } from './dj-gate.js';
 import { banterTickPlan, banterCronExpression } from './banter-policy.js';
 import { djCallsAllowed } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
+import { speakClockAllowed, stationIdDaypartStamp } from './clock-policy.js';
 import { optionalSegmentsAllowed } from './dj-budget.js';
 import { agenticTick, skillCatalog, runCapability } from '../skills/_agent.js';
 import { loadedCapabilities } from '../skills/loader.js';
@@ -819,14 +820,16 @@ export async function runStationId({ atNextTrack = false } = {}) {
   return withTrace({ kind: 'station-id' }, async () => {
     const ctx = await getFullContext();
     const speaker = settings.pickOnAirSpeaker();
-    const personaId = speaker?.id || null;
+    const daypart = atNextTrack
+      ? stationIdDaypartStamp(ctx.clock?.spokenDaypart, speakClockAllowed())
+      : null;
     const script = await dj.generatePersonaStationId({
-      recap: queue.getDjRecap({ personaId }),
+      recap: queue.getDjRecap(),
       context: ctx,
-      recentOpeners: queue.getRecentOpeners(6, personaId),
+      recentOpeners: queue.getRecentOpeners(),
       persona: speaker,
     });
-    const opts = { persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name } };
+    const opts = { persona: speaker, daypart, meta: { personaId: speaker?.id, personaName: speaker?.name } };
     if (atNextTrack) await queue.announceAtNextTrack(script, 'station-id', opts);
     else await queue.announce(script, 'station-id', opts);
     return script;
