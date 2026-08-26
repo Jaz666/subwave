@@ -120,3 +120,31 @@ Context Builder puts the sleeve notes on the desk.
 Persona presents it on air.
 
 And if FunctionGemma later replaces Qwen for routine selection, nothing else has to change.
+
+## Future exploration: durable verified-facts catalogue
+
+Keep this out of the track-selection path. A future `facts.db` should be a
+small companion SQLite database keyed by local Navidrome track IDs with stable
+MusicBrainz identities where available. Store atomic claims, not DJ prose:
+subject, claim type/value, provenance, retrieval time, review status and
+last-use state. Persona receives only a compact selection of approved claims;
+source mechanics and research reasoning remain backstage.
+
+Research should run as low-priority idle work after a track has reached air
+and all pick, delivery, TTS and handoff work has settled. It must yield to
+queue-runway work, deduplicate subject/claim lookups, obey network and daily
+budgets, and never delay selection or speech. Its value is for a later play of
+the same track, release or artist.
+
+SecondHandSongs is a prospective specialist adapter for exact cover/original
+relationships and possibly explicit sample relationships. Do not automate
+retrieval or storage until its API-data licence has been approved. A claim
+needs a matched performance identity plus the explicit related original/sample
+performance; ambiguous artist/title matches remain `needs-review`.
+
+Wikipedia and Wikidata are discovery/identity aids, not a sole authority for
+listener-facing claims. Follow their cited sources and validate an appropriate
+primary or specialist source before promotion. Do not store Wikipedia prose.
+Discogs is currently a manual investigation source only: its release detail
+does not add enough beyond the existing MusicBrainz path to justify a
+background adapter.
