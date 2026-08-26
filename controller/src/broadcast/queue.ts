@@ -33,6 +33,7 @@ import * as beds from './beds.js';
 import * as bedPolicy from './bed-policy.js';
 import * as session from './session.js';
 import type { TurnMeta } from './session.js';
+import type { PromptMemoryEntry } from './prompt-memory.js';
 import { getFullContext, getClockContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
 import { logEvent } from '../observability/events.js';
@@ -70,6 +71,7 @@ import {
   EMPTY_DJ_QUEUE_CLEAR_THRESHOLD,
   PICK_SHOW_LOOKAHEAD_SEC,
   boundaryCarriesTrackVoice,
+  exchangeSegment,
   formatAgo,
   knownDurationSec,
   linkClockDrifted,
@@ -335,11 +337,13 @@ class Queue {
   // null when nothing relevant has aired. Wider window catches slow-firing
   // kinds (hourly, station ID) so the DJ doesn't echo something it said
   // an hour ago.
-  getDjRecap({ limit = 10, withinMinutes = 120, maxChars = 140 } = {}) {
+  // `prior` reads the session a hard roll just archived instead of the live one
+  // — the mic-pass sign-off is the single caller (session.priorPromptMemory).
+  getDjRecap({ limit = 10, withinMinutes = 120, maxChars = 140, prior = false } = {}) {
     const cutoff = Date.now() - withinMinutes * 60_000;
     const seenDedupe = new Set<string>();
-    const picked: DjLogEntry[] = [];
-    for (const entry of this.djLog) {
+    const picked: PromptMemoryEntry[] = [];
+    for (const entry of prior ? session.priorPromptMemory() : session.promptMemory()) {
       if (!VOICE_KINDS.has(entry.kind)) continue;
       if (new Date(entry.t).getTime() < cutoff) break;
       if (DEDUPE_KINDS.has(entry.kind)) {
@@ -386,10 +390,10 @@ class Queue {
   // First ~5 words of recent DJ utterances — fed to the prompt as an
   // explicit "don't open with any of these" list. Catches repeated openers
   // that the recap text alone glosses over.
-  getRecentOpeners(n = 6) {
+  getRecentOpeners(n = 6, { prior = false } = {}) {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const entry of this.djLog) {
+    for (const entry of prior ? session.priorPromptMemory() : session.promptMemory()) {
       if (!VOICE_KINDS.has(entry.kind)) continue;
       const msg = (entry.message || '').replace(/^["'\s]+/, '').replace(/\s+/g, ' ').trim();
       if (!msg) continue;
@@ -1538,18 +1542,7 @@ class Queue {
     }
     for (const l of rendered) {
       try {
-        const seg: SegmentDesc = {
-          kind,
-          channel: 'say',
-          text: l.text,
-          persona: l.persona,
-          logText: `${l.persona?.name ? `${l.persona.name}: ` : ''}${l.text}`,
-          meta: { personaId: l.persona?.id, personaName: l.persona?.name },
-          // The aggregate dj.say below covers the legacy channel for the whole
-          // exchange; voice.start/voice.end still fire per line, because each
-          // line is its own real speech window.
-          legacy: false,
-        };
+        const seg: SegmentDesc = exchangeSegment(l, kind);
         const handoff = await airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
           onQueued: q => this.onQueued(q, seg),
         });
