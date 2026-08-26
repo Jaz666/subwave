@@ -4,7 +4,7 @@ import { FUNCTIONGEMMA_VALIDATION_SCENARIOS } from './functiongemma/fixtures.js'
 import { scorePrediction } from './functiongemma/score.js';
 import { generateTrainingExamples, validateTrainingSets } from './functiongemma/training-data.js';
 
-test('V4 data targets the closed tracksByMood schema and programme planning', () => {
+test('V4 data targets the closed tracksByMood schema and live-shaped autonomous routing', () => {
   const train = generateTrainingExamples('train', 240);
   const development = generateTrainingExamples('development', 80);
   const validated = validateTrainingSets(train, development);
@@ -14,7 +14,7 @@ test('V4 data targets the closed tracksByMood schema and programme planning', ()
   assert.ok(validated.families['route.genre-vs-mood-regression'] > 0);
   assert.ok(validated.families['recover.recover-journey-mood-vocabulary'] > 0);
   assert.ok(validated.families['recover.recover-journey-genre-boundary'] > 0);
-  assert.ok(validated.families['route.programme-plan'] > 0);
+  assert.ok(validated.families['route.segment-autonomous-offered'] > 0);
 
   const moodCalls = [...train, ...development].flatMap(example => example.messages)
     .flatMap(message => message.tool_calls ?? [])
@@ -26,13 +26,13 @@ test('V4 data targets the closed tracksByMood schema and programme planning', ()
   }
 });
 
-test('V4 acceptance rejects malformed mood arguments and accepts programme planning', () => {
+test('V4 acceptance rejects malformed, invented and incomplete autonomous calls', () => {
   const mood = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.mood-live-schema');
   const genre = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.genre-exact-electro');
-  const programme = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'programme.route.generate-plan');
+  const autonomous = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'segment.route.autonomous-v2-only');
   assert.ok(mood);
   assert.ok(genre);
-  assert.ok(programme);
+  assert.ok(autonomous);
 
   const malformed = scorePrediction(mood, {
     scenario: mood.id,
@@ -47,11 +47,21 @@ test('V4 acceptance rejects malformed mood arguments and accepts programme plann
   });
   assert.equal(exactGenre.passed, true);
 
-  const accepted = scorePrediction(programme, {
-    scenario: programme.id,
-    calls: [{ name: 'generateProgrammePlan', arguments: {} }],
+  const invented = scorePrediction(autonomous, {
+    scenario: autonomous.id,
+    calls: [{ name: 'skill_moment', arguments: {} }],
+    callsPerRound: [1],
   });
-  assert.equal(accepted.passed, true);
+  assert.equal(invented.dimensions.protocol?.passed, false);
+  assert.match(invented.dimensions.protocol?.violations.join('\n') ?? '', /unoffered-tool:skill_moment/);
+
+  const incomplete = scorePrediction(autonomous, {
+    scenario: autonomous.id,
+    calls: [],
+    callsPerRound: [0],
+  });
+  assert.equal(incomplete.dimensions.protocol?.passed, false);
+  assert.match(incomplete.dimensions.protocol?.violations.join('\n') ?? '', /no-tool-call/);
 });
 
 test('V4 corrective matrix keeps genre copying separate from valid mood recovery', () => {

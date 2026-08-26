@@ -85,8 +85,6 @@ const contracts: Record<string, ToolContract> = {
   skill_now_playing_dig_v2: noArgs('skill_now_playing_dig_v2'),
   skill_weather_v2: noArgs('skill_weather_v2'),
   skill_web_search_v2: { name: 'skill_web_search_v2', required: ['query'], enums: { query: [null] } },
-  // A bounded backstage request with no model-supplied arguments.
-  generateProgrammePlan: noArgs('generateProgrammePlan'),
 };
 
 const routeFamilies = [
@@ -121,9 +119,11 @@ const routeFamilies = [
   'segment-anniversary',
   'segment-curiosity',
   'segment-library-deep-cut',
-  'programme-plan',
+  // Live-shaped autonomous router coverage: V2-only, vanilla-only and mixed
+  // offered research vocabularies. The model must emit one complete offered
+  // call; this family covers the live `skill_moment` invention failure.
+  'segment-autonomous-offered', 'segment-autonomous-offered', 'segment-autonomous-offered',
 ] as const;
-
 const recoveryFamilies = [
   'recover-semantic-to-mood',
   'recover-semantic-to-genre',
@@ -422,27 +422,43 @@ function routeExample(family: typeof routeFamilies[number], context: ExampleCont
       tools = [target, `skill_news${suffix}`, `skill_weather${suffix}`, `skill_album_anniversary${suffix}`];
       break;
     }
+    case 'segment-autonomous-offered': {
+      const variant = context.index % 3;
+      prompt = [
+        'Operational moment:',
+        'Day: Tuesday. Broad air-time: evening.',
+        `Track on air: "${title}" by ${artist}`,
+        'Recent segment kinds already aired:',
+        `- skill_weather_v2 (${45 + context.index}m ago)`,
+        '',
+        'Choose exactly one offered research function. Do not decide airtime or write the line.',
+      ].join('\n');
+      if (variant === 0) {
+        target = 'skill_news_v2';
+        tools = ['skill_news_v2', 'skill_curiosity_v2', 'skill_now_playing_dig_v2'];
+      } else if (variant === 1) {
+        target = 'skill_news';
+        tools = ['skill_news', 'skill_curiosity', 'skill_now_playing_dig'];
+      } else {
+        target = 'skill_now_playing_dig_v2';
+        tools = ['skill_now_playing_dig_v2', 'skill_news', 'skill_curiosity_v2'];
+      }
+      break;
+    }
     case 'segment-library-deep-cut':
       prompt = 'Choose one research function for a between-track segment. Find a long-unplayed library track by the artist currently on air.';
       target = 'skill_library_deep_cut';
       tools = [target, 'skill_now_playing_dig', 'skill_web_search', 'skill_news'];
       break;
-    case 'programme-plan':
-      prompt = pick([
-        'The programme is beginning. Generate the backstage episode plan before any on-air writing or music selection.',
-        'Prepare today\'s Producer-only running plan for this one-hour show. This is a programme-planning decision, not a listener-facing script.',
-        'Choose the operational function that creates the current show\'s episode plan, including its opening, feature shape and sign-off direction.',
-      ], context.random);
-      target = 'generateProgrammePlan';
-      tools = ['generateProgrammePlan', 'skill_news_v2', 'randomSongs'];
-      break;
   }
 
-  prompt = productionPrompt(
-    prompt,
-    family === 'random-fallback' ? null : { id: seed, title, artist },
-    context,
-  );
+  if (family !== 'segment-autonomous-offered') {
+    prompt = productionPrompt(
+      prompt,
+      family === 'random-fallback' ? null : { id: seed, title, artist },
+      context,
+    );
+  }
 
   return {
     id: `${context.split}.route.${family}.${context.index}`,
@@ -633,8 +649,9 @@ export function validateTrainingSets(
     const user = example.messages.find(message => message.role === 'user')?.content;
     if (typeof user !== 'string') violations.push(`${example.id}: missing user prompt`);
     if (typeof user === 'string' && validationPrompts.has(user)) violations.push(`${example.id}: copied validation prompt`);
+    const isAutonomousRouterExample = example.family === 'route.segment-autonomous-offered';
     let currentTrackId: string | undefined;
-    if (typeof user === 'string') {
+    if (typeof user === 'string' && !isAutonomousRouterExample) {
       const jsonStart = user.indexOf('\n\n{');
       try {
         const context = JSON.parse(user.slice(jsonStart + 2));
@@ -643,7 +660,11 @@ export function validateTrainingSets(
         violations.push(`${example.id}: malformed production context`);
       }
     }
-    if (example.family === 'route.random-fallback' && currentTrackId == null) {
+    if (isAutonomousRouterExample) {
+      if (typeof user !== 'string' || !user.startsWith('Operational moment:\n') || !user.includes('Choose exactly one offered research function.')) {
+        violations.push(`${example.id}: missing live-shaped autonomous router prompt`);
+      }
+    } else if (example.family === 'route.random-fallback' && currentTrackId == null) {
       // This mirrors the live no-seed path.
     } else if (typeof currentTrackId !== 'string' || !/^[A-Za-z0-9]{22}$/.test(currentTrackId)) {
       violations.push(`${example.id}: current track id is not production-shaped`);

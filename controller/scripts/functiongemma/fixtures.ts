@@ -41,7 +41,6 @@ const tracksByEnergy: ToolContract = {
   enums: { energy: ['low', 'medium', 'high'] },
 };
 
-const programmePlan = noArgs('generateProgrammePlan');
 
 const songsByGenre: ToolContract = {
   name: 'songsByGenre',
@@ -236,17 +235,31 @@ export const FUNCTIONGEMMA_VALIDATION_SCENARIOS: readonly FunctionGemmaScenario[
     route: { firstCallOneOf: ['tracksByMood'], arguments: { mood: 'calm', energy: 'low' } },
   },
   {
-    id: 'programme.route.generate-plan',
+    id: 'segment.route.autonomous-v2-only',
     stage: 'route',
     split: 'validation',
-    description: 'Programme planning is a bounded Producer operation, separate from selection and speech.',
-    prompt: productionPrompt(
-      'The one-hour show is starting. Create its backstage episode plan before any music discovery or listener-facing writing.',
-      null,
-      { name: 'Late Shift', topic: 'Warm nocturnal discoveries.', genres: ['Ambient'], moods: ['night'], energies: ['low'], eras: [], filtersStrict: false, playlistStrict: false },
-    ),
-    tools: [programmePlan, noArgs('randomSongs'), segmentTool('skill_news_v2')],
-    route: { firstCallOneOf: ['generateProgrammePlan'] },
+    description: 'The live autonomous prompt must choose one complete call from a V2-only offered set.',
+    prompt: 'Operational moment:\nDay: Tuesday. Broad air-time: evening.\nTrack on air: "Moon Signal" by Night Service\nRecent segment kinds already aired:\n- skill_weather_v2 (45m ago)\n\nChoose exactly one offered research function. Do not decide airtime or write the line.',
+    tools: [segmentTool('skill_news_v2'), segmentTool('skill_curiosity_v2'), segmentTool('skill_now_playing_dig_v2')],
+    route: { firstCallOneOf: ['skill_news_v2'] },
+  },
+  {
+    id: 'segment.route.autonomous-vanilla-only',
+    stage: 'route',
+    split: 'validation',
+    description: 'The same autonomous shape must work with the vanilla research vocabulary.',
+    prompt: 'Operational moment:\nDay: Tuesday. Broad air-time: evening.\nTrack on air: "Moon Signal" by Night Service\nRecent segment kinds already aired:\n- skill_weather (45m ago)\n\nChoose exactly one offered research function. Do not decide airtime or write the line.',
+    tools: [segmentTool('skill_news'), segmentTool('skill_curiosity'), segmentTool('skill_now_playing_dig')],
+    route: { firstCallOneOf: ['skill_news'] },
+  },
+  {
+    id: 'segment.route.autonomous-mixed',
+    stage: 'route',
+    split: 'validation',
+    description: 'A mixed live offered set must still choose the specialist exact-track researcher.',
+    prompt: 'Operational moment:\nDay: Tuesday. Broad air-time: evening.\nTrack on air: "Moon Signal" by Night Service\n\nChoose exactly one offered research function. Do not decide airtime or write the line.',
+    tools: [segmentTool('skill_now_playing_dig_v2'), segmentTool('skill_news'), segmentTool('skill_curiosity_v2')],
+    route: { firstCallOneOf: ['skill_now_playing_dig_v2'] },
   },
   {
     id: 'segment.route.exact-track-fact',
