@@ -1,9 +1,9 @@
-// Programme kinds — the Creative plan (structured), the three solo beat
+// Programme kinds — the producer plan (structured), the three solo beat
 // scripts (free text), and the multi-voice open/close exchanges.
 
 import type { KindSpec } from './types.js';
 import {
-  generateCreativeProgrammePlan, generateProgrammeIntro, generateProgrammeOutro,
+  generateProgrammePlan, generateProgrammeIntro, generateProgrammeOutro,
   generateProgrammeFeature, generateProgrammeExchange,
 } from '../../../src/llm/dj.js';
 import { checkSpokenLine } from '../rules.js';
@@ -13,9 +13,9 @@ const SKILL_MENU = [
   { kind: 'weather', desc: 'A short weather check, in character.' },
   { kind: 'news', desc: 'One story from the feed worth a listener\'s attention.' },
 ];
-const FEATURE_KINDS = new Set(SKILL_MENU.map(k => k.kind));
+const MENU_KINDS = new Set(SKILL_MENU.map(k => k.kind));
 
-// A fixed plan so the beat scripts get realistic episode notes without
+// A fixed plan so the beat scripts get realistic producer notes without
 // depending on a live plan call earlier in the run.
 const PLAN = {
   angle: 'Dusk slows things down — small confessions from the hard shoulder and the soundtracks that make lonely miles feel less lonely.',
@@ -31,7 +31,7 @@ function checkPlan(spanHours: number) {
     if (!Array.isArray(feats) || feats.length !== spanHours) v.push('feature-count-mismatch');
     for (const f of feats || []) {
       if (!String(f?.topic || '').trim()) v.push('empty-feature-topic');
-      if (f?.kind != null && !FEATURE_KINDS.has(f.kind)) v.push('unoffered-feature-kind');
+      if (f?.kind != null && !MENU_KINDS.has(f.kind)) v.push('unoffered-feature-kind');
     }
     if (!String(out?.angle || '').trim()) v.push('empty-angle');
     return v;
@@ -48,18 +48,18 @@ function checkExchange(lines: any): string[] {
 
 export const specs: KindSpec[] = [
   {
-    kind: 'generateCreativeProgrammePlan',
+    kind: 'generateProgrammePlan',
     group: 'programme',
     mode: 'any',
     scenarios: [
       {
         name: '2-hour-show',
-        run: () => generateCreativeProgrammePlan({ show: SHOW, spanHours: 2, host: HOST, guests: GUESTS, context: benchContext(), featureKinds: ["weather", "news", "weather"] }),
+        run: () => generateProgrammePlan({ show: SHOW, spanHours: 2, host: HOST, guests: GUESTS, context: benchContext(), skillKinds: SKILL_MENU }),
         check: checkPlan(2),
       },
       {
         name: '3-hour-show',
-        run: () => generateCreativeProgrammePlan({ show: SHOW, spanHours: 3, host: HOST, guests: GUESTS, context: benchContext(), featureKinds: ["weather", "news", "weather"] }),
+        run: () => generateProgrammePlan({ show: SHOW, spanHours: 3, host: HOST, guests: GUESTS, context: benchContext(), skillKinds: SKILL_MENU }),
         check: checkPlan(3),
       },
     ],

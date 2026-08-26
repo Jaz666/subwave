@@ -45,7 +45,7 @@ process.env.STATE_DIR = root;
 const settings = await import('../src/settings.js');
 const {
   PROGRAMME_GROUNDING_RULE,
-  featureScheduleClause,
+  featureKindsClause,
   featureTask,
   introTask,
   outroTask,
@@ -128,24 +128,32 @@ try {
   assert.match(feature, /what Butch Vig actually changed/, 'feature carries its topic');
   assert.match(feature, /the year the underground went loud/, "feature carries the episode's angle");
 
-  // ── Plan side: controller-owned delivery schedule ─────────────────────────
-  const schedule = featureScheduleClause(['web-search', null]);
-  assert.match(schedule, /controller has fixed/i, 'the controller, not the creative model, owns the schedule');
+  // ── Plan side: what `kind: null` is FOR ──────────────────────────────────
+  const menu = featureKindsClause(
+    [{ kind: 'web-search', desc: 'Search the web for something worth saying.' }],
+    null,
+  );
+  assert.match(menu, /- web-search:/, 'menu branch still lists the offered capabilities');
   assert.match(
-    schedule,
-    /approved evidence capability "web-search"/i,
-    'the supplied capability is a fixed operational result, not a menu choice',
+    menu,
+    /must name a capability/i,
+    'a facts-needing feature is steered onto a data capability',
   );
   assert.match(
-    schedule,
-    /straight talk from the standing brief only/i,
-    'straight talk is explicitly constrained to the standing brief',
+    menu,
+    /null only for a topic the host can honestly carry/i,
+    'null is scoped to topics the host can carry from the brief alone',
   );
-  assert.match(schedule, /Do not change this schedule/i, 'creative planning cannot select a different capability');
 
-  const none = featureScheduleClause([null]);
-  assert.match(none, /straight-talk delivery/i);
-  assert.match(none, /do not rely on unstated facts/i);
+  // The other two branches offer the producer no choice, so they take no
+  // advice — pinned so the nudge cannot leak into a prompt where it is noise.
+  const pinned = featureKindsClause([{ kind: 'news', desc: 'Headlines.' }], 'news');
+  assert.match(pinned, /Every feature segment is built with the "news" capability/);
+  assert.ok(!pinned.includes('must name a capability'), 'pinned branch takes no null advice');
+
+  const none = featureKindsClause([], null);
+  assert.match(none, /No data capabilities are available/);
+  assert.ok(!none.includes('must name a capability'), 'no-capability branch takes no null advice');
 
   console.log('programme-grounding: OK');
 } finally {

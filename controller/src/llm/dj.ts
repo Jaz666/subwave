@@ -37,7 +37,7 @@ export {
 export { sleeveNotesFor } from './internal/prompts/sleeve-notes.js';
 export { generateBanter } from './internal/prompts/banter.js';
 export {
-  generateCreativeProgrammePlan,
+  generateProgrammePlan,
   generateProgrammeIntro,
   generateProgrammeOutro,
   generateProgrammeFeature,

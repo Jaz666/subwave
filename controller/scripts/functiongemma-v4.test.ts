@@ -4,7 +4,7 @@ import { FUNCTIONGEMMA_VALIDATION_SCENARIOS } from './functiongemma/fixtures.js'
 import { scorePrediction } from './functiongemma/score.js';
 import { generateTrainingExamples, validateTrainingSets } from './functiongemma/training-data.js';
 
-test('V4 data targets the closed tracksByMood schema without creative Programme planning', () => {
+test('V4 data targets the closed tracksByMood schema and programme planning', () => {
   const train = generateTrainingExamples('train', 240);
   const development = generateTrainingExamples('development', 80);
   const validated = validateTrainingSets(train, development);
@@ -14,6 +14,7 @@ test('V4 data targets the closed tracksByMood schema without creative Programme 
   assert.ok(validated.families['route.genre-vs-mood-regression'] > 0);
   assert.ok(validated.families['recover.recover-journey-mood-vocabulary'] > 0);
   assert.ok(validated.families['recover.recover-journey-genre-boundary'] > 0);
+  assert.ok(validated.families['route.programme-plan'] > 0);
 
   const moodCalls = [...train, ...development].flatMap(example => example.messages)
     .flatMap(message => message.tool_calls ?? [])
@@ -25,11 +26,13 @@ test('V4 data targets the closed tracksByMood schema without creative Programme 
   }
 });
 
-test('V4 acceptance rejects malformed mood arguments and accepts exact genre routing', () => {
+test('V4 acceptance rejects malformed mood arguments and accepts programme planning', () => {
   const mood = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.mood-live-schema');
   const genre = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.genre-exact-electro');
+  const programme = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'programme.route.generate-plan');
   assert.ok(mood);
   assert.ok(genre);
+  assert.ok(programme);
 
   const malformed = scorePrediction(mood, {
     scenario: mood.id,
@@ -43,7 +46,14 @@ test('V4 acceptance rejects malformed mood arguments and accepts exact genre rou
     calls: [{ name: 'songsByGenre', arguments: { genre: 'electro' } }],
   });
   assert.equal(exactGenre.passed, true);
+
+  const accepted = scorePrediction(programme, {
+    scenario: programme.id,
+    calls: [{ name: 'generateProgrammePlan', arguments: {} }],
+  });
+  assert.equal(accepted.passed, true);
 });
+
 test('V4 corrective matrix keeps genre copying separate from valid mood recovery', () => {
   const genre = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.genre-not-station-mood');
   const journey = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'recover.empty-journey-waypoint');

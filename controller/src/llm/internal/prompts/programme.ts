@@ -1,7 +1,7 @@
-// Programme prompts — Creative planning and delivery behind broadcast/programme.ts.
+// Programme prompts — the "producer" layer behind broadcast/programme.ts.
 //
 // A programme show airs as a produced episode: intro → music → feature →
-// music → outro. One structured call at session start (generateCreativeProgrammePlan)
+// music → outro. One structured call at session start (generateProgrammePlan)
 // turns the show's topic brief + the moment into an episode plan; the beat
 // scripts below all reference that plan, which is what makes the hour read as
 // one produced sequence instead of three unrelated talk breaks. When the plan
@@ -22,7 +22,7 @@ import { clipText } from '../core/pure.js';
 const PROGRAMME_CONTEXT_FIELDS = ['date', 'clock', 'time', 'festival', 'listeners'];
 
 // A plan is bounded: one feature per scheduled hour, capped so a marathon
-// scheduling mistake can't make the Creative planner write a 24-item rundown.
+// scheduling mistake can't make the producer write a 24-item rundown.
 const MAX_FEATURES = 8;
 
 // The grounding rule every programme beat carries (issue #1301).
@@ -51,12 +51,12 @@ export const PROGRAMME_GROUNDING_RULE =
   'You are talking ABOUT music, not introducing it: never describe a track as playing now, starting, coming up, or just heard. Nothing you name is on the station\'s playout — a listener is hearing something else while you speak, so any "here it comes" framing is simply wrong. Naming a record, artist or credit is fine when you are certain of it; when you are not, describe the sound, the scene or the era instead of reaching for a title.';
 
 // ---------------------------------------------------------------------------
-// CREATIVE EPISODE PLAN — one djObject call per episode
+// PRODUCER PLAN — one djObject call per episode
 // ---------------------------------------------------------------------------
 
 // Character caps for the plan's free-text fields. Kept as data so the wire
 // schema (the plain z.object below) and the pre-validation clip stay in sync.
-// The Creative planner writes at temperature 0.9, and a "one sentence" angle routinely
+// The producer writes at temperature 0.9, and a "one sentence" angle routinely
 // lands a handful of chars over its cap — that overflow must NOT throw away the
 // whole plan and drop the episode to brief-only fallback (a 207-char angle vs
 // the 200 cap did exactly that). So the caps stay advertised to the model but
@@ -92,28 +92,61 @@ export const planSchema = (maxFeatures: number) => z.preprocess(clipPlanText, z.
     .describe('what the opening establishes and teases (including a nod to the feature) — a note to the host, not the spoken line itself'),
   features: z.array(z.object({
     topic: z.string().min(1).max(TOPIC_MAX)
-      .describe('the creative focus for this feature segment — specific to the standing brief, but not an unsupported factual claim'),
+      .describe('what this feature segment covers — concrete and specific, not a category'),
+    kind: z.string().nullable()
+      .describe('the segment capability kind to build it with, from the kinds offered in the prompt — or null to let the host talk it straight'),
   })).min(1).max(maxFeatures)
     .describe('one feature segment per scheduled hour of the show, in air order'),
   outroNote: z.string().min(1).max(NOTE_MAX)
     .describe('how the sign-off wraps the episode — call back to the angle or the feature; a note to the host'),
 }));
 
-// The controller owns operational choices, including whether each feature has
-// an evidence capability behind it. The Creative model receives this fixed
-// schedule as a constraint, never as a menu it can select from.
-export function featureScheduleClause(featureKinds: Array<string | null> = []): string {
-  if (!featureKinds.length || featureKinds.every((kind) => !kind)) {
-    return 'The controller has assigned straight-talk delivery for every feature. Keep each focus within the standing brief and supplied moment; do not rely on unstated facts.';
-  }
-  return `The controller has fixed the feature delivery schedule (in air order):\n${featureKinds.map((kind, index) =>
-    `- Feature ${index + 1}: ${kind ? `approved evidence capability "${kind}"` : 'straight talk from the standing brief only'}`,
-  ).join('\n')}\nDo not change this schedule, name another capability, or treat a capability as evidence. Write only a creative focus; the controller will obtain and validate any facts separately.`;
+// The producer only picks WHICH capability builds each feature; the full
+// SKILL.md brief is applied by the segment director when the beat actually
+// runs. Offering whole briefs here made the menu the bulk of the plan prompt
+// (a dozen kinds × multi-sentence briefs), enough to sink small local models
+// on the structured call — so each kind gets one line: its first sentence,
+// word-capped.
+const MENU_DESC_MAX = 160;
+function menuDesc(text: string): string {
+  const flat = String(text || '').replace(/\s+/g, ' ').trim();
+  const sentence = (flat.match(/^.*?[.!?](?=\s|$)/) || [flat])[0];
+  if (sentence.length <= MENU_DESC_MAX) return sentence;
+  return `${sentence.slice(0, MENU_DESC_MAX).replace(/\s+\S*$/, '')}…`;
 }
 
-export async function generateCreativeProgrammePlan({
+// How the producer is told to fill each feature's `kind`. Exported pure so the
+// grounding test can pin the null-choice guidance without a model call.
+//
+// `kind: null` is a legitimate plan choice (straight talk from the host), not
+// an error state — but it is also the ONLY path with no data behind it, which
+// is where #1301's fabricated cue came from. So the menu branch says what null
+// is FOR: topics the host can carry from the brief alone. This lowers how often
+// the ungrounded beat fires; PROGRAMME_GROUNDING_RULE is the actual guard when
+// it does, since the beat is also reachable by a capability throwing at air
+// time (broadcast/programme.ts runFeature), which no plan wording can prevent.
+//
+// The pinned and no-capability branches take no such advice: neither offers the
+// producer a choice to steer.
+export function featureKindsClause(skillKinds: { kind: string; desc: string }[] = [], pinnedKind: string | null = null): string {
+  if (pinnedKind) {
+    return `Every feature segment is built with the "${pinnedKind}" capability — write each feature topic as a brief for it.`;
+  }
+  if (!skillKinds.length) {
+    return 'No data capabilities are available — set every feature "kind" to null (straight talk from the host).';
+  }
+  return `Feature segments may be built with one of these capabilities (set "kind", or null for straight talk):\n${
+    skillKinds.map((k) => `- ${k.kind}: ${menuDesc(k.desc)}`).join('\n')
+  }\nA feature whose topic needs specific facts — dates, credits, releases, news, anything the host would otherwise have to recall — must name a capability. Leave "kind" null only for a topic the host can honestly carry from the brief and the moment alone.`;
+}
+
+// `skillKinds` is the capability menu the plan may build features from
+// (already filtered to enabled + host-owned + ready by the caller). When the
+// show pins `segmentSkill`, the caller passes just that one and the plan is
+// told every feature uses it.
+export async function generateProgrammePlan({
   show, spanHours = 1, host = null, guests = [], context = null,
-  previousAngle = null, featureKinds = [],
+  previousAngle = null, skillKinds = [], pinnedKind = null,
 }: any) {
   const featureCount = Math.max(1, Math.min(MAX_FEATURES, spanHours));
   const ctxLines = buildContextLines(context, { contextFields: PROGRAMME_CONTEXT_FIELDS });
@@ -122,36 +155,31 @@ export async function generateCreativeProgrammePlan({
     ...(guests || []).map((g: any) => `Guest co-host: ${g.name}`),
   ].join('\n');
 
-  const scheduleClause = featureScheduleClause(featureKinds);
+  const kindsClause = featureKindsClause(skillKinds, pinnedKind);
 
-  const system = `You are the creative editorial partner for a radio programme on a personal internet radio station. Given the show's standing brief and the moment, shape today's episode: its angle, what the opening establishes, one feature focus per hour, and how the sign-off wraps. These are compact host notes, not spoken copy and not research. Keep every focus grounded in the supplied brief and moment; never invent listener messages, callers, events, music facts, dates, credits, releases or news. Vary the angle from episode to episode.`;
+  const system = `You are the producer of a radio programme on a personal internet radio station. Given the show's standing brief and the moment, write today's episode plan: the angle this airing takes, what the opening establishes, one feature segment per hour, and how the sign-off wraps. Notes are for the host — concrete, specific, grounded in the brief. Never invent listener messages, callers, or events. Vary the angle from episode to episode.`;
 
   const promptLines = [
     `The show: "${show.name}"${spanHours > 1 ? ` — ${spanHours} hours on air` : ' — one hour on air'}.`,
     show.topic ? `Standing brief: ${show.topic}` : 'Standing brief: (none — build the episode from the moment and the cast)',
     cast,
     previousAngle ? `Last episode's angle (take a DIFFERENT one today): ${previousAngle}` : null,
-    scheduleClause,
+    kindsClause,
     ctxLines.length ? `\nThe moment:\n${ctxLines.join('\n')}` : null,
     `\nWrite the plan — exactly ${featureCount} feature${featureCount > 1 ? 's' : ''}, in air order.`,
   ].filter(Boolean);
 
-  const out = await djObject({
+  return djObject({
     system,
     prompt: promptLines.join('\n'),
     schema: planSchema(featureCount),
     temperature: 0.9,
-    kind: 'generateCreativeProgrammePlan',
+    kind: 'generateProgrammePlan',
+    // The episode plan is a backstage structured decision. Keep its routing
+    // separate from the Persona-written programme beats so Producer-model
+    // evaluations can exercise the plan without changing delivery.
+    role: 'producer',
   });
-  // Keep the stored plan's legacy shape so existing sessions and runFeature()
-  // can consume it, but attach only controller-owned capability choices.
-  return {
-    ...out,
-    features: (out.features || []).map((feature: any, index: number) => ({
-      ...feature,
-      kind: featureKinds[index] || null,
-    })),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +188,7 @@ export async function generateCreativeProgrammePlan({
 
 function planClause(plan: any, note: string | null) {
   if (!plan?.angle) return '';
-  return `\nToday's episode angle: ${plan.angle}${note ? `\nEpisode note for this beat: ${note}` : ''}`;
+  return `\nToday's episode angle: ${plan.angle}${note ? `\nProducer's note for this beat: ${note}` : ''}`;
 }
 
 // The three solo beats' task lines are exported pure builders so the grounding
@@ -296,7 +324,7 @@ export async function generateProgrammeExchange({
   if (show?.topic) ctxLines.push(`The show's brief: ${show.topic}`);
   if (plan?.angle) ctxLines.push(`Today's episode angle: ${plan.angle}`);
   const note = beat === 'outro' ? plan?.outroNote : plan?.introNote;
-  if (note) ctxLines.push(`Episode note for this beat: ${note}`);
+  if (note) ctxLines.push(`Producer's note for this beat: ${note}`);
   if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${recap}`);
   if (recentOpeners?.length) ctxLines.push(`Recent opening words (start the first line differently): ${recentOpeners.join(' | ')}`);
 

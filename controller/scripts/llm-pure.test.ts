@@ -1497,25 +1497,27 @@ async function main() {
     const plan: any = planSchema(1).parse({
       angle: overLongAngle,
       introNote: 'set the tone',
-      features: [{ topic: overLongTopic }],
+      features: [{ topic: overLongTopic, kind: 'memo-from-upstairs' }],
       outroNote: 'walk out',
     });
     assert.ok(plan.angle.length <= 200, `angle clipped to <=200 (was ${overLongAngle.length})`);
     assert.ok(plan.features[0].topic.length <= 240, 'topic clipped to <=240');
+    assert.equal(plan.features[0].kind, 'memo-from-upstairs', 'the rest of the plan survives intact');
   });
   await test('leaves a within-cap plan untouched', () => {
     const plan: any = planSchema(1).parse({
       angle: 'a tight editorial line',
       introNote: 'open warm',
-      features: [{ topic: 'the b-side story' }],
+      features: [{ topic: 'the b-side story', kind: null }],
       outroNote: 'sign off',
     });
     assert.equal(plan.angle, 'a tight editorial line');
+    assert.equal(plan.features[0].kind, null);
   });
   await test('wire schema keeps the full `required` array under io:\'input\' — clip stays object-level, never per-field', () => {
     const rendered: any = z.toJSONSchema(planSchema(1), { target: 'draft-7', io: 'input' });
     assert.deepEqual(rendered.required.sort(), ['angle', 'features', 'introNote', 'outroNote']);
-    assert.deepEqual(rendered.properties.features.items.required.sort(), ['topic']);
+    assert.deepEqual(rendered.properties.features.items.required.sort(), ['kind', 'topic']);
     // maxLength is still advertised to the model — the cap is a nudge, kept.
     assert.equal(rendered.properties.angle.maxLength, 200);
   });
