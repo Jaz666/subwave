@@ -7,7 +7,7 @@
 // node:assert-via-tsx style, matching scripts/auto-pool.test.ts.
 
 import assert from 'node:assert/strict';
-import { showSpan, overrideSpan, planFeature, beatWindow } from '../src/broadcast/programme-pure.js';
+import { showSpan, overrideSpan, planFeature, beatWindow, featureKindSchedule } from '../src/broadcast/programme-pure.js';
 
 // A 7×24 grid with every slot null.
 function emptyWeek(): Record<number, (string | null)[]> {
@@ -102,6 +102,24 @@ function emptyWeek(): Record<number, (string | null)[]> {
   assert.equal(planFeature({ features: [{ kind: 'news' }] }, 0), null, 'feature without a topic is unusable');
   assert.deepEqual(planFeature({ features: [{ topic: 't' }] }, -2), { topic: 't', kind: null }, 'negative index clamps to the first feature');
 }
+
+// ── featureKindSchedule ─────────────────────────────────────────────────────
+
+assert.deepEqual(
+  featureKindSchedule(3, ['news', 'weather']),
+  ['news', 'weather', 'news'],
+  'eligible capability order rotates deterministically',
+);
+assert.deepEqual(
+  featureKindSchedule(2, ['news'], 'anniversary'),
+  ['anniversary', 'anniversary'],
+  'a show pin wins over the eligible menu',
+);
+assert.deepEqual(
+  featureKindSchedule(2, []),
+  [null, null],
+  'no eligible capability produces straight-talk beats',
+);
 
 // ── beatWindow ───────────────────────────────────────────────────────────────
 

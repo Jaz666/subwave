@@ -41,7 +41,6 @@ const tracksByEnergy: ToolContract = {
   enums: { energy: ['low', 'medium', 'high'] },
 };
 
-const programmePlan = noArgs('generateProgrammePlan');
 
 const songsByGenre: ToolContract = {
   name: 'songsByGenre',
@@ -234,19 +233,6 @@ export const FUNCTIONGEMMA_VALIDATION_SCENARIOS: readonly FunctionGemmaScenario[
     // Its absence is the controller-owned cooldown.
     tools: [tracksByMood, tracksByEnergy, noArgs('deepCuts')],
     route: { firstCallOneOf: ['tracksByMood'], arguments: { mood: 'calm', energy: 'low' } },
-  },
-  {
-    id: 'programme.route.generate-plan',
-    stage: 'route',
-    split: 'validation',
-    description: 'Programme planning is a bounded Producer operation, separate from selection and speech.',
-    prompt: productionPrompt(
-      'The one-hour show is starting. Create its backstage episode plan before any music discovery or listener-facing writing.',
-      null,
-      { name: 'Late Shift', topic: 'Warm nocturnal discoveries.', genres: ['Ambient'], moods: ['night'], energies: ['low'], eras: [], filtersStrict: false, playlistStrict: false },
-    ),
-    tools: [programmePlan, noArgs('randomSongs'), segmentTool('skill_news_v2')],
-    route: { firstCallOneOf: ['generateProgrammePlan'] },
   },
   {
     id: 'segment.route.exact-track-fact',
