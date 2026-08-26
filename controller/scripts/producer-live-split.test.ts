@@ -27,6 +27,7 @@ const {
   personaSignoffPrompt,
   generatePersonaHandoffGreeting,
   personaHandoffGreetingPrompt,
+  personaHourlyTimePrompt,
   generatePersonaLink,
   personaLinkPrompt,
   generatePersonaSegment,
@@ -79,6 +80,37 @@ test('Persona station ids receive verified weekday alongside identity and anti-r
   assert.equal(typeof generatePersonaStationId, 'function');
 });
 
+test('Station IDs and hourly checks receive only bounded verified facts', () => {
+  const stationPrompt = personaStationIdPrompt({
+    persona: { name: 'Chris', scriptLength: 'concise' },
+    context: { clock: { display: '15:00' }, activeShow: { name: 'Drive Time' } },
+  });
+  assert.match(stationPrompt, /repeat their names exactly/i);
+  assert.match(stationPrompt, /never abbreviate, substitute, rhyme/i);
+
+  const hourlyPrompt = personaHourlyTimePrompt({
+    persona: { name: 'Chris', scriptLength: 'concise' },
+    context: {
+      date: { dayLabel: 'Tuesday', season: 'summer' },
+      clock: { display: '15:00', spokenTime: 'three in the afternoon', spokenHour: 'three in the afternoon' },
+      weather: { condition: 'rain', location: 'Whalley' },
+      time: { period: 'afternoon', vibe: 'drive home' },
+      listeners: { count: 9 },
+      activeShow: { name: 'Drive Time', moods: ['energetic'] },
+    },
+  });
+  assert.match(hourlyPrompt, /Live spoken time: "three in the afternoon"/);
+  assert.match(hourlyPrompt, /Day: Tuesday/);
+  assert.match(hourlyPrompt, /Do not infer weather, programme progress, listener activity, studio events or local colour/);
+  assert.ok(!hourlyPrompt.includes('15:00'));
+  assert.ok(!hourlyPrompt.includes('Weather in Whalley'));
+  assert.ok(!hourlyPrompt.includes('Whalley'));
+  assert.ok(!hourlyPrompt.includes('drive home'));
+  assert.ok(!hourlyPrompt.includes('Listeners'));
+  assert.ok(!hourlyPrompt.includes('energetic'));
+  assert.ok(!hourlyPrompt.includes('Tone for this segment'));
+});
+
 test('Persona handover prompts keep the conversational bridge but drop generic context', () => {
   const context = {
     date: { dayLabel: 'Wednesday' },
@@ -116,6 +148,7 @@ test('Persona handover prompts keep the conversational bridge but drop generic c
   assert.match(greeting, /Big guitars and loud opinions/);
   assert.match(greeting, /How distortion changed rock/);
   assert.match(greeting, /Carrie already used this opener/);
+  assert.match(greeting, /No upcoming track is supplied: do not name, introduce, promise or imply one/);
   for (const prompt of [signoff, greeting]) {
     assert.match(prompt, /FACTUAL GROUNDING/);
     assert.match(prompt, /Current Context:/);

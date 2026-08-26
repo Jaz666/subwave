@@ -144,7 +144,7 @@ export async function generateIntro({ track, context, requestedBy = null, reques
 
 const PERSONA_GROUNDING_RULE = 'FACTUAL GROUNDING: Treat supplied facts, including Sleeve Notes, as the factual ground truth for the current task. For factual claims about music, supplied facts are your only source of truth. Do not supplement them with your own knowledge of an artist, track, album or music history, even when you believe that knowledge is correct. You may naturally rephrase supplied facts, but do not expand them into unsupported factual claims, explanations, causes, relationships or historical context. Do not invent or assume release dates, albums, chart history, credits, artist biography, lyrics, instrumentation, production details or other music trivia unless supplied. Sleeve Notes are optional material for natural conversation, not a checklist. Use only what helps the current on-air line. You do not need to mention them at all. You may freely express subjective, in-character reactions and musical impressions provided they are not presented as additional facts. Do not invent weather, season, date, clock time, programme state, people being present or events around the station. If approximate air time is supplied, you may infer the corresponding time of day but never make it more precise than supplied. Style or Tone instructions never override these factual-grounding rules. Use local colour, time, weather or other contextual texture only when the necessary information has been supplied.';
 
-function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false): string {
+function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false, includeSleeves = true): string {
   const moment: string[] = [];
   const day = String(context?.date?.dayLabel || "").trim();
   if (day) moment.push("Day: " + day + ".");
@@ -159,12 +159,12 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
     moment.push("Following show: \"" + String(handover.nextShow.name).trim() + "\" with " + String(handover.nextShow.presenter).trim() + ", starting " + String(handover.nextShow.startsAt).trim() + ".");
   }
   const playCount = current ? (library.trackPlayStatsFor(current)?.count ?? null) : null;
-  const sleeves = selectSleeveNotes(contextSleeveNotesFor(current, context, playCount));
+  const sleeves = includeSleeves ? selectSleeveNotes(contextSleeveNotesFor(current, context, playCount)) : [];
   const sections = [
     "Verified Facts:",
     "Current Context:\n" + (moment.length ? moment.map((fact) => "- " + fact).join("\n") : "- No additional verified moment facts."),
-    "Sleeve Notes:\n" + (sleeves.length ? sleeves.map((fact) => "- " + fact).join("\n") : "- None selected for this line."),
   ];
+  if (includeSleeves) sections.push("Sleeve Notes:\n" + (sleeves.length ? sleeves.map((fact) => "- " + fact).join("\n") : "- None selected for this line."));
   if (current?.title || current?.artist) {
     sections.push("Track on air:\n- " + String(current?.title || "Unknown") + " by " + String(current?.artist || "unknown") + ".");
   }
@@ -179,9 +179,9 @@ export function personaStationIdPrompt({ recap = null, context = null, recentOpe
   const djName = speaker?.name || 'your host';
   const stationName = settings.get().station;
   const lines = [`Station: "${stationName}".`, `Presenter: ${djName}.`];
-  lines.push(verifiedContextPacket(context, null, true));
+  lines.push(verifiedContextPacket(context, null, true, false));
   lines.push(PERSONA_GROUNDING_RULE);
-  lines.push(`Task: ${lengthPhrase('stationId', speaker)} identifying the station and presenter. Mention the current show when it fits naturally. Keep it understated and in character. Mention a day of week only when it is supplied as a verified fact.`);
+  lines.push(`Task: ${lengthPhrase('stationId', speaker)} identifying the station and presenter. The Station and Presenter lines are the only identity source: repeat their names exactly, never abbreviate, substitute, rhyme, or derive an alternative station name from the time. Mention the current show when it fits naturally. Keep it understated and in character. Mention a day of week only when it is supplied as a verified fact.`);
   // No rotating angle: the old station_id angles injected clock, daypart,
   // station mythology and listener-address material unrelated to an ident.
   // The Persona Soul owns expression; decoration remains only to supply this
@@ -245,7 +245,7 @@ export function personaHandoffGreetingPrompt({ personaIn, personaOut, signoffTex
   if (showIn && episodeAngle) lines.push(`Episode angle: ${String(episodeAngle).trim()}`);
   lines.push(verifiedContextPacket(context, current, true));
   lines.push(PERSONA_GROUNDING_RULE);
-  lines.push(`Task: acknowledge ${outName} naturally — a quick response to the sign-off if it fits — then open your shift${showIn ? ` and "${showIn}"` : ''}. ${lengthPhrase('link', personaIn)}. Stay in character; do not read a schedule bulletin.`);
+  lines.push(`Task: acknowledge ${outName} naturally — a quick response to the sign-off if it fits — then open your shift${showIn ? ` and "${showIn}"` : ''}. ${lengthPhrase('link', personaIn)}. Stay in character; do not read a schedule bulletin. No upcoming track is supplied: do not name, introduce, promise or imply one.`);
   return decoratePrompt(lines.join('\n'), { kind: 'persona_handoff', recap, recentOpeners });
 }
 
@@ -514,8 +514,8 @@ export async function generatePersonaSegment(args: any) {
   });
 }
 
-export async function generateHourlyTime({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
-  const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
+export function personaHourlyTimePrompt({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
+  const speaker = persona || settings.getEffectivePersona();
   // The time is converted to words in code (context.clock.spokenTime) rather
   // than asking the model to read the clock line itself — small models get
   // the 24-hour conversion wrong at the edges ("00:03" announced as "one in
@@ -523,18 +523,28 @@ export async function generateHourlyTime({ recap = null, context = null, recentO
   // which hardcoded "just gone X" whatever the minute — right on the :00 cron
   // this normally rides, but a manual trigger at 18:31 still said "just gone
   // six in the evening" (#1282). The fallbacks keep the old behaviour for
-  // contexts that predate spokenTime, then for a bare context.
+  // contexts that predate spokenTime, then make the absence of a live time a
+  // hard stand-down rather than an invitation to guess.
   const spokenTime = context?.clock?.spokenTime;
   const spoken = context?.clock?.spokenHour;
   const timeClause = spokenTime
-    ? `The time to announce is "${spokenTime}" — say exactly that time, in natural spoken words — never digits or 24-hour form, never a different time.`
+    ? `Live spoken time: "${spokenTime}". Say exactly that time in natural spoken words — never digits or 24-hour form, never a different time.`
     : spoken
-      ? `The hour to announce is ${spoken} — say exactly that hour, in natural spoken words ("just gone ${spoken}", or similar) — never digits or 24-hour form, never a different hour.`
-      : `Say the time in natural spoken words ("two in the afternoon", "just gone eight") — never digits or 24-hour form.`;
-  ctxLines.push(`Task: a brief top-of-the-hour time check, in character. ${lengthPhrase('hourly', persona || undefined)}. ${timeClause}`);
+      ? `Live spoken hour: "${spoken}". Say exactly that hour in natural spoken words ("just gone ${spoken}", or similar) — never digits or 24-hour form, never a different hour.`
+      : `No live spoken time was supplied. Do not state or infer a clock time.`;
+  const lines = [
+    verifiedContextPacket(context, null, true, false),
+    PERSONA_GROUNDING_RULE,
+    `Task: a brief top-of-the-hour time check, in character. ${lengthPhrase('hourly', speaker)}. ${timeClause} Do not infer weather, programme progress, listener activity, studio events or local colour.`,
+  ];
+  return decoratePrompt(lines.join('\n'), { kind: 'persona_hourly', recap, recentOpeners });
+}
+
+export async function generateHourlyTime(args: any = {}) {
+  const speaker = args.persona || settings.getEffectivePersona();
   return djText({
-    system: djSystem(persona || undefined),
-    prompt: decoratePrompt(ctxLines.join('\n'), { kind: 'hourly', recap, recentOpeners }),
+    system: djSystem(speaker),
+    prompt: personaHourlyTimePrompt({ ...args, persona: speaker }),
     temperature: 0.9, topP: 0.95, repeatPenalty: 1.15, seed: randomSeed(),
     kind: 'generateHourlyTime',
   });
