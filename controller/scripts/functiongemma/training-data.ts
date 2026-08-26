@@ -617,7 +617,10 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
   // The recovery-completion target is intentionally mechanical: select the
   // only surfaced candidate after a successful fallback, not a general
   // editorial choice between competing candidates.
-  const recoveredId = `recovered-${seed}`;
+  // Candidate ids must be unrelated to the discovery seed. Otherwise a small
+  // quantised model can learn to copy the seed at completion time instead of
+  // binding `done.id` to the most recent tool result.
+  const recoveredId = liveTrackId(context.random);
   names.push('done');
   const firstArgs = first === 'showPlaylistTracks' || first === 'tracksTowardJourney' ? {} : { songId: seed };
   return {
@@ -639,6 +642,7 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
       call(next, nextArgs),
       toolResult(next, {
         tracks: [{ id: recoveredId, title, artist, moods: [mood], energy }],
+        note: 'The original discovery seed is not a candidate. Commit only the id returned in tracks.',
       }),
       call('done', {
         id: recoveredId,

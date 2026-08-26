@@ -41,7 +41,13 @@ test('V4 data targets the closed tracksByMood schema and separates autonomous pr
     assert.equal(typeof completion?.arguments.id, 'string');
     assert.equal(completion?.arguments.transition, 'normal');
     const completionIndex = example.messages.findIndex(message => message.tool_calls?.[0]?.function.name === 'done');
-    assert.equal(example.messages[completionIndex - 1]?.role, 'tool');
+    const result = example.messages[completionIndex - 1];
+    assert.equal(result?.role, 'tool');
+    const surfacedId = (result?.content as { response?: { tracks?: Array<{ id?: string }> } })?.response?.tracks?.[0]?.id;
+    assert.equal(completion?.arguments.id, surfacedId);
+    const prompt = example.messages.find(message => message.role === 'user')?.content;
+    const seed = typeof prompt === 'string' ? JSON.parse(prompt.slice(prompt.indexOf('\n\n{') + 2)).currentTrack?.id : undefined;
+    assert.notEqual(completion?.arguments.id, seed);
   }
 });
 
