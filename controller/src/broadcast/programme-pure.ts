@@ -54,7 +54,7 @@ export function beatWindow(stationMinute: number): 'feature' | 'outro' | null {
   return null;
 }
 
-// The plan's feature for a given show hour. The producer writes one per hour,
+// The plan's feature for a given show hour. The Creative planner writes one per hour,
 // but a degraded/short plan just reuses its last feature rather than going
 // silent for the tail hours.
 export function planFeature(plan: any, hourIndex: number): { topic: string; kind: string | null } | null {
@@ -62,4 +62,20 @@ export function planFeature(plan: any, hourIndex: number): { topic: string; kind
   if (!Array.isArray(features) || !features.length) return null;
   const f = features[Math.min(Math.max(0, hourIndex), features.length - 1)];
   return f?.topic ? { topic: String(f.topic), kind: f.kind ? String(f.kind) : null } : null;
+}
+
+// Capability choice is an operational decision: a programme's pinned
+// capability wins; otherwise eligible capabilities rotate in their supplied,
+// controller-owned order. The Creative planner gets this fixed schedule but
+// never chooses a tool or invents one.
+export function featureKindSchedule(
+  count: number,
+  kinds: string[] = [],
+  pinnedKind: string | null = null,
+): Array<string | null> {
+  const total = Math.max(1, Math.floor(count) || 1);
+  if (pinnedKind) return Array(total).fill(pinnedKind);
+  const usable = kinds.map((kind) => String(kind || '').trim()).filter(Boolean);
+  if (!usable.length) return Array(total).fill(null);
+  return Array.from({ length: total }, (_, index) => usable[index % usable.length] || null);
 }

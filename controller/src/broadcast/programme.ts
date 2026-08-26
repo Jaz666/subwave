@@ -4,10 +4,11 @@
 // The structure is canonical and time-based (no operator rundown): the intro
 // airs at the top of the show, one feature beat airs mid-hour (:35, each
 // scheduled hour), the outro airs at :55 of the final hour. What makes the
-// hour cohere is the EPISODE PLAN — one structured "producer" LLM call at
+// hour cohere is the EPISODE PLAN — one structured Creative-model call at
 // session start (llm/internal/prompts/programme.ts) that turns the show's
 // standing topic brief + the moment into today's angle, per-hour feature
-// topics, and intro/outro notes. Every beat's script references the plan, so
+// topics, and intro/outro notes. The controller fixes any capability schedule before that call.
+// Every beat's script references the plan, so
 // the intro teases the feature and the outro calls back. When the plan call
 // fails the beats degrade to brief-only generation — the arc still airs.
 //
@@ -44,8 +45,8 @@ const INTRO_SUPPRESSES_HOURLY_MS = 45 * 60 * 1000;
 
 // Pure arc helpers live in programme-pure.ts (dependency-free, so the unit
 // test doesn't drag in the queue/settings graph) — re-exported for callers.
-import { showSpan, overrideSpan, planFeature, beatWindow } from './programme-pure.js';
-export { showSpan, overrideSpan, planFeature, beatWindow };
+import { showSpan, overrideSpan, planFeature, beatWindow, featureKindSchedule } from './programme-pure.js';
+export { showSpan, overrideSpan, planFeature, beatWindow, featureKindSchedule };
 
 // The episode's position/length at `now`. A live takeover (#930) IS the
 // episode — its window drives the arc, since the pinned show usually isn't in
@@ -96,7 +97,7 @@ export function suppressHourly(now = new Date()): boolean {
   return !!(prog.introAiredAt && now.getTime() - new Date(prog.introAiredAt).getTime() < INTRO_SUPPRESSES_HOURLY_MS);
 }
 
-// The most recent archived episode's angle for this show, so today's producer
+// The most recent archived episode's angle for this show, so today's Creative planner
 // takes a different line. Best-effort: scans the newest few session archives;
 // any miss (fresh install, no prior episode) is just null.
 async function previousAngle(showId: string): Promise<string | null> {
@@ -119,7 +120,7 @@ async function previousAngle(showId: string): Promise<string | null> {
   return null;
 }
 
-// The capability menu the producer may build features from: enabled, ready,
+// The controller's eligible capability set: enabled, ready,
 // and owned by the host persona — the same offer the segment director makes.
 function featureKindMenu(host: { skills?: string[] } | null | undefined): { kind: string; desc: string }[] {
   try {
@@ -136,7 +137,7 @@ function featureKindMenu(host: { skills?: string[] } | null | undefined): { kind
 // plan. Idempotent — safe from every call site, every tick. A budget/silence
 // gate leaves the plan `pending` (a later tick retries once budget frees up);
 // a real generation failure marks it `fallback` for the episode (beats then
-// run brief-only — one failed producer call shouldn't burn a retry per tick).
+// run brief-only — one failed Creative planning call shouldn't burn a retry per tick).
 //
 // `now` defaults to the moment the CONTEXT describes (contextDate), not the wall
 // clock. queue.onTrackStarted rolls the session on a look-ahead context, and
@@ -162,18 +163,22 @@ export async function ensurePlan(ctx: SessionContext, now = session.contextDate(
   const hoursLeft = Math.max(1, span.total - span.index);
   const roster = settings.getOnAirRoster(now);
   const pinned = String(ep.show.segmentSkill || '').trim() || null;
+  const featureKinds = featureKindSchedule(
+    hoursLeft,
+    featureKindMenu(roster.host).map((entry) => entry.kind),
+    pinned,
+  );
   const prevAngle = await previousAngle(ep.show.id);
   try {
     const plan = await withTrace({ kind: 'programme-plan', show: ep.show.name }, () =>
-      dj.generateProgrammePlan({
+      dj.generateCreativeProgrammePlan({
         show: ep.show,
         spanHours: hoursLeft,
         host: roster.host,
         guests: roster.guests,
         context: ctx,
         previousAngle: prevAngle,
-        skillKinds: pinned ? [] : featureKindMenu(roster.host),
-        pinnedKind: pinned,
+        featureKinds,
       }));
     prog.status = 'ok';
     prog.plan = plan;
@@ -286,7 +291,7 @@ export async function featureTick(queue: QueueApi, ctx: SessionContext, now = ne
 }
 
 // Gate-free feature core. Resolution order for what airs: the show's pinned
-// segmentSkill, else the plan's kind for this hour — both through the forced
+// segmentSkill, else the controller-assigned plan kind for this hour — both through the forced
 // segment director with the feature topic injected as the brief (real data:
 // headlines, weather, search). Any miss (no kind, stale kind, director
 // failure) falls to the straight-talk floor so the beat still airs.

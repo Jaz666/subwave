@@ -85,8 +85,6 @@ const contracts: Record<string, ToolContract> = {
   skill_now_playing_dig_v2: noArgs('skill_now_playing_dig_v2'),
   skill_weather_v2: noArgs('skill_weather_v2'),
   skill_web_search_v2: { name: 'skill_web_search_v2', required: ['query'], enums: { query: [null] } },
-  // A bounded backstage request with no model-supplied arguments.
-  generateProgrammePlan: noArgs('generateProgrammePlan'),
 };
 
 const routeFamilies = [
@@ -121,9 +119,7 @@ const routeFamilies = [
   'segment-anniversary',
   'segment-curiosity',
   'segment-library-deep-cut',
-  'programme-plan',
 ] as const;
-
 const recoveryFamilies = [
   'recover-semantic-to-mood',
   'recover-semantic-to-genre',
@@ -426,15 +422,6 @@ function routeExample(family: typeof routeFamilies[number], context: ExampleCont
       prompt = 'Choose one research function for a between-track segment. Find a long-unplayed library track by the artist currently on air.';
       target = 'skill_library_deep_cut';
       tools = [target, 'skill_now_playing_dig', 'skill_web_search', 'skill_news'];
-      break;
-    case 'programme-plan':
-      prompt = pick([
-        'The programme is beginning. Generate the backstage episode plan before any on-air writing or music selection.',
-        'Prepare today\'s Producer-only running plan for this one-hour show. This is a programme-planning decision, not a listener-facing script.',
-        'Choose the operational function that creates the current show\'s episode plan, including its opening, feature shape and sign-off direction.',
-      ], context.random);
-      target = 'generateProgrammePlan';
-      tools = ['generateProgrammePlan', 'skill_news_v2', 'randomSongs'];
       break;
   }
 
