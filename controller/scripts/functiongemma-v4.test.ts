@@ -4,7 +4,7 @@ import { FUNCTIONGEMMA_VALIDATION_SCENARIOS } from './functiongemma/fixtures.js'
 import { scorePrediction } from './functiongemma/score.js';
 import { generateTrainingExamples, validateTrainingSets } from './functiongemma/training-data.js';
 
-test('V4 data targets the closed tracksByMood schema and live-shaped autonomous routing', () => {
+test('V4 data targets the closed tracksByMood schema and separates autonomous protocol from research intent', () => {
   const train = generateTrainingExamples('train', 240);
   const development = generateTrainingExamples('development', 80);
   const validated = validateTrainingSets(train, development);
@@ -24,6 +24,13 @@ test('V4 data targets the closed tracksByMood schema and live-shaped autonomous 
     assert.deepEqual(Object.keys(call.function.arguments).sort(), ['energy', 'mood']);
     assert.ok(['low', 'medium', 'high', null].some(value => Object.is(value, call.function.arguments.energy)));
   }
+
+  const autonomousPrompts = [...train, ...development]
+    .filter(example => example.family === 'route.segment-autonomous-offered')
+    .map(example => example.messages.find(message => message.role === 'user')?.content);
+  assert.ok(autonomousPrompts.some(prompt => typeof prompt === 'string' && !prompt.includes('Research intention:')));
+  assert.ok(autonomousPrompts.some(prompt => typeof prompt === 'string' && prompt.includes('configured news feed')));
+  assert.ok(autonomousPrompts.some(prompt => typeof prompt === 'string' && prompt.includes('exact track now playing')));
 });
 
 test('V4 acceptance rejects malformed, invented and incomplete autonomous calls', () => {
@@ -62,7 +69,16 @@ test('V4 acceptance rejects malformed, invented and incomplete autonomous calls'
   });
   assert.equal(incomplete.dimensions.protocol?.passed, false);
   assert.match(incomplete.dimensions.protocol?.violations.join('\n') ?? '', /no-tool-call/);
+
+  for (const name of autonomous.route!.firstCallOneOf) {
+    assert.equal(scorePrediction(autonomous, {
+      scenario: autonomous.id,
+      calls: [{ name, arguments: {} }],
+      callsPerRound: [1],
+    }).passed, true);
+  }
 });
+
 
 test('V4 corrective matrix keeps genre copying separate from valid mood recovery', () => {
   const genre = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.genre-not-station-mood');

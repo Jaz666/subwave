@@ -424,7 +424,43 @@ function routeExample(family: typeof routeFamilies[number], context: ExampleCont
     }
     case 'segment-autonomous-offered': {
       const variant = context.index % 3;
-      prompt = [
+      if (variant === 0) {
+        // This is intentionally a protocol-only moment: its wording does not
+        // establish a unique editorial intent, so rotate valid offered calls
+        // rather than teach an accidental "generic means news" preference.
+        const choices = ['skill_news_v2', 'skill_curiosity_v2', 'skill_now_playing_dig_v2'] as const;
+        target = choices[Math.floor(context.index / 3) % choices.length];
+        tools = ['skill_news_v2', 'skill_curiosity_v2', 'skill_now_playing_dig_v2'];
+      } else if (variant === 1) {
+        prompt = [
+          'Operational moment:',
+          'Day: Tuesday. Broad air-time: evening.',
+          `Track on air: "${title}" by ${artist}`,
+          'Recent segment kinds already aired:',
+          `- skill_weather (${45 + context.index}m ago)`,
+          '',
+          'Research intention: find a fresh general headline from the configured news feed.',
+          '',
+          'Choose exactly one offered research function. Do not decide airtime or write the line.',
+        ].join('\n');
+        target = 'skill_news';
+        tools = ['skill_news', 'skill_curiosity', 'skill_now_playing_dig'];
+      } else {
+        prompt = [
+          'Operational moment:',
+          'Day: Tuesday. Broad air-time: evening.',
+          `Track on air: "${title}" by ${artist}`,
+          'Recent segment kinds already aired:',
+          `- skill_weather_v2 (${45 + context.index}m ago)`,
+          '',
+          'Research intention: find one sourced production or release detail about the exact track now playing.',
+          '',
+          'Choose exactly one offered research function. Do not decide airtime or write the line.',
+        ].join('\n');
+        target = 'skill_now_playing_dig_v2';
+        tools = ['skill_now_playing_dig_v2', 'skill_news', 'skill_curiosity_v2'];
+      }
+      prompt ||= [
         'Operational moment:',
         'Day: Tuesday. Broad air-time: evening.',
         `Track on air: "${title}" by ${artist}`,
@@ -433,16 +469,6 @@ function routeExample(family: typeof routeFamilies[number], context: ExampleCont
         '',
         'Choose exactly one offered research function. Do not decide airtime or write the line.',
       ].join('\n');
-      if (variant === 0) {
-        target = 'skill_news_v2';
-        tools = ['skill_news_v2', 'skill_curiosity_v2', 'skill_now_playing_dig_v2'];
-      } else if (variant === 1) {
-        target = 'skill_news';
-        tools = ['skill_news', 'skill_curiosity', 'skill_now_playing_dig'];
-      } else {
-        target = 'skill_now_playing_dig_v2';
-        tools = ['skill_now_playing_dig_v2', 'skill_news', 'skill_curiosity_v2'];
-      }
       break;
     }
     case 'segment-library-deep-cut':
