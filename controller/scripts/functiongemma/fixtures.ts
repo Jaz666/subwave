@@ -47,12 +47,13 @@ const songsByGenre: ToolContract = {
   required: ['genre'],
 };
 
+// Router-only recovery: selecting a final candidate is a separately-gated
+// future capability, so `done` is never offered in this stage.
 const discoveryFallbacks: readonly ToolContract[] = [
   withSongId('tracksLikeThis'),
   withSongId('similarSongs'),
   tracksByMood,
   noArgs('starredSongs'),
-  done,
 ];
 
 const segmentTool = (name: string): ToolContract => ({ name });
@@ -298,7 +299,7 @@ export const FUNCTIONGEMMA_VALIDATION_SCENARIOS: readonly FunctionGemmaScenario[
     split: 'validation',
     description: 'An empty similarity result must cause a real strategy change.',
     prompt: productionPrompt(
-      `Keep a reflective, low-energy flow from the current track [id: ${SEED_ID}]. Start with the library's semantic similarity, recover through a genuinely different discovery axis if it is empty, then commit only to an id actually surfaced by a tool.`,
+      `Keep a reflective, low-energy flow from the current track [id: ${SEED_ID}]. Start with the library's semantic similarity, recover through a genuinely different discovery axis if it is empty.`,
       { id: SEED_ID, title: 'An Ending (Ascent)', artist: 'Brian Eno' },
       {
         name: 'The Evening Signal', topic: 'Calm discoveries and overlooked catalogue tracks.',
@@ -334,11 +335,6 @@ export const FUNCTIONGEMMA_VALIDATION_SCENARIOS: readonly FunctionGemmaScenario[
     recovery: {
       emptyTool: 'tracksLikeThis',
       nextCallOneOf: ['similarSongs', 'tracksByMood', 'starredSongs'],
-    },
-    commit: {
-      surfacedIds: ['reflective-01', 'reflective-02', 'safe-favourite-01'],
-      acceptableIds: ['reflective-01', 'reflective-02', 'safe-favourite-01'],
-      preferredIds: ['reflective-01', 'reflective-02'],
     },
   },
   {

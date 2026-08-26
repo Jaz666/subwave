@@ -188,7 +188,7 @@ export async function runModelScenario(
   const finishReasons: string[] = [];
   const callsPerRound: number[] = [];
   const started = Date.now();
-  const maxRounds = scenario.stage === 'recover' ? 3 : 1;
+  const maxRounds = scenario.stage === 'recover' ? (scenario.commit ? 3 : 2) : 1;
 
   for (let round = 0; round < maxRounds; round++) {
     const controller = new AbortController();

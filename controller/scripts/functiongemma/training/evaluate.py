@@ -103,7 +103,7 @@ def run_scenario(
     calls: list[dict[str, Any]] = []
     responses: list[str] = []
     calls_per_round: list[int] = []
-    max_rounds = 3 if scenario["stage"] == "recover" else 1
+    max_rounds = 3 if scenario["stage"] == "recover" and scenario.get("commit") else 2 if scenario["stage"] == "recover" else 1
     started = time.perf_counter()
 
     for _round in range(max_rounds):

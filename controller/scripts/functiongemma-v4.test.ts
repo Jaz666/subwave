@@ -80,6 +80,21 @@ test('V4 acceptance rejects malformed, invented and incomplete autonomous calls'
 });
 
 
+test('V4 router recovery never offers or scores final candidate commitment', () => {
+  const semantic = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'recover.empty-semantic-index');
+  assert.ok(semantic);
+  assert.ok(!semantic.tools.some(tool => tool.name === 'done'));
+  assert.equal(semantic.commit, undefined);
+  assert.equal(scorePrediction(semantic, {
+    scenario: semantic.id,
+    calls: [
+      { name: 'tracksLikeThis', arguments: { songId: 'V7mx9Qb2nL4sR8tK1cWdFz' } },
+      { name: 'tracksByMood', arguments: { mood: 'reflective', energy: 'low' } },
+    ],
+    callsPerRound: [1, 1],
+  }).passed, true);
+});
+
 test('V4 corrective matrix keeps genre copying separate from valid mood recovery', () => {
   const genre = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'route.genre-not-station-mood');
   const journey = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'recover.empty-journey-waypoint');
