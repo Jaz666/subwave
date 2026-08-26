@@ -31,18 +31,6 @@ test('V4 data targets the closed tracksByMood schema and separates autonomous pr
   assert.ok(autonomousPrompts.some(prompt => typeof prompt === 'string' && !prompt.includes('Research intention:')));
   assert.ok(autonomousPrompts.some(prompt => typeof prompt === 'string' && prompt.includes('configured news feed')));
   assert.ok(autonomousPrompts.some(prompt => typeof prompt === 'string' && prompt.includes('exact track now playing')));
-
-  const recoveryExamples = [...train, ...development].filter(example => example.family.startsWith('recover.'));
-  assert.ok(recoveryExamples.length > 0);
-  for (const example of recoveryExamples) {
-    const calls = example.messages.flatMap(message => message.tool_calls ?? []);
-    const completion = calls.at(-1)?.function;
-    assert.equal(completion?.name, 'done');
-    assert.equal(typeof completion?.arguments.id, 'string');
-    assert.equal(completion?.arguments.transition, 'normal');
-    const completionIndex = example.messages.findIndex(message => message.tool_calls?.[0]?.function.name === 'done');
-    assert.equal(example.messages[completionIndex - 1]?.role, 'tool');
-  }
 });
 
 test('V4 acceptance rejects malformed, invented and incomplete autonomous calls', () => {

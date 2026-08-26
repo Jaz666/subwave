@@ -70,13 +70,6 @@ const contracts: Record<string, ToolContract> = {
   starredSongs: noArgs('starredSongs'),
   recentlyAdded: noArgs('recentlyAdded'),
   randomSongs: noArgs('randomSongs'),
-  // Recovery completion is deliberately narrow: this is only offered after a
-  // discovery tool has returned candidates, never as a first routing choice.
-  done: {
-    name: 'done',
-    required: ['id', 'reason', 'transition'],
-    enums: { transition: ['normal', 'blend', 'sweep', 'washout', 'dissolve', 'chop', 'loop', null] },
-  },
   tracksLikeThis: withString('tracksLikeThis', 'songId'),
   similarSongs: withString('similarSongs', 'songId'),
   skill_album_anniversary: noArgs('skill_album_anniversary'),
@@ -608,17 +601,8 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
     }
   }
 
-  prompt = productionPrompt(
-    `${prompt} If the recovery source returns candidates, commit only to an id actually surfaced by that source.`,
-    { id: seed, title, artist },
-    context,
-  );
+  prompt = productionPrompt(prompt, { id: seed, title, artist }, context);
 
-  // The recovery-completion target is intentionally mechanical: select the
-  // only surfaced candidate after a successful fallback, not a general
-  // editorial choice between competing candidates.
-  const recoveredId = `recovered-${seed}`;
-  names.push('done');
   const firstArgs = first === 'showPlaylistTracks' || first === 'tracksTowardJourney' ? {} : { songId: seed };
   return {
     id: `${context.split}.recover.${family}.${context.index}`,
@@ -637,14 +621,6 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
             : 'No candidates were found. Change discovery strategy rather than repeating this tool.',
       }),
       call(next, nextArgs),
-      toolResult(next, {
-        tracks: [{ id: recoveredId, title, artist, moods: [mood], energy }],
-      }),
-      call('done', {
-        id: recoveredId,
-        reason: 'Recovered candidate matches the requested show constraints.',
-        transition: 'normal',
-      }),
     ],
     tools: offered(names, context.random),
   };
