@@ -8,6 +8,8 @@ export interface FunctionGemmaSoakCase {
   messages: any[];
   tools: any[];
   expected: PredictedToolCall;
+  /** Generic autonomous moments have no unique editorial target. */
+  allowedCalls?: readonly PredictedToolCall[];
 }
 
 export interface FunctionGemmaSoakResult {
@@ -59,6 +61,10 @@ export function buildNovelSoakCases(count = 300, seed = 0xA11CE5): FunctionGemma
       if (message.role !== 'assistant') continue;
       const target = message.tool_calls?.[0];
       if (!target) continue;
+      const user = example.messages.find(item => item.role === 'user')?.content;
+      const genericAutonomous = example.family === 'route.segment-autonomous-offered'
+        && typeof user === 'string'
+        && !user.includes('Research intention:');
       cases.push({
         id: `${example.id}.decision-${cases.length + 1}`,
         messages: openAiMessages(example.messages.slice(0, index)),
@@ -67,6 +73,9 @@ export function buildNovelSoakCases(count = 300, seed = 0xA11CE5): FunctionGemma
           name: target.function.name,
           arguments: target.function.arguments,
         },
+        ...(genericAutonomous ? {
+          allowedCalls: example.tools.map(tool => ({ name: tool.function.name, arguments: {} })),
+        } : {}),
       });
     }
     return cases;
@@ -119,7 +128,9 @@ export async function runSoakCase({
       : parseFunctionGemmaContent(message?.content);
     return {
       id: candidate.id,
-      passed: actual.length === 1 && isDeepStrictEqual(actual[0], candidate.expected),
+      passed: actual.length === 1 && (candidate.allowedCalls
+        ? candidate.allowedCalls.some(call => isDeepStrictEqual(actual[0], call))
+        : isDeepStrictEqual(actual[0], candidate.expected)),
       latencyMs: Date.now() - started,
       expected: candidate.expected,
       actual,

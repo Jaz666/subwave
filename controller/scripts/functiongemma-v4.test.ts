@@ -3,6 +3,7 @@ import test from 'node:test';
 import { FUNCTIONGEMMA_VALIDATION_SCENARIOS } from './functiongemma/fixtures.js';
 import { scorePrediction } from './functiongemma/score.js';
 import { generateTrainingExamples, validateTrainingSets } from './functiongemma/training-data.js';
+import { buildNovelSoakCases } from './functiongemma/soak.js';
 
 test('V4 data targets the closed tracksByMood schema and separates autonomous protocol from research intent', () => {
   const train = generateTrainingExamples('train', 240);
@@ -79,6 +80,13 @@ test('V4 acceptance rejects malformed, invented and incomplete autonomous calls'
   }
 });
 
+
+test('V4 soak accepts any offered call for a generic autonomous moment', () => {
+  const generic = buildNovelSoakCases(240).find(candidate => candidate.allowedCalls);
+  assert.ok(generic);
+  assert.equal(generic.allowedCalls?.length, 3);
+  assert.ok(generic.allowedCalls?.every(call => Object.keys(call.arguments).length === 0));
+});
 
 test('V4 router recovery never offers or scores final candidate commitment', () => {
   const semantic = FUNCTIONGEMMA_VALIDATION_SCENARIOS.find(item => item.id === 'recover.empty-semantic-index');
