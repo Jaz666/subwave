@@ -127,8 +127,9 @@ keep for now: subwave-functiongemma-v4-hierarchy-weekend
 
 ## Next-session procedure
 
-1. Ask the user for the extended station-run numbers: tool/LLM success counts, router failures/fallbacks, and any observed latency or playback impact.
-2. Compare those observations against the V10 scope and the offline 384/384 Q8 soak; do not infer permanent promotion from the preliminary pre-crash display.
-3. If the run is clean, agree with the user whether to keep V10 as the test-station default and when to retire the V4 rollback container/model.
-4. If there is a regression, restore the V4 hierarchy endpoint/model and inspect concise final telemetry/log summaries before considering any narrowly targeted retraining.
-5. Keep Verified Facts V1 and the producer-routing architecture out of scope unless the user opens a separate task; they were deliberately treated as complete/current-form work.
+1. **Fix the Track Transitions debug table.** Effects are firing, but the `trackTransitions` stats ring is never written: `recordTrackTransition()` exists in `controller/src/stats.ts`, yet no queue path calls it. Record only the final, controller-validated effect at the queue arming point, after bed/stem/analysis/preference exclusions. The table must represent effects actually armed, not Producer proposals. This is an operator-observability follow-up, not a FunctionGemma regression.
+2. Ask the user for the extended station-run numbers: tool/LLM success counts, router failures/fallbacks, and any observed latency or playback impact.
+3. Compare those observations against the V10 scope and the offline 384/384 Q8 soak; do not infer permanent promotion from the preliminary pre-crash display.
+4. If the run is clean, agree with the user whether to keep V10 as the test-station default and when to retire the V4 rollback container/model.
+5. If there is a regression, restore the V4 hierarchy endpoint/model and inspect concise final telemetry/log summaries before considering any narrowly targeted retraining.
+6. Keep Verified Facts V1 and the producer-routing architecture out of scope unless the user opens a separate task; they were deliberately treated as complete/current-form work.
