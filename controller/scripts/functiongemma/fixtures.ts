@@ -16,10 +16,8 @@ const withSongId = (name: string): ToolContract => ({ name, required: ['songId']
 
 const done: ToolContract = {
   name: 'done',
-  required: ['id', 'reason', 'transition'],
-  enums: {
-    transition: ['normal', 'blend', 'sweep', 'washout', 'dissolve', 'chop', 'loop', null],
-  },
+  required: ['id'],
+  additionalProperties: true,
 };
 
 const tracksByMood: ToolContract = {

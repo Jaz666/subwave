@@ -87,7 +87,7 @@ function toolDescription(name: string): string {
     skill_weather_v2: 'Fetch current weather plus a short look ahead.',
     skill_web_search: 'Search for recent news about the artist now playing.',
     skill_web_search_v2: 'Search curated music sources for recent news about the artist now playing.',
-    done: 'Commit the final grounded track id, private reason and transition.',
+    done: 'Commit the final grounded track id only; the controller supplies transition behavior.',
   };
   return descriptions[name] ?? `SUB/WAVE picker function ${name}.`;
 }
