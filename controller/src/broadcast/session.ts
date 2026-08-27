@@ -86,6 +86,17 @@ export interface RolledFrom {
   at?: number;
 }
 
+// A mic-pass armed while the final track of the outgoing show is on air. It
+// deliberately lives on the outgoing session: the music picker may look ahead
+// to the next show, but that must not make the incoming DJ/session live early.
+export interface BoundaryHandoff extends RolledFrom {
+  incomingPersonaId: string;
+  incomingPersonaName: string | null;
+  incomingShowName: string | null;
+  targetKey: string;
+  aired: boolean;
+}
+
 // The live DJ session (also the on-disk shape of session.json).
 interface Session {
   id: string;
@@ -107,6 +118,7 @@ interface Session {
   messages: Turn[];
   handoffAired?: boolean;
   rolledFrom?: RolledFrom | null;
+  boundaryHandoff?: BoundaryHandoff | null;
 }
 
 const MAX_SESSION_MS = 4 * 60 * 60 * 1000;  // safety cap — roll even if key is stable
@@ -359,9 +371,14 @@ export async function maybeRoll(ctx: SessionContext): Promise<Session> {
   if (bothAuto && !aged) return softShift(ctx, nextKey);
 
   const prev = _session;
+  // A final-track handoff may already have introduced exactly this session.
+  // Do not turn the real clock roll into a second mic-pass.
+  const handoffAlreadyCovered = prev.boundaryHandoff?.aired
+    && prev.boundaryHandoff.targetKey === nextKey;
   await end();
   const next = start(ctx, buildHandoff(prev));
   stampRolledFrom(next, prev);
+  if (handoffAlreadyCovered) next.handoffAired = true;
   await persist();
   return next;
 }
@@ -392,7 +409,10 @@ function stampRolledFrom(next: Session, prev: Session) {
 
 // The pending on-air handoff for the live session (outgoing persona metadata),
 // or null when there's nothing to air (no persona change, or already aired).
-export function pendingHandoff(): RolledFrom | null {
+export function pendingHandoff(): RolledFrom | BoundaryHandoff | null {
+  if (_session?.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    return _session.boundaryHandoff;
+  }
   if (!_session?.rolledFrom || _session.handoffAired) return null;
   return _session.rolledFrom;
 }
@@ -402,8 +422,48 @@ export function pendingHandoff(): RolledFrom | null {
 // of the new show — the existing text handoff is the floor.
 export function markHandoffAired() {
   if (!_session) return;
+  if (_session.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    _session.boundaryHandoff.aired = true;
+    schedulePersist();
+    return;
+  }
   _session.handoffAired = true;
   schedulePersist();
+}
+
+// Arm the persona handoff against the final outgoing track without rolling the
+// live session. `ctx` is a look-ahead snapshot for the track that follows; it
+// is valid for choosing music and identifying the next host, but not for
+// changing the on-air roster or session history yet.
+export function armBoundaryHandoff(ctx: SessionContext): boolean {
+  if (!_session || _session.boundaryHandoff) return false;
+  const targetKey = sessionKeyFor(ctx);
+  if (targetKey === _session.key) return false;
+  // Autonomous daypart changes keep their session; only a genuine programme
+  // boundary owns a two-voice handoff.
+  if (!_session.key.startsWith('show:') && !targetKey.startsWith('show:')) return false;
+  const incoming = settings.getEffectivePersona(contextDate(ctx));
+  const outgoingId = _session.persona?.id;
+  if (!outgoingId || !incoming?.id || outgoingId === incoming.id) return false;
+  _session.boundaryHandoff = {
+    personaId: outgoingId,
+    personaName: _session.persona?.name ?? null,
+    showName: _session.show?.name ?? null,
+    incomingPersonaId: incoming.id,
+    incomingPersonaName: incoming.name ?? null,
+    incomingShowName: ctx?.activeShow?.name ?? null,
+    targetKey,
+    aired: false,
+    at: Date.now(),
+  };
+  schedulePersist();
+  return true;
+}
+
+// Once the final-track mic-pass has aired, ordinary speech belongs to neither
+// the outgoing show nor its old roster. Hold it until the real clock roll.
+export function handoffInProgress(): boolean {
+  return !!_session?.boundaryHandoff?.aired;
 }
 
 // --- Programme episode state (broadcast/programme.ts) -----------------------

@@ -190,6 +190,7 @@ export async function generateSignoff({ personaOut, personaIn, showIn = null, co
 }
 
 export async function generateHandoffGreeting({ personaIn, personaOut, signoffText = null, showIn = null, episodeAngle = null, context = null, recap = null, recentOpeners = null }: any) {
+  const rosterAt = context?.at ? new Date(context.at) : new Date();
   const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
   const inName = personaIn?.name || 'your host';
   const outName = personaOut?.name || 'the previous host';
@@ -206,7 +207,7 @@ export async function generateHandoffGreeting({ personaIn, personaOut, signoffTe
   const showClause = showIn ? ` You're kicking off "${showIn}".${angleClause}` : '';
   ctxLines.push(`Task: you're ${inName}, just taking over the mic from ${outName}. Acknowledge ${outName} warmly and naturally — a quick nod to what they said if it fits — then ease into your shift.${showClause} ${lengthPhrase('link', personaIn)}. Keep it easy and in character; you're stepping up to the decks, not reading a bulletin.`);
   return djText({
-    system: djSystem(personaIn),
+    system: djSystem(personaIn, undefined, rosterAt),
     prompt: decoratePrompt(ctxLines.join('\n'), { kind: 'handoff', recap, recentOpeners }),
     temperature: 0.95, topP: 0.92, repeatPenalty: 1.2, seed: randomSeed(),
     kind: 'generateHandoffGreeting',

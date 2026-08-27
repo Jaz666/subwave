@@ -1065,12 +1065,15 @@ export async function runPersonaHandoff(queue: any, ctx: any): Promise<void> {
   // session's persona. A persona deleted mid-shift → nothing to voice; drop it.
   const personaOut = settings.resolvePersonaById(pending.personaId);
   const cur = session.getSession();
-  const personaIn = settings.resolvePersonaById(cur?.persona?.id) || settings.getEffectivePersona();
+  const isFinalTrackHandoff = "incomingPersonaId" in pending;
+  const personaIn = (isFinalTrackHandoff && settings.resolvePersonaById(pending.incomingPersonaId))
+    || settings.resolvePersonaById(cur?.persona?.id)
+    || settings.getEffectivePersona();
   if (!personaOut || !personaIn) {
     session.markHandoffAired();
     return;
   }
-  const showIn = cur?.show?.name || null;
+  const showIn = (isFinalTrackHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
 
   // Mark aired BEFORE airing (see the idempotency note above).
   session.markHandoffAired();
@@ -1107,6 +1110,8 @@ export async function runPersonaHandoff(queue: any, ctx: any): Promise<void> {
     try {
       const greeting = await dj.generateHandoffGreeting({
         personaIn, personaOut, signoffText, showIn,
+        // For a final-track handoff the live session is still outgoing, while
+        // the greeting belongs to the incoming show and roster.
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         context: ctx, recap: queue.getDjRecap(), recentOpeners,
       });
