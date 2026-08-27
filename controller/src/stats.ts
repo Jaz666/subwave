@@ -230,6 +230,7 @@ export function summarizeDjLog(djLog) {
 // in the response so unused but valid outcomes still read as zero.
 export const TRACK_TRANSITION_COMBINATIONS = [
   'normal',
+  'stem blend',
   'sweep',
   'washout',
   'blend',

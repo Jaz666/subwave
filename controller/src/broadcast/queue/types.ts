@@ -74,6 +74,10 @@ export interface QueueItem {
   // live fallback.
   introPersona?: Persona | null;
   aiPicked?: boolean;
+  // The editorial session that authored a track-linked intro. Unlike the
+  // persona, this is a boundary guard: an old show's link must not air after
+  // its handoff. Listener-request intros deliberately do not use this field.
+  introSessionId?: string | null;
   linkPrev?: { id: string | null; title: string | null; artist: string | null } | null;
   // Epoch ms of the air moment this item's link was WRITTEN against — stamped
   // only when the generator actually handed the model a clock to speak

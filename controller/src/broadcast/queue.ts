@@ -35,6 +35,7 @@ import * as session from './session.js';
 import type { TurnMeta } from './session.js';
 import { getFullContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
+import { recordTrackTransition } from '../stats.js';
 import { logEvent } from '../observability/events.js';
 import { logDjSpeech } from '../observability/dj-speech-log.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
@@ -503,6 +504,7 @@ class Queue {
     }
     const item = {
       track, requestedBy, intent, introScript, introKind, introPersona, aiPicked,
+      introSessionId: introKind === 'link' && introScript ? session.getSession()?.id ?? null : null,
       // Only stamp a back-announce target when there's actually an intro/link to
       // air against it; a bare track carries no claim about what preceded it.
       linkPrev: (introScript && linkPrev)
@@ -1719,6 +1721,19 @@ class Queue {
     // skip writing intros, so this only catches an item queued BEFORE the
     // switch was flipped — it must not air its script now. Backstop, not the
     // policy: nothing here spends tokens, so a plain drop is the whole job.
+    // A track-linked link belongs to the editorial session that wrote it. The
+    // old behaviour deliberately carried the outgoing voice one boundary past
+    // a roll; on a real show change that makes an otherwise correct line sound
+    // like the wrong programme has resumed. Request intros are listener-owned
+    // and remain exempt. Missing stamps are legacy/restart-safe.
+    const activeSessionId = session.getSession()?.id ?? null;
+    if (item.introKind === 'link' && item.introSessionId && activeSessionId
+      && item.introSessionId !== activeSessionId) {
+      item.introAired = true;
+      this.log('link-skip', `Dropped link before "${item.track?.title}" — it belongs to the previous session`);
+      this.persist();
+      return;
+    }
     if (!autoVoiceAllowed()) return;
     if (!item || item.introAired) return;
     if (!item.introWav && !item.introScript) return;
@@ -1988,6 +2003,15 @@ class Queue {
           `Dropped ${idx} queue item(s) Liquidsoap played during the downtime`);
       }
       const item = consumed[consumed.length - 1];
+      // The metadata edge is the first point at which this is an actual
+      // listener-facing seam rather than an agent proposal or a queued plan.
+      // `nextTransitionLabel` owns Liquidsoap's precedence, including stem
+      // blends and combinations that the controller may have stripped while
+      // preparing the queue item.
+      if (outgoingPrev) {
+        const transition = nextTransitionLabel(this.current, item);
+        if (transition) recordTrackTransition(transition.toLowerCase());
+      }
       const source = item.aiPicked ? 'ai' : 'request';
       this.current = { ...item, startedAt: new Date().toISOString(), source };
       // A timed-out intro pre-render is keyed by the queued item. The current
@@ -2033,6 +2057,11 @@ class Queue {
         startedAt: new Date().toISOString(),
         source: 'auto',
       };
+      // Auto-playlist tracks have no queue-side effect flags, but they are
+      // still real track transitions. Keeping these normal seams in the same
+      // ring makes the table describe the station's last 120 transitions,
+      // rather than only the subset the controller happened to queue.
+      if (outgoingPrev) recordTrackTransition('normal');
       this.log('playing', `${np.title} — ${np.artist}`, { source: 'auto' });
     }
 
