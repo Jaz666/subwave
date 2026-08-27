@@ -254,8 +254,9 @@ export function personaHandoffGreetingPrompt({ personaIn, personaOut, showIn = n
 export const handoffGreetingPrompt = personaHandoffGreetingPrompt;
 
 export async function generatePersonaHandoffGreeting(args: any) {
+  const rosterAt = args.context?.at ? new Date(args.context.at) : new Date();
   return djText({
-    system: djSystem(args.personaIn),
+    system: djSystem(args.personaIn, undefined, rosterAt),
     prompt: personaHandoffGreetingPrompt(args),
     temperature: 0.95, topP: 0.92, repeatPenalty: 1.2, seed: randomSeed(),
     kind: 'generatePersonaHandoffGreeting',

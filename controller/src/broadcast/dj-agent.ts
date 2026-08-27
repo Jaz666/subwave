@@ -1350,12 +1350,15 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
   // session's persona. A persona deleted mid-shift → nothing to voice; drop it.
   const personaOut = settings.resolvePersonaById(pending.personaId);
   const cur = session.getSession();
-  const personaIn = settings.resolvePersonaById(cur?.persona?.id) || settings.getEffectivePersona();
+  const isFinalTrackHandoff = 'incomingPersonaId' in pending;
+  const personaIn = (isFinalTrackHandoff && settings.resolvePersonaById(pending.incomingPersonaId))
+    || settings.resolvePersonaById(cur?.persona?.id)
+    || settings.getEffectivePersona();
   if (!personaOut || !personaIn) {
     session.markHandoffAired();
     return;
   }
-  const showIn = cur?.show?.name || null;
+  const showIn = (isFinalTrackHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
 
   // Mark aired BEFORE airing (see the idempotency note above).
   session.markHandoffAired();
@@ -1395,7 +1398,7 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     try {
       const greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn, context: ctx, current: queue.current?.track ?? null,
-        showBrief: cur?.show?.topic || null,
+        showBrief: (isFinalTrackHandoff ? ctx?.activeShow?.topic : cur?.show?.topic) || null,
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         recap: queue.getDjRecap(),
         recentOpeners,

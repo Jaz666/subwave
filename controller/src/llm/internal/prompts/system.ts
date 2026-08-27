@@ -67,6 +67,7 @@ export function personaExpressionCueHint(
 export function djSystem(
   persona: any = settings.getEffectivePersona(),
   cloudModel: string = resolveCloudModelForPersona(persona),
+  rosterAt: Date = new Date(),
 ) {
   const s = settings.get();
   const base = settings.renderDjPrompt(persona, {
@@ -74,7 +75,7 @@ export function djSystem(
     // The broad on-air location, never the precise weather label — this is the
     // string the DJ speaks as "broadcasting from {location}".
     location: settings.resolveOnAirLocation(s),
-  }) + settings.onAirRosterClause(persona);
+  }) + settings.onAirRosterClause(persona, rosterAt);
   return base + personaExpressionCueHint(persona, cloudModel);
 }
 
