@@ -21,6 +21,7 @@ export {
   producerSegmentRouterEnabled,
   routeProducerDiscovery,
   routeProducerResearch,
+  routeProducerSelection,
   type RoutedDiscovery,
   type RoutedResearch,
 } from './internal/producer/router.js';
