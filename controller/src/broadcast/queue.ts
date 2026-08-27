@@ -1448,6 +1448,10 @@ class Queue {
   // the outgoing persona id.
   async announce(text, kind = 'announcement', { persona = null, meta = {} }: { persona?: Persona | null; meta?: TurnMeta } = {}) {
     if (!text || !text.trim()) return;
+    if (kind !== 'handoff' && session.handoffInProgress()) {
+      this.log('scheduler', `Held ordinary speech — the show handoff has already aired`);
+      return;
+    }
     try {
       const wavPath = await speak(text, { kind, persona });
       // No bed here by construction — announce() speaks without queueing a
@@ -1990,6 +1994,7 @@ class Queue {
     // for older items that pre-date the id annotation. Same matcher
     // airPendingVoice used above, so the two always agree on the incoming item.
     const idx = this.matchUpcomingIndex(np);
+    let introPromise: Promise<void> | null = null;
 
     if (idx >= 0) {
       // Drop everything ahead of the match too: the queue is strictly FIFO, so
@@ -2027,7 +2032,7 @@ class Queue {
       // rolled into history — the REAL predecessor — so a back-announcing link
       // that no longer follows the track it names (a request jumped the queue)
       // is dropped instead of airing a stale name.
-      void this.airIntro(this.current, this.history[0]?.track || null);
+      introPromise = this.airIntro(this.current, this.history[0]?.track || null);
     } else {
       // Not a tracked request → auto-playlist or jingle.
       // If we see untracked plays while there are sent items in `upcoming`,
@@ -2151,7 +2156,7 @@ class Queue {
     // first transition after a listener returns re-enters this block.
     const isAutonomous = this.current.source === 'auto' || this.current.source === 'ai';
     if (this.autoPick && this.upcoming.length === 0 && !this.pickerBusy && djCallsAllowed()) {
-      this.runPickCycle({ isAutonomous });
+      this.runPickCycle({ isAutonomous, introPromise });
     }
   }
 
@@ -2162,7 +2167,7 @@ class Queue {
   // queue.current at deadline time is one track too early for the event
   // text, the mini-run anchor, and the link's back-announce target.
   // Fire-and-forget like the original block; pickerBusy is the reentry guard.
-  runPickCycle({ isAutonomous, predecessorItem = null }: { isAutonomous: boolean; predecessorItem?: QueueItem | null }) {
+  runPickCycle({ isAutonomous, predecessorItem = null, introPromise = null }: { isAutonomous: boolean; predecessorItem?: QueueItem | null; introPromise?: Promise<void> | null }) {
     let wantLink = false;
     if (this.autoLink && isAutonomous && this.history[0]) {
       this.tracksUntilLink--;
@@ -2202,52 +2207,41 @@ class Queue {
         if (leadSec != null) {
           showAt = new Date(Date.now() + (leadSec + PICK_SHOW_LOOKAHEAD_SEC) * 1000);
         }
-        const ctx = await getFullContext(showAt ?? undefined);
-        await session.maybeRoll(ctx);
-        // Plan a programme episode BEFORE the mic-pass so a handoff into a
-        // programme show can weave the episode angle into its greeting.
+        // The pick needs the context of the track it will queue. The session and
+        // roster must remain at the live clock until the actual boundary.
+        const pickCtx = await getFullContext(showAt ?? undefined);
+        const liveCtx = await getFullContext();
+        await session.maybeRoll(liveCtx);
+
+        // If this track is the last one of the outgoing show, introduce the
+        // incoming host here, after the track-tied intro has had its turn.
+        // The live session is intentionally NOT rolled by this look-ahead.
+        const finalTrackHandoff = session.armBoundaryHandoff(pickCtx);
         try {
-          await programme.ensurePlan(ctx);
-        } catch (err) {
-          this.log('error', `Programme plan failed: ${(err as Error).message}`);
+          await programme.ensurePlan(liveCtx);
+        } catch {
+          this.log('error', 'Programme plan failed');
         }
-        // If that roll crossed a persona boundary, air the mic-pass first
-        // (sign-off + greeting) so it plays before the incoming DJ's first
-        // pick. Guarded so a handoff failure never blocks the next track.
-        // Drop a still-unaired ident first — airPendingVoice ran earlier in
-        // this same tick, before the roll above existed to be seen.
-        // (Under pair-drain the cycle fires near the on-air track's END, so
-        // the mic-pass lands over its outro into the transition — a working
-        // DJ's hand-off spot; deliberate, see stem-transitions research.)
         try {
           if (session.pendingHandoff()) {
-            this.dropPendingVoice('the show handoff covers this boundary');
-            // Identity looks ahead; the CLOCK must not. `ctx` describes
-            // showAt — up to a track-length plus the look-ahead margin from
-            // now — but the mic-pass airs immediately, so its prompt clock
-            // would run minutes fast and the sign-off would misstate the time
-            // on air (the failure #864 fixed for links). Take date/clock/time
-            // from the live moment and keep show/mood/festival from the
-            // look-ahead, which is the show being handed TO. Built only when a
-            // handoff is actually pending, so this costs nothing per track.
-            const live = await getFullContext();
-            await djAgent.runPersonaHandoff(this, {
-              ...ctx, at: live.at, date: live.date, clock: live.clock, time: live.time,
-            });
+            this.dropPendingVoice("the show handoff covers this boundary");
+            if (introPromise) await introPromise;
+            const handoffCtx = finalTrackHandoff ? pickCtx : liveCtx;
+            await djAgent.runPersonaHandoff(this, handoffCtx);
           }
-        } catch (err) {
-          this.log('error', `Persona handoff failed: ${(err as Error).message}`);
+        } catch {
+          this.log('error', 'Persona handoff failed');
         }
-        // Programme shows: open the episode if the hourly cron hasn't
-        // already (whichever call site settles the session first wins; the
-        // beat flag makes the other a no-op).
         try {
-          await programme.onSessionSettled(this, ctx);
-        } catch (err) {
-          this.log('error', `Programme episode hook failed: ${(err as Error).message}`);
+          await programme.onSessionSettled(this, liveCtx);
+        } catch {
+          this.log('error', 'Programme episode hook failed');
         }
-        await djAgent.runTrackEvent(this, ctx, {
-          wantLink,
+        await djAgent.runTrackEvent(this, pickCtx, {
+          // A link written by the outgoing DJ would otherwise air after their
+          // sign-off, at the incoming show boundary. The mic-pass is the
+          // introduction for that seam instead.
+          wantLink: wantLink && !finalTrackHandoff,
           showAt,
           predecessor: predecessorItem?.track ?? null,
           prior: predecessorItem ? (this.current?.track ?? null) : null,

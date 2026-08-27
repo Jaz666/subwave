@@ -1162,7 +1162,9 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     //    rides along; the standalone intro is then skipped (programme.ts).
     try {
       const greeting = await generateHandoffGreeting({
-        personaIn, personaOut, showIn,
+        personaIn, personaOut, signoffText, showIn,
+        // A final-track handoff retains the outgoing live session, but the
+        // greeting belongs to the incoming show's roster and brief.
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         context: ctx, recap: queue.getDjRecap(), recentOpeners,
       });

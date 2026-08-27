@@ -87,6 +87,17 @@ export interface RolledFrom {
   at?: number;
 }
 
+// A mic-pass armed while the final track of the outgoing show is on air. It
+// remains on that session: look-ahead may select music for the incoming show,
+// but must not make its roster or session live before the clock boundary.
+export interface BoundaryHandoff extends RolledFrom {
+  incomingPersonaId: string;
+  incomingPersonaName: string | null;
+  incomingShowName: string | null;
+  targetKey: string;
+  aired: boolean;
+}
+
 // The live DJ session (also the on-disk shape of session.json).
 interface Session {
   id: string;
@@ -108,6 +119,7 @@ interface Session {
   messages: Turn[];
   handoffAired?: boolean;
   rolledFrom?: RolledFrom | null;
+  boundaryHandoff?: BoundaryHandoff | null;
 }
 
 const MAX_SESSION_MS = 4 * 60 * 60 * 1000;  // safety cap — roll even if key is stable
@@ -385,9 +397,14 @@ export async function maybeRoll(ctx: SessionContext): Promise<Session> {
   // Snapshot before end()/start() replace the live session — the outgoing DJ's
   // sign-off is generated after this returns (see priorPromptMemory above).
   _priorPromptMemory = promptMemoryEntries(prev.messages, prev.persona?.id ?? null);
+  // The final outgoing track may already have carried this exact handoff.
+  // The wall-clock roll creates the new editorial session, not a second pass.
+  const handoffAlreadyCovered = prev.boundaryHandoff?.aired
+    && prev.boundaryHandoff.targetKey === nextKey;
   await end();
   const next = start(ctx, buildHandoff(prev));
   stampRolledFrom(next, prev);
+  if (handoffAlreadyCovered) next.handoffAired = true;
   await persist();
   return next;
 }
@@ -418,7 +435,10 @@ function stampRolledFrom(next: Session, prev: Session) {
 
 // The pending on-air handoff for the live session (outgoing persona metadata),
 // or null when there's nothing to air (no persona change, or already aired).
-export function pendingHandoff(): RolledFrom | null {
+export function pendingHandoff(): RolledFrom | BoundaryHandoff | null {
+  if (_session?.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    return _session.boundaryHandoff;
+  }
   if (!_session?.rolledFrom || _session.handoffAired) return null;
   return _session.rolledFrom;
 }
@@ -428,8 +448,39 @@ export function pendingHandoff(): RolledFrom | null {
 // of the new show — the existing text handoff is the floor.
 export function markHandoffAired() {
   if (!_session) return;
+  if (_session.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    _session.boundaryHandoff.aired = true;
+    schedulePersist();
+    return;
+  }
   _session.handoffAired = true;
   schedulePersist();
+}
+
+// Arm a handoff against the final outgoing track without rolling the live
+// session. The context describes the next track/show, so it is valid for music
+// choice and incoming identity but not for changing the on-air session yet.
+export function armBoundaryHandoff(ctx: SessionContext): boolean {
+  if (!_session || _session.boundaryHandoff) return false;
+  const targetKey = sessionKeyFor(ctx);
+  if (targetKey === _session.key) return false;
+  if (!_session.key.startsWith('show:') && !targetKey.startsWith('show:')) return false;
+  const incoming = settings.getEffectivePersona(contextDate(ctx));
+  const outgoingId = _session.persona?.id;
+  if (!outgoingId || !incoming?.id || outgoingId === incoming.id) return false;
+  _session.boundaryHandoff = {
+    personaId: outgoingId,
+    personaName: _session.persona?.name ?? null,
+    showName: _session.show?.name ?? null,
+    incomingPersonaId: incoming.id,
+    incomingPersonaName: incoming.name ?? null,
+    incomingShowName: ctx?.activeShow?.name ?? null,
+    targetKey,
+    aired: false,
+    at: Date.now(),
+  };
+  schedulePersist();
+  return true;
 }
 
 // --- Programme episode state (broadcast/programme.ts) -----------------------
