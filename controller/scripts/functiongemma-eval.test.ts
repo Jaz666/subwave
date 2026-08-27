@@ -41,7 +41,6 @@ test('distinguishes recovery progress from repeating the failed tool', () => {
     calls: [
       { name: 'tracksLikeThis', arguments: { songId: seedId } },
       { name: 'tracksLikeThis', arguments: { songId: seedId } },
-      { name: 'done', arguments: { id: 'reflective-01', reason: 'flow', transition: null } },
     ],
   });
   assert.deepEqual(loop.dimensions.recovery?.violations, ['recovery:repeated-empty-tool']);
@@ -51,7 +50,6 @@ test('distinguishes recovery progress from repeating the failed tool', () => {
     calls: [
       { name: 'tracksLikeThis', arguments: { songId: seedId } },
       { name: 'tracksByMood', arguments: { mood: 'reflective', energy: 'low' } },
-      { name: 'done', arguments: { id: 'reflective-01', reason: 'flow', transition: null } },
     ],
   });
   assert.equal(progressed.passed, true);
@@ -147,7 +145,6 @@ test('model runner carries an empty result into a different recovery call', asyn
   const replies = [
     { id: 'a', function: { name: 'tracksLikeThis', arguments: JSON.stringify({ songId: seedId }) } },
     { id: 'b', function: { name: 'tracksByMood', arguments: '{"mood":"reflective","energy":"low"}' } },
-    { id: 'c', function: { name: 'done', arguments: '{"id":"reflective-01","reason":"flow","transition":null}' } },
   ];
   const bodies: any[] = [];
   const fakeFetch: typeof fetch = async (_input, init) => {
@@ -161,8 +158,8 @@ test('model runner carries an empty result into a different recovery call', asyn
   const prediction = await runModelScenario(fixture, {
     baseUrl: 'http://model.test:8080', model: 'functiongemma',
   }, fakeFetch);
-  assert.deepEqual(prediction.calls.map(call => call.name), ['tracksLikeThis', 'tracksByMood', 'done']);
-  assert.deepEqual(prediction.callsPerRound, [1, 1, 1]);
+  assert.deepEqual(prediction.calls.map(call => call.name), ['tracksLikeThis', 'tracksByMood']);
+  assert.deepEqual(prediction.callsPerRound, [1, 1]);
   assert.equal(bodies[0].messages[0].role, 'developer');
   assert.equal(bodies[0].max_tokens, 256);
   assert.deepEqual(bodies[0].stop, ['<end_function_call>']);
@@ -192,7 +189,9 @@ test('training calls use exact live schemas and copy unique production-shaped id
   const seenIds = new Set<string>();
   for (const example of examples) {
     const prompt = String(example.messages.find(message => message.role === 'user')?.content ?? '');
-    const context = JSON.parse(prompt.slice(prompt.indexOf('\n\n{') + 2));
+    // Autonomous segment routing has an operational prose envelope, not a picker payload.
+    if (example.family.startsWith('route.segment-')) continue;
+    const context = JSON.parse(prompt.slice(prompt.indexOf('{')));
     if (example.family === 'route.random-fallback') {
       assert.equal(context.currentTrack, null, example.id);
       continue;
@@ -264,4 +263,28 @@ test('soak runner rejects two calls emitted at one decision point', async () => 
   });
   assert.equal(result.passed, false);
   assert.equal(result.actual.length, 2);
+});
+
+test('scores final-selection grounding, hard constraints, and multiple defensible choices separately', () => {
+  const exact = scenario('commit.exact-id-grounding');
+  const malformed = scorePrediction(exact, {
+    scenario: exact.id,
+    calls: [{ name: 'done', arguments: { id: 'aB9kL2mN7pQ4rS8tU1vW3', reason: 'copy error', transition: 'normal' } }],
+  });
+  assert.deepEqual(malformed.dimensions.grounding?.violations, ['grounding:unsurfaced-id:aB9kL2mN7pQ4rS8tU1vW3']);
+
+  const strict = scenario('commit.strict-playlist');
+  const outside = scorePrediction(strict, {
+    scenario: strict.id,
+    calls: [{ name: 'done', arguments: { id: 'outside-01', reason: 'same artist', transition: null } }],
+  });
+  assert.ok(outside.dimensions.grounding?.passed, 'the outside id is grounded but still ineligible');
+  assert.ok(outside.dimensions.editorial?.violations.includes('editorial:forbidden-id:outside-01'));
+
+  const contrast = scenario('commit.deliberate-contrast');
+  const alternate = scorePrediction(contrast, {
+    scenario: contrast.id,
+    calls: [{ name: 'done', arguments: { id: 'lift-02', reason: 'planned lift', transition: 'normal' } }],
+  });
+  assert.equal(alternate.passed, true, 'a second defensible contrast must not be rejected as non-preferred');
 });

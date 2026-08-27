@@ -269,3 +269,29 @@ test('preferred playlist discovery alternates to another tool on the following r
   assert.ok(requests[0].tools.some((entry: any) => entry.function.name === 'showPlaylistTracks'));
   assert.ok(!requests[1].tools.some((entry: any) => entry.function.name === 'showPlaylistTracks'));
 });
+
+test('rejects multiple native calls before either discovery tool executes', async () => {
+  const executions: string[] = [];
+  const records: any[] = [];
+  await assert.rejects(routeProducerDiscovery({
+    scope: {} as any,
+    prompt: 'Choose one discovery source.',
+    config: { baseUrl: 'http://router/v1', model: 'router.gguf', timeoutMs: 5000 },
+    fetchImpl: (async () => jsonResponse({
+      role: 'assistant',
+      content: '<start_function_call>call:tracksLikeThis{}<end_function_call>\n<start_function_call>call:tracksByMood{}<end_function_call>',
+    })) as any,
+    buildTools: (() => ({
+      seen: new Map(),
+      tools: {
+        tracksLikeThis: tool({ description: 'similar', inputSchema: z.object({}), execute: async () => { executions.push('tracksLikeThis'); return []; } }),
+        tracksByMood: tool({ description: 'mood', inputSchema: z.object({}), execute: async () => { executions.push('tracksByMood'); return []; } }),
+      },
+    })) as any,
+    recordImpl: ((value: any) => records.push(value)) as any,
+  }), /returned 2 tool calls; expected exactly one/);
+
+  assert.deepEqual(executions, [], 'a malformed multi-call response executes no discovery tool');
+  assert.equal(records[0].ok, false);
+  assert.equal(records[0].toolCalls.length, 0);
+});
