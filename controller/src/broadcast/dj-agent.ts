@@ -403,8 +403,28 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
             }),
           });
           const usePersonaFinalCall = String(process.env.PRODUCER_PERSONA_FINAL_CALL ?? "").toLowerCase() === "1";
+          // The selector was trained on a compact, described candidate set. Do
+          // not pass the full Producer brief here: it contains stale IDs and
+          // overwhelms the small model's exact-id copy task.
+          const selectionPrompt = JSON.stringify({
+            currentTrack: current ? {
+              title: current.title, artist: current.artist, energy: current.energy,
+              bpm: current.bpm, key: current.key, pace: current.pace,
+            } : null,
+            candidates: [...routed.seen.entries()].map(([id, candidate]) => ({
+              id, title: candidate?.title ?? null, artist: candidate?.artist ?? null,
+              album: candidate?.album ?? null, genre: candidate?.genre ?? null,
+              moods: candidate?.moods ?? [], energy: candidate?.energy ?? null,
+              bpm: candidate?.bpm ?? null, key: candidate?.key ?? null,
+              pace: candidate?.pace ?? null, instrumental: candidate?.instrumental ?? null,
+              unaired: candidate?.unaired ?? false, play_count: candidate?.play_count ?? null,
+              last_played_days_ago: candidate?.last_played_days_ago ?? null,
+              artist_play_count: candidate?.artist_play_count ?? null,
+              artist_last_played_days_ago: candidate?.artist_last_played_days_ago ?? null,
+            })),
+          });
           const proposedId = usePersonaFinalCall ? await routeProducerSelection({
-            config: routerConfig, prompt: producerMessages[0].content, candidateIds: [...routed.seen.keys()],
+            config: routerConfig, prompt: selectionPrompt, candidateIds: [...routed.seen.keys()],
           }) : null;
           const proposed = proposedId ? routed.seen.get(proposedId) : null;
           const decision = proposedId ? routeFinalSelection({
