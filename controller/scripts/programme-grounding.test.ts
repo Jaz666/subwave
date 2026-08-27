@@ -50,6 +50,7 @@ const {
   introTask,
   outroTask,
   exchangeSystem,
+  programmePlanRequest,
 } = await import('../src/llm/internal/prompts/programme.js');
 
 try {
@@ -127,6 +128,24 @@ try {
   // have displaced the grounding the beat DOES get.
   assert.match(feature, /what Butch Vig actually changed/, 'feature carries its topic');
   assert.match(feature, /the year the underground went loud/, "feature carries the episode's angle");
+
+  // An episode angle is creative interpretation. Its schedule/roster/capability
+  // inputs are controller-owned, but the structured plan must use the
+  // configured Creative model rather than revive the transitional Qwen
+  // Producer leg.
+  const planRequest = programmePlanRequest({
+    system: 'Episode planner',
+    prompt: 'Make today\'s episode plan.',
+    featureCount: 2,
+  });
+  assert.equal(planRequest.kind, 'generateProgrammePlan');
+  assert.ok(!('role' in planRequest), 'programme planning uses the default Creative model role');
+  assert.equal(planRequest.schema.safeParse({
+    angle: 'A grounded angle',
+    introNote: 'Open with the brief.',
+    outroNote: 'Close the hour.',
+    features: [{ topic: 'First', kind: null }, { topic: 'Second', kind: null }],
+  }).success, true, 'the Creative plan keeps the programme contract');
 
   // ── Plan side: what `kind: null` is FOR ──────────────────────────────────
   const menu = featureKindsClause(

@@ -144,6 +144,26 @@ export function featureKindsClause(skillKinds: { kind: string; desc: string }[] 
 // (already filtered to enabled + host-owned + ready by the caller). When the
 // show pins `segmentSkill`, the caller passes just that one and the plan is
 // told every feature uses it.
+//
+// The plan is backstage output, but its angle and host notes are creative
+// interpretation rather than a bounded controller operation. It therefore
+// uses the configured Creative model (the default djObject role), while the
+// controller continues to own the schedule span, roster and capability menu
+// supplied below. Do not send this to the transitional Qwen Producer leg.
+export function programmePlanRequest({ system, prompt, featureCount }: {
+  system: string;
+  prompt: string;
+  featureCount: number;
+}) {
+  return {
+    system,
+    prompt,
+    schema: planSchema(featureCount),
+    temperature: 0.9,
+    kind: 'generateProgrammePlan',
+  };
+}
+
 export async function generateProgrammePlan({
   show, spanHours = 1, host = null, guests = [], context = null,
   previousAngle = null, skillKinds = [], pinnedKind = null,
@@ -169,17 +189,11 @@ export async function generateProgrammePlan({
     `\nWrite the plan — exactly ${featureCount} feature${featureCount > 1 ? 's' : ''}, in air order.`,
   ].filter(Boolean);
 
-  return djObject({
+  return djObject(programmePlanRequest({
     system,
     prompt: promptLines.join('\n'),
-    schema: planSchema(featureCount),
-    temperature: 0.9,
-    kind: 'generateProgrammePlan',
-    // The episode plan is a backstage structured decision. Keep its routing
-    // separate from the Persona-written programme beats so Producer-model
-    // evaluations can exercise the plan without changing delivery.
-    role: 'producer',
-  });
+    featureCount,
+  }));
 }
 
 // ---------------------------------------------------------------------------
