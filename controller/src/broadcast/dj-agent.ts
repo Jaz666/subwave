@@ -51,7 +51,9 @@ import {
   producerSelectorSystem,
   requestAgent,
 } from './dj-agent/agents.js';
-import { ProducerPickSchema, producerRouterConfig, routeProducerDiscovery } from '../llm/producer.js';
+import { ProducerPickSchema, producerRouterConfig, routeProducerDiscovery, routeProducerSelection } from '../llm/producer.js';
+import { routeFinalSelection } from '../llm/internal/producer/final-selection-route.js';
+import { personaFinalCallDecision } from '../llm/internal/producer/persona-final-call.js';
 import { pickerScope } from '../llm/tools.js';
 import {
   HANDOFF_MAX_AGE_MS,
@@ -181,11 +183,15 @@ async function selectProducerFromSeen({
   producerMessage,
   showAt = null,
   playlistResolved = true,
+  kind = 'djProducerSelect',
+  role = 'producer',
 }: {
   seen: Map<string, any>;
   producerMessage: string;
   showAt?: Date | null;
   playlistResolved?: boolean;
+  kind?: 'djProducerSelect' | 'djPersonaFinalCall';
+  role?: 'producer' | 'persona';
 }) {
   const ids = [...seen.keys()];
   if (!ids.length) throw new Error('Producer Router supplied no candidates for final selection');
@@ -197,8 +203,8 @@ async function selectProducerFromSeen({
     prompt: `${producerMessage}\n\nGrounded candidates discovered for this pick:\n${JSON.stringify([...seen.values()], null, 2)}`,
     schema,
     temperature: 0.4,
-    kind: 'djProducerSelect',
-    role: 'producer',
+    kind,
+    role,
   });
 }
 
@@ -396,11 +402,18 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
               explore: producerExplore,
             }),
           });
-          const object = await selectProducerFromSeen({
-            seen: routed.seen,
-            producerMessage: producerMessages[0].content,
-            showAt,
-            playlistResolved: !!playlistTracks?.length,
+          const usePersonaFinalCall = String(process.env.PRODUCER_PERSONA_FINAL_CALL ?? "").toLowerCase() === "1";
+          const proposedId = usePersonaFinalCall ? await routeProducerSelection({
+            config: routerConfig, prompt: producerMessages[0].content, candidateIds: [...routed.seen.keys()],
+          }) : null;
+          const proposed = proposedId ? routed.seen.get(proposedId) : null;
+          const decision = proposedId ? routeFinalSelection({
+            proposedId, surfacedIds: new Set(routed.seen.keys()), proposedArtist: proposed?.artist ?? null,
+            currentArtist: current?.artist ?? null, alternativeArtistCount: new Set([...routed.seen.values()].map(candidate => candidate?.artist).filter(Boolean)).size,
+          }) : null;
+          const object = decision?.kind === "functiongemma" ? { id: decision.id, reason: "FunctionGemma fast selection", transition: null } : await selectProducerFromSeen({
+            seen: routed.seen, producerMessage: producerMessages[0].content, showAt, playlistResolved: !!playlistTracks?.length,
+            ...(decision ? { kind: "djPersonaFinalCall" as const, role: "persona" as const } : {}),
           });
           run = {
             object,
