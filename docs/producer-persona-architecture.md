@@ -36,8 +36,8 @@ the FunctionGemma router is enabled only in the separate live-test setup.
 FunctionGemma is therefore being evaluated first as a **tool-function router**,
 not as a general editorial Producer or a presenter. Its routing success must
 not be counted as proof that it can choose a musically defensible final track.
-The Qwen3-4B hand-off remains necessary for that final editorial decision in
-the current experiment.
+The Qwen3-4B hand-off remains the default final editorial decision in the current experiment. An opt-in test path, `PRODUCER_PERSONA_FINAL_CALL=1`, permits the FunctionGemma selector to commit one already-surfaced candidate id. The controller preserves deterministic grounding and transition defaults, and escalates a real artist-variety conflict (only when another artist is available) to the configured Persona as **Persona's Final Call**. It never presents a fabricated candidate to Persona. The initial test deliberately does not yet infer recent rotation or overlooked-album preference, so those reasons must not be treated as covered until their controller data is wired in.
+
 
 ### Possible Qwen3-4B retirement
 
