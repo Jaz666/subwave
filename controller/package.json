@@ -21,6 +21,7 @@
     "functiongemma:selection-data": "tsx scripts/functiongemma/selection-data-cli.ts",
     "functiongemma:mixed-selection-data": "tsx scripts/functiongemma/mixed-selection-data-cli.ts",
     "functiongemma:mixed-selection-v3-data": "tsx scripts/functiongemma/mixed-selection-v3-data-cli.ts",
+    "functiongemma:selection-v5-data": "tsx scripts/functiongemma/selection-v5-data-cli.ts",
     "lint": "eslint . && tsc --noEmit",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
