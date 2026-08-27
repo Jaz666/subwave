@@ -18,6 +18,7 @@
     "functiongemma:eval": "tsx scripts/functiongemma/cli.ts",
     "functiongemma:soak": "tsx scripts/functiongemma/soak-cli.ts",
     "functiongemma:data": "tsx scripts/functiongemma/data-cli.ts",
+    "functiongemma:selection-data": "tsx scripts/functiongemma/selection-data-cli.ts",
     "lint": "eslint . && tsc --noEmit",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
