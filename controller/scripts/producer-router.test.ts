@@ -9,6 +9,7 @@ import {
   producerSegmentRouterEnabled,
   routeProducerDiscovery,
   routeProducerResearch,
+  routeProducerSelection,
 } from '../src/llm/internal/producer/router.js';
 
 test('Producer Router stays disabled until both endpoint and model are configured', () => {
@@ -268,4 +269,23 @@ test('preferred playlist discovery alternates to another tool on the following r
   assert.equal(second.toolCalls[0].name, 'tracksByMood');
   assert.ok(requests[0].tools.some((entry: any) => entry.function.name === 'showPlaylistTracks'));
   assert.ok(!requests[1].tools.some((entry: any) => entry.function.name === 'showPlaylistTracks'));
+});
+
+
+test('records FunctionGemma final selection separately from discovery routing', async () => {
+  const records: any[] = [];
+  const id = await routeProducerSelection({
+    prompt: JSON.stringify({ candidates: [{ id: 'track-1', title: 'One' }] }),
+    candidateIds: ['track-1'],
+    config: { baseUrl: 'http://router/v1', model: 'selector.gguf', timeoutMs: 5000 },
+    fetchImpl: (async () => jsonResponse({
+      role: 'assistant', content: null,
+      tool_calls: [{ type: 'function', function: { name: 'done', arguments: '{"id":"track-1"}' } }],
+    })) as any,
+    recordImpl: ((value: any) => records.push(value)) as any,
+  });
+  assert.equal(id, 'track-1');
+  assert.equal(records[0].kind, 'djFunctionGemmaFinalSelect');
+  assert.equal(records[0].ok, true);
+  assert.deepEqual(records[0].toolCalls[0].args, { id: 'track-1' });
 });

@@ -53,7 +53,6 @@ import {
 } from './dj-agent/agents.js';
 import { ProducerPickSchema, producerRouterConfig, routeProducerDiscovery, routeProducerSelection } from '../llm/producer.js';
 import { routeFinalSelection } from '../llm/internal/producer/final-selection-route.js';
-import { personaFinalCallDecision } from '../llm/internal/producer/persona-final-call.js';
 import { pickerScope } from '../llm/tools.js';
 import {
   HANDOFF_MAX_AGE_MS,
@@ -429,10 +428,33 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
           const proposed = proposedId ? routed.seen.get(proposedId) : null;
           const decision = proposedId ? routeFinalSelection({
             proposedId, surfacedIds: new Set(routed.seen.keys()), proposedArtist: proposed?.artist ?? null,
-            currentArtist: current?.artist ?? null, alternativeArtistCount: new Set([...routed.seen.values()].map(candidate => candidate?.artist).filter(Boolean)).size,
+            currentArtist: current?.artist ?? null, alternativeArtistCount: new Set([...routed.seen.values()].map(candidate => artistRootKey(candidate)).filter(Boolean)).size,
           }) : null;
+          const personaFinalCallPacket = decision?.kind === "persona-final-call" ? {
+            task: "resolve_final_track_selection_conflict",
+            functionGemmaProposal: {
+              id: proposedId, title: proposed?.title ?? null, artist: proposed?.artist ?? null,
+            },
+            currentTrack: {
+              id: current?.id ?? null, title: current?.title ?? null, artist: current?.artist ?? null,
+            },
+            availableAlternativeArtists: [...new Set([...routed.seen.values()]
+              .filter(candidate => artistRootKey(candidate) !== artistRootKey(current))
+              .map(candidate => candidate?.artist).filter((artist): artist is string => !!artist))],
+            policyReasons: decision.reasons,
+            instruction: decision.reasons.includes("artist-variety-conflict")
+              ? "Same-artist continuity is prohibited for this decision: select a surfaced candidate by a different artist because alternatives exist."
+              : "Resolve the stated policy conflict while selecting only a surfaced candidate id.",
+          } : null;
+          if (personaFinalCallPacket) {
+            queue.log('producer', `Persona Final Call: ${personaFinalCallPacket.policyReasons.join(', ')}; FunctionGemma proposed "${proposed?.title ?? proposedId}" by ${proposed?.artist ?? 'unknown artist'}`);
+          }
           const object = decision?.kind === "functiongemma" ? { id: decision.id, reason: "FunctionGemma fast selection", transition: null } : await selectProducerFromSeen({
-            seen: routed.seen, producerMessage: producerMessages[0].content, showAt, playlistResolved: !!playlistTracks?.length,
+            seen: routed.seen,
+            producerMessage: personaFinalCallPacket
+              ? `${producerMessages[0].content}\n\nPersona Final Call conflict packet (controller policy, not optional editorial advice):\n${JSON.stringify(personaFinalCallPacket, null, 2)}`
+              : producerMessages[0].content,
+            showAt, playlistResolved: !!playlistTracks?.length,
             ...(decision ? { kind: "djPersonaFinalCall" as const, role: "persona" as const } : {}),
           });
           run = {

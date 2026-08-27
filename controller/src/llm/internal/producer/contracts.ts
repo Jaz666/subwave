@@ -7,7 +7,7 @@ export const PRODUCER_TRANSITIONS = [
 
 export const ProducerPickSchema = z.object({
   id: z.string().describe('exact id returned by a library discovery tool in this run'),
-  reason: z.string().max(320).describe('concise internal editorial reason; never listener-facing copy'),
+  reason: z.string().max(512).describe('concise internal editorial reason; never listener-facing copy'),
   transition: z.enum(PRODUCER_TRANSITIONS).nullable().describe('transition treatment, or null for the station default'),
   guestInfluenceApplied: z.boolean().optional().describe("true only when the supplied guest editorial nudge materially broke a close tie; otherwise omit"),
 });

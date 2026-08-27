@@ -398,4 +398,61 @@ export async function routeProducerResearch({
 }
 
 
-export async function routeProducerSelection({ prompt, candidateIds, config = producerRouterConfig(), fetchImpl = fetch }: { prompt: string; candidateIds: readonly string[]; config?: RouterConfig | null; fetchImpl?: typeof fetch }): Promise<string> { if(!config) throw new Error("Producer Router is not configured"); if(!candidateIds.length) throw new Error("Producer Selector has no candidates"); const response=await fetchImpl(endpoint(config.baseUrl),{method:"POST",headers:{"content-type":"application/json",...(config.apiKey?{authorization:`Bearer ${config.apiKey}`}:{})},body:JSON.stringify({model:config.model,messages:[{role:"developer",content:"Choose exactly one surfaced candidate id. Call done with only id."},{role:"user",content:`${prompt}\n\nCandidates: ${JSON.stringify(candidateIds)}`}],tools:[{type:"function",function:{name:"done",description:"Commit one surfaced id.",parameters:{type:"object",properties:{id:{type:"string",enum:[...candidateIds]}},required:["id"],additionalProperties:false}}}],tool_choice:"required",parallel_tool_calls:false,temperature:0,max_tokens:64,stop:["<end_function_call>"]})}); const body:any=await response.json().catch(()=>null); if(!response.ok) throw new Error(`Producer Selector endpoint returned ${response.status}`); const message=body?.choices?.[0]?.message; const raw:Array<OpenAiToolCall>=Array.isArray(message?.tool_calls)?message.tool_calls:[]; const calls=raw.length?parseOpenAiCalls(raw):parseFunctionGemmaCall(message?.content); if(calls.length!==1||calls[0].name!=="done") throw new Error("Producer Selector did not return one done call"); const id=String(calls[0].arguments.id??""); if(!candidateIds.includes(id)) throw new Error("Producer Selector returned an unsurfaced id"); return id; }
+export async function routeProducerSelection({
+  prompt,
+  candidateIds,
+  config = producerRouterConfig(),
+  fetchImpl = fetch,
+  recordImpl = record,
+}: {
+  prompt: string;
+  candidateIds: readonly string[];
+  config?: RouterConfig | null;
+  fetchImpl?: typeof fetch;
+  recordImpl?: typeof record;
+}): Promise<string> {
+  if (!config) throw new Error('Producer Router is not configured');
+  if (!candidateIds.length) throw new Error('Producer Selector has no candidates');
+
+  const system = 'Choose exactly one surfaced candidate id. Call done with only id.';
+  const user = `${prompt}\n\nCandidates: ${JSON.stringify(candidateIds)}`;
+  const started = Date.now();
+  let usage = { input: 0, output: 0, total: 0 };
+  let responseText = '';
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+    let response: Response;
+    try {
+      response = await fetchImpl(endpoint(config.baseUrl), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}) },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [{ role: 'developer', content: system }, { role: 'user', content: user }],
+          tools: [{ type: 'function', function: { name: 'done', description: 'Commit one surfaced id.', parameters: { type: 'object', properties: { id: { type: 'string', enum: [...candidateIds] } }, required: ['id'], additionalProperties: false } } }],
+          tool_choice: 'required', parallel_tool_calls: false, temperature: 0, max_tokens: 64,
+          stop: ['<end_function_call>'],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    const body: any = await response.json().catch(() => null);
+    usage = usageOf(body);
+    if (!response.ok) throw new Error(`Producer Selector endpoint returned ${response.status}`);
+    const message = body?.choices?.[0]?.message;
+    responseText = typeof message?.content === 'string' ? message.content.trim() : '';
+    const raw: OpenAiToolCall[] = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+    const calls = raw.length ? parseOpenAiCalls(raw) : parseFunctionGemmaCall(message?.content);
+    if (calls.length !== 1 || calls[0].name !== 'done') throw new Error('Producer Selector did not return one done call');
+    const id = String(calls[0].arguments.id ?? '');
+    if (!candidateIds.includes(id)) throw new Error('Producer Selector returned an unsurfaced id');
+    recordImpl({ kind: 'djFunctionGemmaFinalSelect', ok: true, ms: Date.now() - started, model: config.model, via: 'openai-compatible:functiongemma', usage, t: new Date().toISOString(), system, user, response: responseText, steps: 1, toolCalls: [{ name: 'done', args: { id }, result: { id } }] });
+    return id;
+  } catch (error: any) {
+    recordImpl({ kind: 'djFunctionGemmaFinalSelect', ok: false, ms: Date.now() - started, model: config.model, via: 'openai-compatible:functiongemma', usage, t: new Date().toISOString(), system, user, response: responseText, steps: 1, toolCalls: [], error: error?.message ?? String(error) });
+    throw error;
+  }
+}
