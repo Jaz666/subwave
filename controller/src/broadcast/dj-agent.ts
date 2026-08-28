@@ -404,7 +404,14 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
           // The selector was trained on a compact, described candidate set. Do
           // not pass the full Producer brief here: it contains stale IDs and
           // overwhelms the small model's exact-id copy task.
+          const musicLeanings = String(settings.personaEditorialInfluence(session.onAirPersona())?.musicLeanings || '').trim();
           const selectionPrompt = JSON.stringify({
+            // The fast selector must still honour the operator's music taste,
+            // but never receive the Persona's on-air identity or prose. This
+            // remains a soft tie-breaker between otherwise suitable choices.
+            editorialTieBreaker: musicLeanings
+              ? `Soft tie-breaker only; never override show rules, rotation, safety or flow: ${musicLeanings}`
+              : null,
             currentTrack: current ? {
               title: current.title, artist: current.artist, energy: current.energy,
               bpm: current.bpm, key: current.key, pace: current.pace,
