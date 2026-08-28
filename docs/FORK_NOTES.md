@@ -45,3 +45,4 @@ The remote naming and history show that this checkout was configured with the or
 - Refresh both remotes before making release or divergence decisions.
 - Keep experimental changes in separate branch worktrees.
 - Document opt-in configuration, fallback behavior, evaluation results, and rollback steps before proposing producer/persona changes upstream.
+- **Banter timing:** multi-voice banter must be track-agnostic. A banter exchange can outlive the track that was current when it was generated, especially with slower or serial TTS engines; do not tune the timing to this station's TTS latency. Track-specific speech belongs on a track-attached link, where a changed seam can safely drop it.
