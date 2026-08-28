@@ -404,12 +404,14 @@ export async function routeProducerSelection({
   config = producerRouterConfig(),
   fetchImpl = fetch,
   recordImpl = record,
+  kind = 'djFunctionGemmaFinalSelect',
 }: {
   prompt: string;
   candidateIds: readonly string[];
   config?: RouterConfig | null;
   fetchImpl?: typeof fetch;
   recordImpl?: typeof record;
+  kind?: 'djFunctionGemmaFinalSelect' | 'djFunctionGemmaRepick';
 }): Promise<string> {
   if (!config) throw new Error('Producer Router is not configured');
   if (!candidateIds.length) throw new Error('Producer Selector has no candidates');
@@ -449,10 +451,10 @@ export async function routeProducerSelection({
     if (calls.length !== 1 || calls[0].name !== 'done') throw new Error('Producer Selector did not return one done call');
     const id = String(calls[0].arguments.id ?? '');
     if (!candidateIds.includes(id)) throw new Error('Producer Selector returned an unsurfaced id');
-    recordImpl({ kind: 'djFunctionGemmaFinalSelect', ok: true, ms: Date.now() - started, model: config.model, via: 'openai-compatible:functiongemma', usage, t: new Date().toISOString(), system, user, response: responseText, steps: 1, toolCalls: [{ name: 'done', args: { id }, result: { id } }] });
+    recordImpl({ kind, ok: true, ms: Date.now() - started, model: config.model, via: 'openai-compatible:functiongemma', usage, t: new Date().toISOString(), system, user, response: responseText, steps: 1, toolCalls: [{ name: 'done', args: { id }, result: { id } }] });
     return id;
   } catch (error: any) {
-    recordImpl({ kind: 'djFunctionGemmaFinalSelect', ok: false, ms: Date.now() - started, model: config.model, via: 'openai-compatible:functiongemma', usage, t: new Date().toISOString(), system, user, response: responseText, steps: 1, toolCalls: [], error: error?.message ?? String(error) });
+    recordImpl({ kind, ok: false, ms: Date.now() - started, model: config.model, via: 'openai-compatible:functiongemma', usage, t: new Date().toISOString(), system, user, response: responseText, steps: 1, toolCalls: [], error: error?.message ?? String(error) });
     throw error;
   }
 }

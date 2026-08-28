@@ -133,40 +133,37 @@ async function repickFromSeen({ seen, badId, wantLink, showAt = null, playlistRe
   }
 }
 
-// Producer counterpart to repickFromSeen. Unknown-id and artist-variety
-// salvage must stay backstage when the split is active; using the legacy pick
-// schema here would quietly ask the Persona model to choose and write speech
-// again, recreating the coupling this route is meant to remove.
-async function repickProducerFromSeen({
+// FunctionGemma counterpart to repickFromSeen. The split path must not bring
+// Qwen back for an invalid-id or artist-variety correction: the small selector
+// already has an exact-ID grammar, so give it only the permissible surfaced
+// candidates. A miss returns null and lets the established pool rescue keep the
+// no-repeat guarantee without a model fallback.
+async function repickFunctionGemmaFromSeen({
   seen,
   badId,
-  showAt = null,
-  playlistResolved = true,
   reason = null,
 }: {
   seen: Map<string, any>;
   badId: string | null;
-  showAt?: Date | null;
-  playlistResolved?: boolean;
   reason?: string | null;
 }) {
+  const config = producerRouterConfig();
   const ids = [...seen.keys()];
-  if (ids.length === 0) return null;
-  const schema = modelTolerant(ProducerPickSchema.extend({
-    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
-  }));
-  const why = reason
+  if (!config || !ids.length) return null;
+  const instruction = reason
     ?? `The id ${badId ? `"${badId}"` : 'you returned'} is not one of the candidates surfaced in this run. Choose the best exact candidate id.`;
   try {
-    return await djObject({
-      system: producerSelectorSystem(showAt, playlistResolved),
-      prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
-        + `\n\n${why}`,
-      schema,
-      temperature: 0.4,
-      kind: 'djProducerRepick',
-      role: 'producer',
+    const id = await routeProducerSelection({
+      config,
+      candidateIds: ids,
+      kind: 'djFunctionGemmaRepick',
+      prompt: JSON.stringify({
+        task: 'correct_final_track_selection',
+        instruction,
+        candidates: [...seen.values()],
+      }),
     });
+    return { id, reason: 'FunctionGemma constrained repick', transition: null };
   } catch {
     return null;
   }
@@ -518,7 +515,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   }
   if (!song && extras.seen.size) {
     const repicked = splitProducer
-      ? await repickProducerFromSeen({ seen: extras.seen, badId: object?.id ?? null, showAt, playlistResolved: !!playlistTracks?.length })
+      ? await repickFunctionGemmaFromSeen({ seen: extras.seen, badId: object?.id ?? null })
       : await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, wantLink, showAt, playlistResolved: !!playlistTracks?.length });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
@@ -595,7 +592,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
         reason: `The track you chose is by ${song.artist}, the artist already on air — never play the same artist twice in a row. Choose a DIFFERENT artist from the candidates above.`,
       };
       const repicked = splitProducer
-        ? await repickProducerFromSeen(repickArgs)
+        ? await repickFunctionGemmaFromSeen(repickArgs)
         : await repickFromSeen(repickArgs);
       // Resolved from `alt`, not `extras.seen`: the re-pick's id is constrained
       // to the alternatives by construction (z.enum), and reading it back out of

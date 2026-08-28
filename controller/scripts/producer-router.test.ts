@@ -272,6 +272,32 @@ test('preferred playlist discovery alternates to another tool on the following r
 });
 
 
+test('FunctionGemma repick constrains an artist-variety correction to alternate ids', async () => {
+  const requests: any[] = [];
+  const records: any[] = [];
+  const id = await routeProducerSelection({
+    prompt: JSON.stringify({ task: 'correct_final_track_selection', candidates: [{ id: 'other-1' }, { id: 'other-2' }] }),
+    candidateIds: ['other-1', 'other-2'],
+    kind: 'djFunctionGemmaRepick',
+    config: { baseUrl: 'http://router/v1', model: 'selector.gguf', timeoutMs: 5000 },
+    fetchImpl: (async (_url: any, init: any) => {
+      requests.push(JSON.parse(init.body));
+      return jsonResponse({
+        role: 'assistant', content: '<start_function_call>call:done{id:<escape>other-2<escape>}<end_function_call>',
+      });
+    }) as any,
+    recordImpl: ((value: any) => records.push(value)) as any,
+  });
+
+  assert.equal(id, 'other-2');
+  assert.equal(records[0].kind, 'djFunctionGemmaRepick');
+  assert.equal(requests[0].tools[0].function.name, 'done');
+  assert.deepEqual(
+    requests[0].tools[0].function.parameters.properties.id.enum,
+    ['other-1', 'other-2'],
+  );
+});
+
 test('records FunctionGemma final selection separately from discovery routing', async () => {
   const records: any[] = [];
   const id = await routeProducerSelection({
