@@ -5,7 +5,7 @@
 
 import { effectAllowedFor, mixCompat, parseCamelot, type Analysis } from '../music/mix.js';
 
-export const FUNCTIONGEMMA_ELIGIBLE_TRANSITIONS_PER_EFFECT = 5;
+export const FUNCTIONGEMMA_ELIGIBLE_TRANSITIONS_PER_EFFECT = 3;
 const PLAIN_ELIGIBLE_TRANSITIONS_REQUIRED = FUNCTIONGEMMA_ELIGIBLE_TRANSITIONS_PER_EFFECT - 1;
 
 export type FunctionGemmaTransition = 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop';
