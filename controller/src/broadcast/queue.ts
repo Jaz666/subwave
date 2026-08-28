@@ -44,6 +44,10 @@ import * as webhooks from './webhooks.js';
 import * as scrobble from './scrobble.js';
 import * as liquidsoapControl from './liquidsoap-control.js';
 import {
+  nextFunctionGemmaEligibleTransitions,
+  planFunctionGemmaTransition,
+} from './functiongemma-transition-policy.js';
+import {
   drainAction,
   introRenderBudgetSec,
   playableDurationSec,
@@ -163,6 +167,7 @@ class Queue {
   _lastBed: string | null = null;      // last bed aired — anti-repeat for bed-policy.pickBed
   _lastBedStartedAt = 0;               // bed-playing.json's last-seen startedAt — the edge onBedStarted fires on
   _recentEffects: string[] = [];  // the model's last few transition CHOICES — anti-streak guard + fed back into the pick event turn
+  _functionGemmaEligibleTransitions = 0; // eligible ID-only fast seams since this policy last armed an effect
   _persistTimer: NodeJS.Timeout | null = null; // debounce for the queue.json snapshot
   _recentPlaysTimer: NodeJS.Timeout | null = null; // debounce for the recent-plays.json sidecar
   _recentPlays: RecentPlay[] = [];
@@ -859,6 +864,22 @@ class Queue {
       }
     }
 
+    // FunctionGemma's compact selector chooses an exact ID only; it has no
+    // transition field. Keep vanilla's model-led policy intact, but let this
+    // explicitly-marked fast path earn an occasional safe treatment from the
+    // analysed pair at the real drain seam.
+    const functionGemmaPlan = item.track.functionGemmaTransitionPolicy
+      ? planFunctionGemmaTransition({
+        cur,
+        next,
+        eligibleTransitionsSinceEffect: this._functionGemmaEligibleTransitions,
+        recentTransitions: this._recentEffects,
+      })
+      : null;
+    delete item.track.functionGemmaTransitionPolicy;
+    if (functionGemmaPlan?.transition) item.track[functionGemmaPlan.transition] = true;
+    if (functionGemmaPlan) this.log('mix', `FunctionGemma controller transition: ${functionGemmaPlan.reason}`);
+
     // The two flags are independent boundaries — sweep shapes ENTRY, washout
     // EXIT — so both can ride one pick and are validated separately. No cooldown
     // by design: pacing is the DJ's call, and the analyzer veto only judges
@@ -971,6 +992,18 @@ class Queue {
       item.track.washoutDelay = mix.washoutDelayFor(next.bpm);
       const why = item.track.washoutAuto ? ' (length-cap exit)' : '';
       this.log('mix', `washout armed${why}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap → ${item.track.title}`);
+    }
+    if (functionGemmaPlan) {
+      const effectFired = functionGemmaPlan.transition === 'blend'
+        ? item.track.blend === true
+        : functionGemmaPlan.transition === 'dissolve'
+          ? item.track.dissolve === true
+          : false;
+      this._functionGemmaEligibleTransitions = nextFunctionGemmaEligibleTransitions({
+        eligibleTransitionsSinceEffect: this._functionGemmaEligibleTransitions,
+        eligible: functionGemmaPlan.eligible,
+        effectFired,
+      });
     }
     const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
 

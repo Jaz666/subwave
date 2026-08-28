@@ -378,6 +378,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   const messages = session.windowMessages();
   const producerRequested = settings.get().llm?.producer?.enabled === true;
   let splitProducer = false;
+  let functionGemmaFastSelection = false;
   let run;
   if (producerRequested) {
     try {
@@ -449,7 +450,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
           if (personaFinalCallPacket) {
             queue.log('producer', `Persona Final Call: ${personaFinalCallPacket.policyReasons.join(', ')}; FunctionGemma proposed "${proposed?.title ?? proposedId}" by ${proposed?.artist ?? 'unknown artist'}`);
           }
-          const object = decision?.kind === "functiongemma" ? { id: decision.id, reason: "FunctionGemma fast selection", transition: null } : await selectProducerFromSeen({
+          const isFunctionGemmaFastSelection = decision?.kind === "functiongemma";
+          functionGemmaFastSelection = isFunctionGemmaFastSelection;
+          const object = isFunctionGemmaFastSelection ? { id: decision.id, reason: "FunctionGemma fast selection", transition: null } : await selectProducerFromSeen({
             seen: routed.seen,
             producerMessage: personaFinalCallPacket
               ? `${producerMessages[0].content}\n\nPersona Final Call conflict packet (controller policy, not optional editorial advice):\n${JSON.stringify(personaFinalCallPacket, null, 2)}`
@@ -708,7 +711,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // the track on-air now), instead of immediately over that on-air track (#189).
   // Stamp `current` as the link's back-announce target so the queue can drop the
   // link if a request jumps ahead of this pick before it airs.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, {
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop, functionGemmaTransitionPolicy: functionGemmaFastSelection }, {
     linkClockAt: linkAirAt,
     speechLogOrigin: splitProducer ? 'producer-persona-link' : 'agent-legacy-link',
     introPersona: linkSpeaker,
