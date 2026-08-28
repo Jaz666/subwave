@@ -376,6 +376,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   const producerRequested = settings.get().llm?.producer?.enabled === true;
   let splitProducer = false;
   let functionGemmaFastSelection = false;
+  let finalPickLogLabel: string | null = null;
   let run;
   if (producerRequested) {
     try {
@@ -449,7 +450,14 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
           }
           const isFunctionGemmaFastSelection = decision?.kind === "functiongemma";
           functionGemmaFastSelection = isFunctionGemmaFastSelection;
-          const object = isFunctionGemmaFastSelection ? { id: decision.id, reason: "FunctionGemma fast selection", transition: null } : await selectProducerFromSeen({
+          finalPickLogLabel = isFunctionGemmaFastSelection
+            ? 'Flash Pick'
+            : personaFinalCallPacket ? 'Persona Final Call' : 'Producer Pick';
+          const object = isFunctionGemmaFastSelection ? {
+            id: decision.id,
+            reason: `ID-only FunctionGemma selection from ${routed.seen.size} surfaced candidates`,
+            transition: null,
+          } : await selectProducerFromSeen({
             seen: routed.seen,
             producerMessage: personaFinalCallPacket
               ? `${producerMessages[0].content}\n\nPersona Final Call conflict packet (controller policy, not optional editorial advice):\n${JSON.stringify(personaFinalCallPacket, null, 2)}`
@@ -522,6 +530,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
       queue.log('picker', `agent returned unknown id "${object?.id}" — re-picked "${repicked.id}" from its own candidates`);
       object = repicked;
       song = extras.seen.get(repicked.id);
+      if (splitProducer) finalPickLogLabel = 'FunctionGemma Repick';
     }
   }
 
@@ -604,6 +613,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
         queue.log('picker', `back-to-back artist "${song.artist}" avoided — re-picked "${altSong.title}" by ${altSong.artist} from ${alt.size} other-artist candidate(s)${dropped ? `, ${dropped} more skipped as recently-played artists` : ''}${starved ? ' (every alternative was recently played — recency window waived)' : ''}`);
         object = repicked;
         song = altSong;
+        if (splitProducer) finalPickLogLabel = 'FunctionGemma Repick';
       }
     }
     if (!altSong) {
@@ -712,6 +722,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     linkClockAt: linkAirAt,
     speechLogOrigin: splitProducer ? 'producer-persona-link' : 'agent-legacy-link',
     introPersona: linkSpeaker,
+    pickLogLabel: finalPickLogLabel || (splitProducer ? 'Producer Pick' : 'Persona Pick'),
   });
   // Pick was already queued/on-air and got deduped — don't record a session turn
   // for a track that never airs. Returning false lets runTrackEvent fall through
@@ -861,6 +872,7 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
     linkClockAt: linkClockStampFor(airAt, speakClockAllowed()),
     speechLogOrigin,
     introPersona: linkSpeaker,
+    pickLogLabel: 'Pool Pick',
   });
   // Even the pool landed on an already-queued track (a tiny library whose pool
   // collapsed to recents). Skip the session turn and let auto.m3u backstop the

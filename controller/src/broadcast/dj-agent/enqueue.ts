@@ -124,7 +124,7 @@ export async function enqueuePick(
   link: string | null = null,
   linkPrev: any = null,
   { sweep = false, washout = false, blend = false, dissolve = false, chop = false, loop = false, functionGemmaTransitionPolicy = false }: { sweep?: boolean; washout?: boolean; blend?: boolean; dissolve?: boolean; chop?: boolean; loop?: boolean; functionGemmaTransitionPolicy?: boolean } = {},
-  { linkClockAt = null, speechLogOrigin = null, introPersona = null }: { linkClockAt?: Date | null; speechLogOrigin?: string | null; introPersona?: any } = {},
+  { linkClockAt = null, speechLogOrigin = null, introPersona = null, pickLogLabel = null }: { linkClockAt?: Date | null; speechLogOrigin?: string | null; introPersona?: any; pickLogLabel?: string | null } = {},
 ): Promise<number> {
   // Single chokepoint for the intro budget: every pick path (agent, pool, any
   // future producer) funnels its link through here, so enforcement can't be
@@ -169,11 +169,12 @@ export async function enqueuePick(
     // Never-play blocklist refused the pick — library-db-sourced candidates
     // can slip past the subsonic filter. Same "didn't queue" signal as dedup;
     // the caller's normal no-pick handling covers it.
-    queue.log('ai-pick', `${song.title} — ${song.artist} refused (never-play blocklist)`, { reason, source });
+    queue.log('ai-pick', `${pickLogLabel ? `${pickLogLabel}: ` : ''}${song.title} — ${song.artist} refused (never-play blocklist)`, { reason, source });
     return -1;
   }
   if (pos === -1) return -1;
-  queue.log('ai-pick', `${song.title} — ${song.artist}`, { reason, source });
+  const cleanReason = String(reason || '').replace(/\s+/g, ' ').trim();
+  queue.log('ai-pick', `${pickLogLabel ? `${pickLogLabel}: ` : ''}${song.title} — ${song.artist}${cleanReason ? ` — ${cleanReason}` : ''}`, { reason, source });
   recordPick({ song, reason, source });
   return pos;
 }
