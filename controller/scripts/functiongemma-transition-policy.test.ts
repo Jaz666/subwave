@@ -17,9 +17,14 @@ assert.equal(
   planFunctionGemmaTransition({ cur: locked, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: [] }).transition,
   'blend',
 );
+assert.equal(planFunctionGemmaTransition({ cur: clash, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: [] }).transition, 'chop');
+assert.equal(planFunctionGemmaTransition({ cur: clash, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: ['chop'] }).transition, 'loop');
+assert.equal(planFunctionGemmaTransition({ cur: clash, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: ['chop', 'loop'] }).transition, 'washout');
+assert.equal(planFunctionGemmaTransition({ cur: clash, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: ['chop', 'loop', 'washout'] }).transition, 'dissolve');
+assert.equal(planFunctionGemmaTransition({ cur: clash, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: ['chop', 'loop', 'washout', 'dissolve'] }).transition, 'sweep');
 assert.equal(
-  planFunctionGemmaTransition({ cur: clash, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: [] }).transition,
-  'dissolve',
+  planFunctionGemmaTransition({ cur: { ...clash, ending: 'fade' }, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: [] }).transition,
+  'loop',
 );
 assert.equal(
   planFunctionGemmaTransition({ cur: { bpm: null, key: null }, next: locked, eligibleTransitionsSinceEffect: 4, recentTransitions: [] }).eligible,

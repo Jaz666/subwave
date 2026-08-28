@@ -51,7 +51,7 @@ export interface Track {
   loop?: boolean;
   loopBar?: number;
   // Marks an ID-only FunctionGemma fast selection. The queue consumes this at
-  // drain time and may arm a narrow controller-owned blend/dissolve policy.
+  // drain time and may arm a controller-owned, analyser-gated transition.
   functionGemmaTransitionPolicy?: boolean;
   crossSec?: number;
   [k: string]: unknown;

@@ -1,14 +1,14 @@
-// A deliberately narrow controller policy for FunctionGemma's ID-only fast
-// selector. Vanilla Producer/Persona picks continue to own their transition
-// choice; this module only gives the otherwise-all-normal fast path an
-// occasional, data-backed treatment.
+// Controller-owned transition policy for FunctionGemma's ID-only fast selector.
+// Vanilla Producer/Persona picks continue to own their transition choice; this
+// module gives the otherwise-all-normal fast path the same palette, backed by
+// the same analyser gates, at the real drain seam.
 
 import { effectAllowedFor, mixCompat, parseCamelot, type Analysis } from '../music/mix.js';
 
 export const FUNCTIONGEMMA_ELIGIBLE_TRANSITIONS_PER_EFFECT = 5;
 const PLAIN_ELIGIBLE_TRANSITIONS_REQUIRED = FUNCTIONGEMMA_ELIGIBLE_TRANSITIONS_PER_EFFECT - 1;
 
-export type FunctionGemmaTransition = 'blend' | 'dissolve';
+export type FunctionGemmaTransition = 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop';
 
 export interface FunctionGemmaTransitionPlan {
   transition: FunctionGemmaTransition | null;
@@ -41,13 +41,21 @@ export function planFunctionGemmaTransition({
   }
 
   const compatibility = mixCompat(cur, next);
-  const transition: FunctionGemmaTransition | null = compatibility >= 0.8 && effectAllowedFor('blend', cur, next)
-    ? 'blend'
-    : compatibility < 0.2 && effectAllowedFor('dissolve', cur, next)
-      ? 'dissolve'
-      : null;
+  const candidates: FunctionGemmaTransition[] = compatibility >= 0.8
+    ? ['blend']
+    : compatibility < 0.2
+      ? ['chop', 'loop', 'washout', 'dissolve', 'sweep']
+      : compatibility < 0.4
+        ? ['dissolve', 'sweep', 'washout']
+        : compatibility < 0.6
+          ? ['sweep', 'washout']
+          : [];
+  const transition = candidates.find(kind => effectAllowedFor(kind, cur, next) && !recentTransitions.includes(kind)) ?? null;
   if (!transition) {
-    return { transition: null, eligible: false, reason: `normal — compatibility ${compatibility.toFixed(2)} has no conservative treatment` };
+    const detail = candidates.length
+      ? `all safe treatments (${candidates.join(', ')}) are recent or rejected`
+      : 'no treatment suits this compatibility';
+    return { transition: null, eligible: false, reason: `normal — compatibility ${compatibility.toFixed(2)}: ${detail}` };
   }
 
   if (eligibleTransitionsSinceEffect < PLAIN_ELIGIBLE_TRANSITIONS_REQUIRED) {

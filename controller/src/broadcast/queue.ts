@@ -866,8 +866,8 @@ class Queue {
 
     // FunctionGemma's compact selector chooses an exact ID only; it has no
     // transition field. Keep vanilla's model-led policy intact, but let this
-    // explicitly-marked fast path earn an occasional safe treatment from the
-    // analysed pair at the real drain seam.
+    // explicitly-marked fast path earn an occasional controller-owned move
+    // from vanilla's full, analyser-gated palette at the real drain seam.
     const functionGemmaPlan = item.track.functionGemmaTransitionPolicy
       ? planFunctionGemmaTransition({
         cur,
@@ -994,11 +994,8 @@ class Queue {
       this.log('mix', `washout armed${why}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap → ${item.track.title}`);
     }
     if (functionGemmaPlan) {
-      const effectFired = functionGemmaPlan.transition === 'blend'
-        ? item.track.blend === true
-        : functionGemmaPlan.transition === 'dissolve'
-          ? item.track.dissolve === true
-          : false;
+      const effectFired = !!functionGemmaPlan.transition
+        && item.track[functionGemmaPlan.transition] === true;
       this._functionGemmaEligibleTransitions = nextFunctionGemmaEligibleTransitions({
         eligibleTransitionsSinceEffect: this._functionGemmaEligibleTransitions,
         eligible: functionGemmaPlan.eligible,
