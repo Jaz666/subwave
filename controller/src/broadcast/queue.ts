@@ -1002,6 +1002,18 @@ class Queue {
         effectFired,
       });
     }
+    // Record the final effect combination after every validation/strip above.
+    // This is the actual seam the queue will hand to Liquidsoap, rather than
+    // the model's earlier request which may have been vetoed.
+    const transition = [
+      item.track.sweep && 'sweep',
+      item.track.washout && 'washout',
+      item.track.blend && 'blend',
+      item.track.dissolve && 'dissolve',
+      item.track.chop && 'chop',
+      item.track.loop && 'loop',
+    ].filter(Boolean).join(' + ') || 'normal';
+    recordTrackTransition(transition);
     const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
 
     // Feature 2 — transition FX, spaced by the chattiness ladder and gated on

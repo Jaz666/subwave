@@ -226,7 +226,7 @@ export function summarizeDjLog(djLog) {
 
 // The picker schema permits one chosen effect per track. A capped track can
 // additionally receive an automatic washout exit, so these are the complete
-// set of combinations that can actually be armed on-air. Keep all eleven rows
+// set of combinations that can actually be armed on-air. Keep all twelve rows
 // in the response so unused but valid outcomes still read as zero.
 export const TRACK_TRANSITION_COMBINATIONS = [
   'normal',
