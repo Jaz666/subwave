@@ -38,7 +38,7 @@ import { getFullContext, getClockContext, energyForDaypart } from '../context.js
 import * as settings from '../settings.js';
 import { logEvent } from '../observability/events.js';
 import { logDjSpeech } from '../observability/dj-speech-log.js';
-import { recordTrackTransition } from '../stats.js';
+import { recordTrackTransition, STATS_WINDOW } from '../stats.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { stationIdDaypartDrifted } from './clock-policy.js';
@@ -333,7 +333,7 @@ class Queue {
   log(kind: string, message: string, meta: Record<string, unknown> = {}) {
     const entry = { id: Date.now() + Math.random(), kind, message, meta, t: new Date().toISOString() };
     this.djLog.unshift(entry);
-    this.djLog = this.djLog.slice(0, 200);
+    this.djLog = this.djLog.slice(0, STATS_WINDOW);
     console.log(`[${kind}] ${message}`);
   }
 

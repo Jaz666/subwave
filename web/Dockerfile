@@ -51,6 +51,9 @@ ENV NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
 # falls back to web/package.json (see web/next.config.js).
 ARG SUBWAVE_BUILD_VERSION
 ENV SUBWAVE_BUILD_VERSION=${SUBWAVE_BUILD_VERSION}
+# Branch labels shown in the local admin footer; pipe-separated for the client bundle.
+ARG SUBWAVE_BUILD_BRANCHES
+ENV SUBWAVE_BUILD_BRANCHES=${SUBWAVE_BUILD_BRANCHES}
 RUN npm run build
 
 # ---- runner ----
