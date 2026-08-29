@@ -48,15 +48,15 @@ The remote naming and history show that this checkout was configured with the or
 
 ## Local admin stats diagnostics
 
-`codex/dj-speech-debug-log` carries a deliberately local-only Admin → Stats
+`codex/debug-features` carries a deliberately local-only Admin → Stats
 diagnostics panel. It sits between **LLM usage** and **Voice / TTS usage** and
-keeps two in-memory, since-controller-boot windows of 120 events:
+keeps two in-memory, since-controller-boot windows of 1,000 events:
 
 - **Tool calls** lists every picker tool plus every currently loaded skill data
   tool, including zero-use rows. It includes calls made before a failed LLM
   attempt and shows a separate failed count. Rows sort by call count, then
   name.
-- **Track transitions** lists the eleven combinations that can actually be
+- **Track transitions** lists the twelve combinations that can actually be
   armed on-air (normal; six individual effects; and the four entry-effect plus
   automatic-washout pairs). Rows also sort by count, then name.
 
@@ -71,6 +71,19 @@ source changes, rebuild both services with:
 ```bash
 sudo docker compose -f docker-compose.yml up -d --build controller web
 ```
+
+### Live station footer workflow
+
+Before every live-station update, review `SUBWAVE_BUILD_BRANCHES` in the
+Compose build environment. Keep it aligned with the branches currently merged
+into the station (for example: `Debug Code|Producer Routing|Show Boundary
+Handoffs`). If the branch set changes, update the value before rebuilding the
+web image. The footer values are baked into the web client at build time, so a
+controller-only rebuild cannot update them.
+
+For a live update, merge the intended feature branches into
+`live/producer-routing`, update `SUBWAVE_BUILD_BRANCHES` if needed, and rebuild
+`controller` and `web` together.
 
 The runtime checkout can contain unrelated live-test work; keep this feature's
 commit on its own branch and do not include it in an upstream PR unless that
