@@ -27,6 +27,10 @@ function resolveAppVersion() {
 }
 
 const version = resolveAppVersion();
+const buildBranches = (process.env.SUBWAVE_BUILD_BRANCHES || 'Debug Code|Producer Routing|Show Boundary Handoffs')
+  .split('|')
+  .map(s => s.trim())
+  .filter(Boolean);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -51,6 +55,7 @@ const nextConfig = {
   },
   env: {
     NEXT_PUBLIC_APP_VERSION: version,
+    NEXT_PUBLIC_BUILD_BRANCHES: buildBranches.join('|'),
   },
   // The repo root carries its own package.json (the `sub-wave` CLI), so Next would
   // otherwise infer it as the workspace root — destabilising module resolution and
