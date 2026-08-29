@@ -10,9 +10,9 @@ import { statSync, renameSync } from 'node:fs';
 import { STATE_DIR } from '../../../config.js';
 import { logEvent, cap } from '../../../observability/events.js';
 import { addDailyUsage } from './budget.js';
-import { recordToolCall } from '../../../stats.js';
+import { recordToolCall, STATS_WINDOW } from '../../../stats.js';
 
-const MAX_CALLS = 120;
+const MAX_CALLS = STATS_WINDOW;
 export const recentCalls: any[] = [];
 
 // Monotonic, since-boot sum of tokens reported by successful calls. Unlike the
