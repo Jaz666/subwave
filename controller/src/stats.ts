@@ -3,18 +3,20 @@
 // Two in-memory ring buffers back the Stats page:
 //   - the LLM call ring lives in llm/log.js (recentCalls)
 //   - the TTS call ring lives here (ttsCalls), filled by audio/tts.js
-// Both hold the last ~120 calls and are lost on controller restart by design
+// The rings hold a full-day diagnostic window and are lost on controller restart by design
 // — /stats reports activity since boot, nothing durable. The pure summarise*
 // helpers below roll those rings (plus the DJ-log ring) into the shape the
 // /stats route returns.
 
-const MAX_TTS_CALLS = 120;
+export const STATS_WINDOW = 1000;
+const MAX_TTS_CALLS = STATS_WINDOW;
 export const ttsCalls: any[] = [];
 
 // Local diagnostics for the Stats page. Unlike the LLM ring (which holds model
 // calls, each possibly containing several tool calls), these retain the last
-// 120 individual tool calls and the last 120 actual track transitions.
-const MAX_DEBUG_EVENTS = 120;
+// 1,000 individual tool calls and actual track transitions cover a full day
+// on a local test station without allowing the rings to grow without bound.
+const MAX_DEBUG_EVENTS = STATS_WINDOW;
 export const toolCalls: any[] = [];
 export const trackTransitions: any[] = [];
 
@@ -158,7 +160,7 @@ export function summarizeLlm(calls) {
   };
 
   return {
-    window: 120,
+    window: STATS_WINDOW,
     count: calls.length,
     ok: ok.length,
     failed: calls.length - ok.length,
@@ -196,7 +198,7 @@ export function summarizeTts(calls) {
   const ok = calls.filter(c => c.ok);
   const fellBack = calls.filter(c => c.fellBack);
   return {
-    window: 120,
+    window: STATS_WINDOW,
     count: calls.length,
     ok: ok.length,
     failed: calls.length - ok.length,
@@ -217,6 +219,7 @@ export function summarizeDjLog(djLog) {
   const m = new Map();
   for (const e of djLog) m.set(e.kind || 'unknown', (m.get(e.kind || 'unknown') || 0) + 1);
   return {
+    window: STATS_WINDOW,
     count: djLog.length,
     byKind: [...m.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count),
   };

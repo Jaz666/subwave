@@ -190,6 +190,8 @@ services:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID:-}
         # Admin footer version; unset → web/package.json (web/next.config.js).
         - SUBWAVE_BUILD_VERSION=${SUBWAVE_BUILD_VERSION:-}
+        # Local test-station branch labels shown in the admin footer.
+        - SUBWAVE_BUILD_BRANCHES=${SUBWAVE_BUILD_BRANCHES:-Debug Code|Producer Routing|Show Boundary Handoffs}
     container_name: sub-wave-web
     restart: unless-stopped
     logging: *default-logging
