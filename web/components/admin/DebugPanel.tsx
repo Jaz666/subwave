@@ -23,12 +23,27 @@ import { HealthCell, KvTable } from './debug/bits';
 import { fmtListeners, kindTone } from './debug/format';
 import type { DebugData } from './debug/types';
 
+function PauseFeedButton({ paused, onClick }: { paused: boolean; onClick: () => void }) {
+  return (
+    <Btn
+      sm
+      title={paused ? 'Resume live debug updates' : 'Pause live debug updates'}
+      aria-pressed={paused}
+      onClick={onClick}
+    >
+      {paused ? 'Resume Feed' : 'Pause Feed'}
+    </Btn>
+  );
+}
+
 export default function DebugPanel() {
   const { adminFetch, needsAuth, hydrated } = useAdminAuth();
   const [data, setData] = useState<DebugData | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const toggleFeed = () => setPaused(value => !value);
+  const pauseFeed = <PauseFeedButton paused={paused} onClick={toggleFeed} />;
 
   useEffect(() => {
     if (!hydrated || needsAuth) return;
@@ -92,7 +107,7 @@ export default function DebugPanel() {
           <span className="caption">refresh · 2s</span>
           {data?.llm?.budget?.enabled ? <BudgetMeter budget={data.llm.budget} /> : null}
           <span className="ml-auto flex gap-2">
-            <Btn sm onClick={() => setPaused(!paused)}>{paused ? 'Resume' : 'Pause'}</Btn>
+            <PauseFeedButton paused={paused} onClick={toggleFeed} />
           </span>
         </div>
         <div className="strip-mobile grid grid-cols-5">
@@ -148,26 +163,27 @@ export default function DebugPanel() {
                   now-playing.json
                 </span>
               }
+              right={pauseFeed}
             >
               <ScrollArea className="max-h-80">
                 <KvTable obj={data.nowPlaying} />
               </ScrollArea>
             </Card>
 
-            <Card title="Icecast">
+            <Card title="Icecast" right={pauseFeed}>
               <ScrollArea className="max-h-80">
                 <KvTable obj={data.icecast as unknown as Record<string, unknown>} />
               </ScrollArea>
             </Card>
 
-            <Card title="DJ context">
+            <Card title="DJ context" right={pauseFeed}>
               <ScrollArea className="max-h-[200px]">
                 <DjContext ctx={data.context} />
               </ScrollArea>
             </Card>
           </div>
 
-          <Card title="Config" sub="redacted · listen mounts">
+          <Card title="Config" sub="redacted · listen mounts" right={pauseFeed}>
             <ScrollArea className="max-h-[480px]">
               <KvTable obj={data.config} />
               <MountsTable mounts={data.mounts} />
@@ -178,14 +194,15 @@ export default function DebugPanel() {
             <Card
               title="TTS routing"
               sub={`who voices the next spoken segment · ${data.tts.recentCalls?.length ?? 0} recent calls`}
+              right={pauseFeed}
             >
               <TtsRouting tts={data.tts} />
             </Card>
           )}
 
-          <LlmCalls llm={data.llm} />
+          <LlmCalls llm={data.llm} pauseControl={pauseFeed} />
 
-          <SubsonicCalls subsonic={data.subsonic} />
+          <SubsonicCalls subsonic={data.subsonic} pauseControl={pauseFeed} />
 
           <Card
             title="Liquidsoap log"
@@ -193,13 +210,16 @@ export default function DebugPanel() {
             className="flex h-[440px] flex-col"
             bodyClass="flex flex-1 flex-col min-h-0"
             right={
-              <Label className="flex min-h-9 cursor-pointer items-center gap-1.5 text-[10px] tracking-[0.18em] text-muted uppercase sm:min-h-0">
+              <div className="flex items-center gap-2">
+                {pauseFeed}
+                <Label className="flex min-h-9 cursor-pointer items-center gap-1.5 text-[10px] tracking-[0.18em] text-muted uppercase sm:min-h-0">
                 <Checkbox
                   checked={autoScroll}
                   onCheckedChange={v => setAutoScroll(v === true)}
                 />
                 auto-scroll
-              </Label>
+                </Label>
+              </div>
             }
           >
             <Terminal
@@ -213,14 +233,14 @@ export default function DebugPanel() {
 
           {/* One card, not two: voice/ is just a directory in the state dir, and
               it is expanded by default so the DJ voice WAVs stay one glance away. */}
-          <Card title="State dir" sub="read-only · lazy">
+          <Card title="State dir" sub="read-only · lazy" right={pauseFeed}>
             <ScrollArea className="max-h-[480px]">
               <StateTree />
             </ScrollArea>
           </Card>
 
           <div className="stack-mobile grid grid-cols-[1fr_1.2fr] gap-4">
-            <Card title="Queue" sub="current served request">
+            <Card title="Queue" sub="current served request" right={pauseFeed}>
               {data.queue?.current ? (
                 <KvTable obj={data.queue.current} />
               ) : (
@@ -228,7 +248,7 @@ export default function DebugPanel() {
               )}
             </Card>
 
-            <Card title="Upcoming queue" sub={`${data.queue?.upcoming?.length ?? 0} tracks`}>
+            <Card title="Upcoming queue" sub={`${data.queue?.upcoming?.length ?? 0} tracks`} right={pauseFeed}>
               {(data.queue?.upcoming?.length ?? 0) === 0 ? (
                 <span className="field-hint italic">queue empty</span>
               ) : (
@@ -260,12 +280,13 @@ export default function DebugPanel() {
                 (data.session.persona ? ` · ${data.session.persona.name}` : '') +
                 ` · ${data.session.messages?.length ?? 0} turns`
               }
+              right={pauseFeed}
             >
               <SessionChat session={data.session} />
             </Card>
           )}
 
-          <Card title="DJ log" sub={`${data.queue?.djLogCount} total · last 30${data.timezone ? ` · times in ${data.timezone}` : ''}`}>
+          <Card title="DJ log" sub={`${data.queue?.djLogCount} total · last 30${data.timezone ? ` · times in ${data.timezone}` : ''}`} right={pauseFeed}>
             <ScrollArea className="max-h-72">
               <div className="grid gap-1">
                 <AnimatePresence initial={false} mode="popLayout">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { Card, Btn } from '../ui';
 import { ScrollArea } from '../../ui/scroll-area';
@@ -9,7 +9,7 @@ import type { DebugSubsonic } from './types';
 import { oneLine } from './format';
 import { CallSection, FilterChip, JsonBlock } from './bits';
 
-export function SubsonicCalls({ subsonic }: { subsonic: DebugSubsonic | undefined }) {
+export function SubsonicCalls({ subsonic, pauseControl }: { subsonic: DebugSubsonic | undefined; pauseControl?: ReactNode }) {
   const { adminFetch } = useAdminAuth();
   const [filter, setFilter] = useState('all');
   const [resetting, setResetting] = useState(false);
@@ -40,9 +40,12 @@ export function SubsonicCalls({ subsonic }: { subsonic: DebugSubsonic | undefine
       title="Subsonic API calls"
       sub={`${calls.length} recent · ${totalCalls} total`}
       right={
-        <Btn sm onClick={reset} disabled={resetting}>
-          {resetting ? 'Resetting…' : 'Reset'}
-        </Btn>
+        <div className="flex items-center gap-2">
+          {pauseControl}
+          <Btn sm onClick={reset} disabled={resetting}>
+            {resetting ? 'Resetting…' : 'Reset'}
+          </Btn>
+        </div>
       }
     >
       <div className="grid gap-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { Checkbox } from '../../ui/checkbox';
 import { Label } from '../../ui/label';
@@ -85,7 +85,7 @@ function ToolList({ calls }: { calls: Array<{ name?: string; args?: unknown; res
 }
 
 
-export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
+export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pauseControl?: ReactNode }) {
   const { adminFetch } = useAdminAuth();
   const calls = llm?.recentCalls || [];
   const [filter, setFilter] = useState('all');
@@ -119,6 +119,7 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
       sub={`${calls.length} calls · ${llm?.provider || '—'} / ${llm?.activeModel || '—'}`}
       right={
         <div className="flex flex-wrap justify-end gap-1">
+          {pauseControl}
           <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
             all {calls.length}
           </FilterChip>

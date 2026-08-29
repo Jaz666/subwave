@@ -118,6 +118,7 @@ interface TtsStats {
 }
 
 interface DjLogStats {
+  window: number;
   count: number;
   byKind: ByDjKindRow[];
 }
@@ -1112,7 +1113,7 @@ export default function StatsPanel() {
             )}
           </Card>
 
-          <Card title="DJ activity" sub={`${djLog.count} log events by kind`}>
+          <Card title="DJ activity" sub={'last ' + djLog.window + ' log events · ' + djLog.count + ' recorded'}>
             {!djLog.byKind.length ? (
               <span className="field-hint italic">
                 no DJ-log events yet
