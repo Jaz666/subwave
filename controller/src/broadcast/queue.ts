@@ -1636,8 +1636,22 @@ class Queue {
   // merely scheduled.
   async announceAtNextTrack(text, kind = 'announcement', { persona = null, meta = {} }: { persona?: Persona | null; meta?: TurnMeta } = {}) {
     if (!text || !text.trim()) return;
+    // A formal mic-pass owns the rest of the outgoing show's air. A deferred
+    // ident created after that pass must not wait in the single pending slot
+    // and speak when the long/final track ends.
+    if (session.handoffInProgress()) {
+      this.log('scheduler', `Dropped ${kind} — the show handoff has already aired`);
+      return;
+    }
     try {
       const wavPath = await speak(text, { kind, persona });
+      // The handoff can complete while TTS is rendering. Check again before
+      // publishing the clip, otherwise it can become stale between the first
+      // guard and the next track boundary.
+      if (session.handoffInProgress()) {
+        this.log('scheduler', `Dropped ${kind} — the show handoff aired while it rendered`);
+        return;
+      }
       this._pendingVoice = { text, kind, wavPath, persona, meta, t: Date.now() };
       this.log('scheduler', `Holding ${kind} for the next track boundary`);
     } catch (err) {
@@ -1684,6 +1698,13 @@ class Queue {
   // link-carrying boundaries) is dropped rather than aired with a stale time
   // reference — the next cron fire replaces it.
   async airPendingVoice(np: NowPlaying | null = null) {
+    // A formal handoff has already spoken for this boundary. In particular,
+    // this catches an ident rendered after the handoff while the outgoing
+    // track was still running (the long-track case).
+    if (session.handoffInProgress()) {
+      this.dropPendingVoice('the show handoff has already aired');
+      return;
+    }
     // A mic-pass is already pending from an earlier roll (the hourly cron rolls
     // without airing) and will take this boundary. The same-tick case — where
     // the roll happens in onTrackStarted's auto-pick block, AFTER this runs —
