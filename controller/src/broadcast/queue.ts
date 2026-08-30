@@ -997,6 +997,7 @@ class Queue {
     // This is the actual seam the queue will hand to Liquidsoap, rather than
     // the model's earlier request which may have been vetoed.
     const transition = [
+      item.track.pairBlend && 'pair blend',
       item.track.sweep && 'sweep',
       item.track.washout && 'washout',
       item.track.blend && 'blend',
@@ -1119,6 +1120,7 @@ class Queue {
     if (secs == null) return;
     const existing = item.track.crossSec;
     item.track.crossSec = existing != null ? Math.min(existing, secs) : secs;
+    item.track.pairBlend = true;
     this.log('mix', `pair blend ${item.track.crossSec}s: ${item.track.title} → ${successor.track.title}`
       + (existing != null && existing < secs ? ' (ending canvas kept)' : ''));
   }
@@ -1317,6 +1319,7 @@ class Queue {
                 delete item.track.loop;
                 delete item.track.loopBar;
                 item.track.crossSec = stemBlend.CLIP_SEAM_CROSS_SEC;
+                delete item.track.pairBlend;
                 item.stemBlend = blend;
                 item.cueOutSec = blend.blendStartSec;
                 successor.stemSeam = true;
