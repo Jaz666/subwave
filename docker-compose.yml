@@ -5,6 +5,9 @@
 # keep it clear of `git clean -dffx`.
 
 x-state: &state-mount ${STATE_DIR:-./state}:/var/sub-wave
+# Optional host relocation for the stem cache. The container path stays fixed
+# so the controller and analyzer always share the same cache.
+x-stems: &stems-mount ${STEMS_DIR:-${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service) — the default json-file
 # driver is unbounded and eventually fills the host disk.
@@ -78,6 +81,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - *state-mount
+      - *stems-mount
       - ${STATE_DIR:-./state}/logs:/var/log/liquidsoap
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7702/status-json.xsl > /dev/null"]
@@ -133,6 +137,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - *state-mount
+      - *stems-mount
     # curl is in the controller image; /health is served at the router root.
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7701/health > /dev/null"]
@@ -297,6 +302,7 @@ services:
     volumes:
       # Shared mount — reads tracks pre-fetched into /var/sub-wave/analyze-tmp.
       - *state-mount
+      - *stems-mount
       # Persist the CLAP/Demucs HF cache across recreates.
       - analyzer-cache:/opt/analyzer/hf-cache
 
