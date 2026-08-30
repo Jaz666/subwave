@@ -4,6 +4,7 @@
 import { CONTEXT_FIELDS, type ContextField } from '../../../schemas/skill.js';
 
 import { speakClockAllowed } from '../../../broadcast/clock-policy.js';
+import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // Narrative angles per call type. One is picked at random and injected into the
 // user prompt as "Tone for this segment:" so consecutive generations don't fall
@@ -211,9 +212,9 @@ export function decoratePrompt(
   const out: string[] = [prompt];
   const angle = pickAngle(kind);
   if (angle) out.push(`\nTone for this segment: ${angle}`);
-  if (recap) out.push(`\nYou said these things on-air recently (do not repeat phrasing or topics):\n${recap}`);
+  if (recap) out.push(`\nYou said these things on-air recently (do not repeat phrasing or topics):\n${stripRecapSpokenTags(recap)}`);
   if (recentOpeners && recentOpeners.length) {
-    const list = recentOpeners.slice(0, 6).map((o: string) => `"${o}…"`).join(', ');
+    const list = recentOpeners.slice(0, 6).map((o: string) => `"${stripSpokenTags(o)}…"`).join(', ');
     out.push(`\nDo not start your line with any of these openers (vary the first words): ${list}`);
   }
   return out.join('\n');

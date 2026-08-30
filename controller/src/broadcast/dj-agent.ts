@@ -169,6 +169,23 @@ async function repickFunctionGemmaFromSeen({
   }
 }
 
+// The small model gets one editorial correction after a controller veto. Keep
+// that correction inside the same grounded result set: a veto is never licence
+// to start another search or loosen the show/rotation constraints.
+function vetoEligibleCandidates(seen: Map<string, any>, current: any): Map<string, any> {
+  const currentRoot = artistRootKey(current || {});
+  if (!currentRoot) return seen;
+  const alternatives = new Map([...seen].filter(([, candidate]) => artistRootKey(candidate) !== currentRoot));
+  return alternatives.size ? alternatives : seen;
+}
+
+// The final escape hatch is intentionally dull and deterministic. Discovery
+// result order is the tool's own relevance order, so the first controller-
+// eligible item is a safer last word than inventing a second editorial ranker.
+function controllerFinalCandidate(seen: Map<string, any>, current: any) {
+  return vetoEligibleCandidates(seen, current).entries().next().value as [string, any] | undefined;
+}
+
 // The hybrid picker's editorial half. FunctionGemma has already selected and
 // executed discovery; this call gives the configured Producer model the full
 // operational pick request plus only grounded candidates, with no tools and no
@@ -436,41 +453,40 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
             proposedId, surfacedIds: new Set(routed.seen.keys()), proposedArtist: proposed?.artist ?? null,
             currentArtist: current?.artist ?? null, alternativeArtistCount: new Set([...routed.seen.values()].map(candidate => artistRootKey(candidate)).filter(Boolean)).size,
           }) : null;
-          const personaFinalCallPacket = decision?.kind === "persona-final-call" ? {
-            task: "resolve_final_track_selection_conflict",
-            functionGemmaProposal: {
-              id: proposedId, title: proposed?.title ?? null, artist: proposed?.artist ?? null,
-            },
-            currentTrack: {
-              id: current?.id ?? null, title: current?.title ?? null, artist: current?.artist ?? null,
-            },
-            availableAlternativeArtists: [...new Set([...routed.seen.values()]
-              .filter(candidate => artistRootKey(candidate) !== artistRootKey(current))
-              .map(candidate => candidate?.artist).filter((artist): artist is string => !!artist))],
-            policyReasons: decision.reasons,
-            instruction: decision.reasons.includes("artist-variety-conflict")
-              ? "Same-artist continuity is prohibited for this decision: select a surfaced candidate by a different artist because alternatives exist."
-              : "Resolve the stated policy conflict while selecting only a surfaced candidate id.",
-          } : null;
-          if (personaFinalCallPacket) {
-            queue.log('producer', `Persona Final Call: ${personaFinalCallPacket.policyReasons.join(', ')}; FunctionGemma proposed "${proposed?.title ?? proposedId}" by ${proposed?.artist ?? 'unknown artist'}`);
+          let finalId = decision?.kind === "functiongemma" ? decision.id : null;
+          if (decision?.kind === "persona-final-call") {
+            const eligible = vetoEligibleCandidates(routed.seen, current);
+            const repicked = await repickFunctionGemmaFromSeen({
+              seen: eligible, badId: proposedId,
+              reason: "Controller veto: " + decision.reasons.join(", ") + ". Choose a different eligible surfaced candidate id.",
+            });
+            const repickId = repicked?.id ?? null;
+            const repickSong = repickId ? eligible.get(repickId) : null;
+            const repickDecision = routeFinalSelection({
+              proposedId: repickId, surfacedIds: new Set(eligible.keys()), proposedArtist: repickSong?.artist ?? null,
+              currentArtist: current?.artist ?? null, alternativeArtistCount: new Set([...eligible.values()].map(candidate => artistRootKey(candidate)).filter(Boolean)).size,
+            });
+            if (repickDecision.kind === "functiongemma") {
+              finalId = repickDecision.id;
+              finalPickLogLabel = "FunctionGemma Repick";
+              queue.log("producer", "FunctionGemma repick accepted after controller veto: " + decision.reasons.join(", "));
+            } else {
+              const fallback = controllerFinalCandidate(eligible, current);
+              finalId = fallback?.[0] ?? null;
+              finalPickLogLabel = "Controller Final Pick";
+              queue.log("producer", "Controller selected the first eligible grounded candidate after FunctionGemma repick veto: " + decision.reasons.join(", "));
+            }
           }
-          const isFunctionGemmaFastSelection = decision?.kind === "functiongemma";
+          const isFunctionGemmaFastSelection = !!finalId;
           functionGemmaFastSelection = isFunctionGemmaFastSelection;
-          finalPickLogLabel = isFunctionGemmaFastSelection
-            ? 'Flash Pick'
-            : personaFinalCallPacket ? 'Persona Final Call' : 'Producer Pick';
+          if (!finalPickLogLabel) finalPickLogLabel = "Flash Pick";
           const object = isFunctionGemmaFastSelection ? {
-            id: decision.id,
-            reason: `ID-only FunctionGemma selection from ${routed.seen.size} surfaced candidates`,
+            id: finalId,
+            reason: finalPickLogLabel + " from " + routed.seen.size + " surfaced candidates",
             transition: null,
           } : await selectProducerFromSeen({
-            seen: routed.seen,
-            producerMessage: personaFinalCallPacket
-              ? `${producerMessages[0].content}\n\nPersona Final Call conflict packet (controller policy, not optional editorial advice):\n${JSON.stringify(personaFinalCallPacket, null, 2)}`
-              : producerMessages[0].content,
+            seen: routed.seen, producerMessage: producerMessages[0].content,
             showAt, playlistResolved: !!playlistTracks?.length,
-            ...(decision ? { kind: "djPersonaFinalCall" as const, role: "persona" as const } : {}),
           });
           run = {
             object,
@@ -529,15 +545,13 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     }
   }
   if (!song && extras.seen.size) {
-    const repicked = splitProducer
-      ? await repickFunctionGemmaFromSeen({ seen: extras.seen, badId: object?.id ?? null })
-      : await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, wantLink, showAt, playlistResolved: !!playlistTracks?.length });
+    const repicked = await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, wantLink, showAt, playlistResolved: !!playlistTracks?.length });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
       queue.log('picker', `agent returned unknown id "${object?.id}" — re-picked "${repicked.id}" from its own candidates`);
       object = repicked;
       song = extras.seen.get(repicked.id);
-      if (splitProducer) finalPickLogLabel = 'FunctionGemma Repick';
+      finalPickLogLabel = 'Producer Repick';
     }
   }
 
@@ -607,9 +621,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
         playlistResolved: !!playlistTracks?.length,
         reason: `The track you chose is by ${song.artist}, the artist already on air — never play the same artist twice in a row. Choose a DIFFERENT artist from the candidates above.`,
       };
-      const repicked = splitProducer
-        ? await repickFunctionGemmaFromSeen(repickArgs)
-        : await repickFromSeen(repickArgs);
+      const repicked = await repickFromSeen(repickArgs);
       // Resolved from `alt`, not `extras.seen`: the re-pick's id is constrained
       // to the alternatives by construction (z.enum), and reading it back out of
       // the narrower map is what keeps that true if the schema ever gains a
@@ -620,7 +632,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
         queue.log('picker', `back-to-back artist "${song.artist}" avoided — re-picked "${altSong.title}" by ${altSong.artist} from ${alt.size} other-artist candidate(s)${dropped ? `, ${dropped} more skipped as recently-played artists` : ''}${starved ? ' (every alternative was recently played — recency window waived)' : ''}`);
         object = repicked;
         song = altSong;
-        if (splitProducer) finalPickLogLabel = 'FunctionGemma Repick';
+        finalPickLogLabel = 'Producer Repick';
       }
     }
     if (!altSong) {

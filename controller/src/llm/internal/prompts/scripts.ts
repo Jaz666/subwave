@@ -7,6 +7,7 @@ import * as settings from '../../../settings.js';
 import { djText } from '../strategy/text.js';
 import { djSystem, lengthPhrase } from './system.js';
 import { buildContextLines, decoratePrompt, randomSeed } from './context.js';
+import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 import { speakClockAllowed } from '../../../broadcast/clock-policy.js';
 import { isNamedRequester } from '../../../util/request-guard.js';
 import { introBudgetPhrase, introMsFor, firstVocalMsFor, bpmKeyFor } from './intro-budget.js';
@@ -431,11 +432,11 @@ export function personaLinkPrompt({
     sections.push("Editorial Context:\n- " + String(guestContribution.name).trim() + " had a verified editorial hand in choosing this track. If natural, the host may briefly credit them; do not call it a favourite or explain selection mechanics.");
   }
   if (recap) {
-    sections.push('Recent speech by this presenter, supplied only to prevent repetition. Do not reuse its wording, topics, anecdotes, metaphors or sentence structures:\n' + recap);
+    sections.push('Recent speech by this presenter, supplied only to prevent repetition. Do not reuse its wording, topics, anecdotes, metaphors or sentence structures:\n' + stripRecapSpokenTags(recap));
   }
   if (recentOpeners?.length) {
     sections.push('Recent opening words used by this presenter. Start differently:\n'
-      + recentOpeners.slice(0, 6).map((opener: string) => `- ${opener}`).join('\n'));
+      + recentOpeners.slice(0, 6).map((opener: string) => `- ${stripSpokenTags(opener)}`).join('\n'));
   }
   return sections.join('\n\n');
 }
@@ -497,11 +498,11 @@ export function personaSegmentPrompt({
   if (facts.length) sections.push(`Context facts:\n${facts.map((fact) => `- ${fact}`).join('\n')}`);
   if (evidenceText) sections.push(`Grounded evidence:\n${evidenceText}`);
   if (recap) {
-    sections.push('Recent speech by this presenter, supplied only to prevent repetition. Do not reuse its wording, topics, anecdotes, metaphors or sentence structures:\n' + recap);
+    sections.push('Recent speech by this presenter, supplied only to prevent repetition. Do not reuse its wording, topics, anecdotes, metaphors or sentence structures:\n' + stripRecapSpokenTags(recap));
   }
   if (recentOpeners?.length) {
     sections.push('Recent opening words used by this presenter. Start differently:\n'
-      + recentOpeners.slice(0, 6).map((opener: string) => `- ${opener}`).join('\n'));
+      + recentOpeners.slice(0, 6).map((opener: string) => `- ${stripSpokenTags(opener)}`).join('\n'));
   }
   return sections.join('\n\n');
 }

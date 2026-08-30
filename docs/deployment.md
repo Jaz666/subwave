@@ -244,24 +244,23 @@ cache to whatever `audio.stemCacheGb` allows (up to 1 TB), the archive by
 about 1.4 GB a day at 128 kbps. Both are usually the reason someone wants
 part of `state/` on a bigger, cheaper disk.
 
-There is no setting for this, by design: the paths are derived from the state
-dir (`stemsRoot()` is `<state>/stems`), so **the supported move is a bind
-mount at the same path**. Add it to every service that already mounts the
-state volume:
+Set `STEMS_DIR` in `.env` to the host folder you want to use. Compose mounts
+that folder into all three services at the same container path, so the
+controller, broadcast process, and analyzer continue to use
+`/var/sub-wave/stems`:
 
-```yaml
-# docker-compose.override.yml
-services:
-  broadcast:
-    volumes:
-      - /mnt/bigdisk/subwave-stems:/var/sub-wave/stems
-  controller:
-    volumes:
-      - /mnt/bigdisk/subwave-stems:/var/sub-wave/stems
-  analyzer:
-    volumes:
-      - /mnt/bigdisk/subwave-stems:/var/sub-wave/stems
+```dotenv
+# .env
+STEMS_DIR=/mnt/bigdisk/subwave-stems
 ```
+
+Then recreate the three services:
+
+```sh
+docker compose up -d --force-recreate broadcast controller analyzer
+```
+
+If `STEMS_DIR` is unset, the cache remains at `${STATE_DIR:-./state}/stems`.
 
 Three things to know before you do it:
 

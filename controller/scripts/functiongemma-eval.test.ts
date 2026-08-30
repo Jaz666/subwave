@@ -8,7 +8,7 @@ import {
   parseToolCalls,
   runModelScenario,
 } from './functiongemma/model-runner.js';
-import { generateTrainingExamples, validateTrainingSets } from './functiongemma/training-data.js';
+import { FUNCTIONGEMMA_VANILLA_DISCOVERY_TOOLS, generateTrainingExamples, validateTrainingSets } from './functiongemma/training-data.js';
 import { buildNovelSoakCases, runSoakCase } from './functiongemma/soak.js';
 
 const scenario = (id: string) => {
@@ -185,6 +185,8 @@ test('generates deterministic, disjoint routing and recovery datasets', () => {
   assert.ok(validation.families['route.segment-track-research'] > 0);
   assert.ok(validation.families['recover.recover-journey-to-mood'] > 0);
   assert.ok(validation.families['recover.recover-journey-to-genre'] > 0);
+  const selected = new Set(train.flatMap(example => example.messages).flatMap(message => message.tool_calls ?? []).map(call => call.function.name));
+  for (const toolName of FUNCTIONGEMMA_VANILLA_DISCOVERY_TOOLS) assert.ok(selected.has(toolName), "missing parity target: " + toolName);
 });
 
 test('training calls use exact live schemas and copy unique production-shaped ids', () => {

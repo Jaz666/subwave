@@ -32,6 +32,7 @@ import * as jingles from './jingles.js';
 import * as beds from './beds.js';
 import * as bedPolicy from './bed-policy.js';
 import * as session from './session.js';
+import { stripRecapSpokenTags, stripSpokenTags } from '../llm/internal/prompts/recent-speech.js';
 import type { TurnMeta } from './session.js';
 import { getFullContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
@@ -362,7 +363,7 @@ class Queue {
     if (picked.length === 0) return null;
     return picked.map((e) => {
       const ago = formatAgo(Date.now() - new Date(e.t).getTime());
-      const msg = (e.message || '').replace(/\s+/g, ' ').trim();
+      const msg = stripSpokenTags((e.message || "").replace(/\s+/g, " ")).trim();
       const truncated = msg.length > maxChars ? msg.slice(0, maxChars - 1) + '…' : msg;
       return `- ${ago} ago [${KIND_LABEL[e.kind] || e.kind}]: "${truncated}"`;
     }).join('\n');
@@ -404,7 +405,7 @@ class Queue {
     const out: string[] = [];
     for (const entry of prior ? session.priorPromptMemory() : session.promptMemory()) {
       if (!VOICE_KINDS.has(entry.kind)) continue;
-      const msg = (entry.message || '').replace(/^["'\s]+/, '').replace(/\s+/g, ' ').trim();
+      const msg = stripSpokenTags((entry.message || "").replace(/^["'\s]+/, "").replace(/\s+/g, " ")).trim();
       if (!msg) continue;
       const opener = msg.split(/\s+/).slice(0, 5).join(' ');
       if (seen.has(opener.toLowerCase())) continue;

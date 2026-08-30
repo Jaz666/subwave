@@ -3,6 +3,9 @@
 # State + sounds + radio.liq are bind-mounted so dev cycles need no rebuilds.
 
 x-state: &state-mount ${STATE_DIR:-./state}:/var/sub-wave
+# Optional host relocation for the stem cache. The container path stays fixed
+# so the controller and analyzer always share the same cache.
+x-stems: &stems-mount ${STEMS_DIR:-${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service).
 x-logging: &default-logging
@@ -52,6 +55,7 @@ services:
       - ./liquidsoap/radio.liq:/etc/liquidsoap/radio.liq:ro
       - ./sounds:/sounds:ro
       - *state-mount
+      - *stems-mount
       - ${STATE_DIR:-./state}/logs:/var/log/liquidsoap
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7702/status-json.xsl > /dev/null"]
@@ -108,6 +112,7 @@ services:
     command: ["node_modules/.bin/tsx", "watch", "src/server.ts"]
     volumes:
       - *state-mount
+      - *stems-mount
       - ./sounds:/sounds:ro
       # Mount src/ and scripts/ only — mounting the whole controller/ dir
       # would shadow /app/node_modules with the (possibly empty) host one.
@@ -218,6 +223,7 @@ services:
       - HF_TOKEN=${HF_TOKEN:-}
     volumes:
       - *state-mount
+      - *stems-mount
       - analyzer-cache:/opt/analyzer/hf-cache
 
 volumes:

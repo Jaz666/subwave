@@ -11,6 +11,7 @@ import * as settings from '../../../settings.js';
 import { soulBrief } from '../core/pure.js';
 import { djObject } from '../strategy/object.js';
 import { buildContextLines } from './context.js';
+import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // Same field set as the free-text script generators (scripts.ts): ambient
 // weather stays out (issue #471 — it dominated every segment); the dedicated
@@ -77,8 +78,8 @@ export async function generateBanter({
 
   const ctxLines = buildContextLines(context, { contextFields: BANTER_CONTEXT_FIELDS });
   if (current?.title) ctxLines.push(`On air right now: "${current.title}" by ${current.artist || 'unknown'}`);
-  if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${recap}`);
-  if (recentOpeners?.length) ctxLines.push(`Recent opening words (start the first line differently): ${recentOpeners.join(' | ')}`);
+  if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${stripRecapSpokenTags(recap)}`);
+  if (recentOpeners?.length) ctxLines.push(`Recent opening words (start the first line differently): ${recentOpeners.map(stripSpokenTags).join(' | ')}`);
   const prompt = `${ctxLines.join('\n')}\n\nWrite the exchange.`;
 
   const out = await djObject({

@@ -59,7 +59,16 @@ const energyTool: ToolContract = {
   enums: { energy: ['low', 'medium', 'high'] },
 };
 
+export const FUNCTIONGEMMA_VANILLA_DISCOVERY_TOOLS = [
+  'searchLibrary', 'similarSongs', 'topSongsByArtist', 'recentByArtist',
+  'songsByGenre', 'tracksByMood', 'tracksByEnergy', 'tracksLikeThis',
+  'tracksThatSoundLikeThis', 'searchByLyrics', 'searchBySound', 'deepCuts',
+  'recentlyAdded', 'starredSongs', 'randomSongs', 'showPlaylistTracks',
+  'tracksTowardJourney',
+] as const;
+
 const contracts: Record<string, ToolContract> = {
+  done: withString('done', 'id'),
   showPlaylistTracks: noArgs('showPlaylistTracks'),
   tracksTowardJourney: noArgs('tracksTowardJourney'),
   songsByGenre: withString('songsByGenre', 'genre'),
@@ -71,7 +80,12 @@ const contracts: Record<string, ToolContract> = {
   recentlyAdded: noArgs('recentlyAdded'),
   randomSongs: noArgs('randomSongs'),
   tracksLikeThis: withString('tracksLikeThis', 'songId'),
+  tracksThatSoundLikeThis: withString('tracksThatSoundLikeThis', 'songId'),
   similarSongs: withString('similarSongs', 'songId'),
+  topSongsByArtist: withString('topSongsByArtist', 'artist'),
+  recentByArtist: withString('recentByArtist', 'artist'),
+  searchByLyrics: withString('searchByLyrics', 'query'),
+  searchBySound: withString('searchBySound', 'query'),
   skill_album_anniversary: noArgs('skill_album_anniversary'),
   skill_curiosity: noArgs('skill_curiosity'),
   skill_library_deep_cut: noArgs('skill_library_deep_cut'),
@@ -109,7 +123,12 @@ const routeFamilies = [
   'starred',
   'recently-added',
   'semantic-similarity', 'semantic-similarity',
+  'audio-similarity', 'audio-similarity',
   'server-similarity',
+  'artist-top-songs',
+  'artist-recent-songs',
+  'lyric-theme-search',
+  'sound-description-search',
   'library-search',
   'random-fallback',
   'segment-weather',
@@ -136,7 +155,9 @@ const recoveryFamilies = [
   'recover-journey-genre-boundary',
   // An empty journey must preserve a multi-word genre exactly on recovery.
   'recover-journey-exact-genre-collision',
+  'recover-audio-to-sound', 'recover-artist-top-to-recent', 'recover-lyrics-to-library', 'recover-sound-to-mood',
   'recover-journey-exact-genre-collision',
+  'recover-audio-to-sound', 'recover-artist-top-to-recent', 'recover-lyrics-to-library', 'recover-sound-to-mood',
 ] as const;
 
 const splitPools = {
@@ -356,12 +377,46 @@ function routeExample(family: typeof routeFamilies[number], context: ExampleCont
       args = { songId: seed };
       tools = ['tracksLikeThis', 'similarSongs', 'tracksByMood', 'randomSongs'];
       break;
+    case "audio-similarity":
+      prompt = `Use the audio similarity index to find music that sounds like the current track [id: ${seed}].`;
+      target = "tracksThatSoundLikeThis";
+      args = { songId: seed };
+      tools = ["tracksThatSoundLikeThis", "tracksLikeThis", "similarSongs", "searchBySound"];
+      break;
     case 'server-similarity':
       prompt = `Use the music server's native related-song service for the current track [id: ${seed}].`;
       target = 'similarSongs';
       args = { songId: seed };
       tools = ['similarSongs', 'tracksLikeThis', 'searchLibrary', 'randomSongs'];
       break;
+    case "artist-top-songs":
+      prompt = `Stay in ${artist}'s orbit with one of their best-known songs in the local library.`;
+      target = "topSongsByArtist";
+      args = { artist };
+      tools = ["topSongsByArtist", "recentByArtist", "searchLibrary", "similarSongs"];
+      break;
+    case "artist-recent-songs":
+      prompt = `Find the newest release by ${artist} that is already in the local library.`;
+      target = "recentByArtist";
+      args = { artist };
+      tools = ["recentByArtist", "topSongsByArtist", "searchLibrary", "recentlyAdded"];
+      break;
+    case "lyric-theme-search": {
+      const query = pick(["songs about leaving home", "a hopeful lyric about starting over", "music about long-distance love"], context.random);
+      prompt = `Find a thematic next track through lyric meaning: ${query}.`;
+      target = "searchByLyrics";
+      args = { query };
+      tools = ["searchByLyrics", "tracksByMood", "searchLibrary", "randomSongs"];
+      break;
+    }
+    case "sound-description-search": {
+      const query = pick(["warm acoustic fingerpicking", "dusty late-night jazz with brushed drums", "bright motorik synth pulse"], context.random);
+      prompt = `Find music by its actual sound: ${query}.`;
+      target = "searchBySound";
+      args = { query };
+      tools = ["searchBySound", "tracksThatSoundLikeThis", "tracksByMood", "randomSongs"];
+      break;
+    }
     case 'library-search':
       prompt = context.random() > 0.5
         ? `Search the library directly for the artist ${artist}.`
@@ -530,6 +585,27 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
       nextArgs = { genre: 'art rock' };
       names = ['tracksTowardJourney', 'songsByGenre', 'tracksByMood', 'randomSongs'];
       break;
+    case 'recover-audio-to-sound':
+      prompt = `Find music with a similar sound to [id: ${seed}]. Try audio similarity first; if empty, recover with a sound description search.`;
+      first = 'tracksThatSoundLikeThis'; next = 'searchBySound';
+      nextArgs = { query: 'warm spacious guitar with a steady pulse' };
+      names = ['tracksThatSoundLikeThis', 'searchBySound', 'tracksLikeThis', 'randomSongs'];
+      break;
+    case 'recover-artist-top-to-recent':
+      prompt = `Stay near ${artist}; if the popularity route is empty, use the artist's newest library releases.`;
+      first = 'topSongsByArtist'; next = 'recentByArtist'; nextArgs = { artist };
+      names = ['topSongsByArtist', 'recentByArtist', 'searchLibrary', 'randomSongs'];
+      break;
+    case 'recover-lyrics-to-library':
+      prompt = 'Find a song about starting over through lyrics; if empty, search the local library directly.';
+      first = 'searchByLyrics'; next = 'searchLibrary'; nextArgs = { query: 'starting over' };
+      names = ['searchByLyrics', 'searchLibrary', 'tracksByMood', 'randomSongs'];
+      break;
+    case 'recover-sound-to-mood':
+      prompt = 'Find warm acoustic fingerpicking; if sound search is empty, use the calm structured mood route.';
+      first = 'searchBySound'; next = 'tracksByMood'; nextArgs = { mood: 'calm', energy: null };
+      names = ['searchBySound', 'tracksByMood', 'tracksThatSoundLikeThis', 'randomSongs'];
+      break;
     case 'recover-journey-exact-genre-collision': {
       const [parent, child] = pick([
         ['electro', 'electro house'],
@@ -548,7 +624,11 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
 
   prompt = productionPrompt(prompt, { id: seed, title, artist }, context);
 
-  const firstArgs = first === 'showPlaylistTracks' || first === 'tracksTowardJourney' ? {} : { songId: seed };
+  const firstArgs = first === 'showPlaylistTracks' || first === 'tracksTowardJourney' ? {}
+    : first === 'topSongsByArtist' || first === 'recentByArtist' ? { artist }
+      : first === 'searchByLyrics' ? { query: 'starting over' }
+        : first === 'searchBySound' ? { query: 'warm spacious guitar with a steady pulse' }
+          : { songId: seed };
   return {
     id: `${context.split}.recover.${family}.${context.index}`,
     split: context.split,
@@ -612,6 +692,7 @@ export function validateTrainingSets(
     'E2lC7tR4oQ9wN1mK6vP8xD', 'Bright Wire', 'Pinned Signal', 'Second Source', 'Voltage Bloom', 'Phase Array', 'Late Shift',
   ];
   const families: Record<string, number> = {};
+  const routedVanillaTools = new Set<string>();
 
   for (const example of all) {
     if (ids.has(example.id)) violations.push(`duplicate id: ${example.id}`);
@@ -650,6 +731,7 @@ export function validateTrainingSets(
     if (!assistantCalls.length) violations.push(`${example.id}: missing assistant tool call`);
     for (const assistantCall of assistantCalls) {
       const name = assistantCall.function.name;
+      if ((FUNCTIONGEMMA_VANILLA_DISCOVERY_TOOLS as readonly string[]).includes(name)) routedVanillaTools.add(name);
       if (!toolNames.has(name)) {
         violations.push(`${example.id}: target tool not offered: ${name}`);
       }
@@ -672,7 +754,7 @@ export function validateTrainingSets(
           violations.push(`${example.id}: ${name} has invalid ${key}`);
         }
       }
-      if ((name === 'tracksLikeThis' || name === 'similarSongs') && args.songId !== currentTrackId) {
+      if ((name === 'tracksLikeThis' || name === 'tracksThatSoundLikeThis' || name === 'similarSongs') && args.songId !== currentTrackId) {
         violations.push(`${example.id}: ${name} did not copy the current track id`);
       }
     }
@@ -682,6 +764,10 @@ export function validateTrainingSets(
       violations.push(`${example.id}: duplicate conversation (first seen in ${previousSplit})`);
     }
     messageFingerprints.set(hash, example.split);
+  }
+
+  for (const name of FUNCTIONGEMMA_VANILLA_DISCOVERY_TOOLS) {
+    if (!routedVanillaTools.has(name)) violations.push(`missing vanilla discovery coverage: ${name}`);
   }
 
   if (violations.length) throw new Error(`invalid FunctionGemma dataset:\n${violations.slice(0, 25).join('\n')}`);

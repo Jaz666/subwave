@@ -91,6 +91,8 @@ test('executes one routed discovery tool and records grounded candidates', async
   assert.equal(calls[0].tool_choice, 'required');
   assert.equal(records[0].kind, 'djProducerRoute');
   assert.equal(records[0].ok, true);
+  assert.deepEqual(result.availability, [{ offered: ["tracksLikeThis"], selected: "tracksLikeThis" }]);
+  assert.deepEqual(records[0].availability, result.availability);
 });
 
 test('replays an empty tool result and permits exactly one recovery route', async () => {

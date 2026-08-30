@@ -16,6 +16,7 @@ import { djObject } from '../strategy/object.js';
 import { djSystem, lengthPhrase } from './system.js';
 import { buildContextLines, decoratePrompt, randomSeed } from './context.js';
 import { clipText } from '../core/pure.js';
+import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // Same field set as the free-text script generators (scripts.ts): ambient
 // weather stays out (issue #471); the dedicated weather skill owns that beat.
@@ -220,7 +221,7 @@ export function featureTask({ show, topic, plan = null, speaker = null }: any): 
 export async function generateProgrammeFeature({ show, topic, plan = null, persona = null, context = null, recap = null, recentOpeners = null }: any) {
   const speaker = persona || settings.getEffectivePersona();
   const ctxLines = buildContextLines(context, { contextFields: PROGRAMME_CONTEXT_FIELDS });
-  if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${recap}`);
+  if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${stripRecapSpokenTags(recap)}`);
   ctxLines.push(featureTask({ show, topic, plan, speaker }));
   return djText({
     system: djSystem(speaker),
@@ -297,8 +298,8 @@ export async function generateProgrammeExchange({
   if (plan?.angle) ctxLines.push(`Today's episode angle: ${plan.angle}`);
   const note = beat === 'outro' ? plan?.outroNote : plan?.introNote;
   if (note) ctxLines.push(`Episode note for this beat: ${note}`);
-  if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${recap}`);
-  if (recentOpeners?.length) ctxLines.push(`Recent opening words (start the first line differently): ${recentOpeners.join(' | ')}`);
+  if (recap) ctxLines.push(`Already said on air recently (do not repeat these topics or phrasing):\n${stripRecapSpokenTags(recap)}`);
+  if (recentOpeners?.length) ctxLines.push(`Recent opening words (start the first line differently): ${recentOpeners.map(stripSpokenTags).join(' | ')}`);
 
   const out = await djObject({
     system,

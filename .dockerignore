@@ -8,6 +8,8 @@
 .git
 .backups
 state
+**/scripts/functiongemma/training/output
+**/scripts/functiongemma/training/data
 
 # Dev-only env files MUST NOT leak into the prod web image — Next.js bakes
 # NEXT_PUBLIC_* values into the static client bundle at build time, so a

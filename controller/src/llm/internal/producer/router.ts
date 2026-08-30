@@ -35,6 +35,7 @@ export interface RoutedDiscovery {
   seen: Map<string, any>;
   steps: number;
   toolCalls: Array<{ name: string; args: Record<string, unknown>; result: unknown }>;
+  availability: Array<{ offered: string[]; selected: string }>;
 }
 
 export interface RoutedResearch {
@@ -192,6 +193,7 @@ export async function routeProducerDiscovery({
     { role: 'user', content: prompt },
   ];
   const toolCalls: RoutedDiscovery['toolCalls'] = [];
+  const availability: RoutedDiscovery['availability'] = [];
   const exhaustedTools = new Set<string>();
   const responses: string[] = [];
   let usage = { input: 0, output: 0, total: 0 };
@@ -209,6 +211,7 @@ export async function routeProducerDiscovery({
         !exhaustedTools.has(name) && !excludeToolNames.has(name));
       const roundTools = Object.fromEntries(roundToolEntries) as ToolSet;
       const offered = openAiTools(roundTools);
+      const offeredNames = roundToolEntries.map(([name]) => name);
       if (!offered.length) throw new Error('Producer Router has no untried recovery tools');
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('Producer Router exhausted its shared deadline');
@@ -247,6 +250,7 @@ export async function routeProducerDiscovery({
       const parsed = rawCalls.length ? parseOpenAiCalls(rawCalls) : parseFunctionGemmaCall(message?.content);
       if (parsed.length !== 1) throw new Error(`Producer Router returned ${parsed.length} tool calls; expected exactly one`);
       const call = parsed[0];
+      availability.push({ offered: offeredNames, selected: call.name });
       const selected: any = (roundTools as any)[call.name];
       if (!selected) throw new Error(`Producer Router selected unavailable tool "${call.name}"`);
       const validated = selected.inputSchema?.safeParse?.(call.arguments);
@@ -286,15 +290,15 @@ export async function routeProducerDiscovery({
       kind: 'djProducerRoute', ok: true, ms: Date.now() - started,
       model: config.model, via: 'openai-compatible:functiongemma', usage,
       t: new Date().toISOString(), system: ROUTER_SYSTEM, user: prompt,
-      response: responses.join('\n\n'), steps: toolCalls.length, toolCalls,
+      response: responses.join('\n\n'), steps: toolCalls.length, toolCalls, availability,
     });
-    return { seen, steps: toolCalls.length, toolCalls };
+    return { seen, steps: toolCalls.length, toolCalls, availability };
   } catch (error: any) {
     recordImpl({
       kind: 'djProducerRoute', ok: false, ms: Date.now() - started,
       model: config.model, via: 'openai-compatible:functiongemma', usage,
       t: new Date().toISOString(), system: ROUTER_SYSTEM, user: prompt,
-      response: responses.join('\n\n'), steps: toolCalls.length, toolCalls,
+      response: responses.join('\n\n'), steps: toolCalls.length, toolCalls, availability,
       error: error?.message ?? String(error),
     });
     throw error;
