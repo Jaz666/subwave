@@ -21,6 +21,6 @@ assert.equal(stats.transitions.window, 1000);
 assert.equal(stats.transitions.byName.find(row => row.name === 'normal')?.count, 1);
 assert.equal(stats.transitions.byName.find(row => row.name === 'sweep + washout')?.count, 1);
 assert.equal(stats.transitions.byName.find(row => row.name === 'loop')?.count, 0);
-assert.equal(TRACK_TRANSITION_COMBINATIONS.length, 11);
+assert.equal(TRACK_TRANSITION_COMBINATIONS.length, 16);
 
 console.log('stats debug diagnostics: ok');
