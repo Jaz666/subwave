@@ -14,6 +14,9 @@ export const COMPOSE_YML = `# SUB/WAVE — production orchestration. Only Caddy 
 # keep it clear of \`git clean -dffx\`.
 
 x-state: &state-mount \${STATE_DIR:-./state}:/var/sub-wave
+# Optional host relocation for the stem cache. The container path stays fixed
+# so the controller and analyzer always share the same cache.
+x-stems: &stems-mount \${STEMS_DIR:-\${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service) — the default json-file
 # driver is unbounded and eventually fills the host disk.
@@ -87,6 +90,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - *state-mount
+      - *stems-mount
       - \${STATE_DIR:-./state}/logs:/var/log/liquidsoap
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7702/status-json.xsl > /dev/null"]
@@ -142,6 +146,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - *state-mount
+      - *stems-mount
     # curl is in the controller image; /health is served at the router root.
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7701/health > /dev/null"]
@@ -306,6 +311,7 @@ services:
     volumes:
       # Shared mount — reads tracks pre-fetched into /var/sub-wave/analyze-tmp.
       - *state-mount
+      - *stems-mount
       # Persist the CLAP/Demucs HF cache across recreates.
       - analyzer-cache:/opt/analyzer/hf-cache
 
@@ -345,6 +351,9 @@ export const COMPOSE_BYO_YML = `# SUB/WAVE — production without the bundled re
 # \`docker compose down -v\` won't touch it.
 
 x-state: &state-mount \${STATE_DIR:-./state}:/var/sub-wave
+# Optional host relocation for the stem cache. The container path stays fixed
+# so the controller and analyzer always share the same cache.
+x-stems: &stems-mount \${STEMS_DIR:-\${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service).
 x-logging: &default-logging
@@ -383,6 +392,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - *state-mount
+      - *stems-mount
       - \${STATE_DIR:-./state}/logs:/var/log/liquidsoap
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7702/status-json.xsl > /dev/null"]
@@ -435,6 +445,7 @@ services:
       - "\${BIND_ADDRESS:-0.0.0.0}:\${CONTROLLER_PORT:-7701}:7701"
     volumes:
       - *state-mount
+      - *stems-mount
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7701/health > /dev/null"]
       interval: 10s
@@ -582,6 +593,7 @@ services:
       - HF_TOKEN=\${HF_TOKEN:-}
     volumes:
       - *state-mount
+      - *stems-mount
       - analyzer-cache:/opt/analyzer/hf-cache
 
 volumes:
@@ -596,6 +608,9 @@ export const COMPOSE_DEV_YML = `# SUB/WAVE — dev compose (local smoke test): B
 # State + sounds + radio.liq are bind-mounted so dev cycles need no rebuilds.
 
 x-state: &state-mount \${STATE_DIR:-./state}:/var/sub-wave
+# Optional host relocation for the stem cache. The container path stays fixed
+# so the controller and analyzer always share the same cache.
+x-stems: &stems-mount \${STEMS_DIR:-\${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service).
 x-logging: &default-logging
@@ -645,6 +660,7 @@ services:
       - ./liquidsoap/radio.liq:/etc/liquidsoap/radio.liq:ro
       - ./sounds:/sounds:ro
       - *state-mount
+      - *stems-mount
       - \${STATE_DIR:-./state}/logs:/var/log/liquidsoap
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:7702/status-json.xsl > /dev/null"]
@@ -701,6 +717,7 @@ services:
     command: ["node_modules/.bin/tsx", "watch", "src/server.ts"]
     volumes:
       - *state-mount
+      - *stems-mount
       - ./sounds:/sounds:ro
       # Mount src/ and scripts/ only — mounting the whole controller/ dir
       # would shadow /app/node_modules with the (possibly empty) host one.
@@ -811,6 +828,7 @@ services:
       - HF_TOKEN=\${HF_TOKEN:-}
     volumes:
       - *state-mount
+      - *stems-mount
       - analyzer-cache:/opt/analyzer/hf-cache
 
 volumes:
@@ -939,6 +957,9 @@ SITE_URL=
 
 # Storage + locale
 # STATE_DIR=./state
+# Optional: place the stem cache on another disk. This host path is mounted
+# into broadcast, controller, and analyzer at /var/sub-wave/stems.
+# STEMS_DIR=/mnt/bigdisk/subwave-stems
 # TZ=Europe/London
 
 # Web
