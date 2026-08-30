@@ -54,6 +54,8 @@ export interface Track {
   // drain time and may arm a controller-owned, analyser-gated transition.
   functionGemmaTransitionPolicy?: boolean;
   crossSec?: number;
+  // Automatic compatible-pair crossfade, distinct from an explicit model blend.
+  pairBlend?: boolean;
   [k: string]: unknown;
 }
 
