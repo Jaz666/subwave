@@ -70,11 +70,9 @@ def validate_rows(rows: list[dict[str, Any]], path: Path) -> set[str]:
         tools = row.get("tools")
         if not isinstance(messages, list) or not isinstance(tools, list):
             raise ValueError(f"{path}:{index}: expected messages[] and tools[]")
-        offered = {
-            tool.get("function", {}).get("name")
-            for tool in tools
-            if isinstance(tool, dict)
-        }
+        decision_tools = row.get("decisionTools")
+        if decision_tools is not None and not isinstance(decision_tools, list):
+            raise ValueError(f"{path}:{index}: decisionTools must be a list when present")
         assistant_calls = []
         for message in messages:
             if not isinstance(message, dict):
@@ -83,8 +81,21 @@ def validate_rows(rows: list[dict[str, Any]], path: Path) -> set[str]:
                 assistant_calls.extend(message.get("tool_calls") or [])
         if not assistant_calls:
             raise ValueError(f"{path}:{index}: no assistant tool-call target")
-        for call in assistant_calls:
+        if decision_tools is not None and len(decision_tools) != len(assistant_calls):
+            raise ValueError(
+                f"{path}:{index}: decisionTools has {len(decision_tools)} entries for "
+                f"{len(assistant_calls)} assistant decisions"
+            )
+        for call_index, call in enumerate(assistant_calls):
             name = call.get("function", {}).get("name") if isinstance(call, dict) else None
+            selected_tools = decision_tools[call_index] if decision_tools is not None else tools
+            if not isinstance(selected_tools, list):
+                raise ValueError(f"{path}:{index}: decisionTools[{call_index}] must be a tool list")
+            offered = {
+                tool.get("function", {}).get("name")
+                for tool in selected_tools
+                if isinstance(tool, dict)
+            }
             if name not in offered:
                 raise ValueError(f"{path}:{index}: target tool {name!r} was not offered")
         fingerprint = hashlib.sha256(
@@ -152,18 +163,22 @@ def main() -> int:
         token_lengths: list[int] = []
         for row in rows:
             messages = row["messages"]
+            decision_index = 0
             for target_index, message in enumerate(messages):
                 if message.get("role") != "assistant":
                     continue
+                decision_tools = row.get("decisionTools")
+                selected_tools = decision_tools[decision_index] if decision_tools is not None else row["tools"]
+                decision_index += 1
                 prompt = tokenizer.apply_chat_template(
                     messages[:target_index],
-                    tools=row["tools"],
+                    tools=selected_tools,
                     add_generation_prompt=True,
                     tokenize=False,
                 )
                 full = tokenizer.apply_chat_template(
                     messages[:target_index + 1],
-                    tools=row["tools"],
+                    tools=selected_tools,
                     add_generation_prompt=False,
                     tokenize=False,
                 )

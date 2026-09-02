@@ -1,0 +1,28 @@
+{
+  "name": "router-v21-q8-artist-format",
+  "python": "/media/ssd/training/functiongemma-venv/bin/python",
+  "data": {
+    "prepare": [
+      "npx tsx controller/scripts/functiongemma/v21-data-cli.ts /media/ssd/training/data-router-v21-q8-artist-format-correction",
+      "/media/ssd/training/functiongemma-venv/bin/python controller/scripts/functiongemma/training/compose_corpus.py --base /media/ssd/training/data-router-v20-controller-transition --correction /media/ssd/training/data-router-v21-q8-artist-format-correction --output /media/ssd/training/data-router-v21-q8-artist-format"
+    ],
+    "train": "/media/ssd/training/data-router-v21-q8-artist-format/train.jsonl",
+    "development": "/media/ssd/training/data-router-v21-q8-artist-format/development.jsonl",
+    "validation": "/media/ssd/training/data-router-v20-controller-transition-correction/validation.json"
+  },
+  "train": {
+    "base_model": "/media/ssd/training/router-v20-controller-transition/best",
+    "output": "/media/ssd/training/router-v21-q8-artist-format",
+    "epochs": 1,
+    "batch_size": 4,
+    "gradient_accumulation": 2,
+    "max_length": 1024,
+    "learning_rate": 0.000003,
+    "early_stopping_patience": 1,
+    "seed": 20260902
+  },
+  "native": { "iterations": 5 },
+  "server": { "container": "subwave-functiongemma-eval", "port": 8099, "context": 4096 },
+  "q8": { "iterations": 5 },
+  "soak": { "examples": 100 }
+}

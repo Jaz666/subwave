@@ -44,6 +44,19 @@ class WorkflowTest(unittest.TestCase):
             path.write_text(json.dumps({"passed": 129, "failed": 0, "decisions": 129}), encoding="utf-8")
             self.assertEqual(workflow.report_verdict(path, "soak").recommendation, "CONTINUE")
 
+    def test_resume_starts_at_first_unfinished_or_stopped_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "workflow-state.json"
+            self.assertEqual(workflow.next_unfinished_stage(path), "prepare")
+            path.write_text(json.dumps({"stages": {
+                "prepare": {"status": "continue"},
+                "train": {"status": "review"},
+                "native": {"status": "stop"},
+            }}), encoding="utf-8")
+            self.assertEqual(workflow.next_unfinished_stage(path), "native")
+            path.write_text(json.dumps({"stages": {stage: {"status": "continue"} for stage in workflow.STAGES}}), encoding="utf-8")
+            self.assertIsNone(workflow.next_unfinished_stage(path))
+
 
 if __name__ == "__main__":
     unittest.main()

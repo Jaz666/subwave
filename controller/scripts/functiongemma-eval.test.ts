@@ -165,7 +165,7 @@ test('model runner carries an empty result into a different recovery call', asyn
   assert.equal(bodies[0].messages[0].role, 'developer');
   assert.equal(bodies[0].max_tokens, 256);
   assert.deepEqual(bodies[0].stop, ['<end_function_call>']);
-  assert.match(bodies[1].messages.at(-1).content, /absent from the semantic index/);
+  assert.match(bodies[1].messages.at(-1).content, /That source returned no eligible candidates. Choose one different offered recovery source./);
   assert.equal(scorePrediction(fixture, prediction).passed, true);
 });
 

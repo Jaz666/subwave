@@ -187,6 +187,7 @@ export async function runModelScenario(
   const responseText: string[] = [];
   const finishReasons: string[] = [];
   const callsPerRound: number[] = [];
+  const usedTools = new Set<string>();
   const started = Date.now();
   const maxRounds = scenario.stage === 'recover' ? 3 : 1;
 
@@ -204,7 +205,7 @@ export async function runModelScenario(
         body: JSON.stringify({
           model: options.model,
           messages,
-          tools: scenario.tools.map(openAiTool),
+          tools: scenario.tools.filter(tool => !usedTools.has(tool.name)).map(openAiTool),
           tool_choice: 'required',
           parallel_tool_calls: false,
           temperature: 0,
@@ -248,6 +249,7 @@ export async function runModelScenario(
     // One decision point permits exactly one call. Do not fabricate tool
     // results for an invalid multi-call response during evaluation.
     if (parsed.length !== 1) break;
+    usedTools.add(parsed[0].name);
 
     messages.push({
       role: 'assistant',
@@ -265,6 +267,9 @@ export async function runModelScenario(
       });
     }
     if (parsed.some(call => call.name === 'done')) break;
+    if (scenario.stage === 'recover') {
+      messages.push({ role: 'user', content: 'That source returned no eligible candidates. Choose one different offered recovery source.' });
+    }
   }
 
   return {

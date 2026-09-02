@@ -49,6 +49,13 @@ def absolute(base: Path, raw: str) -> Path:
     return path if path.is_absolute() else (base / path).resolve()
 
 
+def project_root(base: Path) -> Path:
+    for candidate in (base, *base.parents):
+        if (candidate / "controller" / "package.json").is_file():
+            return candidate
+    raise ValueError(f"{base}: cannot locate project root containing controller/package.json")
+
+
 def command(value: list[str] | str, *, base: Path) -> list[str]:
     if isinstance(value, list) and all(isinstance(part, str) for part in value):
         return value
@@ -117,9 +124,40 @@ def write_state(path: Path, stage: str, *, status: str, detail: dict[str, Any]) 
     path.write_text(json.dumps(prior, indent=2) + "\n", encoding="utf-8")
 
 
+def next_unfinished_stage(state_path: Path) -> str | None:
+    if not state_path.is_file():
+        return "prepare"
+    recorded = read_json(state_path).get("stages", {})
+    if not isinstance(recorded, dict):
+        return "prepare"
+    for stage in STAGES:
+        detail = recorded.get(stage, {})
+        status = detail.get("status") if isinstance(detail, dict) else None
+        # REVIEW means the stage completed safely and awaits the operator;
+        # STOP means it is the stage to retry after a correction.
+        if status not in {"continue", "review"}:
+            return stage
+    return None
+
+
 def run(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    print("$ " + " ".join(argv), flush=True)
-    return subprocess.run(argv, cwd=cwd, text=True, check=False)
+    print("command: " + " ".join(argv), flush=True)
+    result = subprocess.run(argv, cwd=cwd, text=True, capture_output=True, check=False)
+    log_name = os.environ.get("FUNCTIONGEMMA_WORKFLOW_LOG")
+    if log_name:
+        log = Path(log_name)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8") as handle:
+            handle.write("command: " + " ".join(argv) + "\n")
+            handle.write(result.stdout)
+            handle.write(result.stderr)
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip().splitlines()[-1:]
+        if detail:
+            print("command failed: " + detail[0], file=sys.stderr)
+        if log_name:
+            print("full command log: " + log_name, file=sys.stderr)
+    return result
 
 
 def summary(stage: str, verdict: Verdict, extra: str = "") -> None:
@@ -147,14 +185,17 @@ def report_verdict(path: Path, label: str) -> Verdict:
         if passed == total:
             return Verdict("CONTINUE", f"{label} passed {passed}/{total}")
         return Verdict("STOP", f"{label} failed: {passed}/{total} passed")
-    if report.get("failed") == 0 and isinstance(report.get("passed"), int):
-        return Verdict("CONTINUE", f"{label} passed {report['passed']}/{report.get('decisions', report['passed'])}")
+    if isinstance(report.get("passed"), int) and isinstance(report.get("failed"), int):
+        total = report.get("decisions", report["passed"] + report["failed"])
+        if report["failed"] == 0:
+            return Verdict("CONTINUE", f"{label} passed {report['passed']}/{total}")
+        return Verdict("STOP", f"{label} failed: {report['passed']}/{total} passed")
     return Verdict("STOP", f"{label} report has no usable pass/fail summary")
 
 
 def stage_prepare(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
     for item in spec.get("data", {}).get("prepare", []):
-        result = run(command(item, base=base), cwd=base)
+        result = run(command(item, base=base), cwd=project_root(base))
         if result.returncode:
             return Verdict("STOP", "data preparation command failed")
     missing = [name for name in ("train", "development", "validation") if not p[name].is_file()]
@@ -181,7 +222,7 @@ def stage_train(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict
             "--early-stopping-patience", str(cfg.get("early_stopping_patience", 1)), "--seed", str(cfg.get("seed", 20260902))]
     if cfg.get("resume"):
         argv.extend(["--resume", str(cfg["resume"])])
-    result = run(argv, cwd=base)
+    result = run(argv, cwd=project_root(base))
     if result.returncode or not p["best"].is_dir():
         return Verdict("STOP", "training failed or did not create best checkpoint")
     summary_path = p["output"] / "run-summary.json"
@@ -197,11 +238,11 @@ def stage_native(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdic
     python = spec.get("python", sys.executable)
     result = run([python, "controller/scripts/functiongemma/training/evaluate.py", "--model", str(p["best"]),
                   "--scenarios", str(p["validation"]), "--output", str(p["native_predictions"]),
-                  "--iterations", str(native.get("iterations", 5))], cwd=base)
+                  "--iterations", str(native.get("iterations", 5))], cwd=project_root(base))
     if result.returncode:
         return Verdict("STOP", "native evaluation failed")
-    result = run(["npx", "tsx", "controller/scripts/functiongemma/cli.ts", "--predictions", str(p["native_predictions"]),
-                  "--out", str(p["native_report"])], cwd=base)
+    result = run(["npx", "tsx", "controller/scripts/functiongemma/cli.ts", "--predictions", str(p["native_predictions"]), "--scenarios-file", str(p["validation"]),
+                  "--out", str(p["native_report"])], cwd=project_root(base))
     return report_verdict(p["native_report"], "native gate") if result.returncode == 0 else Verdict("STOP", "native scorer failed")
 
 
@@ -209,11 +250,11 @@ def stage_convert(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdi
     python = spec.get("python", sys.executable)
     if p["gguf_source"].exists() or p["gguf"].exists():
         return Verdict("STOP", "conversion output already exists; use a new run output directory")
-    prepare = run([python, "controller/scripts/functiongemma/training/prepare_gguf.py", "--source", str(p["best"]), "--output", str(p["gguf_source"])], cwd=base)
+    prepare = run([python, "controller/scripts/functiongemma/training/prepare_gguf.py", "--source", str(p["best"]), "--output", str(p["gguf_source"])], cwd=project_root(base))
     if prepare.returncode:
         return Verdict("STOP", "GGUF source preparation failed")
     convert = run(["docker", "run", "--rm", "-v", f"{p['gguf_source']}:/input:ro", "-v", f"{p['output']}:/output",
-                   "ghcr.io/ggml-org/llama.cpp:full", "--convert", "/input", "--outfile", f"/output/{p['gguf'].name}", "--outtype", "q8_0"], cwd=base)
+                   "ghcr.io/ggml-org/llama.cpp:full", "--convert", "/input", "--outfile", f"/output/{p['gguf'].name}", "--outtype", "q8_0"], cwd=project_root(base))
     return Verdict("CONTINUE", f"Q8 model ready: {p['gguf'].name}") if convert.returncode == 0 and p["gguf"].is_file() else Verdict("STOP", "Q8 conversion failed")
 
 
@@ -230,11 +271,11 @@ def stage_serve(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict
     cfg = server_settings(spec, p)
     existing = subprocess.run(["docker", "ps", "-aq", "-f", f"name=^{cfg['container']}$"], text=True, capture_output=True, check=False).stdout.strip()
     if existing:
-        stop = run(["docker", "rm", "-f", cfg["container"]], cwd=base)
+        stop = run(["docker", "rm", "-f", cfg["container"]], cwd=project_root(base))
         if stop.returncode:
             return Verdict("STOP", "could not replace standard evaluation container")
     start = run(["docker", "run", "-d", "--name", cfg["container"], "-p", f"{cfg['port']}:8080", "-v", f"{p['output']}:/models:ro", cfg["image"],
-                 "--model", cfg["model_name"], "--ctx-size", str(cfg["context"]), "--n-gpu-layers", "0"], cwd=base)
+                 "--model", cfg["model_name"], "--ctx-size", str(cfg["context"]), "--n-gpu-layers", "0"], cwd=project_root(base))
     if start.returncode:
         return Verdict("STOP", "could not start standard evaluation server")
     return Verdict("CONTINUE", f"standard Q8 endpoint ready at http://127.0.0.1:{cfg['port']}/v1")
@@ -243,18 +284,18 @@ def stage_serve(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict
 def stage_q8(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
     cfg = server_settings(spec, p)
     q8 = spec.get("q8", {})
-    argv = ["npx", "tsx", "controller/scripts/functiongemma/cli.ts", "--base-url", f"http://127.0.0.1:{cfg['port']}/v1", "--model", cfg["model_name"], "--iterations", str(q8.get("iterations", 5)), "--out", str(p["q8_report"])]
+    argv = ["npx", "tsx", "controller/scripts/functiongemma/cli.ts", "--base-url", f"http://127.0.0.1:{cfg['port']}/v1", "--model", cfg["model_name"], "--iterations", str(q8.get("iterations", 5)), "--scenarios-file", str(p["validation"]), "--out", str(p["q8_report"])]
     scenarios = q8.get("scenarios")
     if isinstance(scenarios, list) and scenarios:
         argv.extend(["--scenarios", ",".join(str(value) for value in scenarios)])
-    result = run(argv, cwd=base)
+    result = run(argv, cwd=project_root(base))
     return report_verdict(p["q8_report"], "Q8 gate") if result.returncode == 0 else Verdict("STOP", "Q8 scorer failed")
 
 
 def stage_soak(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
     cfg = server_settings(spec, p)
     soak = spec.get("soak", {})
-    result = run(["npx", "tsx", "controller/scripts/functiongemma/soak-cli.ts", "--base-url", f"http://127.0.0.1:{cfg['port']}/v1", "--model", cfg["model_name"], "--examples", str(soak.get("examples", 100)), "--out", str(p["soak_report"])], cwd=base)
+    result = run(["npx", "tsx", "controller/scripts/functiongemma/soak-cli.ts", "--base-url", f"http://127.0.0.1:{cfg['port']}/v1", "--model", cfg["model_name"], "--examples", str(soak.get("examples", 100)), "--out", str(p["soak_report"])], cwd=project_root(base))
     return report_verdict(p["soak_report"], "Q8 soak") if result.returncode == 0 else report_verdict(p["soak_report"], "Q8 soak")
 
 
@@ -265,12 +306,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, required=True, help="Run specification JSON")
     parser.add_argument("--stage", choices=STAGES, help="Run one stage only")
-    parser.add_argument("--from-stage", choices=STAGES, default="prepare", help="First stage for a resumed run")
+    parser.add_argument("--from-stage", choices=STAGES, default="prepare", help="First stage when not using --resume")
+    parser.add_argument("--resume", action="store_true", help="Start at the first unfinished or stopped stage")
     parser.add_argument("--yes", action="store_true", help="Accept non-failing stage prompts automatically")
     args = parser.parse_args()
     spec, base = load_spec(args.spec.resolve())
     p = paths(spec, base)
-    selected = (args.stage,) if args.stage else STAGES[STAGES.index(args.from_stage):]
+    if args.stage and args.resume:
+        parser.error("--stage and --resume cannot be used together")
+    if args.stage:
+        selected = (args.stage,)
+    elif args.resume:
+        next_stage = next_unfinished_stage(p["state"])
+        selected = () if next_stage is None else STAGES[STAGES.index(next_stage):]
+    else:
+        selected = STAGES[STAGES.index(args.from_stage):]
+    if not selected:
+        print("[workflow] CONTINUE — all stages are already complete")
+        return 0
+    os.environ["FUNCTIONGEMMA_WORKFLOW_LOG"] = str(p["output"] / "workflow-command.log")
     for stage in selected:
         verdict = STAGE_FUNCTIONS[stage](spec, base, p)
         write_state(p["state"], stage, status=verdict.recommendation.lower(), detail={"reason": verdict.reason})

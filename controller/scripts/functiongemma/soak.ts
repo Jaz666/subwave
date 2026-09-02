@@ -59,10 +59,19 @@ export function buildNovelSoakCases(count = 300, seed = 0xA11CE5): FunctionGemma
       if (message.role !== 'assistant') continue;
       const target = message.tool_calls?.[0];
       if (!target) continue;
+      const history = example.messages.slice(0, index);
+      const previous = history.at(-1);
+      if (previous?.role === "tool" && Array.isArray(previous.content?.response?.tracks) && previous.content.response.tracks.length === 0) {
+        history.push({ role: "user", content: "That source returned no eligible candidates. Choose one different offered recovery source." });
+      }
+      const usedToolNames = new Set(history
+        .filter(previous => previous.role === "assistant")
+        .flatMap(previous => previous.tool_calls ?? [])
+        .map((call: any) => call.function.name));
       cases.push({
         id: `${example.id}.decision-${cases.length + 1}`,
-        messages: openAiMessages(example.messages.slice(0, index)),
-        tools: example.tools,
+        messages: openAiMessages(history),
+        tools: example.tools.filter(tool => !usedToolNames.has(tool.function.name)),
         expected: {
           name: target.function.name,
           arguments: target.function.arguments,

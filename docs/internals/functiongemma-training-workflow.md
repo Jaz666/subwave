@@ -14,10 +14,11 @@ and data-generator command, then start from the repository root:
   --spec /media/ssd/training/router-v20-recovery/run.json
 ```
 
-Type `y` to continue a passing or review stage.  `STOP` ends the run without
-conversion or promotion.  To resume after an explicit review use
-`--from-stage native`; to run unattended after the operator has reviewed the
-plan, add `--yes`.
+Type `y` to run the next suitable stage automatically after a passing or review
+stage. `STOP` ends the run without conversion or promotion. To resume after a
+terminal closes or a correction, use `--resume`; it reads `workflow-state.json`
+and starts at the first unfinished or stopped stage. To run unattended after the
+operator has reviewed the plan, add `--yes`.
 
 The Q8 server is deliberately stable: container
 `subwave-functiongemma-eval`, host port **8099**, 4,096-token context, CPU
@@ -35,5 +36,9 @@ The intended gate order is:
 7. Bounded Q8 soak.
 
 The run specification is the durable record of hyperparameters and paths.
-The generated `workflow-state.json` is the concise handover record.  Do not
-place model checkpoints or generated corpora in Git.
+The generated `workflow-state.json` is the concise handover record. Full command
+output is written alongside it as `workflow-command.log`; this keeps terminal and
+agent output small. Do not place model checkpoints or generated corpora in Git.
+
+For the V20/V21 acceptance history and harness lessons, see
+[`functiongemma-v20-v21-findings.md`](functiongemma-v20-v21-findings.md).

@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { FUNCTIONGEMMA_VALIDATION_SCENARIOS } from './fixtures.js';
 import { dimensionSummary, scorePrediction, scorePredictions } from './score.js';
 import { runModelScenario } from './model-runner.js';
-import type { FunctionGemmaPrediction } from './contracts.js';
+import type { FunctionGemmaPrediction, FunctionGemmaScenario } from './contracts.js';
 
 function usage(message?: string): never {
   if (message) console.error(`error: ${message}\n`);
@@ -49,10 +49,19 @@ function readPredictions(path: string): FunctionGemmaPrediction[] {
   return output;
 }
 
+function readScenarioFile(path: string): FunctionGemmaScenario[] {
+  const value: unknown = JSON.parse(readFileSync(resolve(path), "utf8"));
+  if (!Array.isArray(value) || value.some(scenario => !scenario || typeof scenario !== "object" || typeof (scenario as any).id !== "string")) {
+    usage(`invalid scenario file: `);
+  }
+  return value as FunctionGemmaScenario[];
+}
+
 function scenariosFromArgs(args: Record<string, string>) {
-  if (!args.scenarios) return [...FUNCTIONGEMMA_VALIDATION_SCENARIOS];
+  const all = args["scenarios-file"] ? readScenarioFile(args["scenarios-file"]) : [...FUNCTIONGEMMA_VALIDATION_SCENARIOS];
+  if (!args.scenarios) return all;
   const requested = new Set(args.scenarios.split(',').map(value => value.trim()).filter(Boolean));
-  const selected = FUNCTIONGEMMA_VALIDATION_SCENARIOS.filter(scenario => requested.has(scenario.id));
+  const selected = all.filter(scenario => requested.has(scenario.id));
   const unknown = [...requested].filter(id => !selected.some(scenario => scenario.id === id));
   if (unknown.length) usage(`unknown scenario(s): ${unknown.join(', ')}`);
   return selected;
