@@ -18,6 +18,21 @@ the proven control and rollback baseline. Promotion remains an operational
 decision: verify the active station route and observe the test-station run
 before changing a production route.
 
+## Test-station observation — 2026-09-02
+
+At 11:10:57Z (12:10:57 BST), V21 made a valid `tracksTowardJourney`
+discovery call, then emitted invalid `searchLibrary` arguments when the
+controller requested the complementary second source. The controller rejected
+the malformed call without executing it, and the complete Producer picker
+recovered by selecting `Adrienne` by The Calling. No dead air or unsafe tool
+execution resulted.
+
+Do not retrain from this single recovered event. The rejected second-call
+arguments are not retained by current route telemetry, so the next work after
+the observation window is to review the error rate and add safe diagnostic
+capture for rejected arguments. Turn a repeated, captured shape into a focused
+fixture and correction only if the evidence warrants it.
+
 ## Experiment record
 
 | Series | Decision | Durable result |
