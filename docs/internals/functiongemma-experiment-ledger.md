@@ -27,10 +27,17 @@ and three supplied invalid `searchLibrary` arguments. The controller rejected
 each invalid or unavailable call before execution and the complete Producer
 picker recovered; no dead air or unsafe tool execution resulted.
 
-V22 is a narrow, balanced correction: it teaches sound-versus-lyric intent and
-the real successful-first-call complementary transcript with the used tool
-removed. Its native and Q8 gate include those three controller-shaped cases.
-Do not promote a new candidate without those gates and a fresh station soak.
+V22 is rejected at native evaluation (0/15). Training completed, but it still
+routed the production sound-description phrase to `searchByLyrics` and made no
+valid complementary second decision. The prior native scorer also treated a
+removed tool as available because it checked only the initial offered list;
+round-specific availability must be a hard protocol check.
+
+The next correction must model vanilla-compatible three-source discovery: the
+initial call plus two complementary calls, removing every used tool from each
+later offered subset. It must train and validate varied valid alternatives
+rather than a single fixed second-tool answer. Do not promote a new candidate
+without those gates and a fresh station soak.
 
 
 ## Experiment record
@@ -45,7 +52,7 @@ Do not promote a new candidate without those gates and a fresh station soak.
 | V19 | Rejected at Q8 | Availability was repaired (25/25), but the controller-faithful Q8 soak exposed empty audio/artist recovery failures: 108/129. The controller transcript, not a simplified evaluator, is the acceptance target. |
 | V20 | Rejected at Q8 | It retained journey-withheld behaviour but malformed `recentByArtist` recovery arguments in 4/5 attempts. |
 | V21 | Rejected at station test | Although its isolated gates passed, 31/53 live-shaped routes failed: it confused sound descriptions with lyric search and then replayed a removed tool. |
-| V22 | Prepared | A minimal balanced sound/lyric/journey correction plus an evaluator that reproduces the successful complementary call. Training not yet run. |
+| V22 | Rejected at native | Training succeeded, but native controller-shaped cases scored 0/15: sound still selected `searchByLyrics`; complementary calls selected an incorrect or removed tool. The scorer needs round-aware availability checks, and the correction must cover the full three-source sequence. |
 
 ## Non-negotiable acceptance rules
 
