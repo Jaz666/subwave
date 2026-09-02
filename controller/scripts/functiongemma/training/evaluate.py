@@ -103,13 +103,14 @@ def run_scenario(
     calls: list[dict[str, Any]] = []
     responses: list[str] = []
     calls_per_round: list[int] = []
-    max_rounds = 3 if scenario["stage"] == "recover" else 1
+    max_rounds = scenario.get("maxRounds", 3 if scenario["stage"] == "recover" else 1)
+    used_tools: set[str] = set()
     started = time.perf_counter()
 
     for _round in range(max_rounds):
         encoded = tokenizer.apply_chat_template(
             messages,
-            tools=scenario["openAiTools"],
+            tools=[tool for tool in scenario["openAiTools"] if tool.get("function", {}).get("name") not in used_tools],
             add_generation_prompt=True,
             tokenize=True,
             return_dict=True,
@@ -136,6 +137,7 @@ def run_scenario(
         if len(parsed) != 1:
             break
         call = parsed[0]
+        used_tools.add(call["name"])
         messages.append({
             "role": "assistant",
             "tool_calls": [{
@@ -155,6 +157,8 @@ def run_scenario(
         })
         if call["name"] == "done":
             break
+        if scenario["stage"] == "recover":
+            messages.append({"role": "user", "content": scenario.get("followup", "That source returned no eligible candidates. Choose one different offered recovery source.")})
 
     return {
         "scenario": scenario["id"],

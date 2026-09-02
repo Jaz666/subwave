@@ -12,26 +12,26 @@ library/discovery function and, after an empty result, one valid recovery
 function. It does not make the final editorial track choice or create
 listener-facing text.
 
-V21 is the current test-station candidate. It passed the native and Q8
-controller-path gate (35/35 each) and the bounded Q8 soak (128/128). V13 is
-the proven control and rollback baseline. Promotion remains an operational
-decision: verify the active station route and observe the test-station run
-before changing a production route.
+V21 is rejected for station routing. Its focused gates passed, but the real
+controller transcript exposed a repeatable failure: it used `searchByLyrics`
+for a memorised sound-description query, then selected that now-unavailable
+tool again when asked for a successful complementary discovery source. V13
+remains the control and rollback baseline.
 
 ## Test-station observation — 2026-09-02
 
-At 11:10:57Z (12:10:57 BST), V21 made a valid `tracksTowardJourney`
-discovery call, then emitted invalid `searchLibrary` arguments when the
-controller requested the complementary second source. The controller rejected
-the malformed call without executing it, and the complete Producer picker
-recovered by selecting `Adrienne` by The Calling. No dead air or unsafe tool
-execution resulted.
+The initial recovered call at 11:10:57Z (12:10:57 BST) was not isolated. The
+station recorded 53 `djProducerRoute` attempts: 22 passed and 31 failed. Of
+the failures, 28 repeated unavailable `searchByLyrics` after its first call,
+and three supplied invalid `searchLibrary` arguments. The controller rejected
+each invalid or unavailable call before execution and the complete Producer
+picker recovered; no dead air or unsafe tool execution resulted.
 
-Do not retrain from this single recovered event. The rejected second-call
-arguments are not retained by current route telemetry, so the next work after
-the observation window is to review the error rate and add safe diagnostic
-capture for rejected arguments. Turn a repeated, captured shape into a focused
-fixture and correction only if the evidence warrants it.
+V22 is a narrow, balanced correction: it teaches sound-versus-lyric intent and
+the real successful-first-call complementary transcript with the used tool
+removed. Its native and Q8 gate include those three controller-shaped cases.
+Do not promote a new candidate without those gates and a fresh station soak.
+
 
 ## Experiment record
 
@@ -44,7 +44,8 @@ fixture and correction only if the evidence warrants it.
 | V18 | Rejected | The first small availability correction passed mood, energy and playlist alternatives but failed library-search and similarity alternatives: 15/25, with ten unavailable calls. |
 | V19 | Rejected at Q8 | Availability was repaired (25/25), but the controller-faithful Q8 soak exposed empty audio/artist recovery failures: 108/129. The controller transcript, not a simplified evaluator, is the acceptance target. |
 | V20 | Rejected at Q8 | It retained journey-withheld behaviour but malformed `recentByArtist` recovery arguments in 4/5 attempts. |
-| V21 | Current candidate | A 12-train/4-held-out exact-artist recovery correction passed native 35/35, Q8 35/35 and Q8 soak 128/128. It adds no discovery-depth or final-selection policy. |
+| V21 | Rejected at station test | Although its isolated gates passed, 31/53 live-shaped routes failed: it confused sound descriptions with lyric search and then replayed a removed tool. |
+| V22 | Prepared | A minimal balanced sound/lyric/journey correction plus an evaluator that reproduces the successful complementary call. Training not yet run. |
 
 ## Non-negotiable acceptance rules
 

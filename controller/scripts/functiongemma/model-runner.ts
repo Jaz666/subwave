@@ -66,6 +66,8 @@ function toolDescription(name: string): string {
     tracksTowardJourney: "Tracks nearest the active sonic journey's current waypoint.",
     songsByGenre: 'Tracks carrying a named library genre tag.',
     searchLibrary: 'Search for a named artist, title, genre or vibe.',
+    searchByLyrics: 'Search lyric meaning or a song theme. Use for themes, never for a sound description.',
+    searchBySound: 'Search actual sound from a description of timbre, instrumentation or production; not lyric meaning.',
     tracksByEnergy: 'Tracks at one structured energy level: low, medium or high.',
     tracksByMood: 'Tracks carrying one supported station mood, optionally narrowed by energy.',
     deepCuts: 'Tracks never aired or absent from rotation for a long time.',
@@ -189,7 +191,7 @@ export async function runModelScenario(
   const callsPerRound: number[] = [];
   const usedTools = new Set<string>();
   const started = Date.now();
-  const maxRounds = scenario.stage === 'recover' ? 3 : 1;
+  const maxRounds = scenario.maxRounds ?? (scenario.stage === 'recover' ? 3 : 1);
 
   for (let round = 0; round < maxRounds; round++) {
     const controller = new AbortController();
@@ -268,7 +270,7 @@ export async function runModelScenario(
     }
     if (parsed.some(call => call.name === 'done')) break;
     if (scenario.stage === 'recover') {
-      messages.push({ role: 'user', content: 'That source returned no eligible candidates. Choose one different offered recovery source.' });
+      messages.push({ role: 'user', content: scenario.followup ?? 'That source returned no eligible candidates. Choose one different offered recovery source.' });
     }
   }
 

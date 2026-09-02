@@ -1,0 +1,11 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { generateV22SearchRoutingCorrections } from './v22-search-routing.js';
+const output = resolve(process.argv[2] ?? 'scripts/functiongemma/training/data-router-v22-search-routing-correction');
+const train = generateV22SearchRoutingCorrections('train');
+const development = generateV22SearchRoutingCorrections('development');
+mkdirSync(output, { recursive: true });
+for (const [name, rows] of [['train.jsonl', train], ['development.jsonl', development]] as const) writeFileSync(resolve(output, name), `${rows.map(row => JSON.stringify(row)).join('\n')}\n`);
+writeFileSync(resolve(output, 'manifest.json'), `${JSON.stringify({ format: 'subwave.functiongemma-routing.v22-search-routing-correction', counts: { train: train.length, development: development.length }, purpose: 'Preserve searchBySound versus searchByLyrics intent and controller-requested complementary calls with used tools removed.' }, null, 2)}\n`);
+console.log(`V22 correction corpus written to ${output}`);
+console.log(`train=${train.length} development=${development.length}`);

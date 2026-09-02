@@ -33,6 +33,10 @@ export interface FunctionGemmaScenario {
   mockResults?: Readonly<Record<string, unknown>>;
   route?: ExpectedRoute;
   recovery?: ExpectedRecovery;
+  /** Exact controller instruction sent after the preceding decision. */
+  followup?: string;
+  /** Limit a controller-shaped scenario to its real decision count. */
+  maxRounds?: number;
   commit?: ExpectedCommit;
 }
 
