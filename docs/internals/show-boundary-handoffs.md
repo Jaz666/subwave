@@ -69,7 +69,9 @@ the corresponding on-air moment.
   switch the on-air roster, or speak a handoff.
 - Preserve listener-request handling and manual operator actions.
 - Keep the outgoing sign-off and incoming greeting as the only intentional
-  cross-persona handoff speech.
+  cross-persona handoff speech. Render and publish them as one serialized
+  exchange; every other speech path must check the handoff both before TTS
+  starts and immediately before it publishes a rendered clip.
 - Treat a missing/unknown duration conservatively: never invent an exact
   boundary time or delay music waiting for one.
 

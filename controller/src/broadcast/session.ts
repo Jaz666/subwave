@@ -483,6 +483,12 @@ export function armBoundaryHandoff(ctx: SessionContext): boolean {
   return true;
 }
 
+// Once the final-track mic-pass has aired, ordinary speech belongs to neither
+// the outgoing show nor its old roster. Hold it until the clock rolls.
+export function handoffInProgress(): boolean {
+  return !!_session?.boundaryHandoff?.aired;
+}
+
 // --- Programme episode state (broadcast/programme.ts) -----------------------
 // Same persistence contract as handoffAired: state rides the session file so a
 // controller restart mid-episode resumes the plan and never double-airs a beat.

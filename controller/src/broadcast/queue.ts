@@ -1457,6 +1457,12 @@ class Queue {
       // No bed here by construction — announce() speaks without queueing a
       // track, so there is nothing for maybePushBed to have bedded.
       const channel = voiceChannelFor(kind);
+      // The handoff may begin while TTS is rendering. Do not publish an
+      // ordinary clip into the gap between its two voices.
+      if (kind !== 'handoff' && session.handoffInProgress()) {
+        this.log('scheduler', `Dropped ${kind} — the show handoff aired while it rendered`);
+        return;
+      }
       const targetFile = channel === 'intro'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
@@ -1555,6 +1561,14 @@ class Queue {
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
   async announceExchange(lines: { persona: Persona; text: string }[], kind = 'banter') {
+    // A final-track mic-pass owns the rest of the outgoing show's air. Unlike
+    // announce(), exchanges render every line before they take the voice lock,
+    // so without this gate a banter/programme exchange that started just before
+    // the handoff could publish between its sign-off and greeting.
+    if (kind !== 'handoff' && session.handoffInProgress()) {
+      this.log('scheduler', `Held ordinary ${kind} exchange — the show handoff has already aired`);
+      return false;
+    }
     const rendered: { persona: Persona; text: string; wavPath: string }[] = [];
     try {
       for (const l of lines) {
@@ -1566,6 +1580,13 @@ class Queue {
       return false;
     }
     for (const l of rendered) {
+      // A handoff can begin while the exchange is rendering. Check per line:
+      // a voice lock wait between lines is long enough for the mic-pass to
+      // claim the boundary.
+      if (kind !== 'handoff' && session.handoffInProgress()) {
+        this.log('scheduler', `Dropped ordinary ${kind} exchange — the show handoff began while it rendered`);
+        return false;
+      }
       try {
         const seg: SegmentDesc = exchangeSegment(l, kind);
         const handoff = await airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
@@ -1762,6 +1783,16 @@ class Queue {
     if (!autoVoiceAllowed()) return;
     if (!item || item.introAired) return;
     if (!item.introWav && !item.introScript) return;
+    // The final-track mic-pass is the only intentional cross-show speech.
+    // A track-linked clip can otherwise finish rendering while the handoff is
+    // being generated, then reach the following track before its original DJ
+    // has rolled off air. Mark it consumed: it is stale, not merely delayed.
+    if (session.handoffInProgress()) {
+      item.introAired = true;
+      this.log('link-skip', `Dropped ${item.introKind || 'track-linked'} speech before "${item.track?.title}" — the show handoff has already aired`);
+      this.persist();
+      return;
+    }
     item.introAired = true;
     // Stale back-announce safety-net. Links are written forward-looking (intro
     // the pick, never name the just-played track), so this normally never fires.
@@ -1832,6 +1863,14 @@ class Queue {
     // `overBed` comes from onBedStarted, which SAW the bed start; see
     // voiceChannelFor for why it can't be read off item.bedded here.
     const channel = voiceChannelFor(kind, { overBed });
+    // A missing WAV can make the render above outlast the final track. Check
+    // again at publication time so that slow TTS cannot leak this clip across
+    // the formal handoff.
+    if (session.handoffInProgress()) {
+      this.log('link-skip', `Dropped ${kind} speech before "${item.track?.title}" — the show handoff began while it rendered`);
+      this.persist();
+      return;
+    }
     const targetFile = channel === 'intro'
       ? config.liquidsoap.introFile
       : config.liquidsoap.sayFile;
