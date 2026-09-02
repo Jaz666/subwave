@@ -33,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260816)
     parser.add_argument("--resume", default=None, help="Checkpoint path, or 'latest'")
     parser.add_argument("--no-early-stopping", action="store_true")
+    parser.add_argument("--evaluate-only", action="store_true", help="Measure the frozen model on development data without training")
+    parser.add_argument("--evaluation-report", type=Path, help="Where --evaluate-only writes its comparable loss report")
     return parser.parse_args()
 
 
@@ -265,6 +267,27 @@ def main() -> int:
         processing_class=tokenizer,
         callbacks=callbacks,
     )
+
+    if args.evaluate_only:
+        metrics = trainer.evaluate()
+        report_path = args.evaluation_report or args.output / "evaluation-report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report = {
+            "format": "subwave.functiongemma-development-baseline.v1",
+            "model": args.model,
+            "development": {
+                "rows": len(development_rows),
+                "targets": len(rendered_development),
+                "sha256": file_sha256(args.development),
+                "max_tokens": max(development_lengths),
+            },
+            "metrics": metrics,
+        }
+        with report_path.open("w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2, default=str)
+            handle.write("\n")
+        print(f"Development evaluation written to {report_path}")
+        return 0
 
     resume: bool | str | None
     if args.resume == "latest":

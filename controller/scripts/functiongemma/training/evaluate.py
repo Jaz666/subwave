@@ -105,12 +105,44 @@ def run_scenario(
     calls_per_round: list[int] = []
     max_rounds = scenario.get("maxRounds", 3 if scenario["stage"] == "recover" else 1)
     used_tools: set[str] = set()
+    decision_tools = scenario.get("openAiDecisionTools", [])
+    controller_initial = scenario.get("controllerInitial")
+    if isinstance(controller_initial, dict) and isinstance(controller_initial.get("name"), str):
+        initial_name = controller_initial["name"]
+        initial_arguments = controller_initial.get("arguments", {})
+        used_tools.add(initial_name)
+        messages.append({
+            "role": "assistant",
+            "tool_calls": [{
+                "type": "function",
+                "function": {
+                    "name": initial_name,
+                    "arguments": initial_arguments,
+                },
+            }],
+        })
+        messages.append({
+            "role": "tool",
+            "content": {
+                "name": initial_name,
+                "response": result_for(scenario, controller_initial),
+            },
+        })
+        messages.append({
+            "role": "user",
+            "content": scenario.get("controllerInitialFollowup", "Controller policy requests one complementary discovery source. Choose one offered function."),
+        })
     started = time.perf_counter()
 
     for _round in range(max_rounds):
+        round_tools = decision_tools[_round] if _round < len(decision_tools) else scenario["openAiTools"]
+        offered_tools = [
+            tool for tool in round_tools
+            if tool.get("function", {}).get("name") not in used_tools
+        ]
         encoded = tokenizer.apply_chat_template(
             messages,
-            tools=[tool for tool in scenario["openAiTools"] if tool.get("function", {}).get("name") not in used_tools],
+            tools=offered_tools,
             add_generation_prompt=True,
             tokenize=True,
             return_dict=True,

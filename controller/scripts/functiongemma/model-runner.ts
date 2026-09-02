@@ -193,6 +193,24 @@ export async function runModelScenario(
   const started = Date.now();
   const maxRounds = scenario.maxRounds ?? (scenario.stage === 'recover' ? 3 : 1);
 
+  if (scenario.controllerInitial) {
+    const call = scenario.controllerInitial;
+    const id = 'controller-initial';
+    usedTools.add(call.name);
+    messages.push({
+      role: 'assistant', content: null,
+      tool_calls: [{ id, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments) } }],
+    });
+    messages.push({
+      role: 'tool', tool_call_id: id, name: call.name,
+      content: JSON.stringify(resultFor(scenario, call)),
+    });
+    messages.push({
+      role: 'user',
+      content: scenario.controllerInitialFollowup ?? 'Controller policy requests one complementary discovery source. Choose one offered function.',
+    });
+  }
+
   for (let round = 0; round < maxRounds; round++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
@@ -207,7 +225,7 @@ export async function runModelScenario(
         body: JSON.stringify({
           model: options.model,
           messages,
-          tools: scenario.tools.filter(tool => !usedTools.has(tool.name)).map(openAiTool),
+          tools: (scenario.decisionTools?.[round] ?? scenario.tools).filter(tool => !usedTools.has(tool.name)).map(openAiTool),
           tool_choice: 'required',
           parallel_tool_calls: false,
           temperature: 0,

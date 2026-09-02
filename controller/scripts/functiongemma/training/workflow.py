@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 
-STAGES = ("prepare", "train", "native", "convert", "serve", "q8", "soak")
+STAGES = ("prepare", "baseline", "train", "compare", "native", "convert", "serve", "q8", "soak")
 DEFAULT_SERVER_IMAGE = "ghcr.io/ggml-org/llama.cpp:server"
 DEFAULT_CONTAINER = "subwave-functiongemma-eval"
 DEFAULT_PORT = 8099
@@ -98,6 +98,7 @@ def paths(spec: dict[str, Any], base: Path) -> dict[str, Path]:
         "best": output / "best",
         "state": output / "workflow-state.json",
         "native_predictions": output / "native-predictions.jsonl",
+        "parent_baseline": output / "parent-development-baseline.json",
         "native_report": output / "native-report.json",
         "gguf_source": output / "gguf-source",
         "gguf": output / spec.get("gguf", {}).get(
@@ -211,6 +212,30 @@ def stage_prepare(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdi
     return Verdict("CONTINUE", f"inputs ready: {train} train, {development} development, {validation} validation")
 
 
+def train_args(spec: dict[str, Any], p: dict[str, Path], *, output: Path) -> list[str]:
+    cfg = spec["train"]
+    python = spec.get("python", sys.executable)
+    return [python, "controller/scripts/functiongemma/training/train.py", "--train", str(p["train"]),
+            "--development", str(p["development"]), "--output", str(output),
+            "--model", cfg["base_model"], "--epochs", str(cfg.get("epochs", 1)),
+            "--batch-size", str(cfg.get("batch_size", 4)), "--gradient-accumulation", str(cfg.get("gradient_accumulation", 2)),
+            "--max-length", str(cfg.get("max_length", 1024)), "--learning-rate", str(cfg.get("learning_rate", 5e-6)),
+            "--early-stopping-patience", str(cfg.get("early_stopping_patience", 1)), "--seed", str(cfg.get("seed", 20260902))]
+
+
+def stage_baseline(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
+    argv = train_args(spec, p, output=p["output"] / "parent-baseline-work")
+    argv.extend(["--evaluate-only", "--evaluation-report", str(p["parent_baseline"])])
+    result = run(argv, cwd=project_root(base))
+    if result.returncode or not p["parent_baseline"].is_file():
+        return Verdict("STOP", "parent development baseline failed")
+    report = read_json(p["parent_baseline"])
+    loss = report.get("metrics", {}).get("eval_loss")
+    if not isinstance(loss, (int, float)):
+        return Verdict("STOP", "parent baseline has no eval_loss")
+    return Verdict("CONTINUE", f"parent development loss={loss}")
+
+
 def stage_train(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
     cfg = spec["train"]
     python = spec.get("python", sys.executable)
@@ -229,8 +254,27 @@ def stage_train(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict
     if summary_path.is_file():
         run_summary = read_json(summary_path)
         metric = run_summary.get("best_metric")
-        return Verdict("REVIEW", f"training completed; best eval loss={metric}. Compare this to the parent before continuing.")
-    return Verdict("REVIEW", "training completed; inspect the run summary before continuing")
+        return Verdict("CONTINUE", f"training completed; candidate development loss={metric}")
+    return Verdict("STOP", "training completed without a run summary")
+
+
+def stage_compare(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
+    summary_path = p["output"] / "run-summary.json"
+    if not p["parent_baseline"].is_file() or not summary_path.is_file():
+        return Verdict("STOP", "parent baseline or candidate run summary is missing")
+    parent = read_json(p["parent_baseline"])
+    candidate = read_json(summary_path)
+    parent_loss = parent.get("metrics", {}).get("eval_loss")
+    candidate_loss = candidate.get("best_metric")
+    parent_hash = parent.get("development", {}).get("sha256")
+    candidate_hash = candidate.get("dataset", {}).get("development_sha256")
+    if not all(isinstance(value, (int, float)) for value in (parent_loss, candidate_loss)):
+        return Verdict("STOP", "parent baseline or candidate summary has no comparable loss")
+    if not isinstance(parent_hash, str) or parent_hash != candidate_hash:
+        return Verdict("STOP", "parent and candidate used different development data")
+    if candidate_loss >= parent_loss:
+        return Verdict("STOP", f"candidate development loss={candidate_loss} did not improve on parent={parent_loss}")
+    return Verdict("REVIEW", f"candidate development loss={candidate_loss} improved on parent={parent_loss}; review before native evaluation")
 
 
 def stage_native(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
@@ -299,7 +343,7 @@ def stage_soak(spec: dict[str, Any], base: Path, p: dict[str, Path]) -> Verdict:
     return report_verdict(p["soak_report"], "Q8 soak") if result.returncode == 0 else report_verdict(p["soak_report"], "Q8 soak")
 
 
-STAGE_FUNCTIONS = {"prepare": stage_prepare, "train": stage_train, "native": stage_native, "convert": stage_convert, "serve": stage_serve, "q8": stage_q8, "soak": stage_soak}
+STAGE_FUNCTIONS = {"prepare": stage_prepare, "baseline": stage_baseline, "train": stage_train, "compare": stage_compare, "native": stage_native, "convert": stage_convert, "serve": stage_serve, "q8": stage_q8, "soak": stage_soak}
 
 
 def main() -> int:

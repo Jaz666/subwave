@@ -25,22 +25,34 @@ function protocolViolations(
   callsPerRound?: readonly number[],
 ): string[] {
   if (!calls.length) return ['no-tool-call'];
-  const offered = new Map(scenario.tools.map(tool => [tool.name, tool]));
   const violations: string[] = [];
   for (const [round, count] of (callsPerRound ?? []).entries()) {
     if (count !== 1) violations.push(`round-${round + 1}:expected-one-call:received-${count}`);
   }
-  for (const [index, call] of calls.entries()) {
-    const contract = offered.get(call.name);
-    if (!contract) {
-      violations.push(`call-${index + 1}:unoffered-tool:${call.name}`);
-      continue;
+  let callIndex = 0;
+  const roundCounts = callsPerRound?.length ? callsPerRound : calls.map(() => 1);
+  for (const [round, count] of roundCounts.entries()) {
+    const offered = new Map((scenario.decisionTools?.[round] ?? scenario.tools).filter(tool => !calls.slice(0, callIndex).some(prior => prior.name === tool.name)).map(tool => [tool.name, tool]));
+    for (let offset = 0; offset < count && callIndex < calls.length; offset++, callIndex++) {
+      const index = callIndex;
+      const call = calls[index];
+      const contract = offered.get(call.name);
+      if (!contract) {
+        const prefix = scenario.decisionTools ? `round-${round + 1}` : `call-${index + 1}`;
+        violations.push(`${prefix}:unoffered-tool:${call.name}`);
+        continue;
+      }
+      if (!call.arguments || typeof call.arguments !== 'object' || Array.isArray(call.arguments)) {
+        violations.push(`call-${index + 1}:invalid-arguments`);
+        continue;
+      }
+      violations.push(...validateArguments(contract, call, index));
     }
-    if (!call.arguments || typeof call.arguments !== 'object' || Array.isArray(call.arguments)) {
-      violations.push(`call-${index + 1}:invalid-arguments`);
-      continue;
-    }
-    violations.push(...validateArguments(contract, call, index));
+  }
+  // A malformed capture can declare fewer calls than it contains. Keep those
+  // calls visible rather than allowing them to evade round availability.
+  for (; callIndex < calls.length; callIndex++) {
+    violations.push(`call-${callIndex + 1}:unmapped-round`);
   }
   return violations;
 }
@@ -65,7 +77,7 @@ function validateArguments(contract: ToolContract, call: PredictedToolCall, inde
 
 function routeViolations(scenario: FunctionGemmaScenario, calls: readonly PredictedToolCall[]): string[] {
   if (!scenario.route) return [];
-  const first = calls[0];
+  const first = scenario.controllerInitial ?? calls[0];
   if (!first) return ['route:no-first-call'];
   const violations: string[] = [];
   if (!scenario.route.firstCallOneOf.includes(first.name)) {
@@ -79,9 +91,12 @@ function routeViolations(scenario: FunctionGemmaScenario, calls: readonly Predic
 
 function recoveryViolations(scenario: FunctionGemmaScenario, calls: readonly PredictedToolCall[]): string[] {
   if (!scenario.recovery) return [];
-  const emptyIndex = calls.findIndex(call => call.name === scenario.recovery!.emptyTool);
+  const effectiveCalls = scenario.controllerInitial
+    ? [scenario.controllerInitial, ...calls]
+    : calls;
+  const emptyIndex = effectiveCalls.findIndex(call => call.name === scenario.recovery!.emptyTool);
   if (emptyIndex < 0) return [`recovery:missing-empty-tool:${scenario.recovery.emptyTool}`];
-  const next = calls[emptyIndex + 1];
+  const next = effectiveCalls[emptyIndex + 1];
   if (!next) return ['recovery:no-state-progression'];
   if (next.name === scenario.recovery.emptyTool) return ['recovery:repeated-empty-tool'];
   if (!scenario.recovery.nextCallOneOf.includes(next.name)) {

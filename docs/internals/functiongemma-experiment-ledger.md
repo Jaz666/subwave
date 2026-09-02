@@ -33,11 +33,16 @@ valid complementary second decision. The prior native scorer also treated a
 removed tool as available because it checked only the initial offered list;
 round-specific availability must be a hard protocol check.
 
-The next correction must model vanilla-compatible three-source discovery: the
-initial call plus two complementary calls, removing every used tool from each
-later offered subset. It must train and validate varied valid alternatives
-rather than a single fixed second-tool answer. Do not promote a new candidate
-without those gates and a fresh station soak.
+V23 is rejected at native evaluation (0/15). It repaired availability (15/15
+protocol) and improved comparable development loss (0.02800 versus the V22
+parent's 0.04165), but still selected `searchByLyrics` for sound descriptions
+and failed lyric-query copying. Do not convert it.
+
+V24 starts again from V22. It retains the vanilla-compatible three-source
+sequence with shrinking offers and weights the measured sound-versus-lyric and
+exact lyric-query failures without copying the new held-out wording. The
+workflow now measures the parent on the candidate development set before
+training and stops comparisons that do not improve.
 
 
 ## Experiment record
@@ -48,6 +53,7 @@ without those gates and a fresh station soak.
 | V5–V14, 25–31 Aug | Iterative corrections; V13 retained as control | Broad routing, genre/mood boundaries, recovery and availability were made explicit in the corpus. A narrowly weighted correction can regress a neighbouring argument boundary, so corrective data must stay balanced and each affected fixture remains a hard gate. |
 | Final-selection experiment | Rejected for routing scope | V10 produced zero valid commits in 8 held-out final-selection fixtures; the Qwen baseline produced 8/8. Final selection remains with the creative Producer and is not part of router training. |
 | V17 | Rejected | All five journey-withheld controller-path cases called unavailable `tracksTowardJourney`. This was a training gap, not a reason to weaken the controller's offered-tool policy. |
+| V23 | Rejected at native | Comparable development loss improved and round availability passed 15/15, but native routing/recovery was 5/15 each: sound descriptions still selected `searchByLyrics` and lyric-query copying regressed. |
 | V18 | Rejected | The first small availability correction passed mood, energy and playlist alternatives but failed library-search and similarity alternatives: 15/25, with ten unavailable calls. |
 | V19 | Rejected at Q8 | Availability was repaired (25/25), but the controller-faithful Q8 soak exposed empty audio/artist recovery failures: 108/129. The controller transcript, not a simplified evaluator, is the acceptance target. |
 | V20 | Rejected at Q8 | It retained journey-withheld behaviour but malformed `recentByArtist` recovery arguments in 4/5 attempts. |

@@ -53,9 +53,37 @@ class WorkflowTest(unittest.TestCase):
                 "train": {"status": "review"},
                 "native": {"status": "stop"},
             }}), encoding="utf-8")
+            self.assertEqual(workflow.next_unfinished_stage(path), "baseline")
+            path.write_text(json.dumps({"stages": {
+                "prepare": {"status": "continue"}, "baseline": {"status": "continue"}, "train": {"status": "continue"}, "compare": {"status": "review"}, "native": {"status": "stop"},
+            }}), encoding="utf-8")
             self.assertEqual(workflow.next_unfinished_stage(path), "native")
             path.write_text(json.dumps({"stages": {stage: {"status": "continue"} for stage in workflow.STAGES}}), encoding="utf-8")
             self.assertIsNone(workflow.next_unfinished_stage(path))
+
+    def test_compare_requires_same_holdout_and_improvement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            baseline = output / "parent-development-baseline.json"
+            summary = output / "run-summary.json"
+            baseline.write_text(json.dumps({
+                "development": {"sha256": "same"}, "metrics": {"eval_loss": 0.03},
+            }), encoding="utf-8")
+            summary.write_text(json.dumps({
+                "dataset": {"development_sha256": "same"}, "best_metric": 0.02,
+            }), encoding="utf-8")
+            paths = {"output": output, "parent_baseline": baseline}
+            self.assertEqual(workflow.stage_compare({}, root, paths).recommendation, "REVIEW")
+            summary.write_text(json.dumps({
+                "dataset": {"development_sha256": "same"}, "best_metric": 0.03,
+            }), encoding="utf-8")
+            self.assertEqual(workflow.stage_compare({}, root, paths).recommendation, "STOP")
+            summary.write_text(json.dumps({
+                "dataset": {"development_sha256": "different"}, "best_metric": 0.02,
+            }), encoding="utf-8")
+            self.assertEqual(workflow.stage_compare({}, root, paths).recommendation, "STOP")
 
 
 if __name__ == "__main__":

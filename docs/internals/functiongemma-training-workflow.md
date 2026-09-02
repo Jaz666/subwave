@@ -5,14 +5,15 @@ point for a candidate.  It runs the existing data, native, conversion, Q8 and
 soak tools in the required order, writes `workflow-state.json` in the run
 output, and pauses after every stage with a concise recommendation.
 
-Copy `workflow.example.json` outside the repository, set the candidate paths
-and data-generator command, then start from the repository root:
+Use the current in-repository candidate specification from the repository root:
 
 ```bash
 /media/ssd/training/functiongemma-venv/bin/python \
   controller/scripts/functiongemma/training/workflow.py \
-  --spec /media/ssd/training/router-v20-recovery/run.json
+  --spec controller/scripts/functiongemma/training/router-v24-semantic-three-source.json
 ```
+
+For a new candidate, copy and adapt that versioned specification before running it.
 
 Type `y` to run the next suitable stage automatically after a passing or review
 stage. `STOP` ends the run without conversion or promotion. To resume after a

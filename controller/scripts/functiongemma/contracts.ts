@@ -23,6 +23,12 @@ export interface ExpectedCommit {
   forbiddenIds?: readonly string[];
 }
 
+/** A controller-owned discovery call that precedes FunctionGemma decisions. */
+export interface ControllerInitialCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export interface FunctionGemmaScenario {
   id: string;
   stage: EvaluationStage;
@@ -30,6 +36,12 @@ export interface FunctionGemmaScenario {
   description: string;
   prompt: string;
   tools: readonly ToolContract[];
+  /** Exact offered tools at each controller decision. */
+  decisionTools?: readonly (readonly ToolContract[])[];
+  /** A deterministic, already-classified lookup executed before the model. */
+  controllerInitial?: ControllerInitialCall;
+  /** Controller instruction that follows a controller-owned initial result. */
+  controllerInitialFollowup?: string;
   mockResults?: Readonly<Record<string, unknown>>;
   route?: ExpectedRoute;
   recovery?: ExpectedRecovery;

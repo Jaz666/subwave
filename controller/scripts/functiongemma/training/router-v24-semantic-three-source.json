@@ -1,0 +1,30 @@
+{
+  "name": "router-v24-semantic-three-source",
+  "python": "/media/ssd/training/functiongemma-venv/bin/python",
+  "data": {
+    "prepare": [
+      "npx tsx controller/scripts/functiongemma/v24-data-cli.ts /media/ssd/training/data-router-v24-semantic-three-source-correction",
+      "npx tsx controller/scripts/functiongemma/v24-validation-cli.ts /media/ssd/training/data-router-v24-semantic-three-source-correction",
+      "/media/ssd/training/functiongemma-venv/bin/python controller/scripts/functiongemma/training/compose_corpus.py --base /media/ssd/training/data-router-v22-search-routing --correction /media/ssd/training/data-router-v24-semantic-three-source-correction --output /media/ssd/training/data-router-v24-semantic-three-source",
+      "npx tsx controller/scripts/functiongemma/v26-controller-initial-validation-cli.ts /media/ssd/training/data-router-v26-controller-initial-validation"
+    ],
+    "train": "/media/ssd/training/data-router-v24-semantic-three-source/train.jsonl",
+    "development": "/media/ssd/training/data-router-v24-semantic-three-source/development.jsonl",
+    "validation": "/media/ssd/training/data-router-v26-controller-initial-validation/validation.json"
+  },
+  "train": {
+    "base_model": "/media/ssd/training/router-v22-search-routing/best",
+    "output": "/media/ssd/training/router-v24-semantic-three-source",
+    "epochs": 1,
+    "batch_size": 4,
+    "gradient_accumulation": 2,
+    "max_length": 1024,
+    "learning_rate": 0.000003,
+    "early_stopping_patience": 1,
+    "seed": 20260902
+  },
+  "native": { "iterations": 5 },
+  "server": { "container": "subwave-functiongemma-eval", "port": 8099, "context": 4096 },
+  "q8": { "iterations": 5 },
+  "soak": { "examples": 128 }
+}
