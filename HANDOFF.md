@@ -30,6 +30,11 @@ for the current task.
   tokens or other runtime secrets.
 - Treat a station deployment as separate from a source change: record the
   candidate, evidence, current route and rollback before changing it.
+- **Streamlined station deployment:** unless the user explicitly asks the
+  agent to operate the station, make the scoped source edit and give the user
+  the single rebuild command plus one health-check command. Do not run broad
+  lint, rebuilds, repeated polling or live inspection by default. The user
+  runs training and station commands; inspect only the failure they report.
 
 ## End of session
 
