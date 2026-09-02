@@ -23,6 +23,8 @@ Navidrome/library → Controller → shared state files → Liquidsoap/Icecast �
 For the detailed code and runtime constraints, read [`CLAUDE.md`](CLAUDE.md)
 and then its one scoped reference for the area being changed.
 
+For the consistent start/end-of-session procedure, read [`HANDOFF.md`](HANDOFF.md).
+
 ## Working-tree and branch discipline
 
 | Place | Purpose | Rule |
