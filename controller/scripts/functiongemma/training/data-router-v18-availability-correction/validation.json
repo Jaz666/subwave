@@ -1,0 +1,202 @@
+[
+  {
+    "id": "controller-path.journey-withheld.1",
+    "stage": "route",
+    "split": "validation",
+    "description": "Explicit journey instruction, waypoint absent.",
+    "prompt": "A sonic journey is active: call tracksTowardJourney and lean toward its current waypoint. Preserve a reflective medium-energy direction.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V18journeyFixture000001\",\n    \"title\": \"Signal Path\",\n    \"artist\": \"Glass Harbour\"\n  },\n  \"show\": {\n    \"name\": \"Wide Signal\",\n    \"genres\": [\n      \"Electronic\",\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}\n\nController authority: call only a function actually offered in this request. The sonic-journey waypoint function is unavailable for this pick. Do not call tracksTowardJourney; preserve its direction through an offered mood, genre, library, or other available discovery function.",
+    "tools": [
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ]
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ]
+      },
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByMood",
+        "tracksByEnergy",
+        "songsByGenre",
+        "searchLibrary"
+      ]
+    }
+  },
+  {
+    "id": "controller-path.journey-withheld.2",
+    "stage": "route",
+    "split": "validation",
+    "description": "Explicit journey instruction, energy alternative offered.",
+    "prompt": "A sonic journey is active: call tracksTowardJourney and lean toward its current waypoint. Preserve a reflective medium-energy direction.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V18journeyFixture000002\",\n    \"title\": \"Signal Path\",\n    \"artist\": \"Glass Harbour\"\n  },\n  \"show\": {\n    \"name\": \"Wide Signal\",\n    \"genres\": [\n      \"Electronic\",\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}\n\nController authority: call only a function actually offered in this request. The sonic-journey waypoint function is unavailable for this pick. Do not call tracksTowardJourney; preserve its direction through an offered mood, genre, library, or other available discovery function.",
+    "tools": [
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ]
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      },
+      {
+        "name": "randomSongs",
+        "required": []
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByEnergy",
+        "tracksByMood",
+        "searchLibrary",
+        "randomSongs"
+      ]
+    }
+  },
+  {
+    "id": "controller-path.journey-withheld.3",
+    "stage": "route",
+    "split": "validation",
+    "description": "Explicit journey instruction, library alternative offered.",
+    "prompt": "A sonic journey is active: call tracksTowardJourney and lean toward its current waypoint. Preserve a reflective medium-energy direction.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V18journeyFixture000003\",\n    \"title\": \"Signal Path\",\n    \"artist\": \"Glass Harbour\"\n  },\n  \"show\": {\n    \"name\": \"Wide Signal\",\n    \"genres\": [\n      \"Electronic\",\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}\n\nController authority: call only a function actually offered in this request. The sonic-journey waypoint function is unavailable for this pick. Do not call tracksTowardJourney; preserve its direction through an offered mood, genre, library, or other available discovery function.",
+    "tools": [
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ]
+      },
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "randomSongs",
+        "required": []
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "searchLibrary",
+        "tracksByMood",
+        "songsByGenre",
+        "randomSongs"
+      ]
+    }
+  },
+  {
+    "id": "controller-path.journey-withheld.4",
+    "stage": "route",
+    "split": "validation",
+    "description": "Explicit journey instruction, playlist alternative offered.",
+    "prompt": "A sonic journey is active: call tracksTowardJourney and lean toward its current waypoint. Preserve a reflective medium-energy direction.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V18journeyFixture000004\",\n    \"title\": \"Signal Path\",\n    \"artist\": \"Glass Harbour\"\n  },\n  \"show\": {\n    \"name\": \"Wide Signal\",\n    \"genres\": [\n      \"Electronic\",\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}\n\nController authority: call only a function actually offered in this request. The sonic-journey waypoint function is unavailable for this pick. Do not call tracksTowardJourney; preserve its direction through an offered mood, genre, library, or other available discovery function.",
+    "tools": [
+      {
+        "name": "showPlaylistTracks",
+        "required": []
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ]
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      },
+      {
+        "name": "randomSongs",
+        "required": []
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "showPlaylistTracks",
+        "tracksByMood",
+        "searchLibrary",
+        "randomSongs"
+      ]
+    }
+  },
+  {
+    "id": "controller-path.journey-withheld.5",
+    "stage": "route",
+    "split": "validation",
+    "description": "Explicit journey instruction, similarity alternative offered.",
+    "prompt": "A sonic journey is active: call tracksTowardJourney and lean toward its current waypoint. Preserve a reflective medium-energy direction.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V18journeyFixture000005\",\n    \"title\": \"Signal Path\",\n    \"artist\": \"Glass Harbour\"\n  },\n  \"show\": {\n    \"name\": \"Wide Signal\",\n    \"genres\": [\n      \"Electronic\",\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}\n\nController authority: call only a function actually offered in this request. The sonic-journey waypoint function is unavailable for this pick. Do not call tracksTowardJourney; preserve its direction through an offered mood, genre, library, or other available discovery function.",
+    "tools": [
+      {
+        "name": "tracksLikeThis",
+        "required": [
+          "songId"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ]
+      },
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "randomSongs",
+        "required": []
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksLikeThis",
+        "tracksByMood",
+        "songsByGenre",
+        "randomSongs"
+      ]
+    }
+  }
+]

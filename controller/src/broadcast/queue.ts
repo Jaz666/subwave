@@ -36,7 +36,6 @@ import { stripRecapSpokenTags, stripSpokenTags } from '../llm/internal/prompts/r
 import type { TurnMeta } from './session.js';
 import { getFullContext, energyForDaypart } from '../context.js';
 import * as settings from '../settings.js';
-import { recordTrackTransition } from '../stats.js';
 import { logEvent } from '../observability/events.js';
 import { logDjSpeech } from '../observability/dj-speech-log.js';
 import { recordTrackTransition, STATS_WINDOW } from '../stats.js';

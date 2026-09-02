@@ -17,6 +17,13 @@ export interface ExpectedRecovery {
   emptyTool: string;
   nextCallOneOf: readonly string[];
   /** Exact arguments required on the recovery decision, when its tool is fixed. */
+export interface ExpectedFollowup {
+  afterTool: string;
+  nextCallOneOf: readonly string[];
+  arguments?: Readonly<Record<string, unknown>>;
+  message: string;
+}
+
   arguments?: Readonly<Record<string, unknown>>;
 }
 
@@ -37,6 +44,7 @@ export interface FunctionGemmaScenario {
   mockResults?: Readonly<Record<string, unknown>>;
   route?: ExpectedRoute;
   recovery?: ExpectedRecovery;
+  followups?: readonly ExpectedFollowup[];
   commit?: ExpectedCommit;
 }
 

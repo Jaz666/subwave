@@ -1,0 +1,3502 @@
+[
+  {
+    "id": "route.pinned-playlist",
+    "stage": "route",
+    "split": "validation",
+    "description": "The operator explicitly pinned a playlist for this show.",
+    "prompt": "A strict show playlist is active. Search that hand-picked source before considering the wider library.",
+    "tools": [
+      {
+        "name": "showPlaylistTracks"
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "showPlaylistTracks"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "showPlaylistTracks",
+          "description": "Tracks from the show's operator-pinned playlists. Use this first when one is active.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.sonic-journey",
+    "stage": "route",
+    "split": "validation",
+    "description": "An active journey waypoint outranks ordinary similarity.",
+    "prompt": "A sonic journey is active and its current waypoint is ready. Move one step toward it.",
+    "tools": [
+      {
+        "name": "tracksTowardJourney"
+      },
+      {
+        "name": "tracksLikeThis",
+        "required": [
+          "songId"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksTowardJourney"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksTowardJourney",
+          "description": "Tracks nearest the active sonic journey's current waypoint.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksLikeThis",
+          "description": "Semantic neighbours of the supplied seed track id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "songId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "songId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.named-genre",
+    "stage": "route",
+    "split": "validation",
+    "description": "A real genre request should use tag-aware genre discovery.",
+    "prompt": "The show brief asks for a Britpop selection. Find tracks carrying that library genre.",
+    "tools": [
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "songsByGenre"
+      ],
+      "arguments": {
+        "genre": "britpop"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.genre-exact-electro",
+    "stage": "route",
+    "split": "validation",
+    "description": "A canonical genre token must not be expanded into a related word.",
+    "prompt": "The show needs the exact canonical library genre electro. Use genre-aware discovery with that complete tag; related terms are not interchangeable.\n\n{\n  \"currentTrack\": {\n    \"id\": \"E2lC7tR4oQ9wN1mK6vP8xD\",\n    \"title\": \"Voltage Bloom\",\n    \"artist\": \"Phase Array\"\n  },\n  \"show\": {\n    \"name\": \"Electronic Noon\",\n    \"topic\": \"Precise electronic selections.\",\n    \"genres\": [\n      \"electro\"\n    ],\n    \"moods\": [],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "songsByGenre"
+      ],
+      "arguments": {
+        "genre": "electro"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.genre-not-station-mood",
+    "stage": "route",
+    "split": "validation",
+    "description": "A library genre must not be inserted into the closed station mood vocabulary.",
+    "prompt": "The show needs the exact canonical library genre Art Rock. This is a genre, not a station mood: use the genre tool with the complete tag.\n\n{\n  \"currentTrack\": {\n    \"id\": \"A7rK3mV9tQ2xL6nB4cD8eF\",\n    \"title\": \"Paper Horizon\",\n    \"artist\": \"Signal Orchard\"\n  },\n  \"show\": {\n    \"name\": \"Afterimage\",\n    \"topic\": \"Detailed guitar music.\",\n    \"genres\": [\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"low\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "songsByGenre"
+      ],
+      "arguments": {
+        "genre": "art rock"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.genre-exact-electro-house",
+    "stage": "route",
+    "split": "validation",
+    "description": "A multi-word genre must not be shortened to its parent tag.",
+    "prompt": "The show needs the exact canonical library genre Electro House. Use genre-aware discovery with the complete two-word tag, not the broader Electro label.\n\n{\n  \"currentTrack\": {\n    \"id\": \"H4pT8wR2nL6cV1mQ9xD3kF\",\n    \"title\": \"Glass Circuit\",\n    \"artist\": \"Neon Transit\"\n  },\n  \"show\": {\n    \"name\": \"Midnight Current\",\n    \"topic\": \"Precise club electronics.\",\n    \"genres\": [\n      \"Electro House\"\n    ],\n    \"moods\": [\n      \"night\"\n    ],\n    \"energies\": [\n      \"high\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "songsByGenre"
+      ],
+      "arguments": {
+        "genre": "electro house"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.genre-exact-northern-soul",
+    "stage": "route",
+    "split": "validation",
+    "description": "A multi-word genre must preserve its modifier rather than collapse to its parent.",
+    "prompt": "The show needs the exact canonical library genre Northern Soul. Use songsByGenre with the complete tag; Soul alone is a different library genre.\n\n{\n  \"currentTrack\": {\n    \"id\": \"N8vC2qL5rT1mX7bK4dF9wH\",\n    \"title\": \"All Night Signal\",\n    \"artist\": \"The Bright Hours\"\n  },\n  \"show\": {\n    \"name\": \"Northern Lines\",\n    \"topic\": \"Rare dancefloor discoveries.\",\n    \"genres\": [\n      \"Northern Soul\"\n    ],\n    \"moods\": [\n      \"celebratory\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "songsByGenre"
+      ],
+      "arguments": {
+        "genre": "northern soul"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.lower-energy",
+    "stage": "route",
+    "split": "validation",
+    "description": "A requested energy move has a dedicated structured tool.",
+    "prompt": "The last run was intense. Bring the next selection down to low energy without inventing a mood.",
+    "tools": [
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByEnergy"
+      ],
+      "arguments": {
+        "energy": "low"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.overlooked-shelves",
+    "stage": "route",
+    "split": "validation",
+    "description": "An explicit deep-catalogue preference should select deepCuts.",
+    "prompt": "The show prefers overlooked album tracks and the recent rotation has become familiar. Explore unaired shelves.",
+    "tools": [
+      {
+        "name": "deepCuts"
+      },
+      {
+        "name": "starredSongs"
+      },
+      {
+        "name": "recentlyAdded"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "deepCuts"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "deepCuts",
+          "description": "Tracks never aired or absent from rotation for a long time.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "starredSongs",
+          "description": "The operator's starred tracks.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "recentlyAdded",
+          "description": "Tracks from recently added albums.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.semantic-live-id",
+    "stage": "route",
+    "split": "validation",
+    "description": "Similarity routing must copy a novel production-shaped id, never a training literal.",
+    "prompt": "Use the library semantic index to find music like the current track [id: V7mx9Qb2nL4sR8tK1cWdFz]. If that source is unavailable, choose the closest offered similarity source.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V7mx9Qb2nL4sR8tK1cWdFz\",\n    \"title\": \"An Ending (Ascent)\",\n    \"artist\": \"Brian Eno\"\n  },\n  \"show\": {\n    \"name\": \"The Evening Signal\",\n    \"topic\": \"Calm discoveries and overlooked catalogue tracks.\",\n    \"genres\": [\n      \"Ambient\",\n      \"Electronic\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"low\"\n    ],\n    \"eras\": [\n      \"1970-1979\",\n      \"1980-1989\"\n    ],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "tracksLikeThis",
+        "required": [
+          "songId"
+        ]
+      },
+      {
+        "name": "similarSongs",
+        "required": [
+          "songId"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksLikeThis"
+      ],
+      "arguments": {
+        "songId": "V7mx9Qb2nL4sR8tK1cWdFz"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksLikeThis",
+          "description": "Semantic neighbours of the supplied seed track id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "songId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "songId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "similarSongs",
+          "description": "Music-server neighbours of the supplied seed track id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "songId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "songId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.mood-null-energy",
+    "stage": "route",
+    "split": "validation",
+    "description": "Mood discovery must include the live schema’s explicit nullable energy key.",
+    "prompt": "Find a reflective track using structured station tags. No energy restriction was requested.\n\n{\n  \"currentTrack\": {\n    \"id\": \"p3Hx8Lm5Qa2Vn7Ds4KcR9W\",\n    \"title\": \"Low Light\",\n    \"artist\": \"Velvet Transit\"\n  },\n  \"show\": {\n    \"name\": \"The Scenic Route\",\n    \"topic\": \"Thoughtful music without forcing the pace.\",\n    \"genres\": [\n      \"Art Rock\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByMood"
+      ],
+      "arguments": {
+        "mood": "reflective",
+        "energy": null
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.mood-live-schema",
+    "stage": "route",
+    "split": "validation",
+    "description": "Mood routing must reject plausible-but-unknown keys and use only the live schema.",
+    "prompt": "Use the structured station mood route for energetic music at high energy. The only valid arguments are mood and energy; do not use type, hormonal, age, or placeholder values.\n\n{\n  \"currentTrack\": {\n    \"id\": \"G9qL2mN7rT4vX8cB1dF5hJ\",\n    \"title\": \"Bright Wire\",\n    \"artist\": \"Delta Static\"\n  },\n  \"show\": {\n    \"name\": \"Night Drive\",\n    \"topic\": \"Forward-moving electronic music.\",\n    \"genres\": [\n      \"Electronic\"\n    ],\n    \"moods\": [\n      \"energetic\"\n    ],\n    \"energies\": [\n      \"high\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "searchLibrary"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByMood"
+      ],
+      "arguments": {
+        "mood": "energetic",
+        "energy": "high"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.strict-playlist",
+    "stage": "route",
+    "split": "validation",
+    "description": "A strict show playlist remains available and mandatory on every route.",
+    "prompt": "This show has a strict operator playlist. Select the discovery source inside that playlist; no general-library route is permitted.\n\n{\n  \"currentTrack\": {\n    \"id\": \"L6nQ1wE8rT3yU9iO2pA5sD\",\n    \"title\": \"Pinned Signal\",\n    \"artist\": \"Radio Glass\"\n  },\n  \"show\": {\n    \"name\": \"Strict Hour\",\n    \"topic\": \"Only operator-selected records.\",\n    \"genres\": [],\n    \"moods\": [],\n    \"energies\": [],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": true\n  }\n}",
+    "tools": [
+      {
+        "name": "showPlaylistTracks"
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "showPlaylistTracks"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "showPlaylistTracks",
+          "description": "Tracks from the show's operator-pinned playlists. Use this first when one is active.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.preferred-playlist-cooldown",
+    "stage": "route",
+    "split": "validation",
+    "description": "After a preferred playlist route, controller policy removes that source for one turn.",
+    "prompt": "The preferred playlist supplied the immediately previous route and is cooling down. Continue the calm, low-energy show through another offered discovery axis.\n\n{\n  \"currentTrack\": {\n    \"id\": \"K4mR7tV2xY9zC1bN5qW8eH\",\n    \"title\": \"Second Source\",\n    \"artist\": \"Cloud Dial\"\n  },\n  \"show\": {\n    \"name\": \"The Scenic Route\",\n    \"topic\": \"Gentle variety beyond a preferred playlist.\",\n    \"genres\": [],\n    \"moods\": [\n      \"calm\"\n    ],\n    \"energies\": [\n      \"low\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "deepCuts"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByMood"
+      ],
+      "arguments": {
+        "mood": "calm",
+        "energy": "low"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "deepCuts",
+          "description": "Tracks never aired or absent from rotation for a long time.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "route.preferred-playlist-cooldown-argument-ownership",
+    "stage": "route",
+    "split": "validation",
+    "description": "Cooldown wording is controller direction, never a songsByGenre query argument.",
+    "prompt": "The current track already came from the show's preferred pinned playlist. Deliberately use a different library discovery axis for this pick so the playlist remains an anchor, not the only source. Continue with the show's focus mood at medium energy. Do not copy this instruction into a query field; songsByGenre requires an exact named genre.\n\n{\n  \"currentTrack\": {\n    \"id\": \"C8mR2tV5xY1zN7bQ4qW9eH\",\n    \"title\": \"Source Shift\",\n    \"artist\": \"Paper Cinema\"\n  },\n  \"show\": {\n    \"name\": \"Another Day, Another Spin\",\n    \"topic\": \"Familiar favourites and overlooked album tracks.\",\n    \"genres\": [\n      \"Alternative Rock\",\n      \"Synth-Pop\"\n    ],\n    \"moods\": [\n      \"focus\"\n    ],\n    \"energies\": [\n      \"medium\"\n    ],\n    \"eras\": [],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "searchLibrary",
+        "required": [
+          "query"
+        ]
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "tracksByMood"
+      ],
+      "arguments": {
+        "mood": "focus",
+        "energy": "medium"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "searchLibrary",
+          "description": "Search for a named artist, title, genre or vibe.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "recover.complementary-depth-2",
+    "stage": "recover",
+    "split": "validation",
+    "description": "A successful playlist source must be followed by one distinct complementary source.",
+    "prompt": "Begin inside the pinned playlist. Controller policy then requires one complementary calm low-energy discovery source.",
+    "tools": [
+      {
+        "name": "showPlaylistTracks"
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "mockResults": {
+      "showPlaylistTracks": {
+        "tracks": [
+          {
+            "id": "depth-two-01"
+          }
+        ]
+      },
+      "tracksByMood": {
+        "tracks": [
+          {
+            "id": "depth-two-02"
+          }
+        ]
+      }
+    },
+    "route": {
+      "firstCallOneOf": [
+        "showPlaylistTracks"
+      ]
+    },
+    "followups": [
+      {
+        "afterTool": "showPlaylistTracks",
+        "nextCallOneOf": [
+          "tracksByMood"
+        ],
+        "arguments": {
+          "mood": "calm",
+          "energy": "low"
+        },
+        "message": "Controller policy requests one complementary discovery source. Choose one different offered function."
+      }
+    ],
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "showPlaylistTracks",
+          "description": "Tracks from the show's operator-pinned playlists. Use this first when one is active.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "recover.complementary-depth-3-thin-pool",
+    "stage": "recover",
+    "split": "validation",
+    "description": "A third distinct source is required only while the combined pool remains thin.",
+    "prompt": "Begin inside the pinned playlist. Gather a complementary calm low-energy source; the combined pool remains thin, so add one final distinct source.",
+    "tools": [
+      {
+        "name": "showPlaylistTracks"
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "tracksByEnergy",
+        "required": [
+          "energy"
+        ],
+        "enums": {
+          "energy": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "mockResults": {
+      "showPlaylistTracks": {
+        "tracks": [
+          {
+            "id": "depth-three-01"
+          }
+        ]
+      },
+      "tracksByMood": {
+        "tracks": [
+          {
+            "id": "depth-three-02"
+          }
+        ]
+      },
+      "tracksByEnergy": {
+        "tracks": [
+          {
+            "id": "depth-three-03"
+          }
+        ]
+      }
+    },
+    "route": {
+      "firstCallOneOf": [
+        "showPlaylistTracks"
+      ]
+    },
+    "followups": [
+      {
+        "afterTool": "showPlaylistTracks",
+        "nextCallOneOf": [
+          "tracksByMood"
+        ],
+        "arguments": {
+          "mood": "calm",
+          "energy": "low"
+        },
+        "message": "Controller policy requests one complementary discovery source. Choose one different offered function."
+      },
+      {
+        "afterTool": "tracksByMood",
+        "nextCallOneOf": [
+          "tracksByEnergy"
+        ],
+        "arguments": {
+          "energy": "low"
+        },
+        "message": "The merged candidate pool is still thin; choose one final complementary offered source."
+      }
+    ],
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "showPlaylistTracks",
+          "description": "Tracks from the show's operator-pinned playlists. Use this first when one is active.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByEnergy",
+          "description": "Tracks at one structured energy level: low, medium or high.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "energy": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "segment.route.exact-track-fact",
+    "stage": "route",
+    "split": "validation",
+    "description": "A request for exact-track evidence should use the track researcher.",
+    "prompt": "Choose one research function for a between-track segment. Find one sourced production or release detail about the exact track now playing.",
+    "tools": [
+      {
+        "name": "skill_now_playing_dig_v2"
+      },
+      {
+        "name": "skill_web_search_v2"
+      },
+      {
+        "name": "skill_news_v2"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "skill_now_playing_dig_v2"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_now_playing_dig_v2",
+          "description": "Research specialist sources for a verifiable detail about the exact track now playing.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_web_search_v2",
+          "description": "Search curated music sources for recent news about the artist now playing.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_news_v2",
+          "description": "Fetch fresh general or show-relevant music headlines.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "segment.route.artist-news",
+    "stage": "route",
+    "split": "validation",
+    "description": "Recent artist activity should use artist research rather than general headlines.",
+    "prompt": "Choose one research function for a between-track segment. Look for genuinely recent news about the artist currently on air.",
+    "tools": [
+      {
+        "name": "skill_web_search_v2",
+        "required": [
+          "query"
+        ],
+        "enums": {
+          "query": [
+            null
+          ]
+        }
+      },
+      {
+        "name": "skill_now_playing_dig_v2"
+      },
+      {
+        "name": "skill_news_v2"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "skill_web_search_v2"
+      ],
+      "arguments": {
+        "query": null
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_web_search_v2",
+          "description": "Search curated music sources for recent news about the artist now playing.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  null
+                ]
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_now_playing_dig_v2",
+          "description": "Research specialist sources for a verifiable detail about the exact track now playing.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_news_v2",
+          "description": "Fetch fresh general or show-relevant music headlines.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "segment.route.album-anniversary",
+    "stage": "route",
+    "split": "validation",
+    "description": "Album anniversary research has its own specialist function.",
+    "prompt": "Choose one research function for a between-track segment. Check whether the original studio album currently on air reaches a meaningful anniversary this year.",
+    "tools": [
+      {
+        "name": "skill_album_anniversary_v2"
+      },
+      {
+        "name": "skill_curiosity_v2"
+      },
+      {
+        "name": "skill_now_playing_dig_v2"
+      }
+    ],
+    "route": {
+      "firstCallOneOf": [
+        "skill_album_anniversary_v2"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_album_anniversary_v2",
+          "description": "Check the original studio-album release date for a meaningful anniversary.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_curiosity_v2",
+          "description": "Fetch one fresh, verifiable historical event tied to today's date.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "skill_now_playing_dig_v2",
+          "description": "Research specialist sources for a verifiable detail about the exact track now playing.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "recover.empty-semantic-index",
+    "stage": "recover",
+    "split": "validation",
+    "description": "An empty similarity result must cause a real strategy change.",
+    "prompt": "Keep a reflective, low-energy flow from the current track [id: V7mx9Qb2nL4sR8tK1cWdFz]. Start with the library's semantic similarity, recover through a genuinely different discovery axis if it is empty, then commit only to an id actually surfaced by a tool.\n\n{\n  \"currentTrack\": {\n    \"id\": \"V7mx9Qb2nL4sR8tK1cWdFz\",\n    \"title\": \"An Ending (Ascent)\",\n    \"artist\": \"Brian Eno\"\n  },\n  \"show\": {\n    \"name\": \"The Evening Signal\",\n    \"topic\": \"Calm discoveries and overlooked catalogue tracks.\",\n    \"genres\": [\n      \"Ambient\"\n    ],\n    \"moods\": [\n      \"reflective\"\n    ],\n    \"energies\": [\n      \"low\"\n    ],\n    \"eras\": [\n      \"1980-1989\"\n    ],\n    \"filtersStrict\": false,\n    \"playlistStrict\": false\n  }\n}",
+    "tools": [
+      {
+        "name": "tracksLikeThis",
+        "required": [
+          "songId"
+        ]
+      },
+      {
+        "name": "similarSongs",
+        "required": [
+          "songId"
+        ]
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "starredSongs"
+      },
+      {
+        "name": "done",
+        "required": [
+          "id",
+          "reason",
+          "transition"
+        ],
+        "enums": {
+          "transition": [
+            "normal",
+            "blend",
+            "sweep",
+            "washout",
+            "dissolve",
+            "chop",
+            "loop",
+            null
+          ]
+        }
+      }
+    ],
+    "mockResults": {
+      "tracksLikeThis": {
+        "tracks": [],
+        "note": "The seed is absent from the semantic index. Choose a different discovery tool."
+      },
+      "similarSongs": {
+        "tracks": [
+          {
+            "id": "reflective-01",
+            "title": "Still Roads",
+            "artist": "Harbour Lights",
+            "moods": [
+              "reflective"
+            ],
+            "energy": "low"
+          },
+          {
+            "id": "reflective-02",
+            "title": "Small Hours",
+            "artist": "North Window",
+            "moods": [
+              "reflective"
+            ],
+            "energy": "low"
+          }
+        ]
+      },
+      "tracksByMood": {
+        "tracks": [
+          {
+            "id": "reflective-01",
+            "title": "Still Roads",
+            "artist": "Harbour Lights",
+            "moods": [
+              "reflective"
+            ],
+            "energy": "low"
+          },
+          {
+            "id": "reflective-02",
+            "title": "Small Hours",
+            "artist": "North Window",
+            "moods": [
+              "reflective"
+            ],
+            "energy": "low"
+          }
+        ]
+      },
+      "starredSongs": {
+        "tracks": [
+          {
+            "id": "safe-favourite-01",
+            "title": "Home Signal",
+            "artist": "Night Service",
+            "moods": [
+              "calm"
+            ],
+            "energy": "low"
+          }
+        ]
+      }
+    },
+    "route": {
+      "firstCallOneOf": [
+        "tracksLikeThis"
+      ],
+      "arguments": {
+        "songId": "V7mx9Qb2nL4sR8tK1cWdFz"
+      }
+    },
+    "recovery": {
+      "emptyTool": "tracksLikeThis",
+      "nextCallOneOf": [
+        "similarSongs",
+        "tracksByMood",
+        "starredSongs"
+      ]
+    },
+    "commit": {
+      "surfacedIds": [
+        "reflective-01",
+        "reflective-02",
+        "safe-favourite-01"
+      ],
+      "acceptableIds": [
+        "reflective-01",
+        "reflective-02",
+        "safe-favourite-01"
+      ],
+      "preferredIds": [
+        "reflective-01",
+        "reflective-02"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksLikeThis",
+          "description": "Semantic neighbours of the supplied seed track id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "songId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "songId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "similarSongs",
+          "description": "Music-server neighbours of the supplied seed track id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "songId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "songId"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "starredSongs",
+          "description": "The operator's starred tracks.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "done",
+          "description": "Commit the final grounded track id, private reason and transition.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "transition": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "blend",
+                  "sweep",
+                  "washout",
+                  "dissolve",
+                  "chop",
+                  "loop",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reason",
+              "transition"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "recover.empty-journey-waypoint",
+    "stage": "recover",
+    "split": "validation",
+    "description": "An empty journey waypoint must fall back to structured show criteria.",
+    "prompt": "A sonic journey is active inside a reflective, low-energy art-rock show. Try its current waypoint first; if no eligible tracks remain, change to a structured show axis.",
+    "tools": [
+      {
+        "name": "tracksTowardJourney"
+      },
+      {
+        "name": "tracksByMood",
+        "required": [
+          "mood",
+          "energy"
+        ],
+        "enums": {
+          "mood": [
+            "energetic",
+            "calm",
+            "reflective",
+            "celebratory",
+            "romantic",
+            "spiritual",
+            "focus",
+            "workout",
+            "driving",
+            "cooking",
+            "rainy",
+            "sunny",
+            "night",
+            "morning",
+            "evening",
+            "festival",
+            "cultural"
+          ],
+          "energy": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        }
+      },
+      {
+        "name": "songsByGenre",
+        "required": [
+          "genre"
+        ]
+      },
+      {
+        "name": "randomSongs"
+      }
+    ],
+    "mockResults": {
+      "tracksTowardJourney": {
+        "tracks": [],
+        "note": "The active waypoint has no eligible tracks. Do not repeat this tool."
+      },
+      "tracksByMood": {
+        "tracks": [
+          {
+            "id": "journey-mood-01",
+            "title": "Low Signal",
+            "artist": "Quiet Maps"
+          }
+        ]
+      },
+      "songsByGenre": {
+        "tracks": [
+          {
+            "id": "journey-genre-01",
+            "title": "Slow Geometry",
+            "artist": "Amber District"
+          }
+        ]
+      }
+    },
+    "route": {
+      "firstCallOneOf": [
+        "tracksTowardJourney"
+      ]
+    },
+    "recovery": {
+      "emptyTool": "tracksTowardJourney",
+      "nextCallOneOf": [
+        "tracksByMood"
+      ],
+      "arguments": {
+        "mood": "reflective",
+        "energy": "low"
+      }
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksTowardJourney",
+          "description": "Tracks nearest the active sonic journey's current waypoint.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tracksByMood",
+          "description": "Tracks carrying one supported station mood. Call with exactly mood and energy; energy is low, medium, high, or null.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "mood": {
+                "type": "string",
+                "enum": [
+                  "energetic",
+                  "calm",
+                  "reflective",
+                  "celebratory",
+                  "romantic",
+                  "spiritual",
+                  "focus",
+                  "workout",
+                  "driving",
+                  "cooking",
+                  "rainy",
+                  "sunny",
+                  "night",
+                  "morning",
+                  "evening",
+                  "festival",
+                  "cultural"
+                ]
+              },
+              "energy": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "mood",
+              "energy"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "songsByGenre",
+          "description": "Tracks carrying a named library genre tag.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "genre": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "genre"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "randomSongs",
+          "description": "A random sample from the whole library.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "commit.same-artist-trap",
+    "stage": "commit",
+    "split": "validation",
+    "description": "A grounded choice can still be editorially wrong.",
+    "prompt": "The current and previous tracks are both by Northbound. Choose from the surfaced candidates while prioritising artist variety. Candidates: [{\"id\":\"trap-01\",\"artist\":\"Northbound\"},{\"id\":\"trap-02\",\"artist\":\"Northbound\"},{\"id\":\"fresh-01\",\"artist\":\"Southbank\"}].",
+    "tools": [
+      {
+        "name": "done",
+        "required": [
+          "id",
+          "reason",
+          "transition"
+        ],
+        "enums": {
+          "transition": [
+            "normal",
+            "blend",
+            "sweep",
+            "washout",
+            "dissolve",
+            "chop",
+            "loop",
+            null
+          ]
+        }
+      }
+    ],
+    "commit": {
+      "surfacedIds": [
+        "trap-01",
+        "trap-02",
+        "fresh-01"
+      ],
+      "acceptableIds": [
+        "fresh-01"
+      ],
+      "preferredIds": [
+        "fresh-01"
+      ],
+      "forbiddenIds": [
+        "trap-01",
+        "trap-02"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "done",
+          "description": "Commit the final grounded track id, private reason and transition.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "transition": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "blend",
+                  "sweep",
+                  "washout",
+                  "dissolve",
+                  "chop",
+                  "loop",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reason",
+              "transition"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "commit.quiet-flow",
+    "stage": "commit",
+    "split": "validation",
+    "description": "The selector should distinguish continuity from a jarring jump.",
+    "prompt": "On air: intimate acoustic folk, low energy, sparse vocal opening. Candidates: [{\"id\":\"quiet-01\",\"style\":\"reflective acoustic\",\"bpm\":76,\"energy\":\"low\"},{\"id\":\"metal-01\",\"style\":\"alternative metal\",\"bpm\":168,\"energy\":\"high\"},{\"id\":\"dance-01\",\"style\":\"club pop\",\"bpm\":132,\"energy\":\"high\"}]. Preserve the quiet flow.",
+    "tools": [
+      {
+        "name": "done",
+        "required": [
+          "id",
+          "reason",
+          "transition"
+        ],
+        "enums": {
+          "transition": [
+            "normal",
+            "blend",
+            "sweep",
+            "washout",
+            "dissolve",
+            "chop",
+            "loop",
+            null
+          ]
+        }
+      }
+    ],
+    "commit": {
+      "surfacedIds": [
+        "quiet-01",
+        "metal-01",
+        "dance-01"
+      ],
+      "acceptableIds": [
+        "quiet-01"
+      ],
+      "preferredIds": [
+        "quiet-01"
+      ],
+      "forbiddenIds": [
+        "metal-01",
+        "dance-01"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "done",
+          "description": "Commit the final grounded track id, private reason and transition.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "transition": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "blend",
+                  "sweep",
+                  "washout",
+                  "dissolve",
+                  "chop",
+                  "loop",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reason",
+              "transition"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "commit.show-brief-soft-influence",
+    "stage": "commit",
+    "split": "validation",
+    "description": "Soft show prose should be visible in the final choice.",
+    "prompt": "Show brief: prefer overlooked album tracks to obvious singles. Candidates: [{\"id\":\"single-01\",\"status\":\"famous lead single\",\"rotation\":\"frequent\"},{\"id\":\"album-01\",\"status\":\"compatible album track\",\"rotation\":\"never aired\"},{\"id\":\"album-02\",\"status\":\"compatible album track\",\"rotation\":\"aired once long ago\"}].",
+    "tools": [
+      {
+        "name": "done",
+        "required": [
+          "id",
+          "reason",
+          "transition"
+        ],
+        "enums": {
+          "transition": [
+            "normal",
+            "blend",
+            "sweep",
+            "washout",
+            "dissolve",
+            "chop",
+            "loop",
+            null
+          ]
+        }
+      }
+    ],
+    "commit": {
+      "surfacedIds": [
+        "single-01",
+        "album-01",
+        "album-02"
+      ],
+      "acceptableIds": [
+        "album-01",
+        "album-02"
+      ],
+      "preferredIds": [
+        "album-01"
+      ],
+      "forbiddenIds": [
+        "single-01"
+      ]
+    },
+    "openAiTools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "done",
+          "description": "Commit the final grounded track id, private reason and transition.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "transition": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "normal",
+                  "blend",
+                  "sweep",
+                  "washout",
+                  "dissolve",
+                  "chop",
+                  "loop",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reason",
+              "transition"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  }
+]

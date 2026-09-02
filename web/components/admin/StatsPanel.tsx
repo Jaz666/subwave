@@ -75,7 +75,8 @@ interface ByDjKindRow {
 interface DebugCountRow {
   name: string;
   count: number;
-  failed: number;
+  errors: number;
+  empty: number;
 }
 
 interface DebugStats {
@@ -910,8 +911,10 @@ export default function StatsPanel() {
                       { key: 'name', label: 'Tool' },
                       { key: 'count', label: 'Calls', align: 'right',
                         render: r => <span className="mono-num">{r.count}</span> },
-                      { key: 'failed', label: 'Failed', align: 'right',
-                        render: r => <span className="mono-num">{r.failed}</span> },
+                      { key: 'errors', label: 'Errors', align: 'right',
+                        render: r => <span className="mono-num">{r.errors}</span> },
+                      { key: 'empty', label: 'Empty', align: 'right',
+                        render: r => <span className="mono-num">{r.empty}</span> },
                     ]}
                   />
                 </ScrollBox>

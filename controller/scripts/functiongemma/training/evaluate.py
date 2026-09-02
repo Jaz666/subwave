@@ -89,6 +89,14 @@ def result_for(scenario: dict[str, Any], call: dict[str, Any]) -> Any:
     return scenario.get("mockResults", {}).get(call["name"], {"tracks": []})
 
 
+def followup_for(scenario: dict[str, Any], call: dict[str, Any]) -> str | None:
+    """Return the controller instruction which follows this tool result, if any."""
+    for followup in scenario.get("followups", []):
+        if followup.get("afterTool") == call["name"]:
+            return str(followup["message"])
+    return None
+
+
 def run_scenario(
     scenario: dict[str, Any],
     tokenizer: Any,
@@ -153,6 +161,9 @@ def run_scenario(
                 "response": result_for(scenario, call),
             },
         })
+        followup = followup_for(scenario, call)
+        if followup:
+            messages.append({"role": "user", "content": followup})
         if call["name"] == "done":
             break
 

@@ -269,7 +269,12 @@ export function summarizeDebug(toolCallEvents, transitionEvents, toolNames: read
       count: toolCallEvents.length,
       byName: byCountThenName(toolNames.map(name => {
         const calls = toolCallEvents.filter(event => event?.name === name);
-        return { name, count: calls.length, failed: calls.filter(call => call.failed).length };
+        return {
+          name,
+          count: calls.length,
+          errors: calls.filter(call => call.error).length,
+          empty: calls.filter(call => call.empty).length,
+        };
       })),
     },
     transitions: { window: MAX_DEBUG_EVENTS, count: transitionEvents.length, byName: tally(transitionEvents, 'transition', TRACK_TRANSITION_COMBINATIONS) },

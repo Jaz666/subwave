@@ -103,6 +103,18 @@ function recoveryViolations(scenario: FunctionGemmaScenario, calls: readonly Pre
   return violations;
 }
 
+function followupViolations(scenario: FunctionGemmaScenario, calls: readonly PredictedToolCall[]): string[] {
+  const violations: string[] = [];
+  for (const followup of scenario.followups ?? []) {
+    const index = calls.findIndex(call => call.name === followup.afterTool);
+    const next = index < 0 ? undefined : calls[index + 1];
+    if (!next) { violations.push(`followup:no-state-progression:${followup.afterTool}`); continue; }
+    if (next.name === followup.afterTool || !followup.nextCallOneOf.includes(next.name)) { violations.push(`followup:wrong-alternative:${next.name}`); continue; }
+    for (const [key, expected] of Object.entries(followup.arguments ?? {})) if (!sameScalar(expected, next.arguments?.[key])) violations.push(`followup:wrong-argument:${key}`);
+  }
+  return violations;
+}
+
 function commitCall(calls: readonly PredictedToolCall[]): PredictedToolCall | undefined {
   return [...calls].reverse().find(call => call.name === 'done');
 }
@@ -141,6 +153,7 @@ export function scorePrediction(
   };
   if (scenario.route) dimensions.routing = dimension(routeViolations(scenario, calls));
   if (scenario.recovery) dimensions.recovery = dimension(recoveryViolations(scenario, calls));
+  if (scenario.followups) dimensions.recovery = dimension(followupViolations(scenario, calls));
   if (scenario.commit) {
     dimensions.grounding = dimension(groundingViolations(scenario, calls));
     dimensions.editorial = dimension(editorialViolations(scenario, calls));

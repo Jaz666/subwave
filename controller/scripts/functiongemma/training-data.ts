@@ -68,7 +68,11 @@ export const FUNCTIONGEMMA_VANILLA_DISCOVERY_TOOLS = [
 ] as const;
 
 const contracts: Record<string, ToolContract> = {
-  done: withString('done', 'id'),
+  done: {
+    name: 'done',
+    required: ['id', 'reason', 'transition'],
+    enums: { transition: ['normal', 'blend', 'sweep', 'washout', 'dissolve', 'chop', 'loop', null] },
+  },
   showPlaylistTracks: noArgs('showPlaylistTracks'),
   tracksTowardJourney: noArgs('tracksTowardJourney'),
   songsByGenre: withString('songsByGenre', 'genre'),
@@ -102,7 +106,19 @@ const contracts: Record<string, ToolContract> = {
 };
 
 const routeFamilies = [
+  "playlist-cooldown-copy-show-context", "playlist-cooldown-copy-show-context", "playlist-cooldown-copy-show-context", "playlist-cooldown-copy-show-context",
   'pinned-playlist', 'pinned-playlist',
+  // The production cooldown wording used to leak into songsByGenre.query.
+  // Oversample the exact ownership boundary so an alternate-axis instruction
+  // becomes a structured mood call, never a free-text tool argument.
+  'playlist-cooldown-argument-ownership', 'playlist-cooldown-argument-ownership',
+  'playlist-cooldown-argument-ownership', 'playlist-cooldown-argument-ownership',
+  'playlist-cooldown-argument-ownership', 'playlist-cooldown-argument-ownership',
+  'playlist-cooldown-argument-ownership', 'playlist-cooldown-argument-ownership',
+  // Live tools are selectively offered. Audio and journey axes must never be
+  // hallucinated merely because their concepts occur in the prompt.
+  'audio-unavailable-fallback', 'audio-unavailable-fallback', 'audio-unavailable-fallback', 'audio-unavailable-fallback',
+  'journey-unavailable-fallback', 'journey-unavailable-fallback', 'journey-unavailable-fallback', 'journey-unavailable-fallback',
   'sonic-journey', 'sonic-journey',
   'named-genre', 'named-genre', 'named-genre',
   // V4.1: preserve the exact canonical genre token when it is a prefix of a
@@ -140,6 +156,12 @@ const routeFamilies = [
   'segment-library-deep-cut',
 ] as const;
 const recoveryFamilies = [
+  'complement-playlist-to-mood',
+  "complement-playlist-exact-low-energy", "complement-playlist-exact-low-energy", "complement-playlist-exact-low-energy", "complement-playlist-exact-low-energy",
+  "recover-sound-to-mood-exact", "recover-sound-to-mood-exact", "recover-sound-to-mood-exact",
+  "recover-sound-search-to-mood-closed", "recover-sound-search-to-mood-closed", "recover-sound-search-to-mood-closed", "recover-sound-search-to-mood-closed", "recover-sound-search-to-mood-closed", "recover-sound-search-to-mood-closed",
+  "recover-artist-exact-copy", "recover-artist-exact-copy", "recover-artist-exact-copy", "recover-artist-exact-copy", "recover-artist-exact-copy", "recover-artist-exact-copy", "recover-artist-exact-copy", "recover-artist-exact-copy",
+  'complement-playlist-to-mood-to-energy',
   'recover-semantic-to-mood',
   'recover-semantic-to-genre',
   'recover-semantic-to-energy',
@@ -272,6 +294,33 @@ function routeExample(family: typeof routeFamilies[number], context: ExampleCont
       ], context.random);
       target = 'showPlaylistTracks';
       tools = ['showPlaylistTracks', 'tracksByMood', 'searchLibrary', 'randomSongs'];
+      break;
+    case 'playlist-cooldown-argument-ownership':
+      prompt = pick([
+        `The current track already came from the show's preferred pinned playlist. Deliberately use a different library discovery axis for this pick so the playlist remains an anchor, not the only source. Use the structured show mood ${mood} at ${energy} energy. This direction is not a songsByGenre query: only use that tool with its genre field and an exact named genre.`,
+        `The preferred playlist supplied the previous track, so choose a different discovery axis. Continue through the show's structured ${mood}/${energy} tags. Do not copy this instruction into query, and do not call songsByGenre unless an exact genre label is supplied.`,
+      ], context.random);
+      target = 'tracksByMood';
+      args = { mood, energy };
+      tools = ['searchLibrary', 'similarSongs', 'topSongsByArtist', 'recentByArtist', 'songsByGenre', 'tracksByMood', 'tracksByEnergy', 'recentlyAdded', 'starredSongs', 'randomSongs'];
+      break;
+    case 'audio-unavailable-fallback':
+      prompt = `The current track would normally support audio-similarity discovery, but that audio tool is not available for this pick. Continue through the structured show mood ${mood} at ${energy} energy. Call only an offered function.`;
+      target = 'tracksByMood';
+      args = { mood, energy };
+      tools = ['tracksByMood', 'tracksByEnergy', 'searchLibrary', 'songsByGenre', 'randomSongs'];
+      break;
+    case 'journey-unavailable-fallback':
+      prompt = `A sonic journey is active, but its waypoint tool is not available for this pick. Preserve the structured show mood ${mood} at ${energy} energy using only an offered function.`;
+      target = 'tracksByMood';
+      args = { mood, energy };
+      tools = ['tracksByMood', 'tracksByEnergy', 'searchLibrary', 'songsByGenre', 'randomSongs'];
+      break;
+    case "playlist-cooldown-copy-show-context":
+      prompt = `The preferred playlist is cooling down. Use the structured show context exactly: choose ${mood} with ${energy} energy, not a default mood or energy.`;
+      target = "tracksByMood";
+      args = { mood, energy };
+      tools = ["tracksByMood", "tracksByEnergy", "songsByGenre", "randomSongs"];
       break;
     case 'sonic-journey':
       prompt = pick([
@@ -510,15 +559,62 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
   let prompt = '';
   let first = 'tracksLikeThis';
   let next = '';
+  let third = "";
+  let thirdArgs: Record<string, unknown> = {};
   let nextArgs: Record<string, unknown> = {};
   let names: string[] = [];
 
   switch (family) {
+    case "complement-playlist-to-mood":
+      prompt = `Begin inside the preferred show playlist, then deliberately gather one complementary ${mood} ${energy}-energy source. Do not repeat the playlist tool.`;
+      first = "showPlaylistTracks";
+      next = "tracksByMood";
+      nextArgs = { mood, energy };
+      names = ["showPlaylistTracks", "tracksByMood", "tracksByEnergy", "songsByGenre", "randomSongs"];
+      break;
+    case "complement-playlist-exact-low-energy":
+      prompt = "Begin inside the preferred show playlist, then deliberately gather one complementary calm low-energy source. Keep the explicit low energy filter; do not replace it with null.";
+      first = "showPlaylistTracks";
+      next = "tracksByMood";
+      nextArgs = { mood: "calm", energy: "low" };
+      names = ["showPlaylistTracks", "tracksByMood", "tracksByEnergy", "songsByGenre", "randomSongs"];
+      break;
+    case "recover-sound-to-mood-exact":
+      prompt = "Sound search returned no eligible candidates. Do not repeat sound similarity; recover with the exact structured calm mood and null energy.";
+      first = "tracksThatSoundLikeThis"; next = "tracksByMood"; nextArgs = { mood: "calm", energy: null };
+      names = ["tracksThatSoundLikeThis", "tracksByMood", "tracksLikeThis", "randomSongs"];
+    case "recover-sound-search-to-mood-closed":
+      prompt = "The sound-description search returned no candidates. That entire sound-similarity axis is unavailable; choose tracksByMood with exactly calm and null energy.";
+      first = "searchBySound"; next = "tracksByMood"; nextArgs = { mood: "calm", energy: null };
+      names = ["searchBySound", "tracksByMood", "randomSongs"];
+      break;
+      break;
+    case "recover-artist-exact-copy":
+      prompt = `Stay near the exact current artist "${artist}". Copy the artist name character-for-character into the top-songs route, then the recent-songs recovery if needed.`;
+      first = "topSongsByArtist"; next = "recentByArtist"; nextArgs = { artist };
+      names = ["topSongsByArtist", "recentByArtist", "searchLibrary", "randomSongs"];
+      break;
+    case "complement-playlist-to-mood-to-energy":
+      prompt = `Begin inside the preferred show playlist, deliberately gather a complementary ${mood} ${energy}-energy source, then add one final distinct source only because the merged pool remains thin.`;
+      first = "showPlaylistTracks";
+      next = "tracksByMood";
+      nextArgs = { mood, energy };
+      third = "tracksByEnergy";
+      thirdArgs = { energy };
+      names = ["showPlaylistTracks", "tracksByMood", "tracksByEnergy", "songsByGenre", "randomSongs"];
+      break;
     case 'recover-semantic-to-mood':
       prompt = `Keep a ${mood}, ${energy}-energy flow from [id: ${seed}]. Try semantic similarity first, then change discovery axis if its index has no result.`;
       next = 'tracksByMood';
       nextArgs = { mood, energy };
       names = ['tracksLikeThis', 'similarSongs', 'tracksByMood', 'starredSongs'];
+      break;
+    case 'recover-semantic-stop-after-valid':
+      prompt = `Keep a reflective, low-energy flow from [id: ${seed}]. If the semantic index is empty, recover through the music server's related-song service. Once that service returns eligible tracks, stop discovery and commit one returned id. Never call an unoffered tool.`;
+      first = 'tracksLikeThis';
+      next = 'similarSongs';
+      nextArgs = { songId: seed };
+      names = ['tracksLikeThis', 'similarSongs', 'tracksByMood', 'starredSongs', 'done'];
       break;
     case 'recover-semantic-to-genre':
       prompt = `Stay within ${genre} from [id: ${seed}]. Try semantic similarity first; if empty, use the structured genre tags.`;
@@ -625,6 +721,7 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
   prompt = productionPrompt(prompt, { id: seed, title, artist }, context);
 
   const firstArgs = first === 'showPlaylistTracks' || first === 'tracksTowardJourney' ? {}
+    : first === 'songsByGenre' ? { genre }
     : first === 'topSongsByArtist' || first === 'recentByArtist' ? { artist }
       : first === 'searchByLyrics' ? { query: 'starting over' }
         : first === 'searchBySound' ? { query: 'warm spacious guitar with a steady pulse' }
@@ -638,14 +735,30 @@ function recoveryExample(family: typeof recoveryFamilies[number], context: Examp
       { role: 'user', content: prompt },
       call(first, firstArgs),
       toolResult(first, {
-        tracks: [],
+        tracks: family === 'complement-playlist-to-mood' ? [{ id: 'complement-source-01', title: 'Wide Angle', artist: 'Signal Field' }] : [],
         note: first === 'showPlaylistTracks'
           ? 'All pinned tracks were filtered out. Choose a genuinely different discovery tool.'
           : first === 'tracksTowardJourney'
             ? 'The active journey waypoint returned no eligible tracks. Use the show mood or genre instead; do not repeat this tool.'
             : 'No candidates were found. Change discovery strategy rather than repeating this tool.',
       }),
+      ...(family === "complement-playlist-to-mood" || family === "complement-playlist-exact-low-energy" ? [{
+        role: "user" as const,
+        content: "Controller policy requests one complementary discovery source. Choose one different offered function.",
+      }] : []),
       call(next, nextArgs),
+      ...(family === 'recover-semantic-stop-after-valid' ? [
+        toolResult(next, {
+          tracks: [{ id: 'recovery-stop-01', title: 'Still Roads', artist: 'Harbour Lights', moods: ['reflective'], energy: 'low' }],
+          note: 'Eligible recovered tracks are now available. Stop discovery and commit one surfaced id.',
+        }),
+        call('done', { id: 'recovery-stop-01', reason: 'Recovered reflective low-energy match.', transition: 'dissolve' }),
+      ] : []),
+      ...(family === "complement-playlist-to-mood-to-energy" ? [
+        toolResult(next, { tracks: [{ id: "thin-pool-02", title: "Tight Frame", artist: "Signal Field" }], note: "The merged candidate pool remains thin." }),
+        { role: "user" as const, content: "The merged candidate pool is still thin; choose one final complementary offered source." },
+        call(third, thirdArgs),
+      ] : []),
     ],
     tools: offered(names, context.random),
   };

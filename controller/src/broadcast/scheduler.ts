@@ -38,6 +38,7 @@ import { skillEligible } from '../skills/eligibility.js';
 import { getStationTimezone, onStationTimezoneChange } from '../time.js';
 import { withTrace, pruneOldEvents } from '../observability/events.js';
 import { pruneOldDjSpeechLogs } from '../observability/dj-speech-log.js';
+import { pruneOldAnalysisLogs } from '../observability/analysis-log.js';
 import * as archives from './archives.js';
 import * as stemCacheStore from '../music/stem-cache.js';
 import * as stemBlendStore from './stem-blend.js';
@@ -880,6 +881,9 @@ async function cleanup() {
   } catch (err) {
     queue.log('error', `DJ speech log prune failed: ${err.message}`);
   }
+  try {
+    await pruneOldAnalysisLogs();
+  } catch {}
   // Archive retention — delete hourly recordings older than the operator's
   // window. 0 (the default) keeps everything, matching prior behaviour.
   try {

@@ -1,0 +1,7 @@
+{
+  "format": "subwave.functiongemma-routing.v19-availability-correction",
+  "counts": {
+    "train": 30,
+    "development": 10
+  }
+}

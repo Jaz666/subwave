@@ -59,10 +59,14 @@ export function buildNovelSoakCases(count = 300, seed = 0xA11CE5): FunctionGemma
       if (message.role !== 'assistant') continue;
       const target = message.tool_calls?.[0];
       if (!target) continue;
+      const usedToolNames = new Set(example.messages.slice(0, index)
+        .filter(previous => previous.role === "assistant")
+        .flatMap(previous => previous.tool_calls ?? [])
+        .map((call: any) => call.function.name));
       cases.push({
         id: `${example.id}.decision-${cases.length + 1}`,
         messages: openAiMessages(example.messages.slice(0, index)),
-        tools: example.tools,
+        tools: example.tools.filter(tool => !usedToolNames.has(tool.function.name)),
         expected: {
           name: target.function.name,
           arguments: target.function.arguments,

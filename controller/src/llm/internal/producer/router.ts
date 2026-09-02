@@ -29,6 +29,10 @@ interface RouterConfig {
   model: string;
   apiKey?: string;
   timeoutMs: number;
+  /** Opt-in breadth; depth 1 preserves the deployed one-plus-recovery path. */
+  discoveryDepth?: 1 | 2 | 3;
+  /** Depth 3 stops once the merged pool reaches this count. */
+  minCandidates?: number;
 }
 
 export interface RoutedDiscovery {
@@ -61,12 +65,27 @@ export function producerRouterConfig(env: NodeJS.ProcessEnv = process.env): Rout
   if (!baseUrl || !model) return null;
   const requested = Number(env.PRODUCER_ROUTER_TIMEOUT_MS ?? 15_000);
   const timeoutMs = Number.isFinite(requested) ? Math.max(1_000, Math.min(60_000, requested)) : 15_000;
+  const requestedDepth = Number(env.PRODUCER_ROUTER_DISCOVERY_DEPTH ?? 1);
+  const discoveryDepth: 1 | 2 | 3 = requestedDepth === 3 ? 3 : requestedDepth === 2 ? 2 : 1;
+  const requestedMinimum = Number(env.PRODUCER_ROUTER_MIN_CANDIDATES ?? 12);
+  const minCandidates = Number.isFinite(requestedMinimum)
+    ? Math.max(1, Math.min(100, Math.floor(requestedMinimum)))
+    : 12;
   const apiKey = String(env.PRODUCER_ROUTER_API_KEY ?? '').trim();
-  return { baseUrl, model, timeoutMs, ...(apiKey ? { apiKey } : {}) };
+  return { baseUrl, model, timeoutMs, discoveryDepth, minCandidates, ...(apiKey ? { apiKey } : {}) };
 }
 
 export function producerSegmentRouterEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return /^(1|true|yes|on)$/i.test(String(env.PRODUCER_ROUTER_SEGMENTS ?? '').trim());
+}
+
+function currentArtistFromPrompt(prompt: string): string | null {
+  const start = prompt.indexOf("\n\n{");
+  if (start < 0) return null;
+  try {
+    const artist = JSON.parse(prompt.slice(start + 2))?.currentTrack?.artist;
+    return typeof artist === "string" && artist.trim() ? artist.trim() : null;
+  } catch { return null; }
 }
 
 function endpoint(baseUrl: string): string {
@@ -188,18 +207,30 @@ export async function routeProducerDiscovery({
 
   const started = Date.now();
   const deadline = started + config.timeoutMs;
+  const initiallyOffered = new Set(Object.keys(tools).filter(name => !excludeToolNames.has(name)));
+  const unavailableGuidance: string[] = ['Controller authority: call only a function actually offered in this request.'];
+  if (!initiallyOffered.has('tracksTowardJourney')) {
+    unavailableGuidance.push('The sonic-journey waypoint function is unavailable for this pick. Do not call tracksTowardJourney; preserve its direction through an offered mood, genre, library, or other available discovery function.');
+  }
+  if (!initiallyOffered.has('tracksThatSoundLikeThis')) {
+    unavailableGuidance.push('The audio-similarity function is unavailable for this pick. Do not call tracksThatSoundLikeThis.');
+  }
   const messages: any[] = [
     { role: 'developer', content: ROUTER_SYSTEM },
-    { role: 'user', content: prompt },
+    { role: 'user', content: `${prompt}\n\n${unavailableGuidance.join(' ')}` },
   ];
   const toolCalls: RoutedDiscovery['toolCalls'] = [];
   const availability: RoutedDiscovery['availability'] = [];
-  const exhaustedTools = new Set<string>();
+  const usedTools = new Set<string>();
+  const exactCurrentArtist = currentArtistFromPrompt(prompt);
   const responses: string[] = [];
   let usage = { input: 0, output: 0, total: 0 };
 
   try {
-    for (let round = 0; round < 2; round++) {
+    const depth = config.discoveryDepth ?? 1;
+    const minCandidates = config.minCandidates ?? 12;
+    const maxRounds = depth === 1 ? 2 : depth;
+    for (let round = 0; round < maxRounds; round++) {
       // Recovery must change the state of the search. Once a discovery tool
       // returns no candidates, remove it from the next request rather than
       // asking a small router to remember a prose-only "do not retry" rule.
@@ -208,11 +239,11 @@ export async function routeProducerDiscovery({
       // repeatedly reconstructing the same plan when the failed route remained
       // available.
       const roundToolEntries = Object.entries(tools).filter(([name]) =>
-        !exhaustedTools.has(name) && !excludeToolNames.has(name));
+        !usedTools.has(name) && !excludeToolNames.has(name));
       const roundTools = Object.fromEntries(roundToolEntries) as ToolSet;
       const offered = openAiTools(roundTools);
       const offeredNames = roundToolEntries.map(([name]) => name);
-      if (!offered.length) throw new Error('Producer Router has no untried recovery tools');
+      if (!offered.length) throw new Error('Producer Router has no untried discovery tools');
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('Producer Router exhausted its shared deadline');
       const controller = new AbortController();
@@ -254,7 +285,28 @@ export async function routeProducerDiscovery({
       const selected: any = (roundTools as any)[call.name];
       if (!selected) throw new Error(`Producer Router selected unavailable tool "${call.name}"`);
       const validated = selected.inputSchema?.safeParse?.(call.arguments);
-      if (!validated?.success) throw new Error(`Producer Router supplied invalid arguments for "${call.name}"`);
+      if (!validated?.success || ((call.name === "topSongsByArtist" || call.name === "recentByArtist") && exactCurrentArtist != null && String(call.arguments.artist ?? "").toLowerCase() !== exactCurrentArtist.toLowerCase())) {
+        // One malformed first call receives a bounded retry with that tool removed.
+        // A repeated malformed call stays visible as a routing failure.
+        if (round !== 0) throw new Error("Producer Router supplied invalid arguments for \"" + call.name + "\"");
+        const replayId = rawCalls[0]?.id || "producer-router-" + round;
+        const result = { error: "Invalid arguments for " + call.name + "; choose a different offered function." };
+        usedTools.add(call.name);
+        toolCalls.push({ name: call.name, args: call.arguments, result });
+        messages.push({
+          role: "assistant", content: rawCalls.length ? (message?.content ?? null) : null,
+          tool_calls: rawCalls.length ? rawCalls : [{
+            id: replayId, type: "function",
+            function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+          }],
+        });
+        messages.push({ role: "tool", tool_call_id: replayId, name: call.name, content: JSON.stringify(result) });
+        messages.push({
+          role: "user",
+          content: "That call had invalid arguments. Choose one different offered recovery source with its exact required arguments.",
+        });
+        continue;
+      }
       if (typeof selected.execute !== 'function') throw new Error(`Producer Router selected non-executable tool "${call.name}"`);
 
       const replayId = rawCalls[0]?.id || `producer-router-${round}`;
@@ -265,8 +317,13 @@ export async function routeProducerDiscovery({
         abortSignal: undefined,
       });
       toolCalls.push({ name: call.name, args: validated.data, result });
-      if (seen.size > before) break;
-      exhaustedTools.add(call.name);
+      usedTools.add(call.name);
+      const candidatesAdded = seen.size - before;
+      if (call.name === "searchBySound" && candidatesAdded === 0) usedTools.add("tracksThatSoundLikeThis");
+      const continueAfterRound = round === 0
+        ? (depth > 1 || candidatesAdded === 0)
+        : round === 1 && depth === 3 && seen.size < minCandidates;
+      if (!continueAfterRound) break;
 
       messages.push({
         role: 'assistant',
@@ -282,6 +339,14 @@ export async function routeProducerDiscovery({
         tool_call_id: replayId,
         name: call.name,
         content: JSON.stringify(result),
+      });
+      messages.push({
+        role: "user",
+        content: candidatesAdded === 0
+          ? "That source returned no eligible candidates. Choose one different offered recovery source."
+          : round === 0
+            ? "Controller policy requests one complementary discovery source. Choose one different offered function."
+            : "The merged candidate pool is still thin; choose one final complementary offered source.",
       });
     }
 

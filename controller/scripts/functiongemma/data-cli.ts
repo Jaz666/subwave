@@ -43,7 +43,7 @@ writeFileSync(resolve(output, 'validation.json'), `${JSON.stringify(
   2,
 )}\n`);
 writeFileSync(resolve(output, 'manifest.json'), `${JSON.stringify({
-  format: 'subwave.functiongemma-routing.v5',
+  format: 'subwave.functiongemma-routing.v7-multiround',
   generatedAt: new Date().toISOString(),
   counts: { train: train.length, development: development.length },
   ...validation,

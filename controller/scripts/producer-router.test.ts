@@ -21,6 +21,7 @@ test('Producer Router stays disabled until both endpoint and model are configure
     PRODUCER_ROUTER_TIMEOUT_MS: '250',
   } as NodeJS.ProcessEnv), {
     baseUrl: 'http://router/v1', model: 'router.gguf', timeoutMs: 1000,
+    discoveryDepth: 1, minCandidates: 12,
   });
   assert.equal(producerSegmentRouterEnabled({} as NodeJS.ProcessEnv), false);
   assert.equal(producerSegmentRouterEnabled({ PRODUCER_ROUTER_SEGMENTS: 'true' } as NodeJS.ProcessEnv), true);
@@ -145,8 +146,25 @@ test('replays an empty tool result and permits exactly one recovery route', asyn
     requests[1].tools.map((entry: any) => entry.function.name),
     ['tracksByMood'],
   );
-  assert.equal(requests[1].messages.at(-2).role, 'assistant');
-  assert.equal(requests[1].messages.at(-1).role, 'tool');
+  assert.equal(requests[1].messages.at(-3).role, 'assistant');
+  assert.equal(requests[1].messages.at(-2).role, 'tool');
+  assert.equal(requests[1].messages.at(-1).role, 'user');
+});
+
+test("rejects a mutated current artist and recovers with another tool", async () => {
+  let turn = 0; let topExecuted = false; const seen = new Map<string, any>();
+  const result = await routeProducerDiscovery({ scope: {} as any, prompt: "artist route\n\n{\"currentTrack\":{\"artist\":\"Velvet Transit\"}}", config: { baseUrl: "http://router/v1", model: "router.gguf", timeoutMs: 5000 },
+    fetchImpl: (async () => jsonResponse({ role: "assistant", content: ++turn === 1 ? "<start_function_call>call:topSongsByArtist{artist:<escape>Veliosity<escape>}<end_function_call>" : "<start_function_call>call:tracksByMood{mood:<escape>calm<escape>,energy:null}<end_function_call>" })) as any,
+    buildTools: (() => ({ seen, tools: { topSongsByArtist: tool({ description: "top", inputSchema: z.object({ artist: z.string() }), execute: async () => { topExecuted = true; return []; } }), tracksByMood: tool({ description: "mood", inputSchema: z.object({ mood: z.string(), energy: z.string().nullable() }), execute: async () => { seen.set("ok", { id: "ok" }); return [{ id: "ok" }]; } }) } })) as any, recordImpl: (() => {}) as any });
+  assert.equal(topExecuted, false); assert.equal(result.toolCalls[1].name, "tracksByMood");
+});
+
+test("removes audio similarity after empty sound search", async () => {
+  const requests: any[] = [];
+  await assert.rejects(routeProducerDiscovery({ scope: {} as any, prompt: "sound", config: { baseUrl: "http://router/v1", model: "router.gguf", timeoutMs: 5000 },
+    fetchImpl: (async (_url: any, init: any) => { requests.push(JSON.parse(init.body)); return jsonResponse({ role: "assistant", content: requests.length === 1 ? "<start_function_call>call:searchBySound{query:<escape>warm guitar<escape>}<end_function_call>" : "<start_function_call>call:tracksThatSoundLikeThis{songId:<escape>seed<escape>}<end_function_call>" }); }) as any,
+    buildTools: (() => ({ seen: new Map(), tools: { searchBySound: tool({ description: "sound", inputSchema: z.object({ query: z.string() }), execute: async () => [] }), tracksThatSoundLikeThis: tool({ description: "audio", inputSchema: z.object({ songId: z.string() }), execute: async () => [] }), tracksByMood: tool({ description: "mood", inputSchema: z.object({}), execute: async () => [] }) } })) as any, recordImpl: (() => {}) as any }), /unavailable tool/);
+  assert.ok(!requests[1].tools.some((entry: any) => entry.function.name === "tracksThatSoundLikeThis"));
 });
 
 test('rejects a repeated empty route because exhausted tools are no longer offered', async () => {
@@ -316,4 +334,36 @@ test('records FunctionGemma final selection separately from discovery routing', 
   assert.equal(records[0].kind, 'djFunctionGemmaFinalSelect');
   assert.equal(records[0].ok, true);
   assert.deepEqual(records[0].toolCalls[0].args, { id: 'track-1' });
+});
+
+
+test('overrides a live journey call instruction when the waypoint tool is unavailable', async () => {
+  const requests: any[] = [];
+  const seen = new Map<string, any>();
+  const result = await routeProducerDiscovery({
+    scope: {} as any,
+    prompt: 'A sonic journey is active: call tracksTowardJourney and lean toward one of its tracks.',
+    config: { baseUrl: 'http://router/v1', model: 'router.gguf', timeoutMs: 5000 },
+    fetchImpl: (async (_url: any, init: any) => {
+      const request = JSON.parse(init.body);
+      requests.push(request);
+      const name = request.tools[0].function.name;
+      const args = name === 'tracksByMood' ? 'mood:<escape>focus<escape>,energy:<escape>medium<escape>' : 'genre:<escape>rock<escape>';
+      return jsonResponse({ role: 'assistant', content: `<start_function_call>call:${name}{${args}}<end_function_call>` });
+    }) as any,
+    buildTools: (() => ({ seen, tools: {
+      tracksByMood: tool({
+        description: 'structured mood route',
+        inputSchema: z.object({ mood: z.string(), energy: z.string().nullable() }),
+        execute: async () => { seen.set('fallback-1', { id: 'fallback-1' }); return [{ id: 'fallback-1' }]; },
+      }),
+      songsByGenre: tool({ description: 'genre route', inputSchema: z.object({ genre: z.string() }), execute: async () => [] }),
+    } })) as any,
+    recordImpl: (() => {}) as any,
+  });
+  assert.ok(['tracksByMood', 'songsByGenre'].includes(result.toolCalls[0].name));
+  const sent = requests[0].messages[1].content as string;
+  assert.match(sent, /Do not call tracksTowardJourney/);
+  assert.match(sent, /only a function actually offered/);
+  assert.ok(!requests[0].tools.some((entry: any) => entry.function.name === 'tracksTowardJourney'));
 });

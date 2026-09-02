@@ -187,8 +187,9 @@ export async function runModelScenario(
   const responseText: string[] = [];
   const finishReasons: string[] = [];
   const callsPerRound: number[] = [];
+  const usedTools = new Set<string>();
   const started = Date.now();
-  const maxRounds = scenario.stage === 'recover' ? 3 : 1;
+  const maxRounds = scenario.followups ? scenario.followups.length + 1 : scenario.stage === 'recover' ? 3 : 1;
 
   for (let round = 0; round < maxRounds; round++) {
     const controller = new AbortController();
@@ -204,7 +205,7 @@ export async function runModelScenario(
         body: JSON.stringify({
           model: options.model,
           messages,
-          tools: scenario.tools.map(openAiTool),
+          tools: scenario.tools.filter(tool => !usedTools.has(tool.name)).map(openAiTool),
           tool_choice: 'required',
           parallel_tool_calls: false,
           temperature: 0,
@@ -248,6 +249,8 @@ export async function runModelScenario(
     // One decision point permits exactly one call. Do not fabricate tool
     // results for an invalid multi-call response during evaluation.
     if (parsed.length !== 1) break;
+    const call = parsed[0];
+    usedTools.add(call.name);
 
     messages.push({
       role: 'assistant',
@@ -264,7 +267,20 @@ export async function runModelScenario(
         content: JSON.stringify(resultFor(scenario, call)),
       });
     }
-    if (parsed.some(call => call.name === 'done')) break;
+    const followup = scenario.followups?.find(candidate => candidate.afterTool === call.name);
+    if (followup) {
+      messages.push({ role: "user", content: followup.message });
+    } else if (scenario.stage === "recover") {
+      const result: any = resultFor(scenario, call);
+      const returnedCandidates = Array.isArray(result?.tracks) ? result.tracks.length : 0;
+      messages.push({
+        role: "user",
+        content: returnedCandidates === 0
+          ? "That source returned no eligible candidates. Choose one different offered recovery source."
+          : "Controller policy requests one complementary discovery source. Choose one different offered function.",
+      });
+    }
+    if (parsed.some(candidate => candidate.name === "done")) break;
   }
 
   return {

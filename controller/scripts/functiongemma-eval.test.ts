@@ -166,7 +166,8 @@ test('model runner carries an empty result into a different recovery call', asyn
   assert.equal(bodies[0].messages[0].role, 'developer');
   assert.equal(bodies[0].max_tokens, 256);
   assert.deepEqual(bodies[0].stop, ['<end_function_call>']);
-  assert.match(bodies[1].messages.at(-1).content, /absent from the semantic index/);
+  assert.match(JSON.stringify(bodies[1].messages), /absent from the semantic index/);
+  assert.match(bodies[1].messages.at(-1).content, /Choose one different offered recovery source/);
   assert.equal(scorePrediction(fixture, prediction).passed, true);
 });
 
@@ -232,10 +233,14 @@ test('training recovery examples contain an empty result and a changed tool', ()
     const calls = example.messages
       .filter(message => message.role === 'assistant')
       .flatMap(message => message.tool_calls ?? []);
-    assert.equal(calls.length, 2, example.id);
-    assert.notEqual(calls[0].function.name, calls[1].function.name, example.id);
+    assert.equal(calls.length, example.family === "recover.complement-playlist-to-mood-to-energy" ? 3 : 2, example.id);
+    assert.equal(new Set(calls.map(call => call.function.name)).size, calls.length, example.id);
     const result = example.messages.find(message => message.role === 'tool');
-    assert.deepEqual((result?.content as any)?.response?.tracks, [], example.id);
+    if (example.family === 'recover.complement-playlist-to-mood') {
+      assert.ok(Array.isArray((result?.content as any)?.response?.tracks) && (result?.content as any).response.tracks.length > 0, example.id);
+    } else {
+      assert.deepEqual((result?.content as any)?.response?.tracks, [], example.id);
+    }
   }
 });
 

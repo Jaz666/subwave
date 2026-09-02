@@ -6,16 +6,16 @@ import { summarizeDebug, TRACK_TRANSITION_COMBINATIONS } from '../src/stats.js';
 
 const tools = ['searchLibrary', 'randomSongs'];
 const stats = summarizeDebug(
-  [{ name: 'randomSongs' }, { name: 'randomSongs', failed: true }, { name: 'done' }],
+  [{ name: 'randomSongs' }, { name: 'randomSongs', error: true }, { name: 'randomSongs', empty: true }, { name: 'done' }],
   [{ transition: 'normal' }, { transition: 'sweep + washout' }],
   tools,
 );
 
 assert.equal(stats.toolCalls.window, 1000);
-assert.equal(stats.toolCalls.count, 3);
+assert.equal(stats.toolCalls.count, 4);
 assert.deepEqual(stats.toolCalls.byName, [
-  { name: 'randomSongs', count: 2, failed: 1 },
-  { name: 'searchLibrary', count: 0, failed: 0 },
+  { name: 'randomSongs', count: 3, errors: 1, empty: 1 },
+  { name: 'searchLibrary', count: 0, errors: 0, empty: 0 },
 ]);
 assert.equal(stats.transitions.window, 1000);
 assert.equal(stats.transitions.byName.find(row => row.name === 'normal')?.count, 1);

@@ -11,6 +11,7 @@ import { STATE_DIR } from '../../../config.js';
 import { logEvent, cap } from '../../../observability/events.js';
 import { addDailyUsage } from './budget.js';
 import { recordToolCall, STATS_WINDOW } from '../../../stats.js';
+import { logDiscoveryRoute, logInferencePerformance, logShortlistPick } from '../../../observability/analysis-log.js';
 
 const MAX_CALLS = STATS_WINDOW;
 export const recentCalls: any[] = [];
@@ -35,6 +36,9 @@ function logSuccess(call: any) {
 export function record(call: any) {
   recentCalls.unshift(call);
   if (recentCalls.length > MAX_CALLS) recentCalls.length = MAX_CALLS;
+  logInferencePerformance(call);
+  logDiscoveryRoute(call);
+  logShortlistPick(call);
   // Metadata only: prompts and responses stay in /debug and events.jsonl.
   // One line per success makes long-running container logs attributable by
   // generator without enabling raw request capture (#1435).
@@ -88,10 +92,18 @@ export function record(call: any) {
     // `done` is an internal structured-output control tool, not a music
     // discovery call. Keep this diagnostic focused on the picker registry.
     if (tc.name !== 'done') {
-      // A failed LLM attempt can still have completed discovery calls before
-      // it failed to produce a final answer. Skill tools also report their own
-      // timeout/exception as `{ error }`, so preserve both failure paths.
-      recordToolCall({ name: tc.name, failed: !call.ok || !!tc.result?.error });
+      // A route can fail after perfectly valid discovery calls simply because
+      // every source returned an empty pool. Keep that route-level outcome out
+      // of the per-tool error count: the Stats panel distinguishes actual tool
+      // errors from valid-but-empty discovery results.
+      const resultCount = Array.isArray(tc.result) ? tc.result.length
+        : Array.isArray(tc.result?.tracks) ? tc.result.tracks.length
+        : undefined;
+      recordToolCall({
+        name: tc.name,
+        error: !!tc.result?.error,
+        empty: resultCount === 0,
+      });
     }
     logEvent('tool', {
       kind: call.kind,
