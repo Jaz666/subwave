@@ -1,0 +1,32 @@
+{
+  "name": "router-v20-recovery",
+  "python": "/media/ssd/training/functiongemma-venv/bin/python",
+  "data": {
+    "prepare": [],
+    "train": "/media/ssd/training/data-router-v20/train.jsonl",
+    "development": "/media/ssd/training/data-router-v20/development.jsonl",
+    "validation": "/media/ssd/training/data-router-v20/validation.json"
+  },
+  "train": {
+    "base_model": "/media/ssd/training/router-v19-v18-availability-explicit/best",
+    "output": "/media/ssd/training/router-v20-recovery",
+    "epochs": 1,
+    "batch_size": 4,
+    "gradient_accumulation": 2,
+    "max_length": 1024,
+    "learning_rate": 0.000005,
+    "early_stopping_patience": 1,
+    "seed": 20260902
+  },
+  "native": { "iterations": 5 },
+  "server": {
+    "container": "subwave-functiongemma-eval",
+    "port": 8099,
+    "context": 4096
+  },
+  "q8": {
+    "iterations": 5,
+    "scenarios": ["route.audio-unavailable-fallback", "route.journey-unavailable-fallback", "recover.empty-journey-waypoint"]
+  },
+  "soak": { "examples": 100 }
+}
