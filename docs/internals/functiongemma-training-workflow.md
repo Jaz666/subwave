@@ -40,5 +40,7 @@ The generated `workflow-state.json` is the concise handover record. Full command
 output is written alongside it as `workflow-command.log`; this keeps terminal and
 agent output small. Do not place model checkpoints or generated corpora in Git.
 
-For the V20/V21 acceptance history and harness lessons, see
+Start with the consolidated experiment record:
+[`functiongemma-experiment-ledger.md`](functiongemma-experiment-ledger.md).
+For V20/V21's detailed acceptance evidence and harness lessons, see
 [`functiongemma-v20-v21-findings.md`](functiongemma-v20-v21-findings.md).
