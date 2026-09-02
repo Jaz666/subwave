@@ -44,6 +44,13 @@ exact lyric-query failures without copying the new held-out wording. The
 workflow now measures the parent on the candidate development set before
 training and stops comparisons that do not improve.
 
+V24 improved comparable development loss (0.03203 versus V22's 0.06799).
+Its final V26 controller-pinned sequence executes the classified initial
+source with the exact original request, then gives FunctionGemma two separate
+complementary discovery decisions. It passed the native and Q8 gates and the
+full Q8 soak. This is the accepted bounded-router candidate; V13 remains the
+runtime rollback until station promotion is independently verified.
+
 
 ## Experiment record
 
