@@ -1,0 +1,4 @@
+# Generated corpora and checkpoints are run artifacts, not source.
+data/
+output/
+__pycache__/
