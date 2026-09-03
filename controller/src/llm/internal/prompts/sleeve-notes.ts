@@ -26,6 +26,25 @@ export function sleeveNotesFor(track: any, playCount: number | null = null): str
   return notes;
 }
 
+
+// Extra facts are derived from controller context, never model knowledge.
+export function contextSleeveNotesFor(track: any, context: any, playCount: number | null = null): string[] {
+  const notes = sleeveNotesFor(track, playCount);
+  const season = text(context?.date?.season);
+  if (season) notes.push(`Season: ${season}.`);
+  const condition = text(context?.weather?.condition);
+  if (condition && condition !== 'unknown') {
+    const place = text(context?.weather?.location);
+    notes.push(`Weather${place ? ` in ${place}` : ''}: ${condition}.`);
+  }
+  const show = context?.activeShow;
+  if (text(show?.topic)) notes.push(`Show theme: ${text(show.topic)}.`);
+  if (text(show?.episodeAngle)) notes.push(`Episode angle: ${text(show.episodeAngle)}.`);
+  const festival = text(context?.festival?.name);
+  if (festival) notes.push(`Festival: ${festival}.`);
+  return notes;
+}
+
 /**
  * A link needs a little colour, not a metadata checklist. Keep a single
  * supplemental fact varied per link while retaining a deterministic seam for

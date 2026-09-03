@@ -7,11 +7,11 @@ This branch starts from upstream `develop` and deliberately does not carry the P
 The main DJ LLM remains responsible for listener-facing track links. This work improves prompt inputs and protects the handoff to TTS. It does not add a Producer model, FunctionGemma, segment/skill routing, or native shortlisting.
 
 ```text
-Internal instructions + verified context + selected track
+Selection and operational context
                     ↓
-              main DJ LLM
+  deterministic approved on-air fact plan
                     ↓
-        structured listener-facing speech
+  DJ writer: persona + house rules + approved plan only
                     ↓
              validation / TTS only
 ```
@@ -54,13 +54,32 @@ The reference range is the work after merge-base `65c840ee` on `codex/producer-r
 - Additional facts such as artist history, selection intent, audio observations, weather or programme context; each needs an explicit source and assertion policy.
 - How the prompt-only PR will be extracted from any already-completed source changes; this branch favours a clean vanilla implementation.
 
-## One-call agent boundary
+## Implemented split: selection from listener speech
 
-The session DJ agent selects a track and writes its listener-facing `say` field
-in the same response. The controller cannot build the resolved Verified Facts
-packet until that response returns, so this path remains one call for now and
-its schema explicitly limits `say` to listener-facing speech.
+The existing link-generation function combines internal selection/operational
+context with persona instructions and asks one model call to produce the final
+spoken line. That is no longer an acceptable safety boundary: different models
+can treat even a lightly worded mood, energy, scheduling or tool hint as
+creative material and repeat or imply it on air.
 
-If prompt leakage is observed on this path, evaluate a post-selection main-DJ
-link generation call. That would let the controller provide the same Verified
-Facts packet, at the cost of an additional LLM call and its latency.
+Split it into two explicit stages:
+
+1. **Approved on-air fact plan.** After a track is selected, controller code
+   builds the bounded Verified Facts packet and selects the
+   allowed on-air facts from it. This stage may use selection context, but produces no
+   speech.
+2. **DJ writer.** The existing main DJ writing call receives only the approved
+   fact plan, the required length, safe anti-repeat material, and its persona
+   / house rules. It must never receive selection mood, energy, tempo, key,
+   journey, ranking, candidate lists, show steering, or operational context.
+
+This prevents *prompt-context leakage*: a model cannot turn private selection
+cues into a listener-facing claim if those cues are absent from its prompt. It
+does not make a language model factually infallible, so validation remains
+between the writer and TTS.
+
+The session DJ agent now returns only its selected track, internal reason and
+transition decision. The controller then calls the normal main-DJ link writer
+with the selected track and its bounded Verified Facts packet. This adds one
+writer call to an agent-picked link, so its latency and allowance use must be
+measured separately.
