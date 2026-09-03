@@ -47,8 +47,10 @@ Git, or treat a local runtime model/checkpoint as source.
 | Music selection, moods, requests, genre rules or library data | `docs/internals/music.md` | `docs/internals/track-selection.md` on the test-station branch for the producer path. |
 | Broadcast timing, queue, transitions, speech or beds | `docs/internals/broadcast.md` | `liquidsoap/CLAUDE.md` before editing `radio.liq`. |
 | Schemas, settings or API data shapes | `docs/internals/schemas.md` | `controller/CLAUDE.md` or `web/CLAUDE.md` as appropriate. |
-| Producer Routing project | The test-station branch's `docs/internals/producer-routing-handover.md` | `track-selection.md`; do not assume FunctionGemma details unless the task explicitly needs router training. |
-| FunctionGemma training/evaluation | The FunctionGemma worktree's `docs/internals/functiongemma-experiment-ledger.md` | `functiongemma-training-workflow.md` and V20/V21 evidence only for a training run. |
+| DJ prompt boundary and grounding | [`docs/DEVELOPMENT_PATHS.md`](docs/DEVELOPMENT_PATHS.md) | `controller/CLAUDE.md`; use the existing Producer Routing work only as a read-only extraction source. |
+| Native track shortlisting | [`docs/DEVELOPMENT_PATHS.md`](docs/DEVELOPMENT_PATHS.md) | `docs/internals/music.md`; begin from a clean vanilla/develop base. |
+| Producer Routing project (on hold) | The test-station branch's `docs/internals/producer-routing-handover.md` | `track-selection.md`; resume only when explicitly requested. |
+| FunctionGemma training/evaluation (on hold) | The FunctionGemma worktree's `docs/internals/functiongemma-experiment-ledger.md` | `functiongemma-training-workflow.md` and V20/V21 evidence only when explicitly resumed. |
 | Skills, persona behaviour or programmes | `docs/custom-skills.md` plus `controller/CLAUDE.md` | The relevant programme/persona branch handover, if the task names it. |
 | Station deployment or live test | This file, then the test-station branch handover | The actual local `.env` and service status are operational facts; never commit them. |
 
@@ -57,21 +59,30 @@ load unrelated histories merely because they exist.
 
 ## Fork-specific development directions
 
-### Producer Routing
+### Active paths
 
-The main proposed architecture is a split between a grounded, bounded Producer
-path for structured discovery/routing and a creative model for DJ personas and
-listener-facing speech. This is a proposed opt-in upstream contribution, not a
-claim about upstream default behaviour. The controller remains the authority
-for availability, safety, queue state and final enforcement.
+The current active work is documented in [`docs/DEVELOPMENT_PATHS.md`](docs/DEVELOPMENT_PATHS.md):
 
-### FunctionGemma
+- **DJ prompt boundary and grounding** — keep prompt improvements, Verified
+  Facts, and Sleeve Notes with the main DJ LLM while enforcing a boundary
+  between internal context and listener-facing speech.
+- **Native track shortlisting** — use controller-native candidate retrieval,
+  ranking, de-duplication and bounded fallback, with the main DJ LLM retaining
+  final editorial selection.
 
-FunctionGemma is being evaluated as a small CPU-resident **discovery router**,
-not as the final editorial selector or a source of listener-facing prose.
-V21 is the current test-station candidate: it passed its native and Q8
-controller-path gates and its bounded Q8 soak. V13 remains the control and
-rollback baseline until the station evaluation supports promotion.
+### Producer Routing — on hold
+
+The proposed split between a grounded, bounded Producer path and a creative
+persona model is preserved for future review, but is not active work. Do not
+continue it by default or pull it into either active path. The controller
+remains the authority for availability, safety, queue state and final
+enforcement.
+
+### FunctionGemma — on hold
+
+FunctionGemma's discovery-router experiment, including V21 evidence and the
+V13 control/rollback baseline, is preserved but on hold. Do not initiate
+further training or inference work unless this project is explicitly resumed.
 
 The critical rule is to evaluate the exact controller transcript: offered tools,
 post-tool messages and exhausted-tool removal. A model must call exactly one
