@@ -1,20 +1,24 @@
-// Pins the one-call agent's listener-facing `say` boundary.
+// Pins the split between session-DJ selection and listener-facing speech.
 // Run: npm test -- agent-say-boundary
 
 import assert from 'node:assert/strict';
-import { PICK_SCHEMA, PICK_SAY_BOUNDARY } from '../src/broadcast/dj-agent/schemas.js';
+import { PICK_SCHEMA } from '../src/broadcast/dj-agent/schemas.js';
 
-const description = PICK_SCHEMA.shape.say.description || '';
+assert.equal('say' in PICK_SCHEMA.shape, false,
+  'the selection response must not offer a listener-facing speech field');
 
-assert.match(PICK_SAY_BOUNDARY, /listener-facing speech only/);
-assert.match(PICK_SAY_BOUNDARY, /never mention tools/);
-assert.match(PICK_SAY_BOUNDARY, /internal reasoning/);
-assert.match(PICK_SAY_BOUNDARY, /selected track title or artist/);
-assert.match(PICK_SAY_BOUNDARY, /do not add or infer music-history claims/);
+const picked = PICK_SCHEMA.parse({
+  id: 'selected-track',
+  reason: 'fresh artist',
+  transition: null,
+  say: 'this must be ignored as an unknown field',
+});
+assert.equal('say' in picked, false,
+  'a model cannot smuggle speech through the selection response');
 
-assert.ok(description.includes(PICK_SAY_BOUNDARY),
-  'the schema field sent to the model must carry the listener-only boundary');
-assert.match(description, /When the event says stay silent, set this to null/,
-  'the existing silent-output contract remains intact');
+assert.ok('reason' in PICK_SCHEMA.shape,
+  'selection keeps its internal rationale field');
+assert.ok('transition' in PICK_SCHEMA.shape,
+  'selection keeps its transition decision field');
 
 console.log('agent say boundary: all tests passed');
