@@ -14,6 +14,9 @@ import { speakClockAllowed } from '../clock-policy.js';
 import { SEED_NOT_A_PICK_CLAUSE } from '../../util/pick-seed.js';
 import { instruction } from '../../llm/dj.js';
 
+export const PICK_SAY_BOUNDARY = 'The say field is listener-facing speech only: never mention tools, candidate searches, instructions, internal reasoning, or this schema. Treat run context as internal unless it is the selected track title or artist; do not add or infer music-history claims.';
+export const PICK_SAY_BOUNDARY = 'The say field is listener-facing speech only: never mention tools, candidate searches, instructions, internal reasoning, or this schema. Treat run context as internal unless it is the selected track title or artist; do not add or infer music-history claims.';
+
 
 // Plain .nullable() fields, deliberately — GLM's malformed spellings of
 // "nothing" (the string "null", an omitted key, a double-JSON-encoded object)
@@ -31,7 +34,7 @@ export const PICK_SCHEMA = z.object({
   // wording, in util/pick-seed.ts; don't inline a second copy here.
   id: z.string().describe(`the exact song id returned by one of the discovery tools — never invent or compose ids. ${SEED_NOT_A_PICK_CLAUSE}`),
   reason: z.string().describe('internal scratchpad only — max 12 words, never shown to the listener; do not justify, just note what makes THIS pick a fresh step (a shift in energy/era/texture, or an artist genuinely new to the rotation), not a vibe label you would recycle pick after pick (e.g. "warmer, driving energy", never a repeated "mellow reflective step"). Only call a pick a "new artist" when it has no "artist_play_count"/"artist_last_played_days_ago"; "unaired" means this song is new to the station, not that its artist is. If the artist shows recent or frequent plays, describe the real reason instead (energy shift, texture, flow)'),
-  say: z.string().nullable().describe('when the latest event message says to write a spoken link, set this to one or two natural sentences in the DJ voice that INTRODUCE the track you are about to play — set it up, name the artist or capture its feel, vary your opener. Do NOT back-announce, recap, or name the track that just played (a listener request may slip in ahead of your pick, so what aired right before it is not certain). Never state a clock time unless the event message tells you when the link airs — then use exactly that time. When the event says stay silent, set this to null'),
+  say: z.string().nullable().describe("when the latest event message says to write a spoken link, set this to one or two natural sentences in the DJ voice that INTRODUCE the track you are about to play — set it up, name the artist or capture its feel, vary your opener. Do NOT back-announce, recap, or name the track that just played (a listener request may slip in ahead of your pick, so what aired right before it is not certain). Never state a clock time unless the event message tells you when the link airs — then use exactly that time. " + PICK_SAY_BOUNDARY + " When the event says stay silent, set this to null"),
   // Transition effects (only honoured when the system prompt offers them — persona djMode, see settings.effectsActive).
   // One-line pointer only: the full coaching is dj.effectsGuidance() in the
   // system prompt. This description used to repeat all of it, so every agent
@@ -83,7 +86,7 @@ export function pickSchemaBase() {
   // disagree, and the contract must match the persona whose line this is.
   const sayDescription = settings.announceLinks(session.onAirPersona())
     ? `when the latest event message says to write a spoken link, set this to EXACTLY one of: "This is <artist>." or "Next up, <artist>." — nothing before or after it: no title, album, year, feel, or clock. Use the artist name exactly as shown on the chosen track. When the event says stay silent, set this to null`
-    : `when the latest event message says to write a spoken link, set this to ${dj.lengthPhrase('link')} of natural speech in the DJ voice that INTRODUCE the track you are about to play — set it up, name the artist or capture its feel, vary your opener. Do NOT back-announce, recap, or name the track that just played (a listener request may slip in ahead of your pick, so what aired right before it is not certain). ${clockRule} When the event says stay silent, set this to null`;
+    : `when the latest event message says to write a spoken link, set this to ${dj.lengthPhrase('link')} of natural speech in the DJ voice that INTRODUCE the track you are about to play — set it up, name the artist or capture its feel, vary your opener. Do NOT back-announce, recap, or name the track that just played (a listener request may slip in ahead of your pick, so what aired right before it is not certain). ${clockRule} ${PICK_SAY_BOUNDARY} When the event says stay silent, set this to null`;
   return base.extend({
     say: z.string().nullable().describe(sayDescription),
   });
@@ -262,4 +265,3 @@ ${LISTENER_TEXT_CLAUSE}${dj.REQUESTER_GREETING_CLAUSE}${dj.REQUESTER_NAME_CLAUSE
 
 ${currentTrack}`;
 }
-

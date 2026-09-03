@@ -53,3 +53,14 @@ The reference range is the work after merge-base `65c840ee` on `codex/producer-r
 - Whether handovers and skill segments should adopt the same boundary later.
 - Additional facts such as artist history, selection intent, audio observations, weather or programme context; each needs an explicit source and assertion policy.
 - How the prompt-only PR will be extracted from any already-completed source changes; this branch favours a clean vanilla implementation.
+
+## One-call agent boundary
+
+The session DJ agent selects a track and writes its listener-facing `say` field
+in the same response. The controller cannot build the resolved Verified Facts
+packet until that response returns, so this path remains one call for now and
+its schema explicitly limits `say` to listener-facing speech.
+
+If prompt leakage is observed on this path, evaluate a post-selection main-DJ
+link generation call. That would let the controller provide the same Verified
+Facts packet, at the cost of an additional LLM call and its latency.
