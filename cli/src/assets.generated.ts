@@ -14,8 +14,11 @@ export const COMPOSE_YML = `# SUB/WAVE — production orchestration. Only Caddy 
 # keep it clear of \`git clean -dffx\`.
 
 x-state: &state-mount \${STATE_DIR:-./state}:/var/sub-wave
-# Optional host relocation for the stem cache. The container path stays fixed
-# so the controller and analyzer always share the same cache.
+# Optional host relocation for the stem cache (STEMS_DIR in .env). The
+# container path is fixed because compose cannot know which station is active;
+# SUBWAVE_STEMS_DIR hands that path to the controller and the broadcast
+# entrypoint, which re-append the per-station segment under it. Unset leaves
+# the cache under the state dir, exactly as before.
 x-stems: &stems-mount \${STEMS_DIR:-\${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service) — the default json-file
@@ -84,6 +87,11 @@ services:
       - ICECAST_TRUSTED_PROXY_HOSTS=\${ICECAST_TRUSTED_PROXY_HOSTS:-}
       # Keeps the hourly archive paths (%Y-%m-%d/%H-00.mp3) on local wall time.
       - TZ=\${TZ:-Europe/London}
+      # Container path of the STEMS_DIR bind mount above — empty when the
+      # operator did not relocate, which keeps the cache under the state dir
+      # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
+      # HOST path and reaches the controller through \`env_file: ./.env\`.
+      - SUBWAVE_STEMS_DIR=\${STEMS_DIR:+/var/sub-wave/stems}
     extra_hosts:
       # Liquidsoap fetching Subsonic URLs that point at host services
       # (e.g. NAVIDROME_URL=http://host.docker.internal:4533).
@@ -129,6 +137,11 @@ services:
       - TZ=\${TZ:-Europe/London}
       - STATE_DIR=/var/sub-wave
       - SOUNDS_DIR=/sounds
+      # Container path of the STEMS_DIR bind mount above — empty when the
+      # operator did not relocate, which keeps the cache under the state dir
+      # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
+      # HOST path and reaches the controller through \`env_file: ./.env\`.
+      - SUBWAVE_STEMS_DIR=\${STEMS_DIR:+/var/sub-wave/stems}
       # Optional Chatterbox/PocketTTS sidecar (--profile tts-heavy). When the
       # profile is off the URL is unreachable and TTS falls back to Piper.
       - TTS_HEAVY_URL=\${TTS_HEAVY_URL:-http://tts-heavy:8080}
@@ -351,8 +364,11 @@ export const COMPOSE_BYO_YML = `# SUB/WAVE — production without the bundled re
 # \`docker compose down -v\` won't touch it.
 
 x-state: &state-mount \${STATE_DIR:-./state}:/var/sub-wave
-# Optional host relocation for the stem cache. The container path stays fixed
-# so the controller and analyzer always share the same cache.
+# Optional host relocation for the stem cache (STEMS_DIR in .env). The
+# container path is fixed because compose cannot know which station is active;
+# SUBWAVE_STEMS_DIR hands that path to the controller and the broadcast
+# entrypoint, which re-append the per-station segment under it. Unset leaves
+# the cache under the state dir, exactly as before.
 x-stems: &stems-mount \${STEMS_DIR:-\${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service).
@@ -386,6 +402,11 @@ services:
       - ICECAST_TRUSTED_PROXY_IPS=\${ICECAST_TRUSTED_PROXY_IPS:-}
       - ICECAST_TRUSTED_PROXY_HOSTS=\${ICECAST_TRUSTED_PROXY_HOSTS:-}
       - TZ=\${TZ:-Europe/London}
+      # Container path of the STEMS_DIR bind mount above — empty when the
+      # operator did not relocate, which keeps the cache under the state dir
+      # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
+      # HOST path and reaches the controller through \`env_file: ./.env\`.
+      - SUBWAVE_STEMS_DIR=\${STEMS_DIR:+/var/sub-wave/stems}
     ports:
       - "\${BIND_ADDRESS:-0.0.0.0}:\${ICECAST_PORT:-7702}:7702"
     extra_hosts:
@@ -427,6 +448,11 @@ services:
       - TZ=\${TZ:-Europe/London}
       - STATE_DIR=/var/sub-wave
       - SOUNDS_DIR=/sounds
+      # Container path of the STEMS_DIR bind mount above — empty when the
+      # operator did not relocate, which keeps the cache under the state dir
+      # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
+      # HOST path and reaches the controller through \`env_file: ./.env\`.
+      - SUBWAVE_STEMS_DIR=\${STEMS_DIR:+/var/sub-wave/stems}
       # Optional Chatterbox/PocketTTS sidecar (--profile tts-heavy);
       # unreachable URL → fall back to Piper.
       - TTS_HEAVY_URL=\${TTS_HEAVY_URL:-http://tts-heavy:8080}
@@ -608,8 +634,11 @@ export const COMPOSE_DEV_YML = `# SUB/WAVE — dev compose (local smoke test): B
 # State + sounds + radio.liq are bind-mounted so dev cycles need no rebuilds.
 
 x-state: &state-mount \${STATE_DIR:-./state}:/var/sub-wave
-# Optional host relocation for the stem cache. The container path stays fixed
-# so the controller and analyzer always share the same cache.
+# Optional host relocation for the stem cache (STEMS_DIR in .env). The
+# container path is fixed because compose cannot know which station is active;
+# SUBWAVE_STEMS_DIR hands that path to the controller and the broadcast
+# entrypoint, which re-append the per-station segment under it. Unset leaves
+# the cache under the state dir, exactly as before.
 x-stems: &stems-mount \${STEMS_DIR:-\${STATE_DIR:-./state}/stems}:/var/sub-wave/stems
 
 # Cap container log growth (10m × 3 ≈ 30MB/service).
@@ -651,6 +680,11 @@ services:
       - ICECAST_TRUSTED_PROXY_IPS=\${ICECAST_TRUSTED_PROXY_IPS:-}
       - ICECAST_TRUSTED_PROXY_HOSTS=\${ICECAST_TRUSTED_PROXY_HOSTS:-}
       - TZ=\${TZ:-Europe/London}
+      # Container path of the STEMS_DIR bind mount above — empty when the
+      # operator did not relocate, which keeps the cache under the state dir
+      # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
+      # HOST path and reaches the controller through \`env_file: ./.env\`.
+      - SUBWAVE_STEMS_DIR=\${STEMS_DIR:+/var/sub-wave/stems}
     extra_hosts:
       # Liquidsoap fetching Subsonic URLs that point at host services.
       - "host.docker.internal:host-gateway"
@@ -696,6 +730,11 @@ services:
       - TZ=\${TZ:-Europe/London}
       - STATE_DIR=/var/sub-wave
       - SOUNDS_DIR=/sounds
+      # Container path of the STEMS_DIR bind mount above — empty when the
+      # operator did not relocate, which keeps the cache under the state dir
+      # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
+      # HOST path and reaches the controller through \`env_file: ./.env\`.
+      - SUBWAVE_STEMS_DIR=\${STEMS_DIR:+/var/sub-wave/stems}
       # Optional Chatterbox/PocketTTS sidecar (--profile tts-heavy);
       # unreachable URL → fall back to Piper.
       - TTS_HEAVY_URL=\${TTS_HEAVY_URL:-http://tts-heavy:8080}
@@ -957,8 +996,12 @@ SITE_URL=
 
 # Storage + locale
 # STATE_DIR=./state
-# Optional: place the stem cache on another disk. This host path is mounted
-# into broadcast, controller, and analyzer at /var/sub-wave/stems.
+# Optional: place the stem cache on another disk. This HOST path is mounted
+# into broadcast, controller and analyzer at a fixed container path, which the
+# three of them read back as SUBWAVE_STEMS_DIR. Multi-station installs keep a
+# per-station folder under it. Unset = the cache stays at <STATE_DIR>/stems.
+# Moving it does NOT migrate what is already cached — \`mv\` the old contents
+# across first, or the old copy just sits there unreferenced.
 # STEMS_DIR=/mnt/bigdisk/subwave-stems
 # TZ=Europe/London
 
