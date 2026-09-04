@@ -29,6 +29,83 @@ export type ShortlistResult = {
   elapsedMs: number;
 };
 
+type ReplayToolCall = {
+  name?: string;
+  args: unknown;
+  result: unknown;
+  round?: number;
+};
+
+function resultTrackIds(result: unknown): string[] {
+  const tracks = Array.isArray(result)
+    ? result
+    : result && typeof result === 'object' && Array.isArray((result as { tracks?: unknown }).tracks)
+      ? (result as { tracks: unknown[] }).tracks
+      : [];
+  return tracks
+    .map((track: any) => track?.id)
+    .filter((id): id is string => typeof id === 'string');
+}
+
+// The durable replay record deliberately contains only data required to rerun
+// discovery: resolved guards, source calls, and stable candidate ids. It keeps
+// prompts, model responses, credentials, and unrelated session history out of
+// the fixture stream.
+export function replayFixtureTrace({
+  currentTrack,
+  show,
+  scope,
+  toolCalls,
+}: {
+  currentTrack: any;
+  show: any;
+  scope: PickerScope;
+  toolCalls: ReplayToolCall[];
+}) {
+  return {
+    version: 1,
+    currentTrack: currentTrack ? {
+      id: currentTrack.id ?? null,
+      title: currentTrack.title ?? null,
+      artist: currentTrack.artist ?? null,
+      album: currentTrack.album ?? null,
+    } : null,
+    show: show ? {
+      id: show.id ?? null,
+      name: show.name ?? null,
+      genres: show.genres ?? [],
+      moods: show.moods ?? [],
+      energies: show.energies ?? [],
+      eras: show.eras ?? [],
+      filtersStrict: !!show.filtersStrict,
+      playlistStrict: !!show.playlistStrict,
+    } : null,
+    scope: {
+      recentIds: [...scope.recentIds].sort(),
+      recentKeys: [...scope.recentKeys].sort(),
+      hardRecentIds: [...scope.hardRecentIds].sort(),
+      hardRecentKeys: [...scope.hardRecentKeys].sort(),
+      genreLock: scope.genreLock,
+      eraLock: scope.eraLock,
+      moodLock: scope.moodLock,
+      energyLock: scope.energyLock,
+      vocalLock: scope.vocalLock,
+      playlistLock: scope.playlistLock ? [...scope.playlistLock].sort() : null,
+      playlistTrackIds: scope.playlistTracks?.map((track: any) => track?.id).filter(Boolean) ?? null,
+      excludedIds: scope.excludedIds ? [...scope.excludedIds].sort() : null,
+      audioWaypoint: scope.audioWaypoint,
+    },
+    sourceCalls: toolCalls
+      .filter((call) => typeof call.name === 'string')
+      .map((call) => ({
+        source: call.name,
+        args: call.args && typeof call.args === 'object' ? call.args : {},
+        round: call.round ?? 1,
+        candidateIds: resultTrackIds(call.result),
+      })),
+  };
+}
+
 type PickerTool = {
   inputSchema?: { safeParse?: (value: unknown) => { success: boolean; data?: unknown; error?: { issues?: Array<{ message?: string }> } } };
   execute?: (args: unknown, context: unknown) => Promise<unknown>;
