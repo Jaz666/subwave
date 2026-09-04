@@ -48,7 +48,7 @@ mkdir -p "$JINGLE_DIR_HOST"
 
 if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -q '^controller$'; then
   echo "Controller container is not running. Bring the stack up first:" >&2
-  echo "  docker compose ${COMPOSE_FILE} up -d" >&2
+  echo "  ${COMPOSE[*]} up -d" >&2
   exit 1
 fi
 
