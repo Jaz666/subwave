@@ -163,7 +163,10 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null }): Promise<boolean> {
+// Build the exact discovery scope used by a live next-track pick. Diagnostics
+// call this too, so a tool run sees the same recency, show and playlist policy
+// as the DJ rather than a convenient-but-different approximation.
+export async function livePickerScope(queue: any, { audioWaypoint = null, showAt = null }: { audioWaypoint?: number[] | null; showAt?: Date | null } = {}) {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -285,6 +288,12 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     playlistTracks,
     excludedIds,
   });
+
+  return { scope, playlistTracks };
+}
+
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null }): Promise<boolean> {
+  const { scope, playlistTracks } = await livePickerScope(queue, { audioWaypoint, showAt });
 
   const run = await pickerAgent.run({
     messages: session.windowMessages(),

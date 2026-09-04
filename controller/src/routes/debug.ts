@@ -27,8 +27,63 @@ import { getStationTimezone } from '../time.js';
 import { publicOrigin } from './public.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { BadStatePathError, listStateDir } from '../util/state-tree.js';
+import { buildPickerTools, PICKER_TOOLS } from '../llm/tools.js';
+import { livePickerScope } from '../broadcast/dj-agent.js';
 
 export const router = express.Router();
+
+// ---------------------------------------------------------------------------
+// Discovery bench — read-only execution of the exact picker-tool registry.
+// It deliberately does not call an LLM, enqueue a track, or write any station
+// state: this is the operator's way to inspect the candidate sources a normal
+// next-track run has available.
+// ---------------------------------------------------------------------------
+const REQUEST_ONLY_PICKER_TOOL = 'identifyRequestedTrack';
+
+async function discoveryBench() {
+  const { scope } = await livePickerScope(queue);
+  const { tools } = buildPickerTools(scope);
+  return { scope, tools };
+}
+
+router.get('/debug/discovery', requireAdmin, async (_req, res) => {
+  try {
+    const { tools } = await discoveryBench();
+    const current = queue.current?.track ?? null;
+    res.json({
+      current: current ? { id: current.id, title: current.title, artist: current.artist, genre: current.genre } : null,
+      tools: PICKER_TOOLS
+        .filter((entry) => entry.name !== REQUEST_ONLY_PICKER_TOOL)
+        .map((entry) => ({
+          name: entry.name,
+          available: !!tools[entry.name],
+          description: (tools[entry.name] as any)?.description ?? null,
+        })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || String(err) });
+  }
+});
+
+router.post('/debug/discovery/:tool', requireAdmin, async (req, res) => {
+  try {
+    const name = String(req.params.tool || '');
+    if (name === REQUEST_ONLY_PICKER_TOOL || !PICKER_TOOLS.some((entry) => entry.name === name)) {
+      return res.status(404).json({ error: 'unknown next-track discovery tool' });
+    }
+    const { tools } = await discoveryBench();
+    const tool: any = tools[name];
+    if (!tool) return res.status(409).json({ error: `${name} is unavailable for the current picker scope` });
+    const args = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const parsed = tool.inputSchema?.safeParse?.(args);
+    if (parsed && !parsed.success) return res.status(400).json({ error: parsed.error.issues?.[0]?.message || 'invalid tool input' });
+    const started = performance.now();
+    const result = await tool.execute(parsed?.data ?? args, { toolCallId: `discovery-bench:${name}`, messages: [] });
+    res.json({ name, elapsedMs: Math.round(performance.now() - started), result });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || String(err) });
+  }
+});
 
 // GET /requests — recent listener requests and exactly how the AI DJ resolved
 // each (intent breakdown, which path handled it, the picked track, the spoken
