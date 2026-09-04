@@ -69,6 +69,8 @@ export interface ToolCallSummary {
   name: string | undefined;
   args: unknown;
   result: unknown;
+  // One-based discovery round, retained for faithful native-shortlist replay.
+  round: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +487,7 @@ export function errReason(err: ErrorLike | null | undefined): string {
 // synthetic `done` tool — it's the schema-emit signal, not a real discovery
 // action. Shared by the native-output and done-tool branches of djAgent.
 export function flattenToolCalls(result: { steps?: StepLike[] } | null | undefined): ToolCallSummary[] {
-  return (result?.steps || []).flatMap((s) => {
+  return (result?.steps || []).flatMap((s, stepIndex) => {
     const results = s.toolResults || [];
     return (s.toolCalls || [])
       .filter((c) => c.toolName !== 'done')
@@ -493,6 +495,7 @@ export function flattenToolCalls(result: { steps?: StepLike[] } | null | undefin
         name: c.toolName,
         args: c.input ?? c.args ?? null,
         result: results[i]?.output ?? results[i]?.result ?? null,
+        round: stepIndex + 1,
       }));
   });
 }

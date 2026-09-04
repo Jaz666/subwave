@@ -277,3 +277,15 @@ current-track/show/journey context, discovery round and result identifiers or
 stable candidate metadata) while excluding credentials, tokens and unrelated
 prompt contents. Do not restart the controller merely to add this observability
 without first notifying the user; they are collecting latency data.
+
+### Replay-trace capture
+
+`picker.replayTrace` now emits one factual, redacted event for every completed
+agentic picker run. It contains the resolved replay scope, minimal
+current-track and show context, one-based discovery rounds, source arguments
+and returned candidate ids. It deliberately omits prompts, model responses,
+credentials and unrelated session history.
+
+The change is not deployed to the integration station. Notify the user before
+any controller rebuild or restart; after deployment, retain representative
+events as replay fixtures before starting the automatic source planner.
