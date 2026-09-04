@@ -1,6 +1,31 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { executeShortlistPlan } from '../src/music/shortlist.js';
+import { executeShortlistPlan, replayFixtureTrace } from '../src/music/shortlist.js';
+import { pickerScope } from '../src/llm/tools.js';
+
+test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
+  const trace = replayFixtureTrace({
+    currentTrack: { id: 'current', title: 'Current Song', artist: 'Current Artist', album: 'Album' },
+    show: { id: 'show-1', name: 'Night Shift', genres: ['ambient'], filtersStrict: true },
+    scope: pickerScope({
+      recentIds: new Set(['recent-b', 'recent-a']),
+      playlistTracks: [{ id: 'playlist-track', title: 'Never logged' }],
+      audioWaypoint: [0.1, 0.2],
+    }),
+    toolCalls: [{
+      name: 'tracksLikeThis', args: { songId: 'current' }, round: 2,
+      result: { tracks: [{ id: 'candidate-a', title: 'Only the id survives' }] },
+    }],
+  });
+
+  assert.deepEqual(trace.sourceCalls, [{
+    source: 'tracksLikeThis', args: { songId: 'current' }, round: 2, candidateIds: ['candidate-a'],
+  }]);
+  assert.deepEqual(trace.scope.recentIds, ['recent-a', 'recent-b']);
+  assert.deepEqual(trace.scope.playlistTrackIds, ['playlist-track']);
+  assert.equal(trace.currentTrack.title, 'Current Song');
+  assert.equal('title' in trace.sourceCalls[0], false);
+});
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
   const seen = new Map<string, any>();
