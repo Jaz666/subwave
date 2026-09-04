@@ -29,6 +29,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { BadStatePathError, listStateDir } from '../util/state-tree.js';
 import { buildPickerTools, PICKER_TOOLS } from '../llm/tools.js';
 import { livePickerScope } from '../broadcast/dj-agent.js';
+import { activeJourneyWaypoint } from '../broadcast/dj-agent/runs.js';
 
 export const router = express.Router();
 
@@ -41,7 +42,7 @@ export const router = express.Router();
 const REQUEST_ONLY_PICKER_TOOL = 'identifyRequestedTrack';
 
 async function discoveryBench() {
-  const { scope } = await livePickerScope(queue);
+  const { scope } = await livePickerScope(queue, { audioWaypoint: activeJourneyWaypoint() });
   const { tools } = buildPickerTools(scope);
   return { scope, tools };
 }
