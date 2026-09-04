@@ -263,3 +263,17 @@ source traces into replay fixtures and implement the conservative state-led
 source planner: journey, show playlist, current-track audio/text similarity,
 mood/energy and the existing deep-cut nudge. Do not introduce new music
 heuristics or a global shortlist cap.
+
+### Replay-fixture prerequisite
+
+The captured discovery-route logs currently record only source names and
+result counts. They do **not** include the source arguments or the pick context
+required to make faithful replay fixtures. Before implementing the automatic
+source planner, obtain a full trace export containing those fields, or add
+detailed redacted trace logging long enough to capture representative picks.
+
+Redaction must retain the fields needed for replay (source, arguments,
+current-track/show/journey context, discovery round and result identifiers or
+stable candidate metadata) while excluding credentials, tokens and unrelated
+prompt contents. Do not restart the controller merely to add this observability
+without first notifying the user; they are collecting latency data.
