@@ -59,6 +59,7 @@ import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
+import { replayFixtureTrace } from '../music/shortlist.js';
 import type { Persona } from './queue/types.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
@@ -304,6 +305,14 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     showAt,
   });
   const { steps, toolCalls, extras } = run;
+  // One factual, redacted record supplies faithful replay fixtures for native
+  // shortlisting. It intentionally excludes the prompt and model response.
+  logEvent('picker.replayTrace', replayFixtureTrace({
+    currentTrack: current,
+    show: activeShow,
+    scope,
+    toolCalls,
+  }));
   let object = run.object;
 
   let song = object?.id ? extras.seen.get(object.id) : null;
