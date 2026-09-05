@@ -406,6 +406,21 @@ class Queue {
     return out;
   }
 
+  // The text of the most recent between-track link that actually AIRED, or
+  // null. djLog entries for voice kinds are written by onSpoken — after the
+  // clip reached the stream — which is what makes this the right anchor for
+  // announce-mode's alternation (broadcast/announce-line.ts): a link that was
+  // composed and then dropped (silence ordered, intro budget, refused pick)
+  // never lands here, so the next one can't repeat the form the listener just
+  // heard. 'link' is the kind both link paths log under — enqueuePick's
+  // introKind and announce()'s own kind.
+  getLastLinkText(): string | null {
+    for (const entry of this.djLog) {
+      if (entry.kind === 'link') return entry.message || null;
+    }
+    return null;
+  }
+
   // Timestamp (ms) of the most recent on-air spoken segment, or 0. Defaults to
   // every voice kind; pass `kinds` to narrow it (the segment director's
   // frequency floor asks only about the scheduler's wall-clock talkers —
@@ -1586,6 +1601,15 @@ class Queue {
     } catch (err) {
       this.log('error', `Deferred announce failed: ${(err as Error).message}`);
     }
+  }
+
+  // The kind of segment already rendered and waiting for the next track
+  // boundary, or null. Talk that has NOT aired yet, so getLastTalkBreakAt()
+  // cannot report it — which is precisely why the talk scheduler asks: a slot
+  // gated on a quiet gap must not fire ten seconds in front of an ident that
+  // has been queued for three minutes (#1419, #1500).
+  pendingVoiceKind(): string | null {
+    return this._pendingVoice?.kind ?? null;
   }
 
   // Discard a scheduled-but-unaired deferred segment. A mic-pass supersedes an
