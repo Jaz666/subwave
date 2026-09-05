@@ -16,6 +16,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, mkdirSync, createWriteStream, readFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { config } from '../config.js';
 import * as subsonic from './subsonic.js';
@@ -1075,6 +1076,25 @@ export async function downloadCapped(
     // exactly cap bytes is flagged incomplete too; erring that way only skips
     // outro analysis, never mis-measures it.)
     return { path: dest, complete: read < ANALYZE_MAX_BYTES };
+  } catch (err) {
+    // Drop the staging file on EVERY failure. `createWriteStream` truncates
+    // `dest` into existence the moment the pipeline starts, so three of the
+    // throws below it leave a file the caller never learns about: a pipeline
+    // rejection, the `read === 0` guard, and the small-file non-audio backstop.
+    // Only the SUCCESS path hands a path back, and the caller only ever cleans
+    // up paths it was handed — runAnalysisPass's one-ahead prefetch reduces a
+    // rejection to `{err}` and drops the filename on the floor — so nothing
+    // else can reach these.
+    //
+    // Blanket rather than per-throw on purpose: the two guards ABOVE the
+    // pipeline (`!res.ok`, the content-type check) create no file, `force`
+    // makes removing a path that was never created a no-op, and enumerating
+    // which throws happen to be past the `createWriteStream` line is exactly
+    // the distinction a later edit would get wrong. Best-effort — a cleanup
+    // that itself fails must not replace the real error. The cap path is NOT
+    // a failure: `capped()` returns normally, so this never runs on it.
+    await rm(dest, { force: true }).catch(() => {});
+    throw err;
   } finally {
     clearTimeout(t);
   }
