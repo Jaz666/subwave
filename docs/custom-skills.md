@@ -37,8 +37,8 @@ state/skills/
     tool.mjs      # OPTIONAL: a data fetcher, wrapped as a tool the DJ can call
 ```
 
-Two copy-ready examples live in [`docs/examples/skills`](./examples/skills) — copy
-a folder into `state/skills/` and hit **Rescan** in the admin Skills page:
+Three copy-ready examples live in [`docs/examples/skills`](./examples/skills) —
+copy a folder into `state/skills/` and hit **Rescan** in the admin Skills page:
 
 - [`moon-phase`](./examples/skills/moon-phase) — the small end. No settings, no
   network, no memory: it works out the lunar phase from the date and returns it.
@@ -46,6 +46,13 @@ a folder into `state/skills/` and hit **Rescan** in the admin Skills page:
   (`configFields`), a call out to a public API, and `state` so it marks the
   sunset once a day rather than every time it fires. Fill in its coordinates in
   the edit sheet before it will say anything.
+- [`todoist`](./examples/skills/todoist) — the same shape against an
+  **authenticated** API: the DJ picks one outstanding task off your Todoist list
+  and dares the room to go and do it before the next record ends. Put
+  `TODOIST_API_TOKEN` in the root `.env` — the whole file is passed into the
+  controller, so any key you add there reaches `process.env` — then set the
+  filter in the edit sheet. Each task is burned on read for the rest of the day,
+  so it nudges rather than nags.
 
 ## SKILL.md
 
@@ -226,12 +233,16 @@ morning bulletin, a sign-off, a running joke tied to a particular hour. It still
 suits a skill that speaks *only when something is notable* less well: it fires
 on the clock rather than on the news, so it will keep asking at 8am whether
 there is anything to say. It just no longer makes something up when the answer
-is no. Both example skills in
-[`docs/examples/skills`](examples/skills) are in that second group and
-deliberately carry no `cron:` — `moon-phase` is meant to skip an unremarkable
-gibbous, and `sunset` tracks a time that moves through the year, so pinning it to
-a fixed clock reading would be wrong in a different way. Leave those on
-`cooldown:` and let the director decide.
+is no. The example skills in
+[`docs/examples/skills`](examples/skills) ship without a `cron:` for that reason
+— `moon-phase` is meant to skip an unremarkable gibbous, and `sunset` tracks a
+time that moves through the year, so pinning it to a fixed clock reading would be
+wrong in a different way. Leave those on `cooldown:` and let the director decide.
+
+`todoist` is the one that goes either way, which is why its frontmatter carries
+the line commented out: on `cooldown:` it is a nudge that turns up when it turns
+up, and with `cron: 0 8 * * *` + `cronOnly: true` it becomes a fixed morning
+alarm that never fires at random. Pick the one you actually want to hear.
 
 **Daylight saving.** A normal daily cron survives a clock change: `cron: 0 8 * * *`
 fires once at 08:00 local on the spring-forward day, the autumn day, and every
