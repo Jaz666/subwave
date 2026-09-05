@@ -21,10 +21,20 @@ export const BatchTagSchema = z.object({
 // System prompts are FUNCTIONS, not consts: the mood list is operator-editable
 // (settings.moods) and read live, so the prompt — and the promptVocabHash the
 // tagger keys re-tagging on — reflect the current vocabulary each call.
+//
+// Both prompts describe the RESULT and never the output channel. Which channel
+// a tag call actually uses is decided per leg inside djObject (forced `emit`
+// tool for ollama/openai-compatible/locca, native structured output for the
+// cloud providers, free text on the recovery attempt), and each branch states
+// its own rule there. These prompts used to say "Return ONLY a JSON object",
+// which was true on one of those three branches: on the forced-tool branch it
+// contradicted toolChoice:'required' and gemma-4-12b on llama.cpp burned whole
+// generations deciding which to obey, never tagging a single batch (#1536).
+// Keep output-channel wording out of here — it cannot be right from here.
 export function taggerSystem(): string {
   return `You tag music tracks with mood and energy for a personal radio station.
 
-For each track, output ONLY a JSON object:
+For each track, the required result has this shape:
 {
   "moods": [1-3 strings, each from this exact list: ${moodVocab().join(', ')}],
   "energy": "low" | "medium" | "high"
@@ -35,13 +45,13 @@ A spiritual Punjabi devotional is "spiritual" and "reflective" — not "cultural
 A high-BPM dance track is "energetic" and "workout" — not "celebratory" unless it sounds festive.
 A slow rainy-day instrumental is "calm" and "rainy" — not "evening" just because it's chill.
 
-If you genuinely cannot tell from the title/artist/album, return {"moods":[],"energy":"medium"}. Do not invent.`;
+If you genuinely cannot tell from the title/artist/album, the result is {"moods":[],"energy":"medium"}. Do not invent.`;
 }
 
 export function taggerBatchSystem(): string {
   return `You tag music tracks with mood and energy for a personal radio station.
 
-You will be given a numbered list of tracks. Return ONLY a JSON object of the form:
+You will be given a numbered list of tracks. The required result has this shape:
 {
   "results": [
     { "moods": [...], "energy": "low" | "medium" | "high" },
@@ -60,7 +70,7 @@ A spiritual Punjabi devotional is "spiritual" and "reflective" — not "cultural
 A high-BPM dance track is "energetic" and "workout" — not "celebratory" unless it sounds festive.
 A slow rainy-day instrumental is "calm" and "rainy" — not "evening" just because it's chill.
 
-If you genuinely cannot tell from the title/artist/album for a track, return {"moods":[],"energy":"medium"} for that entry. Do not invent.`;
+If you genuinely cannot tell from the title/artist/album for a track, use {"moods":[],"energy":"medium"} for that entry. Do not invent.`;
 }
 
 export interface TaggableSong {
