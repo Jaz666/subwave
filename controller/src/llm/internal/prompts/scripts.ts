@@ -103,9 +103,9 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
   const showName = String(context?.activeShow?.name || "").trim();
   if (showName) moment.push("Current show: \"" + showName + "\".");
   const handover = context?.showHandover;
-  const hasFollowingShow = handover?.phase === "final-half-hour" && handover?.nextShow?.name && handover?.nextShow?.presenter && handover?.nextShow?.startsAt;
+  const hasFollowingShow = handover?.phase === "final-quarter-hour" && handover?.nextShow?.name && handover?.nextShow?.presenter && handover?.nextShow?.startsAt;
   if (hasFollowingShow) {
-    moment.push("Show progress: final half hour.");
+    moment.push("Show progress: final 15 minutes.");
     moment.push("Following show: \"" + String(handover.nextShow.name).trim() + "\" with " + String(handover.nextShow.presenter).trim() + ", starting " + String(handover.nextShow.startsAt).trim() + ".");
   }
   const playCount = current ? (library.trackPlayStatsFor(current)?.count ?? null) : null;
@@ -184,7 +184,7 @@ export async function generateIntro({ track, context, requestedBy = null, reques
   });
 }
 
-export async function generateStationId({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
+export function stationIdPrompt({ context = null, persona = null }: any = {}) {
   const speaker = persona || settings.getEffectivePersona();
   const djName = speaker?.name || 'your host';
   const stationName = settings.get().station;
@@ -207,10 +207,21 @@ export async function generateStationId({ recap = null, context = null, recentOp
         ? ` If you nod to the clock, say only "${daypart}" — never the hour and never the minutes (this airs a few minutes after you write it, and the hour may have changed by then).`
         : ` If you nod to the clock, name only the part of the day (morning, afternoon, evening, night) — never the hour and never the minutes (this airs a few minutes after you write it, and the hour may have changed by then).`)
     : '';
-  ctxLines.push(`Task: ${lengthPhrase('stationId', speaker)} for ${stationName} with ${djName}. A little understated.${clockNudge}`);
+  const handover = context?.showHandover;
+  const nextShow = handover?.phase === 'final-quarter-hour'
+    && handover?.nextShow?.name && handover?.nextShow?.presenter;
+  const handoverNudge = nextShow
+    ? ` The next scheduled show is "${String(handover.nextShow.name).trim()}" with ${String(handover.nextShow.presenter).trim()}. If natural, give it one brief nod; do not make it a required signpost or explain the schedule.`
+    : '';
+  ctxLines.push(`Task: ${lengthPhrase('stationId', speaker)} for ${stationName} with ${djName}. A little understated.${clockNudge}${handoverNudge}`);
+  return ctxLines.join('\n');
+}
+
+export async function generateStationId({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
+  const speaker = persona || settings.getEffectivePersona();
   return djText({
     system: djSystem(speaker),
-    prompt: decoratePrompt(ctxLines.join('\n'), { kind: 'station_id', recap, recentOpeners }),
+    prompt: decoratePrompt(stationIdPrompt({ context, persona: speaker }), { kind: 'station_id', recap, recentOpeners }),
     temperature: 1.0, topP: 0.9, repeatPenalty: 1.25, seed: randomSeed(),
     kind: 'generateStationId',
   });
