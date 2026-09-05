@@ -2,7 +2,7 @@
 // Run: npm test -- verified-facts
 
 import assert from 'node:assert/strict';
-import { sleeveNotesFor, contextSleeveNotesFor } from '../src/llm/internal/prompts/sleeve-notes.js';
+import { sleeveNotesFor, contextSleeveNotesFor, stationHistoryNoteFor } from '../src/llm/internal/prompts/sleeve-notes.js';
 import { linkPrompt } from '../src/llm/internal/prompts/scripts.js';
 
 const track = (over: Record<string, unknown> = {}) => ({
@@ -17,6 +17,24 @@ assert.deepEqual(sleeveNotesFor(track(), 3), [
 assert.deepEqual(contextSleeveNotesFor(track(), {
   date: { season: 'summer' }, weather: { condition: 'cloudy', location: 'The Ribble Valley' },
 }), ['Album: After Laughter Comes Tears.', 'Release year: 1964.', 'Season: summer.', 'Weather in The Ribble Valley: cloudy.']);
+
+const airingIndex = {
+  byId: new Map([
+    ['other-track', Date.now()],
+    ['rare-track', Date.now() - 91 * 86_400_000],
+    ['recent-track', Date.now() - 29 * 86_400_000],
+  ]),
+  byKey: new Map(),
+};
+assert.equal(stationHistoryNoteFor({ id: 'first-track' }, null, airingIndex), 'First station play.');
+assert.equal(
+  stationHistoryNoteFor({ id: 'rare-track' }, { count: 1, lastPlayedAtMs: Date.now() - 91 * 86_400_000 }, airingIndex),
+  'Played here only once before; last heard 91 days ago.',
+);
+assert.equal(
+  stationHistoryNoteFor({ id: 'recent-track' }, { count: 1, lastPlayedAtMs: Date.now() - 29 * 86_400_000 }, airingIndex),
+  null,
+);
 
 const prompt = linkPrompt({
   current: track(), clockIsAirTime: true,
