@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
+import { shortlistPickPrompt, shortlistPickSchema } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -69,6 +70,19 @@ test('native builder plans from source-owned availability before execution', asy
   });
   assert.ok(result.sourceRuns.length > 0);
   assert.ok(result.sourceRuns.every((run) => run.source === 'tracksByMood'));
+});
+
+test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
+  const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
+  assert.equal(schema.safeParse({
+    id: 'candidate-a', selectionReason: 'warmer texture after the opener', say: null, transition: null,
+  }).success, true);
+  assert.equal(schema.safeParse({
+    id: 'invented', selectionReason: 'not allowed', say: null, transition: null,
+  }).success, false);
+  const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
+  assert.match(prompt, /candidate-a/);
+  assert.match(prompt, /Track Shortlist/);
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
