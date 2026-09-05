@@ -32,13 +32,6 @@ const FEEL_CLAUSE = ' A feel note after a track line tells you how the track act
 // it, a model told to "mention the weather" would only invent it.
 const SCRIPT_CONTEXT_FIELDS = ['date', 'clock', 'time', 'festival', 'show', 'listeners'];
 
-// Links are delivery, not selection. Mood, energy, show steering and the
-// recent-play window are useful inputs when choosing a record, but become
-// internal prompt material once that choice is made. Keep the link's context
-// to listener-safe, deterministic facts only; any new field needs the same
-// scrutiny as a Verified Fact before it is added here.
-const LINK_CONTEXT_FIELDS = ['date', 'clock', 'festival'];
-
 // A request intro is WRITTEN when the request resolves but AIRED from
 // onTrackStarted — it plays over the opening bars of the track it introduces,
 // heavy-ducked, not in the gap before it (queue.airIntro, deferred by #189).
