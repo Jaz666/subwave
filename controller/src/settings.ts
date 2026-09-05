@@ -66,6 +66,7 @@ import {
   clampTtsGain,
   clampTtsSpeed,
   coerceGuestPersonaIds,
+  isDefaultTakeover,
   mintId,
   normalizeLlmKeys,
   normalizeLlmProviderBaseUrls,
@@ -74,6 +75,7 @@ import {
   normalizeTtsCorrections,
   normalizeTtsGainMap,
   normalizeTtsSpeedMap,
+  takeoverShowId,
   validateTtsCorrectionsStrict,
 } from './settings/vocab.js';
 import {
@@ -136,6 +138,7 @@ export {
   KOKORO_LANGS,
   KOKORO_VOICES,
   KOKORO_VOICE_LANGUAGES,
+  LINK_STYLES,
   LLM_PROVIDERS,
   LOUDNESS_SOURCES,
   MAX_OUTPUT_TOKENS_MAX,
@@ -209,7 +212,9 @@ export {
 export {
   agentLanguageReminder,
   agentPersonaPreamble,
+  announceLinks,
   castHouseRulesBlock,
+  castSpeakerIdRule,
   effectiveFrequency,
   effectiveMaxTrackSec,
   effectsActive,
@@ -981,6 +986,7 @@ export async function load() {
       requestIntros: typeof stored.beds?.requestIntros === 'boolean' ? stored.beds.requestIntros : DEFAULTS.beds.requestIntros,
       thresholdSec: Number.isFinite(stored.beds?.thresholdSec) ? stored.beds.thresholdSec : DEFAULTS.beds.thresholdSec,
       crossSec: Number.isFinite(stored.beds?.crossSec) ? stored.beds.crossSec : DEFAULTS.beds.crossSec,
+      tailSec: Number.isFinite(stored.beds?.tailSec) ? stored.beds.tailSec : DEFAULTS.beds.tailSec,
     },
     silenceTrim: {
       enabled:
@@ -1914,6 +1920,7 @@ export async function update(patch) {
       requestIntros?: boolean;
       thresholdSec?: number;
       crossSec?: number;
+      tailSec?: number;
     }>('beds', patch.beds);
     if (bd.enabled !== undefined) {
       next.beds.enabled = bd.enabled;
@@ -1926,6 +1933,9 @@ export async function update(patch) {
     }
     if (bd.crossSec !== undefined) {
       next.beds.crossSec = bd.crossSec;
+    }
+    if (bd.tailSec !== undefined) {
+      next.beds.tailSec = bd.tailSec;
     }
   }
   if ('silenceTrim' in patch) {
@@ -2085,9 +2095,11 @@ export async function update(patch) {
         }
       }
     }
-    // A takeover pinning a show that no longer exists dies with the show.
-    if (next.scheduleOverride && !showIds.includes(next.scheduleOverride.showId)) {
-      next.scheduleOverride = null;
+    // A takeover pinning a show that no longer exists dies with the show. A
+    // null target is Default programming, not an orphan, so it survives.
+    if (next.scheduleOverride && !isDefaultTakeover(next.scheduleOverride)) {
+      const pinnedId = takeoverShowId(next.scheduleOverride);
+      if (!pinnedId || !showIds.includes(pinnedId)) next.scheduleOverride = null;
     }
     if (!personaIds.includes(next.activePersonaId)) next.activePersonaId = personaIds[0];
 
