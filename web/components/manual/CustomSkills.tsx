@@ -219,6 +219,36 @@ export const configFields = {
   feed:         { type: 'url',    label: 'News feed · RSS 2.0' },
   feedMaxItems: { type: 'number', label: 'Max items', min: 1, max: 50, integer: true },
 };`}</CodeBlock>
+        <div className="bs-callout">
+          <div className="bs-eyebrow">FRONTMATTER IS CONFIG, NOT A FETCH</div>
+          <p>
+            Adding <code className="bs-code-inline">feed:</code> or{' '}
+            <code className="bs-code-inline">feedMaxItems:</code> to{' '}
+            <code className="bs-code-inline">SKILL.md</code> does not fetch or inject
+            anything by itself. Without a sibling <code className="bs-code-inline">tool.mjs</code>,
+            the skill stays prompt-only and gets no generated{' '}
+            <code className="bs-code-inline">skill_&lt;slug&gt;</code> tool.
+          </p>
+        </div>
+        <p>
+          For a custom RSS-backed skill, add the sibling tool and have it read those
+          config strings and call <code className="bs-code-inline">services.fetchHeadlines</code>:
+        </p>
+        <CodeBlock>{`export default async function (_ctx, _state, services, config) {
+  const parsedMax = Number(config.feedMaxItems);
+  const maxItems = Number.isInteger(parsedMax) && parsedMax >= 1 && parsedMax <= 50
+    ? parsedMax
+    : undefined;
+  const headlines = await services.fetchHeadlines({
+    feedUrl: config.feed || undefined,
+    maxItems,
+  });
+  return { headlines };
+}`}</CodeBlock>
+        <p className="text-muted">
+          Copy or adapt the built-in News <code className="bs-code-inline">tool.mjs</code>{' '}
+          when you also want its fresh-headline deduplication behaviour.
+        </p>
         <p>
           The call is timeout-guarded and any error degrades cleanly to &ldquo;no
           data&rdquo;; a slow or broken skill can never hang the station. With no{' '}

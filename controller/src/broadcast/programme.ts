@@ -35,6 +35,7 @@ import { autoVoiceAllowed } from './voice-policy.js';
 import { optionalSegmentsAllowed } from './dj-budget.js';
 import { withTrace, logEvent } from '../observability/events.js';
 import { zonedParts } from '../time.js';
+import { takeoverShowId } from '../schemas/schedule.js';
 
 // How long after the intro aired the generic hourly time-check stays
 // suppressed: the intro owns the top of the show's first hour (the same
@@ -47,12 +48,15 @@ const INTRO_SUPPRESSES_HOURLY_MS = 45 * 60 * 1000;
 import { showSpan, overrideSpan, planFeature, beatWindow } from './programme-pure.js';
 export { showSpan, overrideSpan, planFeature, beatWindow };
 
-// The episode's position/length at `now`. A live takeover (#930) IS the
+// The episode's position/length at `now`. A live SHOW takeover (#930) IS the
 // episode — its window drives the arc, since the pinned show usually isn't in
-// the grid at these hours and showSpan can't see it. Otherwise the grid run.
+// the grid at these hours and showSpan can't see it. A Default programming
+// takeover is not an episode; programme work already stands down because there
+// is no active show, and this fallback keeps the span defensive. Otherwise the
+// grid run.
 function episodeSpan(now: Date): { index: number; total: number } {
   const ov = settings.getScheduleOverride(now.getTime());
-  if (ov) return overrideSpan(ov, now.getTime());
+  if (ov && takeoverShowId(ov)) return overrideSpan(ov, now.getTime());
   const { dow, hour } = zonedParts(now);
   return showSpan(settings.get().schedule, dow, hour);
 }
