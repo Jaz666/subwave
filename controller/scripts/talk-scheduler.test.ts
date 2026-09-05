@@ -24,9 +24,13 @@
 //  - A ROW YIELDS ONLY TO A ROW THAT IS FIRING. Yielding to a merely-open
 //    higher-priority row would let one row sit on its whole window holding
 //    everything under it — #1419 again, one layer up. This is the subtle one.
-//  - IN-FLIGHT TALK COUNTS. A boundary-deferred ident is queued minutes before
-//    it airs and `getLastTalkBreakAt()` cannot see it, which is how a :20 tick
-//    read a clear gap and still landed ten seconds in front of it.
+//  - IN-FLIGHT TALK COUNTS, BUT NEVER PAST THE ROW'S LAST CHANCE. A boundary-
+//    deferred ident is queued minutes before it airs and `getLastTalkBreakAt()`
+//    cannot see it, which is how a :20 tick read a clear gap and still landed
+//    ten seconds in front of it. The hold is bounded at both ends: a clip that
+//    expires inside the window never blocks, and one that outlives the window
+//    stops blocking on the window's last retry minute, so a held row still
+//    fires inside its window instead of logging `missed` (#1539).
 //  - The frequency ladder answers per SLOT. `[15,30,45].includes(m)` reads a
 //    retry minute as no slot at all, which would silently cancel every retry
 //    the windows exist to allow.
@@ -60,6 +64,7 @@ const {
   openMinuteFor, windowEndMinute, canRetry, standDownLine, missedLine,
 } = await import('../src/broadcast/talk-scheduler.js');
 const { BANTER_SLOTS, BANTER_WINDOW_MINUTES, BANTER_MIN_GAP_MS } = await import('../src/broadcast/banter-policy.js');
+const { PENDING_VOICE_MAX_AGE_MS } = await import('../src/broadcast/queue/kinds.js');
 const { shouldFire } = await import('../src/broadcast/dj-gate.js');
 const { zonedParts } = await import('../src/time.js');
 
@@ -86,7 +91,7 @@ const clockAt = (minute: number, second = 0, hour = HOUR) =>
 function makeReplay(opts: {
   lastTalkBreakAt?: number;
   feedback?: boolean;
-  pendingTalk?: { kind: string } | null;
+  pendingTalk?: { kind: string; queuedAt: number } | null;
   eligible?: (kind: TalkKind, now: Date) => boolean;
   externalSlot?: (kind: TalkKind, now: Date) => string | null;
 } = {}) {
@@ -457,9 +462,11 @@ test('a segment waiting for a track boundary holds every gap-gated row', () => {
   // #1419's root cause, from the side the window alone never fixed: an ident is
   // rendered at :15 and waits for the next transition. getLastTalkBreakAt()
   // reports what HAS aired, so at :20 the gap looks clear and banter fires ten
-  // seconds in front of it. `pendingTalk` is the queue's own `_pendingVoice`.
+  // seconds in front of it. `pendingTalk` carries the queue's `_pendingVoice`
+  // kind and enqueue time, so that protection is bounded by the clip's valid
+  // life and by the blocked row's own remaining chances.
   const r = makeReplay({
-    pendingTalk: { kind: 'station-id' },
+    pendingTalk: { kind: 'station-id', queuedAt: clockAt(15) },
     eligible: kind => kind === 'banter',
   });
   r.tick(at(20));
@@ -473,31 +480,230 @@ test('a segment waiting for a track boundary holds every gap-gated row', () => {
   assert.deepEqual(after.minutesOf('banter'), [21]);
 });
 
-test('a pending segment that never airs costs the slots it blocks — and says so', () => {
-  // The trade this rule makes, stated rather than discovered. A deferred ident
-  // waits for a TRACK BOUNDARY, not for a clock, so on a station playing a very
-  // long cut it can sit through a whole window and take the slots under it with
-  // it. That is still the right answer — it will air the moment the track
-  // changes, and airing banter one second in front of it is the exact stacking
-  // the gap exists to prevent — and it is bounded twice: queue drops a pending
-  // clip older than PENDING_VOICE_MAX_AGE_MS at the next track start, and a
-  // station with no track start for that long has a dead-air problem the guard
-  // in radio.liq owns, not a scheduling one.
-  //
-  // What must never happen is that it goes unexplained, which is the whole of
-  // #1419: an absence in the booth log with nothing to read.
-  const r = makeReplay({ pendingTalk: { kind: 'station-id' }, eligible: kind => kind === 'banter' });
-  for (let m = 20; m <= 29; m++) r.tick(at(m));
+test('a pending segment fresh enough to outlast a window holds it — and says so', () => {
+  // A freshly rendered ident can still validly air throughout this banter
+  // window. Letting banter go first could stack the two at the next boundary,
+  // so the pending-specific hold remains the right, operator-visible answer —
+  // for every minute of the window except the last, which the next test owns.
+  const r = makeReplay({
+    pendingTalk: { kind: 'station-id', queuedAt: clockAt(20) },
+    eligible: kind => kind === 'banter',
+  });
+  for (let m = 20; m <= 28; m++) r.tick(at(m));
   assert.deepEqual(r.minutesOf('banter'), []);
-  assert.equal(r.logs.length, 2, 'one stand-down when the window opens, one when it closes');
-  assert.match(r.logs[1], /^\[banter\] slot :20 missed — a station-id is rendered and waiting for the next track boundary; window closed at :29$/);
+  assert.equal(r.logs.length, 1, 'said once per slot, not once per minute');
+  assert.match(r.logs[0], /^\[banter\] stood down at :20 — a station-id is rendered and waiting for the next track boundary \(retrying until :29\)$/);
+});
+
+test('a held row still fires inside its window — the hold never costs the final chance', () => {
+  // #1539, and the test the issue asked for. `_pendingVoice` may legitimately
+  // live PENDING_VOICE_MAX_AGE_MS, and it is dropped only at a track start, so
+  // on a chatty station where every boundary carries its own link a clip can
+  // outlast the window of the row it is holding. Unbounded, that row logged
+  // `slot :NN missed` and — for the hourly check, which gets ONE chance an
+  // hour — lost the whole hour, which is a hold quietly becoming a cancel.
+  //
+  // Both cases the issue names, with the enqueue times the rows themselves
+  // produce: the ident's :45 window runs to :54, so a retry inside it stamps a
+  // clip whose 20 minutes reach past the hourly window's :10 close and past
+  // banter's :00 one. The window's last minute is the row's final chance and
+  // the hold stands down for it.
+  const cases = [
+    { label: 'hourly :00-:09 behind an ident queued at :51', kind: 'hourly' as TalkKind, open: 0, last: 9, queuedAt: clockAt(51, 0, HOUR - 1) },
+    { label: 'banter :50-:59 behind an ident queued at :45', kind: 'banter' as TalkKind, open: 50, last: 59, queuedAt: clockAt(45) },
+  ];
+  for (const { label, kind, open, last, queuedAt } of cases) {
+    const r = makeReplay({
+      pendingTalk: { kind: 'station-id', queuedAt },
+      eligible: k => k === kind,
+    });
+    for (let m = open; m <= last; m++) r.tick(at(m));
+    assert.deepEqual(r.minutesOf(kind), [last], `${label}: postponed to its last minute, not cancelled`);
+    assert.equal(r.logs.length, 1, `${label}: held once, then took the minute`);
+    assert.match(
+      r.logs[0],
+      new RegExp(`^\\[${kind}\\] stood down at :${open} — a station-id is rendered and waiting for the next track boundary \\(retrying until :${last}\\)$`),
+      label,
+    );
+    assert.equal(r.logs.some(line => line.includes('missed')), false, `${label}: a held row postpones, never cancels`);
+  }
+});
+
+test('the last-chance release is the row\'s alone — a clip that expires in the window never holds at all', () => {
+  // The other end of the bound, and why it is two rules rather than one. A clip
+  // that will expire before this window closes is dropped by the queue while
+  // the row still has minutes left, so it was never able to cost the row its
+  // slot: it does not hold even at the opening minute. Only a clip that
+  // outlives the window is worth standing down for, and only until the last.
+  const r = makeReplay({
+    pendingTalk: { kind: 'station-id', queuedAt: clockAt(50, 0, HOUR - 1) },
+    eligible: kind => kind === 'hourly',
+  });
+  for (let m = 0; m <= 9; m++) r.tick(at(m));
+  assert.deepEqual(r.minutesOf('hourly'), [0], 'expires at :10, exactly when the window closes — the row keeps all ten minutes');
+  assert.deepEqual(r.logs, []);
+});
+
+test('two simulated hours: a pending clip never eats a whole window, whatever else is happening', () => {
+  // The unit tests above each pin one arranged minute. This drives the WHOLE
+  // table for two hours against pseudo-random pending clips, quiet gaps and
+  // eligibility, because the bug being fixed was not visible in any single
+  // minute: the old comparison cancelled `now` out, so it read the same at
+  // every minute of a window and only the whole window showed the loss.
+  //
+  // Seeded, so a failure is reproducible from the seed alone. Kept small enough
+  // to stay a unit test; the same harness was run at 400 seeds x 120 minutes
+  // against the pre-fix planner, where the `all-pending` count below was 256.
+  const rand = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  const minuteAt = (i: number) => new Date(2026, 7, 19, HOUR + Math.floor(i / 60), i % 60, 0);
+  const TICKS = 120;
+  let fullyPendingWindows = 0, lastMinutePendingHolds = 0, pendingHolds = 0, released = 0;
+
+  for (let seed = 1; seed <= 12; seed++) {
+    const rnd = rand(seed);
+    // A boundary-deferred clip lands at random minutes and then sits in the
+    // queue until it goes stale — exactly what a run of link-carrying
+    // boundaries does to `_pendingVoice`.
+    const live: ({ kind: string; queuedAt: number } | null)[] = new Array(TICKS).fill(null);
+    for (let i = 0; i < TICKS; i++) {
+      if (rnd() >= 0.25) continue;
+      const queuedAt = minuteAt(i).getTime() - Math.floor(rnd() * 21) * 60_000;
+      for (let j = i; j < TICKS && minuteAt(j).getTime() - queuedAt <= PENDING_VOICE_MAX_AGE_MS; j++) {
+        live[j] = { kind: 'station-id', queuedAt };
+      }
+    }
+    const beats = new Set<number>();
+    const inelig = new Set<string>();
+    const breaks: number[] = [];
+    for (let i = 0; i < TICKS; i++) {
+      if (i % 5 === 0 && rnd() < 0.35) beats.add(i);
+      for (const row of TALK_SLOTS) if (rnd() < 0.12) inelig.add(`${row.kind}:${i}`);
+      breaks.push(rnd() < 0.15 ? 0 : minuteAt(i).getTime() - Math.floor(rnd() * 9) * 60_000);
+    }
+
+    const fired: Partial<Record<TalkKind, string | null>> = {};
+    const logged: Partial<Record<TalkKind, string | null>> = {};
+    const window = new Map<string, string[]>();
+    let lastTalkBreakAt = breaks[0];
+    for (let i = 0; i < TICKS; i++) {
+      const now = minuteAt(i);
+      const plans: TalkPlan[] = talkTickPlan({
+        now, lastTalkBreakAt,
+        pendingTalk: live[i],
+        eligible: kind => !inelig.has(`${kind}:${i}`),
+        externalSlot: kind => (kind === 'programme' && beats.has(i) ? `beat${i}` : null),
+        fired, logged,
+      });
+
+      // ONE TALKER PER MINUTE (#310) survives the release.
+      const firing = plans.filter(p => p.act === 'fire');
+      assert.ok(firing.length <= 1, `seed ${seed} :${now.getMinutes()} — ${firing.map(p => p.kind)} all fired`);
+
+      // The fill row still stands down — SILENTLY — to any slot row that wants
+      // the minute, firing or merely waiting.
+      const slotWants = plans.some(p => TALK_SLOTS.some(r => r.kind === p.kind && r.role === 'slot'));
+      const fillPresent = plans.some(p => TALK_SLOTS.some(r => r.kind === p.kind && r.role === 'fill'));
+      assert.ok(!(slotWants && fillPresent), `seed ${seed} :${now.getMinutes()} — the fill row spoke over a slot row`);
+
+      for (const plan of plans) {
+        const row = talkSlot(plan.kind);
+        const held = plan.act === 'wait' ? plan.reason.held : 'fire';
+        if (held === 'pending') {
+          pendingHolds++;
+          // `minGapMs: 0` has opted out of the question entirely.
+          assert.notEqual(row.minGapMs, 0, `seed ${seed} :${now.getMinutes()} — ${plan.kind} has no gap yet held on pending`);
+          // THE HOLD NEVER TAKES THE ROW'S LAST CHANCE. #1539 in one line.
+          assert.ok(row.opens === 'external' || canRetry(row, plan.slot, now.getMinutes()),
+            `seed ${seed} :${now.getMinutes()} — ${plan.kind} held on pending at its window's last minute (slot :${plan.slot})`);
+        }
+        if (row.opens !== 'external' && row.windowMinutes > 1) {
+          const key = `${plan.kind}|${plan.slotKey}`;
+          const acts = window.get(key) ?? [];
+          acts.push(held);
+          window.set(key, acts);
+        }
+        if (plan.act === 'wait') { if (plan.markLogged) logged[plan.kind] = plan.markLogged; }
+        else { fired[plan.kind] = plan.slotKey; lastTalkBreakAt = now.getTime(); }
+      }
+      if (plans.every(p => p.act !== 'fire')) lastTalkBreakAt = Math.max(lastTalkBreakAt, breaks[i]);
+    }
+
+    for (const [key, acts] of window) {
+      const row = talkSlot(key.split('|')[0] as TalkKind);
+      if (acts.some(a => a === 'pending') && acts.some(a => a !== 'pending')) released++;
+      if (acts.length === row.windowMinutes && acts.every(a => a === 'pending')) {
+        fullyPendingWindows++;
+        lastMinutePendingHolds++;
+      }
+    }
+  }
+
+  assert.equal(fullyPendingWindows, 0, 'no row may lose a whole window to a pending clip — that is a cancel, not a postpone');
+  assert.equal(lastMinutePendingHolds, 0);
+  assert.ok(pendingHolds > 100, `the run must actually exercise the hold (saw ${pendingHolds} held minutes)`);
+  assert.ok(released > 20, `and must actually exercise the release (saw ${released} windows held then released)`);
+});
+
+test('pending expiry before or at the hourly window close preserves the scheduled row', () => {
+  const hourlyClose = clockAt(10);
+  const cases = [
+    { label: 'before', now: at(0), queuedAt: hourlyClose - PENDING_VOICE_MAX_AGE_MS - 1 },
+    { label: 'equal', now: at(0), queuedAt: hourlyClose - PENDING_VOICE_MAX_AGE_MS },
+    {
+      label: 'equal with seconds',
+      now: new Date(2026, 7, 19, HOUR, 0, 30, 250),
+      queuedAt: hourlyClose - PENDING_VOICE_MAX_AGE_MS,
+    },
+  ];
+  for (const { label, now, queuedAt } of cases) {
+    const r = makeReplay({
+      pendingTalk: { kind: 'station-id', queuedAt },
+      eligible: kind => kind === 'hourly',
+    });
+    const plans = r.tick(now);
+    r.tick(at(1));
+    assert.deepEqual(plans.map(p => `${p.kind}:${p.act}`), ['hourly:fire'], label);
+    assert.deepEqual(r.minutesOf('hourly'), [0], label);
+    assert.equal(r.logs.some(line => line.includes('missed')), false, label);
+  }
+});
+
+test('a bounded-out pending segment still honours the real quiet gap', () => {
+  const now = at(0);
+  const r = makeReplay({
+    lastTalkBreakAt: now.getTime() - 60_000,
+    pendingTalk: {
+      kind: 'station-id',
+      queuedAt: clockAt(10) - PENDING_VOICE_MAX_AGE_MS,
+    },
+    eligible: kind => kind === 'hourly',
+  });
+  const plans = r.tick(now);
+  assert.deepEqual(plans.map(p => `${p.kind}:${p.act}`), ['hourly:wait']);
+  assert.equal(plans[0]?.act === 'wait' ? plans[0].reason.held : null, 'gap');
+  assert.match(r.logs[0], /last standalone talk 60s ago/);
+});
+
+test('a future pending timestamp is clamped instead of extending the queue lifetime', () => {
+  const now = at(0);
+  const row = { ...talkSlot('hourly'), windowMinutes: 20 };
+  const plan = talkSlotPlan(row, {
+    now,
+    lastTalkBreakAt: 0,
+    pendingTalk: { kind: 'station-id', queuedAt: now.getTime() + 60_000 },
+    eligible: () => true,
+    externalSlot: () => null,
+    fired: {},
+    logged: {},
+  });
+  assert.equal(plan?.act, 'fire', 'a clock adjustment must not make a fresh clip valid for over 20 minutes');
 });
 
 test('a row with no gap ignores in-flight talk, because it has opted out of the question', () => {
   // `minGapMs: 0` means "this row does not ask about quiet", and a programme
   // beat that cannot retry must not be lost to a pending ident.
   const r = makeReplay({
-    pendingTalk: { kind: 'station-id' },
+    pendingTalk: { kind: 'station-id', queuedAt: clockAt(35) },
     eligible: kind => kind === 'programme',
     externalSlot: kind => (kind === 'programme' ? 'outro' : null),
   });
