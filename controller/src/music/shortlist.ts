@@ -12,6 +12,64 @@ export type ShortlistSourceCall = {
   args: Record<string, unknown>;
 };
 
+export type ShortlistPlanningContext = {
+  scope: PickerScope;
+  // The current track remains a discovery seed, never a shortlist candidate.
+  currentTrackId: string | null;
+  discoveryPasses: number;
+  // Resolved from the show snapshot by the eventual controller call site. The
+  // scope carries strict locks; these soft values are only source arguments.
+  moods?: string[] | null;
+  energies?: Array<'low' | 'medium' | 'high'> | null;
+  // Mirrors the existing ε-greedy deep-cut nudge. Callers decide the random
+  // draw once, outside this deterministic planner.
+  explore?: boolean;
+};
+
+const ENERGY_VALUES = new Set(['low', 'medium', 'high']);
+
+// Produce the native source plan from already-resolved station state. The
+// ordering is deliberately small and factual: a journey or show playlist
+// leads, then current-track similarity, then the show's mood/energy context.
+// A lane wraps when the pass budget exceeds its distinct calls, so repeated
+// source calls remain possible just as they are in the vanilla tool loop.
+export function planShortlistSources(
+  context: ShortlistPlanningContext,
+  availableSources: ReadonlySet<string>,
+): ShortlistSourceCall[] {
+  const budget = Math.max(1, Math.min(5, Math.floor(context.discoveryPasses) || 1));
+  const calls: ShortlistSourceCall[] = [];
+  const add = (source: string, args: Record<string, unknown> = {}) => {
+    if (availableSources.has(source)) calls.push({ source, args });
+  };
+
+  const mood = context.moods?.find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
+  const energy = context.energies?.find((value): value is 'low' | 'medium' | 'high' => ENERGY_VALUES.has(value)) ?? null;
+
+  // The first lane is source-owned: a non-existent journey or playlist source
+  // is simply absent from `availableSources`, never represented as a futile
+  // empty call. Later passes keep going when an earlier source is thin.
+  if (context.scope.audioWaypoint?.length) add('tracksTowardJourney');
+  else if (context.scope.playlistTracks?.length) add('showPlaylistTracks');
+
+  if (mood) add('tracksByMood', { mood, energy });
+  else if (energy) add('tracksByEnergy', { energy });
+  if (context.currentTrackId) {
+    add('tracksThatSoundLikeThis', { songId: context.currentTrackId });
+    add('tracksLikeThis', { songId: context.currentTrackId });
+  }
+  if (context.explore) add('deepCuts');
+
+  // A strict playlist's curated source remains the only guaranteed in-set
+  // source. Put it back into the lane after the first contextual pass instead
+  // of adding a special ranking or a global cap.
+  if (context.scope.playlistLock && context.scope.playlistTracks?.length) add('showPlaylistTracks');
+  if (context.scope.audioWaypoint?.length) add('tracksTowardJourney');
+
+  if (!calls.length) return [];
+  return Array.from({ length: budget }, (_, index) => calls[index % calls.length]);
+}
+
 export type ShortlistSourceRun = ShortlistSourceCall & {
   status: 'ok' | 'unavailable' | 'invalid' | 'error';
   returned: number;
@@ -202,10 +260,19 @@ export async function executeShortlistPlan(
   };
 }
 
-// Convenience entry point for the eventual native source planner. Keeping it
-// separate from executeShortlistPlan makes replay tests transport-neutral and
-// ensures planning can evolve without duplicating source execution semantics.
-export async function buildShortlist(scope: PickerScope, plan: ShortlistSourceCall[]): Promise<ShortlistResult> {
+// Replay entry point. Keeping it separate from executeShortlistPlan makes
+// recorded vanilla runs transport-neutral and lets planner changes be measured
+// without duplicating source execution semantics.
+export async function replayShortlistPlan(scope: PickerScope, plan: ShortlistSourceCall[]): Promise<ShortlistResult> {
   const { tools, seen } = buildPickerTools(scope);
+  return executeShortlistPlan(tools as PickerToolSet, seen, plan);
+}
+
+// Native entry point: build the same source-owned registry the agent used,
+// plan only from sources it actually exposed, then reuse the shared filtered
+// accumulator for execution. No LLM calls, choice, or queue writes occur here.
+export async function buildShortlist(context: ShortlistPlanningContext): Promise<ShortlistResult> {
+  const { tools, seen } = buildPickerTools(context.scope);
+  const plan = planShortlistSources(context, new Set(Object.keys(tools)));
   return executeShortlistPlan(tools as PickerToolSet, seen, plan);
 }
