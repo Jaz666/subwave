@@ -14,7 +14,9 @@ import {
   coerceShowEras,
   coerceShowGenres,
   coerceShowMoods,
+  isDefaultTakeover,
   personaToneDirectives,
+  takeoverShowId,
 } from './vocab.js';
 import { DEFAULTS, coerceMaxTrackSeconds } from './defaults.js';
 import { get, peek } from './store.js';
@@ -96,7 +98,11 @@ export function resolveActiveShow(date = new Date(), s = get()) {
   // airtime — naturally straddle the pin's start/end boundary.
   const ov = s?.scheduleOverride;
   if (ov && date.getTime() >= ov.startedAt && date.getTime() < ov.expiresAt) {
-    const pinned = s.shows?.find(x => x.id === ov.showId);
+    // A live null target is an explicit Default programming takeover. It must
+    // stop here rather than falling through to the weekly grid.
+    if (isDefaultTakeover(ov)) return null;
+    const pinnedId = takeoverShowId(ov);
+    const pinned = pinnedId ? s.shows?.find(x => x.id === pinnedId) : null;
     // A dangling showId (show deleted mid-takeover) voids the override.
     if (pinned) return resolveShowShape(pinned, s);
   }
@@ -110,14 +116,17 @@ export function resolveActiveShow(date = new Date(), s = get()) {
   return resolveShowShape(show, s);
 }
 
-// The takeover currently in force, or null (absent, expired, or dangling —
-// the same voiding rules resolveActiveShow applies). Route/janitor helper.
+// The takeover currently in force, or null (absent, expired, or a target that
+// names nothing real — a dangling or malformed show id). An explicit null
+// target is a valid Default programming takeover. Route/janitor helper.
 export function getScheduleOverride(now = Date.now()) {
   const s = get();
   const ov = s?.scheduleOverride;
   if (!ov) return null;
   if (now >= ov.expiresAt) return null;
-  if (!s.shows?.some(x => x.id === ov.showId)) return null;
+  if (isDefaultTakeover(ov)) return ov;
+  const pinnedId = takeoverShowId(ov);
+  if (!pinnedId || !s.shows?.some(x => x.id === pinnedId)) return null;
   return ov;
 }
 
