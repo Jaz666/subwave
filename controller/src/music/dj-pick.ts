@@ -27,8 +27,8 @@ export function shortlistPickSchema(ids: string[]) {
   }));
 }
 
-export function shortlistPickPrompt(candidates: ShortlistCandidate[]): string {
-  return JSON.stringify({ shortlist: candidates }, null, 2)
+export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: Record<string, unknown> = {}): string {
+  return JSON.stringify({ context, shortlist: candidates }, null, 2)
     + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards.';
 }
 
@@ -36,15 +36,17 @@ export async function djPick({
   candidates,
   showAt = null,
   playlistResolved = true,
+  context = {},
 }: {
   candidates: ShortlistCandidate[];
   showAt?: Date | null;
   playlistResolved?: boolean;
+  context?: Record<string, unknown>;
 }): Promise<ShortlistPick> {
   const ids = candidates.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string');
   return djObject({
     system: pickSystem(showAt, playlistResolved, true),
-    prompt: shortlistPickPrompt(candidates),
+    prompt: shortlistPickPrompt(candidates, context),
     schema: shortlistPickSchema(ids),
     temperature: 0.5,
     kind: 'djShortlistPick',

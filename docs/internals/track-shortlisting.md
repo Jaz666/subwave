@@ -312,3 +312,13 @@ structured `djShortlistPick` call receives the candidate payload, can select
 only one supplied id, and writes the existing link/transition fields plus a
 separate editorial `selectionReason`. It cannot make discovery calls or claim
 source provenance. Queue integration and Booth Log rendering remain pending.
+
+### Native cascade integration
+
+The development branch now runs `buildShortlist → djPick` in the ordinary
+next-track cascade. The existing enqueue path, artist guard, queue de-duplicate
+handling, circuit-breaker classification and Candidate Pool fallback remain in
+place. The old next-track Agentic Picker toggle no longer selects the pool; it
+continues to govern the unrelated listener-request agent. This is not yet
+deployed for station testing. Booth Log presentation and latency benchmarking
+remain before rollout.
