@@ -83,3 +83,37 @@ transition decision. The controller then calls the normal main-DJ link writer
 with the selected track and its bounded Verified Facts packet. This adds one
 writer call to an agent-picked link, so its latency and allowance use must be
 measured separately.
+
+## Handoff status — 2026-09-05
+
+This branch is ready for continued observation and refinement.
+
+- The prompt-safety / Verified Facts PR is
+  [perminder-klair/subwave#1542](https://github.com/perminder-klair/subwave/pull/1542),
+  from `feat/prompt-safety-verified-facts`.
+- The deployed live-station checkout is `/home/jaz666/Docker/subwave`, on
+  `test-station/vanilla-debug-handoffs-prompt-safety-live`. It contains the
+  existing station-test work plus these prompt-safety commits:
+  `6de45bb2` (final-quarter following-show context), `a91fcbaa` (station
+  history sleeve notes), and `2a1533cd` (stale link-context cleanup).
+- The controller was rebuilt and restarted after those commits, and its Docker
+  health check passed. Focused verified-facts and show-handover tests plus
+  TypeScript type-checking passed before deployment.
+- Do not reset, clean, or overwrite the live checkout: it deliberately retains
+  an unrelated modified `.dockerignore` and untracked
+  `controller/scripts/functiongemma/` work from other live-station testing.
+
+### What to observe next
+
+1. In the final 15 minutes, confirm that a following-show cue is occasional
+   rather than absent or repeated. The cue is optional model material, while
+   the timing/context constraint is deterministic.
+2. Confirm station-history notes are sparse: a first-ever station play may be
+   mentioned only when the library index is readable, and a return is eligible
+   only for one or two prior plays at least 30 days ago. They deliberately
+   compete with other sleeve-note facts, so no mention on a given link is
+   expected.
+3. Keep the current scope separate from the parallel architecture work:
+   native track shortlisting, handoff timing, and future native segment/skill
+   routing. The former Producer Routing design remains reference material only;
+   it is not part of the live station architecture or a porting target.
