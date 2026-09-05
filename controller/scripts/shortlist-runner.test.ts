@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { executeShortlistPlan, replayFixtureTrace } from '../src/music/shortlist.js';
+import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
@@ -25,6 +25,50 @@ test('makes a redacted, replayable trace with source arguments and candidate ids
   assert.deepEqual(trace.scope.playlistTrackIds, ['playlist-track']);
   assert.equal(trace.currentTrack.title, 'Current Song');
   assert.equal('title' in trace.sourceCalls[0], false);
+});
+
+test('plans the observed journey, strict-show and empty-source lanes without adding sources', () => {
+  const journey = planShortlistSources({
+    scope: pickerScope({ audioWaypoint: [0.1] }),
+    currentTrackId: 'seed', discoveryPasses: 3,
+    moods: ['celebratory'], energies: ['high'],
+  }, new Set(['tracksTowardJourney', 'tracksByMood', 'tracksThatSoundLikeThis', 'tracksLikeThis']));
+  assert.deepEqual(journey, [
+    { source: 'tracksTowardJourney', args: {} },
+    { source: 'tracksByMood', args: { mood: 'celebratory', energy: 'high' } },
+    { source: 'tracksThatSoundLikeThis', args: { songId: 'seed' } },
+  ]);
+
+  const strictPlaylist = planShortlistSources({
+    scope: pickerScope({ playlistTracks: [{ id: 'in-show' }], playlistLock: new Set(['in-show']) }),
+    currentTrackId: 'seed', discoveryPasses: 5,
+    moods: ['reflective'], energies: ['low'], explore: true,
+  }, new Set(['showPlaylistTracks', 'tracksByMood', 'deepCuts']));
+  assert.deepEqual(strictPlaylist.map((call) => call.source), [
+    'showPlaylistTracks', 'tracksByMood', 'deepCuts', 'showPlaylistTracks', 'showPlaylistTracks',
+  ]);
+
+  const empty = planShortlistSources({
+    scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 3,
+    moods: ['calm'], energies: ['low'],
+  }, new Set(['tracksByMood']));
+  assert.deepEqual(empty, [
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' } },
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' } },
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' } },
+  ]);
+});
+
+test('native builder plans from source-owned availability before execution', async () => {
+  // A no-index scope exposes mood but not either similarity source. The builder
+  // must therefore plan a usable mood call rather than logging unavailable
+  // similarity probes just because a current track id exists.
+  const result = await buildShortlist({
+    scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 3,
+    moods: ['calm'], energies: ['low'],
+  });
+  assert.ok(result.sourceRuns.length > 0);
+  assert.ok(result.sourceRuns.every((run) => run.source === 'tracksByMood'));
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
