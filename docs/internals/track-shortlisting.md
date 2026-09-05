@@ -322,3 +322,96 @@ place. The old next-track Agentic Picker toggle no longer selects the pool; it
 continues to govern the unrelated listener-request agent. This is not yet
 deployed for station testing. Booth Log presentation and latency benchmarking
 remain before rollout.
+
+### Live benchmark and handover — 5 September 2026
+
+The native candidate has since been integrated into the test-station checkout
+and is live for controlled station testing. The live controller is healthy on
+test-station commit `692851da`; that integration branch also carries the
+debug/stat compatibility additions described below. Its user-owned local
+changes (`.dockerignore` and `controller/scripts/functiongemma/`) must remain
+untouched. The rebased development branch is `feat/track-cpu-shortlisting` at
+`f790c145`, now based on upstream `v1.12.0`.
+
+#### Observed first benchmarks
+
+These are early live samples on the local
+`Meta-Llama-3.1-8B-Instruct-Q5_K_M` service. They establish the direction and
+operating envelope, not a portable cloud-model claim. Show/context mix differs
+between runs, so compare a given round count against its matching vanilla run,
+not a different round count as a causal experiment.
+
+| source-pass setting | vanilla agentic picker | native shortlist primary pick | observed result |
+| ---: | --- | --- | --- |
+| 3 | 27.0 s, 24.3k tokens/pick | 15.4 s, 6.5k tokens/pick | 43% lower latency; 73% fewer tokens |
+| 4 | 47.0 s, 31.9k tokens/pick | 14.3 s, 9.4k tokens/pick | 70% lower latency; 70% fewer tokens |
+| 5 | 92.3 s, 37.2k tokens/pick (38/39 OK) | 19.4 s, 11.5k tokens/pick (57/58 OK) | 79% lower latency; 69% fewer tokens |
+
+The five-pass native run made five controller source calls per shortlist. The
+extra source passes add comparatively little latency because discovery no
+longer requires another model/tool turn. They do grow the final candidate
+payload, so token cost and required model context grow more noticeably. This
+is the intended operator-facing trade-off: more discovery breadth, one final
+model choice, still much cheaper than the corresponding agent loop.
+
+#### Operating constraints and decisions
+
+- The current setting is still `llm.discoverySteps`. Native planning performs
+  exactly that many source passes; it does not stop early after a suitable
+  candidate appears. While an LLM fallback is enabled, `promptDiscoverySteps()`
+  takes the lower primary/fallback value, so both must be set to the desired
+  number. Move this to a dedicated **DJ Behaviour** shortlist-pass setting in
+  follow-up work.
+- A five-pass strict playlist run built 43 candidates and sent 11,989 input
+  tokens. With llama.cpp running at `--ctx-size 12000`, the model produced no
+  parseable JSON and the Candidate Pool fallback completed the pick. Controller
+  `numCtx` was 16,384, but the server was the binding limit. Match llama.cpp to
+  at least 16k now; assess 20k--24k, subject to RAM, before treating five
+  passes as reliable. Add a live per-kind peak input/output token tracker and
+  recommended context-window calculation rather than relying on an average.
+- The existing `djAgentRepick` is still called by the artist-variety guard.
+  Example: the first shortlist choice was Placebo, which the guard replaced
+  with Rage Against the Machine from the already-built alternatives. Add a
+  native `djShortlistRepick` that selects only allowed alternative artists from
+  the same shortlist, with no rediscovery and no legacy agent path.
+- Reinstate explicit persona **Music Leanings** as editorial input to the final
+  native selector only. It must not override shortlist eligibility, show locks
+  or recency.
+- Native debug records now emulate the former picker view: the one
+  `djShortlistPick` call carries controller source names/arguments, returned and
+  accepted counts, source timing, tool count and equivalent steps. The Stats
+  page includes `djShortlistPick` in Agent Runs. The dedicated Booth Log
+  Shortlist Pick presentation remains outstanding.
+- Review API, MCP and webhook surfaces before publicising the path: consumers
+  may currently assume picker activity is an LLM tool loop.
+
+#### Upstream and verification
+
+The development branch rebased cleanly onto v1.12.0. The release's
+announce-only link support overlaps `dj-agent.ts` and its pick schema; the
+rebased code retains both announce-link composition and the native picker.
+The strict single-artist playlist source change is automatically used by the
+native builder through the shared picker registry.
+
+Verified after rebase:
+
+```text
+controller npm run typecheck                                  passed
+controller npm test -- shortlist-runner                       passed
+controller npm test -- picker-lock-forwarding                 passed
+controller npm test -- picker-show-source                     passed
+controller npm test -- link-style                             passed
+```
+
+The full controller test suite was not rerun after the rebase. An earlier full
+suite attempt was blocked by the local analyzer test environment lacking
+NumPy, not by shortlist code.
+
+#### Resume point
+
+Continue collecting normal station data without deploying further shortlist
+changes. Then, in this development worktree, use the captured five-pass traces
+to implement and test `djShortlistRepick`, followed by the Music Leanings and
+selection-reason prompt refinements. Gate any further context-window or
+operator-setting change on the planned peak-token evidence rather than an
+average.
