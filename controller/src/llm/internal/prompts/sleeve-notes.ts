@@ -3,6 +3,7 @@
 // the model prompt: it is a small trusted packet for the main DJ link path.
 
 import { trackEraYear } from '../../../music/show-filter.js';
+import { unairedFlag, type AiredIndex } from '../../../music/airing.js';
 
 function text(value: unknown, max = 180): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -26,10 +27,34 @@ export function sleeveNotesFor(track: any, playCount: number | null = null): str
   return notes;
 }
 
+// A small amount of station memory makes a link feel like it belongs to this
+// broadcast, but an empty/unavailable play index must never be presented as a
+// first play. `unairedFlag` makes exactly that distinction for the picker.
+// A rare return needs both a low lifetime count and a meaningful gap; without
+// the gap, a new station would call every second spin "rare".
+export function stationHistoryNoteFor(
+  track: any,
+  stats: { count: number; lastPlayedAtMs: number } | null,
+  index: AiredIndex,
+  nowMs = Date.now(),
+): string | null {
+  if (unairedFlag(track, index)) return 'First station play.';
+  if (!stats || stats.count < 1 || stats.count > 2) return null;
+  const days = Math.floor((nowMs - stats.lastPlayedAtMs) / 86_400_000);
+  if (!Number.isFinite(days) || days < 30) return null;
+  const times = stats.count === 1 ? 'once' : 'twice';
+  return `Played here only ${times} before; last heard ${days} days ago.`;
+}
 
 // Extra facts are derived from controller context, never model knowledge.
-export function contextSleeveNotesFor(track: any, context: any, playCount: number | null = null): string[] {
+export function contextSleeveNotesFor(
+  track: any,
+  context: any,
+  playCount: number | null = null,
+  stationHistoryNote: string | null = null,
+): string[] {
   const notes = sleeveNotesFor(track, playCount);
+  if (stationHistoryNote) notes.push(stationHistoryNote);
   const season = text(context?.date?.season);
   if (season) notes.push(`Season: ${season}.`);
   const condition = text(context?.weather?.condition);

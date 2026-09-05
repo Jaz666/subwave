@@ -14,7 +14,7 @@ import { trackEraYear } from '../../../music/show-filter.js';
 import { trackFeelSuffix } from './track-feel.js';
 import { announceLine } from '../../../broadcast/announce-line.js';
 import * as library from '../../../music/library.js';
-import { contextSleeveNotesFor, selectSleeveNotes } from './sleeve-notes.js';
+import { contextSleeveNotesFor, selectSleeveNotes, stationHistoryNoteFor } from './sleeve-notes.js';
 import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
@@ -108,8 +108,14 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
     moment.push("Show progress: final 15 minutes.");
     moment.push("Following show: \"" + String(handover.nextShow.name).trim() + "\" with " + String(handover.nextShow.presenter).trim() + ", starting " + String(handover.nextShow.startsAt).trim() + ".");
   }
-  const playCount = current ? (library.trackPlayStatsFor(current)?.count ?? null) : null;
-  const sleeves = includeSleeves ? selectSleeveNotes(contextSleeveNotesFor(current, context, playCount)) : [];
+  const playStats = current ? library.trackPlayStatsFor(current) : null;
+  const playCount = playStats?.count ?? null;
+  const stationHistoryNote = current
+    ? stationHistoryNoteFor(current, playStats, library.lastAiredInfo())
+    : null;
+  const sleeves = includeSleeves
+    ? selectSleeveNotes(contextSleeveNotesFor(current, context, playCount, stationHistoryNote))
+    : [];
   const sections = [
     "Verified Facts:",
     "Current Context:\n" + (moment.length ? moment.map((fact) => "- " + fact).join("\n") : "- No additional verified moment facts."),
