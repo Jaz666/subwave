@@ -289,3 +289,20 @@ credentials and unrelated session history.
 The change is not deployed to the integration station. Notify the user before
 any controller rebuild or restart; after deployment, retain representative
 events as replay fixtures before starting the automatic source planner.
+
+### Captured source-plan evidence — 5 September 2026
+
+The integration station captured 94 `picker.replayTrace` records before its
+next controller change. The set includes 69 journey contexts, 10 strict-show
+contexts, 8 calls with an empty source result, 40 playlist contexts and 25
+repeated-source runs. It covers journey, playlist, audio/text similarity,
+mood/energy, search, random and deep-cut sources. Strict-playlist evidence is
+still desirable before rollout, but is not needed to begin the planner seam.
+
+`planShortlistSources(context, availableSources)` and native
+`buildShortlist(context)` now exist in `controller/src/music/shortlist.ts`.
+The planner is controller-native and availability-gated: it leads with an
+active journey or show playlist, follows the observed mood/energy and
+current-track similarity lanes, preserves repeated calls when its pass budget
+wraps, and retains the existing caller-decided deep-cut nudge. It is not yet
+wired into the live picker or the DJ selection call.
