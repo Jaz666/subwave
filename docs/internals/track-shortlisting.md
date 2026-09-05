@@ -306,3 +306,9 @@ active journey or show playlist, follows the observed mood/energy and
 current-track similarity lanes, preserves repeated calls when its pass budget
 wraps, and retains the existing caller-decided deep-cut nudge. It is not yet
 wired into the live picker or the DJ selection call.
+
+`controller/src/music/dj-pick.ts` now supplies that selection seam: one
+structured `djShortlistPick` call receives the candidate payload, can select
+only one supplied id, and writes the existing link/transition fields plus a
+separate editorial `selectionReason`. It cannot make discovery calls or claim
+source provenance. Queue integration and Booth Log rendering remain pending.
