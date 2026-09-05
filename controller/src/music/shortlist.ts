@@ -20,7 +20,7 @@ export type ShortlistPlanningContext = {
   // Resolved from the show snapshot by the eventual controller call site. The
   // scope carries strict locks; these soft values are only source arguments.
   moods?: string[] | null;
-  energies?: Array<'low' | 'medium' | 'high'> | null;
+  energies?: string[] | null;
   // Mirrors the existing ε-greedy deep-cut nudge. Callers decide the random
   // draw once, outside this deterministic planner.
   explore?: boolean;

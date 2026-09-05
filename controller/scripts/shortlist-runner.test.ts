@@ -80,8 +80,12 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.equal(schema.safeParse({
     id: 'invented', selectionReason: 'not allowed', say: null, transition: null,
   }).success, false);
-  const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
+  const prompt = shortlistPickPrompt(
+    [{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }],
+    { currentTrack: { id: 'seed' }, link: 'Set say to null.' },
+  );
   assert.match(prompt, /candidate-a/);
+  assert.match(prompt, /"seed"/);
   assert.match(prompt, /Track Shortlist/);
 });
 
