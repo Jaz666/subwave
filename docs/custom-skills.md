@@ -342,6 +342,34 @@ export const configFields = {
 };
 ```
 
+> **Frontmatter does not fetch anything by itself.** Keys such as `feed:` and
+> `feedMaxItems:` are ordinary strings passed to the sibling `tool.mjs` as
+> `config`; they are not fetch declarations. A `SKILL.md` with those keys but no
+> `tool.mjs` remains prompt-only: it gets no `skill_<slug>` tool, performs no
+> automatic request, and receives no injected feed data.
+
+For a custom RSS-backed skill, add a sibling `tool.mjs` that reads those values
+and deliberately calls the shared feed service (frontmatter values arrive as
+strings, so convert numeric values yourself):
+
+```js
+export default async function (_ctx, _state, services, config) {
+  const parsedMax = Number(config.feedMaxItems);
+  const maxItems = Number.isInteger(parsedMax) && parsedMax >= 1 && parsedMax <= 50
+    ? parsedMax
+    : undefined;
+  const headlines = await services.fetchHeadlines({
+    feedUrl: config.feed || undefined,
+    maxItems,
+  });
+  return { headlines };
+}
+```
+
+For production use, copy or adapt the built-in News `tool.mjs`; it also handles
+headline deduplication and the no-fresh-items case. The feed URL only has meaning
+because that tool reads it and calls `services.fetchHeadlines`.
+
 **`configFields` reference.** A flat `{ key: { … } }` map, up to 8 entries per
 skill. Each entry takes:
 
