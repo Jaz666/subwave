@@ -55,6 +55,8 @@ export interface Track {
   // its ending is a cut rather than its own. radio.liq reads liq_show_fade off
   // the OUTGOING track and suppresses the exit gestures above.
   showFade?: boolean;
+  // Automatic compatible-pair crossfade, distinct from an explicit model blend.
+  pairBlend?: boolean;
   [k: string]: unknown;
 }
 

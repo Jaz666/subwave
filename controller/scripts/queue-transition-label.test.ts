@@ -47,6 +47,11 @@ test('exit gestures ride the outgoing track', () => {
   assert.equal(nextTransitionLabel(item({ loop: true }), item()), 'Loop');
 });
 
+test('pair blend rides on the outgoing track', () => {
+  assert.equal(nextTransitionLabel(item({ pairBlend: true }), item()), 'Pair blend');
+  assert.equal(nextTransitionLabel(item({ pairBlend: true }), item({ sweep: true })), 'Pair blend + Sweep');
+});
+
 test('entry gestures ride the incoming track', () => {
   assert.equal(nextTransitionLabel(item(), item({ sweep: true })), 'Sweep');
   assert.equal(nextTransitionLabel(item(), item({ blend: true })), 'Blend');
