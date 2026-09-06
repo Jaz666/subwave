@@ -24,7 +24,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-link-style-'));
 const { normalizePersona } = await import('../src/settings/normalize.js');
 const { announceLinks } = await import('../src/settings/persona.js');
 const { buildLinkClause } = await import('../src/broadcast/dj-agent/link-clause.js');
-const { linkPrompt, generateLink } = await import('../src/llm/internal/prompts/scripts.js');
+const { linkPrompt, generateLink, GENERATE_LINK_KIND } = await import('../src/llm/internal/prompts/scripts.js');
 const { announceLine, nextAnnounceForm } = await import('../src/broadcast/announce-line.js');
 const { queue } = await import('../src/broadcast/queue.js');
 
@@ -198,6 +198,10 @@ test('announceLine refuses to compose a non-Latin artist name', () => {
 // is configured to serve a model in this throwaway STATE_DIR, so a fall-through
 // would either throw or return something else — the exact equality catches both.
 const announcePersona = { linkStyle: 'announce', name: 'Nova', soul: 'warm and dry' };
+
+test('generateLink retains its stable telemetry label', () => {
+  assert.equal(GENERATE_LINK_KIND, 'generateLink');
+});
 
 test('generateLink in announce mode returns the composed line with no LLM call', async () => {
   const result = await generateLink({

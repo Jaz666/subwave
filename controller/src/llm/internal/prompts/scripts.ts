@@ -369,6 +369,11 @@ export function linkPrompt({
   return sections.join('\n\n');
 }
 
+// Keep the public telemetry label stable even as the implementation evolves.
+// Debug history, benchmarks and dashboards group this ordinary on-air writer
+// under generateLink; a persona-specific implementation must not fork it.
+export const GENERATE_LINK_KIND = 'generateLink';
+
 export async function generateLink(args: any) {
   const speaker = args.persona || settings.getEffectivePersona();
   if (settings.announceLinks(speaker)) {
@@ -386,7 +391,7 @@ export async function generateLink(args: any) {
     topP: 0.92,
     repeatPenalty: 1.2,
     seed: randomSeed(),
-    kind: 'generatePersonaLink',
+    kind: GENERATE_LINK_KIND,
   });
 }
 
