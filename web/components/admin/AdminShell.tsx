@@ -111,6 +111,11 @@ type NavIcon = ComponentType<{
   'aria-hidden'?: boolean | 'true' | 'false';
 }>;
 
+const BUILD_BRANCHES = (process.env.NEXT_PUBLIC_BUILD_BRANCHES || '')
+  .split('|')
+  .map(s => s.trim())
+  .filter(Boolean);
+
 interface NavSubItem {
   href: string;
   id: string;
@@ -217,6 +222,7 @@ const NAV_SECTIONS: NavSection[] = [
         ],
       },
       { href: '/admin/settings', id: 'settings', label: 'Settings', icon: SlidersHorizontal },
+      { href: '/admin/discovery', id: 'discovery', label: 'Discovery', icon: Telescope },
       { href: '/admin/debug', id: 'debug', label: 'Debug', icon: Terminal },
     ],
   },
@@ -547,7 +553,12 @@ function AdminSidebar({
 
         {process.env.NEXT_PUBLIC_APP_VERSION ? (
           <div className="border-t border-dashed border-[var(--separator-strong)] px-1 pt-1.5 text-[10px] tracking-[0.18em] text-muted uppercase group-data-[collapsible=icon]:hidden">
-            v{process.env.NEXT_PUBLIC_APP_VERSION}
+            <span>v{process.env.NEXT_PUBLIC_APP_VERSION}</span>
+            {BUILD_BRANCHES.length > 0 && (
+              <ul aria-label="Local station branches" className="mt-2 grid gap-1 text-[9px] tracking-[0.12em] text-muted">
+                {BUILD_BRANCHES.map(branch => <li key={branch}>· {branch}</li>)}
+              </ul>
+            )}
           </div>
         ) : null}
       </SidebarFooter>

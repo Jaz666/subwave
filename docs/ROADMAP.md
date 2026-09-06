@@ -5,7 +5,6 @@ This is an onboarding roadmap, not a product commitment. Items are separated bet
 ## Maintainer-confirmed direction
 
 - Keep `develop` as the fork's main branch used to run the local Subwave version.
-<<<<<<< HEAD
 - Treat the two paths in [`docs/DEVELOPMENT_PATHS.md`](DEVELOPMENT_PATHS.md) as
   independent active work: DJ prompt boundary/grounding, and native track
   shortlisting.
@@ -25,7 +24,6 @@ This is an onboarding roadmap, not a product commitment. Items are separated bet
 
 These are proposals, not claims of an existing maintainer plan:
 
-<<<<<<< HEAD
 1. Make a read-only extraction map for the prompt-boundary PR: classify existing
    Producer Routing changes as prompt, shortlisting, routing, or mixed before
    creating its branch.
@@ -39,7 +37,6 @@ These are proposals, not claims of an existing maintainer plan:
 
 The repository and current project context do not establish:
 
-<<<<<<< HEAD
 - Whether the on-hold Producer Routing work will be resumed, and on what
   evidence.
 - Whether native shortlisting reveals a concrete retrieval gap that warrants

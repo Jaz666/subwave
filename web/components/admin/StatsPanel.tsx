@@ -72,6 +72,17 @@ interface ByDjKindRow {
   count: number;
 }
 
+interface DebugCountRow {
+  name: string;
+  count: number;
+  failed: number;
+}
+
+interface DebugStats {
+  toolCalls: { window: number; count: number; byName: DebugCountRow[] };
+  transitions: { window: number; count: number; byName: DebugCountRow[] };
+}
+
 interface LlmStats {
   window: number;
   count: number;
@@ -110,6 +121,7 @@ interface TtsStats {
 }
 
 interface DjLogStats {
+  window: number;
   count: number;
   byKind: ByDjKindRow[];
 }
@@ -148,6 +160,7 @@ interface StatsResponse {
   tts?: TtsStats;
   djLog?: DjLogStats;
   requests?: RequestsStats;
+  debug?: DebugStats;
   error?: string;
 }
 
@@ -787,7 +800,7 @@ export default function StatsPanel() {
         </Card>
       )}
 
-      {data && llm && tts && djLog && requests && (
+      {data && llm && tts && djLog && requests && data.debug && (
         <>
           <Card
             title="LLM usage"
@@ -881,6 +894,45 @@ export default function StatsPanel() {
                 </div>
               </div>
             )}
+          </Card>
+
+          <Card title="Local debug activity" sub="since controller start · not for upstream reporting">
+            <div className="stack-mobile grid grid-cols-[1fr_1fr] gap-0">
+              <div className="border-b border-separator-soft p-3.5 sm:border-r sm:border-b-0">
+                <div className="caption mb-2">
+                  tool calls <span className="text-muted">· last {data.debug.toolCalls.window} ({data.debug.toolCalls.count} recorded)</span>
+                </div>
+                <ScrollBox>
+                  <Table<DebugCountRow>
+                    empty="No picker tools registered"
+                    rows={data.debug.toolCalls.byName}
+                    cols={[
+                      { key: 'name', label: 'Tool' },
+                      { key: 'count', label: 'Calls', align: 'right',
+                        render: r => <span className="mono-num">{r.count}</span> },
+                      { key: 'failed', label: 'Failed', align: 'right',
+                        render: r => <span className="mono-num">{r.failed}</span> },
+                    ]}
+                  />
+                </ScrollBox>
+              </div>
+              <div className="p-3.5">
+                <div className="caption mb-2">
+                  track transitions <span className="text-muted">· last {data.debug.transitions.window} ({data.debug.transitions.count} recorded)</span>
+                </div>
+                <ScrollBox>
+                  <Table<DebugCountRow>
+                    empty="No transition combinations registered"
+                    rows={data.debug.transitions.byName}
+                    cols={[
+                      { key: 'name', label: 'Effects armed' },
+                      { key: 'count', label: 'Uses', align: 'right',
+                        render: r => <span className="mono-num">{r.count}</span> },
+                    ]}
+                  />
+                </ScrollBox>
+              </div>
+            </div>
           </Card>
 
           <Card title="Voice / TTS usage" sub={`last ${tts.window} spoken segments`}>
@@ -1010,7 +1062,7 @@ export default function StatsPanel() {
             )}
           </Card>
 
-          <Card title="DJ activity" sub={`${djLog.count} log events by kind`}>
+          <Card title="DJ activity" sub={'last ' + djLog.window + ' log events · ' + djLog.count + ' recorded'}>
             {!djLog.byKind.length ? (
               <span className="field-hint italic">
                 no DJ-log events yet

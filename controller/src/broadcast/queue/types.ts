@@ -51,6 +51,8 @@ export interface Track {
   loop?: boolean;
   loopBar?: number;
   crossSec?: number;
+  // Automatic compatible-pair crossfade, distinct from an explicit model blend.
+  pairBlend?: boolean;
   [k: string]: unknown;
 }
 

@@ -15,8 +15,9 @@
 import { appendFile } from 'node:fs/promises';
 import { statSync, renameSync, readFileSync } from 'node:fs';
 import { STATE_DIR } from '../config.js';
+import { STATS_WINDOW } from '../stats.js';
 
-const MAX_REQUESTS = 150;
+const MAX_REQUESTS = STATS_WINDOW;
 export const recentRequests: any[] = [];
 
 const REQUESTS_LOG = `${STATE_DIR}/logs/requests.log`;

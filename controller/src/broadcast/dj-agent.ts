@@ -161,7 +161,10 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; explore?: boolean }): Promise<boolean> {
+// Build the exact discovery scope used by a live next-track pick. Diagnostics
+// call this too, so a tool run sees the same recency, show and playlist policy
+// as the DJ rather than a convenient-but-different approximation.
+export async function livePickerScope(queue: any, { audioWaypoint = null, showAt = null }: { audioWaypoint?: number[] | null; showAt?: Date | null } = {}) {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -283,6 +286,12 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     playlistTracks,
     excludedIds,
   });
+
+  return { scope, playlistTracks, activeShow };
+}
+
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; explore?: boolean }): Promise<boolean> {
+  const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
 
   // Native discovery substitutes for the old tool loop. Its source registry
   // owns availability and the shared picker accumulator keeps every existing
