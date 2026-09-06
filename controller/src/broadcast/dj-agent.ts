@@ -60,6 +60,7 @@ import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick, djShortlistRepick } from '../music/dj-pick.js';
+import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -347,11 +348,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // internal transport field while the public shortlist contract names the
   // model-written part explicitly as selectionReason.
   let object: any = { ...selection, reason: selection.selectionReason };
-  logEvent('shortlist.selected', {
-    id: selection.id,
-    selectionReason: selection.selectionReason,
-  });
-
   let song = object?.id ? extras.seen.get(object.id) : null;
 
   // The agent returned an id that isn't in the candidate set it was shown.
@@ -489,6 +485,26 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     object = guarded.object;
     song = guarded.song;
   }
+
+  // This is the listener-visible selection record, so it is deliberately
+  // emitted after the artist guard: a corrective re-pick must not leave the
+  // Booth Log explaining a track that never airs. The reason is DJ-written;
+  // the concise source hint remains controller-written factual provenance.
+  const selectionReason = object.selectionReason ?? object.reason ?? null;
+  const sourceHint = shortlistSourceHint(song.shortlistSources);
+  const selectionRecord = {
+    id: song.id,
+    track: { title: song.title ?? null, artist: song.artist ?? null },
+    selectionReason,
+    sourceHint,
+    shortlistSources: song.shortlistSources ?? [],
+  };
+  logEvent('shortlist.selected', selectionRecord);
+  queue.log(
+    'shortlist',
+    ['Shortlist Pick', selectionReason, sourceHint].filter(Boolean).join(' — '),
+    selectionRecord,
+  );
 
   let rawSay = typeof object.say === 'string' ? object.say.trim() : '';
   // Announce mode: the model's `say` only signals "speak" — the exact line
