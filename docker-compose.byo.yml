@@ -224,6 +224,15 @@ services:
       - POCKET_TTS_VOICE=${POCKET_TTS_VOICE:-alba}
       # Which engines to load (comma-separated); each costs RAM + weights.
       - TTS_HEAVY_ENGINES=${TTS_HEAVY_ENGINES:-chatterbox,pocket-tts}
+      # Idle seconds before an engine's worker is stopped and its memory
+      # returned (empty = 1800 cuda / 3600 cpu; 0 = always resident). See
+      # .env.example and #1579.
+      - TTS_HEAVY_IDLE_UNLOAD_S=${TTS_HEAVY_IDLE_UNLOAD_S:-}
+      - CHATTERBOX_IDLE_UNLOAD_S=${CHATTERBOX_IDLE_UNLOAD_S:-}
+      - POCKET_TTS_IDLE_UNLOAD_S=${POCKET_TTS_IDLE_UNLOAD_S:-}
+      # Seconds /speak waits for a cold engine to load before giving up and
+      # letting the DJ fall through to its rescue voice.
+      - TTS_HEAVY_LOAD_TIMEOUT_S=${TTS_HEAVY_LOAD_TIMEOUT_S:-}
       # Optional — PocketTTS voice cloning (#238): accept the terms at
       # huggingface.co/kyutai/pocket-tts and set HF_TOKEN.
       - HF_TOKEN=${HF_TOKEN:-}
