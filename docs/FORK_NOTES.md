@@ -81,8 +81,8 @@ check `docker compose ps` and `/api/health` before treating the station as live.
 
 Before every live-station update, review `SUBWAVE_BUILD_BRANCHES` in the
 Compose build environment. Keep it aligned with the branches currently merged
-into the station. The current value is `Debug Code|Show Boundary Handoffs|Prompt
-Safety|Track Shortlisting`. If the branch set changes, update the value before
+into the station. The current value is `Debug Code|Prompt Safety|Track
+Shortlisting`. If the branch set changes, update the value before
 rebuilding the web image. The footer values are baked into the web client at
 build time, so a controller-only rebuild cannot update them.
 

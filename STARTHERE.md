@@ -32,7 +32,7 @@ For the consistent start/end-of-session procedure, read [`HANDOFF.md`](HANDOFF.m
 | `/home/jaz666/codex/` | Development worktrees | Make source and documentation changes here, on a named branch. |
 | `/home/jaz666/Docker/subwave` | Test-station integration checkout | Do not use as the primary development worktree. Merge or copy an approved candidate here only when it needs station testing. |
 | `jaz666/develop` | Clean-ish fork mirror of upstream `develop` | Preserve as the rebase/PR comparison point. Sync deliberately; do not use it for experiments. |
-| `test-station/active-branches-v1.12` | Current station integration branch | Combines Debug Code, Show Boundary Handoffs, Prompt Safety and Track Shortlisting. Local `.env`, databases and models are intentionally absent. |
+| `test-station/active-branches-v1.12` | Current station integration branch | Combines Debug Code, Prompt Safety and Track Shortlisting. Local `.env`, databases and models are intentionally absent. |
 
 `origin` is the upstream repository (`perminder-klair/subwave`) and `jaz666`
 is this fork. Before a rebase, merge, deployment or PR, fetch both and compare

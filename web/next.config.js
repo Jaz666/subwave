@@ -27,7 +27,7 @@ function resolveAppVersion() {
 }
 
 const version = resolveAppVersion();
-const buildBranches = (process.env.SUBWAVE_BUILD_BRANCHES || 'Debug Code|Producer Routing|Show Boundary Handoffs')
+const buildBranches = (process.env.SUBWAVE_BUILD_BRANCHES || 'Debug Code|Prompt Safety|Track Shortlisting')
   .split('|')
   .map(s => s.trim())
   .filter(Boolean);

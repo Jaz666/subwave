@@ -1467,21 +1467,11 @@ class Queue {
   // the outgoing persona id.
   async announce(text, kind = 'announcement', { persona = null, meta = {} }: { persona?: Persona | null; meta?: TurnMeta } = {}) {
     if (!text || !text.trim()) return;
-    if (kind !== 'handoff' && session.handoffInProgress()) {
-      this.log('scheduler', `Held ordinary speech — the show handoff has already aired`);
-      return;
-    }
     try {
       const wavPath = await speak(text, { kind, persona });
       // No bed here by construction — announce() speaks without queueing a
       // track, so there is nothing for maybePushBed to have bedded.
       const channel = voiceChannelFor(kind);
-      // The handoff may begin while TTS is rendering. Do not publish an
-      // ordinary clip into the gap between its two voices.
-      if (kind !== 'handoff' && session.handoffInProgress()) {
-        this.log('scheduler', `Dropped ${kind} — the show handoff aired while it rendered`);
-        return;
-      }
       const targetFile = channel === 'intro'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
@@ -1593,14 +1583,6 @@ class Queue {
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
   async announceExchange(lines: { persona: Persona; text: string }[], kind = 'banter') {
-    // A final-track mic-pass owns the rest of the outgoing show's air. Unlike
-    // announce(), exchanges render every line before they take the voice lock,
-    // so without this gate a banter/programme exchange that started just before
-    // the handoff could publish between its sign-off and greeting.
-    if (kind !== 'handoff' && session.handoffInProgress()) {
-      this.log('scheduler', `Held ordinary ${kind} exchange — the show handoff has already aired`);
-      return false;
-    }
     const rendered: { persona: Persona; text: string; wavPath: string }[] = [];
     try {
       for (const l of lines) {
@@ -1612,13 +1594,6 @@ class Queue {
       return false;
     }
     for (const l of rendered) {
-      // A handoff can begin while the exchange is rendering. Check per line:
-      // a voice lock wait between lines is long enough for the mic-pass to
-      // claim the boundary.
-      if (kind !== 'handoff' && session.handoffInProgress()) {
-        this.log('scheduler', `Dropped ordinary ${kind} exchange — the show handoff began while it rendered`);
-        return false;
-      }
       try {
         const seg: SegmentDesc = exchangeSegment(l, kind);
         const handoff = await airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
@@ -1652,22 +1627,8 @@ class Queue {
   // merely scheduled.
   async announceAtNextTrack(text, kind = 'announcement', { persona = null, meta = {}, daypart = null }: { persona?: Persona | null; meta?: TurnMeta; daypart?: string | null } = {}) {
     if (!text || !text.trim()) return;
-    // A formal mic-pass owns the rest of the outgoing show's air. A deferred
-    // ident created after that pass must not wait in the single pending slot
-    // and speak when the long/final track ends.
-    if (session.handoffInProgress()) {
-      this.log('scheduler', `Dropped ${kind} — the show handoff has already aired`);
-      return;
-    }
     try {
       const wavPath = await speak(text, { kind, persona });
-      // The handoff can complete while TTS is rendering. Check again before
-      // publishing the clip, otherwise it can become stale between the first
-      // guard and the next track boundary.
-      if (session.handoffInProgress()) {
-        this.log('scheduler', `Dropped ${kind} — the show handoff aired while it rendered`);
-        return;
-      }
       this._pendingVoice = { text, kind, wavPath, persona, meta, daypart, t: Date.now() };
       this.log('scheduler', `Holding ${kind} for the next track boundary`);
     } catch (err) {
@@ -1724,13 +1685,6 @@ class Queue {
   // link-carrying boundaries) is dropped rather than aired with a stale time
   // reference — the next cron fire replaces it.
   async airPendingVoice(np: NowPlaying | null = null) {
-    // A formal handoff has already spoken for this boundary. In particular,
-    // this catches an ident rendered after the handoff while the outgoing
-    // track was still running (the long-track case).
-    if (session.handoffInProgress()) {
-      this.dropPendingVoice('the show handoff has already aired');
-      return;
-    }
     // A mic-pass is already pending from an earlier roll (the hourly cron rolls
     // without airing) and will take this boundary. The same-tick case — where
     // the roll happens in onTrackStarted's auto-pick block, AFTER this runs —
@@ -1815,16 +1769,6 @@ class Queue {
     if (!autoVoiceAllowed()) return;
     if (!item || item.introAired) return;
     if (!item.introWav && !item.introScript) return;
-    // The final-track mic-pass is the only intentional cross-show speech.
-    // A track-linked clip can otherwise finish rendering while the handoff is
-    // being generated, then reach the following track before its original DJ
-    // has rolled off air. Mark it consumed: it is stale, not merely delayed.
-    if (session.handoffInProgress()) {
-      item.introAired = true;
-      this.log('link-skip', `Dropped ${item.introKind || 'track-linked'} speech before "${item.track?.title}" — the show handoff has already aired`);
-      this.persist();
-      return;
-    }
     item.introAired = true;
     // Stale back-announce safety-net. Links are written forward-looking (intro
     // the pick, never name the just-played track), so this normally never fires.
@@ -1895,14 +1839,6 @@ class Queue {
     // `overBed` comes from onBedStarted, which SAW the bed start; see
     // voiceChannelFor for why it can't be read off item.bedded here.
     const channel = voiceChannelFor(kind, { overBed });
-    // A missing WAV can make the render above outlast the final track. Check
-    // again at publication time so that slow TTS cannot leak this clip across
-    // the formal handoff.
-    if (session.handoffInProgress()) {
-      this.log('link-skip', `Dropped ${kind} speech before "${item.track?.title}" — the show handoff began while it rendered`);
-      this.persist();
-      return;
-    }
     const targetFile = channel === 'intro'
       ? config.liquidsoap.introFile
       : config.liquidsoap.sayFile;
@@ -2087,7 +2023,6 @@ class Queue {
     // for older items that pre-date the id annotation. Same matcher
     // airPendingVoice used above, so the two always agree on the incoming item.
     const idx = this.matchUpcomingIndex(np);
-    let introPromise: Promise<void> | null = null;
 
     if (idx >= 0) {
       // Drop everything ahead of the match too: the queue is strictly FIFO, so
@@ -2125,7 +2060,7 @@ class Queue {
       // rolled into history — the REAL predecessor — so a back-announcing link
       // that no longer follows the track it names (a request jumped the queue)
       // is dropped instead of airing a stale name.
-      introPromise = this.airIntro(this.current, this.history[0]?.track || null);
+      void this.airIntro(this.current, this.history[0]?.track || null);
     } else {
       // Not a tracked request → auto-playlist or jingle.
       // If we see untracked plays while there are sent items in `upcoming`,
@@ -2249,7 +2184,7 @@ class Queue {
     // first transition after a listener returns re-enters this block.
     const isAutonomous = this.current.source === 'auto' || this.current.source === 'ai';
     if (this.autoPick && this.upcoming.length === 0 && !this.pickerBusy && djCallsAllowed()) {
-      this.runPickCycle({ isAutonomous, introPromise });
+      this.runPickCycle({ isAutonomous });
     }
   }
 
@@ -2260,7 +2195,7 @@ class Queue {
   // queue.current at deadline time is one track too early for the event
   // text, the mini-run anchor, and the link's back-announce target.
   // Fire-and-forget like the original block; pickerBusy is the reentry guard.
-  runPickCycle({ isAutonomous, predecessorItem = null, introPromise = null }: { isAutonomous: boolean; predecessorItem?: QueueItem | null; introPromise?: Promise<void> | null }) {
+  runPickCycle({ isAutonomous, predecessorItem = null }: { isAutonomous: boolean; predecessorItem?: QueueItem | null }) {
     let wantLink = false;
     if (this.autoLink && isAutonomous && this.history[0]) {
       this.tracksUntilLink--;
@@ -2300,41 +2235,52 @@ class Queue {
         if (leadSec != null) {
           showAt = new Date(Date.now() + (leadSec + PICK_SHOW_LOOKAHEAD_SEC) * 1000);
         }
-        // The pick needs the context of the track it will queue. The session and
-        // roster must remain at the live clock until the actual boundary.
-        const pickCtx = await getFullContext(showAt ?? undefined);
-        const liveCtx = await getFullContext();
-        await session.maybeRoll(liveCtx);
-
-        // If this track is the last one of the outgoing show, introduce the
-        // incoming host here, after the track-tied intro has had its turn.
-        // The live session is intentionally NOT rolled by this look-ahead.
-        const finalTrackHandoff = session.armBoundaryHandoff(pickCtx);
+        const ctx = await getFullContext(showAt ?? undefined);
+        await session.maybeRoll(ctx);
+        // Plan a programme episode BEFORE the mic-pass so a handoff into a
+        // programme show can weave the episode angle into its greeting.
         try {
-          await programme.ensurePlan(liveCtx);
-        } catch {
-          this.log('error', 'Programme plan failed');
+          await programme.ensurePlan(ctx);
+        } catch (err) {
+          this.log('error', `Programme plan failed: ${(err as Error).message}`);
         }
+        // If that roll crossed a persona boundary, air the mic-pass first
+        // (sign-off + greeting) so it plays before the incoming DJ's first
+        // pick. Guarded so a handoff failure never blocks the next track.
+        // Drop a still-unaired ident first — airPendingVoice ran earlier in
+        // this same tick, before the roll above existed to be seen.
+        // (Under pair-drain the cycle fires near the on-air track's END, so
+        // the mic-pass lands over its outro into the transition — a working
+        // DJ's hand-off spot; deliberate, see stem-transitions research.)
         try {
           if (session.pendingHandoff()) {
-            this.dropPendingVoice("the show handoff covers this boundary");
-            if (introPromise) await introPromise;
-            const handoffCtx = finalTrackHandoff ? pickCtx : liveCtx;
-            await djAgent.runPersonaHandoff(this, handoffCtx);
+            this.dropPendingVoice('the show handoff covers this boundary');
+            // Identity looks ahead; the CLOCK must not. `ctx` describes
+            // showAt — up to a track-length plus the look-ahead margin from
+            // now — but the mic-pass airs immediately, so its prompt clock
+            // would run minutes fast and the sign-off would misstate the time
+            // on air (the failure #864 fixed for links). Take date/clock/time
+            // from the live moment and keep show/mood/festival from the
+            // look-ahead, which is the show being handed TO. Built only when a
+            // handoff is actually pending, so this costs nothing per track.
+            const live = await getFullContext();
+            await djAgent.runPersonaHandoff(this, {
+              ...ctx, at: live.at, date: live.date, clock: live.clock, time: live.time,
+            });
           }
-        } catch {
-          this.log('error', 'Persona handoff failed');
+        } catch (err) {
+          this.log('error', `Persona handoff failed: ${(err as Error).message}`);
         }
+        // Programme shows: open the episode if the hourly cron hasn't
+        // already (whichever call site settles the session first wins; the
+        // beat flag makes the other a no-op).
         try {
-          await programme.onSessionSettled(this, liveCtx);
-        } catch {
-          this.log('error', 'Programme episode hook failed');
+          await programme.onSessionSettled(this, ctx);
+        } catch (err) {
+          this.log('error', `Programme episode hook failed: ${(err as Error).message}`);
         }
-        await djAgent.runTrackEvent(this, pickCtx, {
-          // A link written by the outgoing DJ would otherwise air after their
-          // sign-off, at the incoming show boundary. The mic-pass is the
-          // introduction for that seam instead.
-          wantLink: wantLink && !finalTrackHandoff,
+        await djAgent.runTrackEvent(this, ctx, {
+          wantLink,
           showAt,
           predecessor: predecessorItem?.track ?? null,
           prior: predecessorItem ? (this.current?.track ?? null) : null,
