@@ -449,6 +449,17 @@ source hint describe the track that actually airs. The event reaches both the
 web-fed `djLog` and the durable shortlist trace. Source hints are
 controller-generated friendly labels, never raw registry identifiers.
 
-Next, benchmark the new listener-facing selection-reason payloads and gate any
+### Deferred compatibility evidence
+
+Before publicising native shortlisting, produce a non-airing paired report from
+one frozen station moment: run the legacy three-round Agentic Picker and the
+native three-pass Shortlister against the same track, show, locks and library
+state. Record each route's source/tool trace, candidates, selected track,
+input/output/total token usage, LLM call count, per-stage timing, total wall
+time, and fallback outcome. The selections need not match exactly; the evidence
+is that both remain in the same eligible musical neighbourhood while the native
+route removes model-led discovery overhead.
+
+Next, benchmark the new private Booth Log selection-note payloads and gate any
 further context-window or operator-setting change on peak-token evidence rather
 than an average.
