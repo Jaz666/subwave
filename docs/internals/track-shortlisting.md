@@ -410,8 +410,14 @@ NumPy, not by shortlist code.
 #### Resume point
 
 Continue collecting normal station data without deploying further shortlist
-changes. Then, in this development worktree, use the captured five-pass traces
-to implement and test `djShortlistRepick`, followed by the Music Leanings and
-selection-reason prompt refinements. Gate any further context-window or
+changes. Native `djShortlistRepick` landed in `dc0a31d6`: the artist-variety
+guard now makes its corrective editorial call only over the already-filtered
+alternative subset of the existing Track Shortlist. It uses the
+`djShortlistRepick` telemetry kind, cannot rediscover, and fails softly into
+the guard's existing relaxation/pool-rescue policy. The legacy
+`djAgentRepick` remains only on its non-native salvage path.
+
+Next, add persona Music Leanings to the final native selector only, then
+refine the selection-reason prompt. Gate any further context-window or
 operator-setting change on the planned peak-token evidence rather than an
 average.
