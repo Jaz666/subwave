@@ -339,6 +339,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     candidates: shortlist.candidates,
     showAt,
     playlistResolved: !!playlistTracks?.length,
+    sourceRuns: shortlist.sourceRuns,
     context: {
       currentTrack: current ? {
         id: current.id ?? null,
