@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **Fork session protocol:** Before planning or changing this repository, read [`STARTHERE.md`](STARTHERE.md). At the end of a development session, follow [`HANDOFF.md`](HANDOFF.md).
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is

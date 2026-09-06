@@ -59,6 +59,9 @@ import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
+import { buildShortlist } from '../music/shortlist.js';
+import { djPick, djShortlistRepick, usableSelectionReason } from '../music/dj-pick.js';
+import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -161,7 +164,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; explore?: boolean }): Promise<boolean> {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -291,14 +294,65 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     excludedIds,
   });
 
-  const run = await pickerAgent.run({
-    messages: session.windowMessages(),
+  // Native discovery substitutes for the old tool loop. Its source registry
+  // owns availability and the shared picker accumulator keeps every existing
+  // lock, recency rule and per-source cap intact.
+  const shortlist = await buildShortlist({
     scope,
-    showAt,
+    currentTrackId: current?.id ?? null,
+    discoveryPasses: dj.promptDiscoverySteps(),
+    moods: activeShow?.moods,
+    energies: activeShow?.energies,
+    explore,
   });
-  const { steps, toolCalls, extras } = run;
-  let object = run.object;
-
+  const steps = shortlist.sourceRuns.length;
+  const toolCalls = shortlist.sourceRuns;
+  const extras = { seen: new Map(shortlist.candidates.map((candidate) => [candidate.id, candidate])) };
+  logEvent('shortlist.built', {
+    candidates: shortlist.uniqueCandidates,
+    sourceRuns: shortlist.sourceRuns,
+    elapsedMs: shortlist.elapsedMs,
+  });
+  if (!shortlist.candidates.length) {
+    const failure = classifyPickFailure({
+      pickedId: null,
+      seedId: current?.id ?? null,
+      candidates: 0,
+      toolCalls: shortlist.sourceRuns.length,
+    });
+    throw Object.assign(new Error(failure.message), { pickFailure: failure });
+  }
+  const musicalLeanings = settings.personaMusicLeanings(session.onAirPersona());
+  const guestMusicalNudge = settings.guestEditorialNudge(showAt ?? new Date());
+  const selection = await djPick({
+    candidates: shortlist.candidates,
+    showAt,
+    playlistResolved: !!playlistTracks?.length,
+    context: {
+      currentTrack: current ? {
+        id: current.id ?? null,
+        title: current.title ?? null,
+        artist: current.artist ?? null,
+        album: current.album ?? null,
+      } : null,
+      journeyActive: !!audioWaypoint?.length,
+      link: wantLink
+        ? (linkAirAt
+            ? `Write the on-air link. It is scheduled for ${getClockContext(linkAirAt).display}; only mention that time if needed.`
+            : 'Write the on-air link. Do not state a clock time.')
+        : 'Set say to null; no link airs for this pick.',
+      ...(musicalLeanings
+        ? { musicalLeanings }
+        : {}),
+      ...(guestMusicalNudge
+        ? { guestMusicalLeanings: guestMusicalNudge }
+        : {}),
+    },
+  });
+  // The existing queue/artist-guard tail expects `reason`; preserve that
+  // internal transport field while the public shortlist contract names the
+  // model-written part explicitly as selectionReason.
+  let object: any = { ...selection, reason: selection.selectionReason };
   let song = object?.id ? extras.seen.get(object.id) : null;
 
   // The agent returned an id that isn't in the candidate set it was shown.
@@ -403,11 +457,28 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     // Every queue read stays here; the policy module is handed values only.
     recentRoots: neighbourRoots,
     window: varietyWindow,
-    repick: (alt, reason) => repickFromSeen({
-      seen: alt, badId: null, showAt,
-      playlistResolved: !!playlistTracks?.length,
-      reason,
-    }),
+    repick: async (alt, reason) => {
+      const selection = await djShortlistRepick({
+        candidates: [...alt.values()],
+        reason,
+        showAt,
+        playlistResolved: !!playlistTracks?.length,
+        context: {
+          currentTrack: current ? {
+            id: current.id ?? null,
+            title: current.title ?? null,
+            artist: current.artist ?? null,
+            album: current.album ?? null,
+          } : null,
+          link: wantLink
+            ? 'Write the on-air link for the track you choose.'
+            : 'Set say to null; no link airs for this pick.',
+          ...(musicalLeanings ? { musicalLeanings } : {}),
+          ...(guestMusicalNudge ? { guestMusicalLeanings: guestMusicalNudge } : {}),
+        },
+      });
+      return selection ? { ...selection, reason: selection.selectionReason } : null;
+    },
     poolRescue: (avoidArtist) => pickViaPool(
       queue, ctx, { wantLink, current, showAt }, rankTarget, audioWaypoint,
       { avoidArtist },
@@ -448,11 +519,28 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
       // path's filter uses, which is what makes the two paths agree.
       albumKeyOf: albumKeyFor,
       hours: albumHours,
-      repick: (alt, reason) => repickFromSeen({
-        seen: alt, badId: null, showAt,
-        playlistResolved: !!playlistTracks?.length,
-        reason,
-      }),
+      repick: async (alt, reason) => {
+        const selection = await djShortlistRepick({
+          candidates: [...alt.values()],
+          reason,
+          showAt,
+          playlistResolved: !!playlistTracks?.length,
+          context: {
+            currentTrack: current ? {
+              id: current.id ?? null,
+              title: current.title ?? null,
+              artist: current.artist ?? null,
+              album: current.album ?? null,
+            } : null,
+            link: wantLink
+              ? 'Write the on-air link for the track you choose.'
+              : 'Set say to null; no link airs for this pick.',
+            ...(musicalLeanings ? { musicalLeanings } : {}),
+            ...(guestMusicalNudge ? { guestMusicalLeanings: guestMusicalNudge } : {}),
+          },
+        });
+        return selection ? { ...selection, reason: selection.selectionReason } : null;
+      },
       log: (line) => queue.log('picker', line),
       logEvent,
     });
@@ -461,6 +549,27 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
       song = albumGuarded.song;
     }
   }
+  // This private Booth Log record is deliberately
+  // emitted after the artist guard: a corrective re-pick must not leave the
+  // log explaining a track that never airs. A weak model's unusable note gets
+  // a controller-written floor; the concise source hint remains factual
+  // provenance.
+  const selectionReason = usableSelectionReason(object.selectionReason ?? object.reason, song);
+  object = { ...object, selectionReason, reason: selectionReason };
+  const sourceHint = shortlistSourceHint(song.shortlistSources);
+  const selectionRecord = {
+    id: song.id,
+    track: { title: song.title ?? null, artist: song.artist ?? null },
+    selectionReason,
+    sourceHint,
+    shortlistSources: song.shortlistSources ?? [],
+  };
+  logEvent('shortlist.selected', selectionRecord);
+  queue.log(
+    'shortlist',
+    ['Shortlist Pick', selectionReason, sourceHint].filter(Boolean).join(' — '),
+    selectionRecord,
+  );
 
   // The picker has seen private selection context. Only after its final choice
   // do we invoke the isolated listener-facing writer with safe prompt data.
@@ -762,8 +871,9 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
     // carrier of concrete candidates. Skipped mid-run/journey (they own the
     // direction) and on strict-playlist shows (deep cuts are almost surely
     // off-playlist, so the call would be spent on an emptyResult).
-    const exploreClause = !inRun && !audioWaypoint && !ctx?.activeShow?.playlistStrict
-      && Math.random() < EXPLORE_SEED_PROBABILITY
+    const explore = !inRun && !audioWaypoint && !ctx?.activeShow?.playlistStrict
+      && Math.random() < EXPLORE_SEED_PROBABILITY;
+    const exploreClause = explore
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';
     const eventText = `Now playing "${current?.title}" by ${current?.artist}`
@@ -776,14 +886,15 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
       meta: promptSuffix ? { promptSuffix } : {},
     });
 
-    // `!cheap`: in the soft budget tier we skip the multi-step agent tool-loop
-    // and go straight to the one-call pool picker below to stretch the budget.
-    if (settings.get().llm?.pickerAgent && !cheap && !breakerOpen()) {
+    // `!cheap`: in the soft budget tier we keep the established dead-air-safe
+    // pool fallback. Otherwise native shortlisting is the one next-track path;
+    // the old Agentic Picker toggle now governs only the separate request agent.
+    if (!cheap && !breakerOpen()) {
       try {
         // Passed only to the post-selection writer, and only when the station
         // clock policy permits it.
         const queued = await pickViaAgent(queue, ctx, {
-          wantLink, audioWaypoint, current, showAt, rankTarget,
+          wantLink, audioWaypoint, current, showAt, rankTarget, explore,
           linkAirAt,
         });
         breakerSuccess();
