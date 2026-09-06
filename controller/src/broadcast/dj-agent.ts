@@ -64,6 +64,7 @@ import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick, djShortlistRepick, usableSelectionReason } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
+import { recordToolCall } from '../stats.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -318,6 +319,12 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   });
   const steps = shortlist.sourceRuns.length;
   const toolCalls = shortlist.sourceRuns;
+  // Native sources replace the picker-agent's tool loop. Surface each source
+  // run through the same diagnostics ring so Debug and Stats retain the
+  // station's familiar tool-level accounting.
+  for (const sourceRun of shortlist.sourceRuns) {
+    recordToolCall({ name: sourceRun.source, failed: sourceRun.status === 'error' || sourceRun.status === 'invalid' });
+  }
   const extras = { seen: new Map(shortlist.candidates.map((candidate) => [candidate.id, candidate])) };
   logEvent('shortlist.built', {
     candidates: shortlist.uniqueCandidates,
