@@ -18,8 +18,38 @@ export const ENGINES: EngineMeta[] = [
   { id: 'remote',     label: 'Remote',     blurb: 'Self-hosted HTTP endpoint' },
 ];
 
+// The persona-only "follow the station" card, offered FIRST so the default
+// reads as a choice rather than a fallback. Kept out of ENGINES because that
+// list is also the fallback slot's and the settings default-engine picker's,
+// neither of which can inherit (see PERSONA_TTS_INHERIT in the controller's
+// schemas/persona.ts). engineStatus()'s default branch already gives it no
+// badge and never mutes it.
+export const INHERIT_ENGINE: EngineMeta = {
+  id: 'inherit',
+  label: 'Station default',
+  blurb: 'Follow Settings → TTS voice',
+};
+
+export const PERSONA_ENGINES: EngineMeta[] = [INHERIT_ENGINE, ...ENGINES];
+
+/**
+ * The engine id as a roster/table chip. Real engine ids read fine as-is; the
+ * sentinel does not — a chip saying "inherit" tells the operator nothing about
+ * what will speak, and it is the shipped default for the whole seed roster.
+ * Surfaces with the station block to hand should prefer personas/helpers.ts's
+ * engineLabel(), which resolves it to the engine actually on air.
+ */
+export function engineChipLabel(engine: string): string {
+  return isInheritEngine(engine) ? 'station default' : engine;
+}
+
+/** Whether a slot follows the station rather than naming an engine. */
+export function isInheritEngine(engine: string): boolean {
+  return engine === INHERIT_ENGINE.id;
+}
+
 export const ENGINE_META: Record<string, EngineMeta> = Object.fromEntries(
-  ENGINES.map(e => [e.id, e]),
+  [INHERIT_ENGINE, ...ENGINES].map(e => [e.id, e]),
 );
 
 export type EngineStatusTone = 'ok' | 'warn';

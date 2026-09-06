@@ -43,6 +43,7 @@ import {
   TTS_CHATTERBOX_VOICE_RE,
   TTS_CLOUD_PROVIDERS as TTS_CLOUD_PROVIDER_VALUES,
   TTS_ENGINES as TTS_ENGINE_VALUES,
+  PERSONA_TTS_INHERIT,
   TTS_GAIN_CLAMP_DB as TTS_GAIN_CLAMP_DB_VALUE,
   TTS_KOKORO_VOICE_RE,
   TTS_POCKET_VOICE_RE,
@@ -158,6 +159,12 @@ export function personaToneDirectives(persona: unknown): string {
 // every engine on isAvailable(), so settings can name one whose runtime is
 // absent and it simply falls back to Piper.
 export const TTS_ENGINES: readonly string[] = TTS_ENGINE_VALUES;
+// The persona-only 'inherit' sentinel, re-exported like every other schema
+// constant so no call site has to reach into src/schemas/ directly. The
+// PERSONA_TTS_ENGINES list is deliberately NOT re-exported: nothing outside the
+// schema needs the vocabulary (ttsVoiceSlotSchema's `allowInherit` flag is the
+// only way in), and a re-export with no reader is a name that drifts unnoticed.
+export { PERSONA_TTS_INHERIT };
 
 // DJ-voice level trim, in dB. A per-engine gain levels the loudness gap between
 // TTS engines (only PocketTTS self-normalises today, so it sits quieter than
@@ -1116,7 +1123,7 @@ export const SEED_PERSONAS = [
     soul: DJ_SOULS[0],
     language: '',
     avatar: '',
-    tts: { engine: 'piper', cloudProvider: 'openai', voice: 'bm_george', gainDb: 0, speed: 1 },
+    tts: { engine: PERSONA_TTS_INHERIT, cloudProvider: 'openai', voice: 'bm_george', gainDb: 0, speed: 1 },
   },
   {
     id: 'p_default1',
@@ -1127,7 +1134,7 @@ export const SEED_PERSONAS = [
     soul: DJ_SOULS[1],
     language: '',
     avatar: '',
-    tts: { engine: 'piper', cloudProvider: 'openai', voice: 'bf_alice', gainDb: 0, speed: 1 },
+    tts: { engine: PERSONA_TTS_INHERIT, cloudProvider: 'openai', voice: 'bf_alice', gainDb: 0, speed: 1 },
   },
   {
     id: 'p_default2',
@@ -1138,7 +1145,7 @@ export const SEED_PERSONAS = [
     soul: DJ_SOULS[3],
     language: '',
     avatar: '',
-    tts: { engine: 'piper', cloudProvider: 'openai', voice: 'bm_daniel', gainDb: 0, speed: 1 },
+    tts: { engine: PERSONA_TTS_INHERIT, cloudProvider: 'openai', voice: 'bm_daniel', gainDb: 0, speed: 1 },
   },
 ];
 
