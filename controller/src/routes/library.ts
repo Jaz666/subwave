@@ -700,13 +700,35 @@ router.get('/library/untagged', requireAdmin, async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /library/coverage —
 //   { tagged, analysed, total, percent, analysedPercent, scannedAt, scanning }
-// `total` / `percent` / `analysedPercent` are null until the first background
-// scan completes.
+// A cheap read: DB counts plus the LAST-KNOWN Navidrome total, which is null
+// until somebody has asked for a count. It never walks Navidrome by itself —
+// that walk is thousands of getAlbum calls and the admin Library page polls
+// this on mount (#1570). There is deliberately no `?refresh=1` escape hatch:
+// counting is a command, and it lives on the POST below. A GET that can start
+// a walk is exactly the shape something eventually polls by accident, which is
+// the bug this route exists to have fixed.
 // ---------------------------------------------------------------------------
-router.get('/library/coverage', requireAdmin, async (req, res) => {
+router.get('/library/coverage', requireAdmin, async (_req, res) => {
   try {
-    if (req.query?.refresh === '1') coverage.refresh();
     res.json(await coverage.get());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /library/coverage/refresh — count the Navidrome library, on request.
+// The operator's "Count library" button. A command, not a read: it walks every
+// album to total the songs, so it is deliberately a POST rather than a GET the
+// panel could poll by accident. Returns at once with the snapshot the scan is
+// starting from (`scanning: true`), which the caller polls until it flips.
+// ---------------------------------------------------------------------------
+router.post('/library/coverage/refresh', requireAdmin, async (_req, res) => {
+  try {
+    // Fire-and-forget: doScan() swallows its own failure, and a scan of a big
+    // library outlives any sensible request timeout.
+    coverage.refresh();
+    res.json({ ok: true, coverage: await coverage.get() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -806,9 +828,12 @@ router.post('/library/reset', requireAdmin, async (_req, res) => {
   if (tagger.running) return res.status(409).json({ error: 'a tagger/analyzer run is already active', tagger });
   try {
     await library.reset();
-    // The tagged/analysed counts are read live from the DB, so they're already 0
-    // now; kick a coverage refresh so the panel's snapshot reflects it promptly.
-    coverage.refresh();
+    // Deliberately NO coverage.refresh() here. The tagged/analysed counts are
+    // read live from the DB by coverage.get(), so they are already 0 — and the
+    // only thing refresh() recomputes is the Navidrome `total`, which a reset
+    // cannot have changed (it wipes library.db, not the music server). Kicking
+    // it here fired thousands of getAlbum calls for a number that was already
+    // correct, on the one action an operator least expects to hit Navidrome.
     queue.log('warn', 'library reset: wiped all tagging data (tags, embeddings, acoustics, enrichment)');
     res.json({ ok: true });
   } catch (err) {
