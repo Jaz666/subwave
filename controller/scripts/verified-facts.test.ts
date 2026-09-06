@@ -47,6 +47,7 @@ const prompt = linkPrompt({
 });
 assert.match(prompt, /Task: Give a brief spoken introduction to the track now playing/);
 assert.match(prompt, /Music facts are limited to the exact entries in Verified facts/);
+assert.match(prompt, /day of week is for accuracy, not generic atmosphere/);
 assert.match(prompt, /First station play” is not a premiere or a world premiere/);
 assert.match(prompt, /Prefer a plain, accurate introduction to invented atmosphere/);
 assert.match(prompt, /must never be a closing or end-of-segment tag/);

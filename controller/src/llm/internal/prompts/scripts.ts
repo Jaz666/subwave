@@ -328,7 +328,7 @@ export function linkPrompt({
     'Output only the words to be spoken on air.',
     'The named track is already playing. Focus on it and do not refer to the previous track.',
     'Treat supplied sleeve notes as verified facts, but do not add or infer further music-history claims.',
-    'Do not state a day of week unless it appears in the verified facts.',
+    'The supplied day of week is for accuracy, not generic atmosphere. Mention it only when it adds something specific and natural; do not use it as a default opener or repeat it from link to link.',
     'Music facts are limited to the exact entries in Verified facts: do not use remembered or learned album, release, chart, reputation, influence, relationship or history information.',
     'Never strengthen an approved station-history fact: “First station play” is not a premiere or a world premiere, and an album fact never means the album belongs to the station or presenter.',
     'Do not describe instrumentation, production, lyrics or other audio properties unless they are explicitly supplied. Subjective reaction is welcome, but do not present it as observation.',
