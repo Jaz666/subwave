@@ -133,9 +133,13 @@ type ShortlistResult = {
 
 The Booth Log renders one completed **Shortlist Pick** event, with expandable
 factual context, source runs, counts, selected track and transition. The DJ's
-`selectionReason` is separate from its on-air link. It may explain why the
-chosen candidate fits the current musical context, but must not invent source
-names/counts or absorb persona Musical Leanings as diagnostic evidence.
+`selectionReason` is separate from its on-air link. It is listener-visible:
+one natural, varied sentence that names the selected artist and title and
+explains the musical fit. The controller adds a separate, listener-friendly
+factual source hint (for example, “Surfaced through mood and energy matching.”)
+from the selected candidate's provenance. The DJ must not invent source
+names/counts; it may name a guest only when that guest's Musical Leanings
+genuinely settled a close tie.
 
 ## Acceptance evidence
 
@@ -430,6 +434,12 @@ Soul, and is passed through the same native repick path if the artist guard
 fires. The selector must name the guest naturally in `selectionReason` only
 when that nudge genuinely settles a close tie.
 
-Next, refine the selection-reason prompt. Gate any further context-window or
-operator-setting change on the planned peak-token evidence rather than an
-average.
+The final native selection now records one **Shortlist Pick** Booth Log event
+after the artist guard, ensuring that its track, listener-facing reason and
+source hint describe the track that actually airs. The event reaches both the
+web-fed `djLog` and the durable shortlist trace. Source hints are
+controller-generated friendly labels, never raw registry identifiers.
+
+Next, benchmark the new listener-facing selection-reason payloads and gate any
+further context-window or operator-setting change on peak-token evidence rather
+than an average.
