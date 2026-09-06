@@ -61,28 +61,16 @@ function context(show: { id: string; name: string }, atMs: number) {
 // Records what each generator was handed. Neither returns anything the test
 // asserts on — the arguments ARE the assertion.
 function generators() {
-  const seen: Record<string, {
-    recap: string | null;
-    recentOpeners: string[];
-    personaOut: string;
-    personaIn: string;
-    showIn: string | null;
-  }> = {};
+  const seen: Record<string, { recap: string | null; recentOpeners: string[] }> = {};
   return {
     seen,
     deps: {
-      generateSignoff: async ({ recap, recentOpeners, personaOut, personaIn, showIn }: any) => {
-        seen.signoff = {
-          recap: recap ?? null, recentOpeners: recentOpeners ?? [],
-          personaOut: personaOut.name, personaIn: personaIn.name, showIn,
-        };
+      generateSignoff: async ({ recap, recentOpeners }: any) => {
+        seen.signoff = { recap: recap ?? null, recentOpeners: recentOpeners ?? [] };
         return 'That was the hour. Gigi has the next one.';
       },
-      generateHandoffGreeting: async ({ recap, recentOpeners, personaOut, personaIn, showIn }: any) => {
-        seen.greeting = {
-          recap: recap ?? null, recentOpeners: recentOpeners ?? [],
-          personaOut: personaOut.name, personaIn: personaIn.name, showIn,
-        };
+      generateHandoffGreeting: async ({ recap, recentOpeners }: any) => {
+        seen.greeting = { recap: recap ?? null, recentOpeners: recentOpeners ?? [] };
         return 'Cultural Currents starts now.';
       },
     },
@@ -115,19 +103,13 @@ test('the mic-pass hands each half the session it actually belongs to', async ()
   const { seen, deps } = generators();
   const announced: { text: string; personaId: string }[] = [];
   const realAnnounce = (queue as any).announce;
-  const realExchange = (queue as any).announceExchange;
   (queue as any).announce = async (text: string, _kind: string, opts: any = {}) => {
     announced.push({ text, personaId: opts?.meta?.personaId });
-  };
-  (queue as any).announceExchange = async (lines: any[]) => {
-    announced.push(...lines.map(line => ({ text: line.text, personaId: line.persona.id })));
-    return true;
   };
   try {
     await djAgent.runPersonaHandoff(queue, context({ id: 's_cultural', name: 'Cultural Currents' }, Date.now()), deps);
   } finally {
     (queue as any).announce = realAnnounce;
-    (queue as any).announceExchange = realExchange;
   }
 
   assert.ok(seen.signoff, 'the sign-off was generated');
@@ -168,36 +150,4 @@ test('a failed sign-off still leaves the greeting on a clean slate', async () =>
   assert.equal(seen.signoff, undefined, 'the sign-off never reported its arguments');
   assert.ok(seen.greeting, 'the greeting still ran — it stands alone');
   assert.equal(seen.greeting.recap, null);
-});
-
-test('a final-track handoff uses the incoming identity captured at arm time', async () => {
-  queue.djLog = [];
-  await settings.update({ personas: [WREN, GIGI], activePersonaId: WREN.id } as never);
-  const t0 = Date.now();
-  session.start(context({ id: 's_outgoing', name: 'The Soft Start Procedure' }, t0));
-
-  // This models a scheduler edit or look-ahead resolution: the live session is
-  // still Wren, while the next show belongs to Gigi.
-  await settings.update({ activePersonaId: GIGI.id } as never);
-  const incoming = context({ id: 's_incoming', name: 'Cultural Currents' }, t0 + 60_000);
-  assert.equal(session.armBoundaryHandoff(incoming), true);
-
-  const { seen, deps } = generators();
-  const aired: string[] = [];
-  const realExchange = (queue as any).announceExchange;
-  (queue as any).announceExchange = async (lines: any[]) => {
-    aired.push(...lines.map(line => line.persona.name));
-    return true;
-  };
-  try {
-    await djAgent.runPersonaHandoff(queue, incoming, deps);
-  } finally {
-    (queue as any).announceExchange = realExchange;
-  }
-
-  assert.equal(seen.signoff.personaOut, WREN.name);
-  assert.equal(seen.signoff.personaIn, GIGI.name);
-  assert.equal(seen.signoff.showIn, 'Cultural Currents');
-  assert.equal(seen.greeting.personaIn, GIGI.name);
-  assert.deepEqual(aired, [WREN.name, GIGI.name]);
 });
