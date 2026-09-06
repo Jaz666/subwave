@@ -1,8 +1,8 @@
 // The `POST /settings` patch registry (#1348).
 //
-// `settings.update()` takes a PARTIAL patch over 48 top-level keys and validates
+// `settings.update()` takes a PARTIAL patch over 49 top-level keys and validates
 // it in a long chain of `if ('<key>' in patch)` branches — a route that owns
-// forty-four shapes doesn't fit #1337's one-schema-per-form recipe.
+// forty-nine shapes doesn't fit #1337's one-schema-per-form recipe.
 //
 // This module is the frame the conversion lands in, one key at a time:
 //
@@ -36,6 +36,7 @@ import {
   silenceTrimPatchSchema,
   crossfadeDurationSchema,
   duckingPatchSchema,
+  handoverPatchSchema,
   djHouseRulesSchema,
   djSpeakClockSchema,
   djTalkOnlyBetweenTracksSchema,
@@ -105,6 +106,7 @@ export const SETTINGS_PATCH_KEYS = [
   'jingleRatio',
   'crossfadeDuration',
   'ducking',
+  'handover',
   'maxTrackSeconds',
   'maxTrackMinutes',
   'archive',
@@ -198,6 +200,7 @@ export const SETTINGS_PATCH_SCHEMAS: Readonly<Partial<Record<SettingsPatchKey, S
   jingleRatio: jingleRatioSchema,
   crossfadeDuration: crossfadeDurationSchema,
   ducking: duckingPatchSchema,
+  handover: handoverPatchSchema,
   archive: archivePatchSchema,
   backups: backupsPatchSchema,
   stream: streamPatchSchema,

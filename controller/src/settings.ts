@@ -106,6 +106,7 @@ import {
   normalizeBackups,
   normalizeDjPrompts,
   normalizeDuckDepth,
+  normalizeHandoverOffsetMinutes,
   normalizePersonaArray,
   normalizeTtsFallback,
   normalizeSchedule,
@@ -567,6 +568,14 @@ export async function load() {
       typeof stored.djTalkOnlyBetweenTracks === 'boolean'
         ? stored.djTalkOnlyBetweenTracks
         : DEFAULTS.djTalkOnlyBetweenTracks,
+    // Repaired rather than refused, like ducking above: an offset the talk
+    // table's programme row cannot sample is a sign-off that never airs, and a
+    // hand-edited settings.json is this path's input.
+    handover: {
+      offsetMinutes: normalizeHandoverOffsetMinutes(
+        stored.handover?.offsetMinutes, DEFAULTS.handover.offsetMinutes,
+      ),
+    },
     station:
       typeof stored.station === 'string' && stored.station.trim()
         ? stored.station.trim().slice(0, 80)
@@ -1477,6 +1486,12 @@ export async function update(patch) {
   if ('djTalkOnlyBetweenTracks' in patch) {
     next.djTalkOnlyBetweenTracks =
       parseSettingsPatchKey<boolean>('djTalkOnlyBetweenTracks', patch.djTalkOnlyBetweenTracks);
+  }
+  if ('handover' in patch) {
+    // No mixer restart: the offset is read live by broadcast/handover-policy.ts
+    // at each programme tick, not handed to liquidsoap as a startup file.
+    const hv = parseSettingsPatchKey<{ offsetMinutes?: number }>('handover', patch.handover);
+    if (hv.offsetMinutes !== undefined) next.handover.offsetMinutes = hv.offsetMinutes;
   }
   // Show-boundary fade (#1574). Read live by the drain (it stamps liq_cue_out
   // on the next pick that would cross a show change), so no restart and no
