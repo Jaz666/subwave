@@ -75,7 +75,7 @@ test('native builder plans from source-owned availability before execution', asy
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
   const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
   assert.equal(schema.safeParse({
-    id: 'candidate-a', selectionReason: 'warmer texture after the opener', say: null, transition: null,
+    id: 'candidate-a', selectionReason: 'One by Artist keeps the warmer texture after the opener.', say: null, transition: null,
   }).success, true);
   assert.equal(schema.safeParse({
     id: 'invented', selectionReason: 'not allowed', say: null, transition: null,
@@ -99,6 +99,7 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.match(prompt, /Guest Musical Leaning/);
   assert.match(prompt, /Track Shortlist/);
   assert.match(prompt, /Musical Leanings/);
+  assert.match(prompt, /listener-facing sentence/);
 });
 
 test('native artist repick receives only its alternate shortlist', () => {
