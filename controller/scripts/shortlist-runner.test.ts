@@ -82,11 +82,17 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   }).success, false);
   const prompt = shortlistPickPrompt(
     [{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }],
-    { currentTrack: { id: 'seed' }, link: 'Set say to null.' },
+    {
+      currentTrack: { id: 'seed' },
+      link: 'Set say to null.',
+      musicalLeanings: 'favour warm electronic edges',
+    },
   );
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /"seed"/);
+  assert.match(prompt, /favour warm electronic edges/);
   assert.match(prompt, /Track Shortlist/);
+  assert.match(prompt, /Musical Leanings/);
 });
 
 test('native artist repick receives only its alternate shortlist', () => {
