@@ -50,6 +50,7 @@ const {
   introTask,
   outroTask,
   exchangeSystem,
+  programmePlanRequest,
 } = await import('../src/llm/internal/prompts/programme.js');
 
 try {
@@ -127,6 +128,24 @@ try {
   // have displaced the grounding the beat DOES get.
   assert.match(feature, /what Butch Vig actually changed/, 'feature carries its topic');
   assert.match(feature, /the year the underground went loud/, "feature carries the episode's angle");
+
+  // The plan is a structured backstage decision, so it takes the optional
+  // Producer route. The spoken programme beats above remain Persona calls;
+  // keeping the request builder separate prevents an accidental route change
+  // from hiding inside otherwise-valid prompt edits.
+  const planRequest = programmePlanRequest({
+    system: 'Backstage producer',
+    prompt: 'Make today\'s episode plan.',
+    featureCount: 2,
+  });
+  assert.equal(planRequest.kind, 'generateProgrammePlan');
+  assert.equal(planRequest.role, 'producer');
+  assert.equal(planRequest.schema.safeParse({
+    angle: 'A grounded angle',
+    introNote: 'Open with the brief.',
+    outroNote: 'Close the hour.',
+    features: [{ topic: 'First', kind: null }, { topic: 'Second', kind: null }],
+  }).success, true, 'the Producer route keeps the programme plan contract');
 
   // ── Plan side: what `kind: null` is FOR ──────────────────────────────────
   const menu = featureKindsClause(

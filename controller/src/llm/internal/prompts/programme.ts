@@ -144,6 +144,25 @@ export function featureKindsClause(skillKinds: { kind: string; desc: string }[] 
 // (already filtered to enabled + host-owned + ready by the caller). When the
 // show pins `segmentSkill`, the caller passes just that one and the plan is
 // told every feature uses it.
+//
+// Kept as an exported request builder so the routing choice is independently
+// regression-tested from the prompt text. Programme beats remain Persona text
+// calls; only this backstage structured plan belongs on the Producer leg.
+export function programmePlanRequest({ system, prompt, featureCount }: {
+  system: string;
+  prompt: string;
+  featureCount: number;
+}) {
+  return {
+    system,
+    prompt,
+    schema: planSchema(featureCount),
+    temperature: 0.9,
+    kind: 'generateProgrammePlan',
+    role: 'producer' as const,
+  };
+}
+
 export async function generateProgrammePlan({
   show, spanHours = 1, host = null, guests = [], context = null,
   previousAngle = null, skillKinds = [], pinnedKind = null,
@@ -169,13 +188,11 @@ export async function generateProgrammePlan({
     `\nWrite the plan — exactly ${featureCount} feature${featureCount > 1 ? 's' : ''}, in air order.`,
   ].filter(Boolean);
 
-  return djObject({
+  return djObject(programmePlanRequest({
     system,
     prompt: promptLines.join('\n'),
-    schema: planSchema(featureCount),
-    temperature: 0.9,
-    kind: 'generateProgrammePlan',
-  });
+    featureCount,
+  }));
 }
 
 // ---------------------------------------------------------------------------
