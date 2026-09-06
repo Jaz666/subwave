@@ -424,6 +424,12 @@ tie-breaker only; it neither affects shortlisting/eligibility nor enters
 listener-facing speech. The prompt explicitly forbids it from overriding the
 shortlist, show rules, rotation, safety or musical flow.
 
+An eligible guest co-host can now add a weaker Musical Leanings nudge on 25%
+of picks. It is drawn only from a guest's configured `musicLean`, never their
+Soul, and is passed through the same native repick path if the artist guard
+fires. The selector must name the guest naturally in `selectionReason` only
+when that nudge genuinely settles a close tie.
+
 Next, refine the selection-reason prompt. Gate any further context-window or
 operator-setting change on the planned peak-token evidence rather than an
 average.
