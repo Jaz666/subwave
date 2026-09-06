@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { shortlistPickPrompt, shortlistPickSchema } from '../src/music/dj-pick.js';
+import { shortlistPickPrompt, shortlistPickSchema, shortlistRepickPrompt } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -87,6 +87,24 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /"seed"/);
   assert.match(prompt, /Track Shortlist/);
+});
+
+test('native artist repick receives only its alternate shortlist', () => {
+  const schema = shortlistPickSchema(['other-artist']);
+  assert.equal(schema.safeParse({
+    id: 'other-artist', selectionReason: 'keeps the energy moving', say: null, transition: null,
+  }).success, true);
+  assert.equal(schema.safeParse({
+    id: 'on-air-artist', selectionReason: 'must not be selectable', say: null, transition: null,
+  }).success, false);
+
+  const prompt = shortlistRepickPrompt(
+    [{ id: 'other-artist', title: 'Fresh choice', shortlistSources: ['tracksByMood'] }],
+    'The prior selection repeats the artist already on air.',
+  );
+  assert.match(prompt, /repeats the artist already on air/);
+  assert.match(prompt, /other-artist/);
+  assert.match(prompt, /do not discover or suggest another track/);
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {

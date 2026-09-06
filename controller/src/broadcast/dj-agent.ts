@@ -59,7 +59,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
-import { djPick } from '../music/dj-pick.js';
+import { djPick, djShortlistRepick } from '../music/dj-pick.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -445,11 +445,26 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     // Every queue read stays here; the policy module is handed values only.
     recentRoots: queue.neighbourArtistRoots(varietyWindow),
     window: varietyWindow,
-    repick: (alt, reason) => repickFromSeen({
-      seen: alt, badId: null, wantLink, showAt,
-      playlistResolved: !!playlistTracks?.length,
-      reason,
-    }),
+    repick: async (alt, reason) => {
+      const selection = await djShortlistRepick({
+        candidates: [...alt.values()],
+        reason,
+        showAt,
+        playlistResolved: !!playlistTracks?.length,
+        context: {
+          currentTrack: current ? {
+            id: current.id ?? null,
+            title: current.title ?? null,
+            artist: current.artist ?? null,
+            album: current.album ?? null,
+          } : null,
+          link: wantLink
+            ? 'Write the on-air link for the track you choose.'
+            : 'Set say to null; no link airs for this pick.',
+        },
+      });
+      return selection ? { ...selection, reason: selection.selectionReason } : null;
+    },
     poolRescue: (avoidArtist) => pickViaPool(
       queue, ctx, { wantLink, current, showAt }, rankTarget, audioWaypoint,
       { avoidArtist },
