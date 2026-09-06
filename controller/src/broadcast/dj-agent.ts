@@ -59,6 +59,7 @@ import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick, djShortlistRepick } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
+import { recordToolCall } from '../stats.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -312,6 +313,12 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     sourceRuns: shortlist.sourceRuns,
     elapsedMs: shortlist.elapsedMs,
   });
+  // The sources are native controller work, but still real picker activity.
+  // Feed the Stats tool tally directly; Debug receives the richer packet on
+  // the eventual structured picker call below.
+  for (const sourceRun of shortlist.sourceRuns) {
+    recordToolCall({ name: sourceRun.source, failed: sourceRun.status !== 'ok' });
+  }
   if (!shortlist.candidates.length) {
     const failure = classifyPickFailure({
       pickedId: null,
@@ -327,6 +334,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     candidates: shortlist.candidates,
     showAt,
     playlistResolved: !!playlistTracks?.length,
+    sourceRuns: shortlist.sourceRuns,
     context: {
       currentTrack: current ? {
         id: current.id ?? null,

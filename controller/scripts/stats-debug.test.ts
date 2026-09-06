@@ -2,7 +2,7 @@
 // remain visible at zero, while the full-day windows tally individual events.
 
 import assert from 'node:assert/strict';
-import { summarizeDebug, TRACK_TRANSITION_COMBINATIONS } from '../src/stats.js';
+import { summarizeDebug, summarizeLlm, TRACK_TRANSITION_COMBINATIONS } from '../src/stats.js';
 
 const tools = ['searchLibrary', 'randomSongs'];
 const stats = summarizeDebug(
@@ -22,5 +22,14 @@ assert.equal(stats.transitions.byName.find(row => row.name === 'normal')?.count,
 assert.equal(stats.transitions.byName.find(row => row.name === 'sweep + washout')?.count, 1);
 assert.equal(stats.transitions.byName.find(row => row.name === 'loop')?.count, 0);
 assert.equal(TRACK_TRANSITION_COMBINATIONS.length, 16);
+
+const llm = summarizeLlm([
+  { kind: 'djShortlistPick', via: 'ai-sdk:tool', ok: true, steps: 4, toolCalls: [{ name: 'tracksByMood' }] },
+  { kind: 'djShortlistRepick', via: 'ai-sdk:tool', ok: true, steps: 1, toolCalls: [] },
+  { kind: 'ordinaryObject', via: 'ai-sdk:tool', ok: true },
+]);
+assert.equal(llm.agent.calls, 2);
+assert.equal(llm.agent.avgSteps, 2.5);
+assert.equal(llm.agent.avgTools, 0.5);
 
 console.log('stats debug diagnostics: ok');

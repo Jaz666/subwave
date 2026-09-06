@@ -152,7 +152,14 @@ export function summarizeLlm(calls) {
     .map(g => ({ model: g.model, count: g.count, tokens: g.tokens, costUsd: g.cost, priced: g.priced }))
     .sort((a, b) => b.count - a.count);
 
-  const agentCalls = calls.filter(c => c.via === 'ai-sdk:agent' && c.ok);
+  // Native shortlisting replaces the picker's model-owned tool loop with
+  // controller-owned sources plus one structured selection. Count both forms
+  // so Agent Runs remains a meaningful picker comparison.
+  const agentCalls = calls.filter(c => c.ok && (
+    c.via === 'ai-sdk:agent'
+    || c.kind === 'djShortlistPick'
+    || c.kind === 'djShortlistRepick'
+  ));
   const agent = {
     calls: agentCalls.length,
     avgSteps: round1(avg(agentCalls.map(c => c.steps || 0))),

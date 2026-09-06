@@ -59,6 +59,10 @@ export async function djObject({
   temperature = 0.4,
   maxOutputTokens = resolveMaxOutputTokens(MAX_TOKENS_OBJECT),
   kind = 'sdk.djObject',
+  // Caller-owned diagnostics that accompany this one model call. A native
+  // shortlist has controller-run source calls before its structured selection;
+  // preserve those in /admin/debug without claiming the model invoked them.
+  telemetry = {},
   leg = undefined,
   // Optional caller-supplied abort signal. No live caller wraps djObject in
   // withDeadline today, so this is inert unless one starts to — kept in the
@@ -69,7 +73,7 @@ export async function djObject({
 }: any): Promise<any> {
   return withFailover(
     kind,
-    (err) => ({ user: prompt, ...failureDiagnostics(err) }),
+    (err) => ({ user: prompt, ...failureDiagnostics(err), ...telemetry }),
     async (l) => {
       let lastErr;
       // Track the strategy actually attempted so a failure record attributes to
@@ -155,7 +159,7 @@ export async function djObject({
             // the ring buffer holds only 120 entries so size isn't a concern.
             // (A .slice(0, 500) here used to cut pick reasons mid-sentence in
             // /admin/debug; the durable events.jsonl still caps via cap().)
-            extra: { system, user: prompt, response: JSON.stringify(object) },
+            extra: { ...telemetry, system, user: prompt, response: JSON.stringify(object) },
           };
         } catch (err) {
           lastErr = err;

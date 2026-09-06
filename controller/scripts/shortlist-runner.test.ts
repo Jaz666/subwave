@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { shortlistPickPrompt, shortlistPickSchema, shortlistRepickPrompt } from '../src/music/dj-pick.js';
+import { shortlistDebugTools, shortlistPickPrompt, shortlistPickSchema, shortlistRepickPrompt } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -118,6 +118,17 @@ test('native artist repick receives only its alternate shortlist', () => {
   assert.match(prompt, /repeats the artist already on air/);
   assert.match(prompt, /other-artist/);
   assert.match(prompt, /do not discover or suggest another track/);
+});
+
+test('native source runs retain a compact Debug tool trail', () => {
+  assert.deepEqual(shortlistDebugTools([{
+    source: 'tracksByMood', args: { mood: 'calm' }, status: 'ok', returned: 8, accepted: 5, elapsedMs: 12,
+  }, {
+    source: 'tracksLikeThis', args: { songId: 'seed' }, status: 'error', returned: 0, accepted: 0, elapsedMs: 4, error: 'index unavailable',
+  }]), [
+    { name: 'tracksByMood', args: { mood: 'calm' }, result: { status: 'ok', returned: 8, accepted: 5, elapsedMs: 12 } },
+    { name: 'tracksLikeThis', args: { songId: 'seed' }, result: { status: 'error', returned: 0, accepted: 0, elapsedMs: 4, error: 'index unavailable' } },
+  ]);
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
