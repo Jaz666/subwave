@@ -29,6 +29,7 @@ import { resolveShowPlaylistPool, resolveExcludedPlaylistIds } from '../music/sh
 import { getFullContext } from '../context.js';
 import { queue } from './queue.js';
 import { createPoolBuilder } from './auto-pool.js';
+import { applyTrackFloor } from '../music/track-floor.js';
 import { autoPlaylistShowLabel, createShowBuildTracker } from './auto-playlist-show.js';
 import { reloadAutoPlaylist } from './liquidsoap-control.js';
 import * as session from './session.js';
@@ -226,6 +227,11 @@ async function refreshAutoPlaylistInner() {
   // resolved in seconds. null = no cap. Now that the fallback honours the show's
   // genre/era it honours its track-length cap too.
   const maxDurationSec = settings.effectiveMaxTrackSec(show);
+  // Minimum track length (#1573) — the cap's mirror image, and the reason it
+  // cannot be stamped on the entry the way the cap is: an over-long track is
+  // cut at the seam, a too-short one has to be kept OUT of the pool. Applied to
+  // the assembled pool below, never-starve.
+  const minDurationSec = settings.effectiveMinTrackSec(show);
 
   // Balanced pool builder — applies the recency / dedup / artist-cap guards on
   // every candidate. Recency and dedup key on BOTH id and `title|artist` so a
@@ -244,6 +250,18 @@ async function refreshAutoPlaylistInner() {
   const pool = builder.pool;
   const fromSource = builder.fromSource;
   const take = builder.take;
+  // Replace the pool's contents in place, aliasing-safe. Every never-starve
+  // filter below may hand its INPUT straight back when it decides to keep
+  // everything, and `pool.length = 0` would then clear the very array being
+  // spread back in — turning the last dead-air guard into dead air. The
+  // filters themselves now guarantee a fresh array (applyStrictLocks,
+  // applyTrackFloor); this is the second belt, so a future filter that forgets
+  // cannot empty the coast.
+  const replacePool = (next: typeof pool) => {
+    if (next === pool) return;
+    pool.length = 0;
+    pool.push(...next);
+  };
 
   // 0. Dedicated show-genre / era source — the dominant contributor whenever a
   // show pins a genre or a year window. Both Navidrome queries filter server-side,
@@ -446,7 +464,7 @@ async function refreshAutoPlaylistInner() {
   // to the unfiltered pool only if NOT ONE survived (a true dead-air guard).
   if (strictPlaylist) {
     const inPl = pool.filter((t: any) => t?.id && playlistPool!.ids.has(t.id));
-    if (inPl.length) { pool.length = 0; pool.push(...inPl); }
+    if (inPl.length) replacePool(inPl);
   }
 
   // Strict music filters on the FINAL pool. enforce() only ever hard-drops
@@ -465,9 +483,15 @@ async function refreshAutoPlaylistInner() {
       energies: showEnergies,
       vocals: showVocals,
     }, { starve: false });
-    pool.length = 0;
-    pool.push(...filtered);
+    replacePool(filtered);
   }
+
+  // Minimum track length: drop everything under the floor, never-starve. This
+  // coast IS the last dead-air guard, so it takes the same posture as the
+  // strict-playlist and blocklist blocks around it — a floor that would empty
+  // the pool is skipped rather than leaving auto.m3u with nothing to play.
+  // A floor of 0/null (the shipped default) leaves the pool untouched.
+  if (minDurationSec) replacePool(applyTrackFloor(pool, minDurationSec, { starve: false }));
 
   // Excluded playlists (blocklist): drop every track from a blocklisted
   // playlist. The pick paths (picker.ts / the picker/ tools) apply this as a HARD
@@ -477,7 +501,7 @@ async function refreshAutoPlaylistInner() {
   // pool (a mis-set "exclude everything" plays an excluded track over silence).
   if (excludedIds) {
     const allowed = pool.filter((t: any) => t?.id && !excludedIds.has(t.id));
-    if (allowed.length) { pool.length = 0; pool.push(...allowed); }
+    if (allowed.length) replacePool(allowed);
   }
 
   // Loudness normalisation: the queue drain stamps liq_amplify per track, but
