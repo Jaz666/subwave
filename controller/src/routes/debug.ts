@@ -36,6 +36,7 @@ import { getStationTimezone } from '../time.js';
 import { publicOrigin } from './public.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { BadStatePathError, listStateDir } from '../util/state-tree.js';
+import { shortlistContextWindow } from '../music/shortlist-context-window.js';
 
 export const router = express.Router();
 
@@ -279,6 +280,9 @@ async function buildDebugSnapshot(req: express.Request): Promise<any> {
     // symptom the corrective re-pick in dj-agent.ts exists to salvage.
     agentDoneRetries: agentDoneRetryCount(),
     recentCalls: dj.recentCalls,
+    // In-memory by design: a controller restart clears the evidence so a changed
+    // station/model/shortlist setup earns a fresh recommendation.
+    shortlistContextWindow: shortlistContextWindow(dj.recentCalls),
     // Raw-request capture status — the admin UI shows the toggle + the file path
     // so operators know where to look. `viaEnv` means LLM_DEBUG_RAW forces it on
     // (the UI toggle can't turn it off in that case).
