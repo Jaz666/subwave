@@ -2,8 +2,8 @@
 
 This note records the current fork-level development decision. It separates
 two active paths from earlier Producer Routing and FunctionGemma experiments,
-which are preserved but **on hold**. It is not a production architecture change
-or a deployment instruction.
+which are now **retired and archived**. It is not a production architecture
+change or a deployment instruction.
 
 ## Start here
 
@@ -83,19 +83,19 @@ guards, search sources, and final outcome as well as total latency.
 The FunctionGemma-specific LLM calls return to vanilla behaviour on this path.
 The main DJ LLM remains the only LLM involved in final candidate selection.
 
-## Work on hold
+## Retired work
 
 ### Producer Routing
 
-The existing Producer Routing work is on hold. Preserve its worktrees, source,
-handoffs, and evidence for future review; do not continue it by default or fold
-it into either active path. If resumed, start with the Producer Routing handover
-identified in [STARTHERE.md](../STARTHERE.md).
+Producer Routing is retired. Its useful safety, verified-context and editorial
+influence lessons are captured in
+[`retired-producer-routing-functiongemma.md`](internals/retired-producer-routing-functiongemma.md).
+Do not continue it, restore its worktrees, or fold its implementation into an
+active path.
 
 ### FunctionGemma
 
-The existing FunctionGemma training, evaluation, and integration work is on
-hold. Do not spend further training or inference allowance on it for these
-paths. Keep its experiment ledger and evidence intact; it may be revisited only
-if native shortlisting demonstrates a concrete gap that a bounded native policy
-cannot cover.
+FunctionGemma training, evaluation and integration are retired. Do not spend
+training or inference allowance on them, even if native shortlisting exposes a
+future gap. The preserved findings and dated archive refs are listed in
+[`retired-producer-routing-functiongemma.md`](internals/retired-producer-routing-functiongemma.md).
