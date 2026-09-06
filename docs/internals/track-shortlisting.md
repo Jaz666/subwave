@@ -133,13 +133,15 @@ type ShortlistResult = {
 
 The Booth Log renders one completed **Shortlist Pick** event, with expandable
 factual context, source runs, counts, selected track and transition. The DJ's
-`selectionReason` is separate from its on-air link. It is listener-visible:
-one natural, varied sentence that names the selected artist and title and
-explains the musical fit. The controller adds a separate, listener-friendly
-factual source hint (for example, “Surfaced through mood and energy matching.”)
-from the selected candidate's provenance. The DJ must not invent source
-names/counts; it may name a guest only when that guest's Musical Leanings
-genuinely settled a close tie.
+`selectionReason` is separate from its on-air link. It is a private Booth Log
+note, never speech: one natural, varied sentence that names the selected artist
+and title and explains the musical fit without announcing the track or implying
+its queue position. The controller replaces a weak or queue-oriented model
+note with a concise fallback. It adds a separate, listener-friendly factual
+source hint (for example, “Surfaced through mood and energy matching.”) from
+the selected candidate's provenance. The DJ must not invent source names/counts;
+it may name a guest only when that guest's Musical Leanings genuinely settled a
+close tie.
 
 ## Acceptance evidence
 
@@ -316,8 +318,8 @@ structured `djShortlistPick` call receives the candidate payload, can select
 only one supplied id, and writes the existing link/transition fields plus a
 separate editorial `selectionReason`. It cannot make discovery calls or claim
 source provenance. The queue records the final post-artist-guard selection as
-a listener-facing **Shortlist Pick** Booth Log event, with the model-written
-reason and controller-written source hint kept separate.
+a **Shortlist Pick** Booth Log event, with the model-written private note and
+controller-written source hint kept separate.
 
 ### Native cascade integration
 
@@ -442,7 +444,7 @@ fires. The selector must name the guest naturally in `selectionReason` only
 when that nudge genuinely settles a close tie.
 
 The final native selection now records one **Shortlist Pick** Booth Log event
-after the artist guard, ensuring that its track, listener-facing reason and
+after the artist guard, ensuring that its track, private Booth Log note and
 source hint describe the track that actually airs. The event reaches both the
 web-fed `djLog` and the durable shortlist trace. Source hints are
 controller-generated friendly labels, never raw registry identifiers.
