@@ -43,9 +43,8 @@ instructions, tool details, routing state, and other control-plane material
 must not be treated as speakable output.
 
 When implementation begins, create a dedicated prompt-boundary branch from the
-appropriate base. First map the existing Producer Routing work read-only and
-extract only prompt-related changes; do not recreate work merely because it is
-currently interleaved with routing experiments.
+appropriate base. Use the retirement record for the portable prompt-boundary
+lessons; do not extract or recreate the retired Producer Routing implementation.
 
 ## Path 2: native track shortlisting
 

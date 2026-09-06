@@ -13,7 +13,7 @@ This is an onboarding roadmap, not a product commitment. Items are separated bet
   [`docs/internals/retired-producer-routing-functiongemma.md`](internals/retired-producer-routing-functiongemma.md);
   they are not a continuation or fallback for either active path.
 - Continue `codex/skills-v2` as an ongoing architecture change, independently
-  of the on-hold routing work.
+  of the retired routing experiments.
 
 ## Work evidenced by this checkout
 
