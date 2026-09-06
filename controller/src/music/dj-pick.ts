@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { djObject, modelTolerant } from '../llm/sdk.js';
 import { pickSchemaBase, pickSystem } from '../broadcast/dj-agent/schemas.js';
-import type { ShortlistCandidate } from './shortlist.js';
+import type { ShortlistCandidate, ShortlistSourceRun } from './shortlist.js';
 
 export type ShortlistPick = {
   id: string;
@@ -18,6 +18,17 @@ export type ShortlistPick = {
 
 const UNUSABLE_SELECTION_REASON = '[selection note unavailable]';
 const QUEUE_LANGUAGE = /\b(?:next\s+up|up\s+next|coming\s+up|we(?:'|’)re\s+playing|we\s+have)\b/i;
+
+// Native sources are controller-run, rather than model-invoked tools. Keeping
+// their compact execution record beside the final LLM call preserves the
+// familiar Debug view while retaining that distinction.
+export function shortlistDebugTools(sourceRuns: ShortlistSourceRun[]) {
+  return sourceRuns.map(({ source, args, status, returned, accepted, elapsedMs, error }) => ({
+    name: source,
+    args,
+    result: { status, returned, accepted, elapsedMs, ...(error ? { error } : {}) },
+  }));
+}
 
 // The selection note is for the Booth Log, not the listener-facing link. Keep
 // a controller-written floor for a weak local model rather than spending a
@@ -61,19 +72,23 @@ export async function djPick({
   showAt = null,
   playlistResolved = true,
   context = {},
+  sourceRuns = [],
 }: {
   candidates: ShortlistCandidate[];
   showAt?: Date | null;
   playlistResolved?: boolean;
   context?: Record<string, unknown>;
+  sourceRuns?: ShortlistSourceRun[];
 }): Promise<ShortlistPick> {
   const ids = candidates.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string');
+  const toolCalls = shortlistDebugTools(sourceRuns);
   return djObject({
     system: pickSystem(showAt, playlistResolved, true),
     prompt: shortlistPickPrompt(candidates, context),
     schema: shortlistPickSchema(ids),
     temperature: 0.5,
     kind: 'djShortlistPick',
+    telemetry: { toolCalls, steps: toolCalls.length + 1 },
   }) as Promise<ShortlistPick>;
 }
 
