@@ -12,7 +12,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  normalizeForDisplay, normalizeForSpeech, spokenWordScale,
+  normalizeForDisplay, normalizeForSpeech, sanitizePerformanceCues, spokenWordScale,
 } from '../src/audio/speech-text.js';
 
 let failures = 0;
@@ -108,8 +108,19 @@ async function main() {
     assert.equal(normalizeForSpeech('a * b'), 'a b');
     assert.equal(normalizeForSpeech('track_01_final stays'), 'track_01_final stays');
   });
-  await test('Chatterbox paralinguistic tags keep their brackets', () => {
-    assert.equal(normalizeForSpeech('[laugh] good one [sigh]'), '[laugh] good one [sigh]');
+  await test('keeps up to two performance cues with speech after each cue', () => {
+    assert.equal(normalizeForSpeech('[laugh] good one [softly] let\'s move on'),
+      '[laugh] good one [softly] let\'s move on');
+  });
+  await test('drops trailing, closing and excess performance cues', () => {
+    assert.equal(normalizeForSpeech('Good one. [sigh]'), 'Good one.');
+    assert.equal(normalizeForSpeech('[warmly] Good one. [/warmly]'), '[warmly] Good one.');
+    assert.equal(normalizeForSpeech('[softly] One. [laughing] Two. [dryly] Three.'),
+      '[softly] One. [laughing] Two. Three.');
+  });
+  await test('does not preserve stacked or cue-only bracket tags', () => {
+    assert.equal(sanitizePerformanceCues('[softly] [warmly] Hello.'), '[warmly] Hello.');
+    assert.equal(sanitizePerformanceCues('[softly]'), '');
   });
 
   console.log('station branding + shape:');
@@ -193,8 +204,9 @@ async function main() {
     assert.equal(normalizeForDisplay('Simon &amp; Garfunkel'), 'Simon & Garfunkel');
     assert.equal(normalizeForDisplay('## Late shift\n_finally_'), 'Late shift finally');
   });
-  await test('[laugh] tags and empty input behave as in the speech pass', () => {
+  await test('valid cues remain visible, while trailing cues are removed', () => {
     assert.equal(normalizeForDisplay('[laugh] anyway'), '[laugh] anyway');
+    assert.equal(normalizeForDisplay('That was lovely. [softly]'), 'That was lovely.');
     assert.equal(normalizeForDisplay(''), '');
   });
 
