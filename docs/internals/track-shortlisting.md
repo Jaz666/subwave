@@ -417,7 +417,13 @@ alternative subset of the existing Track Shortlist. It uses the
 the guard's existing relaxation/pool-rescue policy. The legacy
 `djAgentRepick` remains only on its non-native salvage path.
 
-Next, add persona Music Leanings to the final native selector only, then
-refine the selection-reason prompt. Gate any further context-window or
+Persona **Musical Leanings** is restored in the Persona Identity editor below
+Soul, with its previous 500-character persisted `musicLean` field. The native
+primary selector and native artist-variety repick receive it as a private soft
+tie-breaker only; it neither affects shortlisting/eligibility nor enters
+listener-facing speech. The prompt explicitly forbids it from overriding the
+shortlist, show rules, rotation, safety or musical flow.
+
+Next, refine the selection-reason prompt. Gate any further context-window or
 operator-setting change on the planned peak-token evidence rather than an
 average.

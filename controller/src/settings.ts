@@ -243,6 +243,7 @@ export {
   getScheduleOverride,
   languageDirective,
   onAirRosterClause,
+  personaMusicLeanings,
   pickOnAirSpeaker,
   renderDjPrompt,
   resolveActiveShow,
