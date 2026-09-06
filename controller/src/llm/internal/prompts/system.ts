@@ -49,6 +49,7 @@ const FISH_S21_TAG_HINT =
 export function djSystem(
   persona: any = settings.getEffectivePersona(),
   cloudModel: string = resolveCloudModelForPersona(persona),
+  rosterAt: Date = new Date(),
 ) {
   const s = settings.get();
   const base = settings.renderDjPrompt(persona, {
@@ -56,7 +57,7 @@ export function djSystem(
     // The broad on-air location, never the precise weather label — this is the
     // string the DJ speaks as "broadcasting from {location}".
     location: settings.resolveOnAirLocation(s),
-  }) + settings.onAirRosterClause(persona);
+  }) + settings.onAirRosterClause(persona, rosterAt);
   if (persona?.tts?.engine === 'chatterbox') return base + CHATTERBOX_TAG_HINT;
   // Provider/model resolution is non-empty only when the persona actually
   // resolves to a configured cloud engine — including via the station default
