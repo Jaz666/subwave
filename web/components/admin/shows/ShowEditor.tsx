@@ -821,6 +821,10 @@ export function ShowEditor({
               boundary instead of running into the next show. Worth turning on
               for long-form music (ambient, classical, prog) where one record
               can outlast the slot; a short overrun is left alone either way.
+              A cut needs both enough music played before the boundary and more
+              than a minute of overrun. A low maximum track length can prevent
+              boundary fading, but tracks starting near the end of the show can
+              still run into the next one.
             </FieldDescription>
             <FieldError {...fadeAtShowEndAria.errorProps} errors={fadeAtShowEndCtl.fieldState.error ? [fadeAtShowEndCtl.fieldState.error] : undefined} />
           </div>
