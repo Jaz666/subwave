@@ -377,6 +377,22 @@ test('search.baseUrl TYPE-checks where scrobble.listenbrainz.baseUrl coerces', (
   assert.equal(searchPatchSchema.parse({ baseUrl: 'http://x/' }).baseUrl, 'http://x/');
 });
 
+// #1353. New field, so it takes the trimmed posture rather than search.apiKey's
+// raw one — nothing shipped depends on the old storage behaviour here.
+test('search.searxngEngines trims, caps and defaults to empty', () => {
+  assert.equal(searchPatchSchema.parse({ searxngEngines: '  google, wikipedia  ' }).searxngEngines,
+    'google, wikipedia');
+  assert.equal(searchPatchSchema.parse({ searxngEngines: '' }).searxngEngines, '');
+  // Absent stays absent — update() only writes the key when the patch names it,
+  // so an unset pin can never be clobbered by a save from another panel.
+  assert.equal('searxngEngines' in searchPatchSchema.parse({ provider: 'searxng' }), false);
+  assert.equal(searchPatchSchema.safeParse({ searxngEngines: 'x'.repeat(501) }).success, false);
+  assert.equal(
+    searchPatchSchema.safeParse({ searxngEngines: 'x'.repeat(501) }).error?.issues[0]?.message,
+    'search.searxngEngines must be 0-500 chars',
+  );
+});
+
 test('search.apiKey stringifies null to "null" and does NOT trim', () => {
   // Not a good design, but the shipping one, and a secret field is the last
   // place to change storage behaviour by accident.
@@ -611,9 +627,11 @@ test('the converted keys are exactly the ones with schemas', () => {
   // post-merge cross-field rules, write-throughs into another key).
   assert.deepEqual(Object.keys(SETTINGS_PATCH_SCHEMAS).sort(), [
     'activeDjPromptId', 'archive', 'audio', 'beds', 'crossfadeDuration',
-    'djHouseRules', 'djPrompt', 'djPrompts', 'djSpeakClock', 'festivals',
+    'djHouseRules', 'djPrompt', 'djPrompts', 'djSpeakClock',
+    'djTalkOnlyBetweenTracks', 'ducking', 'festivals',
     'jingleRatio', 'likes',
     'locale', 'loudness', 'maxTrackSeconds', 'moodSchedule', 'moods', 'personas',
+    'picker',
     'privacy', 'requests', 'schedule', 'scheduleOverride', 'scrobble', 'search',
     'sfx', 'shows', 'silenceTrim', 'station', 'stationDescription', 'stream',
     'theme', 'timezone', 'transitions', 'ui', 'weather', 'weatherMoods',
