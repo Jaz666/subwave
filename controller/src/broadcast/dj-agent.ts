@@ -62,7 +62,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
-import { djPick, djShortlistRepick } from '../music/dj-pick.js';
+import { djPick, djShortlistRepick, usableSelectionReason } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
@@ -554,11 +554,13 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
       song = albumGuarded.song;
     }
   }
-  // This is the listener-visible selection record, so it is deliberately
+  // This private Booth Log record is deliberately
   // emitted after the artist guard: a corrective re-pick must not leave the
-  // Booth Log explaining a track that never airs. The reason is DJ-written;
-  // the concise source hint remains controller-written factual provenance.
-  const selectionReason = object.selectionReason ?? object.reason ?? null;
+  // log explaining a track that never airs. A weak model's unusable note gets
+  // a controller-written floor; the concise source hint remains factual
+  // provenance.
+  const selectionReason = usableSelectionReason(object.selectionReason ?? object.reason, song);
+  object = { ...object, selectionReason, reason: selectionReason };
   const sourceHint = shortlistSourceHint(song.shortlistSources);
   const selectionRecord = {
     id: song.id,
