@@ -103,6 +103,9 @@ export const SCRIPT_LENGTHS: readonly string[] = PERSONA_SCRIPT_LENGTHS;
 // 'natural' (default) or 'announce' — see PERSONA_LINK_STYLES / announceLinks().
 export const LINK_STYLES: readonly string[] = PERSONA_LINK_STYLES;
 
+// Shared with the browser through the generated schema mirror.
+export { TRANSITION_EFFECTS, type TransitionEffect } from '../schemas/settings.js';
+
 // Per-persona tone dials. Each is 0-10 with 5 (DIAL_NEUTRAL) the default. A
 // model can't distinguish humour=6 from 7, so rather than inject a raw "7/10"
 // the dial maps to three bands: 0-3 low, 7-10 high, 4-6 neutral. Only a band

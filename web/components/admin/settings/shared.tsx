@@ -14,6 +14,8 @@ import { Btn, Eyebrow, Metric } from '../ui';
 import { useSectionChrome, useReportDirty } from './section-chrome';
 import { Button } from '../../ui/button';
 import { FieldError } from '../../ui/field';
+import type { TransitionEffect } from '../../../lib/schemas.generated';
+export type { TransitionEffect } from '../../../lib/schemas.generated';
 
 export const KEY_HINTS: Record<string, string> = {
   ANTHROPIC_API_KEY: 'sk-ant-...',
@@ -256,6 +258,9 @@ export interface TransitionsForm {
   stemBlends: boolean;  // pre-rendered stem-blend seams (needs pairDrain + stem cache)
   stemCache: boolean;   // settings.audio.stemCache — persist Demucs stems during analysis
   stemCacheGb: string;  // settings.audio.stemCacheGb — byte budget the LRU sweep enforces
+  /** settings.transitions.effects — which gestures the DJ may reach for. Always
+   *  fully populated in the form; an absent stored field loads as `true`. */
+  effects: Record<TransitionEffect, boolean>;
 }
 
 export interface PrivacyForm {
@@ -354,7 +359,11 @@ export interface SettingsData {
      *  the schedule is edited from the Backup panel, beside Export/Restore, and
      *  posts `{ backups }` through the same POST /settings chokepoint. */
     backups?: { cadence?: string; keep?: number };
-    transitions?: { pairDrain?: boolean; stemBlends?: boolean };
+    transitions?: {
+      pairDrain?: boolean;
+      stemBlends?: boolean;
+      effects?: Partial<Record<TransitionEffect, boolean>>;
+    };
     audio?: { embeddings?: boolean; vocalActivity?: boolean; stemCache?: boolean; stemCacheGb?: number };
     stream?: {
       opusEnabled?: boolean;
