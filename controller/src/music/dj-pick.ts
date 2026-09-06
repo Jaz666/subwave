@@ -29,7 +29,7 @@ export function shortlistPickSchema(ids: string[]) {
 
 export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: Record<string, unknown> = {}): string {
   return JSON.stringify({ context, shortlist: candidates }, null, 2)
-    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. If context includes Musical Leanings, use them only to break a close tie between otherwise suitable candidates; never override the shortlist, show rules, rotation, safety, or the musical flow.';
+    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. If context includes Musical Leanings, use them only to break a close tie between otherwise suitable candidates; never override the shortlist, show rules, rotation, safety, or the musical flow. A Guest Musical Leaning is weaker than the host\'s. Name the guest naturally in selectionReason only when their preference genuinely breaks that close tie; otherwise do not mention it.';
 }
 
 export function shortlistRepickPrompt(
@@ -38,7 +38,7 @@ export function shortlistRepickPrompt(
   context: Record<string, unknown> = {},
 ): string {
   return JSON.stringify({ context, shortlist: candidates }, null, 2)
-    + `\n\n${reason} Choose one id from the supplied alternative Track Shortlist only. The controller has already applied the station guards; do not discover or suggest another track. If context includes Musical Leanings, use them only to break a close tie and never to override this alternative subset.`;
+    + `\n\n${reason} Choose one id from the supplied alternative Track Shortlist only. The controller has already applied the station guards; do not discover or suggest another track. If context includes Musical Leanings, use them only to break a close tie and never to override this alternative subset. A Guest Musical Leaning is weaker than the host's; name that guest naturally in selectionReason only if it genuinely breaks the tie.`;
 }
 
 export async function djPick({

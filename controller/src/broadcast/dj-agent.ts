@@ -327,6 +327,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     throw Object.assign(new Error(failure.message), { pickFailure: failure });
   }
   const musicalLeanings = settings.personaMusicLeanings(session.onAirPersona());
+  const guestMusicalNudge = settings.guestEditorialNudge(showAt ?? new Date());
   const selection = await djPick({
     candidates: shortlist.candidates,
     showAt,
@@ -346,6 +347,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
         : 'Set say to null; no link airs for this pick.',
       ...(musicalLeanings
         ? { musicalLeanings }
+        : {}),
+      ...(guestMusicalNudge
+        ? { guestMusicalLeanings: guestMusicalNudge }
         : {}),
     },
   });
@@ -463,7 +467,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     recentRoots: neighbourRoots,
     window: varietyWindow,
     repick: async (alt, reason) => {
-      const repickMusicalLeanings = settings.personaMusicLeanings(session.onAirPersona());
       const selection = await djShortlistRepick({
         candidates: [...alt.values()],
         reason,
@@ -479,9 +482,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
           link: wantLink
             ? 'Write the on-air link for the track you choose.'
             : 'Set say to null; no link airs for this pick.',
-          ...(repickMusicalLeanings
-            ? { musicalLeanings: repickMusicalLeanings }
-            : {}),
+          ...(musicalLeanings ? { musicalLeanings } : {}),
+          ...(guestMusicalNudge ? { guestMusicalLeanings: guestMusicalNudge } : {}),
         },
       });
       return selection ? { ...selection, reason: selection.selectionReason } : null;
