@@ -16,7 +16,7 @@ assert.deepEqual(sleeveNotesFor(track(), 3), [
 ]);
 assert.deepEqual(contextSleeveNotesFor(track(), {
   date: { season: 'summer' }, weather: { condition: 'cloudy', location: 'The Ribble Valley' },
-}), ['Album: After Laughter Comes Tears.', 'Release year: 1964.', 'Season: summer.', 'Weather in The Ribble Valley: cloudy.']);
+}), ['Album: After Laughter Comes Tears.', 'Release year: 1964.']);
 
 const airingIndex = {
   byId: new Map([
@@ -47,6 +47,9 @@ const prompt = linkPrompt({
 });
 assert.match(prompt, /Task: Give a brief spoken introduction to the track now playing/);
 assert.match(prompt, /Music facts are limited to the exact entries in Verified facts/);
+assert.match(prompt, /First station play” is not a premiere or a world premiere/);
+assert.match(prompt, /Prefer a plain, accurate introduction to invented atmosphere/);
+assert.match(prompt, /must never be a closing or end-of-segment tag/);
 assert.match(prompt, /Approximate air time: around half past 8pm/);
 assert.match(prompt, /Current show: "Night Drive"/);
 assert.match(prompt, /Track on air:\n- After Laughter \(Comes Tears\) by Wendy Rene/);

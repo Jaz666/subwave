@@ -55,13 +55,9 @@ export function contextSleeveNotesFor(
 ): string[] {
   const notes = sleeveNotesFor(track, playCount);
   if (stationHistoryNote) notes.push(stationHistoryNote);
-  const season = text(context?.date?.season);
-  if (season) notes.push(`Season: ${season}.`);
-  const condition = text(context?.weather?.condition);
-  if (condition && condition !== 'unknown') {
-    const place = text(context?.weather?.location);
-    notes.push(`Weather${place ? ` in ${place}` : ''}: ${condition}.`);
-  }
+  // Season and weather are deterministic context, but not link facts. Passing
+  // them to every writer was an invitation to turn them into repetitive scene
+  // setting; dedicated weather/time segments own those beats.
   const show = context?.activeShow;
   if (text(show?.topic)) notes.push(`Show theme: ${text(show.topic)}.`);
   if (text(show?.episodeAngle)) notes.push(`Episode angle: ${text(show.episodeAngle)}.`);
