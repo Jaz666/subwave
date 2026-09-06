@@ -315,7 +315,9 @@ wired into the live picker or the DJ selection call.
 structured `djShortlistPick` call receives the candidate payload, can select
 only one supplied id, and writes the existing link/transition fields plus a
 separate editorial `selectionReason`. It cannot make discovery calls or claim
-source provenance. Queue integration and Booth Log rendering remain pending.
+source provenance. The queue records the final post-artist-guard selection as
+a listener-facing **Shortlist Pick** Booth Log event, with the model-written
+reason and controller-written source hint kept separate.
 
 ### Native cascade integration
 
