@@ -68,6 +68,29 @@ export function personaMusicLeanings(persona: unknown = getEffectivePersona()): 
   return leaning || null;
 }
 
+export type GuestEditorialNudge = {
+  guest: { id: string; name: string };
+  musicalLeanings: string;
+};
+
+// Guests can occasionally add a music-specific secondary nudge. The host
+// remains the primary editorial influence, and a guest's Soul stays strictly
+// on-air character rather than programming input.
+export function guestEditorialNudgeFromGuests(
+  guests: Array<{ id?: unknown; name?: unknown; musicLean?: unknown }>,
+  random: () => number = Math.random,
+): GuestEditorialNudge | null {
+  const eligible = guests.filter((guest) => String(guest.musicLean || '').trim());
+  if (!eligible.length || random() >= 0.25) return null;
+  const guest = eligible[Math.floor(random() * eligible.length)];
+  if (!guest || typeof guest.id !== 'string' || typeof guest.name !== 'string') return null;
+  return { guest: { id: guest.id, name: guest.name }, musicalLeanings: String(guest.musicLean).trim() };
+}
+
+export function guestEditorialNudge(date: Date = new Date(), random: () => number = Math.random) {
+  return guestEditorialNudgeFromGuests(getOnAirRoster(date).guests, random);
+}
+
 // Effective track-length cap in SECONDS for the moment a pick is made, or null
 // for "no cap". A scheduled show's maxTrackSeconds (when set) overrides the
 // station default; 0 at the winning level means unlimited. This is the single

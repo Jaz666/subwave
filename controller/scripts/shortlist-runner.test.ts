@@ -86,11 +86,17 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
       currentTrack: { id: 'seed' },
       link: 'Set say to null.',
       musicalLeanings: 'favour warm electronic edges',
+      guestMusicalLeanings: {
+        guest: { id: 'p_terry', name: 'Terry' },
+        musicalLeanings: 'favour trip-hop classics',
+      },
     },
   );
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /"seed"/);
   assert.match(prompt, /favour warm electronic edges/);
+  assert.match(prompt, /Terry/);
+  assert.match(prompt, /Guest Musical Leaning/);
   assert.match(prompt, /Track Shortlist/);
   assert.match(prompt, /Musical Leanings/);
 });
