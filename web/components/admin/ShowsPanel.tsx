@@ -293,6 +293,7 @@ export default function ShowsPanel() {
       personaId: personas[0]?.id || '', guestPersonaIds: [], banter: false, moods: [],
       themeId: '', genres: [], eras: [], energies: [], vocals: '',
       filtersStrict: false, maxTrackSeconds: null, minTrackLengthSeconds: null,
+      fadeAtShowEnd: null,
       playlistIds: [], playlistStrict: false, excludedPlaylistIds: [],
       programme: false, segmentSkill: '', tags: [],
     });

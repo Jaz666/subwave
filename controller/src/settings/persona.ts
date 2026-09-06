@@ -98,6 +98,22 @@ export function effectiveMinTrackSec(
   return sec && sec > 0 ? sec : null;
 }
 
+// Whether the show ENDING at a boundary wants its last track faded out there
+// rather than spilling into the next show (#1574). Same precedence shape as
+// effectiveMaxTrackSec above and for the same reason — one resolver, so the
+// drain and any future caller cannot disagree about which level wins.
+//
+// The show's value is TRI-STATE: null means "inherit", so a station that turns
+// the default on gets it on every show that never expressed an opinion. Absent
+// at both levels is false, i.e. the pre-existing behaviour.
+export function effectiveFadeAtShowEnd(
+  show: { fadeAtShowEnd?: unknown } | null | undefined = resolveActiveShow(),
+  s: { fadeAtShowEnd?: unknown } | null | undefined = get(),
+): boolean {
+  if (show && typeof show.fadeAtShowEnd === 'boolean') return show.fadeAtShowEnd;
+  return s?.fadeAtShowEnd === true;
+}
+
 // ── persona / show resolution ───────────────────────────────────────────────
 
 // The persona explicitly selected as "on air" in the admin UI.
@@ -184,6 +200,11 @@ function resolveShowShape(show, s) {
     // See effectiveMinTrackSec(). Omitting it here would silently disable the
     // per-show override on every pick path — resolveShowShape is what they see.
     minTrackLengthSeconds: show.minTrackLengthSeconds != null ? show.minTrackLengthSeconds : null,
+    // Per-show show-boundary fade override. null = inherit the station default.
+    // See effectiveFadeAtShowEnd() — a resolved show that dropped this field
+    // would read as "inherit" on every path, which is how the #779 blocklist
+    // no-op happened.
+    fadeAtShowEnd: typeof show.fadeAtShowEnd === 'boolean' ? show.fadeAtShowEnd : null,
     // Navidrome playlist anchor: the union of these playlists becomes the show's
     // candidate pool (music/show-playlist.ts). playlistStrict makes it the show's
     // entire universe; soft just lets it dominate. Empty array = no anchor.
