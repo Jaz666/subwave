@@ -369,10 +369,12 @@ model choice, still much cheaper than the corresponding agent loop.
 - A five-pass strict playlist run built 43 candidates and sent 11,989 input
   tokens. With llama.cpp running at `--ctx-size 12000`, the model produced no
   parseable JSON and the Candidate Pool fallback completed the pick. Controller
-  `numCtx` was 16,384, but the server was the binding limit. Match llama.cpp to
-  at least 16k now; assess 20k--24k, subject to RAM, before treating five
-  passes as reliable. Add a live per-kind peak input/output token tracker and
-  recommended context-window calculation rather than relying on an average.
+  `numCtx` was 16,384, but that setting applies only to Ollama; it is not sent
+  to an OpenAI-Compatible endpoint. The server's `--ctx-size` was the binding
+  limit. Match llama.cpp to at least 16k now; assess 20k--24k, subject to RAM,
+  before treating five passes as reliable. Add a live per-kind peak
+  input/output token tracker and recommended context-window calculation rather
+  than relying on an average.
 - The existing `djAgentRepick` is still called by the artist-variety guard.
   Example: the first shortlist choice was Placebo, which the guard replaced
   with Rage Against the Machine from the already-built alternatives. Add a
