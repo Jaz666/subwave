@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { shortlistDebugTools, shortlistPickPrompt, shortlistPickSchema, shortlistRepickPrompt } from '../src/music/dj-pick.js';
+import { shortlistDebugTools, shortlistPickPrompt, shortlistPickSchema, shortlistRepickPrompt, usableSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -80,6 +80,11 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.equal(schema.safeParse({
     id: 'invented', selectionReason: 'not allowed', say: null, transition: null,
   }).success, false);
+  const weakReason = schema.safeParse({
+    id: 'candidate-a', selectionReason: 'I', say: null, transition: null,
+  });
+  assert.equal(weakReason.success, true);
+  if (weakReason.success) assert.equal(weakReason.data.selectionReason, '[selection note unavailable]');
   const prompt = shortlistPickPrompt(
     [{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }],
     {
@@ -99,7 +104,24 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.match(prompt, /Guest Musical Leaning/);
   assert.match(prompt, /Track Shortlist/);
   assert.match(prompt, /Musical Leanings/);
-  assert.match(prompt, /listener-facing sentence/);
+  assert.match(prompt, /private Booth Log note/);
+  assert.match(prompt, /next up/);
+});
+
+test('shortlist selection note cannot become on-air queue language', () => {
+  const song = { artist: 'Artist', title: 'Track' };
+  assert.equal(
+    usableSelectionReason('Artist — Track holds the darker texture after the opener.', song),
+    'Artist — Track holds the darker texture after the opener.',
+  );
+  assert.equal(
+    usableSelectionReason('I', song),
+    'Artist — Track: selected for its fit with the current musical flow.',
+  );
+  assert.equal(
+    usableSelectionReason('Next up, Artist with Track.', song),
+    'Artist — Track: selected for its fit with the current musical flow.',
+  );
 });
 
 test('native artist repick receives only its alternate shortlist', () => {
