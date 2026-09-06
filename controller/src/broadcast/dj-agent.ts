@@ -316,6 +316,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     });
     throw Object.assign(new Error(failure.message), { pickFailure: failure });
   }
+  const musicalLeanings = settings.personaMusicLeanings(session.onAirPersona());
   const selection = await djPick({
     candidates: shortlist.candidates,
     showAt,
@@ -333,6 +334,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
             ? `Write the on-air link. It is scheduled for ${getClockContext(linkAirAt).display}; only mention that time if needed.`
             : 'Write the on-air link. Do not state a clock time.')
         : 'Set say to null; no link airs for this pick.',
+      ...(musicalLeanings
+        ? { musicalLeanings }
+        : {}),
     },
   });
   // The existing queue/artist-guard tail expects `reason`; preserve that
@@ -446,6 +450,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     recentRoots: queue.neighbourArtistRoots(varietyWindow),
     window: varietyWindow,
     repick: async (alt, reason) => {
+      const repickMusicalLeanings = settings.personaMusicLeanings(session.onAirPersona());
       const selection = await djShortlistRepick({
         candidates: [...alt.values()],
         reason,
@@ -461,6 +466,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
           link: wantLink
             ? 'Write the on-air link for the track you choose.'
             : 'Set say to null; no link airs for this pick.',
+          ...(repickMusicalLeanings
+            ? { musicalLeanings: repickMusicalLeanings }
+            : {}),
         },
       });
       return selection ? { ...selection, reason: selection.selectionReason } : null;

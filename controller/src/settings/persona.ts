@@ -59,6 +59,15 @@ export function announceLinks(persona: unknown = getEffectivePersona()): boolean
   return (persona as { linkStyle?: unknown } | null | undefined)?.linkStyle === 'announce';
 }
 
+// A private, music-specific editorial preference for a final track-selection
+// call. It is intentionally separate from Soul: Soul informs the DJ's voice,
+// while Music Leanings can only break a close tie between candidates the
+// controller has already admitted.
+export function personaMusicLeanings(persona: unknown = getEffectivePersona()): string | null {
+  const leaning = String((persona as { musicLean?: unknown } | null | undefined)?.musicLean || '').trim();
+  return leaning || null;
+}
+
 // Effective track-length cap in SECONDS for the moment a pick is made, or null
 // for "no cap". A scheduled show's maxTrackSeconds (when set) overrides the
 // station default; 0 at the winning level means unlimited. This is the single
