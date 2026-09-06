@@ -325,19 +325,22 @@ The development branch now runs `buildShortlist → djPick` in the ordinary
 next-track cascade. The existing enqueue path, artist guard, queue de-duplicate
 handling, circuit-breaker classification and Candidate Pool fallback remain in
 place. The old next-track Agentic Picker toggle no longer selects the pool; it
-continues to govern the unrelated listener-request agent. This is not yet
-deployed for station testing. Booth Log presentation and latency benchmarking
-remain before rollout.
+continues to govern the unrelated listener-request agent. It is deployed to the
+test station; Booth Log presentation and the live context benchmark are part of
+the current build.
 
-### Live benchmark and handover — 5 September 2026
+### Live benchmark and handover — 6 September 2026
 
-The native candidate has since been integrated into the test-station checkout
-and is live for controlled station testing. The live controller is healthy on
-test-station commit `692851da`; that integration branch also carries the
-debug/stat compatibility additions described below. Its user-owned local
-changes (`.dockerignore` and `controller/scripts/functiongemma/`) must remain
-untouched. The rebased development branch is `feat/track-cpu-shortlisting` at
-`f790c145`, now based on upstream `v1.12.0`.
+The active test station is `/home/jaz666/Docker/subwave` on integration branch
+`test-station/active-branches-v1.12`. Runtime code was built from `c294e69f`
+(`chore: label four active station branches`) and all services are healthy;
+`/api/health` answered `on-air` after the rebuild. The integration includes the
+four rebased active branches: `codex/debug-features`,
+`fix/show-boundary-handoffs`, `feat/prompt-safety-verified-facts`, and
+`feat/track-cpu-shortlisting` at `10e908b4`. The web footer is baked with those
+four labels. Preserve the station's local `.dockerignore` change and the
+untracked 22GB `controller/scripts/functiongemma/` material; neither belongs
+in the integration branch or Docker context.
 
 #### Observed first benchmarks
 
@@ -380,19 +383,19 @@ model choice, still much cheaper than the corresponding agent loop.
   response reserve, rounded up to 1,024-token steps (minimum 8,192). It resets
   when the controller restarts so it benchmarks the active station setup rather
   than preserving stale evidence.
-- The existing `djAgentRepick` is still called by the artist-variety guard.
-  Example: the first shortlist choice was Placebo, which the guard replaced
-  with Rage Against the Machine from the already-built alternatives. Add a
-  native `djShortlistRepick` that selects only allowed alternative artists from
-  the same shortlist, with no rediscovery and no legacy agent path.
+- The artist-variety guard uses native `djShortlistRepick` over only the
+  already-filtered alternative artists in the existing shortlist. It does not
+  rediscover; a soft failure retains the guard's existing relaxation/pool-rescue
+  behaviour. The legacy `djAgentRepick` remains on its non-native salvage path.
 - Reinstate explicit persona **Music Leanings** as editorial input to the final
   native selector only. It must not override shortlist eligibility, show locks
   or recency.
-- Native debug records now emulate the former picker view: the one
+- Native debug records emulate the former picker view: the one
   `djShortlistPick` call carries controller source names/arguments, returned and
   accepted counts, source timing, tool count and equivalent steps. The Stats
-  page includes `djShortlistPick` in Agent Runs. The dedicated Booth Log
-  Shortlist Pick presentation remains outstanding.
+  page includes `djShortlistPick` in Agent Runs. The completed **Shortlist Pick**
+  Booth Log entry carries a listener-facing reason plus a separate factual,
+  controller-written source hint.
 - Review API, MCP and webhook surfaces before publicising the path: consumers
   may currently assume picker activity is an LLM tool loop.
 
@@ -404,19 +407,20 @@ rebased code retains both announce-link composition and the native picker.
 The strict single-artist playlist source change is automatically used by the
 native builder through the shared picker registry.
 
-Verified after rebase:
+Verified for the combined station integration:
 
 ```text
-controller npm run typecheck                                  passed
-controller npm test -- shortlist-runner                       passed
-controller npm test -- picker-lock-forwarding                 passed
-controller npm test -- picker-show-source                     passed
-controller npm test -- link-style                             passed
+controller npm test -- shortlist                               passed
+controller npm test -- verified-facts                          passed
+controller npm test -- show-handover                           passed
+controller npm test -- stats-debug                             passed
+controller npm run typecheck                                   passed
+docker compose -f docker-compose.yml config --quiet            passed
+production controller and web image builds                     passed
+/api/health                                                    on-air
 ```
 
-The full controller test suite was not rerun after the rebase. An earlier full
-suite attempt was blocked by the local analyzer test environment lacking
-NumPy, not by shortlist code.
+The full controller suite was not rerun for the integration build.
 
 #### Resume point
 
@@ -447,6 +451,8 @@ source hint describe the track that actually airs. The event reaches both the
 web-fed `djLog` and the durable shortlist trace. Source hints are
 controller-generated friendly labels, never raw registry identifiers.
 
-Next, benchmark the new listener-facing selection-reason payloads and gate any
-further context-window or operator-setting change on peak-token evidence rather
-than an average.
+Next, allow several five-pass native picks to run at llama.cpp
+`--ctx-size 16384`, then inspect the Booth Log payloads and the fresh
+Debug → LLM recent calls context recommendation. Treat a Candidate Pool fallback
+or a recommendation above 16,384 as the acceptance gate for raising the server
+context window.

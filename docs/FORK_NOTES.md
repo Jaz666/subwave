@@ -65,26 +65,31 @@ The controller records the final, validated transition flags rather than the
 model's original request. The `done` structured-output helper is intentionally
 excluded from the tool list.
 
-For the local live-test station at `/home/jaz666/Docker/subwave`, the
-production Compose stack serves built controller and web images. After applying
-source changes, rebuild both services with:
+For the local live-test station at `/home/jaz666/Docker/subwave`, the active
+integration branch is `test-station/active-branches-v1.12`. Runtime code was
+built from `c294e69f` on 6 September 2026. The production Compose stack serves
+built controller and web images. After applying source changes, rebuild with:
 
 ```bash
-sudo docker compose -f docker-compose.yml up -d --build controller web
+docker compose -f docker-compose.yml up -d --build controller web
 ```
+
+Compose may recreate a dependent broadcast container as part of this operation;
+check `docker compose ps` and `/api/health` before treating the station as live.
 
 ### Live station footer workflow
 
 Before every live-station update, review `SUBWAVE_BUILD_BRANCHES` in the
 Compose build environment. Keep it aligned with the branches currently merged
-into the station (for example: `Debug Code|Producer Routing|Show Boundary
-Handoffs`). If the branch set changes, update the value before rebuilding the
-web image. The footer values are baked into the web client at build time, so a
-controller-only rebuild cannot update them.
+into the station. The current value is `Debug Code|Show Boundary Handoffs|Prompt
+Safety|Track Shortlisting`. If the branch set changes, update the value before
+rebuilding the web image. The footer values are baked into the web client at
+build time, so a controller-only rebuild cannot update them.
 
-For a live update, merge the intended feature branches into
-`live/producer-routing`, update `SUBWAVE_BUILD_BRANCHES` if needed, and rebuild
-`controller` and `web` together.
+For a live update, merge the intended rebased feature branches into a new named
+test-station integration branch, update `SUBWAVE_BUILD_BRANCHES` if needed, and
+rebuild controller and web together. Keep the previous station commit on a
+rollback branch before switching the runtime checkout.
 
 The runtime checkout can contain unrelated live-test work; keep this feature's
 commit on its own branch and do not include it in an upstream PR unless that
