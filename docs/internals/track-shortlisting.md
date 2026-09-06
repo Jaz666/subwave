@@ -372,9 +372,12 @@ model choice, still much cheaper than the corresponding agent loop.
   `numCtx` was 16,384, but that setting applies only to Ollama; it is not sent
   to an OpenAI-Compatible endpoint. The server's `--ctx-size` was the binding
   limit. Match llama.cpp to at least 16k now; assess 20k--24k, subject to RAM,
-  before treating five passes as reliable. Add a live per-kind peak
-  input/output token tracker and recommended context-window calculation rather
-  than relying on an average.
+  before treating five passes as reliable. The admin Debug → LLM recent calls
+  panel now reports an in-memory recommendation from the largest successful
+  `djShortlistPick`/`djShortlistRepick` input: 25% headroom plus a 1,024-token
+  response reserve, rounded up to 1,024-token steps (minimum 8,192). It resets
+  when the controller restarts so it benchmarks the active station setup rather
+  than preserving stale evidence.
 - The existing `djAgentRepick` is still called by the artist-variety guard.
   Example: the first shortlist choice was Placebo, which the guard replaced
   with Rage Against the Machine from the already-built alternatives. Add a
