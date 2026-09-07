@@ -84,36 +84,53 @@ with the selected track and its bounded Verified Facts packet. This adds one
 writer call to an agent-picked link, so its latency and allowance use must be
 measured separately.
 
-## Handoff status — 2026-09-05
+## Handoff status — 2026-09-07
 
-This branch is ready for continued observation and refinement.
+This branch is rebased on upstream `develop` at `dbcf8a0a` and is ready for
+continued live observation.
 
-- The prompt-safety / Verified Facts PR is
-  [perminder-klair/subwave#1542](https://github.com/perminder-klair/subwave/pull/1542),
-  from `feat/prompt-safety-verified-facts`.
+- The draft prompt-safety / Verified Facts PR is
+  [perminder-klair/subwave#1633](https://github.com/perminder-klair/subwave/pull/1633),
+  from `Jaz666:feat/prompt-safety-verified-facts`. It remains a draft while
+  live speech logs are assessed.
+- Branch HEAD is `744fae45` (`fix(tts): normalize unsafe punctuation and
+  production cues`). It adds a conservative controller-side replacement for
+  the former Fish proxy sanitation: invisible characters, Markdown links and
+  HTML are cleaned; malformed, closing, trailing and production-style bracket
+  cues are removed; numeric dash ranges speak as “to”; ordinary sentence
+  dashes and ellipses are preserved for natural Fish pacing.
 - The deployed live-station checkout is `/home/jaz666/Docker/subwave`, on
-  `test-station/vanilla-debug-handoffs-prompt-safety-live`. It contains the
-  existing station-test work plus these prompt-safety commits:
-  `6de45bb2` (final-quarter following-show context), `a91fcbaa` (station
-  history sleeve notes), and `2a1533cd` (stale link-context cleanup).
-- The controller was rebuilt and restarted after those commits, and its Docker
-  health check passed. Focused verified-facts and show-handover tests plus
-  TypeScript type-checking passed before deployment.
+  `test-station/active-branches-v1.13`, at `6adc8045`. It was rebased onto the
+  same upstream `develop`, preserving the Track Shortlisting and debug-feature
+  integrations, then rebuilt. The controller health endpoint reports `on-air`.
 - Do not reset, clean, or overwrite the live checkout: it deliberately retains
-  an unrelated modified `.dockerignore` and untracked
-  `controller/scripts/functiongemma/` work from other live-station testing.
+  an unrelated modified `.dockerignore`.
+- The live station uses `Four Acres FM Prompt v6 — safety test` plus tightened
+  House Rules. The full factual-grounding rule is in both places because the
+  scripted path receives the System Prompt while agent-written speech receives
+  House Rules. No restart was required for that settings update.
+
+### Validation completed
+
+- `speech-text`, `verified-facts`, `agent-say-boundary`, `link-style`, and
+  `persona-engine-seams` tests pass.
+- The live integration also passed `shortlist-runner`,
+  `shortlist-presentation`, `shortlist-context-window`, `stats-debug`,
+  `dj-speech-log`, and TypeScript type checking after the rebase.
 
 ### What to observe next
 
-1. In the final 15 minutes, confirm that a following-show cue is occasional
-   rather than absent or repeated. The cue is optional model material, while
-   the timing/context constraint is deterministic.
-2. Confirm station-history notes are sparse: a first-ever station play may be
-   mentioned only when the library index is readable, and a return is eligible
-   only for one or two prior plays at least 30 days ago. They deliberately
-   compete with other sleeve-note facts, so no mention on a given link is
-   expected.
-3. Keep the current scope separate from the parallel architecture work:
-   native track shortlisting, handoff timing, and future native segment/skill
-   routing. The former Producer Routing design remains reference material only;
-   it is not part of the live station architecture or a porting target.
+1. Review ordinary DJ links, IDs, hourly checks, handoffs and banter only.
+   Ignore paused segment/skill content (sponsor spots, mailbag, deep cuts and
+   programme features).
+2. The DJ Speech log uses UTC. The Prompt v6 / first House Rules change took
+   effect at 15:12 BST, recorded as 14:12 UTC on 2026-09-07. The later House
+   Rules expansion and controller sanitation deployment should each be treated
+   as separate comparison boundaries.
+3. On the TTS test interface, confirm that valid delivery cues such as
+   `[softly]` remain, while production directions such as `[fade out vocals]`,
+   `[0s]` and malformed brackets are removed. Confirm em dashes still create
+   the desired natural pause.
+4. Once the live outputs are satisfactory, push any final branch commits to
+   the fork, update draft PR #1633, and mark it ready for review. Keep native
+   Track Shortlisting, debug features and segment/skill work outside this PR.
