@@ -842,7 +842,7 @@ export default function StatsPanel() {
                       : 'provider reports none'} />
                   <StatCell label="Track shortlists" value={fmtInt(llm.shortlist?.calls)} last
                     sub={llm.shortlist?.calls
-                      ? `${llm.shortlist.ok} ok · ${llm.shortlist.avgPasses} discovery passes avg`
+                      ? `${llm.shortlist.ok}/${llm.shortlist.calls} ok · ${llm.shortlist.avgPasses} discovery passes avg`
                       : 'none'} />
                 </MetricStrip>
 
