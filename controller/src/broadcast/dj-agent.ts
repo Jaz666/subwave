@@ -1141,8 +1141,8 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
 // (queue.announce → airVoice), so they play cleanly back to back.
 //
 // Never throws (callers still need to run the pick after it) and is idempotent:
-// it marks the handoff aired up front, so a concurrent second call — or a
-// mid-way failure — can't double-air or retry into the middle of the new show.
+// an in-process claim prevents concurrent renders, while final-track pairs are
+// durably marked queued and settle only when they actually reach the stream.
 // The two model calls are injectable for the same reason artist-guard's are:
 // the thing worth pinning here is the WIRING — which memory each side of the
 // mic-pass is handed — and that is only observable at the generator boundary.
@@ -1152,11 +1152,22 @@ export interface HandoffDeps {
   generateHandoffGreeting?: typeof dj.generateHandoffGreeting;
 }
 
+// The session record becomes durable only after queueing succeeds. Keep one
+// in-process claim while the LLM/TTS work is running so concurrent picker and
+// scheduler paths cannot render the same pair twice.
+const handoffRuns = new Set<string>();
+
 export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps = {}): Promise<void> {
   const generateSignoff = deps.generateSignoff ?? dj.generateSignoff;
   const generateHandoffGreeting = deps.generateHandoffGreeting ?? dj.generateHandoffGreeting;
   const pending = session.pendingHandoff();
   if (!pending) return;
+  const isBoundaryHandoff = 'incomingPersonaId' in pending;
+  const claim = `${pending.personaId}:${pending.at ?? 'unstamped'}`;
+  if (handoffRuns.has(claim)) return;
+  handoffRuns.add(claim);
+
+  try {
 
   // Nobody listening → the mic-pass moment has passed; don't stack a stale
   // handoff for later. Budget: treated as an optional segment (muted in soft
@@ -1182,6 +1193,11 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     return;
   }
 
+  // The ordinary post-roll mic-pass has no rendered-audio recovery window, so
+  // retain its established claim-before-air behaviour. Final-track handoffs
+  // use the queued state below instead, because their WAVs may wait for a seam.
+  if (!isBoundaryHandoff) session.markHandoffAired();
+
   // Outgoing persona comes from the roll metadata — its clock slot is already
   // over, so getEffectivePersona() no longer returns it. A final-track handoff
   // has deliberately NOT rolled the session yet: use the incoming identity it
@@ -1189,18 +1205,14 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
   // A persona deleted mid-shift → nothing to voice; drop it.
   const personaOut = settings.resolvePersonaById(pending.personaId);
   const cur = session.getSession();
-  const isFinalTrackHandoff = 'incomingPersonaId' in pending;
-  const personaIn = (isFinalTrackHandoff && settings.resolvePersonaById(pending.incomingPersonaId))
+  const personaIn = (isBoundaryHandoff && settings.resolvePersonaById(pending.incomingPersonaId))
     || settings.resolvePersonaById(cur?.persona?.id)
     || settings.getEffectivePersona();
   if (!personaOut || !personaIn) {
     session.markHandoffAired();
     return;
   }
-  const showIn = (isFinalTrackHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
-
-  // Mark aired BEFORE airing (see the idempotency note above).
-  session.markHandoffAired();
+  const showIn = (isBoundaryHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
 
   await withTrace({ kind: 'handoff', from: personaOut.name, to: personaIn.name }, async () => {
     // The sign-off closes the show that just ENDED, but maybeRoll has already
@@ -1263,7 +1275,11 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     }
 
     if (aired) {
+      session.markHandoffQueued();
       logEvent('dj.handoff', { from: personaOut.name, to: personaIn.name, show: showIn });
     }
   });
+  } finally {
+    handoffRuns.delete(claim);
+  }
 }

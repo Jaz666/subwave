@@ -76,6 +76,9 @@ the corresponding on-air moment.
   cross-persona handoff speech.
 - A top-of-hour check postponed by between-tracks placement must be generated
   under the incoming identity and current clock once the handoff has cleared.
+- A pair rendered for a future seam is **queued**, not aired. That state is
+  persisted with the session so a controller restart regenerates lost WAVs;
+  only the stream-edge marker settles it as aired.
 - Treat a missing/unknown duration conservatively: never invent an exact
   boundary time or delay music waiting for one.
 

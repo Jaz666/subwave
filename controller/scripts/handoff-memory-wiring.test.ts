@@ -200,4 +200,30 @@ test('a final-track handoff uses the incoming identity captured at arm time', as
   assert.equal(seen.signoff.showIn, 'Cultural Currents');
   assert.equal(seen.greeting.personaIn, GIGI.name);
   assert.deepEqual(aired, [WREN.name, GIGI.name]);
+  assert.equal(session.pendingHandoff(), null,
+    'a live controller keeps the rendered pair in its queue instead of generating it twice');
+  assert.equal(session.boundaryHandoffStatus()?.state, 'queued',
+    'the pair is durable-but-not-aired until the stream edge confirms it');
+  session.markHandoffAired();
+  assert.equal(session.boundaryHandoffStatus()?.state, 'aired');
+});
+
+test('a queued final-track handoff survives a controller restart for re-rendering', async () => {
+  await settings.update({ personas: [WREN, GIGI], activePersonaId: WREN.id } as never);
+  const t0 = Date.now();
+  session.start(context({ id: 's_outgoing', name: 'The Soft Start Procedure' }, t0));
+  await settings.update({ activePersonaId: GIGI.id } as never);
+  const incoming = context({ id: 's_incoming', name: 'Cultural Currents' }, t0 + 60_000);
+  assert.equal(session.armBoundaryHandoff(incoming), true);
+  session.markHandoffQueued();
+
+  // The session writer is deliberately debounced in production. Once its
+  // snapshot exists, recover() follows the same key-mismatch path a restart
+  // after the actual clock boundary uses.
+  await new Promise(resolve => setTimeout(resolve, 1_100));
+  await session.recover(incoming);
+
+  assert.equal(session.boundaryHandoffStatus()?.state, 'queued');
+  assert.equal(session.boundaryHandoffStatus()?.recovered, true);
+  assert.ok(session.pendingHandoff(), 'the lost in-memory WAV pair is regenerated on the next queue cycle');
 });

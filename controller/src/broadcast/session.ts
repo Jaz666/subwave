@@ -98,6 +98,8 @@ export interface BoundaryHandoff extends RolledFrom {
   incomingShowName: string | null;
   targetKey: string;
   boundaryAt: number | null;
+  /** Rendered into the queue, but not confirmed at the stream edge yet. */
+  queued?: boolean;
   aired: boolean;
 }
 
@@ -139,6 +141,11 @@ const PERSIST_DEBOUNCE_MS = 1000;
 
 let _session: Session | null = null;
 let _writeTimer: NodeJS.Timeout | null = null;
+// A queued handoff survives a restart in session.json, while its WAVs do not.
+// This flag lets pendingHandoff() offer that durable record for one re-render
+// only after recovery; a live process already has the queue entry and must not
+// create a duplicate.
+let _resumedQueuedHandoff = false;
 
 function mintId() {
   return 'sess_' + randomBytes(4).toString('hex');
@@ -316,6 +323,7 @@ export function appendTurn({ role, kind, text, meta = {} }: { role: string; kind
 
 // Start a fresh session for the current context.
 export function start(ctx: SessionContext, handoff: string | null = null): Session {
+  _resumedQueuedHandoff = false;
   // Resolve the persona for the moment the CONTEXT describes, not the wall
   // clock. A boundary roll runs on a look-ahead context (queue.onTrackStarted
   // rolls for the show that owns the next track), so `show` below comes from
@@ -402,6 +410,10 @@ export async function maybeRoll(ctx: SessionContext): Promise<Session> {
   // create a second mic-pass when the station clock reaches the boundary.
   const handoffAlreadyCovered = prev.boundaryHandoff?.aired
     && prev.boundaryHandoff.targetKey === nextKey;
+  const queuedHandoff = prev.boundaryHandoff?.queued
+    && prev.boundaryHandoff.targetKey === nextKey
+    ? prev.boundaryHandoff
+    : null;
   // Snapshot before end()/start() replace the live session — the outgoing DJ's
   // sign-off is generated after this returns (see priorPromptMemory above).
   _priorPromptMemory = promptMemoryEntries(prev.messages, prev.persona?.id ?? null);
@@ -409,6 +421,11 @@ export async function maybeRoll(ctx: SessionContext): Promise<Session> {
   const next = start(ctx, buildHandoff(prev));
   stampRolledFrom(next, prev);
   if (handoffAlreadyCovered) next.handoffAired = true;
+  if (queuedHandoff) {
+    next.boundaryHandoff = queuedHandoff;
+    next.rolledFrom = null;
+    next.handoffAired = true;
+  }
   await persist();
   return next;
 }
@@ -440,24 +457,37 @@ function stampRolledFrom(next: Session, prev: Session) {
 // The pending on-air handoff for the live session (outgoing persona metadata),
 // or null when there's nothing to air (no persona change, or already aired).
 export function pendingHandoff(): RolledFrom | BoundaryHandoff | null {
-  if (_session?.boundaryHandoff && !_session.boundaryHandoff.aired) {
+  if (_session?.boundaryHandoff && !_session.boundaryHandoff.aired
+      && (!_session.boundaryHandoff.queued || _resumedQueuedHandoff)) {
     return _session.boundaryHandoff;
   }
   if (!_session?.rolledFrom || _session.handoffAired) return null;
   return _session.rolledFrom;
 }
 
-// Mark the handoff aired so it fires at most once. Called up front by the runner
-// (before generating/airing) so a mid-way failure can't retry into the middle
-// of the new show — the existing text handoff is the floor.
+// Mark the handoff heard at the stream edge. A final-track handoff is queued
+// first, so a restart before this point can regenerate its lost audio.
 export function markHandoffAired() {
   if (!_session) return;
   if (_session.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    _session.boundaryHandoff.queued = false;
     _session.boundaryHandoff.aired = true;
+    _resumedQueuedHandoff = false;
     schedulePersist();
     return;
   }
   _session.handoffAired = true;
+  schedulePersist();
+}
+
+// The voice chain accepted a handoff pair, but its live-edge marker has not
+// fired. This is durable so a controller restart can regenerate the pair;
+// pendingHandoff() intentionally hides it during this process because queue.ts
+// still owns the original rendered clips.
+export function markHandoffQueued() {
+  if (!_session?.boundaryHandoff || _session.boundaryHandoff.aired) return;
+  _session.boundaryHandoff.queued = true;
+  _resumedQueuedHandoff = false;
   schedulePersist();
 }
 
@@ -492,7 +522,7 @@ export function armBoundaryHandoff(ctx: SessionContext): boolean {
 // Once a final-track handoff has claimed the outgoing show's air, no ordinary
 // speech from its stale roster may cross the boundary.
 export function handoffInProgress(): boolean {
-  return !!_session?.boundaryHandoff?.aired;
+  return !!(_session?.boundaryHandoff?.queued || _session?.boundaryHandoff?.aired);
 }
 
 // The deferred between-tracks handoff must not air merely because an estimate
@@ -500,6 +530,21 @@ export function handoffInProgress(): boolean {
 export function handoffBoundaryAt(): number | null {
   const at = _session?.boundaryHandoff?.boundaryAt;
   return typeof at === 'number' && Number.isFinite(at) ? at : null;
+}
+
+// Compact operational state for /debug. The full session remains available
+// there too; this is deliberately the answer to "is a handoff waiting?".
+export function boundaryHandoffStatus() {
+  const h = _session?.boundaryHandoff;
+  if (!h) return null;
+  return {
+    state: h.aired ? 'aired' : h.queued ? 'queued' : 'armed',
+    from: h.personaName,
+    to: h.incomingPersonaName,
+    show: h.incomingShowName,
+    boundaryAt: h.boundaryAt,
+    recovered: _resumedQueuedHandoff,
+  };
 }
 
 // --- Programme episode state (broadcast/programme.ts) -----------------------
@@ -652,8 +697,24 @@ export async function recover(ctx: SessionContext): Promise<Session> {
       if (stored?.id && !stored.endedAt && stored.key === sessionKeyFor(ctx)
           && Array.isArray(stored.messages)) {
         _session = stored as Session;
+        _resumedQueuedHandoff = _session.boundaryHandoff?.queued === true;
         appendTurn({ role: 'event', kind: 'scenario', text: 'Controller restarted — session resumed.' });
         return _session;
+      }
+      // The restart happened after the station clock crossed the boundary, so
+      // the stored outgoing-session key no longer matches. Preserve a queued
+      // final-track handoff on the fresh incoming session and regenerate it at
+      // the next eligible queue cycle; its old WAV cannot be trusted after a
+      // controller restart.
+      if (stored?.boundaryHandoff?.queued
+          && stored.boundaryHandoff.targetKey === sessionKeyFor(ctx)) {
+        const next = start(ctx, buildHandoff(stored as Session));
+        next.boundaryHandoff = stored.boundaryHandoff as BoundaryHandoff;
+        next.rolledFrom = null;
+        next.handoffAired = true;
+        _resumedQueuedHandoff = true;
+        await persist();
+        return next;
       }
       if (stored?.id) {
         stored.endedAt = stored.endedAt || new Date().toISOString();

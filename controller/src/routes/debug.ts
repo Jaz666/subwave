@@ -322,6 +322,7 @@ async function buildDebugSnapshot(req: express.Request): Promise<any> {
   // 7b. Live DJ session — the current run's chat history.
   try {
     out.session = session.getSession();
+    out.boundaryHandoff = session.boundaryHandoffStatus();
   } catch (err) {
     out.session = { error: err.message };
   }

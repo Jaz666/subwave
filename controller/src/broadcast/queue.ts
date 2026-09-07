@@ -1831,6 +1831,10 @@ class Queue {
     void handoff.aired.then(airedAt => {
       try {
         this.log(kind, logText ?? text);
+        // A handoff remains merely QUEUED until Liquidsoap's live-edge marker
+        // confirms that it reached listeners. That distinction lets session
+        // recovery regenerate a deferred pair after a controller restart.
+        if (kind === 'handoff') session.markHandoffAired();
         session.appendTurn({
           role: 'segment',
           kind,
