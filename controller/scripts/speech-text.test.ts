@@ -75,7 +75,7 @@ async function main() {
   await test('HTML entities decode before the & rule', () => {
     assert.equal(normalizeForSpeech('Florence &amp; the Machine'), 'Florence and the Machine');
     assert.equal(normalizeForSpeech('it&#39;s a classic'), "it's a classic");
-    assert.equal(normalizeForSpeech('she said &quot;play it&quot;'), 'she said "play it"');
+    assert.equal(normalizeForSpeech('she said &quot;play it&quot;'), 'she said play it');
   });
   await test('undecoded entity shapes are not mangled into "and"', () => {
     assert.equal(normalizeForSpeech('4 &lt; 5'), '4 &lt; 5');
@@ -122,6 +122,20 @@ async function main() {
     assert.equal(sanitizePerformanceCues('[softly] [warmly] Hello.'), '[warmly] Hello.');
     assert.equal(sanitizePerformanceCues('[softly]'), '');
   });
+  await test('drops production directions and malformed brackets, keeping spoken words', () => {
+    assert.equal(normalizeForSpeech('[Square cue - fade out vocals] Let\'s begin.'), 'Let\'s begin.');
+    assert.equal(normalizeForSpeech('[0s] This is on air.'), 'This is on air.');
+    assert.equal(normalizeForSpeech('[pause] Keep talking.'), 'Keep talking.');
+    assert.equal(normalizeForSpeech('[Junkie fades back in] Let\'s begin.'), 'Let\'s begin.');
+    assert.equal(normalizeForSpeech('Hello [softly'), 'Hello softly');
+  });
+  await test('keeps delivery cues while rejecting production wording', () => {
+    assert.equal(normalizeForSpeech('[softly] A quiet word.'), '[softly] A quiet word.');
+    assert.equal(normalizeForSpeech('[gentle fade] A quiet word.'), 'A quiet word.');
+  });
+  await test('cleans generated links, HTML and invisible controls for display', () => {
+    assert.equal(normalizeForDisplay('[listen here](https://example.test) <em>now</em>\u200b'), 'listen here now');
+  });
 
   console.log('station branding + shape:');
   await test('SUB/WAVE reads as Subwave (existing rule preserved)', () => {
@@ -130,6 +144,12 @@ async function main() {
   });
   await test('other slashes are untouched (AC/DC)', () => {
     assert.equal(normalizeForSpeech('AC/DC up next'), 'AC/DC up next');
+  });
+  await test('normalizes punctuation known to upset cloud TTS without changing display', () => {
+    const source = 'From 1991–1993 — \u201cquiet\u201d… and ready.';
+    assert.equal(normalizeForSpeech(source), 'From 1991 to 1993 — quiet... and ready.');
+    assert.equal(normalizeForDisplay(source), 'From 1991–1993 — “quiet”… and ready.');
+    assert.equal(normalizeForSpeech('A\u00a0soft\u00adhyphen\u200b stays tidy.'), 'A softhyphen stays tidy.');
   });
   await test('whitespace collapses, empty passes through', () => {
     assert.equal(normalizeForSpeech('two   spaces'), 'two spaces');

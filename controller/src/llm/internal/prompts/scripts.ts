@@ -333,7 +333,7 @@ export function linkPrompt({
     'Never strengthen an approved station-history fact: “First station play” is not a premiere or a world premiere, and an album fact never means the album belongs to the station or presenter.',
     'Do not describe instrumentation, production, lyrics or other audio properties unless they are explicitly supplied. Subjective reaction is welcome, but do not present it as observation.',
     'Prefer a plain, accurate introduction to invented atmosphere. Do not add weather, season, local scenery, programme progress or station activity unless it appears in Current Context.',
-    'Do not output brackets except for a supported performance cue. A cue is optional, may appear at most twice, must be immediately followed by spoken words, and must never be a closing or end-of-segment tag.',
+    'Do not output brackets except for a supported performance cue. A cue is optional, may appear at most twice, must describe only the delivery of immediately following spoken words, and must never describe music, a track, a fade, a pause, a transition, timing or a scene, and must never be a closing or end-of-segment tag.',
     'Intro-runway guidance is production-only: never mention seconds, a countdown, vocals entering or when the track will arrive.',
     PERSONA_GROUNDING_RULE,
     lengthPhrase('link', speaker) + '.',

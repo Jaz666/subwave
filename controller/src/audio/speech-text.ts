@@ -72,18 +72,42 @@ const DOLLAR_MAGNITUDE = '(?:\\s+(?:thousand|million|billion|trillion)\\b)?';
 const DOLLAR_AMOUNT = '\\d[\\d,]*(?:\\.\\d+)?';
 
 // Fish/Chatterbox performance cues are deliberately loose in vocabulary — the
-// provider owns what it can express — but strict in position. A cue must have
-// spoken words before the next cue (or the end), and a segment may carry at
-// most two. This keeps a legitimate delivery change while dropping the common
-// model failure of appending `[softly]` after its final sentence. Closing tags
-// have no meaning to the supported engines and are always removed.
+// provider owns what it can express — but strict in position and purpose. A
+// cue must have spoken words before the next cue (or the end), and a segment
+// may carry at most two. Production directions are never useful TTS input:
+// they invite the engine to narrate a fade, a track change or a timing note.
+// This keeps a legitimate delivery change while dropping the common model
+// failure of appending `[softly]` after its final sentence. Closing tags have
+// no meaning to the supported engines and are always removed.
 const PERFORMANCE_CUE_RE = /\[[^\]\r\n]{1,80}\]/g;
 const SPOKEN_CHAR_RE = /[\p{L}\p{N}]/u;
+const PRODUCTION_CUE_RE = /\b(?:cue|square|stage|direction|fad(?:e|es|ed|ing)|music|track|vocals?|sounds?|intro(?:duction)?|outro|transition|pause|riff(?:ing)?|build(?:ing|s)?|seconds?|\d+s)\b/i;
+
+function isPerformanceCue(body: string): boolean {
+  return !body.startsWith('/')
+    && !/\d/.test(body)
+    && !PRODUCTION_CUE_RE.test(body);
+}
+
+function stripUnmatchedCueBrackets(text: string): string {
+  const cues = [...text.matchAll(PERFORMANCE_CUE_RE)];
+  if (!cues.length) return text.replace(/[\[\]]/g, '');
+  let out = '';
+  let cursor = 0;
+  for (const cue of cues) {
+    const start = cue.index!;
+    out += text.slice(cursor, start).replace(/[\[\]]/g, '');
+    out += cue[0];
+    cursor = start + cue[0].length;
+  }
+  return out + text.slice(cursor).replace(/[\[\]]/g, '');
+}
 
 export function sanitizePerformanceCues(text: string, maxCues = 2): string {
   if (!text) return text;
-  const cues = [...text.matchAll(PERFORMANCE_CUE_RE)];
-  if (!cues.length) return text;
+  const safeText = stripUnmatchedCueBrackets(text);
+  const cues = [...safeText.matchAll(PERFORMANCE_CUE_RE)];
+  if (!cues.length) return safeText.replace(/\s+/g, ' ').trim();
 
   let out = '';
   let cursor = 0;
@@ -92,18 +116,17 @@ export function sanitizePerformanceCues(text: string, maxCues = 2): string {
     const cue = cues[i]!;
     const start = cue.index!;
     const end = start + cue[0].length;
-    const nextStart = cues[i + 1]?.index ?? text.length;
+    const nextStart = cues[i + 1]?.index ?? safeText.length;
     const body = cue[0].slice(1, -1).trim();
-    const hasFollowingWords = SPOKEN_CHAR_RE.test(text.slice(end, nextStart));
-    const closing = body.startsWith('/');
-    out += text.slice(cursor, start);
-    if (!closing && hasFollowingWords && kept < maxCues) {
+    const hasFollowingWords = SPOKEN_CHAR_RE.test(safeText.slice(end, nextStart));
+    out += safeText.slice(cursor, start);
+    if (isPerformanceCue(body) && hasFollowingWords && kept < maxCues) {
       out += cue[0];
       kept += 1;
     }
     cursor = end;
   }
-  return (out + text.slice(cursor)).replace(/\s+/g, ' ').trim();
+  return (out + safeText.slice(cursor)).replace(/\s+/g, ' ').trim();
 }
 
 // Markup + entity cleanup — everything in the pipeline that is safe for a
@@ -113,7 +136,18 @@ export function sanitizePerformanceCues(text: string, maxCues = 2): string {
 function stripMarkup(text: string): string {
   let t = text;
 
+  // Invisible format controls and soft hyphens have no spoken value but can
+  // confuse a provider tokenizer. NBSP is layout, so make it ordinary space.
+  t = t.replace(/\u00a0/g, ' ');
+  t = t.replace(/[\u00ad\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '');
+
   // --- markdown / display markup (before unit rules, so `**76°F**` works) ---
+  // Keep the reader-facing label from a generated Markdown link; neither its
+  // brackets nor URL belong in speech. This has to run before cue filtering.
+  t = t.replace(/\[([^\]\r\n]+)\]\([^\)\r\n]+\)/g, '$1');
+  // Strip actual HTML tags, but not ordinary comparison text such as "I <3
+  // this". Models occasionally return HTML even after being told not to.
+  t = t.replace(/<\/?[A-Za-z][^>\r\n]{0,120}>/g, '');
   // Paired emphasis: keep the words, drop the marks. Bold before italic so
   // `**x**` doesn't leave stray asterisks for the italic pass to mis-pair.
   t = t.replace(/\*\*([^*]+)\*\*/g, '$1');
@@ -147,6 +181,27 @@ function collapseSpace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+// Provider-facing punctuation. These substitutions are intentionally NOT part
+// of normalizeForDisplay(): typographic quotes and dashes remain useful in the
+// booth log, while the TTS request gets the conservative ASCII-safe form that
+// previously lived in the Fish proxy.
+function normalizeTtsPunctuation(text: string): string {
+  let t = text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/\u2011/g, '-')
+    .replace(/\u2026/g, '...');
+
+  // En/figure dashes between digits are ranges, not pauses. Sentence dashes
+  // stay intact: unlike commas, they reliably carry a natural pause in Fish
+  // and other expressive engines.
+  t = t.replace(/(?<=\d)\s*[\u2012\u2013]\s*(?=\d)/g, ' to ');
+  // Double quotes are purely display punctuation and have caused inconsistent
+  // cloud-TTS phrasing; apostrophes remain for contractions and possessives.
+  t = t.replace(/"/g, '');
+  return t.replace(/,(?:\s*,)+/g, ',');
+}
+
 // The READER's form of a line: markup and entities cleaned up, spelling left
 // exactly as written. This is what gets logged, persisted to the session, and
 // pushed to the player — see the two-pass note at the top of the file.
@@ -161,6 +216,8 @@ export function normalizeForSpeech(
 ): string {
   if (!text) return text;
   let t = stripMarkup(text);
+
+  t = normalizeTtsPunctuation(t);
 
   // --- operator corrections (settings.tts.corrections) ---
   // After markdown/entity cleanup so a rule matches the readable text the

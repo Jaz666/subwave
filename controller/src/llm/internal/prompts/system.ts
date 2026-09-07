@@ -31,7 +31,7 @@ const ELEVENLABS_V3_TAG_HINT =
 // a fixed tag vocabulary. This extends the existing engine-gated cue policy;
 // it does not alter the base prompt or let brackets leak into fallback engines.
 const FISH_S21_TAG_HINT =
-  '\n\nYou may sparingly add a short natural-language performance cue in square brackets, such as [laughing nervously], [whispers], or [soft and warm]. Use at most two when they genuinely improve delivery. Every cue must immediately precede spoken words; never stack cues, add a closing tag, or end a segment with one.';
+  '\n\nYou may sparingly add a short natural-language delivery cue in square brackets, such as [laughing nervously], [whispers], or [soft and warm]. Use at most two when they genuinely improve delivery. A cue describes only the voice, never music, a track, a fade, a pause, a transition, a timing note or a scene. Every cue must immediately precede spoken words; never stack cues, add a closing tag, or end a segment with one.';
 
 // `persona` overrides the on-air persona — used by the persona-handoff
 // generators (generateSignoff / generateHandoffGreeting) to render the sign-off
