@@ -2111,19 +2111,25 @@ class Queue {
     // auto.m3u track never enters `upcoming`, so fall back to the id `np`
     // reports — the measurement is a library read either way, and an
     // unidentifiable track resolves to "unknown", which airs.
-    const runwayTrack = incoming?.track ?? (np?.subsonic_id ? { id: np.subsonic_id } : null);
-    const runwayMs = vocalRunwayMs(runwayTrack);
-    // The whole segment, not the first clip: an exchange is deferred as ONE
-    // segment and airs back-to-back, so what has to fit the runway is the sum.
-    // speechDurationMs (clip + lead-in + duck tail) is the same figure the bed
-    // decision budgets a link at, so the two agree about one clip.
-    const clipMs = p.clips.reduce((sum, c) => sum + speechDurationMs(c.wavPath, c.text), 0);
-    if (!segmentFitsRunway(clipMs, runwayMs)) {
-      this.log('scheduler',
-        // runwayMs is necessarily finite here — null (unknown) and Infinity
-        // (instrumental) both fit, so only a measured onset can refuse.
-        `Holding ${p.kind} — vocals enter "${np?.title || 'the incoming track'}" at ${Math.round(Number(runwayMs) / 1000)}s, inside this ${Math.round(clipMs / 1000)}s segment`);
-      return;
+    // A show handoff is time-critical: its own notBefore gate above preserves
+    // the true boundary, then it owns the first eligible seam. It must not be
+    // turned into an implicit spacer-track policy by waiting for a vocal-safe
+    // opening. Ordinary scheduled speech retains the vocal-runway protection.
+    if (p.kind !== 'handoff') {
+      const runwayTrack = incoming?.track ?? (np?.subsonic_id ? { id: np.subsonic_id } : null);
+      const runwayMs = vocalRunwayMs(runwayTrack);
+      // The whole segment, not the first clip: an exchange is deferred as ONE
+      // segment and airs back-to-back, so what has to fit the runway is the sum.
+      // speechDurationMs (clip + lead-in + duck tail) is the same figure the bed
+      // decision budgets a link at, so the two agree about one clip.
+      const clipMs = p.clips.reduce((sum, c) => sum + speechDurationMs(c.wavPath, c.text), 0);
+      if (!segmentFitsRunway(clipMs, runwayMs)) {
+        this.log('scheduler',
+          // runwayMs is necessarily finite here — null (unknown) and Infinity
+          // (instrumental) both fit, so only a measured onset can refuse.
+          `Holding ${p.kind} — vocals enter "${np?.title || 'the incoming track'}" at ${Math.round(Number(runwayMs) / 1000)}s, inside this ${Math.round(clipMs / 1000)}s segment`);
+        return;
+      }
     }
     this._pendingVoice = null;
     // The reaper deletes old WAVs; a segment whose clips are all gone has
