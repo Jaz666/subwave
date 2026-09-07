@@ -241,6 +241,10 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
             </span>
           )}
           {shown.map((c, i) => (
+            (() => {
+              const isShortlistPick = c.kind === 'djShortlistPick';
+              const sourceRuns = c.toolCalls?.length || 0;
+              return (
             <details
               key={i}
               className={cn(
@@ -256,8 +260,12 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 </span>
                 <span className="truncate text-[12px] font-bold">{c.kind}</span>
                 <span className="caption text-[10px] whitespace-nowrap">
-                  {c.toolCalls?.length ? `🔧 ${c.toolCalls.length}` : ''}
-                  {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}
+                  {isShortlistPick
+                    ? (sourceRuns ? `${sourceRuns} discovery passes` : '')
+                    : <>
+                        {c.toolCalls?.length ? `🔧 ${c.toolCalls.length}` : ''}
+                        {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}
+                      </>}
                 </span>
                 <span className="mono-num text-[11px] text-muted">{c.ms}ms</span>
                 <span className="mono-num text-[10px] text-muted">
@@ -302,7 +310,7 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 )}
                 {Array.isArray(c.toolCalls) && c.toolCalls.length > 0 && (
                   <CallSection
-                    label="tools"
+                    label={isShortlistPick ? 'candidate sources' : 'tools'}
                     count={c.toolCalls.length}
                     preview={c.toolCalls.map(t => t.name).join(' → ')}
                   >
@@ -316,6 +324,8 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 )}
               </div>
             </details>
+              );
+            })()
           ))}
         </div>
       </ScrollArea>
