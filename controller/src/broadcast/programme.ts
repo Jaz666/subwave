@@ -40,6 +40,7 @@ import { zonedParts } from '../time.js';
 import { takeoverShowId } from '../schemas/schedule.js';
 import { HANDOVER_OFFSET_STEP_MINUTES } from '../schemas/settings.js';
 import { handoverOffsetMinutes } from './handover-policy.js';
+import { nextShowBoundaryMs } from './show-boundary.js';
 
 // How long after the intro aired the generic hourly time-check stays
 // suppressed: the intro owns the top of the show's first hour (the same
@@ -214,7 +215,7 @@ export async function maybeRunIntro(
   queue: QueueApi,
   ctx: SessionContext,
   now = session.contextDate(ctx),
-  { opportunity = false }: { opportunity?: boolean } = {},
+  _options: { opportunity?: boolean } = {},
 ): Promise<boolean> {
   const ep = activeEpisode(now);
   const prog = ep && session.getProgramme();
@@ -236,29 +237,6 @@ export async function maybeRunIntro(
   // the switch back mid-show and the intro can still open the remaining hours.
   if (!autoVoiceAllowed()) return false;
   if (!djCallsAllowed() || !optionalSegmentsAllowed()) return false;  // stays pending — may air later this hour
-  // The ordering rule (#1576). A show whose sign-off just aired owes the
-  // listener one closing track, and this is the path that carries the incoming
-  // host's first words when the persona did NOT change — the mic-pass covers
-  // the other one, gated in the queue's own boundary path. Asked after the
-  // pendingHandoff check so exactly one of the two counts the opportunity.
-  //
-  // LAST of the checks, and that is the point: only a cycle that would
-  // otherwise have aired the intro has really passed an opportunity up. Asking
-  // ahead of the gates let a muted station, an exhausted budget or a quiet hour
-  // spend half the spacer on a cycle that could never have spoken.
-  //
-  // `opportunity` says whether THIS call site is a handover moment at all. The
-  // boundary path is; the wall-clock :00 session roll is not — it asks minutes
-  // before any music has moved, and banking its answer would release the
-  // incoming host at the boundary that ends the sign-off's own track.
-  //
-  // Stays pending and unmarked, like the voice-switch case above: the next
-  // boundary opens the episode instead.
-  if (queue.closingTrackHolds()) {
-    if (opportunity) queue.noteHandoverOpportunityDeclined();
-    return false;
-  }
-
   markIntroAired();
   await runIntro(queue, ctx, now);
   return true;
@@ -379,6 +357,15 @@ export async function outroTick(queue: QueueApi, ctx: SessionContext, now = new 
   if (!prog || prog.beats?.outro) return;
   const span = episodeSpan(now);
   if (span.index !== span.total - 1) return;  // not the final hour yet
+  // A persona-changing show boundary has its own final-track sign-off and
+  // greeting. Do not also say goodbye at the configurable programme-outro
+  // minute: that is the upstream spacer model this branch replaces.
+  const boundaryAt = nextShowBoundaryMs(now.getTime(), 2 * 3600);
+  const outgoingId = session.getSession()?.persona?.id ?? null;
+  const incomingId = boundaryAt == null
+    ? null
+    : settings.getEffectivePersona(new Date(boundaryAt))?.id ?? null;
+  if (outgoingId && incomingId && outgoingId !== incomingId) return;
   if (!autoVoiceAllowed()) return;  // station voice is off (manual /dj/segment still runs the beat)
   if (!djCallsAllowed() || !optionalSegmentsAllowed()) return;
   session.markProgrammeBeat('outro');
@@ -438,10 +425,9 @@ export async function onSessionSettled(
   queue: QueueApi,
   ctx: SessionContext,
   now = session.contextDate(ctx),
-  { opportunity }: { opportunity: boolean },
+  _options: { opportunity: boolean },
 ): Promise<boolean> {
   if (!activeEpisode(now)) return false;
   await ensurePlan(ctx, now);
-  return maybeRunIntro(queue, ctx, now, { opportunity });
+  return maybeRunIntro(queue, ctx, now);
 }
-

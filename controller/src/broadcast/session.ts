@@ -24,6 +24,7 @@ import * as settings from '../settings.js';
 import { logEvent } from '../observability/events.js';
 import type { getFullContext } from '../context.js';
 import { promptMemoryEntries, type PromptMemoryEntry } from './prompt-memory.js';
+import { nextShowBoundaryMs } from './show-boundary.js';
 
 // The station context object the DJ/session layer keys off — the exact return
 // shape of getFullContext (type-only import, erased at runtime, so no cycle).
@@ -87,6 +88,19 @@ export interface RolledFrom {
   at?: number;
 }
 
+// A mic-pass armed while the final outgoing track is on air. Look-ahead is
+// allowed to select the first incoming-show track, but it must not make that
+// show live early. This record therefore belongs to the outgoing session until
+// the real clock rolls it.
+export interface BoundaryHandoff extends RolledFrom {
+  incomingPersonaId: string;
+  incomingPersonaName: string | null;
+  incomingShowName: string | null;
+  targetKey: string;
+  boundaryAt: number | null;
+  aired: boolean;
+}
+
 // The live DJ session (also the on-disk shape of session.json).
 interface Session {
   id: string;
@@ -108,6 +122,7 @@ interface Session {
   messages: Turn[];
   handoffAired?: boolean;
   rolledFrom?: RolledFrom | null;
+  boundaryHandoff?: BoundaryHandoff | null;
 }
 
 const MAX_SESSION_MS = 4 * 60 * 60 * 1000;  // safety cap — roll even if key is stable
@@ -382,12 +397,18 @@ export async function maybeRoll(ctx: SessionContext): Promise<Session> {
   if (bothAuto && !aged) return softShift(ctx, nextKey);
 
   const prev = _session;
+  // An armed final-track handoff may already have voiced (or, in
+  // between-tracks mode, rendered and queued) this exact changeover. Do not
+  // create a second mic-pass when the station clock reaches the boundary.
+  const handoffAlreadyCovered = prev.boundaryHandoff?.aired
+    && prev.boundaryHandoff.targetKey === nextKey;
   // Snapshot before end()/start() replace the live session — the outgoing DJ's
   // sign-off is generated after this returns (see priorPromptMemory above).
   _priorPromptMemory = promptMemoryEntries(prev.messages, prev.persona?.id ?? null);
   await end();
   const next = start(ctx, buildHandoff(prev));
   stampRolledFrom(next, prev);
+  if (handoffAlreadyCovered) next.handoffAired = true;
   await persist();
   return next;
 }
@@ -418,7 +439,10 @@ function stampRolledFrom(next: Session, prev: Session) {
 
 // The pending on-air handoff for the live session (outgoing persona metadata),
 // or null when there's nothing to air (no persona change, or already aired).
-export function pendingHandoff(): RolledFrom | null {
+export function pendingHandoff(): RolledFrom | BoundaryHandoff | null {
+  if (_session?.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    return _session.boundaryHandoff;
+  }
   if (!_session?.rolledFrom || _session.handoffAired) return null;
   return _session.rolledFrom;
 }
@@ -428,8 +452,54 @@ export function pendingHandoff(): RolledFrom | null {
 // of the new show — the existing text handoff is the floor.
 export function markHandoffAired() {
   if (!_session) return;
+  if (_session.boundaryHandoff && !_session.boundaryHandoff.aired) {
+    _session.boundaryHandoff.aired = true;
+    schedulePersist();
+    return;
+  }
   _session.handoffAired = true;
   schedulePersist();
+}
+
+// Arm a mic-pass for the final outgoing track without rolling the live
+// session. Returns false unless the look-ahead context crosses a genuine show
+// boundary and changes the effective persona.
+export function armBoundaryHandoff(ctx: SessionContext): boolean {
+  if (!_session || _session.boundaryHandoff) return false;
+  const targetKey = sessionKeyFor(ctx);
+  if (targetKey === _session.key) return false;
+  if (!_session.key.startsWith('show:') && !targetKey.startsWith('show:')) return false;
+  const incoming = settings.getEffectivePersona(contextDate(ctx));
+  const outgoingId = _session.persona?.id;
+  if (!outgoingId || !incoming?.id || outgoingId === incoming.id) return false;
+  const boundaryAt = nextShowBoundaryMs(Date.now(), 6 * 3600);
+  _session.boundaryHandoff = {
+    personaId: outgoingId,
+    personaName: _session.persona?.name ?? null,
+    showName: _session.show?.name ?? null,
+    incomingPersonaId: incoming.id,
+    incomingPersonaName: incoming.name ?? null,
+    incomingShowName: ctx?.activeShow?.name ?? null,
+    targetKey,
+    boundaryAt,
+    aired: false,
+    at: Date.now(),
+  };
+  schedulePersist();
+  return true;
+}
+
+// Once a final-track handoff has claimed the outgoing show's air, no ordinary
+// speech from its stale roster may cross the boundary.
+export function handoffInProgress(): boolean {
+  return !!_session?.boundaryHandoff?.aired;
+}
+
+// The deferred between-tracks handoff must not air merely because an estimate
+// was early; it waits for the first real seam at or after this instant.
+export function handoffBoundaryAt(): number | null {
+  const at = _session?.boundaryHandoff?.boundaryAt;
+  return typeof at === 'number' && Number.isFinite(at) ? at : null;
 }
 
 // --- Programme episode state (broadcast/programme.ts) -----------------------

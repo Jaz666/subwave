@@ -633,7 +633,7 @@ export async function runHourlyCheck() {
 // `reason` names the transition in the booth log's auto-playlist line — the one
 // place an operator can tell a scheduled boundary from a takeover.
 export async function rollSessionNow(
-  { airHandoff = true, manual = false, reason = 'session roll' }:
+  { airHandoff = true, manual: _manual = false, reason = 'session roll' }:
     { airHandoff?: boolean; manual?: boolean; reason?: string } = {},
 ) {
   // The FALLBACK follows the show too, not just the session (#1111): every show
@@ -648,7 +648,7 @@ export async function rollSessionNow(
   let ctx: Awaited<ReturnType<typeof getFullContext>> | null = null;
   try {
     ctx = await getFullContext();
-    queue.onSessionRolled((await session.maybeRoll(ctx)).id);
+    await session.maybeRoll(ctx);
   } catch (err) {
     queue.log('error', `Session roll failed: ${err.message}`);
   }
@@ -669,16 +669,7 @@ export async function rollSessionNow(
   }
   if (airHandoff) {
     try {
-      // The ordering rule (#1576) applies to the AUTOMATIC call site (takeover
-      // expiry) and not to the operator's own. Held leaves the mic-pass
-      // pending, so the next boundary airs it — the same place the scheduled
-      // changeover's is aired from — rather than losing it.
-      if (!manual && queue.closingTrackHolds()) {
-        queue.log('scheduler',
-          'Holding the show handover — the outgoing DJ just signed off, so a closing track plays first');
-      } else {
-        await djAgent.runPersonaHandoff(queue, ctx);
-      }
+      await djAgent.runPersonaHandoff(queue, ctx);
     } catch (err) {
       queue.log('error', `Persona handoff failed: ${err.message}`);
     }

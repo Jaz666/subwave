@@ -1214,21 +1214,14 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     const recentOpeners = queue.getRecentOpeners();
     let aired = false;
 
-    // 1. Sign-off, in the OUTGOING persona's voice. Tag the session turn with
-    //    the outgoing persona's id + name — that id is what keeps the line out
-    //    of the new session's prompt memory (broadcast/prompt-memory.ts) and
-    //    what makes session.windowMessages() name the real speaker, so the
-    //    incoming DJ never reads the sign-off as its own words.
+    // Render both lines before publishing either. The exchange takes the voice
+    // chain as one unit, so nothing can slip between sign-off and greeting.
     let signoffText: string | null = null;
     try {
       signoffText = await generateSignoff({
         personaOut, personaIn, showIn,
         context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
       });
-      await queue.announce(signoffText, 'handoff', {
-        persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
-      });
-      aired = true;
     } catch (err: any) {
       queue.log('error', `Handoff sign-off failed: ${err.message}`);
       signoffText = null;
@@ -1241,18 +1234,32 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     //    On a programme show the greeting doubles as the episode's intro, so
     //    the producer's angle (planned before this runs — see the call sites)
     //    rides along; the standalone intro is then skipped (programme.ts).
+    let greeting: string | null = null;
     try {
-      const greeting = await generateHandoffGreeting({
+      greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn,
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         context: ctx, recap: queue.getDjRecap(), recentOpeners,
       });
+    } catch (err: any) {
+      queue.log('error', `Handoff greeting failed: ${err.message}`);
+    }
+
+    if (signoffText && greeting) {
+      aired = await queue.announceExchange([
+        { persona: personaOut, text: signoffText },
+        { persona: personaIn, text: greeting },
+      ], 'handoff');
+    } else if (signoffText) {
+      await queue.announce(signoffText, 'handoff', {
+        persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
+      });
+      aired = true;
+    } else if (greeting) {
       await queue.announce(greeting, 'handoff', {
         persona: personaIn, meta: { personaId: personaIn.id, personaName: personaIn.name },
       });
       aired = true;
-    } catch (err: any) {
-      queue.log('error', `Handoff greeting failed: ${err.message}`);
     }
 
     if (aired) {

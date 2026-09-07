@@ -51,11 +51,15 @@ or co-host exchange.
 
 1. Identify and queue the final track that still belongs to the outgoing show.
 2. Let that track's linked intro play, when one exists.
-3. During that track, air the outgoing sign-off followed by the incoming
-   presenter's greeting.
-4. After the handoff, suppress ordinary outgoing-presenter speech.
-5. At the real track/hour changeover, activate the incoming session and roster;
-   its first track then starts under the new show's identity.
+3. Prepare one atomic outgoing-sign-off/incoming-greeting pair without rolling
+   the live session early.
+4. With normal talk placement, air that pair during the final track. With
+   **Talk only between tracks**, render it during the final track but hold it
+   for the first real track seam at or after the scheduled boundary.
+5. After the handoff is claimed, suppress ordinary outgoing-presenter speech.
+6. At the real changeover, activate the incoming session and roster; its first
+   track then starts under the new show's identity. There is no mandatory
+   spacer track between the two halves of a handoff.
 
 The boundary must be driven by confirmed playback state where possible. A
 queued URI is only handed to Liquidsoap, not proof that a listener has reached
@@ -70,6 +74,8 @@ the corresponding on-air moment.
 - Preserve listener-request handling and manual operator actions.
 - Keep the outgoing sign-off and incoming greeting as the only intentional
   cross-persona handoff speech.
+- A top-of-hour check postponed by between-tracks placement must be generated
+  under the incoming identity and current clock once the handoff has cleared.
 - Treat a missing/unknown duration conservatively: never invent an exact
   boundary time or delay music waiting for one.
 
