@@ -463,3 +463,55 @@ route removes model-led discovery overhead.
 Next, benchmark the new private Booth Log selection-note payloads and gate any
 further context-window or operator-setting change on peak-token evidence rather
 than an average.
+
+### Overnight candidate-source rotation — 7 September 2026
+
+The completed soak established the native path as operationally reliable: the
+Stats window recorded **337/337** successful `djShortlistPick` calls, averaging
+18.4 seconds and 2.75M input/output tokens in total (about 8.2k per primary
+shortlist). Corrective `djShortlistRepick` also completed 89/89 times. The
+legacy agent metric was no longer representative of normal selection work, so
+the admin presentation now names native **discovery passes**, **candidate
+sources**, and **Track shortlists** instead of tools, steps, and Agent Runs.
+
+The planner now uses a stable three-lane source rotation:
+
+1. **Context** — active sonic journey, show playlist, or mood/energy brief.
+2. **Continuity** — audio similarity, semantic similarity, or catalogue
+   similarity to the current track.
+3. **Exploration** — deep cuts, recently added material, starred tracks, or a
+   library wildcard.
+
+Four and five pass configurations repeat context then continuity. Source choice
+within a lane is deterministically rotated from the current track id, so a
+controller restart does not reset the mix. The existing epsilon-greedy
+exploration draw makes that pass `deepCuts` specifically. Registry availability,
+strict playlist locking, recency, blocklists and candidate de-duplication remain
+the existing picker registry's authority.
+
+`feat/track-cpu-shortlisting` was rebased onto current upstream `develop` and
+pushed at `3a6c3ef5`. It includes the rotation (`bbc70b92`), the native source
+trace retained on `djShortlistPick`, and the object-call telemetry seam needed
+to expose that trace in Debug/Stats. Focused verification passed:
+
+```text
+controller npm test -- shortlist-runner     8 passed
+controller npm run typecheck                passed
+```
+
+The test station is running the proven existing integration composition plus
+the rotation at local commit `670a131a`. It also retains the resumed Show
+Boundary Handoffs, Prompt Safety, and source-trace diagnostics. Controller and
+web were rebuilt successfully and the controller health check passed. The
+rollback source ref is `test-station/backup-before-overnight-shortlist` at
+`8f00b778`; return the integration checkout to that ref and rebuild controller
+and web if the overnight trial requires rollback. The local `.dockerignore`
+change is user-owned and intentionally uncommitted.
+
+#### Next action
+
+Let the fresh controller telemetry window collect overnight evidence. Review
+the `djShortlistPick` source-run sequence and failure rate first; accept the
+rotation only if the exploration lane appears regularly without increasing
+fallbacks or materially worsening shortlist latency. The deferred frozen-moment
+legacy-versus-native paired comparison remains the next non-live benchmark.
