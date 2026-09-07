@@ -57,12 +57,33 @@ export interface SeasonWindow {
 }
 
 /**
- * Trim, lowercase, collapse whitespace — the same normalisation the blocklist's
- * name fallback uses, so a `tag`/`artist` rule value compares the way an id
- * entry's name snapshot does. Used here only for DEDUPE; the stored value keeps
- * its original casing.
+ * Trim, lowercase, collapse whitespace, fold curly apostrophes onto straight
+ * ones — the normalisation the `tag`, `mood`, `album` and `title` rule fields
+ * compare with. Used here only for DEDUPE; the stored value keeps its original
+ * casing.
+ *
+ * This is `recency.nameKey` (a.k.a. `artistNameKey`, which the `artist` field
+ * compiles with since #1603), RESTATED rather than imported: a mirrored schema
+ * module may import only zod, so the fold cannot cross into this file. The two
+ * must stay identical and are pinned in step by
+ * `scripts/blocklist-name-fold.test.ts` — change one, change both.
+ *
+ * The apostrophe fold arrived here with #1611, which folded the id list's ALBUM
+ * tier onto the same normaliser as its artist tier. Rules and id entries answer
+ * the same question about the same row, so a fold on one side only would have
+ * moved the disagreement rather than fixed it: an `album` RULE spelled with a
+ * curly apostrophe would still miss the straight-apostrophe row that an album
+ * ENTRY now catches. It WIDENS an absolute list — folding two spellings of one
+ * name into one key blocks rows the previous spelling missed. Nothing about
+ * which thing a string names changes, which is what makes that safe.
+ *
+ * Punctuation beyond the apostrophe is deliberately NOT folded: a hyphen
+ * distinguishes real tag vocabulary (`trip-hop` is not `trip hop` here), and
+ * `music/scene-references.ts` runs this exact predicate to decide whether a
+ * genre merge silences a `tag` rule.
  */
-export const normText = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+export const normText = (s: unknown) =>
+  String(s ?? '').toLowerCase().replace(/[‘’ʼ´`]/g, "'").replace(/\s+/g, ' ').trim();
 
 // A month/day pair. Both halves are `Number(x)` + an integer/range test, not
 // z.number().int(), because the admin card posts them from <input type=number>
@@ -2287,6 +2308,31 @@ export function scheduleOverrideSchema(ctx: ScheduleOverrideContext) {
 }
 
 /**
+ * How a takeover's end is chosen (#1601).
+ *
+ * `'fixed'` is `minutes` from now — the only shape before this, and the
+ * DEFAULT, so a client that posts `{ showId, minutes }` is byte-identical.
+ * `'schedule-change'` asks the server to resolve the next weekly-grid boundary
+ * and end the pin there instead ("hold this until the grid would have moved on
+ * anyway").
+ *
+ * It rides on the REQUEST and never on `ScheduleOverride`: `expiresAt` has
+ * always been an absolute instant rather than a duration, so once the boundary
+ * is resolved the pin is an ordinary window that the resolver, the janitor
+ * sweep, the programme span and the roster sweep all keep reading unchanged.
+ * A stored discriminator would be a second thing those five could read
+ * differently.
+ */
+export const TAKEOVER_UNTIL = ['fixed', 'schedule-change'] as const;
+export type TakeoverUntil = (typeof TAKEOVER_UNTIL)[number];
+
+// One string, four constraints — the bounds message names both ends whichever
+// one a value missed, because "must be an integer" alone leaves an operator
+// guessing at the range.
+const OVERRIDE_MINUTES_MESSAGE =
+  `must be an integer between ${OVERRIDE_MIN_MINUTES} and ${OVERRIDE_MAX_MINUTES}`;
+
+/**
  * POST /schedule/override's body.
  *
  * `showId: null` requests Default programming; an outer missing field is still
@@ -2297,18 +2343,48 @@ export function scheduleOverrideSchema(ctx: ScheduleOverrideContext) {
  * missing field is a malformed request, not a missing show. A real id that
  * isn't in the roster still 404s from the handler, which is the answer that
  * needs server state.
+ *
+ * `minutes` is REQUIRED under `until: 'fixed'` and REFUSED under
+ * `until: 'schedule-change'`, where the server resolves the window itself.
+ * Both halves are the same rule: the two fields must not be able to disagree
+ * about what the caller asked for. Demanding a duration that is then ignored is
+ * one way to let them; silently discarding one the caller did send is the
+ * other, and it is the worse of the two, since the caller has no way to learn
+ * its number went nowhere. A fixed window with no minutes still fails with the
+ * bounds message it always did.
  */
-export const scheduleOverrideRequestSchema = z.object({
-  showId: z
-    .string({ error: 'pick a show or Default programming' })
-    .min(1, 'pick a show or Default programming')
-    .nullable(),
-  minutes: z.coerce
-    .number({ error: `must be an integer between ${OVERRIDE_MIN_MINUTES} and ${OVERRIDE_MAX_MINUTES}` })
-    .int(`must be an integer between ${OVERRIDE_MIN_MINUTES} and ${OVERRIDE_MAX_MINUTES}`)
-    .min(OVERRIDE_MIN_MINUTES, `must be an integer between ${OVERRIDE_MIN_MINUTES} and ${OVERRIDE_MAX_MINUTES}`)
-    .max(OVERRIDE_MAX_MINUTES, `must be an integer between ${OVERRIDE_MIN_MINUTES} and ${OVERRIDE_MAX_MINUTES}`),
-});
+export const scheduleOverrideRequestSchema = z
+  .object({
+    showId: z
+      .string({ error: 'pick a show or Default programming' })
+      .min(1, 'pick a show or Default programming')
+      .nullable(),
+    until: z.enum(TAKEOVER_UNTIL, { error: "must be 'fixed' or 'schedule-change'" }).default('fixed'),
+    minutes: z.coerce
+      .number({ error: OVERRIDE_MINUTES_MESSAGE })
+      .int(OVERRIDE_MINUTES_MESSAGE)
+      .min(OVERRIDE_MIN_MINUTES, OVERRIDE_MINUTES_MESSAGE)
+      .max(OVERRIDE_MAX_MINUTES, OVERRIDE_MINUTES_MESSAGE)
+      .optional(),
+  })
+  .check((c) => {
+    if (c.value.until === 'fixed' && c.value.minutes == null) {
+      c.issues.push({
+        code: 'custom',
+        input: c.value.minutes,
+        path: ['minutes'],
+        message: OVERRIDE_MINUTES_MESSAGE,
+      });
+    }
+    if (c.value.until === 'schedule-change' && c.value.minutes != null) {
+      c.issues.push({
+        code: 'custom',
+        input: c.value.minutes,
+        path: ['minutes'],
+        message: 'must be omitted when the window ends at the schedule change',
+      });
+    }
+  });
 
 // ─── from controller/src/schemas/settings.ts ─────────────────────────────
 
@@ -2604,6 +2680,29 @@ export function settingsRawStringLike(max: number, message: string) {
  */
 export const STREAM_COUNTRY_HEADER_RE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/;
 
+/**
+ * `llm.headers` / `llm.fallback.headers` — extra request headers the
+ * openai-compatible transport sends on every call (#1618).
+ *
+ * The NAME grammar is `STREAM_COUNTRY_HEADER_RE`, not a second copy of it:
+ * both fields are naming an HTTP header and the rule is the same RFC 7230
+ * token, so this is an alias for the same reason `settings/vocab.ts`'s `ID_RE`
+ * aliases `SHOW_ID_RE`. The VALUE grammar is printable ASCII on one line — a
+ * header value is latin-1 on the wire, and a CR/LF in one is header injection
+ * rather than a typo, so it is REFUSED rather than repaired.
+ *
+ * They live here for the same reason the country header's rule does: the admin
+ * form runs the mirrored copy so a bad header name is caught before the save,
+ * and the save path (`applyLlmLegPatch`) and the lenient load path
+ * (`normalizeLlmHeaders`) import them rather than each restating the rule.
+ */
+export const LLM_HEADER_NAME_RE = STREAM_COUNTRY_HEADER_RE;
+export const LLM_HEADER_VALUE_RE = /^[\x20-\x7E]+$/;
+
+/** At most this many custom headers per leg, and this long a value. */
+export const LLM_HEADERS_MAX = 10;
+export const LLM_HEADER_VALUE_MAX = 500;
+
 /** Path length cap for `stream.geoipDbPath` — a generous PATH_MAX. */
 export const STREAM_GEOIP_DB_PATH_MAX = 512;
 
@@ -2786,6 +2885,28 @@ export const jingleRatioSchema = settingsIntLike(
   JINGLE_RATIO_BOUNDS,
   `jingleRatio must be int in [${JINGLE_RATIO_BOUNDS.min}, ${JINGLE_RATIO_BOUNDS.max}]`,
 );
+
+/**
+ * WHO counts the tracks between jingles (#1619).
+ *
+ * `'mixer'` is the pre-existing station: radio.liq's own
+ * `rotate(weights=[1, jingle_ratio()])` draws a stinger every N tracks and the
+ * controller only learns about it afterwards, through `jingle-playing.json`.
+ * `'controller'` moves the count into the talk-slot planner, so a jingle is a
+ * row like every other thing that takes the listener's ear — and the mixer's
+ * ratio handoff file is written 0, which is already the documented way to
+ * switch its rotate off (#997).
+ *
+ * Strict, like the two switches above and for the same reason: the key is new,
+ * so there is no hand-rolled branch to inherit leniency from. `load()` still
+ * coerces an unrecognised value in a hand-edited settings.json back to
+ * `'mixer'`, so only a PATCH is refused.
+ */
+export const JINGLE_ROTATE_OWNERS = ['mixer', 'controller'] as const;
+export type JingleRotateOwner = (typeof JINGLE_ROTATE_OWNERS)[number];
+export const jingleRotateSchema = z.enum(JINGLE_ROTATE_OWNERS, {
+  error: `jingleRotate must be one of ${JINGLE_ROTATE_OWNERS.join(', ')}`,
+});
 
 export const sfxPatchSchema = settingsBlockOf({
   enabled: settingsBoolLike(),
@@ -3907,8 +4028,15 @@ function showStringList(opts: {
 // the load path's repairEraWindow (below) so the two can never disagree about
 // what a valid year is. null / '' means "open end". A numeric string is
 // accepted because that is what an <input type="number"> posts.
+//
+// `validEraYear` is EXPORTED so it rides the mirror into the admin show
+// editor's add-a-range control (#1599), which has to refuse a year the save
+// would then reject. It owns only the integer-and-range test; the editor keeps
+// its own trim, because eraYearOf deliberately does not trim (' ' reaching the
+// wire is a malformed post, not an open end) and a draft box legitimately holds
+// whitespace mid-keystroke.
 const eraYearOf = (v: unknown): number | null => (v == null || v === '' ? null : Number(v));
-const validEraYear = (n: number | null): boolean =>
+export const validEraYear = (n: number | null): boolean =>
   n == null || (Number.isInteger(n) && n >= SHOW_YEAR_MIN && n <= SHOW_YEAR_MAX);
 
 const showYear = z
@@ -4206,6 +4334,25 @@ function showObjectSchema(ctx: ShowSchemaContext) {
         overflowError: `must have at most ${PLAYLISTS_PER_SHOW} entries`,
       }),
       playlistStrict: showBool(),
+      // Full rotation (#1612): while this show is on, every track in its anchor
+      // playlist airs once before any of them repeats. The no-repeat window
+      // stops being the station-wide count and becomes the resolved playlist's
+      // own size — recomputed per pick, so a playlist that grows in Navidrome
+      // widens the rotation rather than silently stopping being right.
+      //
+      // DECIDED: it is a NO-OP without `playlistStrict`, not a validation
+      // error. A soft anchor may leave the playlist, so its universe is the
+      // library again and "every track once" has no set to be true of; refusing
+      // the combination would instead mean a show that cannot be saved while
+      // the operator is halfway through configuring it. The editor only offers
+      // the switch behind the strict one, so the dependency is visible there
+      // and merely inert here — which is also what a hand-edited settings.json
+      // needs, since it reaches this schema without ever seeing the editor.
+      //
+      // The window is counted AFTER the show's strict locks and its excluded
+      // playlists, in music/show-recency.ts — sizing it against the raw
+      // playlist would withhold tracks the show was never going to play.
+      playlistExhaust: showBool(),
       excludedPlaylistIds: showStringList({
         max: EXCLUDED_PLAYLISTS_PER_SHOW,
         overflowError: `must have at most ${EXCLUDED_PLAYLISTS_PER_SHOW} entries`,

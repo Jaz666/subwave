@@ -14,7 +14,7 @@ import { Btn, Eyebrow, Metric } from '../ui';
 import { useSectionChrome, useReportDirty } from './section-chrome';
 import { Button } from '../../ui/button';
 import { FieldError } from '../../ui/field';
-import type { TransitionEffect } from '../../../lib/schemas.generated';
+import type { TransitionEffect, JingleRotateOwner } from '../../../lib/schemas.generated';
 export type { TransitionEffect } from '../../../lib/schemas.generated';
 
 export const KEY_HINTS: Record<string, string> = {
@@ -111,6 +111,45 @@ export interface TtsForm {
   corrections: { from: string; to: string }[];
 }
 
+/**
+ * One row of the custom-header editor (#1618). A LIST, not a map, because the
+ * editor has to hold a half-typed row — a map keyed by name loses the row the
+ * moment the name is blank or collides with another, which is every second
+ * keystroke while the operator types one. It is collapsed to the map the
+ * controller stores at save time.
+ *
+ * `value` may be the literal `'set'`: that is what GET /settings returns for a
+ * header already on file, and posting it back keeps the stored value.
+ */
+export interface LlmHeaderRow {
+  name: string;
+  value: string;
+}
+
+/**
+ * Wire map -> editor rows. Order is the stored order, so the list renders the
+ * way the operator left it.
+ */
+export function headerRows(raw: Record<string, string> | undefined): LlmHeaderRow[] {
+  if (!raw || typeof raw !== 'object') return [];
+  return Object.keys(raw).map((name) => ({ name, value: raw[name] ?? '' }));
+}
+
+/**
+ * Editor rows -> the map the controller stores. A row with no name is a row
+ * still being typed and is dropped rather than sent; a LATER row wins a name
+ * collision, matching what the operator sees last in the list.
+ */
+export function headerMap(rows: LlmHeaderRow[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of rows) {
+    const name = (r.name || '').trim();
+    if (!name) continue;
+    out[name] = (r.value || '').trim();
+  }
+  return out;
+}
+
 export interface LlmFallbackForm {
   enabled: boolean;
   provider: string;
@@ -119,6 +158,7 @@ export interface LlmFallbackForm {
   numCtx: number;
   repeatPenalty: number;
   providerBaseUrls: Record<string, string>;
+  headers: LlmHeaderRow[];
   reasoning: boolean;
   discoverySteps: number;
 }
@@ -130,6 +170,7 @@ export interface LlmForm {
   numCtx: number;
   repeatPenalty: number;
   providerBaseUrls: Record<string, string>;
+  headers: LlmHeaderRow[];
   reasoning: boolean;
   toolChoice: string;
   pickerAgent: boolean;
@@ -350,6 +391,11 @@ export interface JingleEntry {
 export interface SettingsData {
   values?: {
     jingleRatio?: number;
+    /** Who counts the tracks between jingles (#1619). Absent on an older
+     *  controller, which is the same thing as 'mixer'. The union comes from the
+     *  mirrored schema rather than being respelled here, so a value added to it
+     *  reaches this form. */
+    jingleRotate?: JingleRotateOwner;
     crossfadeDuration?: number;
     ducking?: { voice?: number; intro?: number };
     maxTrackSeconds?: number;
@@ -421,7 +467,15 @@ export interface SettingsData {
       speed?: Record<string, number>;
       corrections?: { from?: string; to?: string }[];
     };
-    llm?: Partial<LlmForm>;
+    // The wire shape diverges from the form in one place: the controller stores
+    // and returns `headers` as a MAP (values redacted to 'set'), while the
+    // editor holds an ordered row list so a half-typed row survives.
+    llm?: Omit<Partial<LlmForm>, 'headers' | 'fallback'> & {
+      headers?: Record<string, string>;
+      fallback?: Omit<Partial<LlmFallbackForm>, 'headers'> & {
+        headers?: Record<string, string>;
+      };
+    };
     search?: Partial<SearchForm>;
     embedding?: {
       enabled?: boolean;

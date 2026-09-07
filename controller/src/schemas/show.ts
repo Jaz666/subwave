@@ -160,8 +160,15 @@ function showStringList(opts: {
 // the load path's repairEraWindow (below) so the two can never disagree about
 // what a valid year is. null / '' means "open end". A numeric string is
 // accepted because that is what an <input type="number"> posts.
+//
+// `validEraYear` is EXPORTED so it rides the mirror into the admin show
+// editor's add-a-range control (#1599), which has to refuse a year the save
+// would then reject. It owns only the integer-and-range test; the editor keeps
+// its own trim, because eraYearOf deliberately does not trim (' ' reaching the
+// wire is a malformed post, not an open end) and a draft box legitimately holds
+// whitespace mid-keystroke.
 const eraYearOf = (v: unknown): number | null => (v == null || v === '' ? null : Number(v));
-const validEraYear = (n: number | null): boolean =>
+export const validEraYear = (n: number | null): boolean =>
   n == null || (Number.isInteger(n) && n >= SHOW_YEAR_MIN && n <= SHOW_YEAR_MAX);
 
 const showYear = z
@@ -459,6 +466,25 @@ function showObjectSchema(ctx: ShowSchemaContext) {
         overflowError: `must have at most ${PLAYLISTS_PER_SHOW} entries`,
       }),
       playlistStrict: showBool(),
+      // Full rotation (#1612): while this show is on, every track in its anchor
+      // playlist airs once before any of them repeats. The no-repeat window
+      // stops being the station-wide count and becomes the resolved playlist's
+      // own size — recomputed per pick, so a playlist that grows in Navidrome
+      // widens the rotation rather than silently stopping being right.
+      //
+      // DECIDED: it is a NO-OP without `playlistStrict`, not a validation
+      // error. A soft anchor may leave the playlist, so its universe is the
+      // library again and "every track once" has no set to be true of; refusing
+      // the combination would instead mean a show that cannot be saved while
+      // the operator is halfway through configuring it. The editor only offers
+      // the switch behind the strict one, so the dependency is visible there
+      // and merely inert here — which is also what a hand-edited settings.json
+      // needs, since it reaches this schema without ever seeing the editor.
+      //
+      // The window is counted AFTER the show's strict locks and its excluded
+      // playlists, in music/show-recency.ts — sizing it against the raw
+      // playlist would withhold tracks the show was never going to play.
+      playlistExhaust: showBool(),
       excludedPlaylistIds: showStringList({
         max: EXCLUDED_PLAYLISTS_PER_SHOW,
         overflowError: `must have at most ${EXCLUDED_PLAYLISTS_PER_SHOW} entries`,
