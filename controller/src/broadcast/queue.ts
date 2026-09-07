@@ -35,6 +35,7 @@ import * as jingles from './jingles.js';
 import { pickRotateJingle, onJingleRotateOwnerChange } from './jingle-rotate.js';
 import * as beds from './beds.js';
 import * as bedPolicy from './bed-policy.js';
+import { vocalRunwayMs, segmentFitsRunway } from './vocal-runway.js';
 import * as session from './session.js';
 import type { TurnMeta } from './session.js';
 import type { PromptMemoryEntry } from './prompt-memory.js';
@@ -658,9 +659,11 @@ class Queue {
   // the line if the real seam lands too far from it — the forecast is made from
   // the on-air track's remaining play and goes badly wrong when the pick misses
   // that seam and auto.m3u fills the slot.
-  async push({ track, requestedBy = null, intent = null, introScript = null, introKind = 'dj-speak', introPersona = null, aiPicked = false, allowDuplicate = false, linkPrev = null, linkClockAt = null }: {
+  async push({ track, requestedBy = null, operator = false, block = null, intent = null, introScript = null, introKind = 'dj-speak', introPersona = null, aiPicked = false, allowDuplicate = false, linkPrev = null, linkClockAt = null }: {
     track: Track;
     requestedBy?: string | null;
+    operator?: boolean;
+    block?: QueueItem['block'] | null;
     intent?: string | null;
     introScript?: string | null;
     introKind?: string;
@@ -702,7 +705,8 @@ class Queue {
       }
     }
     const item = {
-      track, requestedBy, intent, introScript, introKind, introPersona, aiPicked,
+      track, requestedBy, operator, intent, introScript, introKind, introPersona, aiPicked,
+      block: block ?? undefined,
       // Only stamp a back-announce target when there's actually an intro/link to
       // air against it; a bare track carries no claim about what preceded it.
       linkPrev: (introScript && linkPrev)
@@ -720,7 +724,14 @@ class Queue {
       confirmedInLiquidsoap: false,
     };
     this.upcoming.push(item);
-    this.log('queued', `${track.title} — ${track.artist}`, { requestedBy, queueDepth: this.upcoming.length });
+    // A block's members are deliberately SILENT here and the route logs one
+    // summary line instead (#1622 FR 4). The booth log is a 200-entry ring the
+    // operator reads back through, and thirty consecutive "queued" lines off a
+    // single press would evict most of the history that press was made against
+    // — while saying nothing the one block line does not say better.
+    if (!block) {
+      this.log('queued', `${track.title} — ${track.artist}`, { requestedBy, queueDepth: this.upcoming.length });
+    }
     this.warnIfSwallowedByCrossfade(item);
     this.persist();
     this.drainToLiquidsoap();  // fire-and-forget
@@ -927,23 +938,17 @@ class Queue {
     try {
       const voiceMs = speechDurationMs(item.introWav, item.introScript);
       // The ramp budget is a property of the INCOMING track: how long may the
-      // DJ talk before trampling its vocal? Analysis rides the track object when
-      // present, else the library row (queued items hold only id/title/artist).
-      const rec = item.track?.id ? library.get(item.track.id) : null;
-      // The onset is measured from byte zero, and the drain may be about to cut
-      // a leading blank off this very track — so shift it onto the trimmed
-      // timeline before asking whether the link outlasts it. This is the same
-      // correction intro-budget's firstVocalMsFor applies to the SAME
-      // measurement; leaving it out here made the two disagree about one track,
-      // with the prompt told the runway is 2s while the bed decision still
-      // thought it was 8s and declined a bed the link needed. null (unknown)
-      // and Infinity (instrumental) carry their meanings through untouched.
-      const rawBudgetMs = bedPolicy.rampBudgetMs({
-        vocalRanges: item.track?.vocalRanges ?? rec?.vocalRanges ?? null,
-      });
-      const budgetMs = rawBudgetMs != null && Number.isFinite(rawBudgetMs)
-        ? silenceTrim.shiftOnsetMs(item.track, rawBudgetMs)
-        : rawBudgetMs;
+      // DJ talk before trampling its vocal? Resolved through vocal-runway,
+      // which owns both halves of the answer — the three-state read of
+      // vocalRanges (track object first, else the library row: queued items
+      // hold only id/title/artist) and the shift onto the TRIMMED timeline,
+      // since the drain may be about to cut a leading blank off this very
+      // track. Leaving that shift out here made the bed and the link's own
+      // budget disagree about one track, with the prompt told the runway is 2s
+      // while the bed decision still thought it was 8s and declined a bed the
+      // link needed. Both readers go through the one module now (#1622), and
+      // null (unknown) / Infinity (instrumental) come back untouched.
+      const budgetMs = vocalRunwayMs(item.track);
       // `reason` outranks the budget entirely for a request (bed-policy), so
       // the trim correction above only ever decides a LINK's bed.
       if (!bedPolicy.bedWanted(voiceMs, budgetMs, cfg, reason)) return;
@@ -2157,6 +2162,35 @@ class Queue {
         `Holding ${p.kind} — the track's own ${KIND_LABEL[incoming!.introKind || 'dj-speak'] || 'intro'} takes this boundary`);
       return;
     }
+    // Vocal-aware timing (#1622 FR 5a). This clip lands on the HEAD of the
+    // track that just started, on the light-duck intro channel — the same
+    // runway a pick's link is trimmed against by enforceIntroBudget, and until
+    // now the one placement that was never asked about it. A clip that would
+    // still be talking when the singer comes in keeps its slot and takes the
+    // NEXT boundary, exactly as the busy-boundary hold above does: nothing is
+    // regenerated, nothing is dropped here, and the existing staleness check at
+    // the top of this method is what bounds the wait. Why the lever is timing
+    // rather than a trim, and why a long segment is deliberately unaffected,
+    // are in broadcast/vocal-runway.ts.
+    //
+    // `incoming` carries the queued item when this boundary is one of ours; an
+    // auto.m3u track never enters `upcoming`, so fall back to the id `np`
+    // reports — the measurement is a library read either way, and an
+    // unidentifiable track resolves to "unknown", which airs.
+    const runwayTrack = incoming?.track ?? (np?.subsonic_id ? { id: np.subsonic_id } : null);
+    const runwayMs = vocalRunwayMs(runwayTrack);
+    // The whole segment, not the first clip: an exchange is deferred as ONE
+    // segment and airs back-to-back, so what has to fit the runway is the sum.
+    // speechDurationMs (clip + lead-in + duck tail) is the same figure the bed
+    // decision budgets a link at, so the two agree about one clip.
+    const clipMs = p.clips.reduce((sum, c) => sum + speechDurationMs(c.wavPath, c.text), 0);
+    if (!segmentFitsRunway(clipMs, runwayMs)) {
+      this.log('scheduler',
+        // runwayMs is necessarily finite here — null (unknown) and Infinity
+        // (instrumental) both fit, so only a measured onset can refuse.
+        `Holding ${p.kind} — vocals enter "${np?.title || 'the incoming track'}" at ${Math.round(Number(runwayMs) / 1000)}s, inside this ${Math.round(clipMs / 1000)}s segment`);
+      return;
+    }
     this._pendingVoice = null;
     // The reaper deletes old WAVs; a segment whose clips are all gone has
     // nothing left to air. A partially reaped exchange airs what survives
@@ -3047,6 +3081,20 @@ class Queue {
   async removeUpcoming(trackId: string): Promise<{ ok: true } | { ok: false; reason: 'not-queued' | 'already-playing' }> {
     const item = this.upcoming.find(i => i.track?.id === trackId);
     if (!item) return { ok: false, reason: 'not-queued' };
+    return this.removeUpcomingItem(item);
+  }
+
+  // The cancel itself, addressed by ITEM rather than by track id.
+  //
+  // Split out for the block cancel (#1622 FR 4), which holds the exact items it
+  // means to remove and must not re-resolve them by id: a block can legitimately
+  // carry the same track twice (`allowDuplicate` is how an operator press gets
+  // past the #619 guard), and `find(i => i.track.id === …)` would then cancel
+  // the first copy twice and leave the second queued. Every telnet pull-back and
+  // both stem cascades stay here, in one place, for both callers.
+  async removeUpcomingItem(item: QueueItem): Promise<{ ok: true } | { ok: false; reason: 'not-queued' | 'already-playing' }> {
+    if (!this.upcoming.includes(item)) return { ok: false, reason: 'not-queued' };
+    const trackId = item.track?.id || '';
 
     if (item.sent) {
       const { rid, bedRid } = await liquidsoapControl.resolveDjQueueRidWithBed(trackId);
@@ -3119,6 +3167,83 @@ class Queue {
     this.log('scheduler', `operator removed from queue: ${item.track.title} — ${item.track.artist}`);
     this.persist();
     return { ok: true };
+  }
+
+  // Cancel what remains of an operator block (#1622 FR 4) — the inverse of the
+  // one press that queued it.
+  //
+  // PARTIAL BY DESIGN. `removeUpcomingItem` refuses an item Liquidsoap has
+  // already taken out of `dj_queue` ('already-playing'), and on a thirty-track
+  // block the head is very often exactly that. Refusing the whole cancel over
+  // it would leave the operator pulling twenty-nine rows by hand, which is the
+  // failure this exists to prevent; so it removes everything it can and reports
+  // what it could not. The one committed track plays out — there is no cancel
+  // for a track on its way to air, and `/dj/skip` is that tool.
+  //
+  // Walks a SNAPSHOT in queue order: each removal splices `upcoming`, so
+  // iterating the live array would skip every other item.
+  async removeUpcomingBlock(blockId: string): Promise<{ removed: number; kept: number; label: string | null }> {
+    const members = this.upcoming.filter(i => i.block?.id === blockId);
+    if (!members.length) return { removed: 0, kept: 0, label: null };
+    const label = members[0].block?.label ?? null;
+    let removed = 0;
+    let kept = 0;
+    for (const item of members) {
+      const result = await this.removeUpcomingItem(item);
+      if (result.ok) removed++;
+      else kept++;
+    }
+    this.log('scheduler',
+      `operator cancelled the rest of "${label}" — ${removed} track${removed === 1 ? '' : 's'} removed`
+      + (kept ? `, ${kept} already committed to the mixer and will play out` : ''),
+      { blockId, removed, kept });
+    return { removed, kept, label };
+  }
+
+  // When will this queued item reach air? A FORECAST, and named as one.
+  //
+  // Deliberately NOT `remainingUntilItemAirs`, which walks only the SENT chain
+  // ahead of an item. That is right for its own caller — the drain only ever
+  // asks about the first UNSENT item, so nothing unsent is ever ahead of it,
+  // and the skip there is a defensive no-op. It is wrong here: this answers a
+  // listener's "when does my request play", where an unsent album track sitting
+  // in front of them is very much going to play first. Two questions, two
+  // walks, both stated — rather than one walk that means different things to
+  // its two callers.
+  //
+  // Null when unknowable, and that is the whole of its error handling: no
+  // start stamp (boot, recover, an untracked auto play), or any item ahead with
+  // no usable duration. A caller that cannot get an answer says nothing, which
+  // is the pre-existing behaviour on every surface that reads this.
+  //
+  // IT COUNTS THE BED, and any future walk of this queue must too. A bed is
+  // written straight to `next.txt` by `maybePushBed` and is never an `upcoming`
+  // entry, so a clock that walks the queue sails straight past it — the #1574
+  // failure, where an uncounted bed put the show-boundary cut a whole link late.
+  // `bedDelayBeforeItemAirs` is that measurement and is reused rather than
+  // re-walked: it sums this item's OWN bed (which plays immediately ahead of it)
+  // plus the beds of SENT items ahead. An UNSENT item ahead legitimately
+  // contributes zero — its bed is decided at ITS drain and has not been pushed
+  // yet — so the two walks agree by construction.
+  //
+  // Both callers are understated by a miss here, in the direction that matters:
+  // the listener wait notice would say a request is closer than it is, on the
+  // one surface it exists to make honest, and `runsPastShowChange` would
+  // under-report the overrun, which reads as "this fits" when it does not.
+  airForecastSec(item: QueueItem): number | null {
+    const idx = this.upcoming.indexOf(item);
+    if (idx < 0) return null;
+    let remaining = this.remainingSecOnAir();
+    if (remaining == null) return null;
+    for (const ahead of this.upcoming.slice(0, idx)) {
+      let d = Number(ahead.track?.duration) || 0;
+      if (!d && ahead.track?.id) d = Number(library.get(ahead.track.id)?.durationSec) || 0;
+      if (!d) return null;
+      const playable = playableDurationSec(d, ahead.cueOutSec ?? null, ahead.cueInSec ?? null);
+      if (playable == null) return null;
+      remaining += playable;
+    }
+    return remaining + this.bedDelayBeforeItemAirs(item);
   }
 
   // Tracks played in the last `hours` hours — used by the picker to block
@@ -3199,6 +3324,33 @@ class Queue {
       if (item.track?.id) ids.add(item.track.id);
     }
     return ids;
+  }
+
+  // How many LISTENER requests are queued and unaired — what
+  // `settings.requests.maxPending` is a bound on.
+  //
+  // `routes/request.ts` used to count `upcoming.filter(i => i.requestedBy)`
+  // inline, and that read every operator push as a listener waiting in line,
+  // because `POST /dj/queue-track` pushes `requestedBy: 'studio'` on purpose:
+  // that string is the discriminator four air-path exemptions key off (the
+  // #447 length cap, the show-boundary cut, the bed's request reason, the
+  // sub-crossfade warning), and an explicit operator action wants all four.
+  // The cost was paid on a surface with no connection to any of them — six
+  // manual Queue presses reached the default `maxPending` of 6 and answered
+  // every listener "The request queue's full" for as long as those tracks took
+  // to air, with nothing in the refusal or the booth log naming the cause.
+  //
+  // The fix is one question asked in one place rather than a second meaning
+  // hung on `requestedBy`: an operator push carries `operator: true` and is not
+  // a request the queue is holding on a listener's behalf. Counting `!sent`
+  // would be the wrong narrowing — a sent-but-unaired request is still a
+  // listener waiting, and the cap is about how deep the line gets, not about
+  // how far down it Liquidsoap has already reached.
+  //
+  // The on-air track is deliberately NOT counted: `maxPending` bounds what is
+  // still waiting, and a request that is playing has been served.
+  pendingListenerRequests(): number {
+    return this.upcoming.filter(i => i.requestedBy && !i.operator).length;
   }
 
   // Honest acknowledgement for a listener request whose resolved track is
@@ -3417,6 +3569,10 @@ class Queue {
       endedAt: i.endedAt,
       queuedAt: i.queuedAt,
       sent: i.sent,
+      // The operator block this row belongs to (#1622 FR 4), or absent. Carries
+      // its own index/size rather than being counted here, so a block half
+      // played still reads "9 of 11" instead of shrinking with the queue.
+      block: i.block || undefined,
       // The track arrives via a pre-rendered stem blend rather than a plain
       // crossfade (#1257 — the admin queue badges the seam type). Stamped at
       // pair drain, cleared if the clip is pulled with a cancel, so it's
