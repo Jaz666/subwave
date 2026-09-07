@@ -28,46 +28,83 @@ export type ShortlistPlanningContext = {
 
 const ENERGY_VALUES = new Set(['low', 'medium', 'high']);
 
-// Produce the native source plan from already-resolved station state. The
-// ordering is deliberately small and factual: a journey or show playlist
-// leads, then current-track similarity, then the show's mood/energy context.
-// A lane wraps when the pass budget exceeds its distinct calls, so repeated
-// source calls remain possible just as they are in the vanilla tool loop.
+// A small stable hash spreads otherwise-identical picks across each lane
+// without introducing mutable process state.  Current-track ids are already a
+// natural rotation key: one station restart cannot reset the exploration mix,
+// while a new track naturally gets a new starting point.
+function stableIndex(value: string, size: number): number {
+  if (size < 2) return 0;
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) hash = ((hash * 31) + value.charCodeAt(i)) | 0;
+  return Math.abs(hash) % size;
+}
+
+// Produce the native source plan from already-resolved station state.  Three
+// lanes prevent a short budget repeatedly favouring the same familiar source:
+//
+//   1. Context: the active journey/show or its mood-and-energy brief.
+//   2. Continuity: audio, semantic, or catalogue similarity to what is airing.
+//   3. Exploration: deep cuts, recent additions, favourites, and a wildcard.
+//
+// Passes cycle through those lanes (context → continuity → exploration), then
+// repeat for four and five passes.  Within a lane the stable rotation above
+// varies the source chosen without sacrificing reproducibility.  Every source
+// still comes from the existing registry, so its normal availability and hard
+// guards apply unchanged.
 export function planShortlistSources(
   context: ShortlistPlanningContext,
   availableSources: ReadonlySet<string>,
 ): ShortlistSourceCall[] {
   const budget = Math.max(1, Math.min(5, Math.floor(context.discoveryPasses) || 1));
-  const calls: ShortlistSourceCall[] = [];
-  const add = (source: string, args: Record<string, unknown> = {}) => {
-    if (availableSources.has(source)) calls.push({ source, args });
+  const source = (name: string, args: Record<string, unknown> = {}): ShortlistSourceCall | null => {
+    return availableSources.has(name) ? { source: name, args } : null;
   };
 
   const mood = context.moods?.find((value): value is string => typeof value === 'string' && value.length > 0) ?? null;
   const energy = context.energies?.find((value): value is 'low' | 'medium' | 'high' => ENERGY_VALUES.has(value)) ?? null;
 
-  // The first lane is source-owned: a non-existent journey or playlist source
-  // is simply absent from `availableSources`, never represented as a futile
-  // empty call. Later passes keep going when an earlier source is thin.
-  if (context.scope.audioWaypoint?.length) add('tracksTowardJourney');
-  else if (context.scope.playlistTracks?.length) add('showPlaylistTracks');
+  const compact = (items: Array<ShortlistSourceCall | null>) => items.filter((item): item is ShortlistSourceCall => item !== null);
+  const contextual = compact([
+    // A strict playlist is the only source guaranteed to contribute an
+    // in-set track, so it remains the entire context lane for that show.
+    ...(context.scope.playlistLock && context.scope.playlistTracks?.length
+      ? [source('showPlaylistTracks')]
+      : [
+          context.scope.audioWaypoint?.length ? source('tracksTowardJourney') : null,
+          context.scope.playlistTracks?.length ? source('showPlaylistTracks') : null,
+          mood ? source('tracksByMood', { mood, energy }) : energy ? source('tracksByEnergy', { energy }) : null,
+        ]),
+  ]);
+  const continuity = context.currentTrackId ? compact([
+    source('tracksThatSoundLikeThis', { songId: context.currentTrackId }),
+    source('tracksLikeThis', { songId: context.currentTrackId }),
+    source('similarSongs', { songId: context.currentTrackId }),
+  ]) : [];
+  // `explore` is the existing epsilon-greedy deep-cut nudge.  On that draw
+  // the exploration lane is deliberately just deep cuts; ordinary picks make
+  // the wider rotation available instead.
+  const exploration = context.explore
+    ? compact([source('deepCuts')])
+    : compact([
+        source('deepCuts'),
+        source('recentlyAdded'),
+        source('starredSongs'),
+        source('randomSongs'),
+      ]);
+  const lanes = [contextual, continuity, exploration];
+  if (!lanes.some((lane) => lane.length)) return [];
 
-  if (mood) add('tracksByMood', { mood, energy });
-  else if (energy) add('tracksByEnergy', { energy });
-  if (context.currentTrackId) {
-    add('tracksThatSoundLikeThis', { songId: context.currentTrackId });
-    add('tracksLikeThis', { songId: context.currentTrackId });
-  }
-  if (context.explore) add('deepCuts');
-
-  // A strict playlist's curated source remains the only guaranteed in-set
-  // source. Put it back into the lane after the first contextual pass instead
-  // of adding a special ranking or a global cap.
-  if (context.scope.playlistLock && context.scope.playlistTracks?.length) add('showPlaylistTracks');
-  if (context.scope.audioWaypoint?.length) add('tracksTowardJourney');
-
-  if (!calls.length) return [];
-  return Array.from({ length: budget }, (_, index) => calls[index % calls.length]);
+  const rotationKey = context.currentTrackId || [mood, energy, context.scope.playlistTracks?.length || 0].join(':');
+  const laneRuns = [0, 0, 0];
+  return Array.from({ length: budget }, (_, pass) => {
+    // If a lane cannot be built in the current station state, use the next
+    // available lane rather than wasting a discovery pass on an empty call.
+    let laneIndex = pass % lanes.length;
+    while (!lanes[laneIndex].length) laneIndex = (laneIndex + 1) % lanes.length;
+    const lane = lanes[laneIndex];
+    const occurrence = laneRuns[laneIndex]++;
+    return lane[(stableIndex(`${rotationKey}:${laneIndex}`, lane.length) + occurrence) % lane.length];
+  });
 }
 
 export type ShortlistSourceRun = ShortlistSourceCall & {
