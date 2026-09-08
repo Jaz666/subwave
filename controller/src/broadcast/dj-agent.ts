@@ -308,11 +308,11 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     excludedIds,
   });
 
-  return { scope, playlistTracks };
+  return { scope, playlistTracks, activeShow };
 }
 
 async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; explore?: boolean }): Promise<boolean> {
-  const { scope, playlistTracks } = await livePickerScope(queue, { audioWaypoint, showAt });
+  const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
 
   // Native discovery substitutes for the old tool loop. Its source registry
   // owns availability and the shared picker accumulator keeps every existing

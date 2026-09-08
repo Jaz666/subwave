@@ -7,6 +7,7 @@ import { Textarea } from '../ui/textarea';
 
 type ToolInfo = { name: string; available: boolean; description: string | null };
 type Catalog = { current: { id?: string; title?: string; artist?: string; genre?: string } | null; tools: ToolInfo[] };
+type Comparison = { agentic: Array<{ round: number; source: string; tracks: Array<{ id: string; title: string; artist: string }> }>; shortlist: Array<{ round: number; source: string; tracks: Array<{ id: string; title: string; artist: string }> }> };
 
 const DEFAULTS: Record<string, (current: Catalog['current']) => Record<string, unknown>> = {
   similarSongs: (current) => ({ songId: current?.id || '' }),
@@ -30,6 +31,7 @@ export default function DiscoveryPanel() {
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [comparison, setComparison] = useState<Comparison | null>(null);
 
   const ready = hydrated && !needsAuth;
   useEffect(() => {
@@ -61,12 +63,23 @@ export default function DiscoveryPanel() {
     try { body = JSON.parse(args); } catch { setError('Tool input must be valid JSON.'); return; }
     setRunning(true); setError(null);
     try {
-      const r = await adminFetch(`/debug/discovery/${encodeURIComponent(selected.name)}`, {
+      const r = await adminFetch(`/debug/discovery/tool/${encodeURIComponent(selected.name)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const payload = await r.json();
       if (!r.ok) throw new Error(payload?.error || `request failed (${r.status})`);
       setResult(payload);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setRunning(false); }
+  };
+
+  const compare = async () => {
+    setRunning(true); setError(null);
+    try {
+      const r = await adminFetch('/debug/discovery/compare', { method: 'POST' });
+      const body = await r.json();
+      if (!r.ok) throw new Error(body?.error || `request failed (${r.status})`);
+      setComparison(body);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setRunning(false); }
   };
@@ -79,6 +92,7 @@ export default function DiscoveryPanel() {
         <p className="mt-1 text-[11px] leading-[1.6] text-muted">Read-only. Uses the live picker scope, but never calls the DJ model or queues music.</p>
       </div>
       <div className="p-3 text-[12px]"><span className="text-muted">Current scope:</span> {title}</div>
+      <div className="border-t border-ink p-3"><Btn sm onClick={compare} disabled={running}>{running ? 'Comparing…' : 'Compare 3 rounds vs 3 passes'}</Btn></div>
     </section>
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <Card title="Discovery tools" sub="available tools mirror this pick’s current scope">
@@ -98,5 +112,10 @@ export default function DiscoveryPanel() {
         {!selected && <p className="field-hint italic">Choose an available tool to inspect its live response.</p>}
       </Card>
     </div>
+    {comparison && <Card title="Paired discovery comparison" sub="same live scope · no tracks queued">
+      <div className="overflow-auto"><table className="w-full text-left text-[12px]"><thead><tr className="border-b border-separator-strong text-muted"><th className="p-2">Route</th><th className="p-2">Round</th><th className="p-2">Tool / source</th><th className="p-2">Returned tracks</th></tr></thead><tbody>
+        {[...comparison.agentic.map(row => ({ ...row, route: 'Agentic Picker' })), ...comparison.shortlist.map(row => ({ ...row, route: 'Track Shortlist' }))].map((row, index) => <tr key={`${row.route}-${index}`} className="border-b border-separator-soft align-top"><td className="p-2 font-bold">{row.route}</td><td className="p-2">{row.round}</td><td className="p-2 font-mono">{row.source}</td><td className="p-2">{row.tracks.length ? row.tracks.map(track => <div key={track.id}>{track.artist} — {track.title}</div>) : '—'}</td></tr>)}
+      </tbody></table></div>
+    </Card>}
   </div>;
 }

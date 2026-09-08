@@ -40,6 +40,8 @@ import { shortlistContextWindow } from '../music/shortlist-context-window.js';
 import { buildPickerTools, PICKER_TOOLS } from '../llm/tools.js';
 import { livePickerScope } from '../broadcast/dj-agent.js';
 import { activeJourneyWaypoint } from '../broadcast/dj-agent/runs.js';
+import { pickerAgent } from '../broadcast/dj-agent/agents.js';
+import { buildShortlist } from '../music/shortlist.js';
 
 export const router = express.Router();
 
@@ -76,7 +78,7 @@ router.get('/debug/discovery', requireAdmin, async (_req, res) => {
   }
 });
 
-router.post('/debug/discovery/:tool', requireAdmin, async (req, res) => {
+router.post('/debug/discovery/tool/:tool', requireAdmin, async (req, res) => {
   try {
     const name = String(req.params.tool || '');
     if (name === REQUEST_ONLY_PICKER_TOOL || !PICKER_TOOLS.some((entry) => entry.name === name)) {
@@ -95,6 +97,58 @@ router.post('/debug/discovery/:tool', requireAdmin, async (req, res) => {
     res.status(500).json({ error: err?.message || String(err) });
   }
 });
+
+// One non-airing, like-for-like discovery comparison. The station's configured
+// Agentic Picker budget must already be three: this route never mutates live
+// settings merely to make a benchmark happen.
+router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
+  try {
+    if (dj.promptDiscoverySteps() !== 3) {
+      return res.status(409).json({ error: 'Set Agentic discovery rounds to 3 before running this comparison.' });
+    }
+    const waypoint = activeJourneyWaypoint();
+    const { scope } = await livePickerScope(queue, { audioWaypoint: waypoint });
+    const current = queue.current?.track ?? null;
+    const show = settings.resolveActiveShow();
+    const legacy = await pickerAgent.run({
+      scope,
+      messages: session.windowMessages(),
+    });
+    const native = await buildShortlist({
+      scope,
+      currentTrackId: current?.id ?? null,
+      discoveryPasses: 3,
+      moods: show?.moods ?? null,
+      energies: show?.energies ?? null,
+    });
+    res.json({
+      current: current ? { id: current.id, title: current.title, artist: current.artist } : null,
+      agentic: legacy.toolCalls.map((call: any, index: number) => ({
+        round: call.round || index + 1,
+        source: call.name || 'unknown',
+        tracks: tracksFromDiscoveryResult(call.result),
+      })),
+      shortlist: native.sourceRuns.map((run, index) => ({
+        round: index + 1,
+        source: run.source,
+        tracks: run.tracks || [],
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || String(err) });
+  }
+});
+
+function tracksFromDiscoveryResult(result: unknown) {
+  const tracks = Array.isArray(result)
+    ? result
+    : result && typeof result === 'object' && Array.isArray((result as any).tracks)
+      ? (result as any).tracks
+      : [];
+  return tracks.flatMap((track: any) => typeof track?.id === 'string'
+    ? [{ id: track.id, title: String(track.title || ''), artist: String(track.artist || '') }]
+    : []);
+}
 
 // GET /requests — recent listener requests and exactly how the AI DJ resolved
 // each (intent breakdown, which path handled it, the picked track, the spoken
