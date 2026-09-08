@@ -578,6 +578,11 @@ export async function load() {
       typeof stored.djTalkOnlyBetweenTracks === 'boolean'
         ? stored.djTalkOnlyBetweenTracks
         : DEFAULTS.djTalkOnlyBetweenTracks,
+    djBehaviour: {
+      showWelcome: typeof stored.djBehaviour?.showWelcome === 'boolean'
+        ? stored.djBehaviour.showWelcome
+        : DEFAULTS.djBehaviour.showWelcome,
+    },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
     // hand-edited settings.json is this path's input.
@@ -1534,6 +1539,10 @@ export async function update(patch) {
   if ('djTalkOnlyBetweenTracks' in patch) {
     next.djTalkOnlyBetweenTracks =
       parseSettingsPatchKey<boolean>('djTalkOnlyBetweenTracks', patch.djTalkOnlyBetweenTracks);
+  }
+  if ('djBehaviour' in patch) {
+    const behaviour = parseSettingsPatchKey<{ showWelcome?: boolean }>('djBehaviour', patch.djBehaviour);
+    if (behaviour.showWelcome !== undefined) next.djBehaviour.showWelcome = behaviour.showWelcome;
   }
   if ('handover' in patch) {
     // No mixer restart: the offset is read live by broadcast/handover-policy.ts

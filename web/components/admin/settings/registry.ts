@@ -89,7 +89,7 @@ export const SECTIONS = [
   {
     id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
     hint: 'talk placement · show changes', icon: MessageCircle,
-    formKeys: ['djTalkOnlyBetweenTracks'],
+    formKeys: ['djTalkOnlyBetweenTracks', 'djBehaviour'],
   },
   {
     id: 'library', group: 'the dj', label: 'Library tagger',

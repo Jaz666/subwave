@@ -14,7 +14,10 @@ import {
  */
 export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
   const save = async () => {
-    await saveSettings({ djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks });
+    await saveSettings({
+      djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
+      djBehaviour: form.djBehaviour,
+    });
   };
 
   return (
@@ -57,21 +60,32 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Card title="Show changes" sub="more controls coming here">
-        <p className="text-[13px] leading-[1.55] text-muted">
-          Presenter handoffs are automatic when the active DJ changes. A future
-          same-presenter show acknowledgement will live here, alongside its
-          boundary-speech safeguards.
-        </p>
+      <Card title="Show changes" sub={form.djBehaviour.showWelcome ? 'welcome at the hour' : 'quiet'}>
+        <div className="field">
+          <Label>Welcome the new show</Label>
+          <Seg
+            value={form.djBehaviour.showWelcome ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Keep the normal hourly time check' },
+              { id: 'on', label: 'On', title: 'Extend the first hourly check with a welcome to the new show' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, showWelcome: v === 'on' } }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            At a scheduled show change, the incoming DJ’s first hourly time check adds a
+            short natural welcome to the new show. It does not replace a presenter handoff,
+            and ordinary hourly checks stay unchanged.
+          </p>
+        </div>
       </Card>
 
       <SaveBar
-        note="Talk placement applies to newly scheduled speech straight away · no mixer restart."
+        note="DJ behaviour applies to newly scheduled speech straight away · no mixer restart."
         busy={busy}
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'djBehaviour']}
       />
     </>
   );

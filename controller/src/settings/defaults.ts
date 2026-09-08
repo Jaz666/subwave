@@ -240,6 +240,9 @@ export const DEFAULTS = {
   // bound it. Policy lives in exactly one place — broadcast/talk-air.ts.
   // Applies live; no restart.
   djTalkOnlyBetweenTracks: false,
+  // Optional programme-opening line folded into the first hourly check after a
+  // scheduled show change. Off preserves the established terse time check.
+  djBehaviour: { showWelcome: false },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
   // boundary the outgoing host signs off — the programme outro beat's window.
   // 5 is exactly where the beat has always fired (:55 of the final hour), so an

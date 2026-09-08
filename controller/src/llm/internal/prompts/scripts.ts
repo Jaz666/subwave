@@ -406,10 +406,13 @@ export function nextHourlyTimeClause(clock: any) {
   return `Say the time in natural spoken words ("two in the afternoon", "just gone eight") — never digits or 24-hour form.`;
 }
 
-export async function generateHourlyTime({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
+export async function generateHourlyTime({ recap = null, context = null, recentOpeners = null, persona = null, showWelcome = false }: any = {}) {
   const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
   const timeClause = nextHourlyTimeClause(context?.clock);
   ctxLines.push(`Task: a brief top-of-the-hour time check, in character. ${lengthPhrase('hourly', persona || undefined)}. ${timeClause}`);
+  if (showWelcome && context?.activeShow?.name) {
+    ctxLines.push(`This is the first spoken segment of the newly started show "${context.activeShow.name}". After the required time check, add one short, natural welcome to that show. The complete line may be two short sentences. Do not introduce yourself by name, mention an outgoing presenter, or imply the show began before this hour.`);
+  }
   return djText({
     system: djSystem(persona || undefined),
     prompt: decoratePrompt(ctxLines.join('\n'), { kind: 'hourly', recap, recentOpeners }),

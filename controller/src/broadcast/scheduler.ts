@@ -589,17 +589,19 @@ async function refreshAutoPlaylistInner() {
 
 // Gate-free runner — also called directly by the /dj/segment command route as
 // an operator override. The cron wrapper below adds the frequency gate.
-export async function runHourlyCheck() {
+export async function runHourlyCheck({ showWelcome = false }: { showWelcome?: boolean } = {}) {
   return withTrace({ kind: 'hourly' }, async () => {
     const ctx = await getFullContext();
-    // Guest rotation: on a show with co-hosts the time check may come from a
-    // guest. Solo shows get the effective persona — behaviour-identical.
-    const speaker = settings.pickOnAirSpeaker();
+    // Guest rotation: on a show with co-hosts the ordinary time check may come
+    // from a guest. A show welcome belongs to the incoming host: it establishes
+    // that show's voice, rather than making a guest appear to take it over.
+    const speaker = showWelcome ? session.onAirPersona() : settings.pickOnAirSpeaker();
     const script = await dj.generateHourlyTime({
       recap: queue.getDjRecap(),
       context: ctx,
       recentOpeners: queue.getRecentOpeners(),
       persona: speaker,
+      showWelcome,
     });
     await queue.announce(script, 'hourly-check', {
       persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name },
@@ -646,9 +648,15 @@ export async function rollSessionNow(
   refreshAutoPlaylistOnShowChange(reason).catch(err =>
     queue.log('error', `Auto-playlist refresh on show change failed: ${err.message}`));
   let ctx: Awaited<ReturnType<typeof getFullContext>> | null = null;
+  const priorSession = session.getSession();
+  const previousShowId = priorSession?.show?.id ?? null;
+  let showStarted = false;
   try {
     ctx = await getFullContext();
     await session.maybeRoll(ctx);
+    // Only entering an actual scheduled show earns the optional hourly
+    // welcome. A show ending into autonomous radio has nothing to welcome.
+    showStarted = !!priorSession && !!ctx.activeShow?.id && ctx.activeShow.id !== previousShowId;
   } catch (err) {
     queue.log('error', `Session roll failed: ${err.message}`);
   }
@@ -658,7 +666,7 @@ export async function rollSessionNow(
   // unconditionally below (whichever call site rolls the session first drives
   // it — the others no-op). No ctx → the roll above didn't happen either;
   // leave the handoff pending for the next call site.
-  if (!ctx) return { ctx: null, introAired: false };
+  if (!ctx) return { ctx: null, introAired: false, showStarted: false };
   // Plan the episode BEFORE the mic-pass so a persona handoff into a
   // programme show can weave the episode angle into the greeting (the
   // greeting doubles as the show's intro on a persona-change boundary).
@@ -688,7 +696,7 @@ export async function rollSessionNow(
   } catch (err) {
     queue.log('error', `Programme episode hook failed: ${err.message}`);
   }
-  return { ctx, introAired };
+  return { ctx, introAired, showStarted };
 }
 
 // Generate and air a between-track DJ link for whatever is playing now.
@@ -995,7 +1003,7 @@ function talkEligible(kind: TalkKind, now: Date, rolled: SessionRoll | null): bo
 // exempt because they are called from OUTSIDE it — the same exemption the voice
 // switch, the clock switch and the frequency ladder already carry, by the same
 // mechanism (the manual route never reaches the gate).
-async function runTalkSlot(plan: Extract<TalkPlan, { act: 'fire' }>) {
+async function runTalkSlot(plan: Extract<TalkPlan, { act: 'fire' }>, rolled: SessionRoll | null) {
   // The station has just decided it is going to talk this minute, which is the
   // earliest honest signal that a heavy engine the sidecar idle-unloaded
   // (#1579) is about to be needed. The idle-pause release
@@ -1017,14 +1025,14 @@ async function runTalkSlot(plan: Extract<TalkPlan, { act: 'fire' }>) {
   // is about to use, which is the same "quietly switch the unload off" failure
   // the fire-not-window rule above exists to avoid.
   if (plan.kind !== 'jingle') void warmHeavy();
-  return withTalkAir(plan.air, () => runTalkSlotInner(plan));
+  return withTalkAir(plan.air, () => runTalkSlotInner(plan, rolled));
 }
 
-async function runTalkSlotInner(plan: Extract<TalkPlan, { act: 'fire' }>) {
+async function runTalkSlotInner(plan: Extract<TalkPlan, { act: 'fire' }>, rolled: SessionRoll | null) {
   try {
     switch (plan.kind) {
       case 'hourly':
-        await runHourlyCheck();
+        await runHourlyCheck({ showWelcome: settings.get().djBehaviour.showWelcome && !!rolled?.showStarted });
         return;
       case 'station-id':
         // Scheduled idents hold for the next track boundary instead of ducking
@@ -1132,7 +1140,7 @@ async function talkTick() {
       continue;
     }
     talkFired[plan.kind] = plan.slotKey;  // claim the slot before any await — see above
-    await runTalkSlot(plan);
+    await runTalkSlot(plan, rolled);
   }
 }
 

@@ -359,8 +359,9 @@ export interface FormState {
   locale: StationLocale;
   kokoroLang: string;
   /** Talk placement switch — every scheduled segment waits for the next track
-   *  boundary. Flat, like djSpeakClock, and owned by the TTS section. */
+   *  boundary. Flat, like djSpeakClock, and owned by DJ behaviour. */
   djTalkOnlyBetweenTracks: boolean;
+  djBehaviour: { showWelcome: boolean };
   weather: WeatherCfg;
   tts: TtsForm;
   llm: LlmForm;
@@ -435,6 +436,7 @@ export interface SettingsData {
     /** Absent on a settings.json predating the key — read it as false, which is
      *  what the controller's own coercion does. */
     djTalkOnlyBetweenTracks?: boolean;
+    djBehaviour?: { showWelcome?: boolean };
     /** Absent on a settings.json predating the key — the controller's own
      *  coercion reads it as the 5-minute default. */
     handover?: { offsetMinutes?: number };

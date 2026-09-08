@@ -109,6 +109,7 @@ router.get('/settings', requireAdmin, async (req, res) => {
         // option and reads as permanently dirty. Same rule as the air path, via
         // the same function (#1576).
         handover: { offsetMinutes: handoverOffsetMinutes() },
+        djBehaviour: s.djBehaviour,
         maxTrackSeconds: s.maxTrackSeconds,
         // Crossfade-relative floor for a non-zero cap OR a non-zero
         // minimum-track-length floor — one rule, shared with the admin/show UI
@@ -400,4 +401,3 @@ router.post('/settings/navidrome/test', requireAdmin, async (req, res) => {
   }
   res.json(await subsonic.pingWith({ url, user, pass, client: 'sub-wave-admin' }));
 });
-

@@ -836,6 +836,12 @@ export const djTalkOnlyBetweenTracksSchema = z.boolean({
   error: 'djTalkOnlyBetweenTracks must be a boolean',
 });
 
+// DJ policy controls are grouped so future speaking/transition behaviour has
+// one stable home in Settings. A missing block remains the pre-existing off.
+export const djBehaviourPatchSchema = settingsBlockOf({
+  showWelcome: z.boolean({ error: 'djBehaviour.showWelcome must be a boolean' }),
+});
+
 /**
  * Station default for the show-boundary fade (#1574). Strict boolean, the same
  * posture as the two switches above and for the same reason — the key is new,
