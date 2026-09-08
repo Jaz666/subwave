@@ -582,6 +582,9 @@ export async function load() {
       showWelcome: typeof stored.djBehaviour?.showWelcome === 'boolean'
         ? stored.djBehaviour.showWelcome
         : DEFAULTS.djBehaviour.showWelcome,
+      sameHostAcknowledgement: typeof stored.djBehaviour?.sameHostAcknowledgement === 'boolean'
+        ? stored.djBehaviour.sameHostAcknowledgement
+        : DEFAULTS.djBehaviour.sameHostAcknowledgement,
     },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
@@ -1541,8 +1544,9 @@ export async function update(patch) {
       parseSettingsPatchKey<boolean>('djTalkOnlyBetweenTracks', patch.djTalkOnlyBetweenTracks);
   }
   if ('djBehaviour' in patch) {
-    const behaviour = parseSettingsPatchKey<{ showWelcome?: boolean }>('djBehaviour', patch.djBehaviour);
+    const behaviour = parseSettingsPatchKey<{ showWelcome?: boolean; sameHostAcknowledgement?: boolean }>('djBehaviour', patch.djBehaviour);
     if (behaviour.showWelcome !== undefined) next.djBehaviour.showWelcome = behaviour.showWelcome;
+    if (behaviour.sameHostAcknowledgement !== undefined) next.djBehaviour.sameHostAcknowledgement = behaviour.sameHostAcknowledgement;
   }
   if ('handover' in patch) {
     // No mixer restart: the offset is read live by broadcast/handover-policy.ts

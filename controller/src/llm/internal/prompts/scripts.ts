@@ -198,7 +198,7 @@ export async function generateSignoff({ personaOut, personaIn, showIn = null, co
   });
 }
 
-export function handoffGreetingPrompt({ personaIn, personaOut, showIn = null, episodeAngle = null, context = null, recap = null, recentOpeners = null }: any) {
+export function handoffGreetingPrompt({ personaIn, personaOut, showIn = null, episodeAngle = null, sameHost = false, context = null, recap = null, recentOpeners = null }: any) {
   const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
   const inName = personaIn?.name || 'your host';
   const outName = personaOut?.name || 'the previous host';
@@ -207,7 +207,10 @@ export function handoffGreetingPrompt({ personaIn, personaOut, showIn = null, ep
   // intro when a handoff opened the show).
   const angleClause = showIn && episodeAngle ? ` Today's episode angle: ${episodeAngle} — set it up as you open.` : '';
   const showClause = showIn ? ` You're kicking off "${showIn}".${angleClause}` : '';
-  ctxLines.push(`Task: you're ${inName}, just taking over the mic from ${outName}. Acknowledge ${outName} warmly and naturally by name, then ease into your own shift without continuing their topic.${showClause} ${lengthPhrase('link', personaIn)}. Keep it easy and in character; you're stepping up to the decks, not reading a bulletin.`);
+  const handoffTask = sameHost
+    ? `Task: you're ${inName}, continuing with listeners as the station moves into a new show. Give one short, natural acknowledgement of the change${showIn ? ` into "${showIn}"` : ''}. Do not thank, introduce, or refer to yourself as another DJ; this is one continuous voice, not a handover.`
+    : `Task: you're ${inName}, just taking over the mic from ${outName}. Acknowledge ${outName} warmly and naturally by name, then ease into your own shift without continuing their topic.`;
+  ctxLines.push(`${handoffTask}${showClause} ${lengthPhrase('link', personaIn)}. Keep it easy and in character; you're stepping up to the decks, not reading a bulletin.`);
   return decoratePrompt(ctxLines.join('\n'), { kind: 'handoff', recap, recentOpeners });
 }
 

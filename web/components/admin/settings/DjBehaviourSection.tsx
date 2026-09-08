@@ -77,6 +77,22 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             and ordinary hourly checks stay unchanged.
           </p>
         </div>
+        <div className="field mt-5">
+          <Label>Acknowledge a same-host change</Label>
+          <Seg
+            value={form.djBehaviour.sameHostAcknowledgement ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Keep adjacent shows by the same DJ quiet' },
+              { id: 'on', label: 'On', title: 'Let the DJ briefly acknowledge moving into their next show' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, sameHostAcknowledgement: v === 'on' } }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            When the same DJ hosts two adjacent scheduled shows, add one brief spoken
+            acknowledgement of the new show. Different-DJ handoffs keep their normal
+            sign-off and greeting.
+          </p>
+        </div>
       </Card>
 
       <SaveBar

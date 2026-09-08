@@ -170,6 +170,44 @@ test('a failed sign-off still leaves the greeting on a clean slate', async () =>
   assert.equal(seen.greeting.recap, null);
 });
 
+test('an enabled same-host show change renders one acknowledgement, not a self-handoff', async () => {
+  queue.djLog = [];
+  await settings.update({
+    personas: [WREN], activePersonaId: WREN.id,
+    djBehaviour: { sameHostAcknowledgement: true },
+  } as never);
+  const t0 = Date.now();
+  session.start(context({ id: 's_dawn', name: 'The Dawn Chorus' }, t0));
+  await session.maybeRoll(context({ id: 's_go', name: 'Get up and Go!' }, t0 + 60_000));
+  assert.equal(session.pendingHandoff()?.sameHost, true, 'the scheduled same-host change is armed');
+
+  let signoffs = 0;
+  let acknowledgement: any = null;
+  const announced: string[] = [];
+  const realAnnounce = (queue as any).announce;
+  (queue as any).announce = async (text: string) => { announced.push(text); };
+  try {
+    await djAgent.runPersonaHandoff(
+      queue,
+      context({ id: 's_go', name: 'Get up and Go!' }, Date.now()),
+      {
+        generateSignoff: async () => { signoffs++; return 'This must not be used.'; },
+        generateHandoffGreeting: async (args: any) => {
+          acknowledgement = args;
+          return 'A fresh start for Get up and Go!';
+        },
+      },
+    );
+  } finally {
+    (queue as any).announce = realAnnounce;
+  }
+
+  assert.equal(signoffs, 0, 'the host does not sign off to themself');
+  assert.equal(acknowledgement.sameHost, true);
+  assert.equal(acknowledgement.showIn, 'Get up and Go!');
+  assert.deepEqual(announced, ['A fresh start for Get up and Go!']);
+});
+
 test('a final-track handoff uses the incoming identity captured at arm time', async () => {
   queue.djLog = [];
   await settings.update({ personas: [WREN, GIGI], activePersonaId: WREN.id } as never);

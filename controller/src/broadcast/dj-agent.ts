@@ -1163,6 +1163,7 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
   const pending = session.pendingHandoff();
   if (!pending) return;
   const isBoundaryHandoff = 'incomingPersonaId' in pending;
+  const isSameHostAcknowledgement = !isBoundaryHandoff && pending.sameHost === true;
   const claim = `${pending.personaId}:${pending.at ?? 'unstamped'}`;
   if (handoffRuns.has(claim)) return;
   handoffRuns.add(claim);
@@ -1229,14 +1230,16 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     // Render both lines before publishing either. The exchange takes the voice
     // chain as one unit, so nothing can slip between sign-off and greeting.
     let signoffText: string | null = null;
-    try {
-      signoffText = await generateSignoff({
-        personaOut, personaIn, showIn,
-        context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
-      });
-    } catch (err: any) {
-      queue.log('error', `Handoff sign-off failed: ${err.message}`);
-      signoffText = null;
+    if (!isSameHostAcknowledgement) {
+      try {
+        signoffText = await generateSignoff({
+          personaOut, personaIn, showIn,
+          context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
+        });
+      } catch (err: any) {
+        queue.log('error', `Handoff sign-off failed: ${err.message}`);
+        signoffText = null;
+      }
     }
 
     // 2. Greeting, in the INCOMING persona's voice. It acknowledges the
@@ -1250,6 +1253,7 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     try {
       greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn,
+        sameHost: isSameHostAcknowledgement,
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         context: ctx, recap: queue.getDjRecap(), recentOpeners,
       });

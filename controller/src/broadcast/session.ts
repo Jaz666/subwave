@@ -86,6 +86,8 @@ export interface RolledFrom {
   // Distinct from the context's `at` — this is when the roll fired, not what
   // moment the context described.
   at?: number;
+  /** A single-host acknowledgement for two adjacent scheduled shows. */
+  sameHost?: boolean;
 }
 
 // A mic-pass armed while the final outgoing track is on air. Look-ahead is
@@ -443,13 +445,17 @@ export async function maybeRoll(ctx: SessionContext): Promise<Session> {
 function stampRolledFrom(next: Session, prev: Session) {
   const prevId = prev?.persona?.id ?? null;
   const nextId = next?.persona?.id ?? null;
+  const sameHostShowChange = !!prevId && !!nextId && prevId === nextId
+    && prev.key.startsWith('show:') && next.key.startsWith('show:')
+    && settings.get().djBehaviour.sameHostAcknowledgement;
   next.handoffAired = false;
-  next.rolledFrom = (prevId && nextId && prevId !== nextId)
+  next.rolledFrom = (prevId && nextId && (prevId !== nextId || sameHostShowChange))
     ? {
         personaId: prevId,
         personaName: prev?.persona?.name ?? null,
         showName: prev?.show?.name ?? null,   // show that just ended, or null for an auto block
         at: Date.now(),
+        sameHost: sameHostShowChange,
       }
     : null;
 }

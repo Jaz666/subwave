@@ -421,7 +421,10 @@ export default function SettingsPanel() {
       // Absent (a settings.json predating the key) reads as OFF, matching the
       // controller's own coercion in settings.load().
       djTalkOnlyBetweenTracks: v.djTalkOnlyBetweenTracks === true,
-      djBehaviour: { showWelcome: v.djBehaviour?.showWelcome === true },
+      djBehaviour: {
+        showWelcome: v.djBehaviour?.showWelcome === true,
+        sameHostAcknowledgement: v.djBehaviour?.sameHostAcknowledgement === true,
+      },
       weather: {
         lat: String(v.weather?.lat ?? ''),
         lng: String(v.weather?.lng ?? ''),
