@@ -102,18 +102,19 @@ Tests should cover at least:
 - a host/guest role reversal between adjacent shows;
 - no schedule-fact repetition outside an optional integration's cadence allowance;
 
-## Open live finding — 8 September 2026
+## Resolved live finding — 8 September 2026
 
-**Fix later today:** an ordinary link can be generated under the outgoing
-presenter immediately before the clock boundary, survive the session roll, and
-air under that outgoing voice on a later incoming-show track. Live evidence:
-Carol's `generateLink` completed at 22:59:40 BST; the station changed to
-Dante's Inferno at 23:00; the Carol-authored link aired at 23:05:35.
+An ordinary link was generated under the outgoing presenter immediately before
+the clock boundary, survived the session roll, and aired under that outgoing
+voice on a later incoming-show track. Live evidence: Carol's `generateLink`
+completed at 22:59:40 BST; the station changed to Dante's Inferno at 23:00;
+the Carol-authored link aired at 23:05:35.
 
-The handoff guard correctly vetoes this link before the roll, but the queued
-item retains `introPersona` and the new session no longer reports a boundary
-handoff in progress. Preserve normal incoming-show speech, while dropping a
-queued track-linked item authored by the outgoing session once that session's
-boundary has completed. Add a regression that queues a Carol-authored link
-just before the handoff, rolls the session, then starts its track after the
-boundary and asserts that no link is aired.
+Track-linked speech is now stamped with the editorial session key that created
+it. At air time, a link whose key differs from the live session is vetoed
+before rendering or playback. This is deliberately session-based, rather than
+persona-based, so it also prevents context leaking between two adjacent shows
+hosted by the same DJ (for example Lucy's Dawn Chorus → Get up and Go!).
+Request acknowledgements and old queue items without a session stamp retain
+their existing behaviour. The regression coverage pins Carol → Dante, Lucy →
+Lucy, same-session links, and request/legacy compatibility.

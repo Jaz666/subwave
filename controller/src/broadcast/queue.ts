@@ -86,6 +86,7 @@ import {
   pickLeadSec,
   pickLinkInterval,
   playAlreadyRecorded,
+  shouldDropCrossSessionLink,
   shouldDropStaleLink,
   sleep,
   voiceChannelFor,
@@ -163,7 +164,13 @@ interface PendingVoice {
 }
 
 // Re-exported so every existing `from './queue.js'` import keeps working.
-export { BACKFILL_DEDUP_MAX_GAP_MS, boundaryCarriesTrackVoice, playAlreadyRecorded, shouldDropStaleLink } from './queue/pure.js';
+export {
+  BACKFILL_DEDUP_MAX_GAP_MS,
+  boundaryCarriesTrackVoice,
+  playAlreadyRecorded,
+  shouldDropCrossSessionLink,
+  shouldDropStaleLink,
+} from './queue/pure.js';
 export { registerSkillKinds } from './queue/kinds.js';
 export type { NowPlaying, QueueItem, Track } from './queue/types.js';
 
@@ -603,7 +610,12 @@ class Queue {
       }
     }
     const item = {
-      track, requestedBy, operator, intent, introScript, introKind, introPersona, aiPicked,
+      track, requestedBy, operator, intent, introScript, introKind, introPersona,
+      // Links are editorially scoped to the session that wrote them. Preserve
+      // the key alongside the persona: persona alone cannot distinguish two
+      // adjacent shows hosted by the same DJ.
+      introSessionKey: introScript && introKind === 'link' ? session.getSession()?.key ?? null : null,
+      aiPicked,
       block: block ?? undefined,
       // Only stamp a back-announce target when there's actually an intro/link to
       // air against it; a bare track carries no claim about what preceded it.
@@ -2193,6 +2205,13 @@ class Queue {
     if (!autoVoiceAllowed()) return;
     if (!item || item.introAired) return;
     if (!item.introWav && !item.introScript) return;
+    const liveSessionKey = session.getSession()?.key ?? null;
+    if (shouldDropCrossSessionLink(item, liveSessionKey)) {
+      item.introAired = true;
+      this.log('link-skip', `Dropped link speech before "${item.track?.title}" — it belongs to ${item.introSessionKey}, not the live ${liveSessionKey}`);
+      this.persist();
+      return;
+    }
     if (session.handoffInProgress()) {
       item.introAired = true;
       this.log('link-skip', `Dropped ${item.introKind || 'track-linked'} speech before "${item.track?.title}" — the show handoff has already claimed this boundary`);
@@ -2287,9 +2306,9 @@ class Queue {
         channel,
         text: item.introScript!,
         persona: item.introPersona || null,
-        // Attribute the turn so windowMessages() can name the real speaker when
-        // it wasn't the session's own persona (a link written by the outgoing
-        // DJ airing just after the roll).
+        // Attribute the turn so windowMessages() can name the real speaker.
+        // A cross-session DJ link was vetoed above; request intros may still
+        // carry a deliberately pinned persona.
         meta: item.introPersona
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
