@@ -34,7 +34,7 @@ async function coldLoad(picker: Record<string, unknown> | undefined) {
   writeFileSync(SETTINGS_PATH, JSON.stringify(picker === undefined ? {} : { picker }));
   setCache(null);
   await settings.load();
-  return settings.get().picker as { albumHours: number };
+  return settings.get().picker as { albumHours: number; shortlistPasses: number };
 }
 
 // ── the dial ───────────────────────────────────────────────────────────────
@@ -63,6 +63,21 @@ test('a stored value is clamped rather than refused', async () => {
 
 test('0 is a real value, not an absent one', async () => {
   assert.equal((await coldLoad({ albumHours: 0 })).albumHours, 0);
+});
+
+test('native shortlist passes default to automatic and survive a restart', async () => {
+  assert.equal((await coldLoad({})).shortlistPasses, 0);
+  assert.equal((await coldLoad({ shortlistPasses: 4 })).shortlistPasses, 4);
+});
+
+test('the shortlist-pass patch is strict while cold load repairs it', async () => {
+  assert.equal((await coldLoad({ shortlistPasses: 12 })).shortlistPasses, 0);
+  await assert.rejects(
+    () => settings.update({ picker: { shortlistPasses: 6 } } as never),
+    /picker\.shortlistPasses must be between 0 and 5/,
+  );
+  await settings.update({ picker: { shortlistPasses: 5 } } as never);
+  assert.equal(settings.get().picker.shortlistPasses, 5);
 });
 
 test('saving a cooldown then restarting keeps it — the operator story', async () => {

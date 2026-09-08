@@ -508,6 +508,16 @@ rollback source ref is `test-station/backup-before-overnight-shortlist` at
 and web if the overnight trial requires rollback. The local `.dockerignore`
 change is user-owned and intentionally uncommitted.
 
+#### DJ Behaviour control — 8 September 2026
+
+Native shortlist breadth now has its own **DJ Behaviour → Track Shortlist
+passes** control. `picker.shortlistPasses` accepts 1--5 and runs exactly that
+many native source passes; its shipped `0` automatic mode follows the existing
+provider/fallback-compatible budget, so upgrading a station does not change its
+current shortlist breadth. It does not alter the separate Agentic Segment
+tool-loop budget (`llm.discoverySteps`). The settings rail has one DJ Behaviour
+entry, which owns this picker control.
+
 #### Next action
 
 Let the fresh controller telemetry window collect overnight evidence. Review

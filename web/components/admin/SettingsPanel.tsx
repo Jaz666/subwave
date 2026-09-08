@@ -43,6 +43,7 @@ import { Advanced, SectionChromeProvider } from './settings/section-chrome';
 import { SettingsSearch, type SettingsJump } from './settings/SettingsSearch';
 import { TtsSection } from './settings/TtsSection';
 import { LlmSection } from './settings/LlmSection';
+import { DjBehaviourSection } from './settings/DjBehaviourSection';
 import { BrainSection } from './settings/BrainSection';
 import { SearchSection } from './settings/SearchSection';
 import { LibrarySection } from './settings/LibrarySection';
@@ -600,6 +601,7 @@ export default function SettingsPanel() {
         },
       },
       picker: {
+        shortlistPasses: typeof v.picker?.shortlistPasses === 'number' ? v.picker.shortlistPasses : 0,
         // 0 = off, and that IS the shipped default — an absent key must read as
         // off rather than inventing a cooldown the operator never asked for.
         albumHours: String(typeof v.picker?.albumHours === 'number' ? v.picker.albumHours : 0),
@@ -983,6 +985,12 @@ export default function SettingsPanel() {
               <LlmSection
                 data={data} form={form} setForm={updateForm} busy={busy}
                 saveSettings={saveSettings} fieldErrors={fieldErrors} adminFetch={adminFetch} refresh={refresh}
+              />
+            )}
+            {activeSection === 'behaviour' && (
+              <DjBehaviourSection
+                data={data} form={form} setForm={updateForm} busy={busy}
+                saveSettings={saveSettings} fieldErrors={fieldErrors}
               />
             )}
             {activeSection === 'search' && (

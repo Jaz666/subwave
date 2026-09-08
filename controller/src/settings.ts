@@ -1167,6 +1167,10 @@ export async function load() {
     // load (see controller/CLAUDE.md's THREE edits). Pinned by a cold-load round
     // trip in scripts/picker-album-hours.test.ts.
     picker: {
+      shortlistPasses: Number.isInteger(stored.picker?.shortlistPasses)
+        && stored.picker.shortlistPasses >= 0 && stored.picker.shortlistPasses <= 5
+        ? stored.picker.shortlistPasses
+        : DEFAULTS.picker.shortlistPasses,
       albumHours: Number.isFinite(Number(stored.picker?.albumHours))
         ? Math.min(
             PICKER_ALBUM_HOURS_BOUNDS.max,
@@ -1910,6 +1914,7 @@ export async function update(patch) {
   if ('picker' in patch) {
     const pk = parseSettingsPatchKey<Record<string, unknown>>('picker', patch.picker);
     if (pk.albumHours !== undefined) next.picker.albumHours = pk.albumHours as number;
+    if (pk.shortlistPasses !== undefined) next.picker.shortlistPasses = pk.shortlistPasses as number;
     if (pk.minTrackLengthSeconds !== undefined) {
       // Whole seconds — the schema's bounds check is deliberately number-like
       // (it also serves albumHours, where a fraction is a real answer), so the

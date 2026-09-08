@@ -74,11 +74,14 @@ export const SECTIONS = [
   {
     id: 'llm', group: 'the dj', label: 'LLM provider',
     hint: 'model routing', icon: Cpu,
-    // `picker` rides this section because its two controls (album cooldown,
-    // minimum track length) are edited on this card and saved by the same
-    // PATCH — without it here the section's dirty dot and save bar are blind
-    // to a change the operator just made.
+    // The existing picker-wide controls are still edited and saved from this
+    // section. DJ Behaviour owns the native shortlist-pass control.
     formKeys: ['llm', 'picker'],
+  },
+  {
+    id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
+    hint: 'selection policy', icon: BrainCircuit,
+    formKeys: ['picker'],
   },
   {
     id: 'tts', group: 'the dj', label: 'TTS voice',
@@ -234,7 +237,8 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Backup provider', section: 'llm', card: 'Fallback', keywords: 'fallback secondary offline' },
   { label: 'Backup model', section: 'llm', card: 'Fallback', keywords: 'fallback secondary model id' },
   { label: 'Agent deadline', section: 'llm', card: 'Next-track picker', keywords: 'timeout seconds give up pool picker' },
-  { label: 'Discovery rounds per pick', section: 'llm', card: 'Next-track picker', keywords: 'steps tool loops' },
+  { label: 'Agentic discovery rounds', section: 'llm', card: 'Next-track picker', keywords: 'steps tool loops legacy' },
+  { label: 'Track Shortlist passes', section: 'behaviour', card: 'Track selection', keywords: 'candidate sources discovery rotation automatic' },
   { label: 'No-repeat window (tracks)', section: 'llm', card: 'Next-track picker', keywords: 'repeat history variety' },
   { label: 'Artist spacing (slots)', section: 'llm', card: 'Next-track picker', keywords: 'artist variety window' },
   { label: 'Daily token cap', section: 'llm', card: 'Daily token budget', keywords: 'budget spend limit cost' },

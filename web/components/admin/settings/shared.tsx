@@ -249,6 +249,8 @@ export interface ScrobbleForm {
 // settings key from `llm` because the album cooldown is not LLM config — the
 // stateless pool picker enforces it too.
 export interface PickerForm {
+  // Native Track Shortlist source passes. 0 = automatic compatibility mode.
+  shortlistPasses: number;
   // Hours, as typed. 0/'' = off.
   albumHours: string;
   // Seconds, as typed. 0/'' = off (the shipped default). A show's own

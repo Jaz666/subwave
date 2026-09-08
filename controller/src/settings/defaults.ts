@@ -706,6 +706,9 @@ export const DEFAULTS = {
   // byte-identical. See music/recency.ts albumKey.
   picker: {
     albumHours: 0,
+    // 0 preserves the original rollout behaviour (provider-derived budget);
+    // 1–5 explicitly set native Track Shortlist source passes.
+    shortlistPasses: 0,
     // Minimum track length in SECONDS below which a track is never PICKED
     // (#1573) — the floor operators with libraries full of 40-second skits,
     // interludes and album intros want. 0 = OFF, and off is the shipped

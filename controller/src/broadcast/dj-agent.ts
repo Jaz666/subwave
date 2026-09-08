@@ -311,7 +311,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   const shortlist = await buildShortlist({
     scope,
     currentTrackId: current?.id ?? null,
-    discoveryPasses: dj.promptDiscoverySteps(),
+    // 0 keeps the provider/fallback-derived rollout budget. A positive value
+    // controls native source discovery only, never Agentic Segment tools.
+    discoveryPasses: settings.get().picker.shortlistPasses || dj.promptDiscoverySteps(),
     moods: activeShow?.moods,
     energies: activeShow?.energies,
     explore,
