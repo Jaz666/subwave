@@ -460,6 +460,13 @@ time, and fallback outcome. The selections need not match exactly; the evidence
 is that both remain in the same eligible musical neighbourhood while the native
 route removes model-led discovery overhead.
 
+The first non-airing runner is `controller/scripts/shortlist-paired-compare.ts`.
+Given one saved replay trace, it fixes both routes to three discovery
+opportunities, never enqueues or saves settings, and prints a Markdown table of
+the Agentic Picker tool calls and Track Shortlist sources with their returned
+tracks. The trace remains the frozen-moment input: do not compare ordinary live
+picks from different station states.
+
 Next, benchmark the new private Booth Log selection-note payloads and gate any
 further context-window or operator-setting change on peak-token evidence rather
 than an average.

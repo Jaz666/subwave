@@ -112,6 +112,9 @@ export type ShortlistSourceRun = ShortlistSourceCall & {
   returned: number;
   accepted: number;
   elapsedMs: number;
+  // A compact, non-prompt record for the paired-comparison report. Normal
+  // shortlist telemetry continues to expose counts only.
+  tracks?: Array<{ id: string; title: string; artist: string }>;
   error?: string;
 };
 
@@ -217,6 +220,19 @@ function trackCount(result: unknown): number {
   return 0;
 }
 
+function returnedTracks(result: unknown): Array<{ id: string; title: string; artist: string }> {
+  const tracks = Array.isArray(result)
+    ? result
+    : result && typeof result === 'object' && Array.isArray((result as { tracks?: unknown }).tracks)
+      ? (result as { tracks: unknown[] }).tracks
+      : [];
+  return tracks.flatMap((track: any) => (
+    typeof track?.id === 'string'
+      ? [{ id: track.id, title: String(track.title || ''), artist: String(track.artist || '') }]
+      : []
+  ));
+}
+
 function resultError(result: unknown): string | undefined {
   if (!result || typeof result !== 'object') return undefined;
   const error = (result as { error?: unknown }).error;
@@ -271,6 +287,7 @@ export async function executeShortlistPlan(
         returned: trackCount(result),
         accepted: added.length,
         elapsedMs: Math.round(performance.now() - callStarted),
+        tracks: returnedTracks(result),
         ...(resultError(result) ? { error: resultError(result) } : {}),
       });
     } catch (err) {
