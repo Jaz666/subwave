@@ -128,6 +128,7 @@ async function main() {
     assert.equal(normalizeForSpeech('[pause] Keep talking.'), 'Keep talking.');
     assert.equal(normalizeForSpeech('[pausing briefly] Keep talking.'), 'Keep talking.');
     assert.equal(normalizeForSpeech('[-whispering] Test words.'), 'Test words.');
+    assert.equal(normalizeForSpeech('Enough [sigh].'), 'Enough');
     assert.equal(normalizeForSpeech('[Junkie fades back in] Let\'s begin.'), 'Let\'s begin.');
     assert.equal(normalizeForSpeech('Hello [softly'), 'Hello softly');
   });

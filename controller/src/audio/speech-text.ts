@@ -124,6 +124,13 @@ export function sanitizePerformanceCues(text: string, maxCues = 2): string {
     if (isPerformanceCue(body) && hasFollowingWords && kept < maxCues) {
       out += cue[0];
       kept += 1;
+    } else if (!hasFollowingWords && nextStart === safeText.length) {
+      // A terminal cue can carry only punctuation after its closing bracket
+      // (`[sigh].`). The cue is not valid without following spoken words, and
+      // retaining its punctuation leaves a dangling full stop in the booth
+      // log and TTS input. Discard that suffix with the cue.
+      cursor = safeText.length;
+      continue;
     }
     cursor = end;
   }
