@@ -477,9 +477,9 @@ export const PICKER_ALBUM_HOURS_BOUNDS: SettingsNumericBound = { min: 0, max: 72
 // separate declarations of one number and must move together.
 export const PICKER_MIN_TRACK_LENGTH_BOUNDS: SettingsNumericBound = { min: 0, max: 3600 };
 
-// 0 = automatic compatibility mode; otherwise the native shortlist runs this
-// exact number of controller discovery passes.
-export const PICKER_SHORTLIST_PASSES_BOUNDS: SettingsNumericBound = { min: 0, max: 5 };
+// Native shortlisting always runs an explicit, controller-owned number of
+// discovery passes. Three covers the Context → Continuity → Exploration shape.
+export const PICKER_SHORTLIST_PASSES_BOUNDS: SettingsNumericBound = { min: 1, max: 5 };
 
 export const SETTINGS_STATION_DEFAULT_NAME = 'SUB/WAVE';
 export const SETTINGS_STATION_NAME_MAX = 80;
@@ -903,7 +903,7 @@ export const pickerPatchSchema = settingsBlockOf({
   ),
   shortlistPasses: settingsIntLike(
     PICKER_SHORTLIST_PASSES_BOUNDS,
-    `picker.shortlistPasses must be between ${PICKER_SHORTLIST_PASSES_BOUNDS.min} and ${PICKER_SHORTLIST_PASSES_BOUNDS.max} (0 = automatic)`,
+    `picker.shortlistPasses must be between ${PICKER_SHORTLIST_PASSES_BOUNDS.min} and ${PICKER_SHORTLIST_PASSES_BOUNDS.max}`,
   ),
 });
 

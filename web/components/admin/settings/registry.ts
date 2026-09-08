@@ -238,7 +238,7 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Backup model', section: 'llm', card: 'Fallback', keywords: 'fallback secondary model id' },
   { label: 'Agent deadline', section: 'llm', card: 'Next-track picker', keywords: 'timeout seconds give up pool picker' },
   { label: 'Agentic discovery rounds', section: 'llm', card: 'Next-track picker', keywords: 'steps tool loops legacy' },
-  { label: 'Track Shortlist passes', section: 'behaviour', card: 'Track selection', keywords: 'candidate sources discovery rotation automatic' },
+  { label: 'Track Shortlist passes', section: 'behaviour', card: 'Track selection', keywords: 'candidate sources discovery rotation context continuity exploration' },
   { label: 'No-repeat window (tracks)', section: 'llm', card: 'Next-track picker', keywords: 'repeat history variety' },
   { label: 'Artist spacing (slots)', section: 'llm', card: 'Next-track picker', keywords: 'artist variety window' },
   { label: 'Daily token cap', section: 'llm', card: 'Daily token budget', keywords: 'budget spend limit cost' },

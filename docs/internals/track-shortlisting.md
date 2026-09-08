@@ -519,11 +519,15 @@ change is user-owned and intentionally uncommitted.
 
 Native shortlist breadth now has its own **DJ Behaviour → Track Shortlist
 passes** control. `picker.shortlistPasses` accepts 1--5 and runs exactly that
-many native source passes; its shipped `0` automatic mode follows the existing
-provider/fallback-compatible budget, so upgrading a station does not change its
-current shortlist breadth. It does not alter the separate Agentic Segment
-tool-loop budget (`llm.discoverySteps`). The settings rail has one DJ Behaviour
-entry, which owns this picker control.
+many native source passes. Three is the shipped default: one **Context** source
+(journey, show playlist, or mood/energy), one **Continuity** source (audio,
+semantic, or catalogue similarity), and one **Exploration** source (deep cuts,
+recent additions, starred music, or wildcard). One pass concentrates on the
+current context; two adds continuity but omits the exploration lane. Four and
+five repeat context then continuity, widening the candidate set and final
+editorial prompt without adding model-led discovery. It does not alter the
+separate Agentic Segment tool-loop budget (`llm.discoverySteps`). The settings
+rail has one DJ Behaviour entry, which owns this picker control.
 
 #### Next action
 

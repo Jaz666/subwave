@@ -1168,7 +1168,7 @@ export async function load() {
     // trip in scripts/picker-album-hours.test.ts.
     picker: {
       shortlistPasses: Number.isInteger(stored.picker?.shortlistPasses)
-        && stored.picker.shortlistPasses >= 0 && stored.picker.shortlistPasses <= 5
+        && stored.picker.shortlistPasses >= 1 && stored.picker.shortlistPasses <= 5
         ? stored.picker.shortlistPasses
         : DEFAULTS.picker.shortlistPasses,
       albumHours: Number.isFinite(Number(stored.picker?.albumHours))
