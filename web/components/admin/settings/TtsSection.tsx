@@ -60,8 +60,7 @@ function envKeyForCloudProvider(provider: string): 'OPENAI_API_KEY' | 'ELEVENLAB
   return 'OPENAI_API_KEY';
 }
 
-// Small labelled rule that splits the Cloud panel into its three steps. Same
-// type treatment as the other in-card headings (HeavyEngineSetupGuide's).
+// Small labelled rule that splits the Cloud panel into its three steps.
 function GroupHead({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-2.5">
@@ -181,9 +180,8 @@ function TtsSpeedField({
   );
 }
 
-// ElevenLabs voice_settings. Ranges match their native 0..1 (stability, style,
-// similarity_boost) plus the boolean use_speaker_boost. Rendered only for the
-// `elevenlabs` provider — every other provider ignores these fields.
+// ElevenLabs voice_settings. Ranges match their native 0..1 plus the boolean
+// use_speaker_boost. Rendered only for the `elevenlabs` provider.
 const ELEVENLABS_SLIDER_STEP = 0.01;
 
 function formatPct(v: number): string {
@@ -321,9 +319,8 @@ function FishAudioSettingsField({
   );
 }
 
-// Quick-add names for the servers operators actually run. These are hints, not
-// a schema — a compatibility server accepts whatever its own implementation
-// defines, which is exactly why the field is free-form (issue #1317).
+// Quick-add names for the servers operators actually run. Hints, not a schema:
+// a compatibility server accepts whatever its own implementation defines (#1317).
 const COMPAT_PARAM_SUGGESTIONS: { key: string; value: string; note: string }[] = [
   { key: 'temperature', value: '0.8', note: 'Chatterbox · variation' },
   { key: 'seed', value: '0', note: 'Chatterbox · repeatability' },
@@ -480,9 +477,9 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
   useEffect(() => { setCloudKeyInput(''); setCompatKeyInput(''); }, [form.tts.cloud.provider]);
   useEffect(() => { setCloudKeyTest(null); }, [form.tts.cloud.provider]);
 
-  // The fallback's provider can differ from the default engine's, so key presence
-  // is checked per-provider, never off the global `available.cloud` flag.
-  // `openai-compatible` has no key-based entry and is trusted, as in engineUsable().
+  // The fallback's provider can differ from the default engine's, so key
+  // presence is checked per-provider, never off the global `available.cloud`
+  // flag. `openai-compatible` has no key-based entry and is trusted.
   const fallbackCloudUnconfigured = form.tts.fallback.engine === 'cloud'
     && form.tts.fallback.cloudProvider !== 'openai-compatible'
     && data.tts?.available?.cloudByProvider?.[form.tts.fallback.cloudProvider] === false;
@@ -508,9 +505,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
     adminFetch,
   });
 
-  // Voice list from the provider itself (compat /audio/voices, or the operator's
-  // ElevenLabs account). Same readiness gate as model discovery: a URL for
-  // compat, a saved key otherwise.
+  // Voice list from the provider itself. Same readiness gate as model
+  // discovery: a URL for compat, a saved key otherwise.
   const voiceDiscovery = useVoiceDiscovery({
     provider: form.tts.cloud.provider,
     baseUrl: form.tts.cloud.baseUrl,
@@ -575,18 +571,16 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
   // engineMeta.ts is the one label table (it already backs EngineSelector).
   const engineLabelOf = (id: string) => ENGINE_META[id]?.label || id;
 
-  // Send (and dirty-check) what the controller will actually store: trimmed,
-  // with untouched blank rows dropped. Otherwise an operator who presses "Add
-  // parameter" and saves leaves the form permanently dirty against a saved list
-  // that never contained the empty row.
+  // Send (and dirty-check) what the controller will store: trimmed, with
+  // untouched blank rows dropped, or an added-then-saved empty row leaves the
+  // form permanently dirty.
   const effectiveCompatParams = form.tts.cloud.compatParams
     .map(p => ({ key: p.key.trim(), value: p.value.trim() }))
     .filter(p => p.key || p.value);
 
   const save = async () => {
-    // Managed-provider keys must land first: Fish voice discovery reads the saved
-    // process secret, so an empty undiscovered Fish voice would fail the settings
-    // write before the key became usable.
+    // Managed-provider keys must land first: Fish voice discovery reads the
+    // saved process secret.
     let managedKeySaved = false;
     if (!isCompat && cloudKeyInput.trim()) {
       const cloudKeyVar = envKeyForCloudProvider(form.tts.cloud.provider);
@@ -628,8 +622,7 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
           latency: form.tts.cloud.latency,
           compatParams: effectiveCompatParams,
           // Compat servers use their own scoped slot; the legacy shared slot is
-          // cleared on Fish or any provider transition (managed credentials live
-          // in secrets.env).
+          // cleared on Fish or any provider transition.
           ...(isCompat && compatKeyInput.trim()
             ? { compatApiKey: compatKeyInput.trim() }
             : clearInlineCloudKey
@@ -637,8 +630,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
               : {}),
         },
         remote: { url: form.tts.remote.url },
-        // Always sent — the server clamps and drops unknown keys. Keyed by engine
-        // id, `pocket-tts` with the hyphen.
+        // Always sent -- the server clamps and drops unknown keys. Keyed by
+        // engine id, `pocket-tts` with the hyphen.
         gainDb: form.tts.gainDb,
         // Same contract as gainDb; inert for the engines that ignore speed.
         speed: form.tts.speed,
@@ -648,8 +641,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
       await refresh();
       notify.info('API key saved; TTS settings were not changed.');
     }
-    // Clearing the legacy inline key is deliberate (keys are provider-scoped now)
-    // but must never be silent — the operator may have relied on it.
+    // Clearing the legacy inline key is deliberate (keys are provider-scoped
+    // now) but must never be silent.
     if (settingsSaved && clearInlineCloudKey && hadStoredInlineKey) {
       notify.info(`The API key stored in settings for ${cloudProviderLabel(savedCloudProvider)} was cleared — keys are provider-scoped. Re-enter it in Settings (or set its env key) if you switch back.`);
     }
@@ -861,8 +854,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
               value={form.tts.defaultEngine}
               engineIds={engines}
               available={selectorAvailable}
-              // This IS Settings → Voice, so the default "go to Settings →
-              // Voice" wording would send the operator in a circle.
+              // This IS Settings -> Voice, so the default wording would send the
+              // operator in a circle.
               statusOpts={{ cloudKeyAction: 'pick a provider below and add its key' }}
               onChange={selectEngine}
             />
@@ -1080,10 +1073,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
           const providerIds = data.tts?.cloudProviders
             || ['openai', 'elevenlabs', 'fish-audio', 'openai-compatible'];
           return (
-          // Three ordered steps — provider, then credentials, then what to
-          // render with. Model and voice discovery both depend on the
-          // credentials, so those have to come first; they used to sit below,
-          // under hints telling the operator to look "above" for them.
+          // Three ordered steps -- provider, credentials, then what to render
+          // with. Model and voice discovery both depend on the credentials.
           <div className="mt-4 grid gap-[26px]">
             <div className="field">
               <Label>Provider</Label>
@@ -1095,8 +1086,7 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                   compatBaseUrlSet: !!form.tts.cloud.baseUrl.trim(),
                 }}
                 onChange={v => setForm(f => selectCloudProvider(f, v))}
-                // Connection is the very next block, and it carries its own
-                // KeyStatus — a "next step" note here would just bounce the eye.
+                // Connection is the next block and carries its own KeyStatus.
                 enableHint={false}
                 gridClassName="md:grid-cols-4"
                 hint={<>
@@ -1260,8 +1250,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                   const isPreset = isKnownCloudVoice(provider, discoveredVoices, voice);
                   const setVoice = (v: string) =>
                     setForm(f => ({ ...f, tts: { ...f.tts, cloud: { ...f.tts.cloud, voice: v } } }));
-                  // A compat server that advertised no voices leaves nothing to pick
-                  // from — keep the plain text box it had before discovery.
+                  // A compat server that advertised no voices leaves nothing to
+                  // pick from.
                   const hasList = discoveredVoices.length > 0 || !isCompat;
                   if (!hasList) {
                     return (
@@ -1290,8 +1280,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                         <VoicePicker
                           value={isPreset ? voice : CUSTOM_VOICE_ID}
                           onChange={val => {
-                            // Clearing the preset flips isPreset false, revealing the
-                            // free-text input below.
+                            // Clearing the preset flips isPreset false, revealing
+                            // the free-text input below.
                             setVoice(val === CUSTOM_VOICE_ID ? '' : val);
                           }}
                           groups={buildCloudVoiceGroups(provider, discoveredVoices)}
@@ -1314,8 +1304,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                       </div>
                       {!isPreset && (
                         <Input
-                          // A blank compat voice is legitimate — the server picks
-                          // its own default — so don't flag it red.
+                          // A blank compat voice is legitimate (the server picks
+                          // its own default), so don't flag it red.
                           className={cn('mt-2', voice || isCompat ? 'border-ink' : 'border-[var(--danger)]')}
                           value={form.tts.cloud.voice}
                           maxLength={100}
@@ -1402,7 +1392,7 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                   speed={form.tts.speed?.[e] ?? 1}
                   lang={form.kokoroLang || undefined}
                   // Unsaved ElevenLabs sliders ride along so "Play sample"
-                  // auditions the current knob positions, not the last save.
+                  // auditions the current knob positions.
                   voiceSettings={e === 'cloud' && form.tts.cloud.provider === 'elevenlabs'
                     ? {
                       voiceStability: form.tts.cloud.voiceStability,
@@ -1503,9 +1493,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
         busy={busy}
         onSave={save}
         saveLabel="Save TTS settings"
-        // Both key boxes are component-local — the panel diffs FormState and
-        // cannot see them, so a pasted key alone would leave the section
-        // "clean" and unmount the very button that saves it.
+        // Both key boxes are component-local: the panel diffs FormState and
+        // cannot see them, so a pasted key alone would unmount the save button.
         dirty={!!(cloudKeyInput.trim() || compatKeyInput.trim())}
       />
     </>

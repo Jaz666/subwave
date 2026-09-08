@@ -14,14 +14,10 @@ import {
 import { normalizeHandoverOffsetMinutes } from '../settings/normalize.js';
 import { DEFAULTS } from '../settings/defaults.js';
 
-// Minutes before the show boundary the sign-off airs, read live (a change
-// applies at the next programme tick — nothing is handed to the mixer).
-//
-// Re-normalised on the way out rather than trusted: settings.load() repairs the
-// stored value, but `get()` is also served from a station profile switch and a
-// backup restore, and an offset the talk row cannot sample costs the show its
-// sign-off with nothing logged. The repair rule itself is not restated — it is
-// the same function the load path calls.
+// Minutes before the show boundary the sign-off airs, read live. Re-normalised
+// on the way out (same function the load path calls) because `get()` is also
+// served from a profile switch and a backup restore, and an offset the talk row
+// cannot sample costs the show its sign-off with nothing logged.
 export function handoverOffsetMinutes(): number {
   return normalizeHandoverOffsetMinutes(
     settings.get()?.handover?.offsetMinutes,
