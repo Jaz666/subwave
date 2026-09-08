@@ -263,6 +263,7 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Talk placement', section: 'behaviour', card: 'Talk placement', keywords: 'between tracks boundary interrupt over song duck mid-song' },
   { label: 'Show changes', section: 'behaviour', card: 'Show changes', keywords: 'handoff presenter same host acknowledgement shift transition programme' },
   { label: 'Extended Sleeve Notes', section: 'behaviour', card: 'Extended Sleeve Notes', keywords: 'verified facts album release year station plays coming soon' },
+  { label: 'Link style', section: 'behaviour', card: 'Link style', keywords: 'release year regular occasional rare metadata sleeve notes' },
 
   // ── library tagger ─────────────────────────────────────────────────────────
   { label: 'Tagger', section: 'library', card: 'Tagger', keywords: 'enabled tagging runs moods genres' },
