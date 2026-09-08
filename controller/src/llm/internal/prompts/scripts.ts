@@ -14,7 +14,7 @@ import { trackEraYear } from '../../../music/show-filter.js';
 import { trackFeelSuffix } from './track-feel.js';
 import { announceLine } from '../../../broadcast/announce-line.js';
 import * as library from '../../../music/library.js';
-import { contextSleeveNotesFor, selectSleeveNotes, stationHistoryNoteFor } from './sleeve-notes.js';
+import { contextSleeveNotesFor, releaseYearMentionEligible, selectSleeveNotes, stationHistoryNoteFor } from './sleeve-notes.js';
 import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
@@ -106,8 +106,13 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
   const stationHistoryNote = current
     ? stationHistoryNoteFor(current, playStats, library.lastAiredInfo())
     : null;
+  const releaseYearMentions = settings.get().djBehaviour.releaseYearMentions;
   const sleeves = includeSleeves
-    ? selectSleeveNotes(contextSleeveNotesFor(current, context, playCount, stationHistoryNote))
+    ? selectSleeveNotes(
+      contextSleeveNotesFor(current, context, playCount, stationHistoryNote),
+      Math.random,
+      releaseYearMentionEligible(current, context, releaseYearMentions),
+    )
     : [];
   const sections = [
     "Verified Facts:",

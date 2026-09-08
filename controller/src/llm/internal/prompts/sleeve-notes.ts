@@ -5,6 +5,9 @@
 import { trackEraYear } from '../../../music/show-filter.js';
 import { unairedFlag, type AiredIndex } from '../../../music/airing.js';
 
+export const RELEASE_YEAR_MENTION_FREQUENCIES = ['regular', 'occasional', 'rare'] as const;
+export type ReleaseYearMentionFrequency = (typeof RELEASE_YEAR_MENTION_FREQUENCIES)[number];
+
 function text(value: unknown, max = 180): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -71,9 +74,39 @@ export function contextSleeveNotesFor(
  * not a metadata checklist. The identity fact is added separately; retain the
  * first two supplemental facts in their deterministic priority order.
  */
-export function selectSleeveNotes(notes: readonly string[], random: () => number = Math.random): string[] {
+export function selectSleeveNotes(
+  notes: readonly string[],
+  random: () => number = Math.random,
+  includeReleaseYear = true,
+): string[] {
   void random;
-  return notes.slice(0, 2);
+  return (includeReleaseYear ? notes : notes.filter((note) => !note.startsWith('Release year:'))).slice(0, 2);
+}
+
+// A release year remains a verified library fact even when it is not useful
+// copy for this particular link. The gate is deterministic rather than random:
+// retries and a controller restart make the same editorial choice, while the
+// track/time seed distributes eligible links through a show instead of fixing
+// a track permanently as a "year" or "no year" track.
+export function releaseYearMentionEligible(
+  track: any,
+  context: any,
+  frequency: ReleaseYearMentionFrequency = 'regular',
+): boolean {
+  if (frequency === 'regular') return true;
+  const divisor = frequency === 'occasional' ? 4 : 6;
+  const seed = [
+    text(track?.id || track?.title),
+    text(track?.artist),
+    text(context?.date?.iso || context?.date?.dayLabel),
+    text(context?.clock?.hhmm || context?.clock?.display),
+  ].join('|');
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % divisor === 0;
 }
 
 /**

@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  sleeveNotesFor, contextSleeveNotesFor, selectSleeveNotes, stationHistoryNoteFor,
+  sleeveNotesFor, contextSleeveNotesFor, releaseYearMentionEligible, selectSleeveNotes, stationHistoryNoteFor,
 } from '../src/llm/internal/prompts/sleeve-notes.js';
 import { linkPrompt } from '../src/llm/internal/prompts/scripts.js';
 
@@ -22,6 +22,23 @@ assert.deepEqual(contextSleeveNotesFor(track(), {
 assert.deepEqual(selectSleeveNotes(sleeveNotesFor(track(), 3)), [
   'Album: After Laughter Comes Tears.', 'Release year: 1964.',
 ]);
+assert.deepEqual(selectSleeveNotes(sleeveNotesFor(track(), 3), Math.random, false), [
+  'Album: After Laughter Comes Tears.', 'Station plays before today: 3.',
+]);
+
+const yearGateContext = { date: { iso: '2026-09-08' }, clock: { hhmm: '11:30' } };
+assert.equal(releaseYearMentionEligible(track(), yearGateContext, 'regular'), true);
+assert.equal(
+  releaseYearMentionEligible(track({ id: 'stable-gate' }), yearGateContext, 'occasional'),
+  releaseYearMentionEligible(track({ id: 'stable-gate' }), yearGateContext, 'occasional'),
+);
+for (const frequency of ['occasional', 'rare'] as const) {
+  const results = Array.from({ length: 48 }, (_, i) => releaseYearMentionEligible(
+    track({ id: `gate-${i}` }), yearGateContext, frequency,
+  ));
+  assert.ok(results.some(Boolean), `${frequency} should leave some links eligible`);
+  assert.ok(results.some((eligible) => !eligible), `${frequency} should withhold some links`);
+}
 
 const airingIndex = {
   byId: new Map([

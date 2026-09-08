@@ -68,6 +68,28 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </p>
       </Card>
 
+      <Card title="Link style" sub={form.djBehaviour.releaseYearMentions + ' release-year mentions'}>
+        <div className="field">
+          <Label>Release-year mentions</Label>
+          <Seg
+            value={form.djBehaviour.releaseYearMentions}
+            options={[
+              { id: 'regular', label: 'Regular', title: 'Keep release years available on every eligible link' },
+              { id: 'occasional', label: 'Occasional', title: 'Make release years available on roughly one in four eligible links' },
+              { id: 'rare', label: 'Rare', title: 'Make release years available on roughly one in six eligible links' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              djBehaviour: { ...f.djBehaviour, releaseYearMentions: v as typeof f.djBehaviour.releaseYearMentions },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Release years stay verified in the library. This controls how often one is supplied
+            to the DJ for a link, keeping factual grounding intact without making every link sound like metadata.
+          </p>
+        </div>
+      </Card>
+
       <Card title="Extended Sleeve Notes" sub="coming soon">
         <p className="text-[13px] leading-[1.55] text-muted">
           Soon, the DJ will be able to use a fuller packet of verified track facts—such as

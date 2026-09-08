@@ -95,6 +95,11 @@ prompt. The default link path now carries up to two deterministic supplemental
 Sleeve Notes, in priority order, so a trusted album and release year can travel
 together without admitting show steering or other editorial context.
 
+Release-year mentions are independently configurable under DJ Behaviour → Link
+Style. The year remains a verified library fact; `occasional` and `rare` use a
+deterministic per-link gate to omit it from the writer packet on most links,
+without permitting the model to invent it.
+
 ### Natural show-close and TTS cue safety follow-up
 
 Final-quarter-hour context now says that the current show is approaching its

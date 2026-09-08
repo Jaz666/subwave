@@ -585,6 +585,8 @@ export async function load() {
         ? stored.djBehaviour.sameHostAcknowledgement : DEFAULTS.djBehaviour.sameHostAcknowledgement,
       extendedSleeveNotes: typeof stored.djBehaviour?.extendedSleeveNotes === 'boolean'
         ? stored.djBehaviour.extendedSleeveNotes : DEFAULTS.djBehaviour.extendedSleeveNotes,
+      releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)
+        ? stored.djBehaviour.releaseYearMentions : DEFAULTS.djBehaviour.releaseYearMentions,
     },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
@@ -1544,11 +1546,14 @@ export async function update(patch) {
       parseSettingsPatchKey<boolean>('djTalkOnlyBetweenTracks', patch.djTalkOnlyBetweenTracks);
   }
   if ('djBehaviour' in patch) {
-    const behaviour = parseSettingsPatchKey<Record<string, boolean | undefined>>(
+    const behaviour = parseSettingsPatchKey<Record<string, boolean | string | undefined>>(
       'djBehaviour', patch.djBehaviour,
     );
     for (const key of ['showWelcome', 'sameHostAcknowledgement', 'extendedSleeveNotes'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
+    }
+    if (behaviour.releaseYearMentions !== undefined) {
+      next.djBehaviour.releaseYearMentions = behaviour.releaseYearMentions as typeof next.djBehaviour.releaseYearMentions;
     }
   }
   if ('handover' in patch) {

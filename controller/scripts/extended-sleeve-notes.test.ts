@@ -9,21 +9,27 @@ process.env.STATE_DIR = root;
 
 const settings = await import('../src/settings.js');
 const { setCache } = await import('../src/settings/store.js');
-test('extended sleeve notes are off by default and survive a cold load as a reservation', async () => {
+test('DJ link-style defaults survive a cold load', async () => {
   await settings.load();
   assert.equal(settings.get().djBehaviour.extendedSleeveNotes, false);
+  assert.equal(settings.get().djBehaviour.releaseYearMentions, 'regular');
 
-  await settings.update({ djBehaviour: { extendedSleeveNotes: true } } as never);
+  await settings.update({ djBehaviour: { extendedSleeveNotes: true, releaseYearMentions: 'rare' } } as never);
 
   setCache(null);
   await settings.load();
   assert.equal(settings.get().djBehaviour.extendedSleeveNotes, true);
+  assert.equal(settings.get().djBehaviour.releaseYearMentions, 'rare');
 });
 
 test('extended sleeve notes refuse non-boolean patches', async () => {
   await assert.rejects(
     () => settings.update({ djBehaviour: { extendedSleeveNotes: 'on' } } as never),
     /djBehaviour\.extendedSleeveNotes must be a boolean/,
+  );
+  await assert.rejects(
+    () => settings.update({ djBehaviour: { releaseYearMentions: 'sometimes' } } as never),
+    /djBehaviour\.releaseYearMentions must be regular, occasional or rare/,
   );
 });
 

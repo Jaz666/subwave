@@ -244,6 +244,7 @@ export const DEFAULTS = {
     showWelcome: false,
     sameHostAcknowledgement: false,
     extendedSleeveNotes: false,
+    releaseYearMentions: 'regular',
   },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
   // boundary the outgoing host signs off — the programme outro beat's window.

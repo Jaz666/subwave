@@ -425,6 +425,7 @@ export default function SettingsPanel() {
         showWelcome: v.djBehaviour?.showWelcome === true,
         sameHostAcknowledgement: v.djBehaviour?.sameHostAcknowledgement === true,
         extendedSleeveNotes: v.djBehaviour?.extendedSleeveNotes === true,
+        releaseYearMentions: v.djBehaviour?.releaseYearMentions ?? 'regular',
       },
       // Absent (a settings.json predating the key) reads as the 5-minute
       // default — where the sign-off has always aired.
