@@ -518,6 +518,7 @@ export interface SettingsData {
       navidrome?: Partial<ScrobbleNavidromeForm>;
     };
     picker?: {
+      shortlistPasses?: number;
       albumHours?: number;
       minTrackLengthSeconds?: number;
     };
