@@ -66,15 +66,16 @@ function generators() {
     recentOpeners: string[];
     personaOut: string;
     personaIn: string;
+    showOut: string | null;
     showIn: string | null;
   }> = {};
   return {
     seen,
     deps: {
-      generateSignoff: async ({ recap, recentOpeners, personaOut, personaIn, showIn }: any) => {
+      generateSignoff: async ({ recap, recentOpeners, personaOut, personaIn, showOut, showIn }: any) => {
         seen.signoff = {
           recap: recap ?? null, recentOpeners: recentOpeners ?? [],
-          personaOut: personaOut.name, personaIn: personaIn.name, showIn,
+          personaOut: personaOut.name, personaIn: personaIn.name, showOut, showIn,
         };
         return 'That was the hour. Gigi has the next one.';
       },
@@ -136,6 +137,8 @@ test('the mic-pass hands each half the session it actually belongs to', async ()
   // The outgoing DJ still remembers its own hour...
   assert.match(seen.signoff.recap || '', /ceiling fan/i);
   assert.deepEqual(seen.signoff.recentOpeners, ["The ceiling fan thinks it's"]);
+  assert.equal(seen.signoff.showOut, 'The Soft Start Procedure');
+  assert.equal(seen.signoff.showIn, 'Cultural Currents');
 
   // ...and the incoming one inherits none of it.
   assert.equal(seen.greeting.recap, null);

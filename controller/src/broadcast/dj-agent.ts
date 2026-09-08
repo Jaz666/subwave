@@ -1214,6 +1214,7 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     return;
   }
   const showIn = (isBoundaryHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
+  const showOut = pending.showName || null;
 
   await withTrace({ kind: 'handoff', from: personaOut.name, to: personaIn.name }, async () => {
     // The sign-off closes the show that just ENDED, but maybeRoll has already
@@ -1233,7 +1234,7 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     if (!isSameHostAcknowledgement) {
       try {
         signoffText = await generateSignoff({
-          personaOut, personaIn, showIn,
+          personaOut, personaIn, showOut, showIn,
           context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
         });
       } catch (err: any) {
