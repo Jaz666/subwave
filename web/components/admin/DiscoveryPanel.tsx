@@ -89,7 +89,7 @@ export default function DiscoveryPanel() {
       <div className="border-b border-ink p-4">
         <Eyebrow className="text-vermilion">discovery bench</Eyebrow>
         <div className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Run the DJ’s library tools, one at a time.</div>
-        <p className="mt-1 text-[11px] leading-[1.6] text-muted">Read-only. Uses the live picker scope, but never calls the DJ model or queues music.</p>
+        <p className="mt-1 text-[11px] leading-[1.6] text-muted">Individual tool checks are read-only. The comparison uses the live scope, runs one recorded Agentic Picker model call, and never queues music.</p>
       </div>
       <div className="p-3 text-[12px]"><span className="text-muted">Current scope:</span> {title}</div>
       <div className="border-t border-ink p-3"><Btn sm onClick={compare} disabled={running}>{running ? 'Comparing…' : 'Compare 3 rounds vs 3 passes'}</Btn></div>
@@ -112,7 +112,7 @@ export default function DiscoveryPanel() {
         {!selected && <p className="field-hint italic">Choose an available tool to inspect its live response.</p>}
       </Card>
     </div>
-    {comparison && <Card title="Paired discovery comparison" sub="same live scope · no tracks queued">
+    {comparison && <Card title="Paired discovery comparison" sub="same live scope · one recorded Agentic Picker call · no tracks queued">
       <div className="overflow-auto"><table className="w-full text-left text-[12px]"><thead><tr className="border-b border-separator-strong text-muted"><th className="p-2">Route</th><th className="p-2">Round</th><th className="p-2">Tool / source</th><th className="p-2">Returned tracks</th></tr></thead><tbody>
         {[...comparison.agentic.map(row => ({ ...row, route: 'Agentic Picker' })), ...comparison.shortlist.map(row => ({ ...row, route: 'Track Shortlist' }))].map((row, index) => <tr key={`${row.route}-${index}`} className="border-b border-separator-soft align-top"><td className="p-2 font-bold">{row.route}</td><td className="p-2">{row.round}</td><td className="p-2 font-mono">{row.source}</td><td className="p-2">{row.tracks.length ? row.tracks.map(track => <div key={track.id}>{track.artist} — {track.title}</div>) : '—'}</td></tr>)}
       </tbody></table></div>
