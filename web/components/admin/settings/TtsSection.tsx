@@ -603,6 +603,7 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
       // Flat, like djSpeakClock: talk PLACEMENT is not engine config, it just
       // shares the card with the voice switch.
       djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
+      pauseTalkMinSeconds: Number(form.pauseTalkMinSeconds),
       // Same one step further out. A block, because the controller key is one.
       handover: { offsetMinutes: Number(form.handoverOffsetMinutes) },
       tts: {
@@ -732,6 +733,7 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
     form.tts.enabled !== (savedTts.enabled !== false)
     // Absent reads as OFF, for the same reason in the other direction.
     || form.djTalkOnlyBetweenTracks !== (data.values?.djTalkOnlyBetweenTracks === true)
+    || form.pauseTalkMinSeconds !== String(data.values?.pauseTalkMinSeconds ?? 20)
     // Absent reads as the default, which is what the controller stores for it.
     || form.handoverOffsetMinutes !== String(data.values?.handover?.offsetMinutes ?? 5)
     || form.tts.defaultEngine !== savedEngine
@@ -830,6 +832,22 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                 Station (needs a mixer restart).
               </>
             )}
+          </p>
+        </div>
+
+        <div className="field mt-6">
+          <Label htmlFor="pause-talk-min-seconds">Pause-and-talk length</Label>
+          <Input
+            id="pause-talk-min-seconds"
+            type="number"
+            min="5"
+            max="90"
+            step="1"
+            value={form.pauseTalkMinSeconds}
+            onChange={e => setForm(f => ({ ...f, pauseTalkMinSeconds: e.target.value }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            On shows with Pause-and-talk enabled, eligible skill segments at least this long pause the music and speak in the clear. Shorter segments keep the usual ducked delivery.
           </p>
         </div>
 

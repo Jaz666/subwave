@@ -373,6 +373,7 @@ export default function SettingsPanel() {
       kokoroLang: v.tts?.kokoro?.lang ?? '',
       // Absent (a settings.json predating the key) reads as OFF, like settings.load().
       djTalkOnlyBetweenTracks: v.djTalkOnlyBetweenTracks === true,
+      pauseTalkMinSeconds: String(v.pauseTalkMinSeconds ?? 20),
       // Absent (a settings.json predating the key) reads as the 5-minute default.
       handoverOffsetMinutes: String(v.handover?.offsetMinutes ?? 5),
       weather: {

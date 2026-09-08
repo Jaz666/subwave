@@ -181,6 +181,8 @@ export const DEFAULTS = {
   // may air a track late (bounded by PENDING_VOICE_MAX_AGE_MS). Manual /dj
   // triggers stay exempt. Policy in broadcast/talk-air.ts.
   djTalkOnlyBetweenTracks: false,
+  // Show opt-in only; clips shorter than this remain ordinary ducked speech.
+  pauseTalkMinSeconds: 20,
   // Station-clock minutes BEFORE a show boundary that the outgoing host signs
   // off (#1576); 5 = :55 of the final hour. Must be a multiple of
   // HANDOVER_OFFSET_STEP_MINUTES, the stride the talk table's programme row

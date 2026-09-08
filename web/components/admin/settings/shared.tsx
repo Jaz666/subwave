@@ -330,6 +330,8 @@ export interface FormState {
   kokoroLang: string;
   /** Talk placement switch: every scheduled segment waits for the next track boundary. */
   djTalkOnlyBetweenTracks: boolean;
+  /** Station-wide minimum length before a show may use pause-and-talk. */
+  pauseTalkMinSeconds: string;
   /** settings.handover.offsetMinutes. The values are a fixed set (multiples of the
    *  talk table's sampling stride), so it renders as a segmented control. */
   handoverOffsetMinutes: string;
@@ -404,6 +406,7 @@ export interface SettingsData {
     locale?: StationLocale;
     /** Absent on an older settings.json — read as false. */
     djTalkOnlyBetweenTracks?: boolean;
+    pauseTalkMinSeconds?: number;
     /** Absent on an older settings.json — the 5-minute default. */
     handover?: { offsetMinutes?: number };
     theme?: { active?: string };

@@ -73,6 +73,7 @@ import {
 import { validateCompatParams } from './settings/compat-params.js';
 import { parseSettingsPatchKey } from './settings/patch-registry.js';
 import {
+  PAUSE_TALK_MIN_SECONDS_BOUNDS,
   PICKER_ALBUM_HOURS_BOUNDS,
   STREAM_BUFFER_SECONDS_BOUNDS,
   STREAM_COUNTRY_HEADER_RE,
@@ -511,6 +512,15 @@ export async function load() {
       typeof stored.djTalkOnlyBetweenTracks === 'boolean'
         ? stored.djTalkOnlyBetweenTracks
         : DEFAULTS.djTalkOnlyBetweenTracks,
+    // parseInt + clamp, matching pauseTalkMinSecondsSchema's posture on the save
+    // path: a read that repaired differently from the writer would refuse a
+    // value it had just stored.
+    pauseTalkMinSeconds: Number.isFinite(parseInt(stored.pauseTalkMinSeconds, 10))
+      ? Math.min(
+          PAUSE_TALK_MIN_SECONDS_BOUNDS.max,
+          Math.max(PAUSE_TALK_MIN_SECONDS_BOUNDS.min, parseInt(stored.pauseTalkMinSeconds, 10)),
+        )
+      : DEFAULTS.pauseTalkMinSeconds,
     // Repaired, not refused: an offset the talk table's programme row cannot
     // sample is a sign-off that never airs.
     handover: {
@@ -1362,6 +1372,9 @@ export async function update(patch) {
   if ('djTalkOnlyBetweenTracks' in patch) {
     next.djTalkOnlyBetweenTracks =
       parseSettingsPatchKey<boolean>('djTalkOnlyBetweenTracks', patch.djTalkOnlyBetweenTracks);
+  }
+  if ('pauseTalkMinSeconds' in patch) {
+    next.pauseTalkMinSeconds = parseSettingsPatchKey<number>('pauseTalkMinSeconds', patch.pauseTalkMinSeconds);
   }
   if ('handover' in patch) {
     // Read live by broadcast/handover-policy.ts each programme tick.

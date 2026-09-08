@@ -548,7 +548,7 @@ export async function agenticTick(ctx) {
     // The speaker's id rides in meta so session.windowMessages names a guest's
     // turn as theirs rather than the host's own words.
     await queue.announce(seg.text.trim(), seg.kind, {
-      persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name },
+      persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name }, pauseTalkEligible: true,
     });
 
     // Record what aired so the durable ledger keeps both the tool and the
@@ -790,8 +790,8 @@ export async function runCapability(which, ctx, { brief = null, persona = null }
   // A rotated speaker rides through announce so voice and session attribution
   // agree (windowMessages names foreign speakers by meta id).
   await queue.announce(text, cap.kind, persona
-    ? { persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name } }
-    : {});
+    ? { persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name }, pauseTalkEligible: true }
+    : { pauseTalkEligible: true });
 
   // Record an operator-fired curiosity line in the ledger too (#577).
   if (cap.kind === 'curiosity') recordCuriosity(text, { aired: true });

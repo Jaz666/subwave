@@ -65,6 +65,11 @@ music_starved = ref(false)
 # without this gate a stinger lands BETWEEN the bed and the song it ramps into.
 bed_on_air = ref(false)
 
+# A pause-talk break is a silent item on the music timeline followed by speech
+# on voice_queue. Keep jingles unavailable across BOTH halves; voice_until then
+# carries the gate from the first spoken sample through its tail.
+pause_talk_on_air = ref(false)
+
 # Voice-on-air DEADLINE for the jingle gates, keeping the rotate from handing a
 # stinger to the music chain while a DJ clip is on air (#997 covered only the
 # other direction). Must stay a deadline, not a boolean:
@@ -1013,7 +1018,7 @@ music =
     # a voice clip is on air (can't hand a stinger over the DJ), and while the
     # music chain is starved (can't serve stingers forever over dead air).
     jingles = source.available(jingles, {
-      not bed_on_air() and not jingle_now_on_air() and
+      not bed_on_air() and not pause_talk_on_air() and not jingle_now_on_air() and
       time() > voice_until() and not music_starved()
     })
     rotate(weights=[1, jingle_ratio()], [jingles, music])
@@ -1025,7 +1030,7 @@ music =
 # even when dj_queue already holds tracks or the rotate is due. While speech or
 # a bed is live the source is unavailable but the request remains queued.
 jingle_now = source.available(jingle_now_queue, {
-  not bed_on_air() and time() > voice_until()
+  not bed_on_air() and not pause_talk_on_air() and time() > voice_until()
 })
 music = fallback(
   id="music_with_jingle_now",
@@ -1488,8 +1493,24 @@ def on_meta(m) =
   # carries no title/artist, so it must branch BEFORE the gate below, which
   # would drop it silently — this marker is the only way the controller learns
   # "bed on air, air the link now".
-  if m["subwave_kind"] == "bed" then
+  if m["subwave_kind"] == "pause-talk" then
     jingle_now_on_air := false
+    bed_on_air := false
+    pause_talk_on_air := true
+    log("on_meta: pause-talk silence started (#{filename})")
+    file.write(
+      data=json.stringify(compact=true, {
+        filename = filename,
+        pauseId = m["subwave_pause_id"],
+        startedAt = time()
+      }),
+      atomic=true,
+      temp_dir=bed_tmp_dir,
+      "#{state_dir}/pause-talk-playing.json"
+    )
+  elsif m["subwave_kind"] == "bed" then
+    jingle_now_on_air := false
+    pause_talk_on_air := false
     log("on_meta: bed started (#{filename})")
     bed_on_air := true
     file.write(
@@ -1503,6 +1524,7 @@ def on_meta(m) =
     )
   elsif title != "" or artist != "" then
     bed_on_air := false
+    pause_talk_on_air := false
     jingle_now_on_air := false
     log("on_meta: title=#{title} | artist=#{artist} | album=#{album} | id=#{subsonic_id}")
     ts = int_of_float(time())
@@ -1533,6 +1555,7 @@ def on_meta(m) =
     # bed_on_air latches true and starves the jingle rotate until the next
     # tagged song.
     bed_on_air := false
+    pause_talk_on_air := false
     jingle_now_on_air := false
   end
 end

@@ -155,10 +155,37 @@ assert.ok(rotateGate.includes('not jingle_now_on_air()'),
 // ...and the flag has to be cleared by every on_meta branch, or it latches true
 // and starves the rotate permanently (the bed_on_air failure, repeated).
 const onMetaBody = liq.slice(liq.indexOf('def on_meta(m) ='), liq.indexOf('music_meta.on_metadata('));
+// DERIVED from the branch count, not hardcoded: the point of the assertion is
+// "every branch", and a literal silently stops meaning that the moment someone
+// adds one (pause-talk made it four). Counting both sides is what catches the
+// branch that forgot the clear.
+const onMetaBranches = (onMetaBody.match(/^\s*(?:if|elsif|else)\b/gm) || []).length;
 assert.equal(
-  onMetaBody.split('jingle_now_on_air := false').length - 1, 3,
+  onMetaBody.split('jingle_now_on_air := false').length - 1, onMetaBranches,
   'every on_meta branch clears jingle_now_on_air',
 );
+
+// The two LATCHING flags follow the same rule one step removed: each is set
+// true by its own branch and must be cleared by every OTHER one, or it starves
+// the jingle rotate forever — the bed_on_air failure the comment above records,
+// which pause_talk_on_air inherited wholesale by copying its shape.
+for (const flag of ['bed_on_air', 'pause_talk_on_air']) {
+  assert.equal(
+    onMetaBody.split(`${flag} := false`).length - 1, onMetaBranches - 1,
+    `every on_meta branch but its own clears ${flag}`,
+  );
+  assert.equal(
+    onMetaBody.split(`${flag} := true`).length - 1, 1,
+    `${flag} is latched by exactly one branch`,
+  );
+}
+
+// Both gates gate the manual jingle AND the rotate: a stinger must not split
+// either kind of break from the song it leads into.
+assert.ok(gateWindow.includes('not pause_talk_on_air()'),
+  'a jingle cannot split a pause-and-talk break from its track');
+assert.ok(rotateGate.includes('not pause_talk_on_air()'),
+  'the rotate cannot split a pause-and-talk break from its track');
 
 // Clip length rides in the marker: the controller can only parse RIFF, and an
 // import on a host without ffmpeg keeps its original container.
