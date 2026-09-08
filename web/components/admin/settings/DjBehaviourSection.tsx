@@ -14,7 +14,10 @@ import {
  */
 export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
   const save = async () => {
-    await saveSettings({ djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks });
+    await saveSettings({
+      djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
+      djBehaviour: form.djBehaviour,
+    });
   };
 
   return (
@@ -65,13 +68,21 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </p>
       </Card>
 
+      <Card title="Extended Sleeve Notes" sub="coming soon">
+        <p className="text-[13px] leading-[1.55] text-muted">
+          Soon, the DJ will be able to use a fuller packet of verified track facts—such as
+          album, trusted release year and station-play history—when writing links. This will
+          remain separate from show steering and other editorial context.
+        </p>
+      </Card>
+
       <SaveBar
         note="Talk placement applies to newly scheduled speech straight away · no mixer restart."
         busy={busy}
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'djBehaviour']}
       />
     </>
   );

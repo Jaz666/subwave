@@ -86,6 +86,16 @@ measured separately.
 
 ## Handoff status — 2026-09-07
 
+### Extended Sleeve Notes reservation
+
+`settings.djBehaviour.extendedSleeveNotes` is persisted and defaults to `false`.
+The DJ Behaviour panel deliberately presents it only as a Coming Soon card.
+When enabled through settings, link prompts receive every deterministic
+track/station sleeve fact (album, trusted release year, play count and eligible
+station history), never show steering or other editorial context. The normal
+path retains its single supplemental-note selection until the operator-facing
+control is released.
+
 This branch is rebased on upstream `develop` at `dbcf8a0a` and is ready for
 continued live observation.
 

@@ -2,7 +2,9 @@
 // Run: npm test -- verified-facts
 
 import assert from 'node:assert/strict';
-import { sleeveNotesFor, contextSleeveNotesFor, stationHistoryNoteFor } from '../src/llm/internal/prompts/sleeve-notes.js';
+import {
+  sleeveNotesFor, contextSleeveNotesFor, extendedSleeveNotesFor, stationHistoryNoteFor,
+} from '../src/llm/internal/prompts/sleeve-notes.js';
 import { linkPrompt } from '../src/llm/internal/prompts/scripts.js';
 
 const track = (over: Record<string, unknown> = {}) => ({
@@ -17,6 +19,13 @@ assert.deepEqual(sleeveNotesFor(track(), 3), [
 assert.deepEqual(contextSleeveNotesFor(track(), {
   date: { season: 'summer' }, weather: { condition: 'cloudy', location: 'The Ribble Valley' },
 }), ['Album: After Laughter Comes Tears.', 'Release year: 1964.']);
+assert.deepEqual(
+  extendedSleeveNotesFor(track(), 3, 'First station play.'),
+  [
+    'Album: After Laughter Comes Tears.', 'Release year: 1964.',
+    'Station plays before today: 3.', 'First station play.',
+  ],
+);
 
 const airingIndex = {
   byId: new Map([

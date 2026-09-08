@@ -66,6 +66,16 @@ export function contextSleeveNotesFor(
   return notes;
 }
 
+export function extendedSleeveNotesFor(
+  track: any,
+  playCount: number | null = null,
+  stationHistoryNote: string | null = null,
+): string[] {
+  const notes = sleeveNotesFor(track, playCount);
+  if (stationHistoryNote) notes.push(stationHistoryNote);
+  return notes;
+}
+
 /**
  * A link needs a little colour, not a metadata checklist. Keep a single
  * supplemental fact varied per link while retaining a deterministic seam for
