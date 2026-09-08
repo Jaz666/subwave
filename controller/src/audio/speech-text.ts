@@ -81,10 +81,11 @@ const DOLLAR_AMOUNT = '\\d[\\d,]*(?:\\.\\d+)?';
 // no meaning to the supported engines and are always removed.
 const PERFORMANCE_CUE_RE = /\[[^\]\r\n]{1,80}\]/g;
 const SPOKEN_CHAR_RE = /[\p{L}\p{N}]/u;
-const PRODUCTION_CUE_RE = /\b(?:cue|square|stage|direction|fad(?:e|es|ed|ing)|music|track|vocals?|sounds?|intro(?:duction)?|outro|transition|pause|riff(?:ing)?|build(?:ing|s)?|seconds?|\d+s)\b/i;
+const PRODUCTION_CUE_RE = /\b(?:cue|square|stage|direction|fad(?:e|es|ed|ing)|music|track|vocals?|sounds?|intro(?:duction)?|outro|transition|paus(?:e|es|ed|ing)|riff(?:ing)?|build(?:ing|s)?|seconds?|\d+s)\b/i;
 
 function isPerformanceCue(body: string): boolean {
   return !body.startsWith('/')
+    && !body.startsWith('-')
     && !/\d/.test(body)
     && !PRODUCTION_CUE_RE.test(body);
 }

@@ -98,7 +98,7 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
   const handover = context?.showHandover;
   const hasFollowingShow = handover?.phase === "final-quarter-hour" && handover?.nextShow?.name && handover?.nextShow?.presenter && handover?.nextShow?.startsAt;
   if (hasFollowingShow) {
-    moment.push("Show progress: final 15 minutes.");
+    moment.push("Current show is approaching its scheduled close.");
     moment.push("Following show: \"" + String(handover.nextShow.name).trim() + "\" with " + String(handover.nextShow.presenter).trim() + ", starting " + String(handover.nextShow.startsAt).trim() + ".");
   }
   const playStats = current ? library.trackPlayStatsFor(current) : null;
@@ -118,7 +118,7 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
     sections.push("Track on air:\n- " + String(current?.title || "Unknown") + " by " + String(current?.artist || "unknown") + ".");
   }
   if (hasFollowingShow) {
-    sections.push("Use the following-show detail naturally when it fits; do not make it a required signpost or repeat it mechanically.");
+    sections.push("Mention the approaching change and following show naturally when it fits; do not make it a required signpost, state remaining minutes, describe it as a fraction of the show, or repeat it mechanically.");
   }
   return sections.join("\n\n");
 }

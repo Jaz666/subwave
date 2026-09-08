@@ -95,6 +95,15 @@ prompt. The default link path now carries up to two deterministic supplemental
 Sleeve Notes, in priority order, so a trusted album and release year can travel
 together without admitting show steering or other editorial context.
 
+### Natural show-close and TTS cue safety follow-up
+
+Final-quarter-hour context now says that the current show is approaching its
+scheduled close and names the following show. It explicitly forbids remaining
+minutes and fractional-progress phrasing, while retaining a natural optional
+handover acknowledgement. The TTS sanitation regression set also rejects
+gerund production cues such as `[pausing briefly]` and malformed leading-hyphen
+cues such as `[-whispering]`; ordinary delivery cues remain allowed.
+
 This branch is rebased on upstream `develop` at `dbcf8a0a` and is ready for
 continued live observation.
 

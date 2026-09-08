@@ -126,6 +126,8 @@ async function main() {
     assert.equal(normalizeForSpeech('[Square cue - fade out vocals] Let\'s begin.'), 'Let\'s begin.');
     assert.equal(normalizeForSpeech('[0s] This is on air.'), 'This is on air.');
     assert.equal(normalizeForSpeech('[pause] Keep talking.'), 'Keep talking.');
+    assert.equal(normalizeForSpeech('[pausing briefly] Keep talking.'), 'Keep talking.');
+    assert.equal(normalizeForSpeech('[-whispering] Test words.'), 'Test words.');
     assert.equal(normalizeForSpeech('[Junkie fades back in] Let\'s begin.'), 'Let\'s begin.');
     assert.equal(normalizeForSpeech('Hello [softly'), 'Hello softly');
   });

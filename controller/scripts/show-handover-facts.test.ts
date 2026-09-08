@@ -23,8 +23,10 @@ const context = {
   showHandover: handover,
 };
 const link = linkPrompt({ current: { title: 'Headlong', artist: 'Queen' }, context });
-assert.match(link, /Show progress: final 15 minutes/);
+assert.match(link, /Current show is approaching its scheduled close/);
 assert.match(link, /Following show: "Lunchtime Rocks" with Carrie/);
+assert.match(link, /do not make it a required signpost, state remaining minutes, describe it as a fraction of the show/);
+assert.doesNotMatch(link, /final 15 minutes/);
 
 const stationId = stationIdPrompt({ context, persona: { name: 'Chris', scriptLength: 'concise' } });
 assert.match(stationId, /The next scheduled show is "Lunchtime Rocks" with Carrie/);
