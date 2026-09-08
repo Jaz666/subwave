@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  sleeveNotesFor, contextSleeveNotesFor, extendedSleeveNotesFor, stationHistoryNoteFor,
+  sleeveNotesFor, contextSleeveNotesFor, selectSleeveNotes, stationHistoryNoteFor,
 } from '../src/llm/internal/prompts/sleeve-notes.js';
 import { linkPrompt } from '../src/llm/internal/prompts/scripts.js';
 
@@ -19,13 +19,9 @@ assert.deepEqual(sleeveNotesFor(track(), 3), [
 assert.deepEqual(contextSleeveNotesFor(track(), {
   date: { season: 'summer' }, weather: { condition: 'cloudy', location: 'The Ribble Valley' },
 }), ['Album: After Laughter Comes Tears.', 'Release year: 1964.']);
-assert.deepEqual(
-  extendedSleeveNotesFor(track(), 3, 'First station play.'),
-  [
-    'Album: After Laughter Comes Tears.', 'Release year: 1964.',
-    'Station plays before today: 3.', 'First station play.',
-  ],
-);
+assert.deepEqual(selectSleeveNotes(sleeveNotesFor(track(), 3)), [
+  'Album: After Laughter Comes Tears.', 'Release year: 1964.',
+]);
 
 const airingIndex = {
   byId: new Map([

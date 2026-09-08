@@ -90,11 +90,10 @@ measured separately.
 
 `settings.djBehaviour.extendedSleeveNotes` is persisted and defaults to `false`.
 The DJ Behaviour panel deliberately presents it only as a Coming Soon card.
-When enabled through settings, link prompts receive every deterministic
-track/station sleeve fact (album, trusted release year, play count and eligible
-station history), never show steering or other editorial context. The normal
-path retains its single supplemental-note selection until the operator-facing
-control is released.
+It is reserved for the future API-backed feature and does not yet affect the
+prompt. The default link path now carries up to two deterministic supplemental
+Sleeve Notes, in priority order, so a trusted album and release year can travel
+together without admitting show steering or other editorial context.
 
 This branch is rebased on upstream `develop` at `dbcf8a0a` and is ready for
 continued live observation.

@@ -66,30 +66,19 @@ export function contextSleeveNotesFor(
   return notes;
 }
 
-export function extendedSleeveNotesFor(
-  track: any,
-  playCount: number | null = null,
-  stationHistoryNote: string | null = null,
-): string[] {
-  const notes = sleeveNotesFor(track, playCount);
-  if (stationHistoryNote) notes.push(stationHistoryNote);
-  return notes;
-}
-
 /**
- * A link needs a little colour, not a metadata checklist. Keep a single
- * supplemental fact varied per link while retaining a deterministic seam for
- * tests. The identity fact is added separately and is never random.
+ * A link needs enough verified detail to avoid filling gaps from model memory,
+ * not a metadata checklist. The identity fact is added separately; retain the
+ * first two supplemental facts in their deterministic priority order.
  */
 export function selectSleeveNotes(notes: readonly string[], random: () => number = Math.random): string[] {
-  if (notes.length < 2) return [...notes];
-  const index = Math.min(notes.length - 1, Math.floor(random() * notes.length));
-  return [notes[index]!];
+  void random;
+  return notes.slice(0, 2);
 }
 
 /**
  * The complete prompt packet. The track identity is always present when it is
- * known; at most one supplemental sleeve note follows it. A malformed/raw
+ * known; up to two supplemental sleeve notes follow it. A malformed/raw
  * track degrades to no packet rather than creating an assertion from guesswork.
  */
 export function verifiedFactsForLink(
