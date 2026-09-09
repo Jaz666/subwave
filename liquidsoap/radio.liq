@@ -47,6 +47,8 @@ jingle_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/jingle")
 jingle_now_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/jingle-now")
 bed_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/bed")
 pause_talk_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-talk")
+pause_voice_accept_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-voice-accept")
+pause_voice_start_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-voice-start")
 starve_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/starve")
 # One per voice channel, not one for both: they write the SAME marker file, so a
 # shared dir tears when a heavy-duck segment and a talk-over link land together.
@@ -1062,6 +1064,35 @@ music = cross(
 voice_queue = request.queue(id="voice_queue")
 intro_queue = request.queue(id="intro_queue")
 
+def pause_voice_delivery_id(uri) =
+  matches = string.extract(pattern="subwave_pause_delivery=\\\"([^\\\"]+)\\\"", uri)
+  list.assoc(default="", 1, matches)
+end
+
+# The acceptance marker closes the controller-restart interval between removing
+# say.txt and the voice's on_metadata. It is written only AFTER voice_queue.push
+# returns, so "accepted" means this live mixer owns the stable delivery id.
+# One writer (poll_voice), one temp dir. A failure is logged and degrades to the
+# older mixer's stable-id/start-marker compatibility path.
+def write_pause_voice_accepted(uri) =
+  delivery_id = pause_voice_delivery_id(uri)
+  if delivery_id != "" then
+    try
+      file.write(
+        data=json.stringify(compact=true, {
+          deliveryId = delivery_id,
+          acceptedAt = time()
+        }),
+        atomic=true,
+        temp_dir=pause_voice_accept_tmp_dir,
+        "#{state_dir}/pause-talk-voice-accepted.json"
+      )
+    catch err do
+      log(label="subwave", "pause voice acceptance marker failed (#{err})")
+    end
+  end
+end
+
 # AIR-TIME MARKER (#1382). on_metadata fires as the clip starts feeding, so
 # `startedAt` IS the live-edge moment the words begin (the clock
 # now-playing.json is stamped on); handoff time runs 0.5s of poll plus the queue
@@ -1095,6 +1126,26 @@ def voice_marker(channel, tmp_dir) =
           temp_dir=tmp_dir,
           "#{state_dir}/voice-playing.json"
         )
+
+        # Dedicated durable start acknowledgement for a pause voice. The
+        # generic marker above may be overwritten by later speech before a
+        # controller restarts; this one changes only on the next pause delivery.
+        pause_delivery_id = m["subwave_pause_delivery"]
+        if pause_delivery_id != "" then
+          try
+            file.write(
+              data=json.stringify(compact=true, {
+                deliveryId = pause_delivery_id,
+                startedAt = now
+              }),
+              atomic=true,
+              temp_dir=pause_voice_start_tmp_dir,
+              "#{state_dir}/pause-talk-voice-started.json"
+            )
+          catch err do
+            log(label="subwave", "pause voice start marker failed (#{err})")
+          end
+        end
 
         # Arm the jingle gate (see voice_until above). request.duration is
         # expensive, but this hook is synchronous=false so it runs off the
@@ -1146,6 +1197,7 @@ def poll_voice() =
         ignore(voice_queue.push(request.create(leadin_path)))
       end
       ignore(voice_queue.push(request.create(contents)))
+      write_pause_voice_accepted(contents)
     end
   end
 end

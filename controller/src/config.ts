@@ -179,6 +179,12 @@ export const config = {
     // starts. It is the boundary signal that releases the real speech through
     // say.txt, preserving the normal mic chain and voice-playing marker.
     pauseTalkPlayingFile: `${STATE_DIR}/pause-talk-playing.json`,
+    // Durable two-phase acknowledgement for pause-and-talk speech. poll_voice
+    // writes accepted only after voice_queue.push returns; voice_marker writes
+    // started when the first spoken sample feeds. Separate files keep one
+    // writer per marker and let a restarted controller avoid republishing.
+    pauseVoiceAcceptedFile: `${STATE_DIR}/pause-talk-voice-accepted.json`,
+    pauseVoiceStartedFile: `${STATE_DIR}/pause-talk-voice-started.json`,
     // Written by radio.liq when voice_queue/intro_queue starts a spoken clip:
     // {voiceId, channel, filename, startedAt}. `voiceId` matches the id airVoice
     // stamped into the clip's `annotate:` URI (the silent lead-in carries none and

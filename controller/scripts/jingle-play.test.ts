@@ -188,6 +188,21 @@ assert.ok(pauseMarkerBranch.includes('temp_dir=pause_talk_tmp_dir'),
   'the pause marker has its own atomic staging directory');
 assert.ok(!pauseMarkerBranch.includes('temp_dir=bed_tmp_dir'),
   'the pause and bed writers cannot race through one atomic.write file');
+assert.ok(liq.includes('pause_voice_accept_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-voice-accept")'),
+  'pause voice acceptance has one atomic writer directory');
+assert.ok(liq.includes('pause_voice_start_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-voice-start")'),
+  'pause voice start has a separate atomic writer directory');
+const voicePoll = liq.slice(liq.indexOf('def poll_voice() ='), liq.indexOf('def poll_intro() ='));
+assert.ok(
+  voicePoll.indexOf('voice_queue.push(request.create(contents))')
+    < voicePoll.indexOf('write_pause_voice_accepted(contents)'),
+  'acceptance is acknowledged only after the mixer owns the voice request',
+);
+const voiceMarker = liq.slice(liq.indexOf('def voice_marker(channel, tmp_dir) ='), liq.indexOf('voice_queue.on_metadata'));
+assert.ok(voiceMarker.includes('"#{state_dir}/pause-talk-voice-started.json"'),
+  'the actual first spoken sample gets a durable pause-specific marker');
+assert.ok(voiceMarker.includes('temp_dir=pause_voice_start_tmp_dir'),
+  'the pause start marker uses its own writer directory');
 
 // Both gates gate the manual jingle AND the rotate: a stinger must not split
 // either kind of break from the song it leads into.

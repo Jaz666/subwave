@@ -48,8 +48,10 @@ import { holdsForClosingTrack } from './handover-policy.js';
 import { speakClockAllowed, stationIdDaypartDrifted, stationIdDaypartStamp } from './clock-policy.js';
 import { currentTalkAir } from './talk-air.js';
 import {
+  PAUSE_TALK_ARM_MAX_AGE_MS,
   PAUSE_TALK_EXIT_CROSS_SEC,
   PAUSE_TALK_MARKER_POLL_MS,
+  PAUSE_TALK_RECOVERY_AMBIGUITY_MS,
   pauseTalkArmExpired,
   pauseTimelineDelayMs,
   releaseDelayMs,
@@ -57,6 +59,11 @@ import {
   silenceDurationMs,
   wantsPauseTalk,
 } from './pause-talk.js';
+import {
+  inspectPauseVoiceDelivery,
+  waitForPauseVoiceClaim,
+  waitForPauseVoiceStarted,
+} from './queue/pause-voice-delivery.js';
 import * as webhooks from './webhooks.js';
 import * as scrobble from './scrobble.js';
 import * as liquidsoapControl from './liquidsoap-control.js';
@@ -118,6 +125,7 @@ import {
   BED_MARKER_FRESH_MS,
   VOICE_LEADIN_MS,
   airVoice,
+  clipDurationMs,
   speechDurationMs,
   writeHandoff,
   jingleAiredAtMs,
@@ -185,6 +193,13 @@ interface PendingVoice {
   /** Process-local completion signal. Deliberately omitted by JSON.stringify;
    *  after restart the durable queue owns playout but no dead caller is waiting. */
   onCompleted?: (aired: boolean) => void;
+  /** Set only while reconstructing the commitment: recovery waits out an old
+   *  mixer's ambiguous read/delete/start interval before deciding the clip was
+   *  never published. It may ride the final acknowledgement write harmlessly. */
+  pauseRecovered?: boolean;
+  /** Durable controller acknowledgement written after the stable delivery id
+   *  reached the mixer's start marker and post-air bookkeeping completed. */
+  pauseAcknowledgedAt?: number;
 }
 
 export interface AnnounceOutcome {
@@ -386,11 +401,19 @@ class Queue {
   // can hand a real silence to the mixer.
   recoverPauseTalk() {
     const raw = readPauseTalkCommit() as Partial<PendingVoice> | null;
+    if (raw?.pauseTalk === true
+      && /^[a-f0-9]{16}$/.test(String(raw.pauseId || ''))
+      && Number.isFinite(raw.pauseAcknowledgedAt)) {
+      void discardPauseTalkCommit();
+      this.log('scheduler', `Cleaned acknowledged pause-and-talk delivery for ${raw.kind || 'segment'}`);
+      return;
+    }
     if (!raw || raw.pauseTalk !== true || typeof raw.kind !== 'string'
       || !/^[a-f0-9]{16}$/.test(String(raw.pauseId || ''))
       || typeof raw.pauseTrackKey !== 'string'
       || !Number.isFinite(raw.pauseDelaySec)
-      || !Array.isArray(raw.clips) || raw.clips.length === 0
+      || !Array.isArray(raw.clips) || raw.clips.length !== 1
+      || raw.exchange === true
       || !raw.clips.every(c => c && typeof c.text === 'string' && typeof c.wavPath === 'string')
       || pauseTalkArmExpired(raw.pauseArmedAt, Date.now())) {
       if (raw) void discardPauseTalkCommit();
@@ -400,7 +423,7 @@ class Queue {
       kind: raw.kind,
       clips: raw.clips as PendingVoice['clips'],
       daypart: typeof raw.daypart === 'string' ? raw.daypart : null,
-      exchange: raw.exchange === true,
+      exchange: false,
       t: Number.isFinite(raw.t) ? Number(raw.t) : Date.now(),
       pauseTalk: true,
       pauseId: raw.pauseId,
@@ -413,6 +436,7 @@ class Queue {
       pauseDelaySec: Number.isFinite(raw.pauseDelaySec)
         ? Math.max(0, Number(raw.pauseDelaySec)) : 0,
       sfx: typeof raw.sfx === 'string' ? raw.sfx : null,
+      pauseRecovered: true,
     };
     this.log('scheduler', `Recovered committed pause-and-talk break for ${raw.kind}`);
   }
@@ -1803,6 +1827,11 @@ class Queue {
       this.dropPendingVoice('its pause-and-talk clip was reaped before the boundary');
       return false;
     }
+    if (p.clips.length !== 1 || clips.length !== 1 || p.exchange) {
+      p.pauseTalk = false;
+      this.log('scheduler', `Pause-and-talk ${p.kind} falling back to ducked boundary speech — only a single-speaker segment can own a break`);
+      return false;
+    }
     const pauseId = randomBytes(8).toString('hex');
     const voiceWindowMs = clips.reduce((sum, c) => sum + speechDurationMs(c.wavPath, c.text), 0);
     // The predecessor's crossfade is mixed over the HEAD of this silence, so it
@@ -1896,6 +1925,7 @@ class Queue {
     delete p.pauseTrackKey;
     delete p.pauseDelaySec;
     delete p.pauseReleasing;
+    delete p.pauseAcknowledgedAt;
     if (path) void discardSilentWav(path);
     void discardPauseTalkCommit();
     this.log('scheduler', `Pause-and-talk break disarmed for ${p.kind} — ${reason}; falling back to ducked boundary speech`);
@@ -3208,44 +3238,95 @@ class Queue {
       `Pause-and-talk break on air → speaking ${p.kind}${delay ? ` after ${Math.round(delay / 1000)}s of crossfade tail` : ''}`);
     void (async () => {
       if (delay) await new Promise(r => setTimeout(r, delay));
-      const completions: Promise<boolean>[] = [];
-      let committedVoice = false;
-      for (const clip of clips) {
-        try {
-          const seg: SegmentDesc = p.exchange
-            ? { ...exchangeSegment(clip, p.kind), channel: 'say' }
-            : { kind: p.kind, channel: 'say', text: clip.text, meta: clip.meta, persona: clip.persona };
-          const handoffPromise = airVoice(config.liquidsoap.sayFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
-            onQueued: q => this.onQueued(q, seg),
-          });
-          const handoff = await handoffPromise;
-          committedVoice = true;
-          completions.push(this.onSpoken(handoff, seg));
+      const clip = clips[0]!;
+      const deliveryId = p.pauseId!;
+      const seg: SegmentDesc = {
+        kind: p.kind,
+        channel: 'say',
+        text: clip.text,
+        meta: clip.meta,
+        persona: clip.persona,
+      };
+      const waitMs = Math.max(1_000,
+        (p.pauseArmedAt ?? Date.now()) + PAUSE_TALK_ARM_MAX_AGE_MS - Date.now());
+      let observed = inspectPauseVoiceDelivery(deliveryId);
+      try {
+        // On a controller restart, `unpublished` can be the few milliseconds
+        // after poll_voice removed say.txt and before it atomically wrote the
+        // accepted marker. Let the still-running mixer resolve that ambiguity
+        // before publishing the stable id. The first pause mixer has no
+        // accepted marker, but its generic voice-playing marker is recognised.
+        if (p.pauseRecovered && observed.phase === 'unpublished') {
+          observed = await waitForPauseVoiceClaim(
+            deliveryId,
+            PAUSE_TALK_RECOVERY_AMBIGUITY_MS,
+          );
+        }
+
+        const started = observed.phase === 'started'
+          ? Promise.resolve(observed.startedAt)
+          : waitForPauseVoiceStarted(deliveryId, waitMs);
+        let handoff: VoiceHandoff;
+        if (observed.phase === 'published' || observed.phase === 'accepted' || observed.phase === 'started') {
+          handoff = {
+            voiceId: deliveryId,
+            clipMs: clipDurationMs(clip.wavPath, clip.text),
+            aired: started,
+          };
+          this.log('scheduler', `Pause-and-talk ${p.kind} recovery observed voice ${observed.phase} — not republishing ${deliveryId}`);
+        } else {
+          handoff = await airVoice(
+            config.liquidsoap.sayFile,
+            clip.wavPath,
+            clip.text,
+            voiceGainDb(p.kind, clip.persona),
+            {
+              voiceId: deliveryId,
+              pauseDeliveryId: deliveryId,
+              airMarkerPromise: started,
+              onQueued: q => this.onQueued(q, seg),
+            },
+          );
           if (p.sfx) {
             await this.playSfx(p.sfx, { underVoice: true });
             p.sfx = null;
           }
-        } catch (err) {
-          this.log('error', `Pause-and-talk voice failed: ${(err as Error).message}`);
         }
-      }
-      // Retain the one pending slot through the whole release. For an exchange,
-      // clearing it after the first line would let another scheduled voice join
-      // the serialiser ahead of the remaining lines and steal part of the
-      // silence reserved for this segment.
-      if (committedVoice) {
+
+        const airedAt = await handoff.aired;
+        if (airedAt == null) {
+          // Once a stable id was published or accepted, retrying is the one
+          // action that can make it play twice. Give up ownership without a
+          // second handoff; a healthy mixer always supplies the start marker.
+          this.log('error', `Pause-and-talk voice ${deliveryId} did not produce a start acknowledgement — not republishing`);
+          if (this._pendingVoice === p) this._pendingVoice = null;
+          await discardPauseTalkCommit();
+          p.onCompleted?.(false);
+          return;
+        }
+
+        const completed = await this.onSpoken(handoff, seg);
+        // The controller's durable acknowledgement comes AFTER the mixer's
+        // start marker and ordinary post-air bookkeeping. If deletion is
+        // interrupted, recoverPauseTalk sees this phase and only cleans up.
+        p.pauseAcknowledgedAt = Date.now();
+        await writePauseTalkCommit(p);
         if (this._pendingVoice === p) this._pendingVoice = null;
-        void discardPauseTalkCommit();
-      } else if (this._pendingVoice === p) {
-        p.pauseReleasing = false;
-        this.disarmPauseTalk(p, 'its voice handoff failed');
-      }
-      void Promise.all(completions).then(results => p.onCompleted?.(results.some(Boolean)));
-      if (p.exchange) {
-        webhooks.notify('dj.say', {
-          text: clips.map(c => `${c.persona?.name || 'DJ'}: ${c.text}`).join('\n'),
-          kind: p.kind,
-        });
+        await discardPauseTalkCommit();
+        p.onCompleted?.(completed);
+      } catch (err) {
+        this.log('error', `Pause-and-talk voice failed: ${(err as Error).message}`);
+        if (this._pendingVoice !== p) return;
+        const after = inspectPauseVoiceDelivery(deliveryId);
+        if (after.phase === 'unpublished') {
+          p.pauseReleasing = false;
+          this.disarmPauseTalk(p, 'its voice handoff failed before publication');
+        } else {
+          // Published/accepted is irrevocable: fallback would be a second copy.
+          this._pendingVoice = null;
+          await discardPauseTalkCommit();
+          p.onCompleted?.(false);
+        }
       }
     })();
   }

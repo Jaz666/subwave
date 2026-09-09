@@ -24,6 +24,9 @@ export const PAUSE_TALK_SAFETY_MS = 1_000;
  *  and falls back to ducked delivery. Past a long album cut, so a break armed
  *  behind a sent-but-unaired track still gets its boundary. */
 export const PAUSE_TALK_ARM_MAX_AGE_MS = 15 * 60_000;
+/** On recovery only: enough for an older mixer's say poll + silent lead-in to
+ *  publish its generic start marker when no acceptance marker exists. */
+export const PAUSE_TALK_RECOVERY_AMBIGUITY_MS = 1_500;
 
 export function wantsPauseTalk({
   enabled,

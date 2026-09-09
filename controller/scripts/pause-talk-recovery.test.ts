@@ -4,7 +4,7 @@
 // has actually joined the serialised say queue.
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -25,8 +25,9 @@ process.env.PIPER_BIN = fakePiper;
 process.env.FAKE_PIPER_WAV = fakePiperWav;
 
 const { config } = await import('../src/config.js');
-const { PAUSE_TALK_COMMIT_FILE, writeSilentWav } = await import('../src/audio/wav-silence.js');
+const { PAUSE_TALK_COMMIT_FILE, writePauseTalkCommit, writeSilentWav } = await import('../src/audio/wav-silence.js');
 const { queue } = await import('../src/broadcast/queue.js');
+const { voiceUri } = await import('../src/broadcast/queue/voice-io.js');
 const settings = await import('../src/settings.js');
 const { withTalkAir } = await import('../src/broadcast/talk-air.js');
 
@@ -41,6 +42,42 @@ const waitFor = async (fn: () => boolean, timeoutMs = 1_000) => {
   while (!fn() && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(fn(), true);
 };
+
+function clearPauseProtocol() {
+  for (const path of [
+    config.liquidsoap.sayFile,
+    config.liquidsoap.voicePlayingFile,
+    config.liquidsoap.pauseVoiceAcceptedFile,
+    config.liquidsoap.pauseVoiceStartedFile,
+    config.liquidsoap.pauseTalkPlayingFile,
+  ]) rmSync(path, { force: true });
+}
+
+function acceptAndStart(pauseId: string) {
+  rmSync(config.liquidsoap.sayFile, { force: true });
+  writeFileSync(config.liquidsoap.pauseVoiceAcceptedFile, JSON.stringify({
+    deliveryId: pauseId, acceptedAt: Date.now() / 1000,
+  }));
+  writeFileSync(config.liquidsoap.pauseVoiceStartedFile, JSON.stringify({
+    deliveryId: pauseId, startedAt: Date.now() / 1000,
+  }));
+}
+
+async function recoverCommittedPause(pauseId: string) {
+  clearPauseProtocol();
+  rmSync(PAUSE_TALK_COMMIT_FILE, { force: true });
+  (queue as any)._pendingVoice = null;
+  await writePauseTalkCommit({
+    kind: 'news', clips: [clip(`Voice ${pauseId}`)], daypart: null,
+    exchange: false, t: Date.now(), pauseTalk: true, pauseId,
+    pauseArmedAt: Date.now(), pauseIncomingCrossMs: 0,
+    pauseSilenceMs: 10_000, pauseTrackKey: 'id:next', pauseDelaySec: 6.5,
+  });
+  queue.recover();
+  writeFileSync(config.liquidsoap.pauseTalkPlayingFile, JSON.stringify({
+    pauseId, startedAt: Date.now() / 1000,
+  }));
+}
 
 test('a committed pause voice is recovered even when no queue snapshot exists', async () => {
   rmSync(config.queue.file, { force: true });
@@ -68,6 +105,7 @@ test('a committed pause voice is recovered even when no queue snapshot exists', 
 });
 
 test('the committed slot stays occupied until the pause voice joins say.txt', async () => {
+  clearPauseProtocol();
   const pauseId = '0123456789abcdef';
   (queue as any)._pendingVoice = {
     kind: 'curiosity', clips: [clip('Original')], daypart: null,
@@ -88,8 +126,89 @@ test('the committed slot stays occupied until the pause voice joins say.txt', as
   assert.equal(queue.pendingVoiceTalk()?.kind, 'curiosity');
 
   await waitFor(() => existsSync(config.liquidsoap.sayFile));
+  assert.ok(readFileSync(config.liquidsoap.sayFile, 'utf8').includes(`subwave_pause_delivery="${pauseId}"`));
+  acceptAndStart(pauseId);
   await waitFor(() => queue.pendingVoiceTalk() === null);
-  rmSync(config.liquidsoap.sayFile, { force: true });
+  await waitFor(() => !existsSync(PAUSE_TALK_COMMIT_FILE));
+});
+
+test('restart before voice publication publishes the stable id exactly once', async () => {
+  const pauseId = '1111111111111111';
+  await recoverCommittedPause(pauseId);
+  queue.onPauseTalkStarted();
+  await waitFor(() => existsSync(config.liquidsoap.sayFile), 3_000);
+  assert.equal(
+    readFileSync(config.liquidsoap.sayFile, 'utf8'),
+    voiceUri(voice, 0, pauseId, pauseId),
+  );
+  acceptAndStart(pauseId);
+  await waitFor(() => queue.pendingVoiceTalk() === null);
+});
+
+test('restart after publication leaves the existing say.txt handoff untouched', async () => {
+  const pauseId = '2222222222222222';
+  await recoverCommittedPause(pauseId);
+  const published = `${voiceUri(voice, 0, pauseId, pauseId)},fixture-sentinel`;
+  writeFileSync(config.liquidsoap.sayFile, published);
+  queue.onPauseTalkStarted();
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(readFileSync(config.liquidsoap.sayFile, 'utf8'), published,
+    'recovery observes publication instead of overwriting it');
+  acceptAndStart(pauseId);
+  await waitFor(() => queue.pendingVoiceTalk() === null);
+});
+
+test('restart after mixer consumption trusts acceptance and never republishes', async () => {
+  const pauseId = '3333333333333333';
+  await recoverCommittedPause(pauseId);
+  writeFileSync(config.liquidsoap.pauseVoiceAcceptedFile, JSON.stringify({
+    deliveryId: pauseId, acceptedAt: Date.now() / 1000,
+  }));
+  queue.onPauseTalkStarted();
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(existsSync(config.liquidsoap.sayFile), false);
+  acceptAndStart(pauseId);
+  await waitFor(() => queue.pendingVoiceTalk() === null);
+});
+
+test('mixer acceptance arriving inside the recovery ambiguity wait prevents replay', async () => {
+  const pauseId = '6666666666666666';
+  await recoverCommittedPause(pauseId);
+  queue.onPauseTalkStarted();
+  await new Promise(resolve => setTimeout(resolve, 100));
+  writeFileSync(config.liquidsoap.pauseVoiceAcceptedFile, JSON.stringify({
+    deliveryId: pauseId, acceptedAt: Date.now() / 1000,
+  }));
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(existsSync(config.liquidsoap.sayFile), false,
+    'a controller must not republish after the surviving mixer claims the consumed handoff');
+  acceptAndStart(pauseId);
+  await waitFor(() => queue.pendingVoiceTalk() === null);
+});
+
+test('restart after voice start acknowledges and cleans up without publication', async () => {
+  const pauseId = '4444444444444444';
+  await recoverCommittedPause(pauseId);
+  writeFileSync(config.liquidsoap.pauseVoiceStartedFile, JSON.stringify({
+    deliveryId: pauseId, startedAt: Date.now() / 1000,
+  }));
+  queue.onPauseTalkStarted();
+  await waitFor(() => queue.pendingVoiceTalk() === null);
+  assert.equal(existsSync(config.liquidsoap.sayFile), false);
+  await waitFor(() => !existsSync(PAUSE_TALK_COMMIT_FILE));
+});
+
+test('restart after controller acknowledgement performs cleanup only', async () => {
+  clearPauseProtocol();
+  const pauseId = '5555555555555555';
+  await writePauseTalkCommit({
+    kind: 'news', pauseTalk: true, pauseId, pauseAcknowledgedAt: Date.now(),
+  });
+  (queue as any)._pendingVoice = null;
+  queue.recover();
+  assert.equal(queue.pendingVoiceTalk(), null);
+  assert.equal(existsSync(config.liquidsoap.sayFile), false);
+  await waitFor(() => !existsSync(PAUSE_TALK_COMMIT_FILE));
 });
 
 test('announce reports a held delivery and pause eligibility wins over boundary mode', async () => {
