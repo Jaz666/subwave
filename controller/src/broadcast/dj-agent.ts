@@ -1182,15 +1182,17 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
         { persona: personaIn, text: greeting },
       ], 'handoff');
     } else if (signoffText) {
-      await queue.announce(signoffText, 'handoff', {
+      const outcome = await queue.announce(signoffText, 'handoff', {
         persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
       });
-      aired = true;
+      // Older queue doubles return void; the integrated queue returns an
+      // explicit refusal only when an already-committed pause owns the seam.
+      aired = outcome?.accepted !== false;
     } else if (greeting) {
-      await queue.announce(greeting, 'handoff', {
+      const outcome = await queue.announce(greeting, 'handoff', {
         persona: personaIn, meta: { personaId: personaIn.id, personaName: personaIn.name },
       });
-      aired = true;
+      aired = outcome?.accepted !== false;
     }
 
     if (aired) {

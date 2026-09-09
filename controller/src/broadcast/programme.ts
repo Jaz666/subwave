@@ -316,8 +316,11 @@ export async function runFeature(queue: QueueApi, ctx: SessionContext, { hourInd
         const run = await runCapability(kind, ctx, {
           brief: `This segment is the planned feature of the programme "${show.name}". Today's feature: ${topic}${plan?.angle ? ` (episode angle: ${plan.angle})` : ''}. Build the segment around it.`,
           persona: speaker,
+          // Programme beats keep their established ducked/boundary placement;
+          // pause-and-talk is for director/skill segments, not the feature arc.
+          pauseTalkEligible: false,
         });
-        if (run.aired && run.text) return run.text;
+        if (run.queued && run.text) return run.text;
         // Skill stood down for want of usable data (#1412). The beat is still
         // mandatory, so fall through to the straight-talk floor.
         queue.log('scheduler', `Programme feature capability "${kind}" stood down (${run.reason || 'no usable data'}) — airing straight talk instead`);
