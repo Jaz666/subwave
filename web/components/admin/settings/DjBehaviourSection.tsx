@@ -2,6 +2,7 @@
 
 import { Label } from '../../ui/label';
 import { Card, Seg } from '../ui';
+import { fieldAria } from '../../../lib/form';
 import {
   SectionHeader, SaveBar,
   type SectionProps,
@@ -13,6 +14,8 @@ import {
  * so the TTS panel remains concerned solely with voice configuration.
  */
 export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
+  const talkPlacementAria = fieldAria('dj-talk-placement', undefined, { hasDescription: true });
+  const linkStyleAria = fieldAria('dj-link-release-year', undefined, { hasDescription: true });
   const save = async () => {
     await saveSettings({
       djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
@@ -30,8 +33,9 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
 
       <Card title="Talk placement" sub={form.djTalkOnlyBetweenTracks ? 'between tracks' : 'any time'}>
         <div className="field">
-          <Label>Scheduled speech</Label>
+          <Label {...talkPlacementAria.labelledByProps}>Scheduled speech</Label>
           <Seg
+            {...talkPlacementAria.groupProps}
             value={form.djTalkOnlyBetweenTracks ? 'between' : 'any'}
             options={[
               { id: 'any', label: 'Any time', title: 'Scheduled segments air on the minute they are written' },
@@ -39,7 +43,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             ]}
             onChange={v => setForm(f => ({ ...f, djTalkOnlyBetweenTracks: v === 'between' }))}
           />
-          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+          <p {...talkPlacementAria.descriptionProps} className="mt-2 text-[13px] leading-[1.55] text-muted">
             {form.djTalkOnlyBetweenTracks ? (
               <>
                 Every <strong>scheduled</strong> segment — station IDs, the hourly time
@@ -93,6 +97,37 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             sign-off and greeting.
           </p>
         </div>
+      </Card>
+
+      <Card title="Link style" sub={form.djBehaviour.releaseYearMentions + ' release-year mentions'}>
+        <div className="field">
+          <Label {...linkStyleAria.labelledByProps}>Release-year mentions</Label>
+          <Seg
+            {...linkStyleAria.groupProps}
+            value={form.djBehaviour.releaseYearMentions}
+            options={[
+              { id: 'regular', label: 'Regular', title: 'Keep release years available on every eligible link' },
+              { id: 'occasional', label: 'Occasional', title: 'Make release years available on roughly one in four eligible links' },
+              { id: 'rare', label: 'Rare', title: 'Make release years available on roughly one in six eligible links' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              djBehaviour: { ...f.djBehaviour, releaseYearMentions: v as typeof f.djBehaviour.releaseYearMentions },
+            }))}
+          />
+          <p {...linkStyleAria.descriptionProps} className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Release years stay verified in the library. This controls how often one is supplied
+            to the DJ for a link, keeping factual grounding intact without making every link sound like metadata.
+          </p>
+        </div>
+      </Card>
+
+      <Card title="Extended Sleeve Notes" sub="coming soon">
+        <p className="text-[13px] leading-[1.55] text-muted">
+          Soon, the DJ will be able to use a fuller packet of verified track facts—such as
+          album, trusted release year and station-play history—when writing links. This will
+          remain separate from show steering and other editorial context.
+        </p>
       </Card>
 
       <SaveBar
