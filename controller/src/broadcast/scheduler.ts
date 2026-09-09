@@ -537,7 +537,7 @@ export async function rollSessionNow(
   } catch (err) {
     queue.log('error', `Programme plan failed: ${err.message}`);
   }
-  if (airHandoff) {
+  if (airHandoff && !session.boundaryHandoffAwaitsTrack()) {
     try {
       await djAgent.runPersonaHandoff(queue, ctx);
     } catch (err) {

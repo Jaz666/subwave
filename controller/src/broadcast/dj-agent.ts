@@ -995,15 +995,14 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
   const showOut = pending.showName || null;
 
   await withTrace({ kind: 'handoff', from: personaOut.name, to: personaIn.name }, async () => {
-    // The sign-off closes the show that just ENDED, but maybeRoll has already
-    // hard-rolled by the time this runs — the live session holds nothing but its
-    // own scenario turn, so reading it would strip the outgoing DJ of the hour
-    // it is signing off from. Its memory is the ARCHIVED session's
-    // (session.priorPromptMemory). The greeting keeps the fresh session's empty
-    // memory on purpose: not inheriting the outgoing topic is the point of #1479.
-    const outgoingRecap = queue.getDjRecap({ prior: true });
-    const outgoingOpeners = queue.getRecentOpeners(6, { prior: true });
-    const recentOpeners = queue.getRecentOpeners();
+    // A boundary handoff is generated while the outgoing session is deliberately
+    // still live. Ordinary mic-passes run after a hard roll and therefore read
+    // the archived view. The incoming half always gets the fresh side: before a
+    // boundary roll that means an explicit clean slate, not the still-live hour.
+    const outgoingRecap = queue.getDjRecap({ prior: !isBoundaryHandoff });
+    const outgoingOpeners = queue.getRecentOpeners(6, { prior: !isBoundaryHandoff });
+    const incomingRecap = isBoundaryHandoff ? null : queue.getDjRecap();
+    const recentOpeners = isBoundaryHandoff ? [] : queue.getRecentOpeners();
     let aired = false;
 
     // Render both lines before publishing either. The exchange takes the voice
@@ -1033,8 +1032,10 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
       greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn,
         sameHost: isSameHostAcknowledgement,
-        episodeAngle: session.getProgramme()?.plan?.angle || null,
-        context: ctx, recap: queue.getDjRecap(), recentOpeners,
+        episodeAngle: (isBoundaryHandoff
+          ? session.getBoundaryProgramme()
+          : session.getProgramme())?.plan?.angle || null,
+        context: ctx, recap: incomingRecap, recentOpeners,
       });
     } catch (err: any) {
       queue.log('error', `Handoff greeting failed: ${err.message}`);

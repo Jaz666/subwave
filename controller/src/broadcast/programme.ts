@@ -121,14 +121,20 @@ export function featureKindMenu(host: { skills?: string[] } | null | undefined, 
 // `now` defaults to the moment the CONTEXT describes, not the wall clock:
 // onTrackStarted rolls on a look-ahead context, and a live `now` inside that
 // window would compare the incoming session key against the outgoing show.
-export async function ensurePlan(ctx: SessionContext, now = session.contextDate(ctx)): Promise<void> {
-  const ep = activeEpisode(now);
-  if (!ep) return;
-  let prog = session.getProgramme();
-  if (!prog) {
-    prog = { status: 'pending', plan: null, beats: {}, introAiredAt: null };
-    session.attachProgramme(prog);
-  }
+interface PlanDeps {
+  generateProgrammePlan?: typeof dj.generateProgrammePlan;
+}
+
+type ProgrammeShow = NonNullable<ReturnType<typeof settings.resolveActiveShow>>;
+
+async function fillPlan(
+  show: ProgrammeShow,
+  ctx: SessionContext,
+  now: Date,
+  prog: session.ProgrammeState,
+  attach: (next: session.ProgrammeState) => void,
+  { generateProgrammePlan = dj.generateProgrammePlan }: PlanDeps = {},
+): Promise<void> {
   if (prog.status !== 'pending') return;
   if (!autoVoiceAllowed()) return;  // station voice is off — no beat will air, so don't buy a plan
   if (!optionalSegmentsAllowed()) return;  // over budget — stay pending, retry later
@@ -137,12 +143,12 @@ export async function ensurePlan(ctx: SessionContext, now = session.contextDate(
   // Span is measured from the show's FIRST hour; the plan covers what's left.
   const hoursLeft = Math.max(1, span.total - span.index);
   const roster = settings.getOnAirRoster(now);
-  const pinned = String(ep.show.segmentSkill || '').trim() || null;
-  const prevAngle = await previousAngle(ep.show.id);
+  const pinned = String(show.segmentSkill || '').trim() || null;
+  const prevAngle = await previousAngle(show.id);
   try {
-    const plan = await withTrace({ kind: 'programme-plan', show: ep.show.name }, () =>
-      dj.generateProgrammePlan({
-        show: ep.show,
+    const plan = await withTrace({ kind: 'programme-plan', show: show.name }, () =>
+      generateProgrammePlan({
+        show,
         spanHours: hoursLeft,
         host: roster.host,
         guests: roster.guests,
@@ -153,13 +159,45 @@ export async function ensurePlan(ctx: SessionContext, now = session.contextDate(
       }));
     prog.status = 'ok';
     prog.plan = plan;
-    session.attachProgramme(prog);
-    logEvent('programme.plan', { show: ep.show.name, angle: plan?.angle || null });
+    attach(prog);
+    logEvent('programme.plan', { show: show.name, angle: plan?.angle || null });
   } catch (err) {
     prog.status = 'fallback';
-    session.attachProgramme(prog);
-    logEvent('programme.plan', { show: ep.show.name, error: (err as Error).message });
+    attach(prog);
+    logEvent('programme.plan', { show: show.name, error: (err as Error).message });
   }
+}
+
+export async function ensurePlan(ctx: SessionContext, now = session.contextDate(ctx)): Promise<void> {
+  const ep = activeEpisode(now);
+  if (!ep) return;
+  let prog = session.getProgramme();
+  if (!prog) {
+    prog = { status: 'pending', plan: null, beats: {}, introAiredAt: null };
+    session.attachProgramme(prog);
+  }
+  await fillPlan(ep.show, ctx, now, prog, session.attachProgramme);
+}
+
+// Build the incoming episode while the final outgoing track is still live.
+// The state rides the boundary handoff and transfers on the real session roll;
+// attaching it to the current session would make the outgoing show inherit the
+// incoming programme before the boundary.
+export async function prepareBoundaryPlan(
+  ctx: SessionContext,
+  deps: PlanDeps = {},
+): Promise<void> {
+  const pending = session.pendingHandoff();
+  if (!pending || !('incomingPersonaId' in pending)) return;
+  const now = session.contextDate(ctx);
+  const show = settings.resolveActiveShow(now);
+  if (!show?.programme || pending.targetKey !== `show:${show.id}`) return;
+  let prog = session.getBoundaryProgramme();
+  if (!prog) {
+    prog = { status: 'pending', plan: null, beats: {}, introAiredAt: null };
+    session.attachBoundaryProgramme(prog);
+  }
+  await fillPlan(show, ctx, now, prog, session.attachBoundaryProgramme, deps);
 }
 
 // Intro — the top of the show. Fires from the same call sites as the persona
@@ -177,7 +215,8 @@ export async function maybeRunIntro(
   if (!prog || prog.beats?.intro) return false;
 
   // A persona handoff at this boundary already opened the show on air.
-  if (ep.sess.rolledFrom && ep.sess.handoffAired) {
+  if ((ep.sess.rolledFrom && ep.sess.handoffAired)
+      || ep.sess.boundaryHandoff?.targetKey === ep.sess.key) {
     markIntroAired();
     return false;
   }

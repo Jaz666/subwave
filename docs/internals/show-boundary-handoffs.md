@@ -61,6 +61,13 @@ or co-host exchange.
    track then starts under the new show's identity. There is no mandatory
    spacer track between the two halves of a handoff.
 
+Pair-drain discovers the incoming pick while the track before the final one is
+still live. That look-ahead may arm the record and prepare the incoming episode,
+but it cannot publish speech. The record carries the final outgoing track's
+identity; only the corresponding `now-playing.json` transition authorises the
+pair. `airIntro()` is awaited to the handoff-write boundary first, which puts the
+final track's own line ahead of the handoff on the shared voice serialiser.
+
 The boundary must be driven by confirmed playback state where possible. A
 queued URI is only handed to Liquidsoap, not proof that a listener has reached
 the corresponding on-air moment.
@@ -78,7 +85,17 @@ the corresponding on-air moment.
   under the incoming identity and current clock once the handoff has cleared.
 - A pair rendered for a future seam is **queued**, not aired. That state is
   persisted with the session so a controller restart regenerates lost WAVs;
-  only the stream-edge marker settles it as aired.
+  only the final line's stream-edge marker settles the complete pair as aired.
+- If the wall-clock session roll wins the race with the final-track marker, the
+  armed record transfers to the incoming session and generic roll/drain hooks
+  still leave it for the confirmed-track runner.
+- The outgoing half reads the still-live outgoing session; the incoming half
+  starts with clean prompt memory. If the incoming show is a programme, its plan
+  is prepared onto the boundary record and transferred at the real roll so the
+  greeting carries the incoming angle and durably replaces the standalone intro.
+- Handoff suppression applies only inside the scheduled-talk scope. Manual
+  operator speech remains immediate, and listener-request intros remain governed
+  by their request/session rules rather than by the handoff lifecycle.
 - Treat a missing/unknown duration conservatively: never invent an exact
   boundary time or delay music waiting for one.
 
