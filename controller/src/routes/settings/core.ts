@@ -123,6 +123,7 @@ router.get('/settings', requireAdmin, async (req, res) => {
         shows: s.shows,
         schedule: s.schedule,
         djTalkOnlyBetweenTracks: s.djTalkOnlyBetweenTracks,
+        djBehaviour: s.djBehaviour,
         tts: s.tts,
         llm: s.llm,
         search: s.search,
@@ -334,4 +335,3 @@ router.post('/settings/navidrome/test', requireAdmin, async (req, res) => {
   }
   res.json(await subsonic.pingWith({ url, user, pass, client: 'sub-wave-admin' }));
 });
-
