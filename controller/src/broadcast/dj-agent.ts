@@ -1137,8 +1137,9 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     //    On a programme show the greeting doubles as the episode's intro, so
     //    the producer's angle (planned before this runs — see the call sites)
     //    rides along; the standalone intro is then skipped (programme.ts).
+    let greeting: string | null = null;
     try {
-      const greeting = await generateHandoffGreeting({
+      greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn,
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         context: ctx, recap: queue.getDjRecap(), recentOpeners,
