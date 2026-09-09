@@ -161,7 +161,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null, linkAirAt = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -470,6 +470,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
 
   // The picker has seen private selection context. Only after its final choice
   // do we invoke the isolated listener-facing writer with safe prompt data.
+  // Recompute its expected air clock here, after discovery and both guards:
+  // an agent tool loop can spend enough of the runway to make the cycle-level
+  // estimate stale before this separate model call even begins.
+  const clockAllowed = speakClockAllowed();
+  const linkAirAt = clockAllowed ? linkClockAt(showAt, Date.now()) : null;
   let rawLink = '';
   if (wantLink && current) {
     try {
@@ -515,7 +520,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // the track on-air now), instead of immediately over that on-air track (#189).
   // Stamp `current` as the link's back-announce target so the queue can drop the
   // link if a request jumps ahead of this pick before it airs.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkAirAt });
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkClockStampFor(linkAirAt, clockAllowed) });
   // Pick was already queued/on-air and got deduped — don't record a session turn
   // for a track that never airs. Returning false lets runTrackEvent fall through
   // to the pool for a fresh pick.
@@ -723,9 +728,6 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
     const journeyClause = audioWaypoint && audioWaypoint.length
       ? ' A sonic journey is active: call tracksTowardJourney and lean toward one of its tracks — each carries the sound a step toward where this arc is heading. If it comes back thin, pick via the library mood/genre/audio tools and keep the energy heading the same way. Never mention the journey on air.'
       : '';
-    // Resolve the expected air moment after selection uses part of the runway.
-    // It travels only to the isolated writer after a track is final.
-    const linkAirAt = speakClockAllowed() ? linkClockAt(showAt, Date.now()) : null;
     // Surface the current track's real Subsonic id so similarSongs /
     // tracksLikeThis ("pass the currently-playing song id") actually have one
     // to pass. Without it the agent fabricates a slug from the title/artist
@@ -786,11 +788,8 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
     // and go straight to the one-call pool picker below to stretch the budget.
     if (settings.get().llm?.pickerAgent && !cheap && !breakerOpen()) {
       try {
-        // Passed only to the post-selection writer, and only when the station
-        // clock policy permits it.
         const queued = await pickViaAgent(queue, ctx, {
           wantLink, audioWaypoint, current, showAt, rankTarget,
-          linkAirAt,
         });
         breakerSuccess();
         if (queued) return;

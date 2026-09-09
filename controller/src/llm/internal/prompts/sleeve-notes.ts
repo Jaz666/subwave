@@ -56,16 +56,14 @@ export function contextSleeveNotesFor(
   playCount: number | null = null,
   stationHistoryNote: string | null = null,
 ): string[] {
+  void context;
   const notes = sleeveNotesFor(track, playCount);
   if (stationHistoryNote) notes.push(stationHistoryNote);
-  // Season and weather are deterministic context, but not link facts. Passing
-  // them to every writer was an invitation to turn them into repetitive scene
-  // setting; dedicated weather/time segments own those beats.
-  const show = context?.activeShow;
-  if (text(show?.topic)) notes.push(`Show theme: ${text(show.topic)}.`);
-  if (text(show?.episodeAngle)) notes.push(`Episode angle: ${text(show.episodeAngle)}.`);
-  const festival = text(context?.festival?.name);
-  if (festival) notes.push(`Festival: ${festival}.`);
+  // The default Sleeve Notes packet is track/library/station history only.
+  // Show identity and an explicit near-boundary handover remain available in
+  // Current Context; themes, episode angles and festivals are editorial
+  // steering, not facts about the selected track, and must not leak into this
+  // isolated listener-facing writer when metadata happens to be sparse.
   return notes;
 }
 

@@ -202,7 +202,7 @@ ${dj.PICKER_CRITERIA}
 
 ${instruction('picker', 'listener-requests', { listenerText: LISTENER_TEXT_CLAUSE })}${dj.REQUESTER_NAME_CLAUSE}
 
-${findingCandidates}${dj.effectsGuidance()}${settings.agentLanguageReminder(persona, 'the "say" link')}`;
+${findingCandidates}${dj.effectsGuidance()}`;
 }
 
 // Exported for scripts/llm-bench, like requestSchema above.
@@ -227,4 +227,3 @@ ${LISTENER_TEXT_CLAUSE}${dj.REQUESTER_GREETING_CLAUSE}${dj.REQUESTER_NAME_CLAUSE
 
 ${currentTrack}`;
 }
-

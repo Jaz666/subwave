@@ -78,13 +78,21 @@ const DOLLAR_AMOUNT = '\\d[\\d,]*(?:\\.\\d+)?';
 // they invite the engine to narrate a fade, a track change or a timing note.
 // This keeps a legitimate delivery change while dropping the common model
 // failure of appending `[softly]` after its final sentence. Closing tags have
-// no meaning to the supported engines and are always removed.
+// no meaning to the supported engines and are always removed. Common bracketed
+// title/version qualifiers are literal speech, not control syntax: deleting
+// `[Live]` from a verified track title changes what the presenter says.
 const PERFORMANCE_CUE_RE = /\[[^\]\r\n]{1,80}\]/g;
 const SPOKEN_CHAR_RE = /[\p{L}\p{N}]/u;
 const PRODUCTION_CUE_RE = /\b(?:cue|square|stage|direction|fad(?:e|es|ed|ing)|music|track|vocals?|sounds?|intro(?:duction)?|outro|transition|paus(?:e|es|ed|ing)|riff(?:ing)?|build(?:ing|s)?|seconds?|\d+s)\b/i;
+const TITLE_QUALIFIER_RE = /^(?:live\b.*|deluxe\b.*|remaster(?:ed)?\b.*|radio edit\b.*|single edit\b.*|album version\b.*|original version\b.*|mono\b.*|stereo\b.*|acoustic\b.*|demo\b.*|bonus track\b.*|anniversary\b.*|expanded edition\b.*)$/i;
+
+function isTitleQualifier(body: string): boolean {
+  return TITLE_QUALIFIER_RE.test(body) && !PRODUCTION_CUE_RE.test(body);
+}
 
 function isPerformanceCue(body: string): boolean {
-  return !body.startsWith('/')
+  return !isTitleQualifier(body)
+    && !body.startsWith('/')
     && !body.startsWith('-')
     && !/\d/.test(body)
     && !PRODUCTION_CUE_RE.test(body);
@@ -124,6 +132,8 @@ export function sanitizePerformanceCues(text: string, maxCues = 2): string {
     if (isPerformanceCue(body) && hasFollowingWords && kept < maxCues) {
       out += cue[0];
       kept += 1;
+    } else if (isTitleQualifier(body)) {
+      out += cue[0];
     } else if (!hasFollowingWords && nextStart === safeText.length) {
       // A terminal cue can carry only punctuation after its closing bracket
       // (`[sigh].`). The cue is not valid without following spoken words, and

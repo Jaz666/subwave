@@ -19,6 +19,11 @@ assert.deepEqual(sleeveNotesFor(track(), 3), [
 assert.deepEqual(contextSleeveNotesFor(track(), {
   date: { season: 'summer' }, weather: { condition: 'cloudy', location: 'The Ribble Valley' },
 }), ['Album: After Laughter Comes Tears.', 'Release year: 1964.']);
+assert.deepEqual(contextSleeveNotesFor(track({ album: '', year: null, originalYear: null }), {
+  activeShow: { topic: 'songs for the long way home', episodeAngle: 'late-night departures' },
+  festival: { name: 'Solstice' },
+}, null, 'First station play.'), ['First station play.'],
+'sparse metadata must not let show or festival steering leak into Sleeve Notes');
 assert.deepEqual(selectSleeveNotes(sleeveNotesFor(track(), 3)), [
   'Album: After Laughter Comes Tears.', 'Release year: 1964.',
 ]);

@@ -4,6 +4,9 @@
 import assert from 'node:assert/strict';
 import { showHandoverContext } from '../src/context.js';
 import { linkPrompt, stationIdPrompt } from '../src/llm/internal/prompts/scripts.js';
+import { setStationTimezone } from '../src/time.js';
+
+setStationTimezone('UTC');
 
 const now = new Date('2026-09-05T10:45:00.000Z');
 const boundary = new Date('2026-09-05T11:00:00.000Z');
@@ -17,6 +20,25 @@ assert.deepEqual(handover, {
   nextShow: { name: 'Lunchtime Rocks', presenter: 'Carrie', startsAt: 'eleven in the morning' },
 });
 assert.equal(showHandoverContext(new Date('2026-09-05T10:44:59.000Z'), resolveShow), null);
+
+const takeoverBoundary = new Date('2026-09-05T10:50:00.000Z');
+const resolveTakeover = (at: Date) => at.getTime() < takeoverBoundary.getTime()
+  ? { id: 'current', name: 'The Scenic Route', persona: { name: 'Chris' } }
+  : { id: 'takeover', name: 'The Early Lunch', persona: { name: 'Carrie' } };
+assert.deepEqual(
+  showHandoverContext(
+    new Date('2026-09-05T10:40:00.000Z'),
+    resolveTakeover,
+    [takeoverBoundary.getTime()],
+  ),
+  {
+    phase: 'final-quarter-hour',
+    nextShow: {
+      name: 'The Early Lunch', presenter: 'Carrie', startsAt: 'coming up on eleven in the morning',
+    },
+  },
+  'a timed takeover is announced at its real non-hour boundary',
+);
 
 const context = {
   activeShow: { name: 'The Scenic Route' },
