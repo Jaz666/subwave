@@ -42,6 +42,7 @@ import { livePickerScope } from '../broadcast/dj-agent.js';
 import { activeJourneyWaypoint } from '../broadcast/dj-agent/runs.js';
 import { pickerAgent } from '../broadcast/dj-agent/agents.js';
 import { buildShortlist } from '../music/shortlist.js';
+import { djPick } from '../music/dj-pick.js';
 
 export const router = express.Router();
 // ---------------------------------------------------------------------------
@@ -109,10 +110,17 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
     const { scope } = await livePickerScope(queue, { audioWaypoint: waypoint });
     const current = queue.current?.track ?? null;
     const show = settings.resolveActiveShow();
+    const criteria = showCriteria(show);
+    const legacyStart = performance.now();
+    const legacyBefore = new Set(dj.recentCalls);
     const legacy = await pickerAgent.run({
       scope,
       messages: session.windowMessages(),
     });
+    const legacyCalls = callsSince(legacyBefore, 'djAgentPick');
+    const legacyElapsedMs = Math.round(performance.now() - legacyStart);
+    const nativeStart = performance.now();
+    const nativeBefore = new Set(dj.recentCalls);
     const native = await buildShortlist({
       scope,
       currentTrackId: current?.id ?? null,
@@ -120,8 +128,22 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
       moods: show?.moods ?? null,
       energies: show?.energies ?? null,
     });
+    const nativeSelection = native.candidates.length
+      ? await djPick({
+          candidates: native.candidates,
+          playlistResolved: !!scope.playlistTracks?.length,
+          sourceRuns: native.sourceRuns,
+          context: {
+            currentTrack: compactTrack(current),
+            showCriteria: criteria,
+            link: 'No link is needed: this is a non-airing discovery comparison.',
+          },
+        })
+      : null;
+    const nativeCalls = callsSince(nativeBefore, 'djShortlistPick');
     res.json({
-      current: current ? { id: current.id, title: current.title, artist: current.artist } : null,
+      current: compactTrack(current),
+      showCriteria: criteria,
       agentic: legacy.toolCalls.map((call: any, index: number) => ({
         round: call.round || index + 1,
         source: call.name || 'unknown',
@@ -132,11 +154,64 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
         source: run.source,
         tracks: run.tracks || [],
       })),
+      outcomes: {
+        agentic: comparisonOutcome({
+          selection: trackFromId(legacy.object?.id, legacy.extras.seen),
+          elapsedMs: legacyElapsedMs,
+          calls: legacyCalls,
+        }),
+        shortlist: comparisonOutcome({
+          selection: trackFromId(nativeSelection?.id, new Map(native.candidates.map((candidate) => [candidate.id, candidate]))),
+          elapsedMs: Math.round(performance.now() - nativeStart),
+          calls: nativeCalls,
+        }),
+      },
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || String(err) });
   }
 });
+
+function compactTrack(track: any) {
+  return track?.id ? { id: track.id, title: String(track.title || ''), artist: String(track.artist || '') } : null;
+}
+
+function trackFromId(id: unknown, tracks: Map<string, any>) {
+  return typeof id === 'string' ? compactTrack(tracks.get(id)) : null;
+}
+
+function showCriteria(show: any) {
+  if (!show) return null;
+  return {
+    name: String(show.name || ''),
+    topic: String(show.topic || ''),
+    strict: !!show.filtersStrict,
+    moods: show.moods || [],
+    genres: show.genres || [],
+    energies: show.energies || [],
+    eras: show.eras || [],
+    vocals: show.vocals || null,
+    playlistStrict: !!show.playlistStrict,
+    playlistCount: show.playlistIds?.length || 0,
+  };
+}
+
+function callsSince(before: Set<any>, kind: string) {
+  return dj.recentCalls.filter((call: any) => !before.has(call) && call.kind === kind);
+}
+
+function comparisonOutcome({ selection, elapsedMs, calls }: { selection: any; elapsedMs: number; calls: any[] }) {
+  const tokenTotal = calls.reduce((sum, call) => sum + (Number(call.usage?.total) || 0), 0);
+  return {
+    selected: selection,
+    elapsedMs,
+    llmCalls: calls.length,
+    tokens: tokenTotal || null,
+    fallback: selection
+      ? 'not required; not exercised — comparison does not enqueue or fall through to the pool picker'
+      : 'no selection — comparison does not enqueue or exercise the pool fallback',
+  };
+}
 
 function tracksFromDiscoveryResult(result: unknown) {
   const tracks = Array.isArray(result)
