@@ -580,9 +580,11 @@ export async function load() {
         : DEFAULTS.djTalkOnlyBetweenTracks,
     djBehaviour: {
       showWelcome: typeof stored.djBehaviour?.showWelcome === 'boolean'
-        ? stored.djBehaviour.showWelcome : DEFAULTS.djBehaviour.showWelcome,
+        ? stored.djBehaviour.showWelcome
+        : DEFAULTS.djBehaviour.showWelcome,
       sameHostAcknowledgement: typeof stored.djBehaviour?.sameHostAcknowledgement === 'boolean'
-        ? stored.djBehaviour.sameHostAcknowledgement : DEFAULTS.djBehaviour.sameHostAcknowledgement,
+        ? stored.djBehaviour.sameHostAcknowledgement
+        : DEFAULTS.djBehaviour.sameHostAcknowledgement,
       extendedSleeveNotes: typeof stored.djBehaviour?.extendedSleeveNotes === 'boolean'
         ? stored.djBehaviour.extendedSleeveNotes : DEFAULTS.djBehaviour.extendedSleeveNotes,
       releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)

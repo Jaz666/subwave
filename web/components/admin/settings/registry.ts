@@ -63,6 +63,13 @@ export const SECTIONS = [
     hint: 'player skin · palette', icon: Palette,
     formKeys: [],
   },
+  // First item in the DJ group: these are the on-air policy controls that
+  // frame the service-specific configuration which follows.
+  {
+    id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
+    hint: 'talk placement · show changes', icon: MessageCircle,
+    formKeys: ['djTalkOnlyBetweenTracks', 'djBehaviour'],
+  },
   {
     // One-field setup for the hosted DJ Brain: writes both `llm` and
     // `tts.cloud` in a single save, but owns neither slice — the LLM provider
@@ -85,11 +92,6 @@ export const SECTIONS = [
     id: 'tts', group: 'the dj', label: 'TTS voice',
     hint: 'default engine', icon: Mic,
     formKeys: ['tts', 'kokoroLang'],
-  },
-  {
-    id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
-    hint: 'talk placement · show changes', icon: MessageCircle,
-    formKeys: ['djTalkOnlyBetweenTracks', 'djBehaviour'],
   },
   {
     id: 'library', group: 'the dj', label: 'Library tagger',

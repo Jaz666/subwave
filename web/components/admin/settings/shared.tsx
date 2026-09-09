@@ -366,15 +366,9 @@ export interface FormState {
   locale: StationLocale;
   kokoroLang: string;
   /** Talk placement switch — every scheduled segment waits for the next track
-   *  boundary. Flat, like djSpeakClock, and owned by the TTS section. */
+   *  boundary. Flat, like djSpeakClock, and owned by DJ behaviour. */
   djTalkOnlyBetweenTracks: boolean;
   djBehaviour: DjBehaviourForm;
-  /** settings.handover.offsetMinutes — how many minutes before a show boundary
-   *  the outgoing host signs off. A string like every other number control, but
-   *  the values are a fixed set (multiples of the talk table's sampling stride),
-   *  so it renders as a segmented control and can never carry a free-text
-   *  error. Owned by the TTS section, beside talk placement. */
-  handoverOffsetMinutes: string;
   weather: WeatherCfg;
   tts: TtsForm;
   llm: LlmForm;

@@ -64,12 +64,39 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Card title="Show changes" sub="more controls coming here">
-        <p className="text-[13px] leading-[1.55] text-muted">
-          Presenter handoffs are automatic when the active DJ changes. A future
-          same-presenter show acknowledgement will live here, alongside its
-          boundary-speech safeguards.
-        </p>
+      <Card title="Show changes" sub={form.djBehaviour.showWelcome ? 'welcome at the hour' : 'quiet'}>
+        <div className="field">
+          <Label>Welcome the new show</Label>
+          <Seg
+            value={form.djBehaviour.showWelcome ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Keep the normal hourly time check' },
+              { id: 'on', label: 'On', title: 'Extend the first hourly check with a welcome to the new show' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, showWelcome: v === 'on' } }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            At a scheduled show change, the incoming DJ’s first hourly time check adds a
+            short natural welcome to the new show. It does not replace a presenter handoff,
+            and ordinary hourly checks stay unchanged.
+          </p>
+        </div>
+        <div className="field mt-5">
+          <Label>Acknowledge a same-host change</Label>
+          <Seg
+            value={form.djBehaviour.sameHostAcknowledgement ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Keep adjacent shows by the same DJ quiet' },
+              { id: 'on', label: 'On', title: 'Let the DJ briefly acknowledge moving into their next show' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, sameHostAcknowledgement: v === 'on' } }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            When the same DJ hosts two adjacent scheduled shows, add one brief spoken
+            acknowledgement of the new show. Different-DJ handoffs keep their normal
+            sign-off and greeting.
+          </p>
+        </div>
       </Card>
 
       <Card title="Link style" sub={form.djBehaviour.releaseYearMentions + ' release-year mentions'}>
@@ -104,7 +131,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
       </Card>
 
       <SaveBar
-        note="Talk placement applies to newly scheduled speech straight away · no mixer restart."
+        note="DJ behaviour applies to newly scheduled speech straight away · no mixer restart."
         busy={busy}
         onSave={save}
         saveLabel="Save DJ behaviour"

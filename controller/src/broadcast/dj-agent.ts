@@ -1054,8 +1054,8 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
 // (queue.announce → airVoice), so they play cleanly back to back.
 //
 // Never throws (callers still need to run the pick after it) and is idempotent:
-// it marks the handoff aired up front, so a concurrent second call — or a
-// mid-way failure — can't double-air or retry into the middle of the new show.
+// an in-process claim prevents concurrent renders, while final-track pairs are
+// durably marked queued and settle only when they actually reach the stream.
 // The two model calls are injectable for the same reason artist-guard's are:
 // the thing worth pinning here is the WIRING — which memory each side of the
 // mic-pass is handed — and that is only observable at the generator boundary.
@@ -1065,11 +1065,23 @@ export interface HandoffDeps {
   generateHandoffGreeting?: typeof dj.generateHandoffGreeting;
 }
 
+// The session record becomes durable only after queueing succeeds. Keep one
+// in-process claim while the LLM/TTS work is running so concurrent picker and
+// scheduler paths cannot render the same pair twice.
+const handoffRuns = new Set<string>();
+
 export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps = {}): Promise<void> {
   const generateSignoff = deps.generateSignoff ?? dj.generateSignoff;
   const generateHandoffGreeting = deps.generateHandoffGreeting ?? dj.generateHandoffGreeting;
   const pending = session.pendingHandoff();
   if (!pending) return;
+  const isBoundaryHandoff = 'incomingPersonaId' in pending;
+  const isSameHostAcknowledgement = !isBoundaryHandoff && pending.sameHost === true;
+  const claim = `${pending.personaId}:${pending.at ?? 'unstamped'}`;
+  if (handoffRuns.has(claim)) return;
+  handoffRuns.add(claim);
+
+  try {
 
   // Nobody listening → the mic-pass moment has passed; don't stack a stale
   // handoff for later. Budget: treated as an optional segment (muted in soft
@@ -1095,51 +1107,52 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     return;
   }
 
+  // The ordinary post-roll mic-pass has no rendered-audio recovery window, so
+  // retain its established claim-before-air behaviour. Final-track handoffs
+  // use the queued state below instead, because their WAVs may wait for a seam.
+  if (!isBoundaryHandoff) session.markHandoffAired();
+
   // Outgoing persona comes from the roll metadata — its clock slot is already
-  // over, so getEffectivePersona() no longer returns it. Incoming is the fresh
-  // session's persona. A persona deleted mid-shift → nothing to voice; drop it.
+  // over, so getEffectivePersona() no longer returns it. A final-track handoff
+  // has deliberately NOT rolled the session yet: use the incoming identity it
+  // captured at arm time, rather than reading the still-outgoing live session.
+  // A persona deleted mid-shift → nothing to voice; drop it.
   const personaOut = settings.resolvePersonaById(pending.personaId);
   const cur = session.getSession();
-  const personaIn = settings.resolvePersonaById(cur?.persona?.id) || settings.getEffectivePersona();
+  const personaIn = (isBoundaryHandoff && settings.resolvePersonaById(pending.incomingPersonaId))
+    || settings.resolvePersonaById(cur?.persona?.id)
+    || settings.getEffectivePersona();
   if (!personaOut || !personaIn) {
     session.markHandoffAired();
     return;
   }
-  const showIn = cur?.show?.name || null;
-
-  // Mark aired BEFORE airing (see the idempotency note above).
-  session.markHandoffAired();
+  const showIn = (isBoundaryHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
+  const showOut = pending.showName || null;
 
   await withTrace({ kind: 'handoff', from: personaOut.name, to: personaIn.name }, async () => {
-    // The sign-off closes the show that just ENDED, but maybeRoll has already
-    // hard-rolled by the time this runs — the live session holds nothing but its
-    // own scenario turn, so reading it would strip the outgoing DJ of the hour
-    // it is signing off from. Its memory is the ARCHIVED session's
-    // (session.priorPromptMemory). The greeting keeps the fresh session's empty
-    // memory on purpose: not inheriting the outgoing topic is the point of #1479.
-    const outgoingRecap = queue.getDjRecap({ prior: true });
-    const outgoingOpeners = queue.getRecentOpeners(6, { prior: true });
-    const recentOpeners = queue.getRecentOpeners();
+    // A boundary handoff is generated while the outgoing session is deliberately
+    // still live. Ordinary mic-passes run after a hard roll and therefore read
+    // the archived view. The incoming half always gets the fresh side: before a
+    // boundary roll that means an explicit clean slate, not the still-live hour.
+    const outgoingRecap = queue.getDjRecap({ prior: !isBoundaryHandoff });
+    const outgoingOpeners = queue.getRecentOpeners(6, { prior: !isBoundaryHandoff });
+    const incomingRecap = isBoundaryHandoff ? null : queue.getDjRecap();
+    const recentOpeners = isBoundaryHandoff ? [] : queue.getRecentOpeners();
     let aired = false;
 
-    // 1. Sign-off, in the OUTGOING persona's voice. Tag the session turn with
-    //    the outgoing persona's id + name — that id is what keeps the line out
-    //    of the new session's prompt memory (broadcast/prompt-memory.ts) and
-    //    what makes session.windowMessages() name the real speaker, so the
-    //    incoming DJ never reads the sign-off as its own words.
+    // Render both lines before publishing either. The exchange takes the voice
+    // chain as one unit, so nothing can slip between sign-off and greeting.
     let signoffText: string | null = null;
-    try {
-      signoffText = await generateSignoff({
-        personaOut, personaIn, showIn,
-        context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
-      });
-      await queue.announce(signoffText, 'handoff', {
-        persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
-      });
-      aired = true;
-    } catch (err: any) {
-      queue.log('error', `Handoff sign-off failed: ${err.message}`);
-      signoffText = null;
+    if (!isSameHostAcknowledgement) {
+      try {
+        signoffText = await generateSignoff({
+          personaOut, personaIn, showOut, showIn,
+          context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
+        });
+      } catch (err: any) {
+        queue.log('error', `Handoff sign-off failed: ${err.message}`);
+        signoffText = null;
+      }
     }
 
     // 2. Greeting, in the INCOMING persona's voice. It acknowledges the
@@ -1149,22 +1162,43 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     //    On a programme show the greeting doubles as the episode's intro, so
     //    the producer's angle (planned before this runs — see the call sites)
     //    rides along; the standalone intro is then skipped (programme.ts).
+    let greeting: string | null = null;
     try {
-      const greeting = await generateHandoffGreeting({
+      greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn,
-        episodeAngle: session.getProgramme()?.plan?.angle || null,
-        context: ctx, recap: queue.getDjRecap(), recentOpeners,
+        sameHost: isSameHostAcknowledgement,
+        episodeAngle: (isBoundaryHandoff
+          ? session.getBoundaryProgramme()
+          : session.getProgramme())?.plan?.angle || null,
+        context: ctx, recap: incomingRecap, recentOpeners,
       });
-      await queue.announce(greeting, 'handoff', {
-        persona: personaIn, meta: { personaId: personaIn.id, personaName: personaIn.name },
-      });
-      aired = true;
     } catch (err: any) {
       queue.log('error', `Handoff greeting failed: ${err.message}`);
     }
 
+    if (signoffText && greeting) {
+      aired = await queue.announceExchange([
+        { persona: personaOut, text: signoffText },
+        { persona: personaIn, text: greeting },
+      ], 'handoff');
+    } else if (signoffText) {
+      await queue.announce(signoffText, 'handoff', {
+        persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
+      });
+      aired = true;
+    } else if (greeting) {
+      await queue.announce(greeting, 'handoff', {
+        persona: personaIn, meta: { personaId: personaIn.id, personaName: personaIn.name },
+      });
+      aired = true;
+    }
+
     if (aired) {
+      session.markHandoffQueued();
       logEvent('dj.handoff', { from: personaOut.name, to: personaIn.name, show: showIn });
     }
   });
+  } finally {
+    handoffRuns.delete(claim);
+  }
 }

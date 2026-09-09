@@ -242,21 +242,31 @@ export async function generateStationId({ recap = null, context = null, recentOp
 // line), but the recent-openers blocklist still steers the first words clear of
 // what just aired. A handoff fires at most ~once an hour, so that's plenty.
 
-export async function generateSignoff({ personaOut, personaIn, showIn = null, context = null, recap = null, recentOpeners = null }: any) {
-  const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
+export function signoffPrompt({ personaOut, personaIn, showOut = null, showIn = null, context = null, recap = null, recentOpeners = null }: any) {
+  // This runs after the session has rolled, so context.activeShow belongs to
+  // the incoming programme. Never feed that show line to the outgoing DJ: it
+  // makes their sign-off claim they have been presenting the new show.
+  const ctxLines = buildContextLines(context, {
+    contextFields: SCRIPT_CONTEXT_FIELDS.filter(field => field !== 'show'),
+  });
   const outName = personaOut?.name || 'your host';
   const inName = personaIn?.name || 'the next host';
   const handTo = showIn ? `${inName}, who's bringing you "${showIn}"` : inName;
-  ctxLines.push(`Task: your time on air is wrapping up. Sign off in character as ${outName} and hand the mic over to ${handTo}. Say ${inName}'s name as you pass it along. ${lengthPhrase('link', personaOut)}. This is a real DJ passing the baton, warm and natural — not a formal announcement, and don't over-explain the schedule.`);
+  const closing = showOut ? ` Your show, "${showOut}", is wrapping up.` : ' Your time on air is wrapping up.';
+  ctxLines.push(`Task:${closing} Sign off in character as ${outName} and hand the mic over to ${handTo}. Say ${inName}'s name as you pass it along. ${lengthPhrase('link', personaOut)}. This is a real DJ passing the baton, warm and natural — not a formal announcement, and don't over-explain the schedule.`);
+  return decoratePrompt(ctxLines.join('\n'), { kind: 'handoff', recap, recentOpeners });
+}
+
+export async function generateSignoff(args: any) {
   return djText({
-    system: djSystem(personaOut),
-    prompt: decoratePrompt(ctxLines.join('\n'), { kind: 'handoff', recap, recentOpeners }),
+    system: djSystem(args.personaOut),
+    prompt: signoffPrompt(args),
     temperature: 1.0, topP: 0.9, repeatPenalty: 1.25, seed: randomSeed(),
     kind: 'generateSignoff',
   });
 }
 
-export function handoffGreetingPrompt({ personaIn, personaOut, showIn = null, episodeAngle = null, context = null, recap = null, recentOpeners = null }: any) {
+export function handoffGreetingPrompt({ personaIn, personaOut, showIn = null, episodeAngle = null, sameHost = false, context = null, recap = null, recentOpeners = null }: any) {
   const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
   const inName = personaIn?.name || 'your host';
   const outName = personaOut?.name || 'the previous host';
@@ -265,7 +275,10 @@ export function handoffGreetingPrompt({ personaIn, personaOut, showIn = null, ep
   // intro when a handoff opened the show).
   const angleClause = showIn && episodeAngle ? ` Today's episode angle: ${episodeAngle} — set it up as you open.` : '';
   const showClause = showIn ? ` You're kicking off "${showIn}".${angleClause}` : '';
-  ctxLines.push(`Task: you're ${inName}, just taking over the mic from ${outName}. Acknowledge ${outName} warmly and naturally by name, then ease into your own shift without continuing their topic.${showClause} ${lengthPhrase('link', personaIn)}. Keep it easy and in character; you're stepping up to the decks, not reading a bulletin.`);
+  const handoffTask = sameHost
+    ? `Task: you're ${inName}, continuing with listeners as the station moves into a new show. Give one short, natural acknowledgement of the change${showIn ? ` into "${showIn}"` : ''}. Do not thank, introduce, or refer to yourself as another DJ; this is one continuous voice, not a handover.`
+    : `Task: you're ${inName}, just taking over the mic from ${outName}. Acknowledge ${outName} warmly and naturally by name, then ease into your own shift without continuing their topic.`;
+  ctxLines.push(`${handoffTask}${showClause} ${lengthPhrase('link', personaIn)}. Keep it easy and in character; you're stepping up to the decks, not reading a bulletin.`);
   return decoratePrompt(ctxLines.join('\n'), { kind: 'handoff', recap, recentOpeners });
 }
 
@@ -525,10 +538,13 @@ export function nextHourlyTimeClause(clock: any) {
   return `Say the time in natural spoken words ("two in the afternoon", "just gone eight") — never digits or 24-hour form.`;
 }
 
-export async function generateHourlyTime({ recap = null, context = null, recentOpeners = null, persona = null }: any = {}) {
+export async function generateHourlyTime({ recap = null, context = null, recentOpeners = null, persona = null, showWelcome = false }: any = {}) {
   const ctxLines = buildContextLines(context, { contextFields: SCRIPT_CONTEXT_FIELDS });
   const timeClause = nextHourlyTimeClause(context?.clock);
   ctxLines.push(`Task: a brief top-of-the-hour time check, in character. ${lengthPhrase('hourly', persona || undefined)}. ${timeClause}`);
+  if (showWelcome && context?.activeShow?.name) {
+    ctxLines.push(`This is the first spoken segment of the newly started show "${context.activeShow.name}". After the required time check, add one short, natural welcome to that show. The complete line may be two short sentences. Do not introduce yourself by name, mention an outgoing presenter, or imply the show began before this hour.`);
+  }
   return djText({
     system: djSystem(persona || undefined),
     prompt: decoratePrompt(ctxLines.join('\n'), { kind: 'hourly', recap, recentOpeners }),

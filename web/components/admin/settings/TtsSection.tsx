@@ -732,10 +732,6 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
     // Absent reads as ON, matching the controller's coercion — so an untouched
     // pre-upgrade settings.json never shows up as dirty.
     form.tts.enabled !== (savedTts.enabled !== false)
-    // Absent reads as OFF, for the same reason in the other direction.
-    || form.djTalkOnlyBetweenTracks !== (data.values?.djTalkOnlyBetweenTracks === true)
-    // Absent reads as the default, which is what the controller stores for it.
-    || form.handoverOffsetMinutes !== String(data.values?.handover?.offsetMinutes ?? 5)
     || form.tts.defaultEngine !== savedEngine
     || (form.tts.kokoro?.voice || '') !== savedKokoroVoice
     || (form.kokoroLang || '') !== savedKokoroLang
