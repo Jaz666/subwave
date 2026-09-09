@@ -137,6 +137,10 @@ export interface QueueItem {
   // `upcoming` entry, so nothing that forecasts an air time from the queue can
   // see it — this is how the show-boundary cut (#1574) accounts for it.
   bedDelaySec?: number;
+  // Seconds a pause-and-talk silence pushes this item back after subtracting
+  // the two crossfades it overlaps. Like bedDelaySec, the silent request goes
+  // straight to next.txt and is otherwise invisible to queue forecasts.
+  pauseDelaySec?: number;
   queuedAt?: string;
   sent?: boolean;
   confirmedInLiquidsoap?: boolean;

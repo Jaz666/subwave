@@ -30,7 +30,8 @@ import { VoicePicker } from '../tts/VoicePicker';
 import { ModelCombobox } from '../llm/ModelCombobox';
 import { cn } from '../../../lib/cn';
 import {
-  SectionHeader, SaveBar, KeyStatus, KeyTestResult, KEY_HINTS, ELEVENLABS_VS_DEFAULTS,
+  SectionHeader, SaveBar, SettingsFieldError, settingsFieldAria,
+  KeyStatus, KeyTestResult, KEY_HINTS, ELEVENLABS_VS_DEFAULTS,
   FISH_TTS_DEFAULTS,
   type SectionProps, type FormState, type FormUpdater, type CloudTtsCfg,
   type TtsFallbackForm,
@@ -466,13 +467,17 @@ interface TtsSectionProps extends SectionProps {
   refresh: () => Promise<void>;
 }
 
-export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch, refresh }: TtsSectionProps) {
+export function TtsSection({ data, form, setForm, busy, saveSettings, fieldErrors, adminFetch, refresh }: TtsSectionProps) {
   const [cloudKeyInput, setCloudKeyInput] = useState('');
   const [cloudKeyTest, setCloudKeyTest] = useState<{ ok: boolean; message: string; latencyMs: number } | null>(null);
   const [cloudKeyTesting, setCloudKeyTesting] = useState(false);
   // Compat servers don't use the OPENAI/ELEVENLABS env keys — their optional bearer
   // is settings.tts.cloud.compatApiKey, so it rides the settings payload.
   const [compatKeyInput, setCompatKeyInput] = useState('');
+  const pauseTalkAria = settingsFieldAria(
+    'pause-talk-min-seconds',
+    fieldErrors.pauseTalkMinSeconds,
+  );
 
   useEffect(() => { setCloudKeyInput(''); setCompatKeyInput(''); }, [form.tts.cloud.provider]);
   useEffect(() => { setCloudKeyTest(null); }, [form.tts.cloud.provider]);
@@ -835,10 +840,10 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
           </p>
         </div>
 
-        <div className="field mt-6">
-          <Label htmlFor="pause-talk-min-seconds">Pause-and-talk length</Label>
+        <div className="field mt-6" data-invalid={pauseTalkAria.invalid || undefined}>
+          <Label {...pauseTalkAria.labelProps}>Pause-and-talk length</Label>
           <Input
-            id="pause-talk-min-seconds"
+            {...pauseTalkAria.controlProps}
             type="number"
             min="5"
             max="90"
@@ -849,6 +854,11 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
           <p className="mt-2 text-[13px] leading-[1.55] text-muted">
             On shows with Pause-and-talk enabled, eligible skill segments at least this long pause the music and speak in the clear. Shorter segments keep the usual ducked delivery.
           </p>
+          <SettingsFieldError
+            path="pauseTalkMinSeconds"
+            errors={fieldErrors}
+            {...pauseTalkAria.errorProps}
+          />
         </div>
 
         <div className="field mt-6">
@@ -872,7 +882,9 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
                 read the clock a little late (it is dropped outright if the part of the day
                 has moved on), and only <strong>one</strong> segment waits at a time — a
                 second one is postponed rather than queued, and skipped if its slot runs
-                out. Manual triggers on the DJ page still fire immediately.
+                out. Manual voice triggers remain outside this switch. A qualifying
+                <strong> Run now</strong> skill on a pause-and-talk show still waits for
+                its real break.
               </>
             ) : (
               <>
@@ -1577,6 +1589,8 @@ export function TtsSection({ data, form, setForm, busy, saveSettings, adminFetch
         // Both key boxes are component-local: the panel diffs FormState and
         // cannot see them, so a pasted key alone would unmount the save button.
         dirty={!!(cloudKeyInput.trim() || compatKeyInput.trim())}
+        errors={fieldErrors}
+        ownedKeys={['tts', 'djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds']}
       />
     </>
   );

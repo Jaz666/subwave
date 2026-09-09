@@ -46,6 +46,7 @@ jingle_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/jingle")
 # inside one crossfade, and a shared dir would tear the write.
 jingle_now_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/jingle-now")
 bed_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/bed")
+pause_talk_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-talk")
 starve_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/starve")
 # One per voice channel, not one for both: they write the SAME marker file, so a
 # shared dir tears when a heavy-duck segment and a talk-over link land together.
@@ -1505,7 +1506,7 @@ def on_meta(m) =
         startedAt = time()
       }),
       atomic=true,
-      temp_dir=bed_tmp_dir,
+      temp_dir=pause_talk_tmp_dir,
       "#{state_dir}/pause-talk-playing.json"
     )
   elsif m["subwave_kind"] == "bed" then

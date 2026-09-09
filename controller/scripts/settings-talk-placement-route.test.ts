@@ -35,6 +35,7 @@ async function getSettings() {
   const body = await res.json() as {
     values?: {
       djTalkOnlyBetweenTracks?: boolean;
+      pauseTalkMinSeconds?: number;
       tts?: Record<string, unknown> & { defaultEngine?: string };
     };
   };
@@ -48,6 +49,7 @@ test('GET /settings returns false for the default Talk placement', async () => {
   await settings.load();
   const values = await getSettings();
   assert.equal(values.djTalkOnlyBetweenTracks, false);
+  assert.equal(values.pauseTalkMinSeconds, 20);
 });
 
 test('GET /settings returns saved Talk placement without changing Voice engine', async () => {
@@ -61,6 +63,11 @@ test('GET /settings returns saved Talk placement without changing Voice engine',
 
   await settings.update({ djTalkOnlyBetweenTracks: false } as never);
   assert.equal((await getSettings()).djTalkOnlyBetweenTracks, false);
+});
+
+test('GET /settings returns the saved pause-and-talk threshold', async () => {
+  await settings.update({ pauseTalkMinSeconds: 37 } as never);
+  assert.equal((await getSettings()).pauseTalkMinSeconds, 37);
 });
 
 test.after(async () => {

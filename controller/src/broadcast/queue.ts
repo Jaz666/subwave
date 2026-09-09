@@ -19,7 +19,14 @@ import * as blocklist from '../music/blocklist.js';
 import { artistRootKey, trackKey, type CandidateLike } from '../music/recency.js';
 import { albumKeyFor } from '../music/album-facts.js';
 import { speak, voiceGainDb } from '../audio/tts.js';
-import { writeSilentWav, discardSilentWav, PAUSE_TALK_DIR } from '../audio/wav-silence.js';
+import {
+  writeSilentWav,
+  discardSilentWav,
+  writePauseTalkCommit,
+  readPauseTalkCommit,
+  discardPauseTalkCommit,
+  PAUSE_TALK_DIR,
+} from '../audio/wav-silence.js';
 import * as djAgent from './dj-agent.js';
 import * as programme from './programme.js';
 import * as sfx from './sfx.js';
@@ -42,8 +49,11 @@ import { speakClockAllowed, stationIdDaypartDrifted, stationIdDaypartStamp } fro
 import { currentTalkAir } from './talk-air.js';
 import {
   PAUSE_TALK_EXIT_CROSS_SEC,
+  PAUSE_TALK_MARKER_POLL_MS,
   pauseTalkArmExpired,
+  pauseTimelineDelayMs,
   releaseDelayMs,
+  resolveTalkPlacement,
   silenceDurationMs,
   wantsPauseTalk,
 } from './pause-talk.js';
@@ -159,6 +169,30 @@ interface PendingVoice {
    *  (`cross` sizes a transition from the OUTGOING track's stamp). Budgeted
    *  into the silence and paid back as the release delay. */
   pauseIncomingCrossMs?: number;
+  /** Full silent item length, used to reject an old matching marker after a
+   *  restart without applying the unrelated bed marker freshness window. */
+  pauseSilenceMs?: number;
+  /** Stable identity of the track whose seam already owns the silent item.
+   *  Recovery uses it to suppress a second hidden item at that same seam. */
+  pauseTrackKey?: string;
+  /** Net music-timeline delay persisted with the commitment, because a crash
+   *  can happen before queue.json snapshots the same value on QueueItem. */
+  pauseDelaySec?: number;
+  /** The marker matched and this voice has started joining the serialiser. */
+  pauseReleasing?: boolean;
+  /** Optional effect selected with the line; handed over only when the voice is. */
+  sfx?: string | null;
+  /** Process-local completion signal. Deliberately omitted by JSON.stringify;
+   *  after restart the durable queue owns playout but no dead caller is waiting. */
+  onCompleted?: (aired: boolean) => void;
+}
+
+export interface AnnounceOutcome {
+  accepted: boolean;
+  deferred: boolean;
+  /** Resolves true after ordinary post-air bookkeeping runs, false if the held
+   *  segment is displaced or cannot be handed over. */
+  completed: Promise<boolean>;
 }
 
 // Re-exported so every existing `from './queue.js'` import keeps working.
@@ -171,6 +205,10 @@ export type { NowPlaying, QueueItem, Track } from './queue/types.js';
 // rendered blend cannot disagree about the tail they all cut.
 function positiveCues(values: (number | null | undefined)[]): number[] {
   return values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+}
+
+function pauseTrackKey(item: QueueItem): string {
+  return item.track.id ? `id:${item.track.id}` : `track:${trackKey(item.track)}`;
 }
 
 // Bound on a runaway loop of manual jingle presses across different filenames.
@@ -284,8 +322,7 @@ class Queue {
   // Liquidsoap stay tracked. `lastSeenKey` is primed from the restored
   // `current` so the watcher doesn't re-fire for the track still on air.
   recover() {
-    if (!existsSync(config.queue.file)) return;
-    try {
+    if (existsSync(config.queue.file)) try {
       const stored = JSON.parse(readFileSync(config.queue.file, 'utf8'));
       // Drop anything old enough that Liquidsoap has certainly played past it,
       // so a stale snapshot can't resurrect permanent "Up next" zombies.
@@ -321,6 +358,7 @@ class Queue {
     } catch (err) {
       console.error('[queue] recover failed:', (err as Error).message);
     }
+    this.recoverPauseTalk();
     if (existsSync(config.queue.recentPlaysFile)) {
       try {
         const arr = JSON.parse(readFileSync(config.queue.recentPlaysFile, 'utf8'));
@@ -341,6 +379,42 @@ class Queue {
     this.backfillRecentPlaysFromEvents();
     this.log('scheduler',
       `Recent-plays loaded: ${this._recentPlays.length} entries (last 24h)`);
+  }
+
+  // The pause commitment is intentionally separate from queue.json: persist()
+  // is debounced, while the matching voice has to be durable BEFORE next.txt
+  // can hand a real silence to the mixer.
+  recoverPauseTalk() {
+    const raw = readPauseTalkCommit() as Partial<PendingVoice> | null;
+    if (!raw || raw.pauseTalk !== true || typeof raw.kind !== 'string'
+      || !/^[a-f0-9]{16}$/.test(String(raw.pauseId || ''))
+      || typeof raw.pauseTrackKey !== 'string'
+      || !Number.isFinite(raw.pauseDelaySec)
+      || !Array.isArray(raw.clips) || raw.clips.length === 0
+      || !raw.clips.every(c => c && typeof c.text === 'string' && typeof c.wavPath === 'string')
+      || pauseTalkArmExpired(raw.pauseArmedAt, Date.now())) {
+      if (raw) void discardPauseTalkCommit();
+      return;
+    }
+    this._pendingVoice = {
+      kind: raw.kind,
+      clips: raw.clips as PendingVoice['clips'],
+      daypart: typeof raw.daypart === 'string' ? raw.daypart : null,
+      exchange: raw.exchange === true,
+      t: Number.isFinite(raw.t) ? Number(raw.t) : Date.now(),
+      pauseTalk: true,
+      pauseId: raw.pauseId,
+      pauseArmedAt: raw.pauseArmedAt,
+      pauseIncomingCrossMs: Number.isFinite(raw.pauseIncomingCrossMs)
+        ? Math.max(0, Number(raw.pauseIncomingCrossMs)) : 0,
+      pauseSilenceMs: Number.isFinite(raw.pauseSilenceMs)
+        ? Math.max(0, Number(raw.pauseSilenceMs)) : 0,
+      pauseTrackKey: typeof raw.pauseTrackKey === 'string' ? raw.pauseTrackKey : undefined,
+      pauseDelaySec: Number.isFinite(raw.pauseDelaySec)
+        ? Math.max(0, Number(raw.pauseDelaySec)) : 0,
+      sfx: typeof raw.sfx === 'string' ? raw.sfx : null,
+    };
+    this.log('scheduler', `Recovered committed pause-and-talk break for ${raw.kind}`);
   }
 
   // Merge the last 24h of track.play events into _recentPlays. Events carry no
@@ -1095,17 +1169,17 @@ class Queue {
     return remaining;
   }
 
-  // Seconds of BED queued ahead of this item that remainingUntilItemAirs cannot
-  // see: a bed goes straight to next.txt and is never an `upcoming` entry, so
-  // uncounted it lands a boundary cut a whole link late (#1574). Same chain the
-  // forecast walks; a part-played bed is bounded by BOUNDARY_TOLERANCE_SEC.
-  bedDelayBeforeItemAirs(item: QueueItem): number {
+  // Seconds of hidden music-timeline items that remainingUntilItemAirs cannot
+  // see. Beds and pause silences go straight to next.txt and are never
+  // `upcoming` entries, so omitting either makes listener ETAs optimistic and
+  // can land a show-boundary cut a whole spoken break late.
+  hiddenDelayBeforeItemAirs(item: QueueItem): number {
     const idx = this.upcoming.indexOf(item);
     if (idx < 0) return 0;
-    let delay = Number(item.bedDelaySec) || 0;
+    let delay = (Number(item.bedDelaySec) || 0) + (Number(item.pauseDelaySec) || 0);
     for (const ahead of this.upcoming.slice(0, idx)) {
       if (!ahead.sent) continue;
-      delay += Number(ahead.bedDelaySec) || 0;
+      delay += (Number(ahead.bedDelaySec) || 0) + (Number(ahead.pauseDelaySec) || 0);
     }
     return delay;
   }
@@ -1121,7 +1195,7 @@ class Queue {
     if (item.requestedBy) return null;
     const untilAirs = this.remainingUntilItemAirs(item);
     if (untilAirs == null) return null;
-    const startMs = Date.now() + (untilAirs + this.bedDelayBeforeItemAirs(item)) * 1000;
+    const startMs = Date.now() + (untilAirs + this.hiddenDelayBeforeItemAirs(item)) * 1000;
     if (!showBoundary.fadeAtShowEndActive(new Date(startMs))) return null;
     // The span that would actually air, after the cap and the trimmed tail —
     // never the tagged duration, which would invent an overshoot the cap
@@ -1486,27 +1560,38 @@ class Queue {
   // `opts.persona` overrides the on-air persona for THIS clip (the mic-pass
   // voices the OUTGOING DJ after the hour has flipped); `opts.meta` merges into
   // the session turn.
-  async announce(text, kind = 'announcement', { persona = null, meta = {}, pauseTalkEligible = false }: { persona?: Persona | null; meta?: TurnMeta; pauseTalkEligible?: boolean } = {}) {
-    if (!text || !text.trim()) return;
+  async announce(
+    text,
+    kind = 'announcement',
+    { persona = null, meta = {}, pauseTalkEligible = false, sfx: selectedSfx = null }:
+      { persona?: Persona | null; meta?: TurnMeta; pauseTalkEligible?: boolean; sfx?: string | null } = {},
+  ): Promise<AnnounceOutcome> {
+    if (!text || !text.trim()) return { accepted: false, deferred: false, completed: Promise.resolve(false) };
     try {
       const wavPath = await speak(text, { kind, persona });
-      // `djTalkOnlyBetweenTracks` (#1485 FR 5b): the talk tick wraps every fire
-      // in a talk-air scope, so no flag is threaded and no call site can forget
-      // it. Outside a scope (every manual trigger) the mode is 'immediate'.
-      if (currentTalkAir() === 'next-track') {
-        this.holdForNextTrack(kind, [{ text, wavPath, persona, meta }], { exchange: false });
-        return;
-      }
       const show = settings.resolveActiveShow();
-      if (wantsPauseTalk({
+      const pauseTalk = wantsPauseTalk({
         enabled: show?.pauseTalk === true,
         eligible: pauseTalkEligible,
         clipMs: speechDurationMs(wavPath, text),
         minSeconds: settings.get()?.pauseTalkMinSeconds,
-      })) {
-        this.holdForNextTrack(kind, [{ text, wavPath, persona, meta }], { exchange: false, pauseTalk: true });
-        void this.drainToLiquidsoap();
-        return;
+      });
+      // `djTalkOnlyBetweenTracks` (#1485 FR 5b): the talk tick wraps every fire
+      // in a talk-air scope, so no flag is threaded and no call site can forget
+      // it. Outside a scope (every manual trigger) the mode is 'immediate'.
+      const placement = resolveTalkPlacement({ pauseTalk, talkAir: currentTalkAir() });
+      if (placement !== 'immediate') {
+        let settle!: (aired: boolean) => void;
+        const completed = new Promise<boolean>(resolve => { settle = resolve; });
+        const accepted = this.holdForNextTrack(kind, [{ text, wavPath, persona, meta }], {
+          exchange: false,
+          pauseTalk: placement === 'pause-talk',
+          sfx: selectedSfx,
+          onCompleted: settle,
+        });
+        if (!accepted) settle(false);
+        if (accepted && placement === 'pause-talk') void this.drainToLiquidsoap();
+        return { accepted, deferred: true, completed };
       }
       // No bed by construction: announce() queues no track.
       const channel = voiceChannelFor(kind);
@@ -1520,9 +1605,12 @@ class Queue {
       // Bookkeeping runs when the words reach the stream, not at handoff
       // (#1382). A mixer that writes no marker resolves immediately with a null
       // stamp, which is the old timing byte for byte.
-      this.onSpoken(handoff, seg);
+      const completed = this.onSpoken(handoff, seg);
+      if (selectedSfx) await this.playSfx(selectedSfx, { underVoice: true });
+      return { accepted: true, deferred: false, completed };
     } catch (err) {
       this.log('error', `Announce failed: ${(err as Error).message}`);
+      return { accepted: false, deferred: false, completed: Promise.resolve(false) };
     }
   }
 
@@ -1547,38 +1635,39 @@ class Queue {
     }
   }
 
-  onSpoken(handoff: VoiceHandoff, {
+  async onSpoken(handoff: VoiceHandoff, {
     kind, channel, text, meta = {}, persona = null, logText = null, legacy = true,
-  }: SegmentDesc) {
-    void handoff.aired.then(airedAt => {
-      try {
-        this.log(kind, logText ?? text);
-        this.noteHandoverSpeech(kind);
-        session.appendTurn({
-          role: 'segment',
-          kind,
-          text,
-          // Live-edge, so a LISTENER-facing consumer adds stream.bufferSeconds
-          // (#1114). Absent when unmeasured, never zeroed.
-          meta: airedAt != null
-            ? { ...meta, airedAt: new Date(airedAt).toISOString() }
-            : meta,
-        });
-        notifySpoken({
-          voiceId: handoff.voiceId,
-          kind,
-          channel,
-          text,
-          durationMs: handoff.clipMs,
-          airedAt,
-          legacy,
-          personaId: persona?.id ?? (meta.personaId as string | undefined) ?? null,
-          personaName: persona?.name ?? (meta.personaName as string | undefined) ?? null,
-        });
-      } catch (err) {
-        this.log('error', `Post-air bookkeeping failed: ${(err as Error).message}`);
-      }
-    });
+  }: SegmentDesc): Promise<boolean> {
+    const airedAt = await handoff.aired;
+    try {
+      this.log(kind, logText ?? text);
+      this.noteHandoverSpeech(kind);
+      session.appendTurn({
+        role: 'segment',
+        kind,
+        text,
+        // Live-edge, so a LISTENER-facing consumer adds stream.bufferSeconds
+        // (#1114). Absent when unmeasured, never zeroed.
+        meta: airedAt != null
+          ? { ...meta, airedAt: new Date(airedAt).toISOString() }
+          : meta,
+      });
+      notifySpoken({
+        voiceId: handoff.voiceId,
+        kind,
+        channel,
+        text,
+        durationMs: handoff.clipMs,
+        airedAt,
+        legacy,
+        personaId: persona?.id ?? (meta.personaId as string | undefined) ?? null,
+        personaName: persona?.name ?? (meta.personaName as string | undefined) ?? null,
+      });
+      return true;
+    } catch (err) {
+      this.log('error', `Post-air bookkeeping failed: ${(err as Error).message}`);
+      return true;
+    }
   }
 
   // Air a short multi-voice exchange (guest-show banter). Every line renders to
@@ -1654,9 +1743,10 @@ class Queue {
   holdForNextTrack(
     kind: string,
     clips: PendingVoice['clips'],
-    { exchange = false, daypart, pauseTalk = false }: { exchange?: boolean; daypart?: string | null; pauseTalk?: boolean } = {},
-  ) {
-    if (!clips.length) return;
+    { exchange = false, daypart, pauseTalk = false, sfx: selectedSfx = null, onCompleted }:
+      { exchange?: boolean; daypart?: string | null; pauseTalk?: boolean; sfx?: string | null; onCompleted?: (aired: boolean) => void } = {},
+  ): boolean {
+    if (!clips.length) return false;
     const superseded = this._pendingVoice;
     // Once the silence handoff has an id it is a committed music-timeline
     // request, not a cancellable forecast. Replacing it would leave a real gap
@@ -1668,7 +1758,7 @@ class Queue {
     // limit the break disarms and this offer is taken normally.
     if (superseded?.pauseId && !pauseTalkArmExpired(superseded.pauseArmedAt, Date.now())) {
       this.log('scheduler', `Declined ${kind} — a pause-and-talk break is committed to this boundary`);
-      return;
+      return false;
     }
     this._pendingVoice = {
       kind,
@@ -1677,12 +1767,16 @@ class Queue {
       exchange,
       t: Date.now(),
       pauseTalk,
+      sfx: selectedSfx,
+      onCompleted,
     };
     if (superseded) {
+      superseded.onCompleted?.(false);
       this.log('scheduler',
         `Dropped pending ${superseded.kind} — a ${kind} took the next track boundary instead`);
     }
     this.log('scheduler', `Holding ${kind} for the next track boundary${pauseTalk ? ' as a pause-and-talk break' : ''}`);
+    return true;
   }
 
   // Put a silent, annotated item immediately ahead of the next track. The
@@ -1691,7 +1785,12 @@ class Queue {
   // edge fades, voice-playing timestamps and ordinary post-air bookkeeping.
   async maybePushPauseTalk(item: QueueItem) {
     const p = this._pendingVoice;
-    if (!p?.pauseTalk || p.pauseId) return false;
+    if (!p?.pauseTalk) return false;
+    if (p.pauseId) {
+      if (p.pauseTrackKey !== pauseTrackKey(item)) return false;
+      item.pauseDelaySec = p.pauseDelaySec ?? 0;
+      return true;
+    }
     // A listener request owns this seam, and a stem blend has already consumed
     // the next track's head. Both fall back to the existing boundary delivery.
     if (item.requestedBy || item.stemSeam) {
@@ -1721,6 +1820,10 @@ class Queue {
       p.pauseId = pauseId;
       p.pauseArmedAt = Date.now();
       p.pauseIncomingCrossMs = incomingCrossMs;
+      const pauseSilenceMs = silenceDurationMs({ voiceWindowMs, incomingCrossMs });
+      p.pauseSilenceMs = pauseSilenceMs;
+      p.pauseTrackKey = pauseTrackKey(item);
+      p.pauseDelaySec = pauseTimelineDelayMs({ silenceMs: pauseSilenceMs, incomingCrossMs }) / 1000;
       // These are entry gestures for the track seam. The silent item replaces
       // that seam, so letting one survive would apply a track transition to
       // silence (or, worse, to the voice break) instead of its intended song.
@@ -1734,14 +1837,19 @@ class Queue {
         this.log('mix', `${kind} dropped (a pause-and-talk break replaced the transition it was validated for)`);
       }
       if (item.transitionSfx) delete item.transitionSfx;
-      await writeSilentWav(path, silenceDurationMs({ voiceWindowMs, incomingCrossMs }));
+      await writeSilentWav(path, pauseSilenceMs);
+      // This must reach durable state before next.txt can hand the silence to
+      // the mixer. queue.json's ordinary 500ms debounce is too late here.
+      await writePauseTalkCommit(p);
       const uri = `annotate:subwave_kind="pause-talk",subwave_pause_id="${pauseId}",liq_cross_duration="${PAUSE_TALK_EXIT_CROSS_SEC.toFixed(2)}":${path}`;
       await writeHandoff(config.liquidsoap.queueFile, uri, { maxWaitMs: 5000 });
+      item.pauseDelaySec = p.pauseDelaySec;
       this.log('scheduler', `Pause-and-talk break armed for ${p.kind} (${Math.round(voiceWindowMs / 1000)}s voice window)`);
       return true;
     } catch (err) {
       // The silence may already be on disk. disarmPauseTalk unlinks it, so a
       // failed handoff leaves nothing behind for the hourly sweep to carry.
+      delete item.pauseDelaySec;
       this.disarmPauseTalk(p, `handoff failed: ${(err as Error).message}`);
       return false;
     }
@@ -1770,6 +1878,8 @@ class Queue {
       return;
     }
     this._pendingVoice = null;
+    p.onCompleted?.(false);
+    if (p.pauseId) void discardPauseTalkCommit();
     this.log('scheduler', `Dropped pending ${p.kind} — ${reason}`);
   }
 
@@ -1782,7 +1892,12 @@ class Queue {
     delete p.pauseId;
     delete p.pauseArmedAt;
     delete p.pauseIncomingCrossMs;
+    delete p.pauseSilenceMs;
+    delete p.pauseTrackKey;
+    delete p.pauseDelaySec;
+    delete p.pauseReleasing;
     if (path) void discardSilentWav(path);
+    void discardPauseTalkCommit();
     this.log('scheduler', `Pause-and-talk break disarmed for ${p.kind} — ${reason}; falling back to ducked boundary speech`);
   }
 
@@ -1896,7 +2011,12 @@ class Queue {
     // The reaper deletes old WAVs. A partially reaped exchange airs what
     // survives rather than nothing.
     const clips = p.clips.filter(c => existsSync(c.wavPath));
-    if (!clips.length) return;
+    if (!clips.length) {
+      p.onCompleted?.(false);
+      return;
+    }
+    const completions: Promise<boolean>[] = [];
+    let sfxHanded = false;
     for (const clip of clips) {
       try {
         // Deferred segments ride the INTRO file whatever their kind, since the
@@ -1908,11 +2028,16 @@ class Queue {
         const handoff = await airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
           onQueued: q => this.onQueued(q, seg),
         });
-        this.onSpoken(handoff, seg);
+        completions.push(this.onSpoken(handoff, seg));
+        if (!sfxHanded && p.sfx) {
+          sfxHanded = true;
+          await this.playSfx(p.sfx, { underVoice: true });
+        }
       } catch (err) {
         this.log('error', `Air pending voice failed: ${(err as Error).message}`);
       }
     }
+    void Promise.all(completions).then(results => p.onCompleted?.(results.some(Boolean)));
     // One webhook for the whole exchange, at air time. A single-clip segment's
     // event rides onSpoken like every other.
     if (p.exchange) {
@@ -2763,15 +2888,15 @@ class Queue {
   // no usable duration. A caller that cannot get an answer says nothing, which
   // is the pre-existing behaviour on every surface that reads this.
   //
-  // IT COUNTS THE BED, and any future walk of this queue must too. A bed is
-  // written straight to `next.txt` by `maybePushBed` and is never an `upcoming`
-  // entry, so a clock that walks the queue sails straight past it — the #1574
-  // failure, where an uncounted bed put the show-boundary cut a whole link late.
-  // `bedDelayBeforeItemAirs` is that measurement and is reused rather than
-  // re-walked: it sums this item's OWN bed (which plays immediately ahead of it)
-  // plus the beds of SENT items ahead. An UNSENT item ahead legitimately
-  // contributes zero — its bed is decided at ITS drain and has not been pushed
-  // yet — so the two walks agree by construction.
+  // IT COUNTS HIDDEN TIMELINE ITEMS, and any future walk of this queue must too.
+  // Beds and pause silences are written straight to `next.txt` and are never
+  // `upcoming` entries, so a clock that walks the queue sails straight past
+  // them — the #1574 failure put the show-boundary cut a whole link late.
+  // `hiddenDelayBeforeItemAirs` is that measurement and is reused rather than
+  // re-walked: it sums this item's OWN hidden delay plus the delays of SENT
+  // items ahead. An UNSENT item ahead legitimately contributes zero — its
+  // hidden item is decided at ITS drain and has not been pushed yet — so the
+  // two walks agree by construction.
   //
   // Both callers are understated by a miss here, in the direction that matters:
   // the listener wait notice would say a request is closer than it is, on the
@@ -2790,7 +2915,7 @@ class Queue {
       if (playable == null) return null;
       remaining += playable;
     }
-    return remaining + this.bedDelayBeforeItemAirs(item);
+    return remaining + this.hiddenDelayBeforeItemAirs(item);
   }
 
   // Tracks played in the last `hours` hours — used by the picker to block
@@ -3043,7 +3168,7 @@ class Queue {
   // claiming a newer held segment.
   onPauseTalkStarted() {
     const p = this._pendingVoice;
-    if (!p?.pauseTalk || !p.pauseId) return;
+    if (!p?.pauseTalk || !p.pauseId || p.pauseReleasing) return;
     let marker: { pauseId?: string; startedAt?: number };
     try {
       marker = JSON.parse(readFileSync(config.liquidsoap.pauseTalkPlayingFile, 'utf8'));
@@ -3052,10 +3177,22 @@ class Queue {
     }
     if (marker.pauseId !== p.pauseId) return;
     const startedMs = Number(marker.startedAt) * 1000;
-    if (!Number.isFinite(startedMs) || Date.now() - startedMs > BED_MARKER_FRESH_MS) return;
-    this._pendingVoice = null;
+    const markerAgeMs = Date.now() - startedMs;
+    // A matching pause id plus its durable commitment makes this stronger than
+    // the reusable bed marker. Accept it for the silence's own lifetime so a
+    // controller restart during the break can still recover the voice.
+    const markerWindowMs = p.pauseSilenceMs && p.pauseSilenceMs > 0
+      ? p.pauseSilenceMs + PAUSE_TALK_MARKER_POLL_MS
+      : BED_MARKER_FRESH_MS;
+    if (!Number.isFinite(startedMs) || markerAgeMs < 0 || markerAgeMs > markerWindowMs) return;
+    p.pauseReleasing = true;
     const clips = p.clips.filter(c => existsSync(c.wavPath));
-    if (!clips.length) return;
+    if (!clips.length) {
+      this._pendingVoice = null;
+      p.onCompleted?.(false);
+      void discardPauseTalkCommit();
+      return;
+    }
     // Wait out the predecessor's crossfade before opening the mic. radio.liq's
     // `cross` sizes a transition from the OUTGOING track's stamp, so the song
     // that just ended is still fading over the head of this silence — speaking
@@ -3071,19 +3208,39 @@ class Queue {
       `Pause-and-talk break on air → speaking ${p.kind}${delay ? ` after ${Math.round(delay / 1000)}s of crossfade tail` : ''}`);
     void (async () => {
       if (delay) await new Promise(r => setTimeout(r, delay));
+      const completions: Promise<boolean>[] = [];
+      let committedVoice = false;
       for (const clip of clips) {
         try {
           const seg: SegmentDesc = p.exchange
             ? { ...exchangeSegment(clip, p.kind), channel: 'say' }
             : { kind: p.kind, channel: 'say', text: clip.text, meta: clip.meta, persona: clip.persona };
-          const handoff = await airVoice(config.liquidsoap.sayFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
+          const handoffPromise = airVoice(config.liquidsoap.sayFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
             onQueued: q => this.onQueued(q, seg),
           });
-          this.onSpoken(handoff, seg);
+          const handoff = await handoffPromise;
+          committedVoice = true;
+          completions.push(this.onSpoken(handoff, seg));
+          if (p.sfx) {
+            await this.playSfx(p.sfx, { underVoice: true });
+            p.sfx = null;
+          }
         } catch (err) {
           this.log('error', `Pause-and-talk voice failed: ${(err as Error).message}`);
         }
       }
+      // Retain the one pending slot through the whole release. For an exchange,
+      // clearing it after the first line would let another scheduled voice join
+      // the serialiser ahead of the remaining lines and steal part of the
+      // silence reserved for this segment.
+      if (committedVoice) {
+        if (this._pendingVoice === p) this._pendingVoice = null;
+        void discardPauseTalkCommit();
+      } else if (this._pendingVoice === p) {
+        p.pauseReleasing = false;
+        this.disarmPauseTalk(p, 'its voice handoff failed');
+      }
+      void Promise.all(completions).then(results => p.onCompleted?.(results.some(Boolean)));
       if (p.exchange) {
         webhooks.notify('dj.say', {
           text: clips.map(c => `${c.persona?.name || 'DJ'}: ${c.text}`).join('\n'),

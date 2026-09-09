@@ -2,14 +2,39 @@
 // item. It lives on the shared state volume, so Liquidsoap can consume it as a
 // normal request while the voice itself remains on the processed say queue.
 
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile, readdir, stat, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { config } from '../config.js';
+import { writeFileAtomic } from '../util/atomic-file.js';
 
 /** Where the silence items live. Its own directory so the sweep below can be an
  *  unconditional "everything in here is mine" — the state dir it sits in also
  *  holds session.json, the tag DB and the backup archive. */
 export const PAUSE_TALK_DIR = `${config.stateDir}/pause-talk`;
+export const PAUSE_TALK_COMMIT_FILE = `${PAUSE_TALK_DIR}/pending.json`;
+
+// The queue owns the record's schema. This module owns only its atomic storage
+// beside the silent WAVs, keeping the music handoff and its matching voice on
+// the same durable state volume.
+export async function writePauseTalkCommit(value: unknown): Promise<void> {
+  await mkdir(PAUSE_TALK_DIR, { recursive: true });
+  await writeFileAtomic(PAUSE_TALK_COMMIT_FILE, JSON.stringify(value, null, 2));
+}
+
+export function readPauseTalkCommit(): unknown | null {
+  try {
+    return JSON.parse(readFileSync(PAUSE_TALK_COMMIT_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export async function discardPauseTalkCommit(): Promise<void> {
+  try {
+    await unlink(PAUSE_TALK_COMMIT_FILE);
+  } catch {}
+}
 
 export async function writeSilentWav(path: string, durationMs: number, sampleRate = 44_100): Promise<void> {
   const frames = Math.max(1, Math.ceil((Math.max(0, durationMs) / 1000) * sampleRate));

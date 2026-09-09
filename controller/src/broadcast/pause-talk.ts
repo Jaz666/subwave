@@ -74,6 +74,41 @@ export function silenceDurationMs({
   );
 }
 
+// A silence item overlaps the outgoing song on the way in and the incoming
+// song on the way out. Forecasts need the part between those overlaps: that is
+// the time the otherwise-next track is genuinely pushed back on the music
+// timeline.
+export function pauseTimelineDelayMs({
+  silenceMs,
+  incomingCrossMs,
+  exitCrossMs = PAUSE_TALK_EXIT_CROSS_SEC * 1000,
+}: {
+  silenceMs: number;
+  incomingCrossMs: number;
+  exitCrossMs?: number;
+}): number {
+  const duration = Number.isFinite(silenceMs) ? Math.max(0, silenceMs) : 0;
+  const incoming = Number.isFinite(incomingCrossMs) ? Math.max(0, incomingCrossMs) : 0;
+  const outgoing = Number.isFinite(exitCrossMs) ? Math.max(0, exitCrossMs) : 0;
+  return Math.max(0, duration - incoming - outgoing);
+}
+
+export type TalkPlacement = 'immediate' | 'next-track' | 'pause-talk';
+
+// Pause-and-talk is the more specific placement. A station-wide request to put
+// scheduled speech at boundaries must not downgrade a qualifying show's real
+// break back to the ordinary light-duck intro path.
+export function resolveTalkPlacement({
+  pauseTalk,
+  talkAir,
+}: {
+  pauseTalk: boolean;
+  talkAir: 'immediate' | 'next-track';
+}): TalkPlacement {
+  if (pauseTalk) return 'pause-talk';
+  return talkAir;
+}
+
 // How long to wait after SEEING the marker before opening the mic, so the
 // outgoing song's crossfade tail has finished. Measured from the silence's own
 // start (radio.liq stamps `startedAt`), not from the observation, so the poll

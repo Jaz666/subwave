@@ -6,6 +6,8 @@ import {
   PAUSE_TALK_RELEASE_LATENCY_MS,
   PAUSE_TALK_SAFETY_MS,
   pauseTalkArmExpired,
+  pauseTimelineDelayMs,
+  resolveTalkPlacement,
   releaseDelayMs,
   silenceDurationMs,
   wantsPauseTalk,
@@ -39,6 +41,23 @@ test('silence budgeting never goes negative on nonsense inputs', () => {
   const floor = PAUSE_TALK_RELEASE_LATENCY_MS + PAUSE_TALK_EXIT_CROSS_SEC * 1000 + PAUSE_TALK_SAFETY_MS;
   assert.equal(silenceDurationMs({ voiceWindowMs: -1, incomingCrossMs: 0 }), floor);
   assert.equal(silenceDurationMs({ voiceWindowMs: 0, incomingCrossMs: NaN }), floor);
+});
+
+test('the queue forecast counts only the pause time added to the music timeline', () => {
+  // The incoming and exit crossfades overlap adjacent tracks; the remainder is
+  // the real delay before the following song starts.
+  assert.equal(pauseTimelineDelayMs({
+    silenceMs: 46_250,
+    incomingCrossMs: 10_000,
+    exitCrossMs: 1_500,
+  }), 34_750);
+  assert.equal(pauseTimelineDelayMs({ silenceMs: 1_000, incomingCrossMs: 800, exitCrossMs: 800 }), 0);
+});
+
+test('a qualifying pause-and-talk break outranks ordinary between-track placement', () => {
+  assert.equal(resolveTalkPlacement({ pauseTalk: true, talkAir: 'next-track' }), 'pause-talk');
+  assert.equal(resolveTalkPlacement({ pauseTalk: false, talkAir: 'next-track' }), 'next-track');
+  assert.equal(resolveTalkPlacement({ pauseTalk: false, talkAir: 'immediate' }), 'immediate');
 });
 
 // Measured from the silence's own start, so the marker poll that already
