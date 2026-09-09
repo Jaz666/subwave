@@ -122,6 +122,7 @@ router.get('/settings', requireAdmin, async (req, res) => {
         activePersonaId: s.activePersonaId,
         shows: s.shows,
         schedule: s.schedule,
+        djTalkOnlyBetweenTracks: s.djTalkOnlyBetweenTracks,
         tts: s.tts,
         llm: s.llm,
         search: s.search,
