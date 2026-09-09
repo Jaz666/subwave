@@ -1143,12 +1143,27 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
         episodeAngle: session.getProgramme()?.plan?.angle || null,
         context: ctx, recap: queue.getDjRecap(), recentOpeners,
       });
-      await queue.announce(greeting, 'handoff', {
-        persona: personaIn, meta: { personaId: personaIn.id, personaName: personaIn.name },
-      });
-      aired = true;
     } catch (err: any) {
       queue.log('error', `Handoff greeting failed: ${err.message}`);
+    }
+
+    if (signoffText && greeting) {
+      aired = await queue.announceExchange([
+        { persona: personaOut, text: signoffText },
+        { persona: personaIn, text: greeting },
+      ], 'handoff');
+    } else if (signoffText) {
+      const outcome = await queue.announce(signoffText, 'handoff', {
+        persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
+      });
+      // Older queue doubles return void; the integrated queue returns an
+      // explicit refusal only when an already-committed pause owns the seam.
+      aired = outcome?.accepted !== false;
+    } else if (greeting) {
+      const outcome = await queue.announce(greeting, 'handoff', {
+        persona: personaIn, meta: { personaId: personaIn.id, personaName: personaIn.name },
+      });
+      aired = outcome?.accepted !== false;
     }
 
     if (aired) {

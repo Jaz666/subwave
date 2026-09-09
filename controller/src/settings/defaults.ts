@@ -240,6 +240,8 @@ export const DEFAULTS = {
   // bound it. Policy lives in exactly one place — broadcast/talk-air.ts.
   // Applies live; no restart.
   djTalkOnlyBetweenTracks: false,
+  // Show opt-in only; clips shorter than this remain ordinary ducked speech.
+  pauseTalkMinSeconds: 20,
   // Optional programme-opening line folded into the first hourly check after a
   // scheduled show change. Off preserves the established terse time check.
   djBehaviour: {
@@ -259,9 +261,9 @@ export const DEFAULTS = {
   // cannot land on is a sign-off that never airs. Enforced at the save path and
   // repaired at load.
   //
-  // The ORDERING half of the handover carries no dial: whatever the offset, the
-  // incoming host waits for one closing track rather than following the
-  // sign-off straight onto the air (broadcast/handover-policy.ts).
+  // The ORDERING half of the handover carries no dial: the final outgoing track
+  // owns the complete sign-off/greeting pair, while between-tracks placement
+  // holds that pair for the first eligible seam at the boundary.
   handover: { offsetMinutes: 5 },
   // One persona is active at a time; a scheduled show can override who is on air.
   personas: SEED_PERSONAS,

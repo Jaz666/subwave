@@ -27,6 +27,7 @@ import * as session from './session.js';
 import * as djAgent from './dj-agent.js';
 import * as programme from './programme.js';
 import { cleanupOldVoices } from '../audio/tts.js';
+import { cleanupPauseTalkSilence } from '../audio/wav-silence.js';
 import { warmHeavy } from '../audio/ttsHeavyClient.js';
 import { shouldFire } from './dj-gate.js';
 import { speakClockAllowed, stationIdDaypartStamp } from './clock-policy.js';
@@ -915,6 +916,14 @@ async function cleanup() {
     await cleanupOldVoices();
   } catch (err) {
     queue.log('error', `Cleanup failed: ${err.message}`);
+  }
+  // Pause-and-talk's silence items. Their own sweep because they live outside
+  // config.piper.outDir, and nothing else deletes them — ~3 MB apiece, several
+  // an hour, on the volume session.json and the backup archive share.
+  try {
+    await cleanupPauseTalkSilence();
+  } catch (err) {
+    queue.log('error', `Pause-and-talk cleanup failed: ${err.message}`);
   }
   // Fold the library DB's WAL back in: without a periodic TRUNCATE checkpoint
   // a bulk write pass leaves it at its high-water mark and every query pays to

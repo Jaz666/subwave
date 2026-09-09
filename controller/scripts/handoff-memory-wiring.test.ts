@@ -316,6 +316,28 @@ test('a queued final-track handoff survives a controller restart for re-renderin
   assert.ok(session.pendingHandoff(), 'the lost in-memory WAV pair is regenerated on the next queue cycle');
 });
 
+test('a refused final-track handoff remains armed for retry', async () => {
+  await settings.update({ personas: [WREN, GIGI], activePersonaId: WREN.id } as never);
+  const t0 = Date.now();
+  session.start(context({ id: 's_outgoing', name: 'The Soft Start Procedure' }, t0));
+  await settings.update({ activePersonaId: GIGI.id } as never);
+  const incoming = context({ id: 's_incoming', name: 'Cultural Currents' }, t0 + 60_000);
+  assert.equal(session.armBoundaryHandoff(incoming), true);
+
+  const { deps } = generators();
+  const realExchange = (queue as any).announceExchange;
+  (queue as any).announceExchange = async () => false;
+  try {
+    await djAgent.runPersonaHandoff(queue, incoming, deps);
+  } finally {
+    (queue as any).announceExchange = realExchange;
+  }
+
+  assert.equal(session.boundaryHandoffStatus()?.state, 'armed',
+    'a pause-owned seam cannot be recorded as though the handoff reached the voice queue');
+  assert.ok(session.pendingHandoff(), 'the handoff remains available to the next eligible seam');
+});
+
 test('an armed handoff survives a restart that crosses the boundary', async () => {
   await settings.update({ personas: [WREN, GIGI], activePersonaId: WREN.id } as never);
   const t0 = Date.now();

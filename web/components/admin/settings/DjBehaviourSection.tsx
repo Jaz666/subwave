@@ -1,10 +1,11 @@
 'use client';
 
 import { Label } from '../../ui/label';
+import { Input } from '../../ui/input';
 import { Card, Seg } from '../ui';
 import { fieldAria } from '../../../lib/form';
 import {
-  SectionHeader, SaveBar,
+  SectionHeader, SaveBar, SettingsFieldError, settingsFieldAria,
   type SectionProps,
 } from './shared';
 
@@ -16,9 +17,14 @@ import {
 export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
   const talkPlacementAria = fieldAria('dj-talk-placement', undefined, { hasDescription: true });
   const linkStyleAria = fieldAria('dj-link-release-year', undefined, { hasDescription: true });
+  const pauseTalkAria = settingsFieldAria(
+    'pause-talk-min-seconds',
+    fieldErrors.pauseTalkMinSeconds,
+  );
   const save = async () => {
     await saveSettings({
       djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
+      pauseTalkMinSeconds: Number(form.pauseTalkMinSeconds),
       djBehaviour: form.djBehaviour,
       picker: { shortlistPasses: form.picker.shortlistPasses },
     });
@@ -62,6 +68,31 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
               </>
             )}
           </p>
+        </div>
+      </Card>
+
+      <Card title="Pause-and-talk" sub={`${form.pauseTalkMinSeconds}s minimum`}>
+        <div className="field" data-invalid={pauseTalkAria.invalid || undefined}>
+          <Label {...pauseTalkAria.labelProps}>Minimum segment length</Label>
+          <Input
+            {...pauseTalkAria.controlProps}
+            type="number"
+            min="5"
+            max="90"
+            step="1"
+            value={form.pauseTalkMinSeconds}
+            onChange={e => setForm(f => ({ ...f, pauseTalkMinSeconds: e.target.value }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            On shows with Pause-and-talk enabled, eligible skill segments at least
+            this long pause the music and speak in the clear. Shorter segments keep
+            the usual ducked delivery.
+          </p>
+          <SettingsFieldError
+            path="pauseTalkMinSeconds"
+            errors={fieldErrors}
+            {...pauseTalkAria.errorProps}
+          />
         </div>
       </Card>
 
@@ -158,6 +189,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
         ownedKeys={['djTalkOnlyBetweenTracks', 'djBehaviour', 'picker']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour']}
       />
     </>
   );
