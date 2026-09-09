@@ -109,6 +109,10 @@ export interface QueueItem {
   // drops unrendered intros anyway, and a stale persona blob is worse than the
   // live fallback.
   introPersona?: Persona | null;
+  // Editorial session that wrote a DJ link. A link may be rendered and held
+  // beyond a show boundary, but it must never cross into the next show's
+  // session — even when the same persona hosts both shows.
+  introSessionKey?: string | null;
   aiPicked?: boolean;
   linkPrev?: { id: string | null; title: string | null; artist: string | null } | null;
   // Epoch ms of the air moment this item's link was WRITTEN against — stamped

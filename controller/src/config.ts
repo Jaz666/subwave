@@ -70,7 +70,11 @@ export const config = {
   // reachable → the analysis phase skips cleanly.
   analyzer: {
     // Sidecar base URL; analyzer.ts probes /health for the 'analyze' engine.
-    urls: [envUrl('ANALYZE_URL', '')].filter((u): u is string => !!u),
+    // Defaults to the compose service name, like navidrome.url above: a
+    // controller whose compose file predates the ANALYZE_URL line then still
+    // finds the default-on sidecar instead of silently disabling analysis
+    // (#1636). A host that does not resolve is an ordinary probe miss.
+    urls: [envUrl('ANALYZE_URL', 'http://analyzer:8080')].filter((u): u is string => !!u),
     python: envStr('ANALYZE_PYTHON', ''),   // empty → no local backend
     workerScript: envStr('ANALYZE_WORKER', '/app/scripts/analyze_worker.py'),
     // Analysis window, seconds. Demucs cost scales linearly with it. Keep in

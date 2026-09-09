@@ -5,12 +5,13 @@
 // Run: `npm test -- settings-talk-placement-route`.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const stateRoot = mkdtempSync(path.join(tmpdir(), 'subwave-settings-talk-placement-'));
 process.env.STATE_DIR = stateRoot;
@@ -36,6 +37,9 @@ async function getSettings() {
     values?: {
       djTalkOnlyBetweenTracks?: boolean;
       pauseTalkMinSeconds?: number;
+      djBehaviour?: {
+        releaseYearMentions?: string;
+      };
       tts?: Record<string, unknown> & { defaultEngine?: string };
     };
   };
@@ -68,6 +72,28 @@ test('GET /settings returns saved Talk placement without changing Voice engine',
 test('GET /settings returns the saved pause-and-talk threshold', async () => {
   await settings.update({ pauseTalkMinSeconds: 37 } as never);
   assert.equal((await getSettings()).pauseTalkMinSeconds, 37);
+});
+
+test('GET /settings returns saved DJ behaviour for authoritative form hydration', async () => {
+  await settings.update({ djBehaviour: { releaseYearMentions: 'rare' } } as never);
+  const values = await getSettings();
+  assert.equal(values.djBehaviour?.releaseYearMentions, 'rare');
+
+  await settings.update({ djBehaviour: { releaseYearMentions: 'occasional' } } as never);
+  assert.equal((await getSettings()).djBehaviour?.releaseYearMentions, 'occasional');
+});
+
+test('DJ behaviour segmented controls expose their visible labels and help text', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(
+    path.resolve(here, '../../web/components/admin/settings/DjBehaviourSection.tsx'),
+    'utf8',
+  );
+  for (const aria of ['talkPlacementAria', 'linkStyleAria']) {
+    assert.match(source, new RegExp(`<Label \\{\\.\\.\\.${aria}\\.labelledByProps\\}`));
+    assert.match(source, new RegExp(`<Seg\\s+\\{\\.\\.\\.${aria}\\.groupProps\\}`));
+    assert.match(source, new RegExp(`<p \\{\\.\\.\\.${aria}\\.descriptionProps\\}`));
+  }
 });
 
 test.after(async () => {

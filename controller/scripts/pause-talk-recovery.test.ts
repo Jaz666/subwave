@@ -124,6 +124,12 @@ test('the committed slot stays occupied until the pause voice joins say.txt', as
     'another scheduled voice cannot steal the silence while the crossfade tail clears',
   );
   assert.equal(queue.pendingVoiceTalk()?.kind, 'curiosity');
+  assert.equal(
+    queue.holdForNextTrack('handoff', [clip('Show handoff')], { notBefore: Date.now() + 1_000 }),
+    false,
+    'a final-track handoff must retry rather than falsely replacing an armed silence',
+  );
+  assert.equal(queue.pendingVoiceTalk()?.kind, 'curiosity');
 
   await waitFor(() => existsSync(config.liquidsoap.sayFile));
   assert.ok(readFileSync(config.liquidsoap.sayFile, 'utf8').includes(`subwave_pause_delivery="${pauseId}"`));
