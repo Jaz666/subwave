@@ -36,7 +36,7 @@ import type { TransitionEffect } from '../settings/vocab.js';
 import { djCallsAllowed } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { speakClockAllowed } from './clock-policy.js';
-import { pickerAgent, requestAgent } from './dj-agent/agents.js';
+import { requestAgent } from './dj-agent/agents.js';
 import { pickerScope } from '../llm/tools.js';
 import {
   HANDOFF_MAX_AGE_MS,

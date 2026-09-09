@@ -30,7 +30,14 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           </p>
         </div>
       </Card>
-      <SaveBar busy={busy} onSave={save} saveLabel="Save DJ behaviour" errors={fieldErrors} ownedKeys={['picker']} />
+      <SaveBar
+        note="Applies from the next pick, no restart needed."
+        busy={busy}
+        onSave={save}
+        saveLabel="Save DJ behaviour"
+        errors={fieldErrors}
+        ownedKeys={['picker']}
+      />
     </>
   );
 }
