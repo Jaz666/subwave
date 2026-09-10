@@ -81,8 +81,8 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 // (id/reason/transition) or null; never throws, so a salvage failure falls
 // through to the caller's pick.rejected path unchanged.
 // `reason`, when given, replaces the default "you returned a bad id" framing —
-// the back-to-back artist guard (#1124) reuses this same constrained re-pick
-// but for a valid pick it wants to swap off the on-air artist, so the bad-id
+// the pick-anchor artist guard (#1124) reuses this same constrained re-pick
+// but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
 async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null }) {
   const ids = [...seen.keys()];
@@ -161,7 +161,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, current = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; current?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -351,7 +351,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     // lives in util/pick-seed.ts, never inline.
     const failure = classifyPickFailure({
       pickedId: object?.id ?? null,
-      seedId: current?.id ?? null,
+      seedId: pickAnchor?.id ?? null,
       candidates: extras.seen.size,
       // Real discovery calls only (flattenToolCalls drops the synthetic
       // `done`), so a zero here means the model never explored — which must
@@ -368,17 +368,17 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
     throw Object.assign(new Error(failure.message), { pickFailure: failure });
   }
 
-  // Back-to-back artist guard (#1124). The discovery tools return a tight
-  // cluster around the current track — frequently a run of the SAME artist — and
+  // Pick-anchor artist guard (#1124). The discovery tools return a tight
+  // cluster around the pick anchor — frequently a run of the SAME artist — and
   // the agent path carries no recentArtists/maxPerArtist filter, because an
   // artist strip inside the tools gutted the similarity pool to ~1 survivor on
   // niche catalogues (#618). So variety is enforced at the point of choice: if
-  // the pick repeats the on-air artist and the run surfaced any other-artist
+  // the pick repeats the anchor artist and the run surfaced any other-artist
   // candidate, re-pick from just those (a constrained djObject over the run's
   // own `seen`, so it still reasons about flow and writes a coherent link).
   //
   // When that isn't possible, do NOT relax yet (#1187). `seen` is the RUN's view,
-  // not the library's — tracksLikeThis answering with eight tracks by the on-air
+  // not the library's — tracksLikeThis answering with eight tracks by the anchor
   // artist while no other tool contributed leaves it single-artist on a 50k
   // catalogue, and reading that as "no alternative exists" is the false negative
   // that put the repeats back on air. Ask the fallback pool for a pick that hard-
@@ -389,7 +389,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // Both sides of the comparison, and the alternative set, are keyed on the LEAD
   // artist (#1251), so "Marvin Gaye & Tammi Terrell" can't walk past a guard on
   // "Marvin Gaye". The alternatives also step around the artists of the last few
-  // plays, because a re-pick that knows only the on-air artist keeps returning to
+  // plays, because a re-pick that knows only the anchor artist keeps returning to
   // whoever ranks next-highest — the every-other-slot repeat this guard exists
   // to prevent.
   //
@@ -397,14 +397,14 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   // narrowed the re-pick pool, so the guard never fired on a pick three slots
   // after the same artist and the window was never consulted — every occurrence
   // legal, and the same artist across a whole morning show. The two causes are
-  // escalated differently on purpose (see below): back-to-back is a fault worth
-  // a pool rescue, spacing is a preference that yields to the run.
+  // escalated differently on purpose (see below): an anchor match is worth a
+  // pool rescue, while spacing is a preference that yields to the run.
   const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
   // Read once: the album guard below steps around the same neighbours, and two
   // reads of a live queue across two awaits could disagree.
   const neighbourRoots = queue.neighbourArtistRoots(varietyWindow);
   const guarded = await runArtistGuard<any>({
-    song, object, current,
+    song, object, pickAnchor,
     seen: extras.seen,
     // Every queue read stays here; the policy module is handed values only.
     recentRoots: neighbourRoots,
@@ -415,7 +415,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
       reason,
     }),
     poolRescue: (avoidArtist) => pickViaPool(
-      queue, ctx, { wantLink, current, showAt }, rankTarget, audioWaypoint,
+      queue, ctx, { wantLink, pickAnchor, showAt }, rankTarget, audioWaypoint,
       { avoidArtist },
     ),
     log: (line) => queue.log('picker', line),
@@ -476,10 +476,10 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   const clockAllowed = speakClockAllowed();
   const linkAirAt = clockAllowed ? linkClockAt(showAt, Date.now()) : null;
   let rawLink = '';
-  if (wantLink && current) {
+  if (wantLink && pickAnchor) {
     try {
       rawLink = await dj.generateLink({
-        previous: current, current: song, context: linkAirContext(ctx, linkAirAt),
+        previous: pickAnchor, current: song, context: linkAirContext(ctx, linkAirAt),
         clockIsAirTime: !!linkAirAt, persona: session.onAirPersona(),
         recap: queue.getDjRecap(), recentTracks: queue.getRecentTracks(),
         recentOpeners: queue.getRecentOpeners(),
@@ -517,10 +517,10 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, curren
   const chop = wants('chop');
   const loop = wants('loop');
   // Attach the link to the pick so it airs as the pick starts (back-announcing
-  // the track on-air now), instead of immediately over that on-air track (#189).
-  // Stamp `current` as the link's back-announce target so the queue can drop the
-  // link if a request jumps ahead of this pick before it airs.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, current, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkClockStampFor(linkAirAt, clockAllowed) });
+  // the captured pick anchor), instead of immediately over the current track (#189).
+  // Stamp `pickAnchor` as the link's intended back-announce target so the queue
+  // can drop the link if a request jumps ahead of this pick before it airs.
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, pickAnchor, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkClockStampFor(linkAirAt, clockAllowed) });
   // Pick was already queued/on-air and got deduped — don't record a session turn
   // for a track that never airs. Returning false lets runTrackEvent fall through
   // to the pool for a fresh pick.
@@ -564,9 +564,9 @@ function linkAirContext(ctx: any, airAt: Date | null) {
 // answer sends the guard back to its own same-artist pick, and only 'empty'
 // means the pool truly held no other artist — the relaxation event says which
 // (#1187).
-async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { wantLink: boolean; current?: any; showAt?: Date | null }, rankTarget: { bpm: number | null; key: string | null } | null = null, audioWaypoint: number[] | null = null, opts: { avoidArtist?: string | null } = {}): Promise<'queued' | 'empty' | 'collision'> {
+async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: { wantLink: boolean; pickAnchor?: any; showAt?: Date | null }, rankTarget: { bpm: number | null; key: string | null } | null = null, audioWaypoint: number[] | null = null, opts: { avoidArtist?: string | null } = {}): Promise<'queued' | 'empty' | 'collision'> {
   // A DJ-mode mini-run (feature 4) anchors the pool re-rank to the run's
-  // tempo/key target instead of the current track. null → today's behaviour.
+  // tempo/key target instead of the pick-cycle anchor. null → today's behaviour.
   // A sonic journey (Phase 2) additionally anchors the audio-KNN source to the
   // run's current waypoint vector, drifting the pool toward the destination.
   const result = await picker.pickViaPool(queue, ctx, rankTarget, audioWaypoint, opts);
@@ -575,16 +575,17 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
     return 'empty';
   }
   // Build the between-track link BEFORE enqueueing so it can ride on the queued
-  // item and air when the pick starts. It back-announces the track on-air right
-  // now (`current`) and leads into the pick — because by the time it airs,
-  // `current` will have just ended and the pick will be starting (#189).
+  // item and air when the pick starts. It back-announces the captured
+  // `pickAnchor` and leads into the pick — that track is the selection's
+  // intended predecessor, and the queue drops a stale back-announce if the
+  // actual FIFO predecessor changes.
   let link: string | null = null;
   // Resolved HERE rather than up in runTrackEvent: the pick call above has
   // already spent part of the runway, and linkClockAt reads the live clock, so
   // asking now is the most honest the forecast can be on this path (#1314).
   const clockAllowed = speakClockAllowed();
   const airAt = linkClockAt(showAt, Date.now());
-  if (wantLink && current) {
+  if (wantLink && pickAnchor) {
     try {
       link = await dj.generateLink({
         // ctx with the clock stepped to the link's air moment — showAt's own
@@ -593,7 +594,7 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
         // left for it to hold may the link speak the clock at all (issue #864:
         // generation-time clocks aired a track late; #1314: forecast clocks
         // aired a filler track early).
-        previous: current, current: result.song, context: linkAirContext(ctx, airAt),
+        previous: pickAnchor, current: result.song, context: linkAirContext(ctx, airAt),
         clockIsAirTime: !!airAt && clockAllowed,
         // Name the speaker explicitly. Left unset, scripts.generateLink falls
         // back to getEffectivePersona() on the wall clock, which disagrees with
@@ -634,8 +635,9 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
     chop: wants('chop'),
     loop: wants('loop'),
   };
-  // `current` is the link's back-announce target (passed to generateLink as
-  // `previous`); stamp it so the queue drops the link if a request jumps ahead.
+  // `pickAnchor` is the link's intended back-announce target (passed to
+  // generateLink as `previous`); stamp it so the queue drops the link if a
+  // request jumps ahead.
   //
   // The clock stamp is what linkClockDrifted (queue/pure.ts) drops a link on
   // when the real seam lands far from the forecast — so it must only be set
@@ -645,7 +647,7 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
   // whole link to protect a clock that isn't in it. Gated on the STAMP rather
   // than on `airAt` itself, so linkAirContext still steps the daypart tags to
   // air time — "after dark" stays accurate even when the numerals are withheld.
-  const queued = await enqueuePick(queue, result.song, result.reason, result.source || 'pool', link, current, fx, {
+  const queued = await enqueuePick(queue, result.song, result.reason, result.source || 'pool', link, pickAnchor, fx, {
     linkClockAt: linkClockStampFor(airAt, clockAllowed),
   });
   // Even the pool landed on an already-queued track (a tiny library whose pool
@@ -678,18 +680,16 @@ async function pickViaPool(queue, ctx, { wantLink, current, showAt = null }: { w
 // the matching `showAt` clock, so both pick paths follow the show that will
 // actually be on air when the pick plays. `showAt` null → resolve at now,
 // exactly the pre-look-ahead behaviour.
-// `predecessor`/`prior` (feature: pair-aware transitions): when the pick is
-// fired by the pair-drain deadline, the track it will FOLLOW is the held
-// queue item — not queue.current, which is one track earlier at that moment.
-// The override flows everywhere the predecessor matters: the event text, the
-// mini-run anchor, the pool re-rank, and the link's back-announce target
-// (linkPrev). `prior` is the track before the predecessor (the on-air track
-// at deadline time). Omitted → queue.current/history, today's behaviour.
-export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, predecessor = null, prior = null }: {
+// `pickAnchor` is the selection snapshot captured when a pair-drain deadline
+// starts a pick — usually the held queue head, not a promise that it remains the
+// FIFO predecessor across later awaits. The anchor flows through the event,
+// mini-run, pool re-rank and link back-announce target. `anchorPrior` supplies
+// its context. Omitted means the cycle anchors to queue.current/history.
+export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickAnchor = null, anchorPrior = null }: {
   wantLink: boolean;
   showAt?: Date | null;
-  predecessor?: any | null;
-  prior?: any | null;
+  pickAnchor?: any | null;
+  anchorPrior?: any | null;
 }) {
   return withTrace({ kind: 'track-event', wantLink }, async () => {
     // Daily token cap. At the hard cap we make NO model call: skip the pick and
@@ -709,13 +709,14 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
     // exactly what a "stay silent" pick has always cost.
     wantLink = wantLink && !cheap && autoVoiceAllowed();
 
-    const current = predecessor ?? queue.current?.track ?? null;
-    const previous = predecessor ? (prior ?? null) : (queue.history[0]?.track ?? null);
+    const explicitPickAnchor = pickAnchor != null;
+    pickAnchor = pickAnchor ?? queue.current?.track ?? null;
+    const anchorPriorTrack = explicitPickAnchor ? (anchorPrior ?? null) : (queue.history[0]?.track ?? null);
     const djMode = !!settings.getEffectivePersona()?.djMode;
     // Feature 4 + Phase 2 — advance/maybe-start a mini-run; get the tempo/key
     // re-rank target and (when the audio index supports it) a sonic-journey
     // waypoint for the pool's audio anchor.
-    const { rankTarget, audioWaypoint } = advanceRun(djMode, current);
+    const { rankTarget, audioWaypoint } = advanceRun(djMode, pickAnchor);
     const inRun = runActive();
 
     // Selection steering stays in this prompt, but it no longer shares a
@@ -775,10 +776,15 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
       && Math.random() < EXPLORE_SEED_PROBABILITY
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';
-    const eventText = `Now playing "${current?.title}" by ${current?.artist}`
-      + (current?.id ? ` [id: ${current.id}]` : '')
-      + (previous ? ` (after "${previous.title}" by ${previous.artist})` : '')
-      + '. Pick the track to play next.';
+    const eventText = explicitPickAnchor
+      ? `Pick-cycle anchor: "${pickAnchor?.title}" by ${pickAnchor?.artist}`
+        + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
+        + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
+        + '. This queued track is the intended predecessor for this selection. Pick the track intended to follow that anchor.'
+      : `Now playing "${pickAnchor?.title}" by ${pickAnchor?.artist}`
+        + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
+        + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
+        + '. Pick the track to play next.';
     const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
@@ -790,7 +796,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
     if (settings.get().llm?.pickerAgent && !cheap && !breakerOpen()) {
       try {
         const queued = await pickViaAgent(queue, ctx, {
-          wantLink, audioWaypoint, current, showAt, rankTarget,
+          wantLink, audioWaypoint, pickAnchor, showAt, rankTarget,
         });
         breakerSuccess();
         if (queued) return;
@@ -816,7 +822,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, prede
         }
       }
     }
-    await pickViaPool(queue, ctx, { wantLink, current, showAt }, rankTarget, audioWaypoint);
+    await pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt }, rankTarget, audioWaypoint);
   });
 }
 
