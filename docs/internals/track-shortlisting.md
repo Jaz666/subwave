@@ -71,10 +71,10 @@ it only after filtering and freshness ordering.
 
 ### Passes and repeat calls
 
-The existing `llm.discoverySteps` setting retains its 1--5 range and its
-"up to" meaning. It becomes the **shortlist pass budget**. A native pass may
-reuse a source: vanilla permits the agent to call the same tool repeatedly, so
-the first implementation must not impose artificial source uniqueness.
+`picker.shortlistPasses` is the native **shortlist pass budget**. It accepts
+one to five passes and defaults to three. A native pass may reuse a source:
+vanilla permitted repeated tool calls, so the planner must not impose
+artificial source uniqueness.
 
 Vanilla lets a model make more than one call in a round, and lets it decide the
 arguments from preceding results. Native code cannot reproduce an arbitrary
@@ -536,3 +536,81 @@ the `djShortlistPick` source-run sequence and failure rate first; accept the
 rotation only if the exploration lane appears regularly without increasing
 fallbacks or materially worsening shortlist latency. The deferred frozen-moment
 legacy-versus-native paired comparison remains the next non-live benchmark.
+
+### End-of-session handover — 10 September 2026
+
+#### PR state
+
+[PR #1634](https://github.com/perminder-klair/subwave/pull/1634) is now ready
+for review (not draft), mergeable against `develop`, and green on controller,
+web and MCP lint. The feature branch is
+`feat/track-cpu-shortlisting` at `db92ecaf`.
+
+The branch has been merged with the recently landed Prompt Safety, Sleeve
+Notes, Show Handover and Pause-and-talk work. The final conflict resolutions
+preserve both feature sets:
+
+- pause-and-talk uses the newer coordinated handover exchange;
+- **DJ Behaviour** remains a single sidebar entry; and
+- its Save button owns talk placement, pause-and-talk minimum duration,
+  general DJ behaviour, and `picker.shortlistPasses`.
+
+No further merge work is currently outstanding. Do not change the PR back to
+draft unless the user explicitly asks.
+
+#### Confirmed runtime behaviour
+
+- Ordinary next-track selection is now **native Track Shortlist → Candidate
+  Pool fallback**. The old Agentic Picker tool loop is not a first fallback for
+  normal picks.
+- The legacy `pickerAgent` setting currently controls the separate
+  listener-request agent only. That request path still needs a tool-capable
+  model; when it is unavailable or fails, the established request matcher
+  remains the fallback.
+- A sensible later follow-up is a request-specific native shortlist: gather
+  intent-relevant candidates controller-side, then let one constrained editorial
+  call choose among them. It must rank request fulfilment ahead of ordinary
+  programme-flow criteria.
+
+#### Live evidence and documentation
+
+The paired three-round comparison is working and its Markdown records belong
+in `docs/internals/track-shortlisting-comparisons.md`. It is an internal
+evidence record, not a public feature or an item to mention in the PR text.
+Continue collecting a small, varied set of frozen-moment comparison examples.
+Each should retain show criteria, source/tool trace, returned tracks, latency,
+calls, tokens, selected track and fallback outcome.
+
+The overnight twelve-hour sample following the final station change recorded:
+
+| Kind | Calls | Successful | Average latency | Tokens |
+| --- | ---: | ---: | ---: | ---: |
+| `djShortlistPick` | 152 | 152/152 | 14.8 s | 1.06M |
+| `djShortlistRepick` | 62 | 62/62 | 5.7 s | 296.2k |
+
+The repick volume is expected to be elevated for strict shows with a small
+permitted library (the observed overnight show had 1,114 eligible tracks).
+
+A useful real-life Musical Leanings trace occurred at 05:15 on 9 September:
+Lucy’s native three-pass shortlist selected **Morcheeba — Blue Chair** after
+Context (`tracksByMood`), Continuity (`tracksThatSoundLikeThis`) and Exploration
+(`starredSongs`) returned 24 candidates. The private selection reason explicitly
+referred to Lucy’s broad melodic tastes. The full candidate list and raw reason
+were provided in the session conversation; use that material only as an
+operator-facing case study, never as listener-facing copy.
+
+#### Small follow-ups, not PR blockers
+
+- Some Booth Log `selectionReason` values reach the output character limit
+  mid-sentence. The choice and provenance are unaffected. Later, either lower
+  the requested length or instruct the model to finish one concise sentence
+  within the schema limit.
+- The old setting name is now slightly misleading because it affects listener
+  requests rather than ordinary picking. Rename or clarify it only as separate
+  follow-up work, alongside any native request-shortlist design.
+
+#### Working-tree caution
+
+The separate `/home/jaz666/codex/subwave-docs` repository contains uncommitted
+user-authored documentation edits. Preserve them; do not reset, clean, or
+rewrite that worktree as part of Track Shortlisting maintenance.
