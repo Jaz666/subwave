@@ -15,8 +15,9 @@ skills the same way: from the admin UI, or by dropping a folder into
 > a name, a brief, and a cooldown, then **Create skill**. It writes
 > `state/skills/<slug>/SKILL.md` for you (and arrives **disabled** — enable it when
 > you're happy). Custom skills can also be **edited** and **deleted** from the same
-> page. The form is prompt-only; a `tool.mjs` data fetcher is still a disk-drop (see
-> [tool.mjs (optional)](#toolmjs-optional) below).
+> page. The form can also point the skill at an RSS/Atom feed (see
+> [Feeds without code](#feeds-without-code)); anything else it should fetch is a
+> `tool.mjs` disk-drop (see [tool.mjs (optional)](#toolmjs-optional) below).
 
 > **TL;DR — News reads UK/BBC and you want something local?** Open
 > **/admin/skills → News → Edit**, paste your own RSS feed URL and rewrite the
@@ -67,15 +68,17 @@ cohosts: true             # OPTIONAL: host + every active guest each speak in th
 window: any               # "any" (default) | "commute" — only offered during commute hours
 context: time, festival   # OPTIONAL: which "right now" fields this segment may mention (see below)
 requiresKey: SOME_API_KEY # OPTIONAL: env var the skill needs; if unset, the skill stays inert
-toolDescription: ...      # OPTIONAL: how the DJ-facing tool is described (only matters with tool.mjs)
+feed: https://…/rss.xml   # OPTIONAL: an RSS/Atom feed this skill reads before it speaks (see below)
+feedMaxItems: 10          # OPTIONAL: how much of that feed to read per fire (1-50, default 10)
+toolDescription: ...      # Legacy compatibility metadata; not used by the direct runtime
 ---
 The markdown body is the DJ's brief for this segment. Keep it tight: what to
-say, in what tone, and — importantly — when to stay silent. The agent reads
+say, in what tone, and — importantly — when to stay silent. The DJ model reads
 this verbatim. One short sentence on air is the norm.
 ```
 
 Only a **non-empty body** is required; every frontmatter key has a default. The
-body becomes the per-segment briefing the DJ agent follows (the same role the
+body becomes the per-segment briefing the DJ model follows (the same role the
 inline `desc:` strings play for built-in skills) and the description shown in the
 admin UI.
 
@@ -98,6 +101,52 @@ Values are read as text whatever their YAML type, so `feedMaxItems: 6` and
 ignored. A block that isn't valid YAML — most often an unquoted colon in a
 value — still loads, read with the old line-by-line parser, and logs a warning
 naming the file.
+
+### `feed:` — feeds without code
+
+<a id="feeds-without-code"></a>
+
+A `feed:` line is a **fetch**, not a note to yourself. Any skill that declares
+one — with or without a `tool.mjs` — gets a `skill_<name>` tool the DJ calls
+before it writes the line, and the items land in the prompt as that segment's
+source data:
+
+```yaml
+---
+name: giveaway
+label: Giveaway watch
+cooldown: 30m
+feed: https://contest.example.com/state.rss
+feedMaxItems: 10
+---
+The feed is the current state of the contest — report on who is already in it
+rather than inventing a new name. Say nothing if it is empty.
+```
+
+The generated tool is the one the built-in News skill used to hand-roll, so
+every feed skill gets the same behaviour:
+
+- **RSS 2.0, Atom and RDF/RSS-1.0** all parse — namespaced tags
+  (`<dc:title>`, `<content:encoded>`) and CDATA included.
+- `feedMaxItems` (1–50, default 10) caps how much of the feed is read per fire.
+- Items are **burned on read**: at most 6 fresh items reach one segment, and the
+  next fire offers the ones after them rather than repeating. That memory is
+  per-skill and lives for as long as the controller runs.
+- A fetch that fails or times out stands the segment down instead of letting the
+  DJ invent one — the same grounding rule every data-backed skill follows. Set
+  `requiresData: false` if your skill would rather write from its brief.
+
+The knobs show up in the skill's **/admin/skills → Edit** sheet as *Feed URL* and
+*Max items*, so a feed can be added, changed or cleared without touching disk.
+
+> Only an `http:` or `https:` URL creates the tool. Anything else is logged as a
+> warning naming the skill and leaves it prompt-only — a `feed:` line must never
+> quietly do nothing.
+
+A skill that ships its own `tool.mjs` keeps it: the generic feed tool fills the
+gap, it never displaces a fetcher you wrote. If you want feed items *and*
+something else, read `config.feed` yourself via
+`services.fetchHeadlines` (see the table below).
 
 ### `cohosts: true` — one contribution from every host
 
@@ -122,13 +171,12 @@ error, exactly like a data-backed skill that found nothing to say. Ordinary
 skills, including ones with no `cohosts` field, keep the existing one-speaker
 path.
 
-If the skill has a `tool.mjs`, the co-hosted discussion gathers its data the same
-way every other segment does: the skill's own tool loop when `llm.pickerAgent`
-is on, and a code-driven fetch plus one structured call when it is off (pool
-mode, for models that aren't trusted with tool loops). Data-backed skills must
-obtain usable source data before anyone speaks; `{ available: false }` or a tool
-error stands the whole exchange down instead of letting several personas amplify
-an invented fact.
+If the skill has a `tool.mjs`, Subwave runs it in code before the discussion is
+written, then supplies the result to one structured writing call. Data-backed
+skills must obtain usable source data before anyone speaks; `{ available: false
+}` or a tool error stands the whole exchange down instead of letting several
+personas amplify an invented fact. `llm.pickerAgent` continues to control music
+picking, but does not change how Segments gather data.
 
 Set it in the admin editor with **Co-hosted discussion**, or in frontmatter:
 
@@ -205,7 +253,7 @@ editor flags it the next time you open that skill.
 Set it from the admin UI too: **/admin/skills → Edit → Cron timer**.
 
 **A cron speaks whenever it has something to speak from.** This is the thing to
-get right before adding one. The autonomous segment tick asks the agent whether
+get right before adding one. The autonomous segment tick asks the model whether
 to air at all, and silence is a first-class answer it takes whenever the data is
 dull or unchanged. A cron takes the same path as **Run now**, which is *forced*:
 the segment is required to produce a line, and the model is not offered a "stay
@@ -222,11 +270,11 @@ is exactly what the web-search skill did when a search came back empty
 `{ available: false }` merely means "no external item this time" — that is what
 the built-in `curiosity` does.
 
-On the autonomous pool-mode tick, grounded `{ available: false }` results are
-skipped before the LLM call and logged with the selected skill. The scheduler
-then backs that skill off in memory for the shorter of its configured cooldown
-or 15 minutes, so an empty source does not consume retrieval work again on the
-next five-minute tick. Successful-air cooldowns remain separate.
+On the autonomous tick, grounded `{ available: false }` results are skipped
+before the LLM call and logged with the selected skill. The scheduler then backs
+that skill off in memory for the shorter of its configured cooldown or 15
+minutes, so an empty source does not consume retrieval work again on the next
+five-minute tick. Successful-air cooldowns remain separate.
 
 So a cron suits a skill that is worth hearing at a fixed moment every time — a
 morning bulletin, a sign-off, a running joke tied to a particular hour. It still
@@ -290,10 +338,10 @@ logged and skipped — it never crashes the controller.
 
 ## tool.mjs (optional)
 
-If present, the default export is wrapped as an [AI SDK](https://sdk.vercel.ai)
-tool the segment director can call **before** writing the line. This is the
-**exact same mechanism the built-ins use** — the seven shipped skills are just
-directories with a `SKILL.md` and a `tool.mjs`, loaded the same way as yours.
+If present, the default export is run by Subwave **before** the DJ model writes
+the line. This is the **exact same mechanism the built-ins use** — the shipped
+skills are just directories with a `SKILL.md` and a `tool.mjs`, loaded the same
+way as yours.
 
 ```js
 export default async function (ctx, state, services, config, input) {
@@ -301,14 +349,14 @@ export default async function (ctx, state, services, config, input) {
   // state    — cross-tick dedup memory (persists between firings)
   // services — the curated station facade (see below)
   // config   — this skill's own SKILL.md frontmatter (e.g. a custom `feed:`)
-  // input    — the agent's values for your declared `inputs` (see below); {}
-  //            when you declare none
+  // input    — {} (the provider's own default input)
   // Return any JSON-serialisable object. The `{ available: false }` convention
-  // tells the agent there's nothing worth airing right now.
+  // tells Subwave there is nothing worth airing right now.
   return { available: true, foo: 'bar' };
 }
 
-// OPTIONAL: a richer tool description shown to the agent (else a generic one).
+// Legacy compatibility metadata. It is retained when importing an existing
+// skill, but the direct runtime does not show it to the model.
 export const description = 'Fetch X for the … segment.';
 
 // OPTIONAL: gate the whole skill on a runtime condition — when this returns
@@ -324,11 +372,9 @@ export const ready = (services) => services.searchReady();
 // which wins over this.
 export const requiresData = false;
 
-// OPTIONAL: agent-steerable parameters — a flat { name: description } object of
-// string params. The agent may pass a value or null for each; handle null by
-// falling back to your own default (see the web-search built-in's `query`).
-// Without this export the tool is zero-arg, which small models handle best —
-// only declare inputs the agent genuinely benefits from steering.
+// Legacy compatibility metadata. The direct runtime always supplies {}, so
+// providers should use their own default query or derive it from ctx. This will
+// be replaced by explicit Segment/provider configuration in a later release.
 export const inputs = { query: 'what to search for; null for the default dig' };
 
 // OPTIONAL: operator knobs — the settings this skill gets its own fields for in
@@ -337,38 +383,14 @@ export const inputs = { query: 'what to search for; null for the default dig' };
 // HERE (rather than in the controller) is what makes a copy of the skill keep
 // its settings: a duplicate copies tool.mjs verbatim, name and all.
 export const configFields = {
-  feed:         { type: 'url',    label: 'News feed · RSS 2.0', placeholder: 'https://…/rss.xml' },
-  feedMaxItems: { type: 'number', label: 'Max items', min: 1, max: 50, integer: true },
+  endpoint: { type: 'url',    label: 'Status API', placeholder: 'https://…/status.json' },
+  maxRows:  { type: 'number', label: 'Rows to read', min: 1, max: 50, integer: true },
 };
 ```
 
-> **Frontmatter does not fetch anything by itself.** Keys such as `feed:` and
-> `feedMaxItems:` are ordinary strings passed to the sibling `tool.mjs` as
-> `config`; they are not fetch declarations. A `SKILL.md` with those keys but no
-> `tool.mjs` remains prompt-only: it gets no `skill_<slug>` tool, performs no
-> automatic request, and receives no injected feed data.
-
-For a custom RSS-backed skill, add a sibling `tool.mjs` that reads those values
-and deliberately calls the shared feed service (frontmatter values arrive as
-strings, so convert numeric values yourself):
-
-```js
-export default async function (_ctx, _state, services, config) {
-  const parsedMax = Number(config.feedMaxItems);
-  const maxItems = Number.isInteger(parsedMax) && parsedMax >= 1 && parsedMax <= 50
-    ? parsedMax
-    : undefined;
-  const headlines = await services.fetchHeadlines({
-    feedUrl: config.feed || undefined,
-    maxItems,
-  });
-  return { headlines };
-}
-```
-
-For production use, copy or adapt the built-in News `tool.mjs`; it also handles
-headline deduplication and the no-fresh-items case. The feed URL only has meaning
-because that tool reads it and calls `services.fetchHeadlines`.
+> **You don't need a `tool.mjs` for a feed.** A `feed:` line in the frontmatter
+> is enough — see [Feeds without code](#feeds-without-code) below. Write a
+> `tool.mjs` when the skill needs something a feed can't give it.
 
 **`configFields` reference.** A flat `{ key: { … } }` map, up to 8 entries per
 skill. Each entry takes:
@@ -406,7 +428,7 @@ identical footing. It's read-mostly (no settings writes, no secrets):
 | `services.recentPlays(hours)` | play-log dedup sets `{ ids, keys }` over the last *hours* |
 | `services.library.getArtist(id)` / `.getAlbum(id)` / `.searchArtists(name, opts?)` | Navidrome/Subsonic reads |
 | `services.onThisDay()` | Wikipedia "on this day" events for today |
-| `services.fetchHeadlines({ feedUrl?, maxItems? })` | fetch + parse an RSS feed |
+| `services.fetchHeadlines({ feedUrl?, maxItems? })` | fetch + parse an RSS/Atom/RDF feed (what `feed:` uses) |
 | `services.recall.seen(key)` / `.remember(key)` | durable, cross-restart dedup ledger |
 | `services.log(msg)` | append a line to the station event log |
 
@@ -453,32 +475,33 @@ How a built-in still differs from a skill you add:
 
 ### News: swapping the feed
 
-The `news` skill's `tool.mjs` declares two knobs (`configFields`, above), so
-**/admin/skills → News → Edit** carries a feed field and a max-items field. They
-are stored as two extra frontmatter keys, editable on disk just as well:
+News is an ordinary feed skill (see [Feeds without code](#feeds-without-code)):
+**/admin/skills → News → Edit** carries a feed field and a max-items field,
+stored as two frontmatter keys and editable on disk just as well.
 
 ```yaml
 ---
 name: news
 label: News headlines
 cooldown: 45m
-feed: https://www.npr.org/rss/rss.php?id=1001   # any RSS 2.0 feed
+feed: https://www.npr.org/rss/rss.php?id=1001
 feedMaxItems: 10
 ---
 Read one fresh headline in a single sentence — keep it conversational, in the
 station's voice. Skip a headline that is dull or stale; silence is fine.
 ```
 
-> **Heads-up.** The parser handles **RSS 2.0** (`<item>`) feeds. **Atom** feeds
-> (`<entry>`) return zero items today — use an RSS URL.
-
 `NEWS_FEED_URL` / `NEWS_MAX_ITEMS` in `.env` only *seed* this file on the very first
 boot. Once `state/skills/news/SKILL.md` exists, **the file wins** — change the feed
 there (or in `/admin/skills`), not in `.env`.
 
-**Running a second news source** is just a copy: export the skill, rename it in
-both the `.md` and the `.zip`, re-import, and point its feed somewhere else. The
-knobs ride in `tool.mjs`, so the copy gets its own feed field under its own name.
+**Running a second news source** is just another skill with another `feed:` line
+— no export/rename dance, and nothing to copy.
+
+> Stations first booted before this was generic still have the old
+> `state/skills/news/tool.mjs` on disk, and keep running it — same behaviour,
+> its own copy of the same fetch. **↺ Reset to default** on the News skill
+> removes it and moves that install onto the shared path.
 
 ## Lifecycle
 
