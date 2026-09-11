@@ -243,6 +243,7 @@ export const DEFAULTS = {
   // When between-tracks placement is active, preserve the historic strict seam
   // behaviour unless the operator explicitly prefers a timely show handoff.
   djHandoffTiming: 'next-track' as const,
+  djHandoffMaxWaitMinutes: 2,
   // Show opt-in only; clips shorter than this remain ordinary ducked speech.
   pauseTalkMinSeconds: 20,
   // Optional programme-opening line folded into the first hourly check after a

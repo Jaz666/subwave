@@ -368,7 +368,8 @@ export interface FormState {
   /** Talk placement switch — every scheduled segment waits for the next track
    *  boundary. Flat, like djSpeakClock, and owned by DJ behaviour. */
   djTalkOnlyBetweenTracks: boolean;
-  djHandoffTiming: 'next-track' | 'on-time';
+  djHandoffTiming: 'next-track' | 'on-time' | 'skip';
+  djHandoffMaxWaitMinutes: string;
   /** Station-wide minimum length before a show may use pause-and-talk. */
   pauseTalkMinSeconds: string;
   djBehaviour: DjBehaviourForm;
@@ -446,7 +447,8 @@ export interface SettingsData {
     /** Absent on a settings.json predating the key — read it as false, which is
      *  what the controller's own coercion does. */
     djTalkOnlyBetweenTracks?: boolean;
-    djHandoffTiming?: 'next-track' | 'on-time';
+    djHandoffTiming?: 'next-track' | 'on-time' | 'skip';
+    djHandoffMaxWaitMinutes?: number;
     pauseTalkMinSeconds?: number;
     djBehaviour?: Partial<DjBehaviourForm>;
     /** Absent on a settings.json predating the key — the controller's own

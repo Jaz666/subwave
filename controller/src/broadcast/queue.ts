@@ -326,6 +326,7 @@ class Queue {
   _deadlinePickAt = 0;          // last deadline-pick ATTEMPT (ms epoch) — failure-retry cooldown, see maybeDeadlinePick
   _pendingVoice: PendingVoice | null = null; // one boundary-deferred segment awaiting the next track start — see announceAtNextTrack
   _handoffTimingTimer: NodeJS.Timeout | null = null;
+  _handoffSkipTimer: NodeJS.Timeout | null = null;
   _introRenders = new IntroRenderTracker<QueueItem>(); // timed-out pre-renders stay reusable by airIntro
   // Jingle handoffs made but not yet heard — see playJingle. ONE map for both
   // callers on purpose: the de-duplication question ("is this clip already
@@ -2192,6 +2193,17 @@ class Queue {
         this._handoffTimingTimer = null;
         if (this._pendingVoice === pending) void this.airPendingVoice();
       }, Math.max(0, notBefore - Date.now()));
+    }
+    if (kind === 'handoff' && notBefore != null && settings.get()?.djHandoffTiming === 'skip') {
+      if (this._handoffSkipTimer) clearTimeout(this._handoffSkipTimer);
+      const pending = this._pendingVoice;
+      const maxWaitMs = Number(settings.get()?.djHandoffMaxWaitMinutes ?? 2) * 60_000;
+      this._handoffSkipTimer = setTimeout(() => {
+        this._handoffSkipTimer = null;
+        if (this._pendingVoice !== pending) return;
+        this.dropPendingVoice('no suitable track boundary arrived before the handoff wait limit');
+        session.markHandoffAired();
+      }, Math.max(0, notBefore + maxWaitMs - Date.now()));
     }
     if (superseded) {
       superseded.onCompleted?.(false);
