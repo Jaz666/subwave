@@ -16,7 +16,7 @@ capability, fetches its data and applies grounding rules.
 
 ## Why this comes first
 
-The current `djAgentSegment` route has two behaviours behind
+Before this change, the `djAgentSegment` route had two behaviours behind
 `llm.pickerAgent`:
 
 - **Agentic path:** the model sees every eligible capability, chooses one,
@@ -30,8 +30,9 @@ choice. The direct path already provides the intended safety and operational
 shape: deterministic capability selection, source data available before writing
 and one bounded generation call.
 
-The behavioural audit that supports this scope should be kept current as the
-implementation and tests are prepared.
+This implementation removes the agentic route for both solo and co-hosted
+Segments. The focused test coverage keeps `llm.pickerAgent` enabled to prove
+that it no longer changes Segment execution.
 
 ## Target flow
 
@@ -109,6 +110,16 @@ Before submitting the PR, verify that:
 7. Existing Skills, their frontmatter, state and public routes remain
    compatible.
 8. Affected unit tests, type checks and the existing verification suite pass.
+
+## Delivery status
+
+Implemented on `deterministic-segment-runtime`:
+
+- automatic, forced and co-hosted Segments now all fetch source data in code;
+- `djAgentSegment` and the Segment model-tool wrappers have been removed;
+- existing `tool.mjs` packages still receive the same context, state, services,
+  frontmatter configuration and default input object;
+- `llm.pickerAgent` remains available for music picking only.
 
 ## Follow-on work
 
