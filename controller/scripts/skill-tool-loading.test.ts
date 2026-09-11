@@ -1,6 +1,5 @@
-// Regression coverage for the skill tool.mjs contract: a sibling tool.mjs is
-// wrapped as `skill_<slug>` and receives the skill's whole frontmatter as its
-// `config` argument (issue #1526).
+// Regression coverage for the skill tool.mjs contract: a sibling tool.mjs
+// receives the skill's whole frontmatter as its `config` argument (issue #1526).
 //
 // The other half of that original pin — "a feed: line without a tool.mjs stays
 // prompt-only" — was the bug reported as #1616 and is gone: the generic feed
@@ -60,7 +59,7 @@ Write a timeless line from this brief alone.
 `);
 
 const { loadSkills } = await import('../src/skills/loader.js');
-const { buildSegmentTools } = await import('../src/llm/internal/tools/segment-tools.js');
+const { fetchSegmentData } = await import('../src/llm/internal/tools/segment-tools.js');
 const caps = await loadSkills();
 
 const giveaway = caps.find(cap => cap.kind === 'giveaway');
@@ -69,15 +68,12 @@ const briefOnly = caps.find(cap => cap.kind === 'brief-only');
 assert.ok(giveaway, 'custom skill with tool.mjs loaded');
 assert.ok(briefOnly, 'prompt-only skill loaded');
 
-test('a non-News custom tool is named and receives all frontmatter as config', async () => {
+test('a non-News custom tool receives all frontmatter as config', async () => {
   assert.equal(giveaway.toolName, 'skill_giveaway');
   assert.equal(typeof giveaway.toolFn, 'function');
   assert.deepEqual(giveaway.config, giveawayConfig);
 
-  const tools = buildSegmentTools({ time: {} }, {}, caps);
-  assert.ok(tools.skill_giveaway, 'custom tool is registered in the segment tool set');
-
-  const result = await tools.skill_giveaway.execute({});
+  const result = await fetchSegmentData(giveaway, { time: {} }, {});
   assert.deepEqual(result, { receivedConfig: giveawayConfig });
 });
 
@@ -90,9 +86,7 @@ test('a skill with no tool.mjs and no feed: stays prompt-only', () => {
   assert.equal(briefOnly.toolFn, undefined);
   assert.equal(briefOnly.toolName, undefined);
 
-  const tools = buildSegmentTools({ time: {} }, {}, [briefOnly]);
-  assert.equal(tools.skill_brief_only, undefined);
-  assert.deepEqual(Object.keys(tools), []);
+  assert.equal(briefOnly.toolFn, undefined);
 
   // It is still OFFERED the feed knobs: the edit sheet is where an operator
   // sets the first feed, so a form that appears only once a value exists is a
