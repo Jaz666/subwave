@@ -83,6 +83,25 @@ guards, search sources, and final outcome as well as total latency.
 The FunctionGemma-specific LLM calls return to vanilla behaviour on this path.
 The main DJ LLM remains the only LLM involved in final candidate selection.
 
+## Path 3: deterministic Segment runtime
+
+**Purpose:** remove the model-directed tool loop from Segments/Skills while
+preserving the existing direct runtime behaviour as the compatibility baseline
+for later product work.
+
+This path is the first delivery step in the Segments/Skills reassessment. It
+does not redesign Skills or introduce new Segment formats. It makes the current
+non-agentic path universal: code selects the eligible capability and fetches
+its source data; grounding decides whether it can proceed; one structured DJ
+LLM call writes the selected Segment or stays silent.
+
+`llm.pickerAgent` remains available for music picking. This path removes its
+effect on Segments/Skills only.
+
+Read [Deterministic Segment Runtime](deterministic-segment-runtime.md) before
+working on this path. The document defines the compatibility boundary,
+non-goals and required verification.
+
 ## Work on hold
 
 ### Producer Routing
