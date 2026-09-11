@@ -373,8 +373,9 @@ export const ready = (services) => services.searchReady();
 export const requiresData = false;
 
 // Legacy compatibility metadata. The direct runtime always supplies {}, so
-// providers should use their own default query or derive it from ctx. This will
-// be replaced by explicit Segment/provider configuration in a later release.
+// providers should use their own default query or derive it from ctx. Subwave
+// flags a Skill that exports this in the booth log and the Skills admin page.
+// This will be replaced by explicit Segment/provider configuration later.
 export const inputs = { query: 'what to search for; null for the default dig' };
 
 // OPTIONAL: operator knobs — the settings this skill gets its own fields for in
