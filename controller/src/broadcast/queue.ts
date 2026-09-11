@@ -1091,6 +1091,15 @@ class Queue {
 
     const idx = this.upcoming.indexOf(item);
     const prevTrack = (idx > 0 ? this.upcoming[idx - 1]?.track : null) || this.current?.track || null;
+    // Stable within this synchronous drain action. Do not re-read queue state
+    // after an await merely to decorate an exit-effect diagnostic.
+    const successorTrack = idx >= 0 ? this.upcoming[idx + 1]?.track ?? null : null;
+    const exitEffectMeta = {
+      exitTrackId: item.track.id ?? null,
+      exitTrackTitle: item.track.title ?? null,
+      successorTrackId: successorTrack?.id ?? null,
+      successorTrackTitle: successorTrack?.title ?? null,
+    };
     if (!prevTrack) {
       // Nothing on-air to validate against (first track after boot) — an
       // effect on a cold start would garnish silence; drop it.
@@ -1298,13 +1307,13 @@ class Queue {
     if (item.track.loop) {
       item.track.crossSec = mix.loopCrossSecondsFor(next, maxSec);
       item.track.loopBar = mix.loopBarFor(next.bpm);
-      this.log('mix', `loop armed: ${item.track.crossSec}s canvas, ${item.track.loopBar}s bar → ${item.track.title}`);
+      this.log('mix', `loop armed on own exit of "${item.track.title}"${successorTrack ? ` before "${successorTrack.title}"` : ''}: ${item.track.crossSec}s canvas, ${item.track.loopBar}s bar`, exitEffectMeta);
     }
     if (item.track.washout) {
       item.track.crossSec = mix.washoutCrossSecondsFor(next, maxSec);
       item.track.washoutDelay = mix.washoutDelayFor(next.bpm);
       const why = item.track.washoutAuto ? ' (length-cap exit)' : '';
-      this.log('mix', `washout armed${why}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap → ${item.track.title}`);
+      this.log('mix', `washout armed${why} on own exit of "${item.track.title}"${successorTrack ? ` before "${successorTrack.title}"` : ''}: ${item.track.crossSec}s canvas, ${item.track.washoutDelay}s tap`, exitEffectMeta);
     }
     const effectFired = !!(item.track.sweep || item.track.washout || item.track.blend || item.track.dissolve || item.track.chop || item.track.loop);
 
@@ -3069,11 +3078,13 @@ class Queue {
   }
 
   // One full DJ pick cycle: session roll, programme plan, persona handoff, link
-  // cadence, pick. `predecessorItem` lets maybeDeadlinePick run the same cycle
-  // against the HELD item the pick will follow — `current` is one track too
-  // early there for the event text, the run anchor and the back-announce.
+  // cadence, pick. `pickAnchorItem` lets maybeDeadlinePick run the same cycle
+  // against the HELD item this selection is intended to follow — `current` is
+  // one track too early there for the event text, run seed and back-announce.
+  // This is a captured pick-cycle anchor, not a promise that no request can
+  // append behind the held item while the asynchronous selection is running.
   // Fire-and-forget; pickerBusy is the reentry guard.
-  runPickCycle({ isAutonomous, predecessorItem = null }: { isAutonomous: boolean; predecessorItem?: QueueItem | null }) {
+  runPickCycle({ isAutonomous, pickAnchorItem = null }: { isAutonomous: boolean; pickAnchorItem?: QueueItem | null }) {
     let wantLink = false;
     if (this.autoLink && isAutonomous && this.history[0]) {
       this.tracksUntilLink--;
@@ -3094,7 +3105,7 @@ class Queue {
         // The lead is what REMAINS of the on-air track, never its full duration:
         // this cycle also runs from the deadline backstop and from boot
         // recovery, part-way through a track, where the elapsed part would push
-        // `showAt` over the next boundary early (#1205). With a held predecessor
+        // `showAt` over the next boundary early (#1205). With a held pick anchor
         // (deadline path) the pick follows the HELD track instead, so the lead
         // adds that track's length. Unknown clock → no look-ahead.
         //
@@ -3107,7 +3118,7 @@ class Queue {
         // With one date there is no second date to disagree with.
         const leadSec = pickLeadSec(
           this.remainingSecOnAir(),
-          predecessorItem ? knownDurationSec(predecessorItem.track) : null,
+          pickAnchorItem ? knownDurationSec(pickAnchorItem.track) : null,
         );
         let showAt: Date | null = null;
         if (leadSec != null) {
@@ -3120,7 +3131,7 @@ class Queue {
         // The look-ahead context is only for selecting the track that follows.
         const finalTrackHandoff = session.armBoundaryHandoff(
           pickCtx,
-          predecessorItem?.track ?? this.current?.track ?? null,
+          pickAnchorItem?.track ?? this.current?.track ?? null,
         );
         if (finalTrackHandoff) {
           try {
@@ -3145,13 +3156,13 @@ class Queue {
         // the mic-pass lands over its outro into the transition — a working
         // DJ's hand-off spot; deliberate, see stem-transitions research.)
         try {
-          // A deadline pick runs while the track BEFORE predecessorItem is still
+          // A deadline pick runs while the track BEFORE pickAnchorItem is still
           // live. It may prepare the handoff, but confirmed playback of that
           // recorded final track is what lets runArmedBoundaryHandoff speak.
           const pendingMicPass = !!session.pendingHandoff();
           if (pendingMicPass
               && !session.boundaryHandoffAwaitsTrack()
-              && !(finalTrackHandoff && predecessorItem)) {
+              && !(finalTrackHandoff && pickAnchorItem)) {
             this.dropPendingVoice('the show handoff covers this boundary');
             const handoffCtx = finalTrackHandoff ? pickCtx : liveCtx;
             if (finalTrackHandoff && talkOnlyBetweenTracks()) {
@@ -3179,8 +3190,8 @@ class Queue {
           // The mic-pass owns this seam; an outgoing link cannot follow it.
           wantLink: wantLink && !finalTrackHandoff,
           showAt,
-          predecessor: predecessorItem?.track ?? null,
-          prior: predecessorItem ? (this.current?.track ?? null) : null,
+          pickAnchor: pickAnchorItem?.track ?? null,
+          anchorPrior: pickAnchorItem ? (this.current?.track ?? null) : null,
         });
       } catch (err) {
         this.log('error', `DJ track event failed: ${(err as Error).message}`);
@@ -3226,7 +3237,7 @@ class Queue {
     // autonomous seams — a request brings its own intro, mirroring the
     // track-start path's source check.
     this._deadlinePickAt = Date.now();
-    this.runPickCycle({ isAutonomous: !head.requestedBy, predecessorItem: head });
+    this.runPickCycle({ isAutonomous: !head.requestedBy, pickAnchorItem: head });
   }
 
   // Did the pick we just pushed actually become a playable request? (#1405)
@@ -3687,7 +3698,7 @@ class Queue {
   // takes the TAIL of the queue: a pick appends to the end, so its nearest
   // neighbours are the last `n` queued, not the first.
   //
-  // Sole consumer is the agent path's back-to-back artist guard (#1251), whose
+  // Sole consumer is the agent path's pick-anchor/spacing artist guard (#1251), whose
   // re-pick steps around these artists — hence root keys rather than the raw
   // keys recentArtistsSince returns; that one feeds the pool picker's relaxable
   // recentArtists filter, which matches raw against raw. Empty set when n <= 0.
