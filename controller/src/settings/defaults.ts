@@ -240,6 +240,9 @@ export const DEFAULTS = {
   // bound it. Policy lives in exactly one place — broadcast/talk-air.ts.
   // Applies live; no restart.
   djTalkOnlyBetweenTracks: false,
+  // When between-tracks placement is active, preserve the historic strict seam
+  // behaviour unless the operator explicitly prefers a timely show handoff.
+  djHandoffTiming: 'next-track' as const,
   // Show opt-in only; clips shorter than this remain ordinary ducked speech.
   pauseTalkMinSeconds: 20,
   // Optional programme-opening line folded into the first hourly check after a

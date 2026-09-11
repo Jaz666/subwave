@@ -325,6 +325,7 @@ class Queue {
   _resolveFailStreak = 0;       // consecutive pushes Liquidsoap never resolved — re-pick budget, see onPushResolveFailed
   _deadlinePickAt = 0;          // last deadline-pick ATTEMPT (ms epoch) — failure-retry cooldown, see maybeDeadlinePick
   _pendingVoice: PendingVoice | null = null; // one boundary-deferred segment awaiting the next track start — see announceAtNextTrack
+  _handoffTimingTimer: NodeJS.Timeout | null = null;
   _introRenders = new IntroRenderTracker<QueueItem>(); // timed-out pre-renders stay reusable by airIntro
   // Jingle handoffs made but not yet heard — see playJingle. ONE map for both
   // callers on purpose: the de-duplication question ("is this clip already
@@ -2184,6 +2185,14 @@ class Queue {
       onCompleted,
       notBefore,
     };
+    if (kind === 'handoff' && notBefore != null && settings.get()?.djHandoffTiming === 'on-time') {
+      if (this._handoffTimingTimer) clearTimeout(this._handoffTimingTimer);
+      const pending = this._pendingVoice;
+      this._handoffTimingTimer = setTimeout(() => {
+        this._handoffTimingTimer = null;
+        if (this._pendingVoice === pending) void this.airPendingVoice();
+      }, Math.max(0, notBefore - Date.now()));
+    }
     if (superseded) {
       superseded.onCompleted?.(false);
       this.log('scheduler',

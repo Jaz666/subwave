@@ -2905,6 +2905,10 @@ export const djTalkOnlyBetweenTracksSchema = z.boolean({
   error: 'djTalkOnlyBetweenTracks must be a boolean',
 });
 
+export const djHandoffTimingSchema = z.enum(['next-track', 'on-time'], {
+  error: 'djHandoffTiming must be "next-track" or "on-time"',
+});
+
 // The floor a rendered skill segment must clear before an opted-in show gives
 // it a real gap instead of a duck. settingsIntLike, like every other numeric
 // settings key: it accepts the admin form's string and truncates a float rather
