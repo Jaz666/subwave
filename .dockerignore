@@ -17,3 +17,9 @@ state
 **/.env
 **/.env.*
 !**/.env.example
+
+# On-hold FunctionGemma training artefacts — never needed in runtime images.
+controller/scripts/functiongemma/training/output/
+
+# Local station backup, not application source.
+manualBackup/
