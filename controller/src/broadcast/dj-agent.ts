@@ -47,8 +47,6 @@ import {
 import { dropEchoedLink, enqueuePick, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
 import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js';
-import { buildLinkClause } from './dj-agent/link-clause.js';
-import { announceLine } from './announce-line.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
@@ -71,7 +69,7 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 // `reason` replaces the default "you returned a bad id" framing — the artist
 // and album guards reuse this re-pick on a VALID pick, where that wording
 // would be false.
-async function repickFromSeen({ seen, badId, wantLink, showAt = null, playlistResolved = true, reason = null }: { seen: Map<string, any>; badId: string | null; wantLink: boolean; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null }) {
+async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const schema = modelTolerant(pickSchemaBase().extend({
@@ -87,10 +85,7 @@ async function repickFromSeen({ seen, badId, wantLink, showAt = null, playlistRe
       // run whose candidates it re-picks from.
       system: pickSystem(showAt, playlistResolved),
       prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
-        + `\n\n${why}`
-        + (wantLink
-            ? ' Write the "say" link for the track you choose, following the same rules.'
-            : ' Set "say" to null.'),
+        + `\n\n${why}`,
       schema,
       temperature: 0.5,
       kind: 'djAgentRepick',
@@ -248,7 +243,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
   return { scope, playlistTracks, activeShow };
 }
 
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, linkAirAt = null, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; linkAirAt?: Date | null; explore?: boolean }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; explore?: boolean }): Promise<boolean> {
   const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
 
   // Native discovery substitutes for the old tool loop. Its source registry
@@ -296,11 +291,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         album: pickAnchor.album ?? null,
       } : null,
       journeyActive: !!audioWaypoint?.length,
-      link: wantLink
-        ? (linkAirAt
-            ? `Write the on-air link. It is scheduled for ${getClockContext(linkAirAt).display}; only mention that time if needed.`
-            : 'Write the on-air link. Do not state a clock time.')
-        : 'Set say to null; no link airs for this pick.',
       ...(musicalLeanings
         ? { musicalLeanings }
         : {}),
@@ -333,7 +323,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }
   }
   if (!song && extras.seen.size) {
-    const repicked = await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, wantLink, showAt, playlistResolved: !!playlistTracks?.length });
+    const repicked = await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, showAt, playlistResolved: !!playlistTracks?.length });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
       queue.log('picker', `agent returned unknown id "${object?.id}" — re-picked "${repicked.id}" from its own candidates`);
@@ -396,9 +386,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             artist: pickAnchor.artist ?? null,
             album: pickAnchor.album ?? null,
           } : null,
-          link: wantLink
-            ? 'Write the on-air link for the track you choose.'
-            : 'Set say to null; no link airs for this pick.',
           ...(musicalLeanings ? { musicalLeanings } : {}),
           ...(guestMusicalNudge ? { guestMusicalLeanings: guestMusicalNudge } : {}),
         },
@@ -450,9 +437,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
               artist: pickAnchor.artist ?? null,
               album: pickAnchor.album ?? null,
             } : null,
-            link: wantLink
-              ? 'Write the on-air link for the track you choose.'
-              : 'Set say to null; no link airs for this pick.',
             ...(musicalLeanings ? { musicalLeanings } : {}),
             ...(guestMusicalNudge ? { guestMusicalLeanings: guestMusicalNudge } : {}),
           },
@@ -489,22 +473,26 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     selectionRecord,
   );
 
-  let rawSay = typeof object.say === 'string' ? object.say.trim() : '';
-  // Announce mode: the model's `say` only signals "speak"; announce-line.ts
-  // composes the wording and its alternation. Silence stays the model's call.
-  // Resolved off the ON-AIR persona (whoever enqueuePick pins the line to), not
-  // the wall-clock effective one — inside the handoff look-ahead they disagree.
-  // An empty compose means no frame fits this persona or artist, and the
-  // model's own line stands.
-  const linkSpeaker = session.onAirPersona();
-  if (rawSay && settings.announceLinks(linkSpeaker)) {
-    const composed = announceLine(song.artist, linkSpeaker, { lastLine: queue.getLastLinkText() });
-    if (composed) rawSay = composed;
+  // Selection has seen private shortlist context. Link writing is a separate,
+  // verified-facts stage, just as it is on vanilla v1.15: shortlist picks must
+  // never turn a model's editorial rationale into listener-facing copy.
+  const clockAllowed = speakClockAllowed();
+  const linkAirAt = clockAllowed ? linkClockAt(showAt, Date.now()) : null;
+  let rawLink = '';
+  if (wantLink && pickAnchor) {
+    try {
+      rawLink = await dj.generateLink({
+        previous: pickAnchor, current: song, context: linkAirContext(ctx, linkAirAt),
+        clockIsAirTime: !!linkAirAt, persona: session.onAirPersona(),
+        recap: queue.getDjRecap(), recentTracks: queue.getRecentTracks(),
+        recentOpeners: queue.getRecentOpeners(), lastLink: queue.getLastLinkText(),
+      });
+    } catch (err: any) {
+      queue.log('error', `DJ link failed: ${err.message}`);
+    }
   }
-  // Both the trim and the echo guard run again at enqueuePick's chokepoint;
-  // they run here so the session turn below records the line as it will air.
-  const say = dropEchoedLink(trimLinkToIntro(rawSay, song), queue) || '';
-  const link = (wantLink && say) ? say : null;
+  const say = dropEchoedLink(trimLinkToIntro(rawLink, song), queue) || '';
+  const link = say || null;
   const fxActive = settings.effectsActive();
   // A model can ignore the no-FX schema's field description, so log the discard
   // rather than dropping it silently — an effect in the LLM log that never airs
@@ -531,7 +519,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // The link rides the pick so it airs as the pick starts, not immediately over
   // the pick-cycle anchor (#189). It is stamped as the back-announce target
   // so the queue can drop the link if a request jumps ahead.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, pickAnchor, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkAirAt });
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, pickAnchor, { sweep, washout, blend, dissolve, chop, loop }, {
+    linkClockAt: linkClockStampFor(linkAirAt, clockAllowed),
+  });
   // Deduped: no session turn for a track that never airs. false sends
   // runTrackEvent to the pool for a fresh pick.
   if (queued === -1) return false;
@@ -680,56 +670,19 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     pickAnchor = pickAnchor ?? queue.current?.track ?? null;
     const anchorPriorTrack = explicitPickAnchor ? (anchorPrior ?? null) : (queue.history[0]?.track ?? null);
     const djMode = !!settings.getEffectivePersona()?.djMode;
-    // On-air persona, not the wall-clock effective one: the link belongs to
-    // whoever speaks it.
-    const announce = settings.announceLinks(session.onAirPersona());
-
     const { rankTarget, audioWaypoint } = advanceRun(djMode, pickAnchor);
     const inRun = runActive();
 
-    // The "nod to it in the link" half is gated on wantLink, so a silent
-    // mid-run pick isn't told it may phrase something in a link that won't
-    // exist. The energy direction is pick selection, so it stays unconditional.
+    // The energy direction belongs to selection; link wording is handled only
+    // after a track has been selected.
     const runClause = inRun
       ? ` You're mid-run — keep the energy moving in the same direction (a touch ${energyForDaypart().speed >= 1 ? 'brisker' : 'mellower'}).`
-        + (wantLink ? ' You may nod to it in the link, but never say tempo numbers.' : '')
       : '';
     // Gated on the waypoint, not inRun: on a run's final pick advanceRun has
     // already cleared the run state but the last waypoint is the destination.
     const journeyClause = audioWaypoint && audioWaypoint.length
       ? ' A sonic journey is active: call tracksTowardJourney and lean toward one of its tracks — each carries the sound a step toward where this arc is heading. If it comes back thin, pick via the library mood/genre/audio tools and keep the energy heading the same way. Never mention the journey on air.'
       : '';
-    // Opener variety for the link: one rotating angle plus the recent openers
-    // to steer clear of, the same two signals decoratePrompt gives the pool
-    // path. Announce mode skips both — alternating between its two fixed forms
-    // IS the variety, and an opener blocklist would eventually forbid both.
-    const linkAngle = wantLink && !announce ? dj.pickAngle('link') : null;
-    const recentOpeners = wantLink && !announce ? queue.getRecentOpeners() : [];
-    // Clock discipline for the link (#864). The agent path carries no clock of
-    // its own, so without this the model extrapolates one from stale stamped
-    // lines in the session window. With the look-ahead resolved, the air moment
-    // is stepped back off showAt's padded clock (#1282); without it, or with
-    // too little runway left for the forecast to hold (#1314), the clock is
-    // banned outright. The station clock switch gets its own clause: off wins
-    // over accurate. This clause and the `say` schema description are the ONLY
-    // clock the agent path ever sees.
-    const clockOff = !speakClockAllowed();
-    const airAt = clockOff ? null : linkClockAt(showAt, Date.now());
-    const airClock = airAt && ctx?.clock?.hhmm ? getClockContext(airAt) : null;
-    const clockClause = wantLink
-      ? (clockOff
-          ? ` Never state the clock time, the hour, or the time of day in the link.`
-          : airClock
-            ? ` The link airs at about ${airClock.display || airClock.hhmm} — if you mention the clock, that is the time to use, never an earlier one.`
-            : ` Never state the clock time in the link — you can't know exactly when it airs.`)
-      : '';
-    // The full link contract lives in the "say" schema description
-    // (pickSchemaBase), which travels on every call; this clause only TRIGGERS
-    // the link and carries the per-pick extras the schema can't know. Restating
-    // the contract here doubles it per pick.
-    const linkClause = wantLink
-      ? buildLinkClause({ djMode, announce, angle: linkAngle, recentOpeners })
-      : ' Stay silent — no link this time.';
     // Per-pick effects reminder. The system-prompt guidance alone loses to the
     // session history — the model sees ~40 of its own prior picks, almost all
     // transition:"normal", and copies itself. The event turn is the freshest
@@ -777,8 +730,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
         + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
         + '. Pick the track to play next.')
-      + linkClause;
-    const promptSuffix = `${clockClause}${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
+    const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
       meta: promptSuffix ? { promptSuffix } : {},
@@ -795,7 +747,6 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         // have been told: no forecastable moment, and the clock switch.
         const queued = await pickViaAgent(queue, ctx, {
           wantLink, audioWaypoint, pickAnchor, showAt, rankTarget, explore,
-          linkAirAt: linkClockStampFor(airAt, !!airClock),
         });
         breakerSuccess();
         if (queued) return;
@@ -1057,11 +1008,22 @@ export interface HandoffDeps {
   generateHandoffGreeting?: typeof dj.generateHandoffGreeting;
 }
 
+// A picker tick and the hourly scheduler can observe the same boundary. Keep
+// one claim while its two scripts render so they cannot produce two mic-passes.
+const handoffRuns = new Set<string>();
+
 export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps = {}): Promise<void> {
   const generateSignoff = deps.generateSignoff ?? dj.generateSignoff;
   const generateHandoffGreeting = deps.generateHandoffGreeting ?? dj.generateHandoffGreeting;
   const pending = session.pendingHandoff();
   if (!pending) return;
+  const isBoundaryHandoff = 'incomingPersonaId' in pending;
+  const isSameHostAcknowledgement = !isBoundaryHandoff && pending.sameHost === true;
+  const claim = `${pending.personaId}:${pending.at ?? 'unstamped'}`;
+  if (handoffRuns.has(claim)) return;
+  handoffRuns.add(claim);
+
+  try {
 
   // Nobody listening → the mic-pass moment has passed; don't stack a stale
   // handoff for later. Budget: treated as an optional segment (muted in soft
@@ -1087,51 +1049,44 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     return;
   }
 
-  // Outgoing persona comes from the roll metadata — its clock slot is already
-  // over, so getEffectivePersona() no longer returns it. Incoming is the fresh
-  // session's persona. A persona deleted mid-shift → nothing to voice; drop it.
+  // The ordinary post-roll mic-pass has no rendered-audio recovery window, so
+  // retain its established claim-before-air behaviour. Final-track handoffs
+  // settle only after their queued pair reaches the stream.
+  if (!isBoundaryHandoff) session.markHandoffAired();
+
+  // A final-track handoff is generated while the outgoing session is still
+  // live, so use the incoming identity captured when it was armed.
   const personaOut = settings.resolvePersonaById(pending.personaId);
   const cur = session.getSession();
-  const personaIn = settings.resolvePersonaById(cur?.persona?.id) || settings.getEffectivePersona();
+  const personaIn = (isBoundaryHandoff && settings.resolvePersonaById(pending.incomingPersonaId))
+    || settings.resolvePersonaById(cur?.persona?.id)
+    || settings.getEffectivePersona();
   if (!personaOut || !personaIn) {
     session.markHandoffAired();
     return;
   }
-  const showIn = cur?.show?.name || null;
-
-  // Mark aired BEFORE airing (see the idempotency note above).
-  session.markHandoffAired();
+  const showIn = (isBoundaryHandoff ? pending.incomingShowName : null) || cur?.show?.name || null;
+  const showOut = pending.showName || null;
 
   await withTrace({ kind: 'handoff', from: personaOut.name, to: personaIn.name }, async () => {
-    // The sign-off closes the show that just ENDED, but maybeRoll has already
-    // hard-rolled by the time this runs — the live session holds nothing but its
-    // own scenario turn, so reading it would strip the outgoing DJ of the hour
-    // it is signing off from. Its memory is the ARCHIVED session's
-    // (session.priorPromptMemory). The greeting keeps the fresh session's empty
-    // memory on purpose: not inheriting the outgoing topic is the point of #1479.
-    const outgoingRecap = queue.getDjRecap({ prior: true });
-    const outgoingOpeners = queue.getRecentOpeners(6, { prior: true });
-    const recentOpeners = queue.getRecentOpeners();
+    const outgoingRecap = queue.getDjRecap({ prior: !isBoundaryHandoff });
+    const outgoingOpeners = queue.getRecentOpeners(6, { prior: !isBoundaryHandoff });
+    const incomingRecap = isBoundaryHandoff ? null : queue.getDjRecap();
+    const recentOpeners = isBoundaryHandoff ? [] : queue.getRecentOpeners();
     let aired = false;
 
-    // 1. Sign-off, in the OUTGOING persona's voice. Tag the session turn with
-    //    the outgoing persona's id + name — that id is what keeps the line out
-    //    of the new session's prompt memory (broadcast/prompt-memory.ts) and
-    //    what makes session.windowMessages() name the real speaker, so the
-    //    incoming DJ never reads the sign-off as its own words.
+    // Render both sides before publishing either; the exchange owns the seam.
     let signoffText: string | null = null;
-    try {
-      signoffText = await generateSignoff({
-        personaOut, personaIn, showIn,
-        context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
-      });
-      await queue.announce(signoffText, 'handoff', {
-        persona: personaOut, meta: { personaId: personaOut.id, personaName: personaOut.name },
-      });
-      aired = true;
-    } catch (err: any) {
-      queue.log('error', `Handoff sign-off failed: ${err.message}`);
-      signoffText = null;
+    if (!isSameHostAcknowledgement) {
+      try {
+        signoffText = await generateSignoff({
+          personaOut, personaIn, showOut, showIn,
+          context: ctx, recap: outgoingRecap, recentOpeners: outgoingOpeners,
+        });
+      } catch (err: any) {
+        queue.log('error', `Handoff sign-off failed: ${err.message}`);
+        signoffText = null;
+      }
     }
 
     // 2. Greeting, in the INCOMING persona's voice. It acknowledges the
@@ -1145,8 +1100,11 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     try {
       greeting = await generateHandoffGreeting({
         personaIn, personaOut, showIn,
-        episodeAngle: session.getProgramme()?.plan?.angle || null,
-        context: ctx, recap: queue.getDjRecap(), recentOpeners,
+        sameHost: isSameHostAcknowledgement,
+        episodeAngle: (isBoundaryHandoff
+          ? session.getBoundaryProgramme()
+          : session.getProgramme())?.plan?.angle || null,
+        context: ctx, recap: incomingRecap, recentOpeners,
       });
     } catch (err: any) {
       queue.log('error', `Handoff greeting failed: ${err.message}`);
@@ -1172,7 +1130,11 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
     }
 
     if (aired) {
+      session.markHandoffQueued();
       logEvent('dj.handoff', { from: personaOut.name, to: personaIn.name, show: showIn });
     }
   });
+  } finally {
+    handoffRuns.delete(claim);
+  }
 }

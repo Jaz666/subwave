@@ -7,7 +7,6 @@ import * as session from '../session.js';
 import * as dj from '../../llm/dj.js';
 import { modelTolerant } from '../../llm/sdk.js';
 import { autoVoiceAllowed } from '../voice-policy.js';
-import { speakClockAllowed } from '../clock-policy.js';
 import { SEED_NOT_A_PICK_CLAUSE } from '../../util/pick-seed.js';
 import { instruction } from '../../llm/dj.js';
 
@@ -22,7 +21,6 @@ export const PICK_SCHEMA = z.object({
   // with the on-air track's own id. One shared wording in util/pick-seed.ts.
   id: z.string().describe(`the exact song id returned by one of the discovery tools — never invent or compose ids. ${SEED_NOT_A_PICK_CLAUSE}`),
   reason: z.string().describe('internal scratchpad only — max 12 words, never shown to the listener; do not justify, just note what makes THIS pick a fresh step (a shift in energy/era/texture, or an artist genuinely new to the rotation), not a vibe label you would recycle pick after pick (e.g. "warmer, driving energy", never a repeated "mellow reflective step"). Only call a pick a "new artist" when it has no "artist_play_count"/"artist_last_played_days_ago"; "unaired" means this song is new to the station, not that its artist is. If the artist shows recent or frequent plays, describe the real reason instead (energy shift, texture, flow)'),
-  say: z.string().nullable().describe('when the latest event message says to write a spoken link, set this to one or two natural sentences in the DJ voice that INTRODUCE the track you are about to play — set it up, name the artist or capture its feel, vary your opener. Do NOT back-announce, recap, or name the track that just played (a listener request may slip in ahead of your pick, so what aired right before it is not certain). Never state a clock time unless the event message tells you when the link airs — then use exactly that time. When the event says stay silent, set this to null'),
   // Only honoured when the system prompt offers them (settings.effectsActive).
   // Keep this a pointer: the full coaching is dj.effectsGuidance(), and
   // repeating it here sends the effects text twice per call.
@@ -37,32 +35,10 @@ export const PICK_SCHEMA_NO_FX = PICK_SCHEMA.extend({
   transition: z.enum(['normal', 'blend', 'sweep', 'washout', 'dissolve', 'chop', 'loop']).nullable().describe('always set to null — transition effects are not available for this persona'),
 });
 
-// The live pick schema, resolved per run: transition coaching follows the
-// on-air persona's djMode and the `say` length its scriptLength. This is the
-// plain un-wrapped object, for callers that need to .extend() (repickFromSeen
-// pins `id` to the run's candidates) — extend THIS then re-wrap with
-// modelTolerant, since a ZodPreprocess pipe has no .extend.
+// Selection deliberately contains no listener-facing speech. The selected song
+// crosses into generateLink only after the editorial decision is complete.
 export function pickSchemaBase() {
-  const base = settings.effectsActive() ? PICK_SCHEMA : PICK_SCHEMA_NO_FX;
-  // With the clock switch off (broadcast/clock-policy.ts) the escape hatch is
-  // dropped rather than left dangling: the event message never offers a time,
-  // so a flat ban is clearer than an unmeetable condition. The static
-  // description on PICK_SCHEMA is module-level and would freeze at boot, so
-  // this override always replaces it on the air path.
-  const clockRule = speakClockAllowed()
-    ? 'Never state a clock time unless the event message tells you when the link airs — then use exactly that time.'
-    : 'Never state a clock time, the hour, or the time of day.';
-  // Announce mode (persona linkStyle:'announce'). Fallback description only:
-  // runTrackEvent overwrites the text with announce-line.ts's composed line, so
-  // `say` here only signals "speak" (non-empty) vs "stay silent" (null).
-  // Resolved off the ON-AIR persona, never the wall-clock effective one: inside
-  // the handoff look-ahead the two disagree.
-  const sayDescription = settings.announceLinks(session.onAirPersona())
-    ? `when the latest event message says to write a spoken link, set this to EXACTLY one of: "This is <artist>." or "Next up, <artist>." — nothing before or after it: no title, album, year, feel, or clock. Use the artist name exactly as shown on the chosen track. When the event says stay silent, set this to null`
-    : `when the latest event message says to write a spoken link, set this to ${dj.lengthPhrase('link')} of natural speech in the DJ voice that INTRODUCE the track you are about to play — set it up, name the artist or capture its feel, vary your opener. Do NOT back-announce, recap, or name the track that just played (a listener request may slip in ahead of your pick, so what aired right before it is not certain). ${clockRule} When the event says stay silent, set this to null`;
-  return base.extend({
-    say: z.string().nullable().describe(sayDescription),
-  });
+  return settings.effectsActive() ? PICK_SCHEMA : PICK_SCHEMA_NO_FX;
 }
 
 export function pickSchema() {
@@ -167,7 +143,7 @@ ${dj.PICKER_CRITERIA}
 
 ${instruction('picker', 'listener-requests', { listenerText: LISTENER_TEXT_CLAUSE })}${dj.REQUESTER_NAME_CLAUSE}
 
-${findingCandidates}${dj.effectsGuidance()}${settings.agentLanguageReminder(persona, 'the "say" link')}`;
+${findingCandidates}${dj.effectsGuidance()}${settings.agentLanguageReminder(persona, 'the selection response')}`;
 }
 
 // Exported for scripts/llm-bench, like requestSchema above.

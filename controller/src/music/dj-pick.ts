@@ -1,8 +1,9 @@
 // One editorial model call over a controller-built Track Shortlist.
 //
 // Discovery is deliberately absent here: candidates and factual provenance are
-// supplied by music/shortlist.ts. The model chooses only from their ids and
-// writes the listener-facing link/transition in the existing pick shape.
+// supplied by music/shortlist.ts. The model chooses only from their ids plus
+// the private selection note and transition. The verified link writer runs
+// afterwards, once the selected track is known.
 
 import { z } from 'zod';
 import { djObject, modelTolerant } from '../llm/sdk.js';
@@ -12,7 +13,6 @@ import type { ShortlistCandidate, ShortlistSourceRun } from './shortlist.js';
 export type ShortlistPick = {
   id: string;
   selectionReason: string;
-  say: string | null;
   transition: 'normal' | 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop' | null;
 };
 
