@@ -697,6 +697,9 @@ export function skillCatalog() {
       requiresKey,
       keyUrl,
       hint,
+      warning: c.legacyInputs?.length
+        ? `Legacy tool.mjs inputs (${c.legacyInputs.join(', ')}) now use the provider's default input. Review this Skill before relying on it on air.`
+        : null,
       // The "right now" fields this situation may include (#471), resolved to
       // the default profile when unset so the admin UI needn't guess.
       contextFields: effectiveContextFields(c),

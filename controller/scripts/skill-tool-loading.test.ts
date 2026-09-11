@@ -58,15 +58,26 @@ editorialNote: nothing to fetch
 Write a timeless line from this brief alone.
 `);
 
+writeSkill('legacy-inputs', `---
+name: legacy-inputs
+label: Legacy inputs
+---
+Uses an old model-steerable query.
+`, `export const inputs = { query: 'legacy query' };
+export default async (_ctx, _state, _services, _config, input) => ({ receivedInput: input });
+`);
+
 const { loadSkills } = await import('../src/skills/loader.js');
 const { fetchSegmentData } = await import('../src/llm/internal/tools/segment-tools.js');
 const caps = await loadSkills();
 
 const giveaway = caps.find(cap => cap.kind === 'giveaway');
 const briefOnly = caps.find(cap => cap.kind === 'brief-only');
+const legacyInputs = caps.find(cap => cap.kind === 'legacy-inputs');
 
 assert.ok(giveaway, 'custom skill with tool.mjs loaded');
 assert.ok(briefOnly, 'prompt-only skill loaded');
+assert.ok(legacyInputs, 'legacy-input skill loaded');
 
 test('a non-News custom tool receives all frontmatter as config', async () => {
   assert.equal(giveaway.toolName, 'skill_giveaway');
@@ -92,4 +103,9 @@ test('a skill with no tool.mjs and no feed: stays prompt-only', () => {
   // sets the first feed, so a form that appears only once a value exists is a
   // form nobody can use to create one.
   assert.deepEqual(briefOnly.configFields.map((f: any) => f.key), ['feed', 'feedMaxItems']);
+});
+
+test('legacy tool inputs are visible but the provider receives its default input', async () => {
+  assert.deepEqual(legacyInputs.legacyInputs, ['query']);
+  assert.deepEqual(await fetchSegmentData(legacyInputs, { time: {} }, {}), { receivedInput: {} });
 });
