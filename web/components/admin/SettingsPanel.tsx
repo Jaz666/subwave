@@ -429,8 +429,6 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
       // Absent (a settings.json predating the key) reads as OFF, matching the
       // controller's own coercion in settings.load().
       djTalkOnlyBetweenTracks: v.djTalkOnlyBetweenTracks === true,
-      djHandoffTiming: v.djHandoffTiming === 'on-time' || v.djHandoffTiming === 'skip' ? v.djHandoffTiming : 'next-track',
-      djHandoffMaxWaitMinutes: String(v.djHandoffMaxWaitMinutes ?? 2),
       pauseTalkMinSeconds: String(v.pauseTalkMinSeconds ?? 20),
       djBehaviour: {
         showWelcome: v.djBehaviour?.showWelcome === true,

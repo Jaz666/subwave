@@ -24,8 +24,6 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
   const save = async () => {
     await saveSettings({
       djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
-      djHandoffTiming: form.djHandoffTiming,
-      djHandoffMaxWaitMinutes: Number(form.djHandoffMaxWaitMinutes),
       pauseTalkMinSeconds: Number(form.pauseTalkMinSeconds),
       djBehaviour: form.djBehaviour,
     });
@@ -71,33 +69,6 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           </p>
         </div>
       </Card>
-
-      {form.djTalkOnlyBetweenTracks && (
-        <Card title="Show-change handoffs" sub={form.djHandoffTiming === 'on-time' ? 'on time' : 'at the next track boundary'}>
-          <div className="field">
-            <Label>When no track boundary lands on the show change</Label>
-            <Seg
-              value={form.djHandoffTiming}
-              options={[
-                { id: 'next-track', label: 'Wait for a boundary', title: 'Keep the handoff strictly between tracks, even if it is late' },
-                { id: 'on-time', label: 'Keep it on time', title: 'Briefly duck the handoff in at the scheduled show change when no boundary is available' },
-                { id: 'skip', label: 'Skip if no boundary', title: 'Drop the handoff if no suitable track seam arrives in time' },
-              ]}
-              onChange={v => setForm(f => ({ ...f, djHandoffTiming: v as 'next-track' | 'on-time' | 'skip' }))}
-            />
-            {form.djHandoffTiming === 'skip' && (
-              <div className="mt-3 max-w-44">
-                <Label>Maximum wait (minutes)</Label>
-                <Input type="number" min="1" max="10" step="1" value={form.djHandoffMaxWaitMinutes}
-                  onChange={e => setForm(f => ({ ...f, djHandoffMaxWaitMinutes: e.target.value }))} />
-              </div>
-            )}
-            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-              This affects only the outgoing sign-off and incoming greeting at a scheduled show change. “Keep it on time” prevents a handoff waiting through the first full track of the new show; “Skip if no boundary” quietly discards it after the chosen wait.
-            </p>
-          </div>
-        </Card>
-      )}
 
       <Card title="Pause-and-talk" sub={`${form.pauseTalkMinSeconds}s minimum`}>
         <div className="field" data-invalid={pauseTalkAria.invalid || undefined}>

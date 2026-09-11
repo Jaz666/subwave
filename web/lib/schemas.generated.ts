@@ -2905,16 +2905,6 @@ export const djTalkOnlyBetweenTracksSchema = z.boolean({
   error: 'djTalkOnlyBetweenTracks must be a boolean',
 });
 
-export const djHandoffTimingSchema = z.enum(['next-track', 'on-time', 'skip'], {
-  error: 'djHandoffTiming must be "next-track", "on-time" or "skip"',
-});
-
-export const DJ_HANDOFF_MAX_WAIT_MINUTES_BOUNDS: SettingsNumericBound = { min: 1, max: 10 };
-export const djHandoffMaxWaitMinutesSchema = settingsIntLike(
-  DJ_HANDOFF_MAX_WAIT_MINUTES_BOUNDS,
-  'djHandoffMaxWaitMinutes must be a whole number of minutes between 1 and 10',
-);
-
 // The floor a rendered skill segment must clear before an opted-in show gives
 // it a real gap instead of a duck. settingsIntLike, like every other numeric
 // settings key: it accepts the admin form's string and truncates a float rather

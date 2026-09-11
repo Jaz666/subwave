@@ -579,13 +579,6 @@ export async function load() {
       typeof stored.djTalkOnlyBetweenTracks === 'boolean'
         ? stored.djTalkOnlyBetweenTracks
         : DEFAULTS.djTalkOnlyBetweenTracks,
-    djHandoffTiming:
-      stored.djHandoffTiming === 'on-time' || stored.djHandoffTiming === 'next-track' || stored.djHandoffTiming === 'skip'
-        ? stored.djHandoffTiming
-        : DEFAULTS.djHandoffTiming,
-    djHandoffMaxWaitMinutes: Number.isFinite(parseInt(stored.djHandoffMaxWaitMinutes, 10))
-      ? Math.min(10, Math.max(1, parseInt(stored.djHandoffMaxWaitMinutes, 10)))
-      : DEFAULTS.djHandoffMaxWaitMinutes,
     // parseInt + clamp, matching pauseTalkMinSecondsSchema's posture on the save
     // path: a read that repaired differently from the writer would refuse a
     // value it had just stored.
@@ -1563,14 +1556,6 @@ export async function update(patch) {
   if ('djTalkOnlyBetweenTracks' in patch) {
     next.djTalkOnlyBetweenTracks =
       parseSettingsPatchKey<boolean>('djTalkOnlyBetweenTracks', patch.djTalkOnlyBetweenTracks);
-  }
-  if ('djHandoffTiming' in patch) {
-    next.djHandoffTiming =
-      parseSettingsPatchKey<'next-track' | 'on-time' | 'skip'>('djHandoffTiming', patch.djHandoffTiming);
-  }
-  if ('djHandoffMaxWaitMinutes' in patch) {
-    next.djHandoffMaxWaitMinutes =
-      parseSettingsPatchKey<number>('djHandoffMaxWaitMinutes', patch.djHandoffMaxWaitMinutes);
   }
   if ('pauseTalkMinSeconds' in patch) {
     next.pauseTalkMinSeconds = parseSettingsPatchKey<number>('pauseTalkMinSeconds', patch.pauseTalkMinSeconds);
