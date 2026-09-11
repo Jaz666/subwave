@@ -10,8 +10,10 @@ This is an onboarding roadmap, not a product commitment. Items are separated bet
   shortlisting.
 - Keep Producer Routing and FunctionGemma work preserved but on hold. They are
   not the default continuation of either active path.
-- Continue `codex/skills-v2` as an ongoing architecture change, independently
-  of the on-hold routing work.
+- Continue the Segments/Skills reassessment independently of the on-hold
+  routing work. Its first delivery is the deterministic Segment runtime
+  documented in
+  [`docs/deterministic-segment-runtime.md`](deterministic-segment-runtime.md).
 
 ## Work evidenced by this checkout
 
@@ -29,7 +31,9 @@ These are proposals, not claims of an existing maintainer plan:
    creating its branch.
 2. Define the native shortlisting service contract, including its structured
    inputs, candidate provenance, de-duplication and bounded fallback policy.
-3. Continue skills-v2 design with explicit compatibility notes for existing skills and state.
+3. Land the deterministic Segment runtime compatibility PR, then continue the
+   Segments/Skills design with explicit compatibility notes for existing skills
+   and state.
 4. Define an end-to-end smoke environment covering Compose startup, controller health, stream output, web onboarding, and at least one representative client.
 5. Document state backup, restore, SQLite migration, and rollback expectations for upgrades.
 
@@ -41,6 +45,7 @@ The repository and current project context do not establish:
   evidence.
 - Whether native shortlisting reveals a concrete retrieval gap that warrants
   revisiting FunctionGemma.
-- The compatibility and migration policy for skills-v2.
+- The compatibility and migration policy for the later Segments/Skills product
+  model.
 - The supported CPU/GPU hardware matrix for the split architecture.
 - The deployment environments and provider combinations that must be supported by the fork.
