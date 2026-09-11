@@ -52,6 +52,8 @@ import { getFullContext, getClockContext, energyForDaypart } from '../context.js
 import * as settings from '../settings.js';
 import { TRANSITION_EFFECTS } from '../settings/vocab.js';
 import { logEvent } from '../observability/events.js';
+import { logDjSpeech } from '../observability/dj-speech-log.js';
+import { recordTrackTransition, STATS_WINDOW } from '../stats.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { speakClockAllowed, stationIdDaypartDrifted, stationIdDaypartStamp } from './clock-policy.js';
@@ -170,6 +172,8 @@ interface SegmentDesc {
   /** A multi-line handoff becomes aired only when its final line reaches the
    * live edge. Single-line handoffs omit this and settle as before. */
   settlesHandoff?: boolean;
+  /** Track the segment accompanies, captured before the asynchronous air wait. */
+  track?: Track | null;
 }
 
 // A rendered segment waiting for the next track boundary — the one slot behind
@@ -553,7 +557,7 @@ class Queue {
   log(kind: string, message: string, meta: Record<string, unknown> = {}) {
     const entry = { id: Date.now() + Math.random(), kind, message, meta, t: new Date().toISOString() };
     this.djLog.unshift(entry);
-    this.djLog = this.djLog.slice(0, 200);
+    this.djLog = this.djLog.slice(0, STATS_WINDOW);
     console.log(`[${kind}] ${message}`);
   }
 
@@ -1521,6 +1525,7 @@ class Queue {
     if (secs == null) return;
     const existing = item.track.crossSec;
     item.track.crossSec = existing != null ? Math.min(existing, secs) : secs;
+    item.track.pairBlend = true;
     this.log('mix', `pair blend ${item.track.crossSec}s: ${item.track.title} → ${successor.track.title}`
       + (existing != null && existing < secs ? ' (ending canvas kept)' : ''));
   }
@@ -1731,6 +1736,7 @@ class Queue {
                 delete item.track.washoutDelay;
                 delete item.track.loop;
                 delete item.track.loopBar;
+                delete item.track.pairBlend;
                 item.track.crossSec = stemBlend.CLIP_SEAM_CROSS_SEC;
                 item.stemBlend = blend;
                 item.cueOutSec = blend.blendStartSec;
@@ -1786,6 +1792,19 @@ class Queue {
         // following, two back-to-back writes are the norm and one missed
         // 1.0s poll must not overwrite an unconsumed handoff.
         await writeHandoff(config.liquidsoap.queueFile, uri, { maxWaitMs: 5000 });
+        // Count precisely what was committed to the mixer, after optional stem
+        // rendering has either replaced a pair blend or declined it.
+        const transition = [
+          item.stemBlend && 'stem blend',
+          item.track.pairBlend && 'pair blend',
+          item.track.sweep && 'sweep',
+          item.track.washout && 'washout',
+          item.track.blend && 'blend',
+          item.track.dissolve && 'dissolve',
+          item.track.chop && 'chop',
+          item.track.loop && 'loop',
+        ].filter(Boolean).join(' + ') || 'normal';
+        recordTrackTransition(transition);
         if (item.stemBlend) {
           // The clip rides right behind its outgoing track, annotated as the
           // INCOMING track so now-playing flips when the blend begins. Reuse
@@ -1925,7 +1944,7 @@ class Queue {
       const targetFile = channel === 'intro'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
-      const seg: SegmentDesc = { kind, channel, text: safeText, meta, persona };
+      const seg: SegmentDesc = { kind, channel, text: safeText, meta, persona, track: this.current?.track ?? null };
       const handoff = await airVoice(targetFile, wavPath, safeText, voiceGainDb(kind, persona), {
         onQueued: q => this.onQueued(q, seg),
       });
@@ -1980,13 +1999,22 @@ class Queue {
 
   async onSpoken(handoff: VoiceHandoff, {
     kind, channel, text, meta = {}, persona = null, logText = null, legacy = true,
-    settlesHandoff = true,
+    settlesHandoff = true, track = null,
   }: SegmentDesc): Promise<boolean> {
     const airedAt = await handoff.aired;
     try {
       const safeText = normalizeForDisplay(text);
       const safeLogText = logText == null ? safeText : normalizeForDisplay(logText);
       this.log(kind, safeLogText);
+      // A durable, readable station transcript, separate from diagnostic events.
+      logDjSpeech({
+        airedAt: airedAt ?? Date.now(),
+        speaker: persona?.name ?? (meta.personaName as string | undefined) ?? 'DJ',
+        show: settings.resolveActiveShow(new Date(airedAt ?? Date.now()))?.name || 'Auto DJ',
+        kind,
+        text: safeText,
+        track,
+      });
       // A handoff remains merely QUEUED until Liquidsoap's live-edge marker
       // confirms that it reached listeners. A multi-line handoff settles on
       // its final line only.
@@ -2069,6 +2097,7 @@ class Queue {
         const seg: SegmentDesc = {
           ...exchangeSegment(l, kind),
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
+          track: this.current?.track ?? null,
         };
         const handoff = await airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
           onQueued: q => this.onQueued(q, seg),
@@ -2483,7 +2512,7 @@ class Queue {
               channel: 'intro',
               settlesHandoff: clip.settlesHandoff,
             }
-          : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona };
+          : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona, track: this.current?.track ?? null };
         const handoff = await airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
           onQueued: q => this.onQueued(q, seg),
         });
@@ -2629,6 +2658,7 @@ class Queue {
         meta: item.introPersona
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
+        track: item.track,
       };
       const handoff = await airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),
@@ -3893,6 +3923,7 @@ class Queue {
         text: clip.text,
         meta: clip.meta,
         persona: clip.persona,
+        track: this.current?.track ?? null,
       };
       const waitMs = Math.max(1_000,
         (p.pauseArmedAt ?? Date.now()) + PAUSE_TALK_ARM_MAX_AGE_MS - Date.now());

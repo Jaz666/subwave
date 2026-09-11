@@ -41,6 +41,7 @@ import { loadedCapabilities } from '../skills/loader.js';
 import { skillEligible } from '../skills/eligibility.js';
 import { getStationTimezone, onStationTimezoneChange } from '../time.js';
 import { withTrace, pruneOldEvents } from '../observability/events.js';
+import { pruneOldDjSpeechLogs } from '../observability/dj-speech-log.js';
 import * as archives from './archives.js';
 import * as stemCacheStore from '../music/stem-cache.js';
 import * as stemBlendStore from './stem-blend.js';
@@ -939,6 +940,12 @@ async function cleanup() {
     if (removed) queue.log('scheduler', `Cleanup: pruned ${removed} old event log file(s)`);
   } catch (err) {
     queue.log('error', `Event log prune failed: ${err.message}`);
+  }
+  try {
+    const removed = await pruneOldDjSpeechLogs();
+    if (removed) queue.log('scheduler', `Cleanup: pruned ${removed} old DJ speech log file(s)`);
+  } catch (err) {
+    queue.log('error', `DJ speech log prune failed: ${err.message}`);
   }
   // Archive retention. 0 (the default) keeps everything.
   try {

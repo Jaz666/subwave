@@ -32,6 +32,7 @@ export function nextTransitionLabel(
   if (incoming.stemSeam) return 'Stem blend';
 
   const labels: string[] = [];
+  const pairBlending = outgoing?.track.pairBlend === true;
   const washing = outgoing?.track.washout === true;
   const looping = outgoing?.track.loop === true && !washing;
 
@@ -40,6 +41,7 @@ export function nextTransitionLabel(
 
   // Mirrors radio.liq's precedence: loop suppresses every entry effect;
   // washout suppresses dissolve/chop but can coexist with sweep/blend.
+  if (!washing && !looping && pairBlending) labels.push('Pair blend');
   if (!looping && incoming.track.sweep) labels.push('Sweep');
   if (!looping && incoming.track.blend) labels.push('Blend');
   if (!washing && !looping && incoming.track.dissolve) labels.push('Dissolve');

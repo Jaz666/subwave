@@ -3,13 +3,32 @@
 // Two in-memory ring buffers back the Stats page:
 //   - the LLM call ring lives in llm/log.js (recentCalls)
 //   - the TTS call ring lives here (ttsCalls), filled by audio/tts.js
-// Both hold the last ~120 calls and are lost on controller restart by design
+// The rings hold a full-day diagnostic window and are lost on controller restart by design
 // — /stats reports activity since boot, nothing durable. The pure summarise*
 // helpers below roll those rings (plus the DJ-log ring) into the shape the
 // /stats route returns.
 
-const MAX_TTS_CALLS = 120;
+export const STATS_WINDOW = 1000;
+const MAX_TTS_CALLS = STATS_WINDOW;
 export const ttsCalls: any[] = [];
+
+// Local diagnostics for the Stats page. Unlike the LLM ring (which holds model
+// calls, each possibly containing several tool calls), these retain the last
+// 1,000 individual tool calls and actual track transitions cover a full day
+// on a local test station without allowing the rings to grow without bound.
+const MAX_DEBUG_EVENTS = STATS_WINDOW;
+export const toolCalls: any[] = [];
+export const trackTransitions: any[] = [];
+
+export function recordToolCall(call: any) {
+  toolCalls.unshift(call);
+  if (toolCalls.length > MAX_DEBUG_EVENTS) toolCalls.length = MAX_DEBUG_EVENTS;
+}
+
+export function recordTrackTransition(transition: string) {
+  trackTransitions.unshift({ transition });
+  if (trackTransitions.length > MAX_DEBUG_EVENTS) trackTransitions.length = MAX_DEBUG_EVENTS;
+}
 
 // Recorded by audio/tts.js on every speak(): one entry per spoken segment,
 // success or failure, including whether the engine fell back to a local one.
@@ -154,7 +173,7 @@ export function summarizeLlm(calls) {
   };
 
   return {
-    window: 120,
+    window: STATS_WINDOW,
     count: calls.length,
     ok: ok.length,
     failed: calls.length - ok.length,
@@ -193,7 +212,7 @@ export function summarizeTts(calls) {
   const ok = calls.filter(c => c.ok);
   const fellBack = calls.filter(c => c.fellBack);
   return {
-    window: 120,
+    window: STATS_WINDOW,
     count: calls.length,
     ok: ok.length,
     failed: calls.length - ok.length,
@@ -214,8 +233,60 @@ export function summarizeDjLog(djLog) {
   const m = new Map();
   for (const e of djLog) m.set(e.kind || 'unknown', (m.get(e.kind || 'unknown') || 0) + 1);
   return {
+    window: STATS_WINDOW,
     count: djLog.length,
     byKind: [...m.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count),
+  };
+}
+
+// --- local debugging summaries -----------------------------------------
+
+// The picker schema permits one chosen effect per track. A capped track can
+// additionally receive an automatic washout exit, so these are the complete
+// set of combinations that can actually be armed on-air. Keep all sixteen rows
+// in the response so unused but valid outcomes still read as zero.
+export const TRACK_TRANSITION_COMBINATIONS = [
+  'normal',
+  'stem blend',
+  'pair blend',
+  'pair blend + sweep',
+  'pair blend + blend',
+  'pair blend + dissolve',
+  'pair blend + chop',
+  'sweep',
+  'washout',
+  'blend',
+  'dissolve',
+  'chop',
+  'loop',
+  'sweep + washout',
+  'blend + washout',
+  'dissolve + washout',
+  'chop + washout',
+] as const;
+
+export function summarizeDebug(toolCallEvents, transitionEvents, toolNames: readonly string[]) {
+  const byCountThenName = <T extends { name: string; count: number }>(rows: T[]) =>
+    rows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const tally = (events: any[], key: string, names: readonly string[]) => {
+    const counts = new Map<string, number>(names.map(name => [name, 0]));
+    for (const event of events) {
+      const name = event?.[key];
+      if (typeof name === 'string' && counts.has(name)) counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    return byCountThenName(names.map(name => ({ name, count: counts.get(name) || 0 })));
+  };
+
+  return {
+    toolCalls: {
+      window: MAX_DEBUG_EVENTS,
+      count: toolCallEvents.length,
+      byName: byCountThenName(toolNames.map(name => {
+        const calls = toolCallEvents.filter(event => event?.name === name);
+        return { name, count: calls.length, failed: calls.filter(call => call.failed).length };
+      })),
+    },
+    transitions: { window: MAX_DEBUG_EVENTS, count: transitionEvents.length, byName: tally(transitionEvents, 'transition', TRACK_TRANSITION_COMBINATIONS) },
   };
 }
 
