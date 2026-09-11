@@ -410,31 +410,26 @@ export async function segmentTick(ctx) {
       else queue.log('error', `Segment director picked unknown sfx "${seg.sfx}" — dropping`);
     }
 
-    // The speaker's id rides in meta so session.windowMessages names a guest's
-    // turn as theirs rather than the host's own words.
-    const delivery = await queue.announce(seg.text.trim(), seg.kind, {
-      persona: speaker,
-      meta: { personaId: speaker?.id, personaName: speaker?.name },
-      pauseTalkEligible: true,
-      sfx: selectedSfx,
-    });
-    if (!delivery.accepted) return;
-
-    // Reserve the kind as soon as it owns an air path so a held segment is not
-    // generated twice. Durable "aired" facts wait for the voice lifecycle.
+    // Reserve the kind before queueing so the next tick cannot generate a
+    // duplicate while this line is rendering.
     lastFired.set(seg.kind, Date.now());
     segmentState.lastAnySegment = Date.now();
     if (seg.kind === 'weather' && ctx.weather?.condition) {
       segmentState.lastWeatherCondition = ctx.weather.condition;
     }
 
-    // Record what aired so the durable ledger keeps both the tool and the
-    // fallback path from repeating it after a restart (#577).
+    // The speaker's id rides in meta so session.windowMessages names a guest's
+    // turn as theirs rather than the host's own words.
+    await queue.announce(seg.text.trim(), seg.kind, {
+      persona: speaker,
+      meta: { personaId: speaker?.id, personaName: speaker?.name },
+    });
+
+    // This release line records queued curiosity immediately.
     if (seg.kind === 'curiosity') {
-      void delivery.completed.then(aired => {
-        if (aired) recordCuriosity(seg.text.trim(), { aired: true });
-      });
+      recordCuriosity(seg.text.trim(), { aired: true });
     }
+    if (selectedSfx) await queue.playSfx(selectedSfx, { underVoice: true });
   } catch (err) {
     // A model that couldn't produce parseable JSON was most likely trying to
     // stay silent and expressing it wrong, and the listener-facing outcome is
@@ -514,7 +509,7 @@ export interface CapabilityRun {
 export async function runCapability(
   which,
   ctx,
-  { brief = null, persona = null, pauseTalkEligible = true }:
+  { brief = null, persona = null, pauseTalkEligible: _pauseTalkEligible = true }:
     { brief?: string | null; persona?: { id?: string; name?: string; skills?: string[]; tts?: unknown } | null; pauseTalkEligible?: boolean } = {},
 ): Promise<CapabilityRun> {
   const cap = allCapabilities().find(c => c.kind === which || c.skill === which);
@@ -614,40 +609,27 @@ export async function runCapability(
     else queue.log('error', `Segment director picked unknown sfx "${pick}" — dropping`);
   }
 
-  // A rotated speaker rides through announce so voice and session attribution
-  // agree (windowMessages names foreign speakers by meta id).
-  const delivery = await queue.announce(text, cap.kind, persona
-    ? {
-        persona: speaker,
-        meta: { personaId: speaker?.id, personaName: speaker?.name },
-        pauseTalkEligible,
-        sfx: selectedSfx,
-      }
-    : { pauseTalkEligible, sfx: selectedSfx });
-  if (!delivery.accepted) {
-    const reason = 'the station could not queue the rendered segment';
-    queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
-    return { aired: false, queued: false, deferred: false, text: null, reason };
-  }
-
-  // Reserve the capability once it has an air path; the durable ledger below
-  // waits for actual post-air completion.
+  // Reserve the capability before queueing so a concurrent trigger cannot
+  // generate a duplicate while this line is rendering.
   lastFired.set(cap.kind, Date.now());
   segmentState.lastAnySegment = Date.now();
   if (cap.kind === 'weather' && ctx.weather?.condition) {
     segmentState.lastWeatherCondition = ctx.weather.condition;
   }
 
-  // Record an operator-fired curiosity line in the ledger too (#577).
+  await queue.announce(text, cap.kind, persona
+    ? { persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name } }
+    : undefined);
+  if (selectedSfx) await queue.playSfx(selectedSfx, { underVoice: true });
+
+  // This release line records queued curiosity immediately.
   if (cap.kind === 'curiosity') {
-    void delivery.completed.then(aired => {
-      if (aired) recordCuriosity(text, { aired: true });
-    });
+    recordCuriosity(text, { aired: true });
   }
   return {
-    aired: !delivery.deferred,
+    aired: true,
     queued: true,
-    deferred: delivery.deferred,
+    deferred: false,
     text,
     reason: object?.reason?.trim() || null,
   };

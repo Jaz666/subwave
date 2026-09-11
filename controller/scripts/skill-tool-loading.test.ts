@@ -99,10 +99,7 @@ test('a skill with no tool.mjs and no feed: stays prompt-only', () => {
 
   assert.equal(briefOnly.toolFn, undefined);
 
-  // It is still OFFERED the feed knobs: the edit sheet is where an operator
-  // sets the first feed, so a form that appears only once a value exists is a
-  // form nobody can use to create one.
-  assert.deepEqual(briefOnly.configFields.map((f: any) => f.key), ['feed', 'feedMaxItems']);
+  assert.deepEqual(briefOnly.configFields, []);
 });
 
 test('legacy tool inputs are visible but the provider receives its default input', async () => {
