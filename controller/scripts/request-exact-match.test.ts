@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { exactTitleByArtist } from '../src/music/request-match.js';
+import { normaliseRequestSort } from '../src/llm/internal/prompts/request.js';
 
 const candidates = [
   { id: 'other-grace', title: 'Private Life', artist: 'Grace Jones' },
@@ -25,6 +26,10 @@ assert.equal(
   'a title-only hit must not override an explicitly named different artist',
 );
 assert.equal(exactTitleByArtist(candidates, { titles: [], artist: 'Grace Jones' }), null);
+
+assert.equal(normaliseRequestSort('none'), null);
+assert.equal(normaliseRequestSort('LATEST'), 'latest');
+assert.equal(normaliseRequestSort('something else'), null);
 
 const routeSource = readFileSync(new URL('../src/routes/request.ts', import.meta.url), 'utf8');
 const exactPass = routeSource.indexOf('exactTitleByArtist(exactCandidates');

@@ -130,6 +130,15 @@ export function fallbackRequestMatch(userQuery: string) {
   };
 }
 
+// The matcher schema stays permissive for small/local models, but `sort` has
+// three controller meanings. A common text-model spelling of "no preference"
+// is the literal string "none"; left truthy, it incorrectly takes the
+// artist-sort branch ahead of an explicit title + artist match.
+export function normaliseRequestSort(value: unknown): 'latest' | 'oldest' | 'popular' | null {
+  const sort = String(value ?? '').trim().toLowerCase();
+  return sort === 'latest' || sort === 'oldest' || sort === 'popular' ? sort : null;
+}
+
 // Full system prompt for the legacy request-matcher fallback. Exported pure so
 // the spoken `ack` policy is tested on the prompt that actually reaches the
 // model, not only on the shared fragment a caller could forget to append.
@@ -170,7 +179,7 @@ export async function matchRequest(
 
   const persona = settings.getEffectivePersona();
 
-  return djPlainObject({
+  const matched = await djPlainObject({
     system: requestMatcherSystem(persona),
     prompt: userPrompt,
     schema: REQUEST_SCHEMA_TOLERANT,
@@ -179,6 +188,7 @@ export async function matchRequest(
     // Requests must work with text-only models. Discovery is controller-native
     // and this normalisation call must not acquire an output-tool dependency.
   });
+  return { ...matched, sort: normaliseRequestSort(matched.sort) };
 }
 
 // Map a vague listener DESCRIPTION of a track ("the song from the new Dune
