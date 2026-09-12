@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import * as settings from '../../../settings.js';
+import { djPlainObject } from '../strategy/plain-object.js';
 import { djObject } from '../strategy/object.js';
 import { modelTolerant } from '../core/pure.js';
 import { isNamedRequester } from '../../../util/request-guard.js';
@@ -146,7 +147,7 @@ export async function matchRequest(
 
   const persona = settings.getEffectivePersona();
 
-  return djObject({
+  return djPlainObject({
     system: requestMatcherSystem(persona),
     prompt: userPrompt,
     schema: REQUEST_SCHEMA_TOLERANT,
@@ -154,7 +155,6 @@ export async function matchRequest(
     kind: 'matchRequest',
     // Requests must work with text-only models. Discovery is controller-native
     // and this normalisation call must not acquire an output-tool dependency.
-    noTools: true,
   });
 }
 

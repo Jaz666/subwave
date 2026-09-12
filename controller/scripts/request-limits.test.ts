@@ -143,15 +143,12 @@ assert.equal(typeof matchRequest, 'function');
 // provider, while the contract is about which provider capability the call is
 // allowed to require.
 const requestPromptSource = readFileSync(new URL('../src/llm/internal/prompts/request.ts', import.meta.url), 'utf8');
-assert.match(requestPromptSource, /kind: 'matchRequest',[\s\S]*noTools: true/);
+assert.match(requestPromptSource, /djPlainObject\(/);
 const requestRouteSource = readFileSync(new URL('../src/routes/request.ts', import.meta.url), 'utf8');
 assert.doesNotMatch(requestRouteSource, /djAgent\.runRequest/);
-const objectSource = readFileSync(new URL('../src/llm/internal/strategy/object.ts', import.meta.url), 'utf8');
-const noToolsStart = objectSource.indexOf('if (noTools)');
-const noToolsEnd = objectSource.indexOf("} else if (attempt === 1 && needsToolCallObject", noToolsStart);
-assert.ok(noToolsStart >= 0 && noToolsEnd > noToolsStart, 'djObject keeps a distinct no-tool JSON branch');
-const noToolsBranch = objectSource.slice(noToolsStart, noToolsEnd);
-assert.doesNotMatch(noToolsBranch, /objectViaToolCall|Output\.object/);
+assert.doesNotMatch(requestRouteSource, /djShortlistPick|music\/dj-pick/);
+const plainObjectSource = readFileSync(new URL('../src/llm/internal/strategy/plain-object.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(plainObjectSource, /objectViaToolCall|output:\s*Output\.object/);
 
 // --- cascade `kind` never fails a request on a weak/local model miss --------
 // A required z.enum() field a model omits or botches would otherwise throw
