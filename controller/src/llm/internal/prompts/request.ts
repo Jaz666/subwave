@@ -152,6 +152,9 @@ export async function matchRequest(
     schema: REQUEST_SCHEMA_TOLERANT,
     temperature: 0.4,
     kind: 'matchRequest',
+    // Requests must work with text-only models. Discovery is controller-native
+    // and this normalisation call must not acquire an output-tool dependency.
+    noTools: true,
   });
 }
 

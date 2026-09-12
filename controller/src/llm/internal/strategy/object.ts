@@ -52,6 +52,14 @@ const MAX_TOKENS_OBJECT = 8000;
 export const NATIVE_JSON_INSTRUCTION =
   'The result must be a single JSON object matching the required shape — no prose, no markdown fences.';
 
+// Some provider adapters turn structured output into a synthetic tool call.
+// That is normally a useful compatibility escape hatch, but listener requests
+// deliberately support models with no tool interface at all.  Those callers
+// use this plain-text JSON instruction instead of Output.object, so neither
+// their first attempt nor their recovery attempt can acquire a tool dependency.
+export const PLAIN_JSON_INSTRUCTION =
+  'Respond with a single JSON object only — no prose, no markdown fences.';
+
 export async function djObject({
   system,
   prompt,
@@ -60,6 +68,11 @@ export async function djObject({
   maxOutputTokens = resolveMaxOutputTokens(MAX_TOKENS_OBJECT),
   kind = 'sdk.djObject',
   leg = undefined,
+  // Opt out of *all* structured-output tool transports. In particular, this
+  // skips both objectViaToolCall() and Output.object(), since some adapters
+  // implement the latter with a synthetic tool. The request matcher needs this
+  // mode: controller-native discovery must work with a text-only model.
+  noTools = false,
   // Optional caller-supplied abort signal. No live caller wraps djObject in
   // withDeadline today, so this is inert unless one starts to — kept in the
   // shape as a precaution so a future deadline-wrapped call can cut the
@@ -82,7 +95,31 @@ export async function djObject({
           let usage;
           let perf;
           let warnings;
-          if (attempt === 1 && needsToolCallObject(l.cfg)) {
+          if (noTools) {
+            lastVia = attempt === 1 ? 'ai-sdk:plain-json' : 'ai-sdk:plain-json-recovery';
+            const hint = schemaHint(schema);
+            const result = await withTransientRetry(kind, () => generateText({
+              model: l.noThinkModel ?? l.model,
+              instructions: system,
+              prompt: `${prompt}\n\n${PLAIN_JSON_INSTRUCTION}`
+                + (hint ? ` It MUST validate against this JSON Schema — every required key must be present:\n${hint}` : ''),
+              temperature,
+              maxOutputTokens,
+              reasoning: reasoningFor(l.cfg, { forceNoThink: true }),
+              ...(signal ? { abortSignal: signal } : {}),
+            }), signal);
+            try {
+              object = schema.parse(JSON.parse(extractJson(stripThinking(result.text))));
+            } catch (parseErr: any) {
+              parseErr.text = result.text || '';
+              parseErr.finishReason = result.finishReason;
+              parseErr.usage = result.usage;
+              throw parseErr;
+            }
+            usage = usageOf(result);
+            perf = perfOf(result);
+            warnings = warningsOf(result);
+          } else if (attempt === 1 && needsToolCallObject(l.cfg)) {
             lastVia = 'ai-sdk:tool';
             ({ object, usage, perf, warnings } = await withTransientRetry(kind,
               () => objectViaToolCall(l, { system, prompt, schema, temperature, maxOutputTokens, signal }), signal));

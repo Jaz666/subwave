@@ -1,7 +1,7 @@
 // Pins settings.requests (raid hardening, 2026-07-28): defaults when absent,
 // clamped when patched, byte-tolerant of pre-upgrade settings.json files.
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -136,6 +136,22 @@ assert.equal(shape.parse({ ack: 'ack line', intro: 'intro line' }).kind, 'track'
 assert.equal(shape.parse({ ack: 'ack line', intro: 'intro line' }).id, null);
 const { matchRequest } = await import('../src/llm/dj.js'); // import only — no call (LLM)
 assert.equal(typeof matchRequest, 'function');
+
+// Listener requests must never revive the old tool loop, and their one
+// structured call must stay on djObject's text-only JSON transport. This is a
+// source-level assertion deliberately: exercising it would require a live
+// provider, while the contract is about which provider capability the call is
+// allowed to require.
+const requestPromptSource = readFileSync(new URL('../src/llm/internal/prompts/request.ts', import.meta.url), 'utf8');
+assert.match(requestPromptSource, /kind: 'matchRequest',[\s\S]*noTools: true/);
+const requestRouteSource = readFileSync(new URL('../src/routes/request.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(requestRouteSource, /djAgent\.runRequest/);
+const objectSource = readFileSync(new URL('../src/llm/internal/strategy/object.ts', import.meta.url), 'utf8');
+const noToolsStart = objectSource.indexOf('if (noTools)');
+const noToolsEnd = objectSource.indexOf("} else if (attempt === 1 && needsToolCallObject", noToolsStart);
+assert.ok(noToolsStart >= 0 && noToolsEnd > noToolsStart, 'djObject keeps a distinct no-tool JSON branch');
+const noToolsBranch = objectSource.slice(noToolsStart, noToolsEnd);
+assert.doesNotMatch(noToolsBranch, /objectViaToolCall|Output\.object/);
 
 // --- cascade `kind` never fails a request on a weak/local model miss --------
 // A required z.enum() field a model omits or botches would otherwise throw

@@ -8,7 +8,6 @@ import * as dj from '../llm/dj.js';
 import * as library from '../music/library.js';
 import { getFullContext } from '../context.js';
 import { queue } from '../broadcast/queue.js';
-import * as djAgent from '../broadcast/dj-agent.js';
 import * as session from '../broadcast/session.js';
 import * as requestLog from '../broadcast/request-log.js';
 import * as listeners from '../broadcast/listeners.js';
@@ -350,49 +349,10 @@ async function resolveRequest(entry) {
     });
   }
 
-  // Conversational DJ agent. On any failure fall through to the stateless
-  // cascade below, so a request is never dropped.
-  try {
-    const agentRes = await djAgent.runRequest(queue, ctx, { requester, text });
-    if (agentRes) {
-      // Thread the agent's own echo-guard verdict into the durable log; the
-      // other paths set it inline.
-      if (agentRes.guard) flagGuard(entry, agentRes.guard);
-      if (!agentRes.track) {
-        // Chat escape: the agent answered in persona, nothing to queue. Only an
-        // EXPLICIT kind:"chat" lands here; an omitted id falls to the cascade.
-        queue.log('request', `agent chat-answered (no track)`);
-        entry.path = 'chat';
-        entry.pickSource = 'agent-chat';
-        return resolved({ ack: agentRes.ack, track: null, queuePosition: null });
-      }
-      if (agentRes.refused) {
-        // The agent declined to queue and returned the track only so the ack and
-        // log can name it: no queue position, no one-pending hold.
-        queue.log('request', `agent refused (${agentRes.refused}): ${agentRes.track.title} — ${agentRes.track.artist}`);
-        entry.path = 'agent';
-        entry.pickSource = `agent:${agentRes.refused}`;
-        entry.pick = agentRes.track;
-        entry.refused = true;
-        return resolved({ ack: agentRes.ack, track: agentRes.track, queuePosition: null });
-      }
-      queue.log('request', `agent resolved: ${agentRes.track.title} — ${agentRes.track.artist}`);
-      entry.path = 'agent';
-      entry.pickSource = 'agent';
-      entry.pick = agentRes.track;
-      entry.introScript = agentRes.introScript || null;
-      return resolved({
-        ack: withWaitNotice(agentRes.ack, agentRes.track.id),
-        track: agentRes.track,
-        queuePosition: queue.upcoming.length,
-      });
-    }
-  } catch (err) {
-    queue.log('error', `DJ agent request failed: ${err.message} — falling back`);
-  }
-
-  // 1. LLM matches intent; the current track lets vibe queries be read against
-  // what is on air.
+  // 1. A single no-tool LLM call normalises intent; the controller executes the
+  // entire discovery cascade below. This is intentionally not conditional on
+  // the Agentic Picker setting: listener requests remain available to models
+  // without a tool interface.
   const currentTrack = queue.current?.track || null;
   const matched = await dj.matchRequest(text, {
     listenerName: requester,
