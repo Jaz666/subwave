@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import * as subsonic from '../music/subsonic.js';
 import * as dj from '../llm/dj.js';
 import * as library from '../music/library.js';
+import { exactTitleByArtist } from '../music/request-match.js';
 import { getFullContext } from '../context.js';
 import { queue } from '../broadcast/queue.js';
 import * as session from '../broadcast/session.js';
@@ -488,6 +489,31 @@ async function resolveRequest(entry) {
       return true;
     });
     if (terms.length > 0) {
+      // An explicit "title by artist" request must not be reduced to the
+      // ordinary broad search pool. That pool intentionally includes both the
+      // title and artist result sets and is randomly spread for open-ended
+      // requests — which let another song by the named artist beat an exact
+      // title already in the library. Query title terms' first page once,
+      // then accept only an exact normalised title + artist pair. All misses
+      // continue through the unchanged forgiving cascade below.
+      const titleTerms = terms.filter((term: string) => term.toLowerCase().trim() !== artistLc);
+      if (matched.artist && titleTerms.length > 0) {
+        const exactCandidates: any[] = [];
+        for (const title of titleTerms) {
+          try {
+            exactCandidates.push(...await subsonic.search(title, { songCount: 25 }));
+          } catch (err) {
+            queue.log('error', `exact request search failed: ${err.message}`);
+          }
+        }
+        pick = exactTitleByArtist(exactCandidates, { titles: titleTerms, artist: matched.artist });
+        if (pick) pickSource = 'search:exact-title-artist';
+      }
+
+      if (pick) {
+        // The exact result above is intentionally deterministic. Do not feed
+        // it into the randomized broad pool below.
+      } else {
       let candidates: any[] = [];
       for (const term of terms) {
         const songOffset = Math.floor(Math.random() * 3) * 25;
@@ -506,6 +532,7 @@ async function resolveRequest(entry) {
       });
       pick = randomFresh(unique);
       if (pick) pickSource = 'search';
+      }
     }
   }
 
