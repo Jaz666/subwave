@@ -156,7 +156,7 @@ assert.doesNotMatch(plainObjectSource, /objectViaToolCall|output:\s*Output\.obje
 // missing non-nullable key alone, and no field-level fallback exists), which
 // crashes a genuine music request straight to `failed` — no LLM call needed
 // to pin this, it's a pure schema.parse() check.
-const { REQUEST_SCHEMA_TOLERANT } = await import('../src/llm/internal/prompts/request.js');
+const { REQUEST_SCHEMA_TOLERANT, fallbackRequestMatch } = await import('../src/llm/internal/prompts/request.js');
 const validRest = {
   search_terms: ['test'], artist: null, genre: null, language: null,
   sort: null, scope: 'song', mood: null,
@@ -175,5 +175,17 @@ assert.equal(badKind.kind, 'track', 'an unrecognised "kind" value parses as "tra
 // A well-formed classification still passes through untouched either way.
 assert.equal(REQUEST_SCHEMA_TOLERANT.parse({ ...validRest, kind: 'track' }).kind, 'track');
 assert.equal(REQUEST_SCHEMA_TOLERANT.parse({ ...validRest, kind: 'chat' }).kind, 'chat');
+
+// A failed/malformed text-only response does not fail the listener's request:
+// the controller falls back to a direct local-library query, never to the old
+// agent or another tool-capable LLM path.
+assert.deepEqual(fallbackRequestMatch('  Midnight City by M83  '), {
+  kind: 'track', search_terms: ['Midnight City by M83'], artist: null,
+  genre: null, language: null, sort: null, scope: 'song', mood: null,
+  intent: 'Direct library search after request matching was unavailable.',
+  ack: 'I’ll look through the library for that.',
+});
+assert.match(requestRouteSource, /dj\.fallbackRequestMatch\(text\)/);
+assert.match(requestRouteSource, /cascade-direct-search/);
 
 console.log('request-limits.test.ts: all assertions passed');

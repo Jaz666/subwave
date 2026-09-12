@@ -107,6 +107,29 @@ export const REQUEST_SCHEMA_TOLERANT = modelTolerant(REQUEST_SCHEMA, {
   objectFallbacks: { kind: 'track' },
 });
 
+// A request is a listener-facing operation, so a model outage or malformed
+// text response must not discard an otherwise searchable request. This is not
+// an LLM/tool fallback: it is the controller's pre-agent behaviour — search
+// the listener's words against the local library and let the normal cascade
+// handle the result. It intentionally never classifies a message as chat;
+// when the matcher is unavailable, honouring a possible music request is safer
+// than silently answering banter and queueing nothing.
+export function fallbackRequestMatch(userQuery: string) {
+  const query = String(userQuery || '').trim();
+  return {
+    kind: 'track' as const,
+    search_terms: query ? [query] : [],
+    artist: null,
+    genre: null,
+    language: null,
+    sort: null,
+    scope: 'song' as const,
+    mood: null,
+    intent: 'Direct library search after request matching was unavailable.',
+    ack: 'I’ll look through the library for that.',
+  };
+}
+
 // Full system prompt for the legacy request-matcher fallback. Exported pure so
 // the spoken `ack` policy is tested on the prompt that actually reaches the
 // model, not only on the shared fragment a caller could forget to append.

@@ -354,10 +354,21 @@ async function resolveRequest(entry) {
   // the Agentic Picker setting: listener requests remain available to models
   // without a tool interface.
   const currentTrack = queue.current?.track || null;
-  const matched = await dj.matchRequest(text, {
-    listenerName: requester,
-    nowPlaying: currentTrack,
-  });
+  let matched;
+  try {
+    matched = await dj.matchRequest(text, {
+      listenerName: requester,
+      nowPlaying: currentTrack,
+    });
+  } catch (err) {
+    // A matcher outage or malformed plain-JSON reply must not fail a genuine
+    // listener request. Search the original request locally; this keeps the
+    // public receipt/poll lifecycle intact without reintroducing an agent or
+    // any tool-capable fallback.
+    matched = dj.fallbackRequestMatch(text);
+    entry.matcherFallback = true;
+    queue.log('error', `Request matcher failed; using direct library search: ${err.message}`);
+  }
   queue.log('intent', `"${text}" → ${matched.intent || '(no intent)'}`, {
     mood: matched.mood,
     scope: matched.scope,
@@ -382,7 +393,7 @@ async function resolveRequest(entry) {
   }
 
   // Matcher breakdown for the debug record; only the stateless cascade gets here.
-  entry.path = 'cascade';
+  entry.path = entry.matcherFallback ? 'cascade-direct-search' : 'cascade';
   entry.intent = matched.intent || null;
   entry.mood = matched.mood || null;
   entry.scope = matched.scope || null;
