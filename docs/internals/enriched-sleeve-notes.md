@@ -4,13 +4,13 @@
 
 This document is the agreed design handoff for `feat/extended-sleeve-notes`.
 It extends the existing Verified Facts and Sleeve Notes foundation; it does
-not replace it. `settings.djBehaviour.extendedSleeveNotes` is already a
-disabled-by-default reservation and the DJ Behaviour panel currently presents
-the feature as Coming Soon.
+not replace it. `settings.djBehaviour.extendedSleeveNotes` is a
+disabled-by-default collection control in the DJ Behaviour panel.
 
-No feature code is planned in this handoff. Phase 0 is complete: Genius is the
-approved first provider, limited to the documented non-lyric metadata and
-relationship contract in [`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md).
+Phases 0–2 are implemented on the Extended Sleeve Notes branch. Genius is the
+approved first provider, limited to the non-lyric metadata and relationship
+contract in [`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md). The feature
+remains collection-only: it is not connected to DJ links.
 
 ## Product intent
 
@@ -253,6 +253,11 @@ local-resolution spike, and provider contract are recorded in
 
 ### Phase 1 — foundation and inactive product surface
 
+**Complete — separate sidecar storage and the always-visible Notes surface.**
+The disabled state makes no provider call and does not open the sidecar
+database. Default Sleeve Notes and Verified Facts remain distinct, user-facing
+terms and behaviour.
+
 1. Add the sidecar database migrations and repository layer for entities,
    provider coverage, claims/evidence, relationships, jobs, and uses.
 2. Define source-neutral schemas and the native provider interface.
@@ -268,11 +273,27 @@ local-resolution spike, and provider contract are recorded in
 default.** Queue admission is deferred and non-blocking; the worker has one
 active job at a time, durable deduplication, exponential retry state and
 negative caching. The adapter performs only the approved `/search` then
-`/songs/:id` flow and retains a projected source-scoped result. Relationship
-targets receive a separate exact title-and-artist Navidrome lookup, allowing
-multiple confident local copies while leaving uncertainty external. Notes →
-Sources reports collection gates and coverage counts. No collected material is
-connected to DJ link generation until Phase 3.
+`/songs/:id` flow and retains a projected source-scoped result. It reads the
+dedicated Genius producer and writer lists, using custom performance labels
+only as a supplement.
+
+Relationship targets receive a separate exact title-and-artist Navidrome
+lookup, allowing multiple confident local copies while leaving uncertainty
+external. A relationship-discovered target may be enriched once, but the depth
+is strictly capped at one and each root has a small target cap; a depth-one
+result cannot enqueue or retain a second related layer. When that external
+target is later queued or played by the station, its provider identity, claims,
+relationships and discovery record promote onto the direct local track entity.
+This avoids both recursive provider work and duplicate local/external graph
+nodes.
+
+Only accepted queued/played tracks enter collection: vetoed proposed picks do
+not generate provider work. The Debug timeline shows timestamped safe provider
+calls (search/song, HTTP status and latency) above Subsonic calls; it never
+includes tokens or raw provider responses. During the Phase 2 bedding-in
+period, Notes also has a bounded, read-only database readout for entities,
+relationships and jobs. No collected material is connected to DJ link
+generation until Phase 3.
 
 1. Add candidate admission from queued/played music, deduplication, priority,
    bounded concurrency, retry backoff, negative caching, and observability.
@@ -280,7 +301,9 @@ connected to DJ link generation until Phase 3.
    retention.
 3. Add background provider-target-to-Navidrome resolution with conservative
    match/ambiguous/no-match states.
-4. Surface provider coverage and job state in Notes → Sources.
+4. Surface provider coverage and job state in Notes → Sources, with the
+   temporary bounded operational readout retained only while Phase 2 data is
+   being evaluated.
 
 ### Phase 3 — DJ-link projection
 

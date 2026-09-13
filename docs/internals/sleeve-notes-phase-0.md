@@ -9,8 +9,8 @@ bounded, non-lyric metadata and relationship scope.
 Implement the Genius adapter only to the restricted contract in this document.
 A review of [`genius-mcp`](https://github.com/federicogarciav/genius-mcp) and
 an authenticated live test confirm that `GET /songs/:id` supplies
-`song_relationships`, credit lists, and custom performances through the
-official API.
+`song_relationships`, dedicated producer/writer lists, and custom performances
+through the official API.
 
 The public API reference does not describe every returned field in its response
 schema, so the live test is the source of the field-level contract below.
@@ -37,7 +37,7 @@ used.
 | --- | --- | --- |
 | Authentication | Read-only endpoints accept a client access token; requests use HTTPS and `Authorization: Bearer …`. | A server-held credential would be required for any background lookup. |
 | Search | `GET /search?q=…` searches Genius-hosted song documents. | It can identify a candidate song, but does not establish an allowed editorial claim. |
-| Song detail | The public reference documents `GET /songs/:id`, credits, descriptions, and referents. The authenticated capture confirms `song_relationships` and custom performances on this official endpoint. | Parse only the identity, relationship, and credit allowlist below. |
+| Song detail | The public reference documents `GET /songs/:id`, credits, descriptions, and referents. The authenticated capture confirms `song_relationships`, `producer_artists`, `writer_artists`, and custom performances on this official endpoint. | Parse only the identity, relationship, and credit allowlist below; dedicated producer/writer arrays are preferred over custom labels. |
 | Relationships | The live official response contained `samples`, `sampled_in`, `covered_by`, `interpolated_by`, `remixed_by`, and `translations` relationship groups with linked song identities. | Retain each directed relationship source-scoped; only `samples`, `sampled_in`, `cover_of`, and `covered_by` enter the initial Sleeve Notes model. |
 | Quotas | The public documentation does not publish a numeric request quota or retention limit. | Use a deliberately conservative operational ceiling: one in-flight request and no more than one request per second, with exponential retry and immediate backoff on `429` or `5xx`. This is a safety ceiling, not a claimed Genius quota. |
 | Attribution and retention | The API documentation describes request/response mechanics but does not grant a broad content-reuse licence. Genius's current Terms reserve rights in Genius Content, prohibit scraping, and limit commercial use absent written authorization. | Retain only structured IDs, names, relationship labels, dates, source URL, retrieval time, and required source attribution. Do not retain or transform Genius prose, annotations, images, or lyrics. |
@@ -82,6 +82,9 @@ official requests described by the provider flow:
    both `type` and `relationship_type` keys. Non-empty groups included
    `samples`, `sampled_in`, `covered_by`, `interpolated_by`, `remixed_by`, and
    `translations`. The response had no `lyrics` text field.
+3. A further live detail response confirmed that `producer_artists` and
+   `writer_artists` carry the normal structured producer/writer credits; custom
+   performance labels are not the sole credit source.
 
 Only this sanitized summary was retained; the token and raw response were not
 written to the repository or station state.
@@ -107,6 +110,13 @@ The raw HTTP response is transient. Parse it into this small value, discard the
 raw payload, and do not log it. A value outside the shape is ignored. The
 initial adapter accepts only `samples`, `sampled_in`, `cover_of`, and
 `covered_by`; it records the source URL and the visible attribution `Genius`.
+
+The current collector makes a relationship-only, one-hop expansion: an
+accepted station track can discover a capped first layer of related Genius
+songs, and that first layer can receive its own direct metadata lookup. The
+collector neither follows nor stores relationships from those depth-one
+responses. A later direct station encounter promotes a matching external target
+onto the local track entity rather than creating a duplicate record.
 
 ## Conservative local-resolution spike
 
