@@ -162,7 +162,7 @@ export default function DebugPanel() {
 
           <LlmCalls llm={data.llm} />
 
-          <SleeveNotesCalls sleeveNotes={data.sleeveNotes} />
+          <SleeveNotesCalls sleeveNotes={data.sleeveNotes} timezone={data.timezone} />
 
           <SubsonicCalls subsonic={data.subsonic} />
 
