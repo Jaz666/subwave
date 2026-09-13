@@ -1,6 +1,7 @@
 'use client';
 
 import { Card } from '../ui';
+import { ScrollArea } from '../../ui/scroll-area';
 import type { DebugSleeveNotes } from './types';
 
 export function SleeveNotesCalls({ sleeveNotes, timezone }: { sleeveNotes?: DebugSleeveNotes; timezone?: string }) {
@@ -15,6 +16,7 @@ export function SleeveNotesCalls({ sleeveNotes, timezone }: { sleeveNotes?: Debu
   };
   return (
     <Card title="Extended Sleeve Notes provider calls" sub={`${calls.length} recent HTTP call${calls.length === 1 ? '' : 's'} · metadata only`}>
+      <ScrollArea className="max-h-[480px]">
       <div className="grid gap-1.5">
         {calls.length === 0 && <span className="field-hint text-muted">No Genius calls since controller start.</span>}
         {calls.map((call, index) => (
@@ -27,6 +29,7 @@ export function SleeveNotesCalls({ sleeveNotes, timezone }: { sleeveNotes?: Debu
           </div>
         ))}
       </div>
+      </ScrollArea>
     </Card>
   );
 }
