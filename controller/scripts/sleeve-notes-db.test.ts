@@ -9,9 +9,9 @@ test('Sleeve Notes migration creates its isolated durable model', () => {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all().map((row: { name: string }) => row.name);
   assert.deepEqual(tables, [
-    'claims', 'entities', 'evidence', 'jobs', 'provider_coverage',
+    'claims', 'discoveries', 'entities', 'evidence', 'jobs', 'provider_coverage',
     'provider_identities', 'provider_local_matches', 'relationships', 'uses',
   ]);
-  assert.equal(db.pragma('user_version', { simple: true }), 3);
+  assert.equal(db.pragma('user_version', { simple: true }), 4);
   db.close();
 });

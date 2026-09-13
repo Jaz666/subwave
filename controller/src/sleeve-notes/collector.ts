@@ -10,6 +10,7 @@ import { exactLocalMatches } from './resolver.js';
 
 const RETRY_BASE_MS = 60_000;
 const RETRY_MAX_MS = 60 * 60 * 1000;
+const ONE_HOP_TARGET_LIMIT = 6;
 
 export function retryDelayMs(attempts: number): number {
   return Math.min(RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1), RETRY_MAX_MS);
@@ -32,7 +33,8 @@ export class SleeveCollector {
     if (!configuredPlan().run) return;
     if (!entity.title.trim()) return;
     const stored = repository.upsertEntity(entity);
-    repository.enqueueJob({ provider: this.provider.id, entityId: stored.id, kind: 'fetch', priority });
+    repository.recordDiscovery({ entityId: stored.id, rootEntityId: stored.id, origin: 'station', depth: 0 });
+    repository.enqueueJob({ provider: this.provider.id, entityId: stored.id, kind: 'fetch', priority, depth: 0, rootEntityId: stored.id });
   }
 
   async runOnce(): Promise<boolean> {
@@ -60,8 +62,17 @@ export class SleeveCollector {
         }, controller.signal);
         if (!result) repository.finishJob(job.id, job.entityId, job.provider, 'no-match');
         else {
-          const targets = repository.retainProviderResult(job.entityId, job.provider, result);
-          for (const targetId of targets) repository.enqueueJob({ provider: job.provider, entityId: targetId, kind: 'resolve', priority: Math.max(0, job.priority - 1) });
+          const targets = repository.retainProviderResult(job.entityId, job.provider, result, { includeRelationships: job.depth === 0 });
+          // The first related layer can be enriched, but it is terminal: a
+          // depth-1 response never creates another retrieval job.
+          if (job.depth === 0) {
+            const rootEntityId = job.rootEntityId ?? job.entityId;
+            for (const targetId of targets.slice(0, ONE_HOP_TARGET_LIMIT)) {
+              repository.recordDiscovery({ entityId: targetId, rootEntityId, origin: 'relationship', depth: 1 });
+              repository.enqueueJob({ provider: job.provider, entityId: targetId, kind: 'fetch', priority: Math.max(0, job.priority - 1), depth: 1, rootEntityId });
+              repository.enqueueJob({ provider: job.provider, entityId: targetId, kind: 'resolve', priority: Math.max(0, job.priority - 1), depth: 1, rootEntityId });
+            }
+          }
         }
       } finally { clearTimeout(timeout); }
       return true;

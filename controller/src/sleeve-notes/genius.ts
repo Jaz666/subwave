@@ -39,6 +39,19 @@ function songIdentity(song: unknown): ProviderIdentity | null {
   return { providerId: String(id), canonicalUrl: url, title, artist: artistName };
 }
 
+function artistNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((artist) => text((artist as Record<string, unknown>)?.name))
+    .filter((name): name is string => !!name);
+}
+
+function creditRole(label: string | undefined): 'Producer' | 'Writer' | null {
+  const value = normal(label);
+  if (value === 'producer' || value === 'produced by') return 'Producer';
+  if (value === 'writer' || value === 'written by') return 'Writer';
+  return null;
+}
+
 export function selectGeniusSearchHit(payload: unknown, entity: SleeveEntityInput): string | null {
   const root = payload as { response?: { hits?: unknown[] } };
   const hits = root?.response?.hits;
@@ -61,11 +74,18 @@ export function projectGeniusSong(payload: unknown): SleeveProviderResult | null
   if (!identity || !song || typeof song !== 'object') return null;
   const value = song as Record<string, unknown>;
   const credits: SleeveProviderResult['credits'] = [];
+  const addCredit = (role: 'Producer' | 'Writer', names: string[]) => {
+    if (!names.length || credits.some((credit) => credit.role === role && credit.names.join('\u0000') === names.join('\u0000'))) return;
+    credits.push({ role, names });
+  };
+  // These dedicated song-detail fields are the normal Genius credit source.
+  // Custom performances supplement them, not replace them.
+  addCredit('Producer', artistNames(value.producer_artists));
+  addCredit('Writer', artistNames(value.writer_artists));
   for (const item of Array.isArray(value.custom_performances) ? value.custom_performances : []) {
     const row = item as Record<string, unknown>;
-    const role = text(row.label);
-    const names = Array.isArray(row.artists) ? row.artists.map((artist) => text((artist as Record<string, unknown>)?.name)).filter((name): name is string => !!name) : [];
-    if (role && CREDIT_ROLES.has(role) && names.length) credits.push({ role, names });
+    const role = creditRole(text(row.label));
+    if (role && CREDIT_ROLES.has(role)) addCredit(role, artistNames(row.artists));
   }
   const relationships: ProviderRelationship[] = [];
   for (const item of Array.isArray(value.song_relationships) ? value.song_relationships : []) {
