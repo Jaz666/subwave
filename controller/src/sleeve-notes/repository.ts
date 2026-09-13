@@ -127,6 +127,53 @@ export function sourceCounts(provider: string): Record<string, number> {
   return Object.fromEntries(rows.map((row) => [row.state, row.count]));
 }
 
+export interface SleeveNotesReadout {
+  entities: Array<{
+    id: string; kind: string; title: string; artist: string | null; releaseTitle: string | null;
+    local: boolean; providerId: string | null; resolutionState: string | null;
+    coverage: string | null; discoveredAt: string | null; relationships: number;
+  }>;
+  relationships: Array<{
+    id: string; type: string; fromTitle: string; fromArtist: string | null;
+    toTitle: string; toArtist: string | null; createdAt: string;
+  }>;
+  jobs: Array<{
+    id: string; kind: string; state: string; priority: number; attempts: number;
+    depth: number; title: string; artist: string | null; updatedAt: string;
+  }>;
+}
+
+/** Small admin-only projection for observing collection while Phase 2 beds in. */
+export function databaseReadout(provider: string, limit = 80): SleeveNotesReadout {
+  const db = open();
+  const capped = Math.max(1, Math.min(limit, 200));
+  const entities = db.prepare(`SELECT e.id, e.kind, e.title, e.artist AS artist, e.release_title AS releaseTitle,
+      e.local_id IS NOT NULL AS local, p.provider_id AS providerId, p.resolution_state AS resolutionState,
+      c.state AS coverage, MAX(d.discovered_at) AS discoveredAt, COUNT(DISTINCT r.id) AS relationships
+    FROM entities e
+    LEFT JOIN provider_identities p ON p.entity_id = e.id AND p.provider = ?
+    LEFT JOIN provider_coverage c ON c.entity_id = e.id AND c.provider = ?
+    LEFT JOIN discoveries d ON d.entity_id = e.id
+    LEFT JOIN relationships r ON r.from_entity_id = e.id OR r.to_entity_id = e.id
+    GROUP BY e.id
+    ORDER BY discoveredAt DESC NULLS LAST, e.updated_at DESC
+    LIMIT ?`).all(provider, provider, capped) as SleeveNotesReadout['entities'];
+  const relationships = db.prepare(`SELECT r.id, r.relationship_type AS type,
+      source.title AS fromTitle, source.artist AS fromArtist,
+      target.title AS toTitle, target.artist AS toArtist, r.created_at AS createdAt
+    FROM relationships r
+    JOIN entities source ON source.id = r.from_entity_id
+    JOIN entities target ON target.id = r.to_entity_id
+    JOIN provider_identities p ON p.id = r.provider_identity_id
+    WHERE p.provider = ?
+    ORDER BY r.created_at DESC LIMIT ?`).all(provider, capped) as SleeveNotesReadout['relationships'];
+  const jobs = db.prepare(`SELECT j.id, j.kind, j.state, j.priority, j.attempts, j.depth,
+      e.title, e.artist AS artist, j.updated_at AS updatedAt
+    FROM jobs j JOIN entities e ON e.id = j.entity_id
+    WHERE j.provider = ? ORDER BY j.updated_at DESC LIMIT ?`).all(provider, capped) as SleeveNotesReadout['jobs'];
+  return { entities, relationships, jobs };
+}
+
 export interface StoredProviderIdentity {
   id: string;
   entityId: string;
