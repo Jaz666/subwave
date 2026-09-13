@@ -23,3 +23,9 @@ The function remaps every Sleeve Notes field containing a Navidrome track ID:
 It consumes PR #1255's confirmed old-to-new map; it does not call Navidrome,
 reimplement `canonicalId()`, or fabricate mappings. That keeps the two
 migrations idempotent and means deleted or uncertain tracks remain unlinked.
+
+Relationship-discovered Genius targets have no Navidrome ID until a later exact
+local match or a direct station encounter. The canonical-ID migration therefore
+does not alter external-only entities; when such a target is subsequently
+played, the collector promotes its gathered provider identity and graph edges
+onto the directly identified local entity.
