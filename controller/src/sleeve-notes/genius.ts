@@ -1,4 +1,5 @@
 import type { ProviderIdentity, ProviderRelationship, SleeveEntityInput, SleeveProvider, SleeveProviderResult } from './provider.js';
+import { recordProviderCall } from './telemetry.js';
 
 const RELATIONSHIP_TYPES = new Set(['samples', 'sampled_in', 'cover_of', 'covered_by']);
 const CREDIT_ROLES = new Set(['Producer', 'Writer']);
@@ -86,19 +87,31 @@ export class GeniusProvider implements SleeveProvider {
   async fetch(entity: SleeveEntityInput, signal: AbortSignal): Promise<SleeveProviderResult | null> {
     const headers = { Authorization: `Bearer ${this.token}` };
     const query = new URLSearchParams({ q: [entity.title, entity.artist].filter(Boolean).join(' ') });
-    const search = await this.request(`https://api.genius.com/search?${query}`, headers, signal);
+    const search = await this.request(`https://api.genius.com/search?${query}`, headers, signal, 'search', entity);
     const id = selectGeniusSearchHit(await search.json(), entity);
     if (!id) return null;
     // Genius has no published numeric quota. Keep the conservative Phase-0
     // ceiling: at most one request per second, including this two-call lookup.
     await this.wait(1_000, signal);
-    const song = await this.request(`https://api.genius.com/songs/${encodeURIComponent(id)}`, headers, signal);
+    const song = await this.request(`https://api.genius.com/songs/${encodeURIComponent(id)}`, headers, signal, 'song', entity);
     return projectGeniusSong(await song.json());
   }
 
-  private async request(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<Response> {
-    const response = await this.fetcher(url, { headers, signal });
-    if (!response.ok) throw new GeniusRequestError(response.status);
-    return response;
+  private async request(url: string, headers: Record<string, string>, signal: AbortSignal, endpoint: 'search' | 'song', entity: SleeveEntityInput): Promise<Response> {
+    const started = Date.now();
+    try {
+      const response = await this.fetcher(url, { headers, signal });
+      recordProviderCall({ t: new Date().toISOString(), provider: 'genius', endpoint,
+        title: entity.title, artist: entity.artist ?? null, ok: response.ok, status: response.status, ms: Date.now() - started });
+      if (!response.ok) throw new GeniusRequestError(response.status);
+      return response;
+    } catch (error) {
+      if (!(error instanceof GeniusRequestError)) {
+        recordProviderCall({ t: new Date().toISOString(), provider: 'genius', endpoint,
+          title: entity.title, artist: entity.artist ?? null, ok: false, status: null,
+          ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
+      }
+      throw error;
+    }
   }
 }

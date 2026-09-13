@@ -122,6 +122,21 @@ export interface DebugLlm {
   };
 }
 
+interface SleeveNotesCall {
+  t?: string;
+  endpoint?: 'search' | 'song';
+  title?: string;
+  artist?: string | null;
+  ok?: boolean;
+  status?: number | null;
+  ms?: number;
+  error?: string;
+}
+
+export interface DebugSleeveNotes {
+  recentCalls?: SleeveNotesCall[];
+}
+
 interface SubsonicEndpoint {
   endpoint: string;
   calls: number;
@@ -214,10 +229,10 @@ export interface DebugData {
   context?: DebugContext | null;
   tts?: DebugTts;
   subsonic?: DebugSubsonic;
+  sleeveNotes?: DebugSleeveNotes;
   session?: DebugSession;
   config?: Record<string, unknown>;
   mounts?: DebugMounts;
   error?: string;
 }
-
 export type { PlaybackFailureHistory } from '../../../lib/schemas.generated';

@@ -18,6 +18,7 @@ import { StateTree } from './debug/StateTree';
 import { DjContext } from './debug/DjContext';
 import { PlaybackFailures } from './debug/PlaybackFailures';
 import { LlmCalls } from './debug/LlmCalls';
+import { SleeveNotesCalls } from './debug/SleeveNotesCalls';
 import { MountsTable } from './debug/MountsTable';
 import { SessionChat } from './debug/SessionChat';
 import { SubsonicCalls } from './debug/SubsonicCalls';
@@ -160,6 +161,8 @@ export default function DebugPanel() {
           )}
 
           <LlmCalls llm={data.llm} />
+
+          <SleeveNotesCalls sleeveNotes={data.sleeveNotes} />
 
           <SubsonicCalls subsonic={data.subsonic} />
 
