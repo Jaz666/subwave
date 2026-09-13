@@ -151,6 +151,21 @@ import {
 import { awaitIntroRender, IntroRenderTracker } from './queue/intro-render.js';
 import { notifyQueued, notifySpoken } from './voice-events.js';
 
+// Both queueing and confirmed playback are admission points. Deferring this
+// tiny local write keeps the queue mutation and watcher tick entirely free of
+// Sleeve Notes work; the collector itself rechecks both configuration gates
+// before it opens the sidecar DB or contacts a provider.
+function admitSleeveNotesLater(track: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null }, priority = 0): void {
+  setTimeout(() => {
+    try {
+      sleeveNotesCollector()?.admit({
+        kind: 'track', localId: track.id ?? undefined, title: track.title ?? '',
+        artist: track.artist ?? undefined, releaseTitle: track.album ?? undefined,
+      }, priority);
+    } catch {}
+  }, 0).unref();
+}
+
 // Everything the outside world is told about ONE spoken segment, held in a
 // single value because it is now read twice — once when the clip is committed
 // (onQueued) and once when it airs (onSpoken). Two hand-built copies at each of
@@ -779,9 +794,7 @@ class Queue {
     this.persist();
     // Candidate admission is deferred out of the queue mutation. It is never
     // awaited and its collector makes no request while the feature is off.
-    setTimeout(() => {
-      try { sleeveNotesCollector()?.admit({ kind: 'track', localId: track.id ?? undefined, title: track.title ?? '', artist: track.artist ?? undefined, releaseTitle: track.album ?? undefined }); } catch {}
-    }, 0).unref();
+    admitSleeveNotesLater(track);
     this.drainToLiquidsoap();  // fire-and-forget
     return this.upcoming.length;
   }
@@ -2832,6 +2845,9 @@ class Queue {
       return;
     }
     this.lastSeenKey = key;
+    // Covers tracks that were already queued before collection was enabled,
+    // plus untracked auto-playlist music. This is deliberately not awaited.
+    admitSleeveNotesLater({ id: np.subsonic_id, title: np.title, artist: np.artist, album: np.album }, 1);
     // The rotate's own clock (#1619). Only real MUSIC boundaries reach here —
     // a bed branches before now-playing.json's title gate and a jingle is
     // captured outside music_meta entirely — so this counts the same thing
