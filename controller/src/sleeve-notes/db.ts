@@ -144,6 +144,17 @@ export function migrate(d: Database.Database): void {
     `);
     d.pragma('user_version = 2');
   }
+  if (version < 3) {
+    // A directly queued/played record already has a Navidrome track ID. Its
+    // provider identity is a confident local attachment, not a relationship
+    // target waiting for a background Navidrome search.
+    d.exec(`UPDATE provider_identities
+      SET resolution_state = 'confident'
+      WHERE entity_id IN (
+        SELECT id FROM entities WHERE kind = 'track' AND local_id IS NOT NULL
+      )`);
+    d.pragma('user_version = 3');
+  }
 }
 
 export function schemaVersion(): number {
