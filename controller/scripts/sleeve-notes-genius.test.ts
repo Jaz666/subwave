@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GeniusProvider, projectGeniusSong, selectGeniusSearchHit } from '../src/sleeve-notes/genius.js';
 import { exactLocalMatches } from '../src/sleeve-notes/resolver.js';
+import { clearProviderCallsForTest, recentProviderCalls } from '../src/sleeve-notes/telemetry.js';
 
 const search = { response: { hits: [
   { result: { id: 9, title: 'Different Song', url: 'https://genius.com/x', primary_artist: { name: 'Band' } } },
@@ -31,6 +32,7 @@ test('Genius projection retains only approved credits and relationships', () => 
 });
 
 test('Genius provider uses only search then song endpoints', async () => {
+  clearProviderCallsForTest();
   const calls: string[] = [];
   const provider = new GeniusProvider('not-a-real-token', async (url) => {
     calls.push(url);
@@ -40,6 +42,10 @@ test('Genius provider uses only search then song endpoints', async () => {
   }, async () => {});
   await provider.fetch({ kind: 'track', title: 'The Song', artist: 'The Band' }, new AbortController().signal);
   assert.deepEqual(calls.map((url) => new URL(url).pathname), ['/search', '/songs/10']);
+  assert.deepEqual(recentProviderCalls().map((call) => [call.endpoint, call.ok, call.status]), [
+    ['song', true, 200], ['search', true, 200],
+  ]);
+  assert.ok(recentProviderCalls().every((call) => Number.isFinite(call.ms) && call.ms >= 0));
 });
 
 test('local relation matching never accepts a title-only candidate', () => {

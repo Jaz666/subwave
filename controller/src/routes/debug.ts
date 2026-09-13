@@ -20,6 +20,7 @@ import * as tts from '../audio/tts.js';
 import { ttsCalls } from '../stats.js';
 import * as library from '../music/library.js';
 import * as subsonicLog from '../music/subsonic-log.js';
+import { recentProviderCalls } from '../sleeve-notes/telemetry.js';
 import { getFullContext } from '../context.js';
 import * as settings from '../settings.js';
 import { queue } from '../broadcast/queue.js';
@@ -274,6 +275,10 @@ async function buildDebugSnapshot(req: express.Request): Promise<any> {
   } catch (err) {
     out.subsonic = { error: err.message };
   }
+
+  // Kept adjacent to LLM diagnostics in the Debug UI, but deliberately a
+  // separate provider ring: these are HTTP metadata calls, not model calls.
+  out.sleeveNotes = { recentCalls: recentProviderCalls() };
 
   try {
     out.context = await getFullContext();
