@@ -250,6 +250,12 @@ export const DEFAULTS = {
     extendedSleeveNotes: false,
     releaseYearMentions: 'regular',
   },
+  // Provider configuration stays independent from the station-wide Sleeve
+  // Notes switch. A provider may be configured but inert while the master
+  // setting is off, or the master may be on while no provider is enabled.
+  sleeveNotes: {
+    providers: { genius: { enabled: false } },
+  },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
   // boundary the outgoing host signs off — the programme outro beat's window.
   // 5 is exactly where the beat has always fired (:55 of the final hour), so an

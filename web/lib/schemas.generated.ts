@@ -2927,6 +2927,14 @@ export const djBehaviourPatchSchema = settingsBlockOf({
   }),
 });
 
+export const sleeveNotesPatchSchema = settingsBlockOf({
+  providers: settingsBlockOf({
+    genius: settingsBlockOf({
+      enabled: z.boolean({ error: 'sleeveNotes.providers.genius.enabled must be a boolean' }),
+    }),
+  }),
+});
+
 /**
  * Station default for the show-boundary fade (#1574). Strict boolean, the same
  * posture as the two switches above and for the same reason — the key is new,

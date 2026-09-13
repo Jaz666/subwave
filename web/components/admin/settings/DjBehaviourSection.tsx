@@ -153,12 +153,22 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Card title="Extended Sleeve Notes" sub="coming soon">
+      <Card title="Sleeve Notes" sub={form.djBehaviour.extendedSleeveNotes ? 'enabled' : 'off'}>
+        <div className="field">
+          <Label>Station-wide collection</Label>
+          <Seg
+            value={form.djBehaviour.extendedSleeveNotes ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Make no provider calls or background jobs' },
+              { id: 'on', label: 'On', title: 'Allow Sleeve Notes collection when a provider is configured' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNotes: v === 'on' } }))}
+          />
+        </div>
         <p className="text-[13px] leading-[1.55] text-muted">
-          Soon, the DJ will be able to add optional, source-backed editorial notes—such as
-          release credits or wider artist context—with provider provenance. Album, trusted
-          release year and station-play history already come from today&apos;s Verified Facts
-          packet; this future layer will stay opt-in and separate from show steering.
+          Sleeve Notes stays separate from Verified Facts and does not alter links until its
+          later on-air projection phase. While collection is not implemented, this switch is
+          safe to leave off and starts no work.
         </p>
       </Card>
 

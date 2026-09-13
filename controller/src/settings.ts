@@ -600,6 +600,11 @@ export async function load() {
       releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)
         ? stored.djBehaviour.releaseYearMentions : DEFAULTS.djBehaviour.releaseYearMentions,
     },
+    sleeveNotes: {
+      providers: {
+        genius: { enabled: stored.sleeveNotes?.providers?.genius?.enabled === true },
+      },
+    },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
     // hand-edited settings.json is this path's input.
@@ -1569,6 +1574,14 @@ export async function update(patch) {
     }
     if (behaviour.releaseYearMentions !== undefined) {
       next.djBehaviour.releaseYearMentions = behaviour.releaseYearMentions as typeof next.djBehaviour.releaseYearMentions;
+    }
+  }
+  if ('sleeveNotes' in patch) {
+    const sleeveNotes = parseSettingsPatchKey<{ providers?: { genius?: { enabled?: boolean } } }>(
+      'sleeveNotes', patch.sleeveNotes,
+    );
+    if (sleeveNotes.providers?.genius?.enabled !== undefined) {
+      next.sleeveNotes.providers.genius.enabled = sleeveNotes.providers.genius.enabled;
     }
   }
   if ('handover' in patch) {

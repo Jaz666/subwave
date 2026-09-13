@@ -80,6 +80,7 @@ import {
 } from './queue/pause-voice-delivery.js';
 import * as webhooks from './webhooks.js';
 import * as scrobble from './scrobble.js';
+import { collector as sleeveNotesCollector } from '../sleeve-notes/collector.js';
 import * as liquidsoapControl from './liquidsoap-control.js';
 import {
   drainAction,
@@ -776,6 +777,11 @@ class Queue {
     }
     this.warnIfSwallowedByCrossfade(item);
     this.persist();
+    // Candidate admission is deferred out of the queue mutation. It is never
+    // awaited and its collector makes no request while the feature is off.
+    setTimeout(() => {
+      try { sleeveNotesCollector()?.admit({ kind: 'track', localId: track.id ?? undefined, title: track.title ?? '', artist: track.artist ?? undefined, releaseTitle: track.album ?? undefined }); } catch {}
+    }, 0).unref();
     this.drainToLiquidsoap();  // fire-and-forget
     return this.upcoming.length;
   }
