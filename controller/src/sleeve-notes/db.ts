@@ -155,6 +155,24 @@ export function migrate(d: Database.Database): void {
       )`);
     d.pragma('user_version = 3');
   }
+  if (version < 4) {
+    // Discovery is distinct from identity: one song can be encountered by the
+    // station and also discovered from several relationship roots.
+    d.exec(`
+      CREATE TABLE discoveries (
+        entity_id TEXT NOT NULL REFERENCES entities(id),
+        root_entity_id TEXT NOT NULL REFERENCES entities(id),
+        origin TEXT NOT NULL CHECK (origin IN ('station', 'relationship')),
+        depth INTEGER NOT NULL CHECK (depth IN (0, 1)),
+        discovered_at TEXT NOT NULL,
+        PRIMARY KEY(entity_id, root_entity_id, origin)
+      );
+      CREATE INDEX idx_sleeve_discoveries_root ON discoveries(root_entity_id, depth);
+      ALTER TABLE jobs ADD COLUMN depth INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE jobs ADD COLUMN root_entity_id TEXT REFERENCES entities(id);
+    `);
+    d.pragma('user_version = 4');
+  }
 }
 
 export function schemaVersion(): number {

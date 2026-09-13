@@ -310,11 +310,36 @@ connected to DJ link generation until Phase 3.
    links; do not expose raw provider payloads by default.
 2. Design a separately scoped DJ-banter consumer using a small themed set of
    facts and the same provenance/repetition guarantees.
-3. Add providers one at a time with their own capability, policy, matching,
-   and backfill rules.
-4. Consider relationship-driven Skills, such as sample trails, cover stories,
+3. Add artist and release enrichment as separately queued background work.
+   A track encounter may seed those candidates, but it must not make an
+   unconditional artist-and-album lookup: admission uses provider coverage,
+   freshness, repeat station encounters, priority and a bounded station-wide
+   budget.
+4. Add providers one at a time with their own capability, policy, matching,
+   and backfill rules. Direct Genius album lookup (`/albums/:id` and its
+   track-list endpoint) is a candidate for this work; it still requires its
+   own field/permission review before use. Do not use undocumented Genius
+   album search or artist-discography endpoints.
+5. Consider relationship-driven Skills, such as sample trails, cover stories,
    and local-library follow-up playlisting, only after local relation matching
    is reliable.
+
+### Phase 6 — knowledge observatory
+
+1. Add an optional visual exploration surface inspired by the Library
+   Observatory: an interactive graph of the station's collected artists,
+   releases, tracks, and source-backed relationships.
+2. Keep provenance first-class in every view: each node and edge must identify
+   its provider, source URL, retrieval time, confidence, and whether a linked
+   track has a confident local Navidrome match.
+3. Offer small useful lenses rather than one decorative map: relationship type
+   (samples/covers), a local-library-only filter, artist/release/track scope,
+   source coverage, and recent collection activity.
+4. Make external-only and ambiguous nodes visually distinct from playable local
+   tracks. The visualization must never imply that an uncertain relationship is
+   a confirmed local match.
+5. Keep it an operator/research surface: it does not create provider work,
+   alter source claims, or supply DJ speech by itself.
 
 ## Completion checks for the first DJ-link release
 

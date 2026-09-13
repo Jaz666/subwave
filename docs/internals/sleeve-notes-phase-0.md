@@ -18,6 +18,14 @@ Undocumented public endpoints used by that project remain out of scope. This
 approval is for a personal, non-commercial station using the official API; any
 commercial distribution or broader reuse needs Genius's written permission.
 
+The reviewed client also calls `GET /albums/:id` and
+`GET /albums/:id/tracks` on `api.genius.com` with the same bearer-token
+authentication. That makes direct album lookup a candidate for the later
+release-enrichment review, rather than a reason to use the project's
+undocumented album-search or artist-discography endpoints. It is not approved
+by this Phase 0 track-only contract: its response fields and retention policy
+must be reviewed before implementation.
+
 ## What the supported Genius API establishes
 
 The review used Genius's public API documentation and Terms of Service on

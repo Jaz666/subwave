@@ -53,36 +53,44 @@ export interface SleeveJob {
   priority: number;
   attempts: number;
   runAfter: string | null;
+  depth: 0 | 1;
+  rootEntityId: string | null;
 }
 
 /** Insert a durable candidate once. Re-admission can only raise its priority. */
-export function enqueueJob(input: { provider: string; entityId: string; kind: SleeveJob['kind']; priority?: number }): SleeveJob {
+export function enqueueJob(input: { provider: string; entityId: string; kind: SleeveJob['kind']; priority?: number; depth?: 0 | 1; rootEntityId?: string }): SleeveJob {
   const db = open();
   const now = new Date().toISOString();
   const priority = input.priority ?? 0;
-  db.prepare(`INSERT INTO jobs (id, provider, entity_id, kind, state, priority, attempts, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'queued', ?, 0, ?, ?)
+  db.prepare(`INSERT INTO jobs (id, provider, entity_id, kind, state, priority, attempts, depth, root_entity_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'queued', ?, 0, ?, ?, ?, ?)
     ON CONFLICT(provider, entity_id, kind) DO UPDATE SET
       priority = MAX(jobs.priority, excluded.priority),
       state = CASE WHEN jobs.state IN ('complete', 'failed', 'cancelled') THEN jobs.state ELSE jobs.state END,
       updated_at = excluded.updated_at`)
-    .run(randomUUID(), input.provider, input.entityId, input.kind, priority, now, now);
+    .run(randomUUID(), input.provider, input.entityId, input.kind, priority, input.depth ?? 0, input.rootEntityId ?? input.entityId, now, now);
   db.prepare(`INSERT INTO provider_coverage (provider, entity_id, state)
     VALUES (?, ?, 'queued') ON CONFLICT(provider, entity_id) DO NOTHING`)
     .run(input.provider, input.entityId);
   return db.prepare(`SELECT id, provider, entity_id AS entityId, kind, state, priority, attempts,
-    run_after AS runAfter FROM jobs WHERE provider = ? AND entity_id = ? AND kind = ?`)
+    run_after AS runAfter, depth, root_entity_id AS rootEntityId FROM jobs WHERE provider = ? AND entity_id = ? AND kind = ?`)
     .get(input.provider, input.entityId, input.kind) as SleeveJob;
 }
 
 export function nextDueJob(provider: string, now = new Date().toISOString()): SleeveJob | null {
   const db = open();
   const job = db.prepare(`SELECT id, provider, entity_id AS entityId, kind, state, priority, attempts,
-      run_after AS runAfter FROM jobs
+      run_after AS runAfter, depth, root_entity_id AS rootEntityId FROM jobs
     WHERE provider = ? AND state IN ('queued', 'retry-at')
       AND (run_after IS NULL OR run_after <= ?)
     ORDER BY priority DESC, created_at ASC LIMIT 1`).get(provider, now) as SleeveJob | undefined;
   return job ?? null;
+}
+
+export function recordDiscovery(input: { entityId: string; rootEntityId: string; origin: 'station' | 'relationship'; depth: 0 | 1 }): void {
+  open().prepare(`INSERT INTO discoveries (entity_id, root_entity_id, origin, depth, discovered_at)
+    VALUES (?, ?, ?, ?, ?) ON CONFLICT(entity_id, root_entity_id, origin) DO UPDATE SET discovered_at = excluded.discovered_at`)
+    .run(input.entityId, input.rootEntityId, input.origin, input.depth, new Date().toISOString());
 }
 
 export function markJobRunning(id: string): void {
@@ -132,6 +140,12 @@ export function upsertProviderIdentity(input: { entityId: string; provider: stri
     FROM provider_identities WHERE provider = ? AND provider_id = ?`).get(input.provider, input.identity.providerId) as StoredProviderIdentity | undefined;
   const now = new Date().toISOString();
   if (existing) {
+    // A relationship target is initially an external-only entity.  If that
+    // same Genius song is later played by the station, make the local track
+    // canonical and carry its already-collected graph across to it.
+    if (existing.entityId !== input.entityId && canPromoteExternalEntity(db, existing.entityId, input.entityId)) {
+      mergeExternalEntityInDatabase(db, existing.entityId, input.entityId);
+    }
     db.prepare(`UPDATE provider_identities SET entity_id = ?, canonical_url = ?, retrieved_at = ?,
       resolution_state = ? WHERE id = ?`).run(input.entityId, input.identity.canonicalUrl, now, input.resolutionState ?? 'unresolved', existing.id);
     return { ...existing, entityId: input.entityId };
@@ -140,6 +154,57 @@ export function upsertProviderIdentity(input: { entityId: string; provider: stri
   db.prepare(`INSERT INTO provider_identities (id, entity_id, provider, provider_id, canonical_url, resolution_state, retrieved_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(stored.id, stored.entityId, stored.provider, stored.providerId, input.identity.canonicalUrl, input.resolutionState ?? 'unresolved', now);
   return stored;
+}
+
+function canPromoteExternalEntity(db: ReturnType<typeof open>, externalEntityId: string, localEntityId: string): boolean {
+  const rows = db.prepare(`SELECT id, kind, local_id AS localId FROM entities WHERE id IN (?, ?)`)
+    .all(externalEntityId, localEntityId) as Array<{ id: string; kind: string; localId: string | null }>;
+  const external = rows.find((row) => row.id === externalEntityId);
+  const local = rows.find((row) => row.id === localEntityId);
+  return external?.kind === 'external' && local?.kind === 'track' && !!local.localId;
+}
+
+/** Move relationship-derived knowledge onto the first directly encountered local track. */
+export function mergeExternalEntityInDatabase(db: ReturnType<typeof open>, externalEntityId: string, localEntityId: string): void {
+  const relationshipRows = db.prepare(`SELECT provider_identity_id AS providerIdentityId, relationship_type AS relationshipType,
+      from_entity_id AS fromEntityId, to_entity_id AS toEntityId, created_at AS createdAt
+    FROM relationships WHERE from_entity_id = ? OR to_entity_id = ?`).all(externalEntityId, externalEntityId) as Array<{
+      providerIdentityId: string; relationshipType: string; fromEntityId: string; toEntityId: string; createdAt: string;
+    }>;
+  const discoveryRows = db.prepare(`SELECT root_entity_id AS rootEntityId, origin, depth, discovered_at AS discoveredAt
+    FROM discoveries WHERE entity_id = ? OR root_entity_id = ?`).all(externalEntityId, externalEntityId) as Array<{
+      rootEntityId: string; origin: 'station' | 'relationship'; depth: 0 | 1; discoveredAt: string;
+    }>;
+
+  for (const row of relationshipRows) {
+    const fromEntityId = row.fromEntityId === externalEntityId ? localEntityId : row.fromEntityId;
+    const toEntityId = row.toEntityId === externalEntityId ? localEntityId : row.toEntityId;
+    if (fromEntityId === toEntityId) continue;
+    db.prepare(`INSERT INTO relationships (id, from_entity_id, to_entity_id, provider_identity_id, relationship_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(from_entity_id, to_entity_id, provider_identity_id, relationship_type) DO NOTHING`)
+      .run(randomUUID(), fromEntityId, toEntityId, row.providerIdentityId, row.relationshipType, row.createdAt);
+  }
+  db.prepare(`DELETE FROM relationships WHERE from_entity_id = ? OR to_entity_id = ?`).run(externalEntityId, externalEntityId);
+
+  for (const row of discoveryRows) {
+    const rootEntityId = row.rootEntityId === externalEntityId ? localEntityId : row.rootEntityId;
+    db.prepare(`INSERT INTO discoveries (entity_id, root_entity_id, origin, depth, discovered_at)
+      VALUES (?, ?, ?, ?, ?) ON CONFLICT(entity_id, root_entity_id, origin) DO UPDATE SET
+        discovered_at = MAX(discoveries.discovered_at, excluded.discovered_at)`)
+      .run(localEntityId, rootEntityId, row.origin, row.depth, row.discoveredAt);
+  }
+  db.prepare(`DELETE FROM discoveries WHERE entity_id = ? OR root_entity_id = ?`).run(externalEntityId, externalEntityId);
+
+  db.prepare(`UPDATE claims SET entity_id = ? WHERE entity_id = ?`).run(localEntityId, externalEntityId);
+
+  db.prepare(`INSERT OR IGNORE INTO provider_coverage (provider, entity_id, state, checked_at, retry_at)
+    SELECT provider, ?, state, checked_at, retry_at FROM provider_coverage WHERE entity_id = ?`)
+    .run(localEntityId, externalEntityId);
+  db.prepare(`DELETE FROM provider_coverage WHERE entity_id = ?`).run(externalEntityId);
+  db.prepare(`DELETE FROM jobs WHERE entity_id = ?`).run(externalEntityId);
+  db.prepare(`UPDATE jobs SET root_entity_id = ? WHERE root_entity_id = ?`).run(localEntityId, externalEntityId);
+  db.prepare(`UPDATE provider_identities SET entity_id = ? WHERE entity_id = ?`).run(localEntityId, externalEntityId);
+  db.prepare(`DELETE FROM entities WHERE id = ?`).run(externalEntityId);
 }
 
 export function retainRelationship(input: { fromEntityId: string; toEntityId: string; providerIdentityId: string; type: string }): void {
@@ -158,7 +223,7 @@ export function retainLocalMatches(providerIdentityId: string, trackIds: string[
 }
 
 /** Persist a narrow, source-scoped projection. This accepts no raw payload. */
-export function retainProviderResult(entityId: string, provider: string, result: SleeveProviderResult): string[] {
+export function retainProviderResult(entityId: string, provider: string, result: SleeveProviderResult, options: { includeRelationships?: boolean } = {}): string[] {
   const db = open();
   const now = new Date().toISOString();
   const targets: string[] = [];
@@ -179,7 +244,7 @@ export function retainProviderResult(entityId: string, provider: string, result:
         .run(randomUUID(), claimId, provider, result.identity.canonicalUrl, result.attribution,
           JSON.stringify({ role: credit.role, names: credit.names }), result.retrievedAt);
     }
-    for (const relationship of result.relationships) {
+    for (const relationship of options.includeRelationships === false ? [] : result.relationships) {
       const knownTarget = entityForProviderIdentity(provider, relationship.target.providerId);
       const target = knownTarget ?? upsertEntity({ kind: 'external', title: relationship.target.title, artist: relationship.target.artist });
       // Provider IDs are unique across the source, so this makes external-only

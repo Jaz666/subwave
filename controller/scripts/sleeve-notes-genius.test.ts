@@ -22,12 +22,17 @@ test('Genius projection retains only approved credits and relationships', () => 
       { label: 'Producer', artists: [{ name: 'A Producer' }] },
       { label: 'Guitar', artists: [{ name: 'A Guitarist' }] },
     ],
+    producer_artists: [{ name: 'A Producer' }],
+    writer_artists: [{ name: 'A Writer' }],
     song_relationships: [
       { relationship_type: 'samples', songs: [{ id: 11, title: 'Source', url: 'https://genius.com/source', primary_artist: { name: 'Source Artist' } }] },
       { relationship_type: 'remixed_by', songs: [{ id: 12, title: 'Ignore', url: 'https://genius.com/ignore' }] },
     ],
   } } });
-  assert.deepEqual(result?.credits, [{ role: 'Producer', names: ['A Producer'] }]);
+  assert.deepEqual(result?.credits, [
+    { role: 'Producer', names: ['A Producer'] },
+    { role: 'Writer', names: ['A Writer'] },
+  ]);
   assert.deepEqual(result?.relationships, [{ type: 'samples', target: { providerId: '11', canonicalUrl: 'https://genius.com/source', title: 'Source', artist: 'Source Artist' } }]);
 });
 
