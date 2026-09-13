@@ -14,7 +14,7 @@ export function SleeveNotesCalls({ sleeveNotes, timezone }: { sleeveNotes?: Debu
     } catch { return '—'; }
   };
   return (
-    <Card title="Sleeve Notes provider calls" sub={`${calls.length} recent HTTP call${calls.length === 1 ? '' : 's'} · metadata only`}>
+    <Card title="Extended Sleeve Notes provider calls" sub={`${calls.length} recent HTTP call${calls.length === 1 ? '' : 's'} · metadata only`}>
       <div className="grid gap-1.5">
         {calls.length === 0 && <span className="field-hint text-muted">No Genius calls since controller start.</span>}
         {calls.map((call, index) => (

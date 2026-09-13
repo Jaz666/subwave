@@ -25,22 +25,22 @@ export default function NotesPanel() {
   const active = status.data?.collectionRunning === true;
   const blocked = status.data?.collectionBlockedReason === 'provider-unconfigured'
     ? 'Genius needs its access token before collection can start.'
-    : 'Turn on Sleeve Notes to allow any background collection.';
+    : 'Turn on Extended Sleeve Notes to allow any background collection.';
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
         <Eyebrow>Programming</Eyebrow>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sleeve Notes</h1>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Extended Sleeve Notes</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          A local, source-backed music knowledge store. It is optional, sparse on air,
-          and never delays playback.
+          An optional, source-backed extension to the default Sleeve Notes and Verified Facts.
+          It is collected in the background and never delays playback.
         </p>
       </div>
       <Card title={active ? 'Collection active' : 'Not collecting'} sub={active ? 'background only' : 'safe by default'}>
         <p className="text-sm leading-6 text-muted">
           {active
-            ? 'Genius work is low-priority and never delays playback. Source material is collected locally only; it is not yet used in DJ links.'
-            : `${blocked} While inactive, Sub/Wave makes no provider calls or background jobs, and the Verified Facts path remains unchanged.`}
+            ? 'Genius work is low-priority and never delays playback. Extended material is collected locally only; it is not yet used in DJ links.'
+            : `${blocked} While inactive, Sub/Wave makes no provider calls or background jobs, and the default Sleeve Notes and Verified Facts path remains unchanged.`}
         </p>
         <Link href="/admin/settings" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
           Review the master switch <ShieldCheck className="size-4" />
