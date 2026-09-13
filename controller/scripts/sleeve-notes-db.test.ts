@@ -12,6 +12,6 @@ test('Sleeve Notes migration creates its isolated durable model', () => {
     'claims', 'entities', 'evidence', 'jobs', 'provider_coverage',
     'provider_identities', 'provider_local_matches', 'relationships', 'uses',
   ]);
-  assert.equal(db.pragma('user_version', { simple: true }), 2);
+  assert.equal(db.pragma('user_version', { simple: true }), 3);
   db.close();
 });

@@ -163,7 +163,11 @@ export function retainProviderResult(entityId: string, provider: string, result:
   const now = new Date().toISOString();
   const targets: string[] = [];
   const save = db.transaction(() => {
-    const identity = upsertProviderIdentity({ entityId, provider, identity: result.identity });
+    const sourceEntity = entityFor(entityId);
+    const identity = upsertProviderIdentity({
+      entityId, provider, identity: result.identity,
+      resolutionState: sourceEntity?.kind === 'track' && !!sourceEntity.localId ? 'confident' : 'unresolved',
+    });
     for (const credit of result.credits) {
       const wording = `${credit.role === 'Producer' ? 'Produced by' : 'Written by'} ${credit.names.join(', ')}`;
       const claimId = randomUUID();
