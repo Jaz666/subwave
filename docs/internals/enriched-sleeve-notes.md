@@ -8,8 +8,9 @@ not replace it. `settings.djBehaviour.extendedSleeveNotes` is already a
 disabled-by-default reservation and the DJ Behaviour panel currently presents
 the feature as Coming Soon.
 
-No feature code is planned in this handoff. The first implementation starts
-only after the provider feasibility work in Phase 0 is complete.
+No feature code is planned in this handoff. Phase 0 is complete: Genius is the
+approved first provider, limited to the documented non-lyric metadata and
+relationship contract in [`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md).
 
 ## Product intent
 
@@ -204,6 +205,14 @@ credits or relationship links are only page-rendered rather than available
 through supported, permitted access, they are not part of this adapter's
 contract.
 
+**Phase 0 decision (2026-09-13):** Genius is the approved first Sleeve Notes
+provider for structured identity, credit, and relationship metadata only.
+The authenticated two-request spike confirmed `song_relationships` on the
+official `GET /songs/:id` response. The adapter must use the explicit field
+allowlist, rate ceiling, attribution, and lyrics/annotation prohibition in
+[`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md); it must never use the
+undocumented endpoints employed by unrelated features in `genius-mcp`.
+
 ## Link-time selection and repetition
 
 The stored model may be rich; a normal DJ link gets zero or one selected Sleeve
@@ -228,15 +237,19 @@ ranked one. Saying nothing remains a successful outcome.
 
 ### Phase 0 — provider spike and policy decision
 
-1. Document Genius's supported endpoints, authentication, quotas, data shape,
-   storage/display/transform permissions, and attribution obligations.
-2. Verify whether useful credits and music relationships are available through
-   supported access; explicitly exclude lyrics and scraping.
-3. Prototype exact provider-to-Navidrome matching against a small, disposable
-   sample. Establish confidence and ambiguity rules before any automated
-   persistence.
-4. Write the provider adapter contract from the findings. Do not begin the
-   production adapter until this phase has a clear permitted data scope.
+**Complete — Genius response and policy verification.** The evidence,
+local-resolution spike, and provider contract are recorded in
+[`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md).
+
+1. Genius's supported endpoints, authentication, data shape, unreported quota,
+   permission scope, and attribution requirements are documented.
+2. The official two-request spike confirmed credits and relationships, and
+   established an explicit response field allowlist. Lyrics and scraping remain
+   excluded.
+3. A disposable local exact-match spike established conservative attachment,
+   duplicate, and no-match rules without persisting provider data.
+4. The resulting contract approves a narrow Genius adapter. It must not expand
+   its field or endpoint scope without a new provider review.
 
 ### Phase 1 — foundation and inactive product surface
 
@@ -250,6 +263,16 @@ ranked one. Saying nothing remains a successful outcome.
    makes no provider calls, and cannot alter existing link output.
 
 ### Phase 2 — background collection and first provider
+
+**Complete — bounded Genius collection is present but remains disabled by
+default.** Queue admission is deferred and non-blocking; the worker has one
+active job at a time, durable deduplication, exponential retry state and
+negative caching. The adapter performs only the approved `/search` then
+`/songs/:id` flow and retains a projected source-scoped result. Relationship
+targets receive a separate exact title-and-artist Navidrome lookup, allowing
+multiple confident local copies while leaving uncertainty external. Notes →
+Sources reports collection gates and coverage counts. No collected material is
+connected to DJ link generation until Phase 3.
 
 1. Add candidate admission from queued/played music, deduplication, priority,
    bounded concurrency, retry backoff, negative caching, and observability.
