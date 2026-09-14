@@ -62,6 +62,7 @@ import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
 import { djPick, shortlistSelectionReason } from '../music/dj-pick.js';
 import type { Persona } from './queue/types.js';
+import { recordShortlistPick } from '../stats.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -165,6 +166,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text, persona }:
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
 async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
+  const pickStarted = performance.now();
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -455,6 +457,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // escalated differently on purpose (see below): an anchor match is worth a
   // pool rescue, while spacing is a preference that yields to the run.
   const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
+  let shortlistCorrected = false;
   // Read once: the album guard below steps around the same neighbours, and two
   // reads of a live queue across two awaits could disagree.
   const neighbourRoots = queue.neighbourArtistRoots(varietyWindow);
@@ -480,6 +483,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // rescued slot is a filled slot — runTrackEvent must treat it as done.
   if (guarded.kind === 'rescued') return true;
   if (guarded.kind === 'repicked') {
+    shortlistCorrected = useShortlist;
     object = guarded.object;
     song = guarded.song;
   }
@@ -518,6 +522,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       logEvent,
     });
     if (albumGuarded.kind === 'repicked') {
+      shortlistCorrected = useShortlist;
       object = albumGuarded.object;
       song = albumGuarded.song;
     }
@@ -527,6 +532,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // corrective artist/album repick. Replace an unsafe note at the final-track
   // boundary, before either Booth/session text or queue metadata can see it.
   if (useShortlist) object.reason = shortlistSelectionReason(song, object.reason);
+  if (useShortlist) {
+    recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });
+  }
 
   // The picker has seen private selection context. Only after its final choice
   // do we invoke the isolated listener-facing writer with safe prompt data.
