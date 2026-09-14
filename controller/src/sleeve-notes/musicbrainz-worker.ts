@@ -35,18 +35,24 @@ export class MusicBrainzMatchWorker {
     }
     this.running = true;
     try {
+      console.log(`[sleeve-notes] MusicBrainz match: ${attachment.artist ? `${attachment.artist} — ` : ''}${attachment.title}`);
       repository.markResearchJobRunning(job.id);
       try {
         const result = await this.lookup.lookup({
           title: attachment.title, artist: attachment.artist, mbid: attachment.musicbrainzRecordingId,
         });
-        if (!result) repository.finishResearchJob(job.id, 'failed');
+        if (!result) {
+          repository.finishResearchJob(job.id, 'failed');
+          console.log(`[sleeve-notes] MusicBrainz no confident match: ${attachment.artist ? `${attachment.artist} — ` : ''}${attachment.title}`);
+        }
         else {
           repository.retainCanonicalMusicBrainzMatch(attachment.localTrackId, result);
           repository.finishResearchJob(job.id, 'complete');
+          console.log(`[sleeve-notes] MusicBrainz matched: ${result.artist?.name ?? 'Unknown artist'} — ${result.title}`);
         }
-      } catch {
+      } catch (err: any) {
         repository.finishResearchJob(job.id, 'failed');
+        console.warn(`[sleeve-notes] MusicBrainz match failed: ${err?.message || 'unknown error'}`);
       }
       return true;
     } finally {
@@ -59,6 +65,7 @@ export class MusicBrainzMatchWorker {
     if (!release) { repository.finishResearchJob(job.id, 'failed'); return true; }
     this.running = true;
     try {
+      console.log(`[sleeve-notes] MusicBrainz release context: ${release.title}`);
       repository.markResearchJobRunning(job.id);
       repository.retainSourceDocument({
         entityType: 'release', entityId: release.id, provider: 'musicbrainz',
@@ -71,6 +78,7 @@ export class MusicBrainzMatchWorker {
         }),
       });
       repository.finishResearchJob(job.id, 'complete');
+      console.log(`[sleeve-notes] MusicBrainz release context retained: ${release.title}`);
       return true;
     } finally { this.running = false; }
   }

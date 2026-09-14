@@ -15,9 +15,13 @@ export class WikipediaArtistWorker {
     if (!artist) { repository.finishResearchJob(job.id, 'failed'); return true; }
     this.running = true;
     try {
+      console.log(`[sleeve-notes] Wikipedia biography: ${artist.name}`);
       repository.markResearchJobRunning(job.id);
       const document = await wikipedia.fetchWikipediaArtistDocument(artist.name);
-      if (!document) repository.finishResearchJob(job.id, 'failed');
+      if (!document) {
+        repository.finishResearchJob(job.id, 'failed');
+        console.log(`[sleeve-notes] Wikipedia biography unavailable: ${artist.name}`);
+      }
       else {
         repository.retainSourceDocument({
           entityType: 'artist', entityId: artist.id, provider: 'wikipedia',
@@ -29,6 +33,7 @@ export class WikipediaArtistWorker {
           capability: 'extract-wikipedia', priority: 300,
         });
         repository.finishResearchJob(job.id, 'complete');
+        console.log(`[sleeve-notes] Wikipedia biography retained: ${artist.name} (revision ${document.revisionId})`);
       }
       return true;
     } finally { this.running = false; }
