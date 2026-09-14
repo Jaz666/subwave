@@ -65,6 +65,7 @@ export interface PendingResearchJob {
   subjectId: string;
   capability: string;
   priority: number;
+  attempts: number;
 }
 
 /** The later quiet-time worker takes only one durable task at a time. */
@@ -84,7 +85,7 @@ export function nextPendingResearchJobInDatabase(db: Database.Database, provider
   if (filter?.subjectType) { clauses.push('subject_type = ?'); values.push(filter.subjectType); }
   if (filter?.capability) { clauses.push('capability = ?'); values.push(filter.capability); }
   const row = db.prepare(`SELECT id, provider, subject_type AS subjectType,
-      subject_id AS subjectId, capability, priority
+      subject_id AS subjectId, capability, priority, attempts
     FROM sleeve_research_jobs
     WHERE ${clauses.join(' AND ')} ORDER BY priority DESC, created_at ASC LIMIT 1`)
     .get(...values) as PendingResearchJob | undefined;
@@ -210,6 +211,16 @@ export function finishResearchJob(id: string, state: 'complete' | 'failed'): voi
 /** A provider outage is not a content verdict. Keep the job durable and pause it. */
 export function retryResearchJob(id: string, delayMs = 5 * 60_000): void {
   retryResearchJobInDatabase(open(), id, delayMs);
+}
+
+/**
+ * Start with one prompt retry after a transient provider blip, then back off
+ * enough that an outage cannot keep the quiet-time worker pressing the public
+ * MusicBrainz service. The caller records one attempt before asking for this.
+ */
+export function musicBrainzRetryDelay(attempts: number): number {
+  const minutes = [1, 5, 15, 30, 60][Math.min(Math.max(0, attempts - 1), 4)];
+  return minutes * 60_000;
 }
 
 export function retryResearchJobInDatabase(db: Database.Database, id: string, delayMs = 5 * 60_000, now = new Date()): void {
