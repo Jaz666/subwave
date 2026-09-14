@@ -165,6 +165,14 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true) 
   // instead of soft leans, so both pick paths honour strict the same way. Lives
   // in the system prompt for the same session-window reason as the show brief.
   const musicLean = dj.showMusicLean(activeShow);
+  // Persona Musical Leanings are deliberately separate from the DJ's Soul:
+  // this is a private soft tie-breaker for music choice, not a voice or
+  // discovery instruction. Keep it in the agentic picker too, so changing
+  // picker implementation does not change the station's musical identity.
+  const personaMusicLean = settings.personaMusicLeanings(persona);
+  const personaMusicLeanLine = personaMusicLean
+    ? `\n\nMusical Leanings — ${personaMusicLean}\nUse this only to break a close tie between otherwise suitable tracks. It never overrides show rules, rotation, safety, or the musical flow.`
+    : '';
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of
@@ -196,7 +204,7 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true) 
     : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}
 
-${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}
+${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${personaMusicLeanLine}${playlistLean}
 
 ${dj.PICKER_CRITERIA}
 
