@@ -12,12 +12,21 @@ export type IntroRenderWaitResult = IntroRenderResult | { status: 'timed-out' };
 
 export class IntroRenderTracker<Item extends object> {
   private active = new WeakMap<Item, Promise<IntroRenderResult>>();
+  private activeCount = 0;
 
-  private track(item: Item, pending: Promise<IntroRenderResult>): void {
+  private track(item: Item, pending: Promise<IntroRenderResult>, countsAsNew = true): void {
     this.active.set(item, pending);
+    if (countsAsNew) this.activeCount++;
     void pending.then(() => {
-      if (this.active.get(item) === pending) this.active.delete(item);
+      if (this.active.get(item) === pending) {
+        this.active.delete(item);
+        this.activeCount--;
+      }
     });
+  }
+
+  busy(): boolean {
+    return this.activeCount > 0;
   }
 
   start(item: Item, render: () => Promise<string>): Promise<IntroRenderResult> {
@@ -42,7 +51,7 @@ export class IntroRenderTracker<Item extends object> {
     const pending = this.active.get(from);
     if (!pending) return;
     this.active.delete(from);
-    this.track(to, pending);
+    this.track(to, pending, false);
   }
 }
 

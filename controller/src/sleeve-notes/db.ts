@@ -173,6 +173,151 @@ export function migrate(d: Database.Database): void {
     `);
     d.pragma('user_version = 4');
   }
+  if (version < 5) {
+    // The first Genius-only experiment was deliberately track-centric.  Its
+    // identity and claim rows cannot be safely reinterpreted as canonical
+    // artist/recording/release knowledge, so start the replacement store
+    // empty rather than carrying an apparently-valid but misleading history.
+    d.exec(`
+      DELETE FROM uses;
+      DELETE FROM evidence;
+      DELETE FROM relationships;
+      DELETE FROM provider_local_matches;
+      DELETE FROM provider_identities;
+      DELETE FROM provider_coverage;
+      DELETE FROM discoveries;
+      DELETE FROM jobs;
+      DELETE FROM claims;
+      DELETE FROM entities;
+
+      CREATE TABLE sleeve_artists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        sort_name TEXT,
+        musicbrainz_id TEXT UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE sleeve_recordings (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        artist_id TEXT REFERENCES sleeve_artists(id),
+        musicbrainz_id TEXT UNIQUE,
+        match_state TEXT NOT NULL CHECK (match_state IN ('unmatched', 'ambiguous', 'matched')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_sleeve_recordings_artist ON sleeve_recordings(artist_id);
+
+      CREATE TABLE sleeve_releases (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        musicbrainz_release_id TEXT UNIQUE,
+        musicbrainz_release_group_id TEXT,
+        primary_type TEXT,
+        status TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE sleeve_recording_releases (
+        recording_id TEXT NOT NULL REFERENCES sleeve_recordings(id),
+        release_id TEXT NOT NULL REFERENCES sleeve_releases(id),
+        release_date TEXT,
+        country TEXT,
+        artist_credit TEXT,
+        is_compilation INTEGER NOT NULL DEFAULT 0,
+        is_first_official_non_compilation INTEGER NOT NULL DEFAULT 0,
+        is_canonical_home INTEGER NOT NULL DEFAULT 0,
+        selection_reason TEXT,
+        PRIMARY KEY(recording_id, release_id)
+      );
+      CREATE INDEX idx_sleeve_recording_releases_recording ON sleeve_recording_releases(recording_id, release_date);
+
+      CREATE TABLE sleeve_local_attachments (
+        local_track_id TEXT PRIMARY KEY,
+        recording_id TEXT REFERENCES sleeve_recordings(id),
+        title TEXT NOT NULL,
+        artist TEXT,
+        release_title TEXT,
+        musicbrainz_recording_id TEXT,
+        match_state TEXT NOT NULL CHECK (match_state IN ('unmatched', 'ambiguous', 'matched')),
+        first_encountered_at TEXT NOT NULL,
+        last_encountered_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_sleeve_local_attachments_recording ON sleeve_local_attachments(recording_id);
+
+      CREATE TABLE sleeve_encounters (
+        id TEXT PRIMARY KEY,
+        local_track_id TEXT NOT NULL REFERENCES sleeve_local_attachments(local_track_id),
+        source TEXT NOT NULL CHECK (source IN ('queue', 'played')),
+        encountered_at TEXT NOT NULL,
+        UNIQUE(local_track_id, source, encountered_at)
+      );
+      CREATE INDEX idx_sleeve_encounters_recent ON sleeve_encounters(encountered_at DESC);
+
+      CREATE TABLE sleeve_research_jobs (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        subject_type TEXT NOT NULL CHECK (subject_type IN ('local-track', 'artist', 'recording', 'release')),
+        subject_id TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'retry-at', 'complete', 'failed', 'cancelled')),
+        priority INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        run_after TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(provider, subject_type, subject_id, capability)
+      );
+      CREATE INDEX idx_sleeve_research_jobs_due ON sleeve_research_jobs(provider, state, run_after, priority DESC);
+
+      CREATE TABLE sleeve_provider_requests (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        completed_at TEXT,
+        outcome TEXT NOT NULL CHECK (outcome IN ('started', 'ready', 'no-match', 'failed', 'rate-limited')),
+        status_code INTEGER
+      );
+      CREATE INDEX idx_sleeve_provider_requests_provider_time ON sleeve_provider_requests(provider, requested_at);
+
+      CREATE TABLE sleeve_source_documents (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release')),
+        entity_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        source_url TEXT NOT NULL,
+        revision_id TEXT,
+        content_hash TEXT NOT NULL,
+        content_kind TEXT NOT NULL CHECK (content_kind IN ('bounded-text', 'structured-json')),
+        content TEXT NOT NULL,
+        attribution TEXT NOT NULL,
+        retrieved_at TEXT NOT NULL,
+        UNIQUE(provider, source_url, revision_id, content_hash)
+      );
+
+      CREATE TABLE sleeve_claims (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release')),
+        entity_id TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('artist-stories', 'track-stories', 'musical-connections', 'milestones', 'credits')),
+        topic TEXT NOT NULL,
+        wording TEXT NOT NULL,
+        source_document_id TEXT NOT NULL REFERENCES sleeve_source_documents(id),
+        evidence TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(entity_type, entity_id, category, topic, source_document_id)
+      );
+      CREATE INDEX idx_sleeve_claims_selection ON sleeve_claims(entity_type, entity_id, category, enabled);
+    `);
+    d.pragma('user_version = 5');
+  }
 }
 
 export function schemaVersion(): number {

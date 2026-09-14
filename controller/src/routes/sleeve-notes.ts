@@ -3,8 +3,7 @@
 import express from 'express';
 import * as settings from '../settings.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { collectionPlan } from '../sleeve-notes/runtime.js';
-import { databaseReadout, sourceCounts } from '../sleeve-notes/repository.js';
+import { researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
 
 export const router = express.Router();
 
@@ -14,15 +13,22 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   const enabled = value.djBehaviour.extendedSleeveNotes === true;
   const providerEnabled = value.sleeveNotes.providers.genius.enabled === true;
   const providerConfigured = providerEnabled && !!process.env.GENIUS_ACCESS_TOKEN;
-  const plan = collectionPlan({ enabled, providerConfigured });
   res.json({
     enabled,
     provider: 'genius',
     providerEnabled,
     providerConfigured,
-    collectionRunning: plan.run,
-    collectionBlockedReason: plan.run ? null : plan.reason,
-    coverage: plan.run ? sourceCounts('genius') : {},
+    collectionRunning: false,
+    collectionBlockedReason: enabled ? 'replacement-stage-1-only' : 'disabled',
+    coverage: {},
+    // The replacement path is live only as a local Stage-1 admission queue.
+    // A quiet-time MusicBrainz worker is introduced separately, so this makes
+    // the temporary state explicit rather than suggesting that Genius runs.
+    replacement: enabled ? {
+      admissionActive: true,
+      researchWorkerActive: true,
+      ...researchStoreSummary(),
+    } : null,
     onAirExposure: false,
   });
 });
@@ -31,11 +37,8 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
 // DJ consumers. It is inert unless collection is already running.
 router.get('/sleeve-notes/readout', requireAdmin, async (_req, res) => {
   await settings.load();
-  const value = settings.get();
-  const plan = collectionPlan({
-    enabled: value.djBehaviour.extendedSleeveNotes === true,
-    providerConfigured: value.sleeveNotes.providers.genius.enabled === true && !!process.env.GENIUS_ACCESS_TOKEN,
-  });
-  if (!plan.run) return res.json({ active: false, entities: [], relationships: [], jobs: [] });
-  return res.json({ active: true, ...databaseReadout('genius') });
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) {
+    return res.json({ active: false, artists: [], claims: [], jobs: [] });
+  }
+  return res.json({ active: true, ...researchStoreReadout() });
 });
