@@ -20,6 +20,7 @@ export class ResearchWorker {
     if (!source) { repository.finishResearchJob(queued.id, 'failed'); return true; }
     this.running = true;
     try {
+      console.log('[sleeve-notes] Researching Wikipedia biography');
       repository.markResearchJobRunning(queued.id);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 45_000);
@@ -37,8 +38,10 @@ export class ResearchWorker {
           candidates: validated.accepted,
         });
         repository.finishResearchJob(queued.id, 'complete');
-      } catch {
+        console.log(`[sleeve-notes] Research retained ${validated.accepted.length} claim${validated.accepted.length === 1 ? '' : 's'} (${validated.rejected.length} rejected)`);
+      } catch (err: any) {
         repository.finishResearchJob(queued.id, 'failed');
+        console.warn(`[sleeve-notes] Research failed: ${err?.message || 'unknown error'}`);
       } finally { clearTimeout(timeout); }
       return true;
     } finally { this.running = false; }
