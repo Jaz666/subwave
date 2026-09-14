@@ -439,11 +439,10 @@ export const DEFAULTS = {
     // never costs the station a slot. 0 leaves only the back-to-back guard,
     // which is always on. See broadcast/dj-agent/artist-guard.ts.
     artistVarietyWindow: ARTIST_VARIETY_WINDOW,
-    // Gives the listener-request agent (never the per-track picker) an
-    // `identifyRequestedTrack` tool that resolves a DESCRIBED track via web search
-    // and matches it locally. Off by default: needs a search provider and costs a
-    // web round-trip plus a small extraction call per use. No-op unless
-    // searchReady().
+    // Lets the controller resolve a DESCRIBED listener request via web evidence,
+    // one text-only identification call, and a local-library lookup. Off by
+    // default: needs a search provider and costs a web round-trip plus the small
+    // identification call per use. No-op unless searchReady().
     requestWebResolve: false,
     // Hard wall-clock ceiling on a single DJ-agent generation, enforced by
     // withDeadline. The main and recovery runs each get the full budget, so worst
@@ -463,9 +462,9 @@ export const DEFAULTS = {
     // Percent of dailyTokenCap that enters the soft tier. 0 or 100 disables it and
     // goes straight from normal to hard at the cap.
     budgetSoftPct: 80,
-    // On: listener requests are still answered by the agent over the hard cap — a
-    // human asked. Off: they fall through to the stateless matcher cascade. No
-    // effect until dailyTokenCap is set.
+    // On: listener requests may still use the text-only intent matcher over the
+    // hard cap — a human asked. Off: they go straight to the controller's local
+    // library cascade with no model call. No effect until dailyTokenCap is set.
     exemptRequests: true,
     // Per-call max OUTPUT tokens, distinct from the cumulative dailyTokenCap.
     // 0 = the strategy primitives' built-ins (4000 text / 8000 object / 8000

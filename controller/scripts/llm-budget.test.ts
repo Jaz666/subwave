@@ -17,6 +17,8 @@ process.env.STATE_DIR = root;
 
 const { record, lifetimeTokenCount } = await import('../src/llm/internal/telemetry/log.js');
 const { dailyTokensUsed, seedDailyUsageFromLog } = await import('../src/llm/internal/telemetry/budget.js');
+const settings = await import('../src/settings.js');
+const { requestsAllowed } = await import('../src/broadcast/dj-budget.js');
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
 const eventsFile = () => join(root, 'logs', `events-${utcDay()}.jsonl`);
@@ -73,6 +75,14 @@ try {
   record(call(false, 0));
   record(call(true, 0));
   assert.equal(dailyTokensUsed(), 350, 'zero-token reports add nothing, ok or not');
+
+  // The listener-request gate is the hard-cap boundary the direct route reads
+  // before making its text-only matcher call. With the exemption off it must
+  // refuse that spend; turning the explicit exemption on admits it.
+  await settings.update({ llm: { dailyTokenCap: 350, exemptRequests: false } } as never);
+  assert.equal(requestsAllowed(), false, 'hard cap + exemption off skips request LLM work');
+  await settings.update({ llm: { exemptRequests: true } } as never);
+  assert.equal(requestsAllowed(), true, 'the explicit request exemption still admits LLM work');
 
   // Re-seed from the events file those calls wrote: a drift between the two
   // copies of the policy shows up here as the number moving backwards.

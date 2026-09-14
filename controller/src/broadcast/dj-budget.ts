@@ -38,7 +38,7 @@ export function optionalSegmentsAllowed(): boolean {
 }
 
 // Honoured through the hard cap when llm.exemptRequests is on; otherwise the
-// caller falls back to its stateless matcher cascade.
+// caller goes straight to its controller-owned local-library cascade.
 export function requestsAllowed(): boolean {
   if (currentMode() !== 'hard') return true;
   return !!settings.get()?.llm?.exemptRequests;

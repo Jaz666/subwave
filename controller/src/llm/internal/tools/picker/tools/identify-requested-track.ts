@@ -1,8 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import * as subsonic from '../../../../../music/subsonic.js';
-import { searchWeb, searchReady } from '../../../../../skills/web-search.js';
-import { identifyTrackFromText } from '../../../prompts/request.js';
+import { resolveRequestReference } from '../../../../../music/request-reference.js';
+import { searchReady } from '../../../../../skills/web-search.js';
 import { definePickerTool } from '../defs.js';
 
 // Request path only, and only when a web-search provider is ready. Resolves a
@@ -21,28 +20,9 @@ export default definePickerTool({
     }),
     execute: async ({ reference }) => {
       try {
-        const web = await searchWeb(reference); // cached 30 min
-        const blob = [web.answer, ...web.results.map((r) => `${r.title}: ${r.content}`)]
-          .filter(Boolean).join('\n').slice(0, 2000);
-        if (!blob) return { error: 'no web result for that reference' };
-
-        const guess = await identifyTrackFromText(reference, blob);
-        if (!guess) return { error: 'could not identify a specific song from that description' };
-
-        // Resolve LOCALLY via the same path searchLibrary uses, so every id
-        // lands in `seen`. Try "artist title", then a resolved-artist retry
-        // (spelling/transliteration), then title-only.
-        const q = [guess.artist, guess.title].filter(Boolean).join(' ');
-        let songs = await subsonic.search(q, { songCount: 25 });
-        if (songs.length === 0 && guess.artist) {
-          const a = await subsonic.resolveArtist(guess.artist);
-          if (a) songs = await subsonic.search(`${a.name} ${guess.title}`, { songCount: 25 });
-        }
-        if (songs.length === 0) songs = await subsonic.search(guess.title, { songCount: 25 });
-        if (songs.length === 0 && guess.keyword && guess.keyword !== guess.title) {
-          songs = await subsonic.search(guess.keyword, { songCount: 25 });
-        }
-        return { identified: guess, candidates: collect(songs) };
+        const resolved = await resolveRequestReference(reference);
+        if (!resolved) return { error: 'could not identify a specific song from that description' };
+        return { identified: resolved.identified, candidates: collect(resolved.candidates) };
       } catch (err) { return { error: (err as Error).message }; }
     },
   }),

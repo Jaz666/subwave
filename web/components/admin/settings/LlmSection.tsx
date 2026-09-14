@@ -1122,6 +1122,30 @@ export function LlmSection({ data, form, setForm, busy, saveSettings, adminFetch
         </div>
       </Card>
 
+      <Card title="Listener requests" sub="described-track resolution">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
+          <div>
+            <div className="text-[13px] font-bold">Resolve described requests via web</div>
+            <div className="field-hint mt-1 max-w-[440px]">
+              When on, a listener who <em>describes</em> a track instead of naming
+              it (&ldquo;the song from the new Dune movie&rdquo;) gets it looked up on
+              the web, then matched to your library. Needs a web-search provider
+              set under Web search; otherwise it does nothing. This direct request
+              path works with either next-track picker mode.
+            </div>
+          </div>
+          <Seg
+            accent
+            value={form.llm.requestWebResolve ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off' },
+              { id: 'on', label: 'On' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, requestWebResolve: v === 'on' } }))}
+          />
+        </div>
+      </Card>
+
       <Card title="Next-track picker" sub="how the DJ chooses">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
           <div>
@@ -1160,8 +1184,8 @@ export function LlmSection({ data, form, setForm, busy, saveSettings, adminFetch
               className="max-w-[200px]"
             />
             <div className="field-hint">
-              How long an agent pick or listener request may run before falling
-              back to the stateless picker. Slow reasoning models often need
+              How long an agent pick or agent-driven segment may run before
+              falling back. Slow reasoning models often need
               20&ndash;40s per pick; lower it for snappier fallbacks on a fast
               model. 5&ndash;300s.
             </div>
@@ -1193,29 +1217,6 @@ export function LlmSection({ data, form, setForm, busy, saveSettings, adminFetch
               cut tokens and latency: every round is a separate call, and they all
               share the agent deadline above. 0&ndash;5.
             </div>
-          </div>
-        )}
-
-        {form.llm.pickerAgent && (
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
-            <div>
-              <div className="text-[13px] font-bold">Resolve described requests via web</div>
-              <div className="field-hint mt-1 max-w-[440px]">
-                When on, a listener who <em>describes</em> a track instead of naming
-                it (&ldquo;the song from the new Dune movie&rdquo;) gets it looked up on
-                the web, then matched to your library. Needs a web-search provider
-                set under Web search; otherwise it does nothing.
-              </div>
-            </div>
-            <Seg
-              accent
-              value={form.llm.requestWebResolve ? 'on' : 'off'}
-              options={[
-                { id: 'off', label: 'Off' },
-                { id: 'on', label: 'On' },
-              ]}
-              onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, requestWebResolve: v === 'on' } }))}
-            />
           </div>
         )}
 

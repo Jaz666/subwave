@@ -6,13 +6,15 @@ import { randomUUID } from 'node:crypto';
 import * as subsonic from '../music/subsonic.js';
 import * as dj from '../llm/dj.js';
 import * as library from '../music/library.js';
-import { exactTitleByArtist } from '../music/request-match.js';
+import { resolveNamedRequest } from '../music/request-match.js';
+import { chooseRequestReferenceCandidate, resolveRequestReference } from '../music/request-reference.js';
 import { getFullContext } from '../context.js';
 import { queue } from '../broadcast/queue.js';
 import * as session from '../broadcast/session.js';
 import * as requestLog from '../broadcast/request-log.js';
 import * as listeners from '../broadcast/listeners.js';
 import { autoVoiceAllowed } from '../broadcast/voice-policy.js';
+import * as budget from '../broadcast/dj-budget.js';
 import * as webhooks from '../broadcast/webhooks.js';
 import * as settings from '../settings.js';
 import { stripScriptedOpener, cleanRequesterName, stillInFlight, screenAck, guardIntro, isNamedRequester, sorryNoMatch } from '../util/request-guard.js';
@@ -24,6 +26,7 @@ import { validatePublicBody } from '../middleware/validate.js';
 import { listenerRequestSchema } from '../schemas/request.js';
 import { shuffle } from '../util/shuffle.js';
 import { requestWaitClause } from '../broadcast/queue/pure.js';
+import { searchReady } from '../skills/web-search.js';
 
 export const router = express.Router();
 
@@ -158,6 +161,7 @@ function recordOutcome(entry) {
       artist: entry.artist ?? null,
       genre: entry.genre ?? null,
       language: entry.language ?? null,
+      reference: entry.reference ?? null,
       searchTerms: entry.searchTerms ?? null,
       artistMiss: entry.artistMiss ?? null,
       track: entry.pick
@@ -356,19 +360,28 @@ async function resolveRequest(entry) {
   // without a tool interface.
   const currentTrack = queue.current?.track || null;
   let matched;
-  try {
-    matched = await dj.matchRequest(text, {
-      listenerName: requester,
-      nowPlaying: currentTrack,
-    });
-  } catch (err) {
-    // A matcher outage or malformed plain-JSON reply must not fail a genuine
-    // listener request. Search the original request locally; this keeps the
-    // public receipt/poll lifecycle intact without reintroducing an agent or
-    // any tool-capable fallback.
+  if (!budget.requestsAllowed()) {
+    // At the hard daily cap with request exemptions off, keep the public
+    // request alive without spending another model call. The same direct local
+    // cascade used for a matcher failure is the configured fallback.
     matched = dj.fallbackRequestMatch(text);
     entry.matcherFallback = true;
-    queue.log('error', `Request matcher failed; using direct library search: ${err.message}`);
+    queue.log('request', 'Request AI skipped at daily token cap; using direct library search');
+  } else {
+    try {
+      matched = await dj.matchRequest(text, {
+        listenerName: requester,
+        nowPlaying: currentTrack,
+      });
+    } catch (err) {
+      // A matcher outage or malformed plain-JSON reply must not fail a genuine
+      // listener request. Search the original request locally; this keeps the
+      // public receipt/poll lifecycle intact without reintroducing an agent or
+      // any tool-capable fallback.
+      matched = dj.fallbackRequestMatch(text);
+      entry.matcherFallback = true;
+      queue.log('error', `Request matcher failed; using direct library search: ${err.message}`);
+    }
   }
   queue.log('intent', `"${text}" → ${matched.intent || '(no intent)'}`, {
     mood: matched.mood,
@@ -376,6 +389,7 @@ async function resolveRequest(entry) {
     sort: matched.sort,
     artist: matched.artist,
     language: matched.language,
+    reference: matched.reference,
     searchTerms: matched.search_terms,
   });
 
@@ -402,6 +416,7 @@ async function resolveRequest(entry) {
   entry.artist = matched.artist || null;
   entry.genre = matched.genre || null;
   entry.language = matched.language || null;
+  entry.reference = matched.reference || null;
   entry.searchTerms = matched.search_terms || null;
 
   // Requests stay near-unfiltered; see the more-like-this path above.
@@ -419,25 +434,63 @@ async function resolveRequest(entry) {
   let pick: any = null;
   let pickSource: string | null = null;
 
-  // A search term differing from the artist name means a song title was named.
-  const artistLc = (matched.artist || '').toLowerCase().trim();
-  const namedSongTitle = (matched.search_terms || []).some((t: string) =>
-    t && typeof t === 'string' && t.toLowerCase().trim() && t.toLowerCase().trim() !== artistLc
-  );
-
-  // 2a. Artist path. Also takes bare "play <artist>": walking artist → albums →
-  // songs reaches the whole catalogue, where flat search3 sees only ~25 hits.
-  if (!pick && matched.artist && (matched.sort || matched.scope === 'album' || !namedSongTitle)) {
-    pick = await pickByArtistAndSort({
-      artistName: matched.artist,
-      sort: matched.sort,
-      scope: matched.scope,
-      recentIds,
-    });
-    if (pick) pickSource = 'artist-sort';
+  // 2a. A description or pasted lyric is resolved by a bounded controller
+  // pipeline: web evidence → one text-only identification call → local library.
+  // The setting remains opt-in, and every failure falls through to the normal
+  // local cascade. No agent or tool loop is reintroduced.
+  if (matched.reference && settings.get().llm?.requestWebResolve) {
+    try {
+      if (searchReady()) {
+        const reference = await resolveRequestReference(text);
+        pick = chooseRequestReferenceCandidate(reference, recentIds);
+        if (pick) pickSource = 'web-reference';
+      }
+    } catch (err) {
+      queue.log('error', `request web-resolve failed: ${err.message}`);
+    }
   }
 
-  // 2b. Genre path via getSongsByGenre (search3 can't query genre).
+  const terms = (matched.search_terms || []).filter((t: string) => {
+    if (!t || typeof t !== 'string') return false;
+    if (matched.mood && t.toLowerCase() === matched.mood.toLowerCase()) return false;
+    if (matched.genre && t.toLowerCase() === matched.genre.toLowerCase()) return false;
+    if (matched.language && t.toLowerCase() === matched.language.toLowerCase()) return false;
+    return true;
+  });
+
+  // 2b. A named title is stronger than a catalogue sort. The policy helper
+  // runs the exact title + artist search first, then preserves the existing
+  // bare/sorted artist walk as its forgiving fallback.
+  const named = !pick ? await resolveNamedRequest(
+    {
+      terms,
+      artist: matched.artist,
+      sort: matched.sort,
+      scope: matched.scope,
+    },
+    {
+      searchTitle: async (title: string) => {
+        try {
+          return await subsonic.search(title, { songCount: 25 });
+        } catch (err) {
+          queue.log('error', `exact request search failed: ${err.message}`);
+          return [];
+        }
+      },
+      pickArtist: () => pickByArtistAndSort({
+        artistName: matched.artist,
+        sort: matched.sort,
+        scope: matched.scope,
+        recentIds,
+      }),
+    },
+  ) : null;
+  if (named) {
+    pick = named.track;
+    pickSource = named.source;
+  }
+
+  // 2c. Genre path via getSongsByGenre (search3 can't query genre).
   if (!pick && matched.genre) {
     const genre = await resolveGenre(matched.genre);
     if (genre) {
@@ -451,7 +504,7 @@ async function resolveRequest(entry) {
     }
   }
 
-  // 2b-bis. Language path (#349). Not a Subsonic field, so try it as a genre tag
+  // 2c-bis. Language path (#349). Not a Subsonic field, so try it as a genre tag
   // first, then as a plain search term; misses fall through like every step.
   if (!pick && matched.language) {
     const genre = await resolveGenre(matched.language);
@@ -478,42 +531,10 @@ async function resolveRequest(entry) {
     }
   }
 
-  // 2c. Search by terms: artist names / song titles only. A random page offset
+  // 2d. Search by terms: artist names / song titles only. A random page offset
   // keeps repeat requests off the same top-25 search3 hits.
   if (!pick) {
-    const terms = (matched.search_terms || []).filter((t: string) => {
-      if (!t || typeof t !== 'string') return false;
-      if (matched.mood && t.toLowerCase() === matched.mood.toLowerCase()) return false;
-      if (matched.genre && t.toLowerCase() === matched.genre.toLowerCase()) return false;
-      if (matched.language && t.toLowerCase() === matched.language.toLowerCase()) return false;
-      return true;
-    });
     if (terms.length > 0) {
-      // An explicit "title by artist" request must not be reduced to the
-      // ordinary broad search pool. That pool intentionally includes both the
-      // title and artist result sets and is randomly spread for open-ended
-      // requests — which let another song by the named artist beat an exact
-      // title already in the library. Query title terms' first page once,
-      // then accept only an exact normalised title + artist pair. All misses
-      // continue through the unchanged forgiving cascade below.
-      const titleTerms = terms.filter((term: string) => term.toLowerCase().trim() !== artistLc);
-      if (matched.artist && titleTerms.length > 0) {
-        const exactCandidates: any[] = [];
-        for (const title of titleTerms) {
-          try {
-            exactCandidates.push(...await subsonic.search(title, { songCount: 25 }));
-          } catch (err) {
-            queue.log('error', `exact request search failed: ${err.message}`);
-          }
-        }
-        pick = exactTitleByArtist(exactCandidates, { titles: titleTerms, artist: matched.artist });
-        if (pick) pickSource = 'search:exact-title-artist';
-      }
-
-      if (pick) {
-        // The exact result above is intentionally deterministic. Do not feed
-        // it into the randomized broad pool below.
-      } else {
       let candidates: any[] = [];
       for (const term of terms) {
         const songOffset = Math.floor(Math.random() * 3) * 25;
@@ -532,18 +553,17 @@ async function resolveRequest(entry) {
       });
       pick = randomFresh(unique);
       if (pick) pickSource = 'search';
-      }
     }
   }
 
-  // 2d. Mood-tagged library; matchRequest's "mood" shares the tagger vocabulary.
+  // 2e. Mood-tagged library; matchRequest's "mood" shares the tagger vocabulary.
   if (!pick && matched.mood) {
     const moodPool = library.songsByMood(matched.mood);
     pick = randomFresh(moodPool);
     if (pick) pickSource = `library-mood:${matched.mood}`;
   }
 
-  // 2e. Similar songs to the current track: Subsonic can surface adjacency the
+  // 2f. Similar songs to the current track: Subsonic can surface adjacency the
   // local mood tags missed.
   if (!pick && currentTrack?.id && (matched.mood || /similar|like|match/i.test(text))) {
     try {
@@ -553,14 +573,14 @@ async function resolveRequest(entry) {
     } catch {}
   }
 
-  // 2f. Dominant-mood fallback: fit the room rather than refuse.
+  // 2g. Dominant-mood fallback: fit the room rather than refuse.
   if (!pick && ctx.dominantMood) {
     const moodPool = library.songsByMood(ctx.dominantMood);
     pick = randomFresh(moodPool);
     if (pick) pickSource = `library-mood:${ctx.dominantMood}(context)`;
   }
 
-  // 2g. Starred: the operator's favourites are always a safe pick.
+  // 2h. Starred: the operator's favourites are always a safe pick.
   if (!pick) {
     try {
       const starred = await subsonic.getStarred();

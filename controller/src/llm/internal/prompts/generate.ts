@@ -1,8 +1,9 @@
 // Create-form auto-fill — turns a free-text description ("a late-night jazz host
 // with a dry wit", "a Sunday-morning gospel show", "a warm sepia newspaper
 // theme") into a draft persona / show / theme the admin UI pre-fills for review.
-// Same structured-output path as matchRequest (djObject → Zod), so it rides the
-// operator's configured station LLM with no extra keys. The schemas are
+// Same Zod-validated output family as matchRequest (these forms use djObject;
+// requests use the text-only djPlainObject), so it rides the operator's
+// configured station LLM with no extra keys. The schemas are
 // constrained to the SAME enums the settings/theme validators enforce, so a
 // generated draft round-trips through Save without surprises.
 
