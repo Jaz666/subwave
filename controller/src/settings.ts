@@ -209,6 +209,7 @@ export {
   getRedacted,
   llmKeyFor,
   minTrackSeconds,
+  onCacheChange,
   moodEntries,
   moodPromptFor,
   moodScheduleFor,

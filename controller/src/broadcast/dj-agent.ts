@@ -53,12 +53,13 @@ import {
   breakerOpen,
   breakerSuccess,
 } from './dj-agent/breaker.js';
-import { dropEchoedLink, enqueuePick, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
+import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
 import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
+import type { Persona } from './queue/types.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -131,8 +132,8 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
 // still runs when this misses too. Reuses requestSystem()/requestSchema()'s own
 // wording and the same autoVoiceAllowed() gate for `intro`, so a re-picked
 // request is consistent with a first-try one. Never throws.
-async function repickRequestFromSeen({ seen, badId, requester, text }:
-  { seen: Map<string, any>; badId: string | null; requester: string; text: string }) {
+async function repickRequestFromSeen({ seen, badId, requester, text, persona }:
+  { seen: Map<string, any>; badId: string | null; requester: string; text: string; persona?: Persona | null }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const wantIntro = autoVoiceAllowed();
@@ -140,12 +141,12 @@ async function repickRequestFromSeen({ seen, badId, requester, text }:
     id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
     ack: z.string().describe('short on-air acknowledgement of the listener, in character — max 20 words; no "thank you for listening" or self-intros'),
     ...(wantIntro ? {
-      intro: z.string().describe(`a natural DJ intro for the track in the DJ voice; weave in what the listener asked for without reading the request back verbatim. It airs over the track's opening seconds, so write it in the present tense — never "next" or "coming up". ${dj.lengthPhrase('intro')}`),
+      intro: z.string().describe(`a natural DJ intro for the track in the DJ voice; weave in what the listener asked for without reading the request back verbatim. It airs over the track's opening seconds, so write it in the present tense — never "next" or "coming up". ${dj.lengthPhrase('intro', persona)}`),
     } : {}),
   }));
   try {
     return await djObject({
-      system: requestSystem(),
+      system: requestSystem(persona),
       prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
         + `\n\n${isNamedRequester(requester) ? `Listener "${requester}" asked` : 'An unnamed listener asked'}: "${text}". The id you returned (${badId ?? 'none'}) matches none of the candidates above. Choose the best candidate id from the list for this request, and write "ack"${wantIntro ? ' and "intro"' : ''} to match.`,
       schema,
@@ -476,15 +477,20 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   const clockAllowed = speakClockAllowed();
   const linkAirAt = clockAllowed ? linkClockAt(showAt, Date.now()) : null;
   let rawLink = '';
+  let linkPersona: ReturnType<typeof session.onAirPersona> = null;
+  let linkHostSpeech: ReturnType<typeof session.captureHostSpeech> = null;
   if (wantLink && pickAnchor) {
     try {
-      rawLink = await dj.generateLink({
+      const generated = await generatePickLink({
         previous: pickAnchor, current: song, context: linkAirContext(ctx, linkAirAt),
-        clockIsAirTime: !!linkAirAt, persona: session.onAirPersona(),
+        clockIsAirTime: !!linkAirAt,
         recap: queue.getDjRecap(), recentTracks: queue.getRecentTracks(),
         recentOpeners: queue.getRecentOpeners(),
         lastLink: queue.getLastLinkText(),
       });
+      rawLink = generated.link || '';
+      linkPersona = generated.introPersona;
+      linkHostSpeech = generated.hostSpeech;
     } catch (err: any) {
       queue.log('error', `DJ link failed: ${err.message}`);
     }
@@ -520,7 +526,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // the captured pick anchor), instead of immediately over the current track (#189).
   // Stamp `pickAnchor` as the link's intended back-announce target so the queue
   // can drop the link if a request jumps ahead of this pick before it airs.
-  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, pickAnchor, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkClockStampFor(linkAirAt, clockAllowed) });
+  const queued = await enqueuePick(queue, song, object.reason, 'agent', link, pickAnchor, { sweep, washout, blend, dissolve, chop, loop }, { linkClockAt: linkClockStampFor(linkAirAt, clockAllowed), introPersona: linkPersona, hostSpeech: linkHostSpeech });
   // Pick was already queued/on-air and got deduped — don't record a session turn
   // for a track that never airs. Returning false lets runTrackEvent fall through
   // to the pool for a fresh pick.
@@ -580,6 +586,8 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
   // intended predecessor, and the queue drops a stale back-announce if the
   // actual FIFO predecessor changes.
   let link: string | null = null;
+  let linkPersona: ReturnType<typeof session.onAirPersona> = null;
+  let linkHostSpeech: ReturnType<typeof session.captureHostSpeech> = null;
   // Resolved HERE rather than up in runTrackEvent: the pick call above has
   // already spent part of the runway, and linkClockAt reads the live clock, so
   // asking now is the most honest the forecast can be on this path (#1314).
@@ -587,7 +595,7 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
   const airAt = linkClockAt(showAt, Date.now());
   if (wantLink && pickAnchor) {
     try {
-      link = await dj.generateLink({
+      const generated = await generatePickLink({
         // ctx with the clock stepped to the link's air moment — showAt's own
         // clock carries the show-attribution padding and ran two minutes fast
         // on air (#1282). Only with the look-ahead resolved AND enough runway
@@ -600,7 +608,6 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
         // back to getEffectivePersona() on the wall clock, which disagrees with
         // the session inside the look-ahead window — the incoming DJ's line
         // written in the outgoing DJ's voice.
-        persona: session.onAirPersona(),
         recap: queue.getDjRecap(),
         recentTracks: queue.getRecentTracks(),
         recentOpeners: queue.getRecentOpeners(),
@@ -608,6 +615,9 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
         // queue read stays at the call site, the prompt layer is handed values.
         lastLink: queue.getLastLinkText(),
       });
+      link = generated.link;
+      linkPersona = generated.introPersona;
+      linkHostSpeech = generated.hostSpeech;
     } catch (err) {
       queue.log('error', `DJ link failed: ${err.message}`);
     }
@@ -649,6 +659,8 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
   // air time — "after dark" stays accurate even when the numerals are withheld.
   const queued = await enqueuePick(queue, result.song, result.reason, result.source || 'pool', link, pickAnchor, fx, {
     linkClockAt: linkClockStampFor(airAt, clockAllowed),
+    introPersona: linkPersona,
+    hostSpeech: linkHostSpeech,
   });
   // Even the pool landed on an already-queued track (a tiny library whose pool
   // collapsed to recents). Skip the session turn and let auto.m3u backstop the
@@ -857,6 +869,7 @@ export async function runRequest(queue: any, ctx: any, { requester, text }: { re
 
 async function runRequestViaAgent(queue: any, { requester, text }: { requester: string; text: string }) {
   return withTrace({ kind: 'request', requester }, async () => {
+    const requestSpeech = session.captureAutomaticHostSpeech(session.onAirPersona());
     // Requests stay near-unfiltered — listeners must be able to re-request a
     // song from earlier in the day. 2h covers the "don't repeat the song still
     // ringing in their ears" case and nothing more.
@@ -892,6 +905,7 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     const run = await requestAgent.run({
       messages,
       scope: pickerScope({ recentIds }),
+      persona: requestSpeech.persona,
     });
     const { toolCalls, extras } = run;
     // Reassigned when the unknown-id salvage below (repickRequestFromSeen)
@@ -937,7 +951,10 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     // caller's stateless matcher cascade is still the fallback when this
     // misses too (empty seen, or the re-pick call itself fails).
     if (!song && extras.seen.size) {
-      const repicked = await repickRequestFromSeen({ seen: extras.seen, badId: object?.id ?? null, requester, text });
+      const repicked = await repickRequestFromSeen({
+        seen: extras.seen, badId: object?.id ?? null, requester, text,
+        persona: requestSpeech.persona,
+      });
       if (repicked) {
         logEvent('pick.repicked', { agent: 'request', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
         queue.log('request', `agent returned unknown id "${object?.id}" — re-picked "${repicked.id}" from its own candidates`);
@@ -985,9 +1002,11 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     const rawIntro = autoVoiceAllowed() && typeof object.intro === 'string' ? object.intro.trim() : '';
     const guarded = await guardIntro(rawIntro || null, text, () => dj.generateIntro({
       track: trackFields(song), context: null, requestedBy: requester,
+      persona: requestSpeech.persona,
     }));
     if (guarded.guard) queue.log('request-guard', `agent intro echoed request text — ${guarded.guard}`);
-    const intro = guarded.script || '';
+    const currentSpeech = session.finalizeAutomaticHostSpeech(guarded.script, requestSpeech);
+    const intro = currentSpeech.text || '';
     // The personalised line is screenAck's FALLBACK rather than a `||` on the
     // return below: screenAck already substitutes for an empty ack, so `ack`
     // is never falsy and a downstream `||` is unreachable. Threading it in here
@@ -1008,7 +1027,8 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
       introScript: intro || null,
       introKind: 'dj-speak',
       // Voice the intro as whoever wrote it (see the pool-pick push above).
-      introPersona: session.onAirPersona(),
+      introPersona: currentSpeech.persona,
+      introHostSpeech: currentSpeech.hostSpeech,
     });
     // Never-play blocklist refused the pick — throw so the route's stateless
     // fallback cascade runs; its own resolution is blocklist-filtered, so the
