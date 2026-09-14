@@ -241,9 +241,16 @@ export async function lookupCanonicalRecording(track: {
   const artist = track.artist?.trim() ?? '';
   if (mbid) return await throttled(() => recordingDetail(mbid));
   if (!title || !artist) return null;
-  const candidates = await throttled(() => searchRecordings(`recording:${phrase(title)} AND artist:${phrase(artist)}`));
-  const id = exactRecordingId(candidates, title, artist);
-  return id ? await throttled(() => recordingDetail(id)) : null;
+  const attempts: Array<{ title: string; artist: string }> = [{ title, artist }];
+  const stripped = stripTitleNoise(title);
+  const deDuplicated = dedupeRepeatedArtistCredit(artist);
+  if (stripped !== title || deDuplicated !== artist) attempts.push({ title: stripped, artist: deDuplicated });
+  for (const attempt of attempts) {
+    const candidates = await throttled(() => searchRecordings(`recording:${phrase(attempt.title)} AND artist:${phrase(attempt.artist)}`));
+    const id = exactRecordingId(candidates, attempt.title, attempt.artist);
+    if (id) return await throttled(() => recordingDetail(id));
+  }
+  return null;
 }
 
 // Escape a value for use inside a quoted Lucene phrase.
@@ -271,6 +278,12 @@ export function stripTitleNoise(title: string): string {
 export function primaryArtist(artist: string): string {
   const cut = (artist ?? '').split(/\s+(?:feat\.?|ft\.?|featuring|with)\s+|\s*[,&]\s*|\s+x\s+/i)[0];
   return (cut || artist || '').trim();
+}
+
+/** A local tag can repeat its sole artist as `Artist & Artist`; query it once. */
+export function dedupeRepeatedArtistCredit(artist: string): string {
+  const parts = artist.split(/\s*&\s*/).map((part) => part.trim()).filter(Boolean);
+  return parts.length === 2 && norm(parts[0]) === norm(parts[1]) ? parts[0] : artist;
 }
 
 // Resolve the original release year for one track: MBID first (exact), then a

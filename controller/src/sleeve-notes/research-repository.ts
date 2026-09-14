@@ -106,11 +106,23 @@ export function localAttachmentForMatch(localTrackId: string): LocalAttachmentFo
   return row ?? null;
 }
 
-export interface ArtistForResearch { id: string; name: string; }
+export interface ArtistForResearch { id: string; name: string; musicBrainzId: string; }
 
 export function artistForResearch(id: string): ArtistForResearch | null {
-  const row = open().prepare('SELECT id, name FROM sleeve_artists WHERE id = ?').get(id) as ArtistForResearch | undefined;
+  const row = open().prepare('SELECT id, name, musicbrainz_id AS musicBrainzId FROM sleeve_artists WHERE id = ?').get(id) as ArtistForResearch | undefined;
   return row ?? null;
+}
+
+export function startProviderRequest(input: { provider: string; capability: string }): string {
+  const id = randomUUID();
+  open().prepare(`INSERT INTO sleeve_provider_requests (id, provider, capability, requested_at, outcome)
+    VALUES (?, ?, ?, ?, 'started')`).run(id, input.provider, input.capability, new Date().toISOString());
+  return id;
+}
+
+export function finishProviderRequest(id: string, outcome: 'ready' | 'no-match' | 'failed' | 'rate-limited', statusCode: number | null = null): void {
+  open().prepare(`UPDATE sleeve_provider_requests SET outcome = ?, status_code = ?, completed_at = ? WHERE id = ?`)
+    .run(outcome, statusCode, new Date().toISOString(), id);
 }
 
 export interface CanonicalReleaseForResearch {

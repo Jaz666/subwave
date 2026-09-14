@@ -17,12 +17,15 @@ export class WikipediaArtistWorker {
     try {
       console.log(`[sleeve-notes] Wikipedia biography: ${artist.name}`);
       repository.markResearchJobRunning(job.id);
-      const document = await wikipedia.fetchWikipediaArtistDocument(artist.name);
+      const requestId = repository.startProviderRequest({ provider: 'wikipedia', capability: 'biography' });
+      const document = await wikipedia.fetchWikipediaArtistDocument(artist.musicBrainzId);
       if (!document) {
+        repository.finishProviderRequest(requestId, 'no-match');
         repository.finishResearchJob(job.id, 'failed');
         console.log(`[sleeve-notes] Wikipedia biography unavailable: ${artist.name}`);
       }
       else {
+        repository.finishProviderRequest(requestId, 'ready');
         repository.retainSourceDocument({
           entityType: 'artist', entityId: artist.id, provider: 'wikipedia',
           sourceUrl: document.url, revisionId: document.revisionId,
