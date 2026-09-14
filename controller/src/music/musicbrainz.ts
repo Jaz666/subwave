@@ -193,7 +193,10 @@ async function searchRecordings(query: string): Promise<MbRecording[]> {
     timeoutMs: TIMEOUT_MS,
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    if (res.status === 429 || res.status >= 500) throw new Error(`MusicBrainz search HTTP ${res.status}`);
+    return [];
+  }
   const body = (await res.json()) as { recordings?: MbRecording[] };
   return Array.isArray(body.recordings) ? body.recordings : [];
 }
@@ -204,7 +207,10 @@ async function recordingDetail(id: string): Promise<CanonicalMusicBrainzRecordin
     timeoutMs: TIMEOUT_MS,
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (res.status === 429 || res.status >= 500) throw new Error(`MusicBrainz recording HTTP ${res.status}`);
+    return null;
+  }
   return projectCanonicalRecording(await res.json());
 }
 
@@ -233,15 +239,11 @@ export async function lookupCanonicalRecording(track: {
   const mbid = track.mbid?.trim() ?? '';
   const title = track.title?.trim() ?? '';
   const artist = track.artist?.trim() ?? '';
-  try {
-    if (mbid) return await throttled(() => recordingDetail(mbid));
-    if (!title || !artist) return null;
-    const candidates = await throttled(() => searchRecordings(`recording:${phrase(title)} AND artist:${phrase(artist)}`));
-    const id = exactRecordingId(candidates, title, artist);
-    return id ? await throttled(() => recordingDetail(id)) : null;
-  } catch {
-    return null;
-  }
+  if (mbid) return await throttled(() => recordingDetail(mbid));
+  if (!title || !artist) return null;
+  const candidates = await throttled(() => searchRecordings(`recording:${phrase(title)} AND artist:${phrase(artist)}`));
+  const id = exactRecordingId(candidates, title, artist);
+  return id ? await throttled(() => recordingDetail(id)) : null;
 }
 
 // Escape a value for use inside a quoted Lucene phrase.
