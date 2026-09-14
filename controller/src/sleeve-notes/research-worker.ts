@@ -1,6 +1,6 @@
 import * as settings from '../settings.js';
 import { LlmResearcher } from './llm-researcher.js';
-import type { Researcher } from './researcher.js';
+import type { Researcher, ResearchOutcomeObserver } from './researcher.js';
 import { validateResearchCandidates } from './researcher.js';
 import * as repository from './research-repository.js';
 import type { QuietGate } from './musicbrainz-worker.js';
@@ -33,6 +33,7 @@ export class ResearchWorker {
         };
         const candidates = await this.researcher.extract(job, controller.signal);
         const validated = validateResearchCandidates(job, candidates);
+        (this.researcher as Partial<ResearchOutcomeObserver>).recordOutcome?.(job, validated);
         repository.retainResearchClaims({
           entityType: 'artist', entityId: source.entityId, sourceDocumentId: source.id,
           candidates: validated.accepted,
