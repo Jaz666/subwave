@@ -11,7 +11,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 
 const settings = await import('../src/settings.js');
 await settings.load();
-const { pickSystem } = await import('../src/broadcast/dj-agent/schemas.js');
+const { pickSystem, pickerMusicLeanings } = await import('../src/broadcast/dj-agent/schemas.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
 await settings.update({ personas: [persona], activePersonaId: persona.id });
@@ -40,5 +40,9 @@ assert.equal(
   null,
   'guest influence stays occasional and secondary',
 );
+const guestPrompt = pickerMusicLeanings('Favour patient dub.', guest);
+assert.match(guestPrompt, /Musical Leanings — Favour patient dub\./);
+assert.match(guestPrompt, /Guest Musical Leanings — Carrie Marshall: Favour great guitar work and unexpected rock records\./);
+assert.match(guestPrompt, /weaker than the host/i);
 
 console.log('musical leanings: shared agentic picker context verified');
