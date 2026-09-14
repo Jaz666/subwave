@@ -21,7 +21,7 @@ import {
  * which renders that speech. Keep policy controls here as they are introduced
  * so the TTS panel remains concerned solely with voice configuration.
  */
-export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
+export function DjBehaviourSection({ data, form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
   const talkPlacementAria = fieldAria('dj-talk-placement', undefined, { hasDescription: true });
   const linkStyleAria = fieldAria('dj-link-release-year', undefined, { hasDescription: true });
   const pauseTalkAria = settingsFieldAria(
