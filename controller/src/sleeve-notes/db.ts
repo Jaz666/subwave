@@ -179,15 +179,18 @@ export function migrate(d: Database.Database): void {
     // artist/recording/release knowledge, so start the replacement store
     // empty rather than carrying an apparently-valid but misleading history.
     d.exec(`
+      -- Delete dependent experiment rows before their parents. Existing
+      -- stations enable SQLite foreign keys, so deleting provider identities
+      -- before claims would leave the replacement schema half-created.
       DELETE FROM uses;
       DELETE FROM evidence;
       DELETE FROM relationships;
       DELETE FROM provider_local_matches;
-      DELETE FROM provider_identities;
+      DELETE FROM claims;
       DELETE FROM provider_coverage;
       DELETE FROM discoveries;
       DELETE FROM jobs;
-      DELETE FROM claims;
+      DELETE FROM provider_identities;
       DELETE FROM entities;
 
       CREATE TABLE sleeve_artists (
