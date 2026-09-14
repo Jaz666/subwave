@@ -55,7 +55,9 @@ import { router as connectRoutes } from './routes/connect.js';
 import { router as mcpRoutes } from './routes/mcp.js';
 import { router as sleeveNotesRoutes } from './routes/sleeve-notes.js';
 import * as sleeveNotesDb from './sleeve-notes/db.js';
-import { startCollector as startSleeveNotesCollector } from './sleeve-notes/collector.js';
+import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
+import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
+import { startResearchWorker } from './sleeve-notes/research-worker.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadSetupConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
@@ -307,9 +309,9 @@ app.listen(config.server.port, async () => {
   // Up front so the sync readers see data from the first pick.
   likes.load().catch(err => console.error('[likes] init failed:', err.message));
   startScheduler();
-  // Its own low-priority interval rechecks the master/provider gates before
-  // opening a job or making a provider request.
-  startSleeveNotesCollector();
+  startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
+  startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
+  startResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));

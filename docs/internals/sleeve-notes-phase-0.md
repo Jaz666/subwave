@@ -1,8 +1,14 @@
-# Sleeve Notes — Phase 0 provider decision
+# Sleeve Notes — historical Genius Phase 0 spike
 
-**Decision date:** 2026-09-13  
-**Status:** complete — Genius is approved as the first provider for a strictly
-bounded, non-lyric metadata and relationship scope.
+**Recorded:** 2026-09-13
+**Status:** historical experiment; superseded as product policy by
+[Extended Sleeve Notes — design and delivery plan](enriched-sleeve-notes.md).
+
+This document preserves the endpoint, matching, pacing and telemetry findings
+from the first Genius spike. Its track-first scope and its treatment of Genius
+editorial prose are not the current Sleeve Notes direction. New work follows
+the artist-first, multi-provider model in the replacement handoff; it retains
+the lyric exclusion and documented-endpoint requirements.
 
 ## Decision
 
