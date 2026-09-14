@@ -54,6 +54,11 @@ import { router as generateRoutes } from './routes/generate.js';
 import { router as doctorRoutes } from './routes/doctor.js';
 import { router as connectRoutes } from './routes/connect.js';
 import { router as mcpRoutes } from './routes/mcp.js';
+import { router as sleeveNotesRoutes } from './routes/sleeve-notes.js';
+import * as sleeveNotesDb from './sleeve-notes/db.js';
+import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
+import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
+import { startResearchWorker } from './sleeve-notes/research-worker.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadSetupConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
@@ -90,6 +95,11 @@ function shutdown(signal: string): void {
     library.shutdown();
   } catch (err: any) {
     console.error('[shutdown] library close failed:', err.message);
+  }
+  try {
+    sleeveNotesDb.close();
+  } catch (err: any) {
+    console.error('[shutdown] Sleeve Notes DB close failed:', err.message);
   }
   process.exit(0);
 }
@@ -156,6 +166,7 @@ app.use(generateRoutes);
 app.use(doctorRoutes);
 app.use(connectRoutes);
 app.use(mcpRoutes);
+app.use(sleeveNotesRoutes);
 
 // There is no manual skip — Liquidsoap controls pacing.
 
@@ -315,6 +326,9 @@ app.listen(config.server.port, async () => {
   // Up front so the sync readers see data from the first pick.
   await likes.load().catch(err => console.error('[likes] init failed:', err.message));
   startScheduler();
+  startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
+  startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
+  startResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));

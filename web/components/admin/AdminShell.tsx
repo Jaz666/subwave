@@ -172,6 +172,7 @@ const NAV_SECTIONS: NavSection[] = [
         ],
       },
       { href: '/admin/personas', id: 'personas', label: 'Personas', icon: Drama },
+      { href: '/admin/notes', id: 'notes', label: 'Notes', icon: BookOpen },
       { href: '/admin/skills', id: 'skills', label: 'Skills', icon: Sparkles },
       {
         href: '/admin/imaging',
