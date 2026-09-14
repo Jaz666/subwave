@@ -41,14 +41,36 @@ test('researcher output respects enabled categories, topic diversity and bounds'
     evidence: 'Their debut album arrived in 1982.',
   }]);
   assert.deepEqual(result.accepted.map((candidate) => [candidate.category, candidate.topic]), [
-    ['artist-stories', 'origin'], ['milestones', 'debut'],
+    ['artist-stories', 'origin'],
   ]);
-  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['category', 'duplicate']);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['category', 'duplicate', 'bare-milestone']);
 });
 
 test('an empty research result is a valid no-claim outcome', () => {
   const result = validateResearchCandidates(job, []);
   assert.deepEqual(result, { accepted: [], rejected: [] });
+});
+
+test('researcher rejects evidence that appears in source but does not entail the wording', () => {
+  const result = validateResearchCandidates(job, [{
+    category: 'artist-stories', topic: 'hit', wording: 'She is best known for her biggest hit single.',
+    evidence: 'Their debut album arrived in 1982.',
+  }]);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
+});
+
+test('researcher rejects a bare release-date milestone but keeps an evidenced release story', () => {
+  const richerJob = { ...job, document: { ...job.document, text: 'Their debut album arrived in 1982. It was produced by A Producer after the band signed to Example Records.' } };
+  const result = validateResearchCandidates(richerJob, [{
+    category: 'milestones', topic: 'debut date', wording: 'Their debut album arrived in 1982.',
+    evidence: 'Their debut album arrived in 1982.',
+  }, {
+    category: 'milestones', topic: 'debut production', wording: 'Their debut album was produced by A Producer after the band signed to Example Records.',
+    evidence: 'It was produced by A Producer after the band signed to Example Records.',
+  }]);
+  assert.deepEqual(result.accepted.map((candidate) => candidate.topic), ['debut production']);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['bare-milestone']);
 });
 
 test('the LLM researcher reads candidates from djObject\'s decoded result', () => {

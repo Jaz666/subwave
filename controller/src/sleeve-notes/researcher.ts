@@ -43,7 +43,7 @@ export interface Researcher {
 
 export interface ValidatedResearch {
   accepted: ResearchCandidate[];
-  rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'duplicate' }>;
+  rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'bare-milestone' | 'duplicate' }>;
 }
 
 function normal(value: string): string {
@@ -56,6 +56,31 @@ function validText(value: unknown, min: number, max: number): value is string {
 
 function isCategory(value: string): value is SleeveNoteCategory {
   return (SLEEVE_NOTE_CATEGORIES as readonly string[]).includes(value);
+}
+
+const SUPPORT_STOP_WORDS = new Set(['about', 'after', 'album', 'also', 'and', 'are', 'been', 'best', 'but', 'for', 'from', 'had', 'has', 'have', 'her', 'his', 'into', 'its', 'more', 'most', 'not', 'she', 'that', 'the', 'their', 'them', 'then', 'they', 'this', 'was', 'were', 'with']);
+
+function materialTerms(value: string): Set<string> {
+  return new Set(normal(value).toLowerCase().match(/[a-z0-9]+/g)?.filter((term) => term.length >= 4 && !SUPPORT_STOP_WORDS.has(term)) ?? []);
+}
+
+/** A paraphrase must still share concrete factual language with its citation. */
+function hasMaterialEvidence(wording: string, evidence: string): boolean {
+  const wordingTerms = materialTerms(wording);
+  const evidenceTerms = materialTerms(evidence);
+  let shared = 0;
+  for (const term of wordingTerms) if (evidenceTerms.has(term)) shared++;
+  const wordingNumbers = wording.match(/\b\d+(?:[.,]\d+)?\b/g) ?? [];
+  return shared >= 2 && wordingNumbers.every((number) => normal(evidence).includes(number));
+}
+
+/** A release date alone is catalogue metadata, not a useful DJ note. */
+function isBareReleaseMilestone(candidate: ResearchCandidate): boolean {
+  if (candidate.category !== 'milestones') return false;
+  const wording = normal(candidate.wording).toLowerCase();
+  const release = /\b(album|single|ep|record)\b/.test(wording) && /\b(released|arrived|issued|came out)\b/.test(wording);
+  const story = /\b(produc|record|writ|collabor|featur|chart|award|nominat|critical|commercial|label|band|member|tour|soundtrack|concept|inspir|dedicat)\w*/.test(wording);
+  return release && !story;
 }
 
 /**
@@ -86,6 +111,14 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
     }
     if (!source.includes(normal(candidate.evidence))) {
       rejected.push({ candidate, reason: 'unsupported' });
+      continue;
+    }
+    if (!hasMaterialEvidence(candidate.wording, candidate.evidence)) {
+      rejected.push({ candidate, reason: 'unsupported' });
+      continue;
+    }
+    if (isBareReleaseMilestone(candidate)) {
+      rejected.push({ candidate, reason: 'bare-milestone' });
       continue;
     }
     const key = `${candidate.category}\u0000${normal(candidate.topic).toLowerCase()}`;
