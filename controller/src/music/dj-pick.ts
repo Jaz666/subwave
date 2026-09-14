@@ -16,6 +16,31 @@ export type ShortlistPick = {
   transition: 'normal' | 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop' | null;
 };
 
+function comparable(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// A model-written sentence is useful only when it identifies the very track
+// that reached the queue. Corrective guards can replace the initial choice, so
+// do this once at the final queue boundary rather than trusting a reason from a
+// previous selection. A safe generic line is preferable to explaining Sam
+// Smith with a Porcupine Tree note.
+export function shortlistSelectionReason(track: any, reason: unknown): string {
+  const title = comparable(track?.title);
+  const artist = comparable(track?.artist);
+  const note = comparable(reason);
+  if (note && (!title || note.includes(title)) && (!artist || note.includes(artist))) {
+    return String(reason).trim();
+  }
+  const identity = [track?.title, track?.artist].filter(Boolean).join(' by ');
+  return identity ? `Selected "${identity}" from the eligible shortlist.` : 'Selected from the eligible shortlist.';
+}
+
 export function shortlistPickSchema(ids: string[]) {
   if (!ids.length) throw new Error('cannot select from an empty Track Shortlist');
   const idEnum = z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied Track Shortlist');

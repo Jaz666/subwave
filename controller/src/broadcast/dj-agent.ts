@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick } from '../music/dj-pick.js';
+import { djPick, shortlistSelectionReason } from '../music/dj-pick.js';
 import type { Persona } from './queue/types.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
@@ -522,6 +522,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       song = albumGuarded.song;
     }
   }
+
+  // The Shortlist model's note must never describe an earlier choice after a
+  // corrective artist/album repick. Replace an unsafe note at the final-track
+  // boundary, before either Booth/session text or queue metadata can see it.
+  if (useShortlist) object.reason = shortlistSelectionReason(song, object.reason);
 
   // The picker has seen private selection context. Only after its final choice
   // do we invoke the isolated listener-facing writer with safe prompt data.

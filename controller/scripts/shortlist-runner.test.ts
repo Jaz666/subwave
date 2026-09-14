@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { shortlistPickPrompt, shortlistPickSchema } from '../src/music/dj-pick.js';
+import { shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -83,6 +83,18 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /Track Shortlist/);
+});
+
+test('shortlist presentation never attaches one track\'s note to another track', () => {
+  const selected = { id: 'sam', title: 'How Do You Sleep?', artist: 'Sam Smith' };
+  assert.equal(
+    shortlistSelectionReason(selected, 'Porcupine Tree — Of the New Day keeps the atmosphere moving.'),
+    'Selected "How Do You Sleep? by Sam Smith" from the eligible shortlist.',
+  );
+  assert.equal(
+    shortlistSelectionReason(selected, 'Sam Smith — How Do You Sleep? keeps the atmosphere moving.'),
+    'Sam Smith — How Do You Sleep? keeps the atmosphere moving.',
+  );
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
