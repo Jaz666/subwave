@@ -51,8 +51,8 @@ export class MusicBrainzMatchWorker {
           console.log(`[sleeve-notes] MusicBrainz matched: ${result.artist?.name ?? 'Unknown artist'} — ${result.title}`);
         }
       } catch (err: any) {
-        repository.finishResearchJob(job.id, 'failed');
-        console.warn(`[sleeve-notes] MusicBrainz match failed: ${err?.message || 'unknown error'}`);
+        repository.retryResearchJob(job.id);
+        console.warn(`[sleeve-notes] MusicBrainz temporarily unavailable; retrying in 5m: ${err?.message || 'unknown error'}`);
       }
       return true;
     } finally {

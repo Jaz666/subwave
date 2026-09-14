@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { migrate } from '../src/sleeve-notes/db.js';
-import { admitLocalEncounterInDatabase } from '../src/sleeve-notes/research-repository.js';
+import { admitLocalEncounterInDatabase, retryResearchJobInDatabase } from '../src/sleeve-notes/research-repository.js';
 
 test('an encounter creates one local attachment and one durable MusicBrainz match task', () => {
   const db = new Database(':memory:');
@@ -30,6 +30,21 @@ test('an encounter creates one local attachment and one durable MusicBrainz matc
     capability, state, priority FROM sleeve_research_jobs`).all(), [{
     provider: 'musicbrainz', subjectType: 'local-track', subjectId: 'navidrome-1',
     capability: 'match', state: 'queued', priority: 4,
+  }]);
+  db.close();
+});
+
+test('a transient provider failure remains a timed retry rather than a no-match', () => {
+  const db = new Database(':memory:');
+  migrate(db);
+  admitLocalEncounterInDatabase(db, {
+    localTrackId: 'navidrome-retry', title: 'Communication Breakdown', artist: 'Led Zeppelin',
+    releaseTitle: 'Remasters', musicbrainzRecordingId: null, source: 'queue', priority: 0,
+  });
+  const id = (db.prepare('SELECT id FROM sleeve_research_jobs').get() as { id: string }).id;
+  retryResearchJobInDatabase(db, id, 300_000, new Date('2026-09-14T12:00:00.000Z'));
+  assert.deepEqual(db.prepare('SELECT state, run_after AS runAfter FROM sleeve_research_jobs').all(), [{
+    state: 'retry-at', runAfter: '2026-09-14T12:05:00.000Z',
   }]);
   db.close();
 });

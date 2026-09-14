@@ -207,6 +207,18 @@ export function finishResearchJob(id: string, state: 'complete' | 'failed'): voi
     .run(state, new Date().toISOString(), id);
 }
 
+/** A provider outage is not a content verdict. Keep the job durable and pause it. */
+export function retryResearchJob(id: string, delayMs = 5 * 60_000): void {
+  retryResearchJobInDatabase(open(), id, delayMs);
+}
+
+export function retryResearchJobInDatabase(db: Database.Database, id: string, delayMs = 5 * 60_000, now = new Date()): void {
+  const runAfter = new Date(now.getTime() + delayMs).toISOString();
+  db.prepare(`UPDATE sleeve_research_jobs
+    SET state = 'retry-at', run_after = ?, updated_at = ? WHERE id = ?`)
+    .run(runAfter, now.toISOString(), id);
+}
+
 /** Persist canonical identity and every returned release appearance atomically. */
 export function retainCanonicalMusicBrainzMatch(localTrackId: string, result: CanonicalMusicBrainzRecording): void {
   retainCanonicalMusicBrainzMatchInDatabase(open(), localTrackId, result);
