@@ -129,8 +129,22 @@ interface SleeveNotesCall {
   error?: string;
 }
 
+interface SleeveNotesJob {
+  provider?: string;
+  subjectType?: string;
+  capability?: string;
+  state?: string;
+  priority?: number;
+  attempts?: number;
+  runAfter?: string | null;
+  updatedAt?: string;
+}
+
 export interface DebugSleeveNotes {
   recentCalls?: SleeveNotesCall[];
+  active?: boolean;
+  jobs?: SleeveNotesJob[];
+  error?: string;
 }
 
 interface SubsonicEndpoint {
