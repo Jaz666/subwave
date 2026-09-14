@@ -9,7 +9,7 @@ thing is, what changes when you move it, and where the control lives.
 > someone reading on GitHub before they have a station to click around in.
 
 - [Local Colour (and the other two dials)](#local-colour-and-the-other-two-dials)
-- [Candidate pool vs the agent picker](#candidate-pool-vs-the-agent-picker)
+- [Track Shortlist vs Agentic Tools](#track-shortlist-vs-agentic-tools)
 - [Playlists vs shows](#playlists-vs-shows)
 - [The stem cache](#the-stem-cache)
 - [Private player vs stream password](#private-player-vs-stream-password)
@@ -62,14 +62,14 @@ Three things it does **not** do:
 
 ---
 
-## Candidate pool vs the agent picker
+## Track Shortlist vs Agentic Tools
 
-**Where:** Admin → Settings → LLM → **Agentic picker** (`Candidate pool` / `Agent`).
+**Where:** Admin → Settings → DJ Behaviour → **Track selection**.
 
 Both end at the same place — one track id, handed to the queue — and both run
 inside a session and get logged. They differ in *who does the searching*.
 
-### Candidate pool (off)
+### Track Shortlist
 
 The controller builds the shortlist itself, then asks the model once.
 
@@ -85,7 +85,7 @@ model makes **one call**: pick one of these.
 - Bounded latency, bounded tokens.
 - The model can only choose from what the pool already found.
 
-### Agent (on, the default)
+### Agentic Tools (the default)
 
 The model drives. It gets a toolbox of roughly eighteen discovery tools —
 similar songs, tracks like this one, search by sound, search by lyrics, by
