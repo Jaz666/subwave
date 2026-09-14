@@ -442,6 +442,9 @@ export const DEFAULTS = {
     // Kept independent from Track selection: requests are the one place an
     // operator may deliberately retain tool use beside a tool-free shortlist.
     requestMatching: 'agentic',
+    // Segment and Skill delivery is independently selectable for the same
+    // reason: a station may use a bounded picker yet retain agentic research.
+    segmentRuntime: 'agentic',
     // The picker never re-airs any of the last N DISTINCT plays. Non-relaxable
     // (survives the filterPickerCandidates starvation cascade), which closes the
     // hole where a thin mood cluster let the cascade re-serve a just-played song.

@@ -52,6 +52,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         trackSelection: form.llm.trackSelection,
         shortlistPasses: form.llm.shortlistPasses,
         requestMatching: form.llm.requestMatching,
+        segmentRuntime: form.llm.segmentRuntime,
         discoverySteps: form.llm.discoverySteps,
         agentTimeoutMs: form.llm.agentTimeoutMs,
         // Compatibility bridge: until Requests and Skills gain their own
@@ -99,6 +100,29 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
                 between-track treatment.
               </>
             )}
+          </p>
+        </div>
+      </Card>
+
+      <Card title="Segments & Skills" sub={form.llm.segmentRuntime === 'agentic' ? 'Agentic runtime' : 'Direct runtime'}>
+        <div className="field">
+          <Label>How the DJ prepares scheduled segments</Label>
+          <Seg
+            accent
+            value={form.llm.segmentRuntime}
+            options={[
+              { id: 'direct', label: 'Direct runtime', title: 'The controller fetches evidence, then the DJ writes one bounded response' },
+              { id: 'agentic', label: 'Agentic runtime', title: 'The DJ may use its tools to research and prepare a segment' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              llm: { ...f.llm, segmentRuntime: v as 'agentic' | 'direct' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Both runtimes use the same briefs, schedules, cooldowns and evidence rules. Direct runtime
+            fetches the selected evidence in the controller and makes one bounded writing call; Agentic
+            runtime lets a tool-capable model decide how to use the available tools.
           </p>
         </div>
       </Card>
