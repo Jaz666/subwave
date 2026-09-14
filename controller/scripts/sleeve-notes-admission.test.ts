@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { migrate } from '../src/sleeve-notes/db.js';
-import { admitLocalEncounterInDatabase, retryResearchJobInDatabase } from '../src/sleeve-notes/research-repository.js';
+import { admitLocalEncounterInDatabase, musicBrainzRetryDelay, retryResearchJobInDatabase } from '../src/sleeve-notes/research-repository.js';
 
 test('an encounter creates one local attachment and one durable MusicBrainz match task', () => {
   const db = new Database(':memory:');
@@ -47,4 +47,8 @@ test('a transient provider failure remains a timed retry rather than a no-match'
     state: 'retry-at', runAfter: '2026-09-14T12:05:00.000Z',
   }]);
   db.close();
+});
+
+test('MusicBrainz retries recover quickly from one blip but back off boundedly during an outage', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map((attempt) => musicBrainzRetryDelay(attempt) / 60_000), [1, 5, 15, 30, 60, 60]);
 });
