@@ -56,7 +56,7 @@ export function cohostedSkillSystem({ capability, host, guests, grounded = false
 }): string {
   const lang = String(host.language || '').trim() || 'English';
   const grounding = grounded
-    ? 'Use the skill tool before writing. Build the discussion only from usable source data it returns; if it returns nothing usable or fails, set air to false. Never fill gaps from memory or plausibility.'
+    ? 'Build the discussion only from the usable source data supplied with the writing request. If that source is too thin to support a responsible discussion, set air to false. Never fill gaps from memory or plausibility.'
     : 'Build the discussion from the skill brief and current moment. Do not invent quotes, listener messages, callers, or purported events.';
   return `You write one co-hosted between-track discussion for a personal internet radio station.
 

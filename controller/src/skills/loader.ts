@@ -3,7 +3,7 @@
 // directory under ONE runtime load root, ${STATE_DIR}/skills/<slug>/:
 //
 //   <slug>/
-//     SKILL.md     frontmatter (→ metadata) + body (→ the agent's brief)
+//     SKILL.md     frontmatter (→ metadata) + body (→ the DJ model's brief)
 //     tool.mjs     OPTIONAL: a data fetcher the segment director calls first
 //
 // The seven built-ins are not special at load time: they are *seeded* into
@@ -16,10 +16,10 @@
 //
 // A skill's tool.mjs is the same contract for everyone:
 //   export default async (ctx, state, services, config, input) => data
-//   export const description = '…'   // OPTIONAL: tool description for the agent
+//   export const description = '…'   // OPTIONAL: legacy provider metadata
 //   export const ready = (services) => boolean   // OPTIONAL: gate availability
-//   export const inputs = { query: '…' }   // OPTIONAL: agent-steerable string
-//     params ({ name: description }); validated values arrive as `input`
+//   export const inputs = { query: '…' }   // OPTIONAL: legacy input metadata;
+//     retained for compatibility, but the direct runtime always supplies `{}`
 //   export const requiresData = false   // OPTIONAL: opt out of the grounding
 //     rule — this skill writes a line even when its tool returns nothing
 //     usable (skills/abstain-policy.ts). Default: a skill with a data tool
@@ -257,7 +257,7 @@ export async function discoverSeededKinds(): Promise<Set<string>> {
   return SEEDED_KINDS;
 }
 
-// A tool.mjs `inputs` export is legacy agent-steerable parameter metadata. The
+// A tool.mjs `inputs` export is formerly agent-steerable parameter metadata. The
 // deterministic runtime preserves it for visibility and compatibility, but
 // always calls providers with their default `{}` input. Sanitised here so only
 // identifier-shaped keys with string descriptions survive.
@@ -303,8 +303,8 @@ async function loadToolModule(dir: string): Promise<{ fn: any; description?: str
   };
 }
 
-// The agent-facing tool name for a skill. One spelling, shared by the tool.mjs
-// path and the generic feed path.
+// The stable provider name for a skill. One spelling, shared by the tool.mjs
+// path and the generic feed path for logs and compatibility metadata.
 function toolNameFor(name: string): string {
   return `skill_${name.replace(/-/g, '_')}`;
 }
@@ -338,7 +338,7 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
   }
   // A seeded built-in always ships a brief; an operator skill must supply one.
   if (!seeded && !body) {
-    queue.log('error', `[skills] "${slug}" rejected — SKILL.md body (the agent's brief) is empty`);
+    queue.log('error', `[skills] "${slug}" rejected — SKILL.md body (the DJ model's brief) is empty`);
     return null;
   }
 

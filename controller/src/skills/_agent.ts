@@ -23,11 +23,11 @@ import { fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import { recordCuriosity, recentAiredCuriosity } from './curiosity.js';
 import { loadedCapabilities } from './loader.js';
 import { skillEligible } from './eligibility.js';
-import { requiresGrounding, standDownReason } from './abstain-policy.js';
+import { requiresGrounding, standDownReason, unusableDataReason } from './abstain-policy.js';
 import { runCohostedCapability } from './cohosted.js';
 import * as sfx from '../broadcast/sfx.js';
 
-// dataBlock lives in llm/segment-tools.js so the co-hosted pool path can share
+// dataBlock lives in llm/segment-tools.js so the co-hosted direct path can share
 // it without an import cycle; re-exported here for llm-bench's existing path.
 export { dataBlock };
 
@@ -77,7 +77,7 @@ export function forcedSchema({ mayAbstain = false }: { mayAbstain?: boolean } = 
 }
 
 // Optional sound-effects block for the system prompt. '' when the library is
-// empty, so the feature stays invisible to the agent.
+// empty, so the feature stays invisible to the Segment writer.
 function sfxBlock(sfxCatalog) {
   if (!sfxCatalog || !sfxCatalog.length) return '';
   const list = sfxCatalog.map((s) => {
@@ -92,7 +92,7 @@ ${list}`;
 
 let tickBusy = false;
 const lastFired = new Map<string, number>(); // kind → ms timestamp of last aired segment
-const lastUnavailable = new Map<string, number>(); // kind → ms timestamp of last unusable pool-mode fetch
+const lastUnavailable = new Map<string, number>(); // kind → ms timestamp of last unusable direct fetch
 
 // An unavailable source shouldn't retry on the very next 5-minute tick, nor
 // inherit a multi-hour on-air cooldown when the next track may change its
@@ -104,12 +104,12 @@ function unavailableRetryBackoffMs(cap: { cooldownMs?: unknown }): number {
   return Math.min(cooldownMs, UNAVAILABLE_RETRY_BACKOFF_MS);
 }
 
-// Dedup memory carried across ticks, passed straight into the segment tools.
+// Dedup memory carried across ticks, passed straight into Segment providers.
 // Curiosity dedup is NOT here: it lives in the durable ledger in
 // skills/curiosity.js (#577) so it survives a restart.
 interface SegmentState {
   seenHeadlines: Set<string>;
-  // Burn-on-read memory for the generic feed tool (skills/feed.ts), keyed by
+  // Burn-on-read memory for the generic feed provider (skills/feed.ts), keyed by
   // kind so two feed skills can't suppress each other's items.
   feedSeen: Map<string, Set<string>>;
   lastWeatherCondition: string | null;
@@ -180,8 +180,8 @@ function stationTone(freq: string) {
         : 'This is a measured station — speak only when there is something worth saying.';
 }
 
-// Wall-clock ceiling for one director run, resolved live. Same source and
-// default as the picker's agentDeadline.
+// Wall-clock ceiling for one director run, resolved live. It reuses the
+// existing LLM deadline setting even though this is one structured call.
 function segmentDeadline(): number {
   return settings.get().llm?.agentTimeoutMs ?? 45000;
 }
@@ -203,7 +203,7 @@ export function buildSituation(ctx, { forced = false, contextFields, recentCurio
     lines.push(`\nWhat you have already said on air recently (do NOT repeat these topics or phrasing):\n${recap}`);
   }
   // Durable curiosity history (#577): with the Wikipedia pool exhausted the
-  // agent falls back to free generation, which has no memory of what it aired
+  // writer falls back to free generation, which has no memory of what it aired
   // and repeats the same factoid, sometimes reworded.
   if (recentCuriosity && recentCuriosity.length) {
     const list = recentCuriosity.map(t => `- ${t}`).join('\n');
@@ -314,20 +314,21 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   }
   const data = await fetchSegmentData(cap, ctx, segmentState);
   const blocked = standDownReason(cap, data);
-  if (blocked || data?.error) {
+  if (blocked) {
     lastUnavailable.set(cap.kind, Date.now());
     return {
       seg: null,
       exchange: null,
-      reason: blocked || `${cap.kind} data fetch failed (${data.error})`,
+      reason: blocked,
       skippedBeforeLlm: cap.kind,
     };
   }
   lastUnavailable.delete(cap.kind);
   const recentCuriosity = cap.kind === 'curiosity' ? recentAiredCuriosity() : undefined;
+  const source = unusableDataReason(data) ? '' : dataBlock(data);
   const out = await deadlinedSegmentObject({
     system: simpleSystem(speaker, cap, freq, sfxCatalog),
-    prompt: buildSituation(ctx, { contextFields: effectiveContextFields(cap), recentCuriosity }) + dataBlock(data),
+    prompt: buildSituation(ctx, { contextFields: effectiveContextFields(cap), recentCuriosity }) + source,
     schema: simpleSegmentSchema(),
     temperature: 0.9,
     kind: 'generateSegment',
@@ -585,10 +586,11 @@ export async function runCapability(
   const data = await fetchSegmentData(cap, ctx, segmentState);
   const blocked = standDownReason(cap, data);
   if (blocked) return standDown(blocked);
+  const source = unusableDataReason(data) ? '' : dataBlock(data);
   const object: { reason?: string; air?: boolean; text?: string; sfx?: string | null } | undefined =
     await deadlinedSegmentObject({
       system: forcedSystem(speaker, cap, sfxCatalog, { mayAbstain }),
-      prompt: situation + (data && !data.error ? dataBlock(data) : ''),
+      prompt: situation + source,
       schema: forcedSchema({ mayAbstain }),
       temperature: 0.9,
       kind: 'generateSegment',

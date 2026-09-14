@@ -11,7 +11,7 @@
 //   config   — the skill's own frontmatter (e.g. news' feed / feedMaxItems)
 //   input    — `{}`: the provider's own default input
 //
-// Every skill tool now lives in state/skills (built-ins seeded there on first
+// Every skill provider now lives in state/skills (built-ins seeded there on first
 // boot), so all of them run behind a hard timeout + try/catch — a slow or
 // throwing skill degrades to "no data" rather than hanging the tick. The
 // network-heavy built-ins (web-search, news RSS, on-this-day) must finish within
@@ -35,7 +35,7 @@ export async function fetchSegmentData(cap: any, ctx: any, state: any): Promise<
 // capped so a fat feed can't crowd the system prompt out of a small context.
 //
 // Lives beside fetchSegmentData rather than in skills/_agent.ts because both
-// code-driven (pool-mode) callers need it — the segment director and the
+// direct-runtime callers need it — the solo segment director and the
 // co-hosted discussion path — and skills/cohosted.ts cannot import _agent.js
 // without closing an eval-time cycle. _agent.ts re-exports it, so llm-bench
 // and every other importer keep their existing path.

@@ -66,6 +66,8 @@ grounding and availability policy: candidate or stand-down
   - one direct fetch using default inputs;
   - bounded provider timeout;
   - grounded unavailable/error results stand down before an LLM call;
+  - optional-source (`requiresData: false`) failures fall through to brief-only
+    generation;
   - autonomous unavailable-source retry backoff.
 - Preserve one structured generation call for a selected, usable capability.
 - Preserve current queueing, TTS, sound-effect validation, cooldown, dedup and
@@ -76,8 +78,8 @@ grounding and availability policy: candidate or stand-down
 This PR must not:
 
 - redesign the admin Skills UI or rename it to Segments;
-- change the `SKILL.md` or `tool.mjs` package contract;
-- migrate or delete installed Skills or their state;
+- remove `SKILL.md` or `tool.mjs` package loading, or migrate/delete installed
+  Skills or their state;
 - introduce new Segment types, providers, cast/scenes, narrative context or
   external-audio support;
 - remove `llm.pickerAgent` from music picking, where it remains an independent
@@ -86,9 +88,15 @@ This PR must not:
 
 ## Compatibility contract
 
-Existing Skills continue to load and run unchanged from the operator's point of
-view. `tool.mjs` remains supported, but it is called by the controller before
-generation rather than offered to the model as a tool.
+Existing Skills continue to load through the same package contract. `tool.mjs`
+remains supported, but it is called by the controller before generation rather
+than offered to the model as a tool.
+
+Legacy `description` and `inputs` exports remain loadable package metadata, but
+the direct runtime always calls the provider with `{}`. The controller warns in
+the booth and Skills admin surfaces when an installed provider still declares
+model-selected inputs, so the operator can move its defaults into `tool.mjs` or
+explicit `SKILL.md` configuration.
 
 The intentional behavioural change for stations currently using
 `llm.pickerAgent` is that a Segment's capability and data collection are no
@@ -103,7 +111,9 @@ Before submitting the PR, verify that:
    capability tool loop.
 3. A grounded `{ available: false }` or `{ error }` result produces a recorded
    stand-down and no LLM call.
-4. An optional Segment with usable data can still return `air: false`.
+4. An optional-source Segment still receives one writing call when its provider
+   returns `{ available: false }`, throws or times out, and can return
+   `air: false`.
 5. Manual, cron and programme runs preserve their current forced/grounded
    semantics while using direct fetches.
 6. `llm.pickerAgent` continues to affect music picking only.

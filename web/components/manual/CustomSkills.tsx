@@ -38,7 +38,7 @@ export default function CustomSkills() {
         <CodeBlock>{`state/skills/
   moon-phase/
     SKILL.md      # frontmatter (→ settings) + body (→ the DJ's brief)
-    tool.mjs      # OPTIONAL: a data fetcher the DJ can call`}</CodeBlock>
+    tool.mjs      # OPTIONAL: a data provider the controller runs before writing`}</CodeBlock>
         <p>
           Two ready-to-copy examples ship in the repo under{' '}
           <code className="bs-code-inline">docs/examples/skills/</code>:{' '}
@@ -114,10 +114,10 @@ the phase is unremarkable.`}</CodeBlock>
         <h2>A <code className="bs-code-inline">feed:</code> line is a fetch.</h2>
         <p>
           Give any skill a <code className="bs-code-inline">feed:</code> URL — in the
-          frontmatter, or as <strong>Feed URL</strong> on its Edit sheet — and the DJ fetches
-          it before writing the line. The items arrive as that segment&rsquo;s source data,
-          and the skill gets its own{' '}
-          <code className="bs-code-inline">skill_&lt;name&gt;</code> tool. No{' '}
+          frontmatter, or as <strong>Feed URL</strong> on its Edit sheet — and the controller
+          fetches it before the DJ writes the line. The items arrive as that segment&rsquo;s
+          source data through its own{' '}
+          <code className="bs-code-inline">skill_&lt;name&gt;</code> provider. No{' '}
           <code className="bs-code-inline">tool.mjs</code> needed; News works exactly this way.
         </p>
         <CodeBlock>{`---
@@ -149,11 +149,11 @@ rather than inventing a new name. Say nothing if it is empty.`}</CodeBlock>
         </ul>
         <p className="text-muted">
           Only an <code className="bs-code-inline">http</code> or{' '}
-          <code className="bs-code-inline">https</code> URL creates the tool — anything else
+          <code className="bs-code-inline">https</code> URL creates the provider — anything else
           is logged as a warning naming the skill, so a{' '}
           <code className="bs-code-inline">feed:</code> line never quietly does nothing. A
           skill that ships its own <code className="bs-code-inline">tool.mjs</code> keeps it;
-          the generated tool fills a gap, it never displaces a fetcher you wrote.
+          the generated provider fills a gap, it never displaces a fetcher you wrote.
         </p>
       </section>
 
@@ -175,10 +175,10 @@ rather than inventing a new name. Say nothing if it is empty.`}</CodeBlock>
         </p>
         <p className="text-muted">
           On a solo or off-show hour the skill stands down; Run now reports that it requires
-          a co-hosted show before any model or TTS call. If it has a data tool, that data
-          must come back usable — gathered by the skill&apos;s own tool loop, or fetched in
-          code when the picker agent is off — or the whole discussion stays silent instead
-          of inventing facts.
+          a co-hosted show before any model or TTS call. If it has a grounded data provider,
+          the controller runs that provider once before one structured writing call. Unusable
+          data stands the whole discussion down instead of letting several voices invent
+          facts. The music picker setting does not change this path.
         </p>
       </section>
 
@@ -234,8 +234,8 @@ not a newsreader's. Skip anything dull or stale; silence is fine.`}</CodeBlock>
         <p className="bs-eyebrow">tool.mjs — OPTIONAL</p>
         <h2>Let the DJ look before it speaks.</h2>
         <p>
-          With a <code className="bs-code-inline">tool.mjs</code>, the DJ can fetch live data
-          before deciding whether to air the line — the exact same mechanism the built-ins use
+          With a <code className="bs-code-inline">tool.mjs</code>, the controller can fetch live
+          data before the DJ decides whether to air the line — the exact same mechanism the built-ins use
           (they&rsquo;re directories with a <code className="bs-code-inline">tool.mjs</code> too).
           Export a default function; return any JSON, and use{' '}
           <code className="bs-code-inline">{`{ available: false }`}</code> to tell the DJ
@@ -251,7 +251,7 @@ not a newsreader's. Skip anything dull or stale; silence is fine.`}</CodeBlock>
   // state    — cross-tick memory (persists between firings)
   // services — the station facade (searchWeb, library, nowPlaying, onThisDay…)
   // config   — this skill's own SKILL.md frontmatter
-  // input    — the agent's values for your declared inputs ({} if none)
+  // input    — {} (the provider's own default input)
   const artist = services.nowPlaying()?.artist;
   if (!artist) return { available: false };
   return { available: true, artist };
@@ -260,8 +260,8 @@ not a newsreader's. Skip anything dull or stale; silence is fine.`}</CodeBlock>
 // OPTIONAL: gate the skill on a runtime condition (e.g. a search provider).
 export const ready = (services) => services.searchReady();
 
-// OPTIONAL: agent-steerable string params — the agent may pass a value or
-// null for each; without this the tool is zero-arg (best for small models).
+// LEGACY compatibility metadata. The direct runtime always supplies {}.
+// Move defaults into this function or expose them through configFields.
 export const inputs = { query: 'what to search for; null for the default dig' };
 
 // OPTIONAL: operator knobs — each one becomes a field in this skill's edit
@@ -281,8 +281,10 @@ export const configFields = {
           </p>
         </div>
         <p>
-          The call is timeout-guarded and any error degrades cleanly to &ldquo;no
-          data&rdquo;; a slow or broken skill can never hang the station. With neither a{' '}
+          The call is timeout-guarded and any error becomes an unavailable result; a slow or
+          broken skill can never hang the station. Grounded skills stand down, while a skill
+          configured with <code className="bs-code-inline">requiresData: false</code> still
+          writes from its brief. With neither a{' '}
           <code className="bs-code-inline">tool.mjs</code> nor a{' '}
           <code className="bs-code-inline">feed:</code>, the skill writes from its brief
           alone — no live data to look at.
@@ -377,11 +379,13 @@ export const configFields = {
           spent. Each stand-down says which of those it was in the booth log.
         </p>
         <p className="text-muted">
-          Worth knowing before you add one: a cron <em>always speaks</em>. The ordinary
+          Worth knowing before you add one: a cron <em>always asks for speech</em> once any
+          required source data is usable. The ordinary
           between-track tick lets the DJ decide there&rsquo;s nothing worth saying, and it
           often does. A cron takes the forced path instead, where staying silent isn&rsquo;t
-          on offer. Good for a fixed daily moment; poor for a skill written to speak only
-          when something is notable.
+          on offer. A grounded provider can still stand it down when data is unavailable.
+          Good for a fixed daily moment; poor for a skill written to speak only when
+          something is notable.
         </p>
         <p className="text-muted">
           Full reference, including the example skill, lives in{' '}

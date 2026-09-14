@@ -1,5 +1,5 @@
 // Admin-gated sound-effects library management — the curated stingers the
-// segment-director agent can play under its voice (see broadcast/sfx.js).
+// direct Segment writer can play under its voice (see broadcast/sfx.js).
 import express from 'express';
 import * as sfx from '../broadcast/sfx.js';
 import { isConfigured } from '../audio/sfx-gen.js';

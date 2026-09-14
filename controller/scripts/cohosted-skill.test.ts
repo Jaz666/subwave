@@ -38,7 +38,12 @@ test('the prompt names the exact cast, skill brief, language, and 2–5 sentence
   assert.match(system, /Find one historical murder case/);
   assert.match(system, /2–5 short sentences|2-5 short sentences/);
   assert.match(system, /English/);
-  assert.match(system, /source data|tool/i);
+  assert.match(system, /source data/i);
+  assert.doesNotMatch(
+    system,
+    /(?:use|call) (?:the )?skill tool/i,
+    'the direct writer must consume inlined source data, not ask for a model tool it cannot call',
+  );
   assert.match(system, /do not write speaker labels/i);
 });
 
@@ -147,6 +152,22 @@ test('the direct runtime stands a grounded discussion down BEFORE any model call
       assert.ok(result.reason);
     }
   } finally { await settings.update({ llm: { pickerAgent: false } }); }
+});
+
+test('an optional provider failure reaches the co-hosted writer without false grounding', async () => {
+  const capability = {
+    kind: 'case-discussion', desc: 'Discuss one case.', requiresData: false,
+    toolFn: async () => { throw new Error('optional source offline'); },
+  };
+  let objectArgs: any = null;
+  const result = await runCohostedCapability({
+    capability, host, guests, context: {}, situation: 'The current moment.', segmentState: {},
+    runObject: async (args: any) => { objectArgs = args; return full; },
+  });
+
+  assert.equal(result.aired, true);
+  assert.doesNotMatch(String(objectArgs.prompt), /optional source offline/);
+  assert.doesNotMatch(String(objectArgs.prompt), /Source data for this segment/);
 });
 
 test('a forced prompt-only discussion cannot decline or omit dialogue', async () => {

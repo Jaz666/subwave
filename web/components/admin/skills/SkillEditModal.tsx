@@ -46,6 +46,7 @@ import {
   type SkillLike,
   type SkillsResponse,
 } from './queries';
+import { SkillReviewWarning } from './SkillReviewWarning';
 
 // Only what this modal needs from GET /dj/skills.
 export type { SkillLike } from './queries';
@@ -650,6 +651,8 @@ export default function SkillEditModal({ mode, skill, personas, tagSuggestions, 
         <SkeletonForm fields={4} />
       ) : (
         <div style={{ opacity: isEdit && !enabled ? 0.6 : 1, transition: 'opacity .2s ease' }}>
+
+            <SkillReviewWarning warning={skill?.warning} />
 
             <div className="sw-section">
               <TextField

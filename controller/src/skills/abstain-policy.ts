@@ -18,8 +18,8 @@
 //
 // So: a skill that speaks FROM fetched data stands down when that data comes
 // back unusable. Two decisions, kept here rather than at the call sites because
-// the forced path reaches them from three callers and the pool/agent paths each
-// ask again:
+// the forced path reaches them from three callers and the automatic direct path
+// asks again:
 //
 //   requiresGrounding(cap)   — may this skill's forced run stand down at all?
 //   unusableDataReason(data) — is what the tool returned fit to write from?
@@ -76,8 +76,8 @@ interface GroundedCap {
 //
 // A skill with no data tool is never grounded — it writes from the moment and
 // its brief, which is all it ever had, so there is nothing for missing data to
-// invalidate. Everything else defaults to grounded: the generated tool
-// description already promises callers that `{ available: false }` means
+// invalidate. Everything else defaults to grounded: the provider contract
+// already promises callers that `{ available: false }` means
 // "nothing fresh worth airing", and airing anyway is precisely the bug.
 export function requiresGrounding(cap: GroundedCap | null | undefined): boolean {
   if (!cap || typeof cap.toolFn !== 'function') return false;

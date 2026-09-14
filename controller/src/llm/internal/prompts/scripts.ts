@@ -453,8 +453,8 @@ export async function generateLink(args: any) {
 }
 
 // Stage C delivery packet for a Producer-selected skill segment. The Producer's
-// reason and tool-loop prose never enter this prompt: only the operator-authored
-// skill brief, the selected tool's controller-grounded evidence and a small
+// planning notes and provider metadata never enter this prompt: only the
+// operator-authored skill brief, the controller-fetched evidence and a small
 // deterministic set of relevant moment facts cross the boundary.
 export function personaSegmentPrompt({
   kind,

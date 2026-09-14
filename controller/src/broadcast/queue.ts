@@ -2645,7 +2645,7 @@ class Queue {
   // Play a pre-rendered sound effect from the library UNDER the DJ voice.
   // Writes the effect's file path straight to sfx.txt — no TTS, the audio is
   // already rendered. Liquidsoap's sfx_queue mixes it beneath the voice
-  // channels (see liquidsoap/radio.liq). Used by the segment-director agent
+  // channels (see liquidsoap/radio.liq). Used by the direct Segment writer
   // to garnish a spoken line, and by onTrackStarted for the between-track
   // stingers applyMixTransition arms at drain time.
   //

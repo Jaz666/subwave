@@ -27,7 +27,7 @@ process.env.STATE_DIR = STATE_DIR;
 
 // ---------------------------------------------------------------------------
 // A loopback feed. `/rss` serves `items` RSS 2.0 entries; `/atom` the same
-// content as Atom, so the generated tool is pinned against both dialects.
+// content as Atom, so the generated provider is pinned against both dialects.
 // ---------------------------------------------------------------------------
 function rss(count: number, prefix: string): string {
   const items = Array.from({ length: count }, (_, i) =>

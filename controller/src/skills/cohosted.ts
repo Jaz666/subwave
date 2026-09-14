@@ -11,7 +11,7 @@ import { djObject } from '../llm/sdk.js';
 import { fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import * as settings from '../settings.js';
 import { cohostedSkillSchema, cohostedSkillSystem } from '../llm/internal/prompts/cohosted-skill.js';
-import { requiresGrounding, standDownReason } from './abstain-policy.js';
+import { requiresGrounding, standDownReason, unusableDataReason } from './abstain-policy.js';
 
 interface Persona {
   id: string;
@@ -32,7 +32,7 @@ type CohostedObject = { reason?: unknown; air?: unknown; lines?: Array<{ speaker
 
 type ObjectRunner = (args: Record<string, unknown>) => Promise<unknown>;
 
-function agentDeadlineMs(): number {
+function segmentDeadlineMs(): number {
   return settings.get().llm?.agentTimeoutMs ?? 45000;
 }
 
@@ -41,7 +41,7 @@ function agentDeadlineMs(): number {
 // its own and a grammar-constrained model can ramble inside an unbounded string
 // field all the way to the output-token cap.
 async function deadlinedObject(runObject: ObjectRunner, args: Record<string, unknown>): Promise<unknown> {
-  const ms = agentDeadlineMs();
+  const ms = segmentDeadlineMs();
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(new Error(`co-hosted segment call exceeded ${ms}ms deadline`)), ms);
   try {
@@ -73,9 +73,10 @@ export async function runCohostedCapability({
   const data = await fetchSegmentData(capability, context, segmentState);
   const blocked = standDownReason(capability, data);
   if (blocked) return { aired: false, lines: null, reason: blocked };
+  const source = unusableDataReason(data) ? '' : dataBlock(data);
   const out = await deadlinedObject(runObject, {
     system,
-    prompt: `${situation}${data && !data.error ? dataBlock(data) : ''}\n\n${ask}`,
+    prompt: `${situation}${source}\n\n${ask}`,
     schema,
     temperature: 0.9,
     kind: 'generateCohostedSkill',

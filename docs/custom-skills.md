@@ -35,7 +35,7 @@ anything — those manipulate documents.)
 state/skills/
   moon-phase/
     SKILL.md      # frontmatter (→ metadata) + body (→ the DJ's brief)
-    tool.mjs      # OPTIONAL: a data fetcher, wrapped as a tool the DJ can call
+    tool.mjs      # OPTIONAL: a data provider the controller runs before writing
 ```
 
 Three copy-ready examples live in [`docs/examples/skills`](./examples/skills) —
@@ -107,9 +107,9 @@ naming the file.
 <a id="feeds-without-code"></a>
 
 A `feed:` line is a **fetch**, not a note to yourself. Any skill that declares
-one — with or without a `tool.mjs` — gets a `skill_<name>` tool the DJ calls
-before it writes the line, and the items land in the prompt as that segment's
-source data:
+one and has no `tool.mjs` gets a generated `skill_<name>` provider. The
+controller runs it before the DJ writes the line, and the items land in the
+prompt as that segment's source data:
 
 ```yaml
 ---
@@ -123,7 +123,7 @@ The feed is the current state of the contest — report on who is already in it
 rather than inventing a new name. Say nothing if it is empty.
 ```
 
-The generated tool is the one the built-in News skill used to hand-roll, so
+The generated provider is the one the built-in News skill used to hand-roll, so
 every feed skill gets the same behaviour:
 
 - **RSS 2.0, Atom and RDF/RSS-1.0** all parse — namespaced tags
@@ -139,11 +139,11 @@ every feed skill gets the same behaviour:
 The knobs show up in the skill's **/admin/skills → Edit** sheet as *Feed URL* and
 *Max items*, so a feed can be added, changed or cleared without touching disk.
 
-> Only an `http:` or `https:` URL creates the tool. Anything else is logged as a
+> Only an `http:` or `https:` URL creates the provider. Anything else is logged as a
 > warning naming the skill and leaves it prompt-only — a `feed:` line must never
 > quietly do nothing.
 
-A skill that ships its own `tool.mjs` keeps it: the generic feed tool fills the
+A skill that ships its own `tool.mjs` keeps it: the generic feed provider fills the
 gap, it never displaces a fetcher you wrote. If you want feed items *and*
 something else, read `config.feed` yourself via
 `services.fetchHeadlines` (see the table below).
@@ -433,12 +433,12 @@ identical footing. It's read-mostly (no settings writes, no secrets):
 | `services.recall.seen(key)` / `.remember(key)` | durable, cross-restart dedup ledger |
 | `services.log(msg)` | append a line to the station event log |
 
-Every skill's `tool.mjs` is **timeout-guarded (8 s)** and any throw degrades
-cleanly to "no data" — a slow or broken skill can never hang the between-track
-tick. This applies to the seeded built-ins too (their network calls — search,
-RSS, on-this-day — must finish within 8 s or that tick simply yields no segment).
-With no `tool.mjs`, the skill is pure generation: the DJ writes from the brief
-alone.
+Every skill's `tool.mjs` is **timeout-guarded (8 s)** and any throw becomes an
+error result — a slow or broken skill can never hang the between-track tick. A
+grounded skill stands down on that result; a skill with `requiresData: false`
+still gets its brief-only writing call. This applies to the seeded built-ins too
+(their network calls — search, RSS, on-this-day — must finish within 8 s). With
+no `tool.mjs`, the skill is pure generation: the DJ writes from the brief alone.
 
 > **Security.** A `tool.mjs` runs operator-supplied code inside the controller
 > container, and `services` lets it spend your search-provider quota and read

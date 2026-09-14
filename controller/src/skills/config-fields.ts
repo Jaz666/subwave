@@ -27,7 +27,7 @@ export const OWNED_FRONTMATTER_KEYS = new Set([
 ]);
 
 // Keys a skill may not declare as a knob: everything writeSkillFile owns, plus
-// `toolDescription` (the loader reads it for the agent-facing tool blurb) and
+// `toolDescription` (the loader retains it as legacy provider metadata) and
 // `brief` (the admin form always sends one, which the legacy top-level body
 // shape in routes/dj.ts would otherwise capture into a frontmatter line).
 export const RESERVED_CONFIG_KEYS = new Set([

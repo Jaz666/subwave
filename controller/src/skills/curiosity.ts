@@ -1,6 +1,6 @@
 // Curiosity fetcher — the data layer behind the `curiosity` capability. The
-// segment-director agent (skills/_agent.ts) calls the `getCuriosityItem` tool
-// (llm/segment-tools.ts) for a single oddly-specific factoid to read on air.
+// direct segment runtime (skills/_agent.ts) calls it once before asking the DJ
+// model to write a single oddly-specific factoid for air.
 //
 // Internally rotates across three sources, picked deterministically per call:
 //   1. Wikipedia on-this-day events for today's date (filtered for non-violent
@@ -9,13 +9,14 @@
 //      is imminent in the operator's location (not implemented yet — returns
 //      `available: false` until a structured source is wired in);
 //   3. LLM-only "did you know" line — same prompt path the legacy random-facts
-//      capability used; the agent generates from `cap.desc` + persona on its
-//      own when the data sources return nothing.
+//      capability used; the structured writer generates from `cap.desc` +
+//      persona when the data sources return nothing.
 //
-// Source (3) is the implicit fallback: the tool returns `{ available: false }`
-// when no external item is available, which prompts the agent to fall through
-// to pure generation under `cap.desc`. So this file is "what extra context can
-// we put under the DJ's nose this minute?" — never "must we be silent?".
+// Source (3) is the implicit fallback: the provider returns `{ available: false
+// }` when no external item is available, and this capability's
+// `requiresData: false` policy lets the direct writer continue from `cap.desc`.
+// So this file is "what extra context can we put under the DJ's nose this
+// minute?" — never "must we be silent?".
 
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
@@ -116,11 +117,11 @@ export function hashCuriosity(text: string) {
 //   1. The dedup set used to be an in-memory `Set` (skills/_agent.ts), wiped on
 //      every controller restart. Wikipedia returns the same "on this day" items
 //      for a date all day, so a restart re-aired the same fact hours later.
-//   2. When the small Wikipedia pool exhausts, the agent free-generates a
+//   2. When the small Wikipedia pool exhausts, the writer free-generates a
 //      factoid under the capability brief with no record of what it already
 //      said — so it regenerated the same one (reworded).
 //
-// The ledger persists BOTH the items surfaced to the agent (so the tool stops
+// The ledger persists BOTH the items surfaced to the writer (so the provider stops
 // re-offering the same Wikipedia event across a restart — the surfaced item's
 // hash matches on the next fetch, the reworded aired line would not) AND the
 // lines actually aired (so fallback generation can be told what to avoid).
@@ -189,7 +190,7 @@ function schedulePersist() {
 }
 
 // Has this exact curiosity text already been surfaced or aired? Used by the
-// segment tool to filter the Wikipedia pool.
+// direct provider to filter the Wikipedia pool.
 export function curiositySeen(text: string) {
   return seenHashes.has(hashCuriosity(text));
 }
@@ -219,7 +220,7 @@ export function recordCuriosity(text: string, { aired = false }: { aired?: boole
 }
 
 // The most recent curiosity lines actually aired (newest first), for the
-// fallback brief — so the agent's free generation avoids repeating them.
+// fallback brief — so the writer's free generation avoids repeating them.
 //
 // Clipped to the opening of each line: the anti-repeat only needs the SUBJECT
 // (which a spoken factoid states up front), and inlining eight full segments

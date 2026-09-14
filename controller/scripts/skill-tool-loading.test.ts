@@ -3,9 +3,9 @@
 //
 // The other half of that original pin — "a feed: line without a tool.mjs stays
 // prompt-only" — was the bug reported as #1616 and is gone: the generic feed
-// tool now covers it, and scripts/skill-feed-tool.test.ts pins the new
+// provider now covers it, and scripts/skill-feed-tool.test.ts pins the new
 // behaviour. What survives here is the boundary that still holds: a skill
-// declaring NO feed and shipping no tool.mjs gets no tool at all.
+// declaring NO feed and shipping no tool.mjs gets no provider at all.
 //
 // Run: `npm test -- skill-tool-loading`.
 

@@ -1,4 +1,4 @@
-// Short stingers the segment-director agent plays under its voice via the
+// Short stingers the direct Segment writer can place under its voice via the
 // sfx_queue. Files at <stateDir>/sfx/<name>.mp3, sidecar at <stateDir>/sfx.json
 // (name → { name, description, prompt, durationSec, file, builtin, createdAt }).
 // No .m3u unlike jingles: effects play on demand via sfx.txt, never rotate.
@@ -102,7 +102,7 @@ export async function list() {
   return out;
 }
 
-// The slim view the segment agent reads. Duration rides along so the prompt can
+// The slim view the Segment writer reads. Duration rides along so the prompt can
 // show how long a clip will sit under the voice.
 export async function catalog() {
   return (await list()).map((s: any) => ({ name: s.name, description: s.description, durationSec: s.durationSec }));
@@ -238,7 +238,7 @@ async function installDefault(def, meta) {
 }
 
 // Called from server.js startup; idempotent. With neither a bundled file nor a
-// key the library stays empty and the feature is invisible to the agent.
+// key the library stays empty and the feature is invisible to the writer.
 export async function ensureDefaults() {
   await mkdir(DIR, { recursive: true });
   const meta = await loadMeta();
