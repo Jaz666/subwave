@@ -31,7 +31,6 @@ import {
   ChevronRight,
   MoreHorizontal,
   ListMusic,
-  Telescope,
   Clock,
   CalendarDays,
   Volume2,

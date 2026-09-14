@@ -161,12 +161,10 @@ async function repickRequestFromSeen({ seen, badId, requester, text, persona }:
   }
 }
 
-// `ctx` / `rankTarget` are carried only for the artist-guard's pool rescue
-// (#1187) — the agent's own run needs neither. They're the same values
-// runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
-// from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
-  const pickStarted = performance.now();
+// Build the exact discovery scope used by a live next-track pick. Diagnostics
+// call this too, so a tool run sees the same recency, show and playlist policy
+// as the DJ rather than a convenient-but-different approximation.
+export async function livePickerScope(queue: any, { audioWaypoint = null, showAt = null }: { audioWaypoint?: number[] | null; showAt?: Date | null } = {}) {
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -302,6 +300,16 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     excludedIds,
   });
 
+  return { scope, playlistTracks, activeShow };
+}
+
+// `ctx` / `rankTarget` are carried only for the artist-guard's pool rescue
+// (#1187) — the agent's own run needs neither. They're the same values
+// runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
+// from exactly the pool a failed agent run would have produced.
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
+  const pickStarted = performance.now();
+  const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
   const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
   let steps: number;
   let toolCalls: any[];
@@ -360,7 +368,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }));
     object = run.object;
   }
-
   let song = object?.id ? extras.seen.get(object.id) : null;
 
   // The agent returned an id that isn't in the candidate set it was shown.

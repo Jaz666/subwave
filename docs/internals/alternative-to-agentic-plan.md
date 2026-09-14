@@ -101,10 +101,11 @@ The dashboard uses different timing semantics by route:
   included in that baseline. Until enough observations exist, use a
   conservative warning threshold.
 
-The Discovery Bench may return later as an optional maintainer-only facility.
-It will be protected by an environment flag, absent from normal navigation and
-endpoints when disabled, and will use live station settings rather than fixed
-three-pass assumptions.
+The Discovery Bench is an optional maintainer-only facility. Set
+`SUBWAVE_DISCOVERY_BENCH=true` in both the controller and web environments to
+enable its direct `/admin/discovery` URL. It is absent from normal navigation
+and its controller endpoints return 404 when disabled. It uses live station
+settings rather than fixed three-pass assumptions.
 
 ## Verification
 
