@@ -70,6 +70,18 @@ test('researcher rejects evidence whose concrete detail is absent from the wordi
   assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
 });
 
+test('researcher refuses a bare name or date as evidence for a larger claim', () => {
+  const result = validateResearchCandidates(job, [{
+    category: 'artist-stories', topic: 'label', wording: "They were originally signed to Tony Wilson's Factory Records label.",
+    evidence: 'Tony Wilson',
+  }, {
+    category: 'artist-stories', topic: 'member', wording: 'Rowetta performed with the band until December 2024.',
+    evidence: 'December 2024',
+  }]);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['shape', 'shape']);
+});
+
 test('researcher rejects a bare release-date milestone but keeps an evidenced release story', () => {
   const richerJob = { ...job, document: { ...job.document, text: 'Their debut album arrived in 1982. It was produced by A Producer after the band signed to Example Records.' } };
   const result = validateResearchCandidates(richerJob, [{

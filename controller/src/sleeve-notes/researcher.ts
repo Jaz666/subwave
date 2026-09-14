@@ -123,7 +123,9 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
       rejected.push({ candidate, reason: 'category' });
       continue;
     }
-    if (!validText(candidate.topic, 2, 100) || !validText(candidate.wording, 8, 360) || !validText(candidate.evidence, 8, 900)) {
+    // A bare name or date is not enough context to prove the relationship the
+    // wording asserts. The researcher must retain at least a short clause.
+    if (!validText(candidate.topic, 2, 100) || !validText(candidate.wording, 8, 360) || !validText(candidate.evidence, 24, 900)) {
       rejected.push({ candidate, reason: 'shape' });
       continue;
     }
