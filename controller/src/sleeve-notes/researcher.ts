@@ -74,6 +74,24 @@ function hasMaterialEvidence(wording: string, evidence: string): boolean {
   return shared >= 2 && wordingNumbers.every((number) => normal(evidence).includes(number));
 }
 
+const DETAIL_LEADS = new Set(['a', 'an', 'and', 'for', 'from', 'her', 'his', 'in', 'it', 'its', 'she', 'the', 'their', 'they', 'this', 'was']);
+
+/**
+ * The citation must contribute a recognisable detail to the spoken note. This
+ * stops `evidence: "I Follow Rivers"` being used to support an otherwise
+ * anonymous "her biggest hit" sentence.
+ */
+function wordingCarriesEvidenceDetail(wording: string, evidence: string): boolean {
+  const normalizedWording = normal(wording).toLowerCase();
+  const numbers = evidence.match(/\b\d+(?:[.,]\d+)?\b/g) ?? [];
+  if (numbers.some((number) => normalizedWording.includes(number))) return true;
+  const phrases = evidence.match(/\b[A-Z][\p{L}\p{M}'’-]*(?:\s+[A-Z][\p{L}\p{M}'’-]*){1,5}\b/gu) ?? [];
+  return phrases
+    .map((phrase) => normal(phrase))
+    .filter((phrase) => !DETAIL_LEADS.has(phrase.toLowerCase()))
+    .some((phrase) => normalizedWording.includes(phrase.toLowerCase()));
+}
+
 /** A release date alone is catalogue metadata, not a useful DJ note. */
 function isBareReleaseMilestone(candidate: ResearchCandidate): boolean {
   if (candidate.category !== 'milestones') return false;
@@ -114,6 +132,10 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
       continue;
     }
     if (!hasMaterialEvidence(candidate.wording, candidate.evidence)) {
+      rejected.push({ candidate, reason: 'unsupported' });
+      continue;
+    }
+    if (!wordingCarriesEvidenceDetail(candidate.wording, candidate.evidence)) {
       rejected.push({ candidate, reason: 'unsupported' });
       continue;
     }

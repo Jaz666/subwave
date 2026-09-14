@@ -60,6 +60,16 @@ test('researcher rejects evidence that appears in source but does not entail the
   assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
 });
 
+test('researcher rejects evidence whose concrete detail is absent from the wording', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: 'The single I Follow Rivers became their biggest international hit.' } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'artist-stories', topic: 'hit', wording: 'It became their biggest international hit.',
+    evidence: 'The single I Follow Rivers became their biggest international hit.',
+  }]);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
+});
+
 test('researcher rejects a bare release-date milestone but keeps an evidenced release story', () => {
   const richerJob = { ...job, document: { ...job.document, text: 'Their debut album arrived in 1982. It was produced by A Producer after the band signed to Example Records.' } };
   const result = validateResearchCandidates(richerJob, [{
