@@ -242,6 +242,8 @@ export {
   getEffectivePersona,
   getOnAirRoster,
   getScheduleOverride,
+  guestEditorialNudge,
+  guestEditorialNudgeFromGuests,
   languageDirective,
   onAirRosterClause,
   personaMusicLeanings,

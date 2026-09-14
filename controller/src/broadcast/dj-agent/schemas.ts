@@ -173,6 +173,10 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true) 
   const personaMusicLeanLine = personaMusicLean
     ? `\n\nMusical Leanings — ${personaMusicLean}\nUse this only to break a close tie between otherwise suitable tracks. It never overrides show rules, rotation, safety, or the musical flow.`
     : '';
+  const guestMusicalNudge = settings.guestEditorialNudge(showAt ?? new Date());
+  const guestMusicLeanLine = guestMusicalNudge
+    ? `\n\nGuest Musical Leanings — ${guestMusicalNudge.guest.name}: ${guestMusicalNudge.musicalLeanings}\nThis is weaker than the host's Musical Leanings. Use it only to break a genuinely close tie; never override show rules, rotation, safety, or the musical flow.`
+    : '';
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of
@@ -204,7 +208,7 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true) 
     : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}
 
-${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${personaMusicLeanLine}${playlistLean}
+${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${personaMusicLeanLine}${guestMusicLeanLine}${playlistLean}
 
 ${dj.PICKER_CRITERIA}
 
