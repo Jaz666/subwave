@@ -349,7 +349,7 @@ export interface ResearchStoreSummary {
 export interface ResearchStoreReadout extends ResearchStoreSummary {
   artists: Array<{ name: string; musicbrainzId: string | null; sources: number; claims: number }>;
   claims: Array<{ artist: string; category: string; topic: string; wording: string; evidence: string; sourceUrl: string }>;
-  jobs: Array<{ provider: string; subjectType: string; capability: string; state: string; priority: number }>;
+  jobs: Array<{ provider: string; subjectType: string; capability: string; state: string; priority: number; attempts: number; runAfter: string | null; updatedAt: string }>;
 }
 
 export function researchStoreSummary(): ResearchStoreSummary {
@@ -384,7 +384,8 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
     JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     WHERE c.enabled = 1 ORDER BY c.updated_at DESC LIMIT ?`).all(capped) as ResearchStoreReadout['claims'];
-  const jobs = db.prepare(`SELECT provider, subject_type AS subjectType, capability, state, priority
+  const jobs = db.prepare(`SELECT provider, subject_type AS subjectType, capability, state, priority,
+    attempts, run_after AS runAfter, updated_at AS updatedAt
     FROM sleeve_research_jobs ORDER BY updated_at DESC LIMIT ?`).all(capped) as ResearchStoreReadout['jobs'];
   return { ...summary, artists, claims, jobs };
 }
