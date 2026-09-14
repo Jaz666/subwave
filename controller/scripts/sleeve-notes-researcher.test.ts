@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateResearchCandidates, type ResearchJob } from '../src/sleeve-notes/researcher.js';
-import { candidatesFromResearchResult } from '../src/sleeve-notes/llm-researcher.js';
+import { candidatesFromResearchResult, researchOutcomeDebug } from '../src/sleeve-notes/llm-researcher.js';
 
 const job: ResearchJob = {
   id: 'research-1',
@@ -103,4 +103,16 @@ test('the LLM researcher reads candidates from djObject\'s decoded result', () =
   assert.deepEqual(candidatesFromResearchResult({ candidates }), candidates);
   assert.deepEqual(candidatesFromResearchResult({ value: { candidates } }), []);
   assert.deepEqual(candidatesFromResearchResult(undefined), []);
+});
+
+test('research debug outcome separates retained claims from rejected candidates', () => {
+  const candidate = {
+    category: 'artist-stories' as const, topic: 'origin', wording: 'The Example Band formed in Liverpool in 1980.',
+    evidence: 'The Example Band formed in Liverpool in 1980.',
+  };
+  assert.deepEqual(researchOutcomeDebug({
+    accepted: [candidate], rejected: [{ candidate, reason: 'duplicate' }],
+  }), {
+    status: 'complete', retained: [candidate], rejected: [{ ...candidate, reason: 'duplicate' }],
+  });
 });

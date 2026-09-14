@@ -46,6 +46,10 @@ export interface ValidatedResearch {
   rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'bare-milestone' | 'duplicate' }>;
 }
 
+export interface ResearchOutcomeObserver {
+  recordOutcome(job: ResearchJob, validated: ValidatedResearch): void;
+}
+
 function normal(value: string): string {
   return value.normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
