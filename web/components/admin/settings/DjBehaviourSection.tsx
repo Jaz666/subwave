@@ -1,5 +1,6 @@
 'use client';
 
+import type { ChangeEvent } from 'react';
 import { Label } from '../../ui/label';
 import { Input } from '../../ui/input';
 import { Card, Seg } from '../ui';
@@ -12,6 +13,7 @@ import {
   DJ_RECAP_CHARS_BOUNDS,
   DJ_RECAP_LIMIT_BOUNDS,
   DJ_RECAP_MINUTES_BOUNDS,
+  PICKER_MIN_TRACK_LENGTH_BOUNDS,
 } from '@/lib/schemas.generated';
 
 /**
@@ -53,12 +55,17 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         shortlistPasses: form.llm.shortlistPasses,
         requestMatching: form.llm.requestMatching,
         segmentRuntime: form.llm.segmentRuntime,
+        noRepeatWindow: Math.max(0, parseInt(form.llm.noRepeatWindow, 10) || 0),
+        artistVarietyWindow: Math.max(0, parseInt(form.llm.artistVarietyWindow, 10) || 0),
         discoverySteps: form.llm.discoverySteps,
         agentTimeoutMs: form.llm.agentTimeoutMs,
-        // Compatibility bridge: until Requests and Skills gain their own
-        // choices, selecting the established Agentic path retains their
-        // existing tool capability as well.
+        // Compatibility bridge for pre-choice settings files. The three explicit
+        // runtime choices above remain independent at runtime.
         pickerAgent: form.llm.trackSelection === 'agentic',
+      },
+      picker: {
+        albumHours: Number(form.picker.albumHours),
+        minTrackLengthSeconds: Number(form.picker.minTrackLengthSeconds),
       },
     });
   };
@@ -216,6 +223,79 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             </p>
           </div>
         )}
+      </Card>
+
+      <Card title="Track selection policy" sub="shared rules">
+        <div className="field mt-4">
+          <Label>No-repeat window (tracks)</Label>
+          <Input
+            type="number" min={0} max={1000} step={10}
+            value={form.llm.noRepeatWindow}
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              setForm(f => ({ ...f, llm: { ...f.llm, noRepeatWindow: e.target.value } }))}
+            placeholder="250"
+            className="max-w-[200px]"
+          />
+          <div className="field-hint">
+            The last N <strong>distinct</strong> tracks can never be re-picked: a hard
+            guard on both selection paths, on top of the time-based window. It scales down
+            on a small library so it never blocks everything. <strong>0 = off</strong>.
+            Listener requests stay exempt. 0&ndash;1000.
+          </div>
+        </div>
+
+        <div className="field mt-4">
+          <Label>Artist spacing (slots)</Label>
+          <Input
+            type="number" min={0} max={25} step={1}
+            value={form.llm.artistVarietyWindow}
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              setForm(f => ({ ...f, llm: { ...f.llm, artistVarietyWindow: e.target.value } }))}
+            placeholder="5"
+            className="max-w-[200px]"
+          />
+          <div className="field-hint">
+            How many slots the DJ waits before returning to an artist. A pick inside the
+            window is re-taken from the run&apos;s other eligible tracks, and quietly stands
+            only if nothing fresher turned up. <strong>0 = off</strong>, though an artist
+            can never follow itself. 0&ndash;25.
+          </div>
+        </div>
+
+        <div className="field mt-4">
+          <Label>Album cooldown (hours)</Label>
+          <Input
+            type="number" min={0} max={72} step={0.5}
+            value={form.picker.albumHours}
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              setForm(f => ({ ...f, picker: { ...f.picker, albumHours: e.target.value } }))}
+            placeholder="0"
+            className="max-w-[200px]"
+          />
+          <div className="field-hint">
+            How long a <strong>record</strong> rests after one of its tracks airs. It
+            yields rather than starving selection, and compilations and various-artists
+            albums are exempt. <strong>0 = off</strong> (the default). 0&ndash;72.
+          </div>
+        </div>
+
+        <div className="field mt-4">
+          <Label>Minimum track length (seconds)</Label>
+          <Input
+            type="number" min={0} max={PICKER_MIN_TRACK_LENGTH_BOUNDS.max} step={1}
+            value={form.picker.minTrackLengthSeconds}
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              setForm(f => ({ ...f, picker: { ...f.picker, minTrackLengthSeconds: e.target.value } }))}
+            placeholder="0"
+            className="max-w-[200px]"
+          />
+          <div className="field-hint">
+            The shortest a track can be to get picked, on both selection paths and the
+            offline fallback playlist. A show can set its own; listener requests are
+            always exempt. <strong>0 = off</strong> (the default). A non-zero value must
+            be at least {data?.values?.minTrackSeconds ?? 30}s.
+          </div>
+        </div>
       </Card>
 
       <Card title="Pause-and-talk" sub={`${form.pauseTalkMinSeconds}s minimum`}>

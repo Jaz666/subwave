@@ -67,8 +67,8 @@ export const SECTIONS = [
   // frame the service-specific configuration which follows.
   {
     id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
-    hint: 'talk placement · prompt memory', icon: MessageCircle,
-    formKeys: ['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour'],
+    hint: 'track selection · talk placement', icon: MessageCircle,
+    formKeys: ['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'llm', 'picker'],
   },
   {
     // One-field setup for the hosted DJ Brain: writes both `llm` and
@@ -82,11 +82,7 @@ export const SECTIONS = [
   {
     id: 'llm', group: 'the dj', label: 'LLM provider',
     hint: 'model routing', icon: Cpu,
-    // `picker` rides this section because its two controls (album cooldown,
-    // minimum track length) are edited on this card and saved by the same
-    // PATCH — without it here the section's dirty dot and save bar are blind
-    // to a change the operator just made.
-    formKeys: ['llm', 'picker'],
+    formKeys: ['llm'],
   },
   {
     id: 'tts', group: 'the dj', label: 'TTS voice',
