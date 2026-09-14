@@ -51,6 +51,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
       llm: {
         trackSelection: form.llm.trackSelection,
         shortlistPasses: form.llm.shortlistPasses,
+        requestMatching: form.llm.requestMatching,
         discoverySteps: form.llm.discoverySteps,
         agentTimeoutMs: form.llm.agentTimeoutMs,
         // Compatibility bridge: until Requests and Skills gain their own
@@ -99,6 +100,34 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
               </>
             )}
           </p>
+        </div>
+      </Card>
+
+      <Card title="Request matching" sub={form.llm.requestMatching === 'agentic' ? 'Agent-assisted' : 'Direct'}>
+        <div className="field">
+          <Label>How listener requests are matched</Label>
+          <Seg
+            accent
+            value={form.llm.requestMatching}
+            options={[
+              { id: 'direct', label: 'Direct matching', title: 'Fast, tool-free matching for straightforward requests' },
+              { id: 'agentic', label: 'Agent-assisted', title: 'Uses music-search tools for detailed or compound requests' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              llm: { ...f.llm, requestMatching: v as 'agentic' | 'direct' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Direct matching covers the majority of artist, title, genre and simple-mood requests.
+            Agent-assisted matching can interpret more detailed or compound requests, but needs a
+            tool-capable model and may take longer or use more LLM resources.
+          </p>
+          {form.llm.trackSelection === 'shortlist' && form.llm.requestMatching === 'agentic' && (
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+              Track Shortlist remains tool-free. This setting affects listener requests only.
+            </p>
+          )}
         </div>
       </Card>
 

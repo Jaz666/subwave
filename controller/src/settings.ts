@@ -315,6 +315,10 @@ const parsedIntIn = (
   return Number.isFinite(n) ? Math.min(bounds.max, Math.max(bounds.min, n)) : def;
 };
 
+// Unlike Agentic discoverySteps, zero has no useful meaning for controller-led
+// shortlist construction: one pass is the smallest real shortlist.
+const clampShortlistPasses = (v: unknown, def: number) => intIn(v, def, 1, 5);
+
 export async function load() {
   const cached = peek();
   if (cached) return cached;
@@ -954,7 +958,9 @@ export async function load() {
           : DEFAULTS.llm.pickerAgent,
       trackSelection:
         stored.llm?.trackSelection === 'shortlist' ? 'shortlist' : DEFAULTS.llm.trackSelection,
-      shortlistPasses: clampDiscoverySteps(stored.llm?.shortlistPasses, DEFAULTS.llm.shortlistPasses),
+      shortlistPasses: clampShortlistPasses(stored.llm?.shortlistPasses, DEFAULTS.llm.shortlistPasses),
+      requestMatching:
+        stored.llm?.requestMatching === 'direct' ? 'direct' : DEFAULTS.llm.requestMatching,
       // Clamped to [0, 1000] (≤ the 2500-entry sidecar cap); pre-field
       // settings.json picks up the config/env-seeded default.
       noRepeatWindow: clampNoRepeatWindow(stored.llm?.noRepeatWindow, DEFAULTS.llm.noRepeatWindow),
@@ -1931,7 +1937,10 @@ export async function update(patch) {
       next.llm.trackSelection = l.trackSelection === 'shortlist' ? 'shortlist' : 'agentic';
     }
     if (l.shortlistPasses !== undefined) {
-      next.llm.shortlistPasses = clampDiscoverySteps(Number(l.shortlistPasses), next.llm.shortlistPasses);
+      next.llm.shortlistPasses = clampShortlistPasses(Number(l.shortlistPasses), next.llm.shortlistPasses);
+    }
+    if (l.requestMatching !== undefined) {
+      next.llm.requestMatching = l.requestMatching === 'direct' ? 'direct' : 'agentic';
     }
     if (l.noRepeatWindow !== undefined) {
       next.llm.noRepeatWindow = clampNoRepeatWindow(Number(l.noRepeatWindow), next.llm.noRepeatWindow);

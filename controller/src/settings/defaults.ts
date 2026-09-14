@@ -439,6 +439,9 @@ export const DEFAULTS = {
     // Native discovery passes. Kept separate from agent discoverySteps: the
     // latter is a tool-loop budget, while this is a controller source budget.
     shortlistPasses: 3,
+    // Kept independent from Track selection: requests are the one place an
+    // operator may deliberately retain tool use beside a tool-free shortlist.
+    requestMatching: 'agentic',
     // The picker never re-airs any of the last N DISTINCT plays. Non-relaxable
     // (survives the filterPickerCandidates starvation cascade), which closes the
     // hole where a thin mood cluster let the cascade re-serve a just-played song.
