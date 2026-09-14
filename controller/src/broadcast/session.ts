@@ -120,10 +120,11 @@ const PERSIST_DEBOUNCE_MS = 1000;
 
 let _session: Session | null = null;
 let _writeTimer: NodeJS.Timeout | null = null;
-// A queued handoff survives a restart in session.json, while its WAVs do not.
-// This flag lets pendingHandoff() offer that durable record for one re-render
-// only after recovery; a live process already has the queue entry and must not
-// create a duplicate.
+// A queued handoff survives a restart in session.json. queue.json separately
+// snapshots the rendered WAV paths and their absolute deadline; this flag lets
+// pendingHandoff() offer the durable session record for one re-render after
+// recovery only when queue recovery cannot reclaim those clips. A live process
+// already has the queue entry and must not create a duplicate.
 let _resumedQueuedHandoff = false;
 
 function mintId() {
@@ -407,7 +408,8 @@ export function markHandoffAired() {
 }
 
 // The voice chain accepted a handoff pair, but its live-edge marker has not
-// fired. This is durable so a controller restart can regenerate the pair;
+// fired. This is durable so a controller restart can reclaim the rendered pair
+// from queue.json, or regenerate it if that manifest/audio is unavailable;
 // pendingHandoff() intentionally hides it during this process because queue.ts
 // still owns the original rendered clips.
 export function markHandoffQueued() {
@@ -639,10 +641,11 @@ export async function recover(ctx: SessionContext): Promise<Session> {
       }
       // The restart happened after the station clock crossed the boundary, so
       // the stored outgoing-session key no longer matches. Preserve the
-      // boundary record on the fresh incoming session: an armed/queued pair is
-      // regenerated because its WAVs lived only in memory, while an aired pair
-      // transfers its programme and covered-intro stamp without reopening the
-      // show.
+      // boundary record on the fresh incoming session: an armed pair remains
+      // eligible to render, while a queued pair is first offered to queue.json
+      // recovery and falls back to regeneration if its manifest/audio is gone.
+      // An aired pair transfers its programme and covered-intro stamp without
+      // reopening the show.
       if (stored?.boundaryHandoff
           && stored.boundaryHandoff.targetKey === sessionKeyFor(ctx)) {
         const next = start(ctx, buildHandoff(stored as Session));
