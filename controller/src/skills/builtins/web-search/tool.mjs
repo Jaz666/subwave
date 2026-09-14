@@ -1,5 +1,6 @@
-// Web search — something recent about the on-air artist (release, tour, press),
-// or whatever the segment director asks for via the optional `query` input.
+// Web search — something recent about the on-air artist (release, tour, press).
+// The direct runtime supplies `{}`, so the artist-derived default below is the
+// live query path; `inputs` remains only as legacy package metadata.
 // `ready` gates the whole skill on a configured search provider, so it's never
 // even offered when search is unavailable.
 export const description = 'Search the web. Pass a query to dig into something specific (the track, an event, a topic worth a line), or pass null to default to recent news about the artist currently on air.';
@@ -39,8 +40,8 @@ export default async function searchArtistNews(ctx, state, services, config, inp
   let results = data.results || [];
   // On the default artist query we know what the results were supposed to be
   // about, so anything that never names the artist is dropped before the DJ
-  // ever sees it. A custom query is the agent's own wording — there is no
-  // subject to check it against, so its results pass through as before.
+  // ever sees it. The custom-query branch remains for legacy direct callers;
+  // there is no subject to check it against, so those results pass through.
   if (!custom) results = results.filter(r => mentionsArtist(`${r.title || ''} ${r.content || ''}`, artist));
   const sources = results
     .slice(0, 3)

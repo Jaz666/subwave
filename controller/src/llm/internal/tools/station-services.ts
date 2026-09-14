@@ -1,8 +1,8 @@
-// Station services — the curated facade a skill's data tool (a built-in or an
-// operator's custom tool.mjs) gets to look at the world before the DJ speaks.
-// This is the SINGLE place segment tools reach into the controller's internals
+// Station services — the curated facade a skill's data provider (a built-in or
+// an operator's custom tool.mjs) gets to look at the world before the DJ speaks.
+// This is the SINGLE place Segment providers reach into the controller's internals
 // (web search, the music library, the queue, feeds, durable recall). It is
-// passed as the third argument to every tool fetcher:
+// passed as the third argument to every provider:
 //
 //   export default async (ctx, state, services) => data
 //

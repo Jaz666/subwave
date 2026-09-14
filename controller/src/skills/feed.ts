@@ -151,8 +151,8 @@ export async function fetchHeadlines({ feedUrl, maxItems }: { feedUrl?: string; 
   // (skills/news/SKILL.md `feed:`), so this is not an injection sink — the
   // deadline is about liveness. It runs inside the segment director on the
   // autonomous DJ path, where a hung socket would otherwise park the whole
-  // segment on undici's ~300s default and eat the agent's own 45s budget many
-  // times over. 15s is generous for an RSS document.
+  // segment on undici's ~300s default and eat the LLM writing budget many times
+  // over. 15s is generous for an RSS document.
   const res = await fetchWithTimeout(url, { timeoutMs: 15_000 });
   if (!res.ok) throw new Error(`News feed HTTP ${res.status}`);
   return parseFeed(await res.text(), cap);

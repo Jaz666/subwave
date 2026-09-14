@@ -3,7 +3,7 @@
 // directory under ONE runtime load root, ${STATE_DIR}/skills/<slug>/:
 //
 //   <slug>/
-//     SKILL.md     frontmatter (→ metadata) + body (→ the agent's brief)
+//     SKILL.md     frontmatter (→ metadata) + body (→ the DJ model's brief)
 //     tool.mjs     OPTIONAL: a data fetcher the segment director calls first
 //
 // The seven built-ins are not special at load time: they are *seeded* into
@@ -16,10 +16,10 @@
 //
 // A skill's tool.mjs is the same contract for everyone:
 //   export default async (ctx, state, services, config, input) => data
-//   export const description = '…'   // OPTIONAL: tool description for the agent
+//   export const description = '…'   // OPTIONAL: legacy provider metadata
 //   export const ready = (services) => boolean   // OPTIONAL: gate availability
-//   export const inputs = { query: '…' }   // OPTIONAL: agent-steerable string
-//     params ({ name: description }); validated values arrive as `input`
+//   export const inputs = { query: '…' }   // OPTIONAL: legacy input metadata;
+//     retained for compatibility, but the direct runtime always supplies `{}`
 //   export const requiresData = false   // OPTIONAL: opt out of the grounding
 //     rule — this skill writes a line even when its tool returns nothing
 //     usable (skills/abstain-policy.ts). Default: a skill with a data tool
@@ -257,10 +257,10 @@ export async function discoverSeededKinds(): Promise<Set<string>> {
   return SEEDED_KINDS;
 }
 
-// A tool.mjs `inputs` export declares agent-steerable string parameters:
-// a flat { paramName: 'description for the agent' } object. Sanitised here —
-// only identifier-shaped keys with string descriptions survive, so a malformed
-// export narrows to nothing instead of breaking the tool-call JSON schema.
+// A tool.mjs `inputs` export is formerly agent-steerable parameter metadata. The
+// deterministic runtime preserves it for visibility and compatibility, but
+// always calls providers with their default `{}` input. Sanitised here so only
+// identifier-shaped keys with string descriptions survive.
 const INPUT_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,48}$/;
 function sanitizeToolInputs(raw: any): Record<string, string> | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
@@ -303,8 +303,8 @@ async function loadToolModule(dir: string): Promise<{ fn: any; description?: str
   };
 }
 
-// The agent-facing tool name for a skill. One spelling, shared by the tool.mjs
-// path and the generic feed path.
+// The stable provider name for a skill. One spelling, shared by the tool.mjs
+// path and the generic feed path for logs and compatibility metadata.
 function toolNameFor(name: string): string {
   return `skill_${name.replace(/-/g, '_')}`;
 }
@@ -338,7 +338,7 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
   }
   // A seeded built-in always ships a brief; an operator skill must supply one.
   if (!seeded && !body) {
-    queue.log('error', `[skills] "${slug}" rejected — SKILL.md body (the agent's brief) is empty`);
+    queue.log('error', `[skills] "${slug}" rejected — SKILL.md body (the DJ model's brief) is empty`);
     return null;
   }
 
@@ -404,11 +404,13 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
     cap.toolName = toolNameFor(name);
     cap.toolDesc = (toolMod.description || data.toolDescription || '').trim()
       || `Fetch live data for the ${label} segment before speaking. Returns { available: false } when there is nothing fresh worth airing.`;
-    // Optional agent-steerable parameters ({ name: description }, strings
-    // only) — becomes the tool's input schema in llm/segment-tools.js and is
-    // handed to toolFn as its 5th argument. Absent → zero-arg tool, the
-    // historical shape.
+    // Kept so the catalogue can flag an imported legacy skill. The direct
+    // runtime always calls toolFn with `{}` as its fifth argument.
     cap.toolInputs = toolMod.inputs;
+    if (toolMod.inputs) {
+      cap.legacyInputs = Object.keys(toolMod.inputs);
+      queue.log('warn', `[skills] "${slug}" declares legacy tool.mjs inputs (${cap.legacyInputs.join(', ')}) — the deterministic Segment runtime calls it with {}. Move defaults into the tool or configure them in SKILL.md.`);
+    }
     // Operator knobs travel with the tool, not the kind — a duplicated skill
     // copies tool.mjs and keeps its settings form (#1300).
     cap.configFields = toolMod.configFields || [];

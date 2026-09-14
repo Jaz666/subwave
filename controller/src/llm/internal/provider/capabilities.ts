@@ -223,9 +223,9 @@ export function gatedMaxStepsFor(cfg: any): number {
 }
 
 // The budget in force for ONE djAgent run. followProvider is the agent's own
-// opt-in (providerDiscoveryBudget); every other caller keeps the historical
-// single cornered step, because a caller's pinned cap can itself be load-bearing
-// (the segment director's maxSteps: 2 in skills/_agent.ts).
+// opt-in (providerDiscoveryBudget); every other agent caller keeps the
+// historical single cornered step. Segment writing is not an agent caller and
+// therefore never consults this budget.
 export function runDiscoverySteps(cfg: any, followProvider: boolean): number {
   return followProvider ? discoveryStepsFor(cfg) : DISCOVERY_STEPS_MIN;
 }

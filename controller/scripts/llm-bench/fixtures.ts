@@ -212,8 +212,8 @@ export const SFX_CATALOG = [
 ];
 
 // Capability fixtures shaped like skills/loader.js caps — toolFn returns the
-// canned payload so both the tool-loop director and fetchSegmentData see the
-// same data a real skill would produce.
+// canned payload so fetchSegmentData sees the same data a real skill would
+// produce.
 export function weatherCap(data: any = WEATHER_FRESH) {
   return {
     kind: 'weather', skill: 'weather', label: 'Weather', cooldownMs: 0, seeded: true,

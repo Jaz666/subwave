@@ -1,6 +1,6 @@
-// Web search helper — backs the `searchArtistNews` segment tool (llm/
-// segment-tools.js). There is no standalone "web-search skill" object — the
-// segment-director agent (skills/_agent.js) decides when artist news airs.
+// Web search helper used by the web-search skill's direct data provider. The
+// segment director (skills/_agent.js) decides when artist news is eligible,
+// fetches it once, and supplies the result to the structured writer.
 //
 // Four backends, chosen via settings.search.provider:
 //   - duckduckgo (default) — DuckDuckGo's Instant Answer API. Free, no key,

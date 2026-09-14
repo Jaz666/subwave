@@ -623,9 +623,9 @@ export const DEFAULTS = {
       loop: true,
     },
   },
-  // When disabled, the segment-director agent is never shown the effect
-  // catalogue, so it stops garnishing spoken breaks with stingers. The files stay
-  // on disk either way.
+  // When disabled, the direct Segment writer is never shown the effect catalogue,
+  // so it stops garnishing spoken breaks with stingers. The files stay on disk
+  // either way.
   sfx: {
     enabled: true,
   },

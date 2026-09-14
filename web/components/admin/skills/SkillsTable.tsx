@@ -56,8 +56,7 @@ export function SkillsTable({
           <span className="truncate font-extrabold text-ink">{s.label || s.name}</span>
           {s.custom && <Pill className="text-[8px]">custom</Pill>}
           {s.cohosts && <MetaChip accent>co-hosted</MetaChip>}
-          {/* The card carries the full V3Alert; the table just flags it and the
-              guidance stays one click away in the edit sheet. */}
+          {s.warning && <MetaChip accent>review needed</MetaChip>}
           {s.ready === false && (
             <MetaChip className="border-[var(--danger)] text-[var(--danger)]">needs key</MetaChip>
           )}

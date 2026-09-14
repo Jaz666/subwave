@@ -1,7 +1,7 @@
 // Pins for the feed parser (src/skills/feed.ts). The feed URL is operator
 // input — anything typed into ANY skill's `feed:` field — and a feed that
 // doesn't parse fails SILENTLY (no items, the beat just never airs), so the
-// dialects below are the contract. The generated tool that consumes them is
+// dialects below are the contract. The generated provider that consumes them is
 // pinned separately, in scripts/skill-feed-tool.test.ts.
 //
 // Written against node:test, so `npm test -- feed-parse` reports per-assertion

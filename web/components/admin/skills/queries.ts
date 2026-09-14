@@ -28,6 +28,7 @@ export interface SkillLike {
   label?: string;
   custom?: boolean;
   enabled?: boolean;
+  warning?: string | null;
   cooldownMs?: number;
   cohosts?: boolean;
 }

@@ -1,5 +1,5 @@
 // Pins skills/abstain-policy.ts and the surfaces that consume it — the forced
-// segment schema/prompt, the autonomous pool-mode director (skills/_agent.ts),
+// segment schema/prompt, the autonomous direct director (skills/_agent.ts),
 // and the web-search built-in's own relevance filter (issues #1412/#1446).
 //
 // The bug: a forced skill run (Run-now button, per-skill cron, programme
@@ -33,6 +33,7 @@ import { join } from 'node:path';
 const STATE_DIR = mkdtempSync(join(tmpdir(), 'skill-abstain-'));
 process.env.STATE_DIR = STATE_DIR;
 const DRY_WELL_ATTEMPTS = join(STATE_DIR, 'dry-well-attempts.txt');
+const OWN_MATERIAL_ATTEMPTS = join(STATE_DIR, 'own-material-attempts.txt');
 
 // Two skills on disk for the end-to-end run below: one whose data tool reports
 // nothing usable, and one that reports nothing usable but declares it writes its
@@ -49,11 +50,17 @@ export default async () => {
   return { available: false };
 };
 `);
-writeSkill('own-material', 'export const requiresData = false;\nexport default async () => ({ available: false });\n');
+writeSkill('own-material', `import { appendFileSync } from 'node:fs';
+export const requiresData = false;
+export default async () => {
+  appendFileSync(${JSON.stringify(OWN_MATERIAL_ATTEMPTS)}, 'attempt\\n');
+  throw new Error('optional source offline');
+};
+`);
 
 const { requiresGrounding, unusableDataReason, standDownReason, declaredBool } =
   await import('../src/skills/abstain-policy.js');
-const { agenticTick, forcedSchema, forcedSystem, runCapability } = await import('../src/skills/_agent.js');
+const { segmentTick, forcedSchema, forcedSystem, runCapability } = await import('../src/skills/_agent.js');
 const { queue } = await import('../src/broadcast/queue.js');
 const webSearch = (await import('../src/skills/builtins/web-search/tool.mjs')).default;
 
@@ -229,8 +236,8 @@ test('the filter is word-boundary, not substring', async () => {
 test('a forced run on empty data stands down without ever calling the model', async () => {
   // The whole point: no LLM is configured in this test, and none is reached.
   // A model call here would throw (or worse, on a real station, invent) — the
-  // stand-down happens on the fetched data, before generation. Pool mode is
-  // the path with no tool loop, so this pins the branch that decides in code.
+  // stand-down happens on the fetched data, before generation, so this pins the
+  // direct branch that decides in code.
   const settings = await import('../src/settings.js');
   const { loadSkills } = await import('../src/skills/loader.js');
   await settings.load();
@@ -243,10 +250,12 @@ test('a forced run on empty data stands down without ever calling the model', as
   assert.match(String(run.reason), /nothing fresh/);
 });
 
-test('pool mode skips generation and backs off when grounded data is unavailable', async () => {
+test('the direct runtime skips generation and backs off when grounded data is unavailable', async () => {
   const settings = await import('../src/settings.js');
   await settings.update({
-    llm: { pickerAgent: false, provider: 'openai', apiKey: '', agentTimeoutMs: 5_000 },
+    // pickerAgent stays enabled to prove Segments no longer branch on it. It
+    // still controls music picking elsewhere.
+    llm: { pickerAgent: true, provider: 'openai', apiKey: '', agentTimeoutMs: 5_000 },
     skills: { enabled: { 'dry-well': true } },
     personas: settings.get().personas.map((p: { id: string }, i: number) =>
       (i === 0 ? { ...p, frequency: 'aggressive', djMode: false } : p)),
@@ -258,7 +267,7 @@ test('pool mode skips generation and backs off when grounded data is unavailable
   const before = attempts();
   queue.djLog = [];
 
-  await agenticTick({ time: {}, clock: {} });
+  await segmentTick({ time: {}, clock: {} });
 
   assert.equal(attempts(), before + 1, 'the first tick fetches the selected skill once');
   assert.ok(
@@ -267,12 +276,86 @@ test('pool mode skips generation and backs off when grounded data is unavailable
     'the booth log exposes the pre-LLM skip and selected skill',
   );
   assert.ok(
-    !queue.djLog.some(e => e.kind === 'error' && e.message.startsWith('Segment agent failed:')),
+    !queue.djLog.some(e => e.kind === 'error' && e.message.startsWith('Segment director failed:')),
     'unavailable source data never reaches the LLM failure path',
   );
 
-  await agenticTick({ time: {}, clock: {} });
+  await segmentTick({ time: {}, clock: {} });
   assert.equal(attempts(), before + 1, 'the unavailable skill is backed off on the next scheduler tick');
+});
+
+test('the direct runtime still offers free generation when an optional provider fails', async () => {
+  const settings = await import('../src/settings.js');
+  await settings.update({
+    llm: {
+      pickerAgent: true,
+      provider: 'openai-compatible',
+      model: 'fixture-model',
+      baseUrl: 'http://127.0.0.1:9/v1',
+      fallback: { enabled: false },
+    },
+    skills: { enabled: { 'dry-well': false, 'own-material': true } },
+  });
+
+  const attempts = () => existsSync(OWN_MATERIAL_ATTEMPTS)
+    ? readFileSync(OWN_MATERIAL_ATTEMPTS, 'utf8').trim().split('\n').filter(Boolean).length
+    : 0;
+  const before = attempts();
+  const modelRequests: any[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body || '{}'));
+    modelRequests.push(body);
+    return new Response(JSON.stringify({
+      id: 'chatcmpl-own-material',
+      object: 'chat.completion',
+      created: 1,
+      model: 'fixture-model',
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: 'call_own_material',
+            type: 'function',
+            function: {
+              name: 'emit',
+              arguments: JSON.stringify({
+                reason: 'The optional source failed and this moment needs no fallback.',
+                air: false,
+                text: '',
+                sfx: null,
+              }),
+            },
+          }],
+        },
+        finish_reason: 'tool_calls',
+      }],
+      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+
+  queue.djLog = [];
+  try {
+    await segmentTick({ time: {}, clock: {} });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  assert.equal(attempts(), before + 1, 'the optional provider is tried once');
+  assert.equal(modelRequests.length, 1, 'provider failure falls through to the one structured writing call');
+  const requestText = JSON.stringify(modelRequests[0]);
+  assert.match(requestText, /Say something about own-material/);
+  assert.doesNotMatch(requestText, /optional source offline/,
+    'a failed optional source is omitted instead of becoming false grounding');
+  assert.doesNotMatch(requestText, /Source data for this segment/,
+    'brief-only generation is not told to write from an error envelope');
+  assert.ok(
+    !queue.djLog.some(e => e.kind === 'scheduler'
+      && e.message.includes('[segment] own-material → unavailable → skipped before LLM')),
+    'an opted-out skill is not put on unavailable-source backoff',
+  );
 });
 
 test("a skill's own requiresData export survives the loader", async () => {
