@@ -48,6 +48,16 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         recapMinutes: Number(form.djBehaviour.recapMinutes),
         recapChars: Number(form.djBehaviour.recapChars),
       },
+      llm: {
+        trackSelection: form.llm.trackSelection,
+        shortlistPasses: form.llm.shortlistPasses,
+        discoverySteps: form.llm.discoverySteps,
+        agentTimeoutMs: form.llm.agentTimeoutMs,
+        // Compatibility bridge: until Requests and Skills gain their own
+        // choices, selecting the established Agentic path retains their
+        // existing tool capability as well.
+        pickerAgent: form.llm.trackSelection === 'agentic',
+      },
     });
   };
 
@@ -90,6 +100,69 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             )}
           </p>
         </div>
+      </Card>
+
+      <Card title="Track selection" sub={form.llm.trackSelection === 'agentic' ? 'Agentic Tools' : 'Track Shortlist'}>
+        <div className="field">
+          <Label>How the DJ finds its next track</Label>
+          <Seg
+            accent
+            value={form.llm.trackSelection}
+            options={[
+              { id: 'agentic', label: 'Agentic Tools', title: 'The DJ explores the library with its tools before choosing' },
+              { id: 'shortlist', label: 'Track Shortlist', title: 'The controller builds eligible choices, then the DJ selects from them' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              llm: { ...f.llm, trackSelection: v as 'agentic' | 'shortlist' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Both routes apply the same show rules, recency protections, requests and Musical Leanings.
+            Agentic Tools suit an open-ended, exploratory process. Track Shortlist is a bounded,
+            tool-free route that can suit local models and cloud stations reducing LLM work.
+          </p>
+        </div>
+
+        {form.llm.trackSelection === 'agentic' ? (
+          <>
+            <div className="field mt-5">
+              <Label>Agent deadline (seconds)</Label>
+              <Input
+                type="number" min={5} max={300} step={5}
+                value={Math.round(form.llm.agentTimeoutMs / 1000)}
+                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, agentTimeoutMs: Number(e.target.value) * 1000 } }))}
+                className="max-w-[200px]"
+              />
+              <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+                How long an Agentic pick may run before the station uses its safe fallback. 5–300 seconds.
+              </p>
+            </div>
+            <div className="field mt-5">
+              <Label>Discovery rounds per pick</Label>
+              <Input
+                type="number" min={0} max={5} step={1} value={form.llm.discoverySteps}
+                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, discoverySteps: Number(e.target.value) } }))}
+                className="max-w-[200px]"
+              />
+              <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+                How many library searches the agent may make before choosing. Zero follows the provider default.
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="field mt-5">
+            <Label>Shortlist passes</Label>
+            <Input
+              type="number" min={1} max={5} step={1} value={form.llm.shortlistPasses}
+              onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, shortlistPasses: Number(e.target.value) } }))}
+              className="max-w-[200px]"
+            />
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+              How many controller-led discovery passes build the shortlist before the DJ chooses one eligible track.
+            </p>
+          </div>
+        )}
       </Card>
 
       <Card title="Pause-and-talk" sub={`${form.pauseTalkMinSeconds}s minimum`}>
@@ -261,7 +334,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'llm']}
       />
     </>
   );

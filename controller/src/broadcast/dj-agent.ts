@@ -59,7 +59,8 @@ import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
-import { replayFixtureTrace } from '../music/shortlist.js';
+import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
+import { djPick } from '../music/dj-pick.js';
 import type { Persona } from './queue/types.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
@@ -299,21 +300,64 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     excludedIds,
   });
 
-  const run = await pickerAgent.run({
-    messages: session.windowMessages(),
-    scope,
-    showAt,
-  });
-  const { steps, toolCalls, extras } = run;
-  // One factual, redacted record supplies faithful replay fixtures for native
-  // shortlisting. It intentionally excludes the prompt and model response.
-  logEvent('picker.replayTrace', replayFixtureTrace({
-    currentTrack: current,
-    show: activeShow,
-    scope,
-    toolCalls,
-  }));
-  let object = run.object;
+  const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
+  let steps: number;
+  let toolCalls: any[];
+  let extras: { seen: Map<string, any> };
+  let object: any;
+  if (useShortlist) {
+    // This route builds and executes the controller's source plan directly.
+    // It deliberately never instantiates the tool-loop agent or a tool schema.
+    const shortlist = await buildShortlist({
+      scope,
+      currentTrackId: pickAnchor?.id ?? null,
+      discoveryPasses: settings.get().llm?.shortlistPasses ?? 3,
+      moods: activeShow?.moods,
+      energies: activeShow?.energies,
+    });
+    steps = shortlist.sourceRuns.length;
+    toolCalls = shortlist.sourceRuns;
+    extras = { seen: new Map(shortlist.candidates.map((candidate) => [candidate.id, candidate])) };
+    logEvent('shortlist.built', {
+      candidates: shortlist.uniqueCandidates,
+      sourceRuns: shortlist.sourceRuns,
+      elapsedMs: shortlist.elapsedMs,
+    });
+    if (!shortlist.candidates.length) {
+      const failure = classifyPickFailure({
+        pickedId: null,
+        seedId: pickAnchor?.id ?? null,
+        candidates: 0,
+        toolCalls: shortlist.sourceRuns.length,
+      });
+      throw Object.assign(new Error(failure.message), { pickFailure: failure });
+    }
+    const selection = await djPick({
+      candidates: shortlist.candidates,
+      showAt,
+      playlistResolved: !!playlistTracks?.length,
+    });
+    object = { ...selection, reason: selection.selectionReason };
+    logEvent('shortlist.selected', { id: selection.id, candidates: shortlist.uniqueCandidates });
+  } else {
+    const run = await pickerAgent.run({
+      messages: session.windowMessages(),
+      scope,
+      showAt,
+    });
+    steps = run.steps;
+    toolCalls = run.toolCalls;
+    extras = run.extras;
+    // One factual, redacted record supplies faithful replay fixtures for native
+    // shortlisting. It intentionally excludes the prompt and model response.
+    logEvent('picker.replayTrace', replayFixtureTrace({
+      currentTrack: pickAnchor,
+      show: activeShow,
+      scope,
+      toolCalls,
+    }));
+    object = run.object;
+  }
 
   let song = object?.id ? extras.seen.get(object.id) : null;
 
@@ -815,12 +859,13 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
 
     // `!cheap`: in the soft budget tier we skip the multi-step agent tool-loop
     // and go straight to the one-call pool picker below to stretch the budget.
-    if (settings.get().llm?.pickerAgent && !cheap && !breakerOpen()) {
+    const shortlistSelected = settings.get().llm?.trackSelection === 'shortlist';
+    if (!cheap && (shortlistSelected || (settings.get().llm?.pickerAgent && !breakerOpen()))) {
       try {
         const queued = await pickViaAgent(queue, ctx, {
           wantLink, audioWaypoint, pickAnchor, showAt, rankTarget,
         });
-        breakerSuccess();
+        if (!shortlistSelected) breakerSuccess();
         if (queued) return;
         // The agent produced a valid pick but it was already queued/on-air, so
         // push() dropped it. The agent itself is healthy — don't trip the
@@ -828,6 +873,11 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         // if even the pool can only find an already-queued track).
         queue.log('picker', 'agent pick already queued — falling back to pool');
       } catch (err) {
+        if (shortlistSelected) {
+          queue.log('error', `Track Shortlist pick failed: ${(err as Error).message} — falling back to pool`);
+          await pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt }, rankTarget, audioWaypoint);
+          return;
+        }
         // A run that made at least one real discovery call but ended with no
         // observed candidates is deliberately breaker-exempt (#1247). The empty
         // set proves this run cannot validate a pick; it does not by itself

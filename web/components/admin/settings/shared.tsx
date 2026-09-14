@@ -174,6 +174,8 @@ export interface LlmForm {
   reasoning: boolean;
   toolChoice: string;
   pickerAgent: boolean;
+  trackSelection: 'agentic' | 'shortlist';
+  shortlistPasses: number;
   noRepeatWindow: string;
   artistVarietyWindow: string;
   requestWebResolve: boolean;

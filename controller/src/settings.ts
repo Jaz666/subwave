@@ -952,6 +952,9 @@ export async function load() {
         typeof stored.llm?.pickerAgent === 'boolean'
           ? stored.llm.pickerAgent
           : DEFAULTS.llm.pickerAgent,
+      trackSelection:
+        stored.llm?.trackSelection === 'shortlist' ? 'shortlist' : DEFAULTS.llm.trackSelection,
+      shortlistPasses: clampDiscoverySteps(stored.llm?.shortlistPasses, DEFAULTS.llm.shortlistPasses),
       // Clamped to [0, 1000] (≤ the 2500-entry sidecar cap); pre-field
       // settings.json picks up the config/env-seeded default.
       noRepeatWindow: clampNoRepeatWindow(stored.llm?.noRepeatWindow, DEFAULTS.llm.noRepeatWindow),
@@ -1923,6 +1926,12 @@ export async function update(patch) {
     applyInlineKey(next.llm, next.llm.provider, l.apiKey);
     if (l.pickerAgent !== undefined) {
       next.llm.pickerAgent = !!l.pickerAgent;
+    }
+    if (l.trackSelection !== undefined) {
+      next.llm.trackSelection = l.trackSelection === 'shortlist' ? 'shortlist' : 'agentic';
+    }
+    if (l.shortlistPasses !== undefined) {
+      next.llm.shortlistPasses = clampDiscoverySteps(Number(l.shortlistPasses), next.llm.shortlistPasses);
     }
     if (l.noRepeatWindow !== undefined) {
       next.llm.noRepeatWindow = clampNoRepeatWindow(Number(l.noRepeatWindow), next.llm.noRepeatWindow);

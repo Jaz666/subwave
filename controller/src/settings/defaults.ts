@@ -433,6 +433,12 @@ export const DEFAULTS = {
     // over the session chat history. Off: the stateless pool picker runs instead,
     // still inside a session and still logged.
     pickerAgent: true,
+    // Agentic Tools remains the upgrade-safe default. Track Shortlist performs
+    // controller-led discovery followed by one bounded structured selection.
+    trackSelection: 'agentic',
+    // Native discovery passes. Kept separate from agent discoverySteps: the
+    // latter is a tool-loop budget, while this is a controller source budget.
+    shortlistPasses: 3,
     // The picker never re-airs any of the last N DISTINCT plays. Non-relaxable
     // (survives the filterPickerCandidates starvation cascade), which closes the
     // hole where a thin mood cluster let the cascade re-serve a just-played song.

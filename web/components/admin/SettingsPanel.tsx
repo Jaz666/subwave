@@ -528,6 +528,8 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         reasoning: !!v.llm?.reasoning,
         toolChoice: v.llm?.toolChoice === 'auto' ? 'auto' : 'required',
         pickerAgent: !!v.llm?.pickerAgent,
+        trackSelection: v.llm?.trackSelection === 'shortlist' ? 'shortlist' : 'agentic',
+        shortlistPasses: typeof v.llm?.shortlistPasses === 'number' ? v.llm.shortlistPasses : 3,
         // Fallback must track the controller's default (config.ts, 250): a
         // settings.json written before the field existed omits the key, and
         // seeding the OLD default here means opening Settings and saving any
