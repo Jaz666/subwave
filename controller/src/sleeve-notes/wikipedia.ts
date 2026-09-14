@@ -1,9 +1,11 @@
-// Conservative Wikimedia API client for artist-source material. It accepts no
-// page instructions as commands; returned text is untrusted source data for a
-// later, evidence-bounded researcher.
+// Conservative identity-first artist-source client. It accepts no page
+// instructions as commands; returned text is untrusted source data for a later,
+// evidence-bounded researcher.
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 
 const API = 'https://en.wikipedia.org/w/api.php';
+const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
+const MUSICBRAINZ_API = 'https://musicbrainz.org/ws/2';
 const USER_AGENT = 'Subwave Sleeve Notes/1.13 (https://github.com/Jaz666/subwave)';
 const TIMEOUT_MS = 8_000;
 
@@ -39,15 +41,53 @@ export function projectWikipediaArtistDocument(payload: unknown): WikipediaArtis
   };
 }
 
-export async function fetchWikipediaArtistDocument(artistName: string): Promise<WikipediaArtistDocument | null> {
-  const name = artistName.trim();
-  if (!name) return null;
+/** Extract an artist's Wikidata item from MusicBrainz's explicit URL relation. */
+export function wikidataIdFromMusicBrainzArtist(payload: unknown): string | null {
+  const relations = (payload as { relations?: unknown })?.relations;
+  if (!Array.isArray(relations)) return null;
+  for (const relation of relations) {
+    const row = relation as { type?: unknown; url?: { resource?: unknown } };
+    if (row.type !== 'wikidata' || typeof row.url?.resource !== 'string') continue;
+    const match = row.url.resource.match(/(?:wiki\/|entity\/)(Q\d+)(?:$|[?#])/i);
+    if (match) return match[1].toUpperCase();
+  }
+  return null;
+}
+
+/** Read only the canonical English-Wikipedia sitelink from the resolved item. */
+export function englishWikipediaTitleFromWikidata(payload: unknown, wikidataId: string): string | null {
+  const entity = (payload as { entities?: Record<string, { sitelinks?: { enwiki?: { title?: unknown } } }> })
+    ?.entities?.[wikidataId];
+  const title = entity?.sitelinks?.enwiki?.title;
+  return typeof title === 'string' && title.trim() ? title.trim() : null;
+}
+
+export async function fetchWikipediaArtistDocument(musicBrainzArtistId: string): Promise<WikipediaArtistDocument | null> {
+  const artistId = musicBrainzArtistId.trim();
+  if (!artistId) return null;
+  const artistUrl = `${MUSICBRAINZ_API}/artist/${encodeURIComponent(artistId)}?inc=url-rels&fmt=json`;
   const params = new URLSearchParams({
-    action: 'query', format: 'json', generator: 'search', gsrsearch: `"${name}"`,
-    gsrnamespace: '0', gsrlimit: '1', prop: 'extracts|info|revisions',
+    action: 'query', format: 'json', prop: 'extracts|info|revisions',
     inprop: 'url', explaintext: '1', rvprop: 'ids', rvslots: 'main', maxlag: '5',
   });
   try {
+    const artistResponse = await fetchWithTimeout(artistUrl, {
+      timeoutMs: TIMEOUT_MS,
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
+    if (!artistResponse.ok) return null;
+    const wikidataId = wikidataIdFromMusicBrainzArtist(await artistResponse.json());
+    if (!wikidataId) return null;
+    const wikidataResponse = await fetchWithTimeout(`${WIKIDATA_API}?${new URLSearchParams({
+      action: 'wbgetentities', format: 'json', ids: wikidataId, props: 'sitelinks', sitefilter: 'enwiki', origin: '*',
+    })}`, {
+      timeoutMs: TIMEOUT_MS,
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
+    if (!wikidataResponse.ok) return null;
+    const title = englishWikipediaTitleFromWikidata(await wikidataResponse.json(), wikidataId);
+    if (!title) return null;
+    params.set('titles', title);
     const response = await fetchWithTimeout(`${API}?${params}`, {
       timeoutMs: TIMEOUT_MS,
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },

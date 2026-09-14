@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import {
   earliestOriginalYear,
+  dedupeRepeatedArtistCredit,
   needsOriginalYearLookup,
   stripTitleNoise,
   primaryArtist,
@@ -104,6 +105,10 @@ await test('primaryArtist takes the first credit before feat./ft./&/,/x', () => 
   assert.equal(primaryArtist('Latto & Mariah Carey'), 'Latto');
   assert.equal(primaryArtist('KAROL G, Becky G'), 'KAROL G');
   assert.equal(primaryArtist('Taylor Swift'), 'Taylor Swift');
+});
+await test('dedupeRepeatedArtistCredit repairs only an identical repeated local credit', () => {
+  assert.equal(dedupeRepeatedArtistCredit('The KLF & The KLF'), 'The KLF');
+  assert.equal(dedupeRepeatedArtistCredit('Simon & Garfunkel'), 'Simon & Garfunkel');
 });
 
 console.log('needsOriginalYearLookup (enrichment scope, shared with retag):');

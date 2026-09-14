@@ -37,20 +37,25 @@ export class MusicBrainzMatchWorker {
     try {
       console.log(`[sleeve-notes] MusicBrainz match: ${attachment.artist ? `${attachment.artist} — ` : ''}${attachment.title}`);
       repository.markResearchJobRunning(job.id);
+      const requestId = repository.startProviderRequest({ provider: 'musicbrainz', capability: 'match' });
       try {
         const result = await this.lookup.lookup({
           title: attachment.title, artist: attachment.artist, mbid: attachment.musicbrainzRecordingId,
         });
         if (!result) {
+          repository.finishProviderRequest(requestId, 'no-match');
           repository.finishResearchJob(job.id, 'failed');
           console.log(`[sleeve-notes] MusicBrainz no confident match: ${attachment.artist ? `${attachment.artist} — ` : ''}${attachment.title}`);
         }
         else {
+          repository.finishProviderRequest(requestId, 'ready');
           repository.retainCanonicalMusicBrainzMatch(attachment.localTrackId, result);
           repository.finishResearchJob(job.id, 'complete');
           console.log(`[sleeve-notes] MusicBrainz matched: ${result.artist?.name ?? 'Unknown artist'} — ${result.title}`);
         }
       } catch (err: any) {
+        const status = Number(String(err?.message ?? '').match(/HTTP\s+(\d{3})/)?.[1]) || null;
+        repository.finishProviderRequest(requestId, status === 429 ? 'rate-limited' : 'failed', status);
         const delayMs = repository.musicBrainzRetryDelay(job.attempts + 1);
         repository.retryResearchJob(job.id, delayMs);
         console.warn(`[sleeve-notes] MusicBrainz temporarily unavailable; retrying in ${Math.round(delayMs / 60_000)}m (attempt ${job.attempts + 1}): ${err?.message || 'unknown error'}`);
