@@ -26,4 +26,19 @@ assert.match(prompt, /Musical Leanings — Favour patient dub, deep electronic c
 assert.match(prompt, /only to break a close tie/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
 
+const guest = settings.guestEditorialNudgeFromGuests([
+  { id: 'p_f023a4', name: 'Carrie Marshall', musicLean: 'Favour great guitar work and unexpected rock records.' },
+], () => 0);
+assert.deepEqual(guest, {
+  guest: { id: 'p_f023a4', name: 'Carrie Marshall' },
+  musicalLeanings: 'Favour great guitar work and unexpected rock records.',
+});
+assert.equal(
+  settings.guestEditorialNudgeFromGuests([
+    { id: 'p_f023a4', name: 'Carrie Marshall', musicLean: 'Favour great guitar work and unexpected rock records.' },
+  ], () => 0.25),
+  null,
+  'guest influence stays occasional and secondary',
+);
+
 console.log('musical leanings: shared agentic picker context verified');
