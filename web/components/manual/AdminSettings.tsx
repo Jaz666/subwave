@@ -144,9 +144,13 @@ export default function AdminSettings() {
             location the DJ reads from.
           </li>
           <li>
-            <strong>DJ Behaviour</strong> — choose how tracks are selected (Agentic
-            Tools or Track Shortlist), and independently whether requests and segments
-            use direct matching or agent assistance.
+            <strong>Music Selection</strong> — choose how tracks are selected (Agentic
+            Tools or Track Shortlist), and independently whether listener requests use
+            direct matching or agent assistance. It sits just below Music Source.
+          </li>
+          <li>
+            <strong>DJ Behaviour</strong> — configure segments and skills, then the
+            station&rsquo;s show and talk behaviour.
           </li>
           <li>
             <strong>LLM provider</strong> — where the model runs and which model writes
