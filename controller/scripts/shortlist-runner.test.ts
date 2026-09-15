@@ -28,17 +28,35 @@ test('makes a redacted, replayable trace with source arguments and candidate ids
   assert.equal('title' in trace.sourceCalls[0], false);
 });
 
-test('plans the observed journey, strict-show and empty-source lanes without adding sources', () => {
+test('cycles context, continuity, and exploration source lanes without adding sources', () => {
   const journey = planShortlistSources({
     scope: pickerScope({ audioWaypoint: [0.1] }),
     currentTrackId: 'seed', discoveryPasses: 3,
     moods: ['celebratory'], energies: ['high'],
   }, new Set(['tracksTowardJourney', 'tracksByMood', 'tracksThatSoundLikeThis', 'tracksLikeThis']));
   assert.deepEqual(journey, [
-    { source: 'tracksTowardJourney', args: {} },
     { source: 'tracksByMood', args: { mood: 'celebratory', energy: 'high' } },
     { source: 'tracksThatSoundLikeThis', args: { songId: 'seed' } },
+    { source: 'tracksTowardJourney', args: {} },
   ]);
+
+  const rotating = planShortlistSources({
+    scope: pickerScope({ audioWaypoint: [0.1] }),
+    currentTrackId: 'seed', discoveryPasses: 5,
+    moods: ['celebratory'], energies: ['high'],
+  }, new Set([
+    'tracksTowardJourney', 'tracksByMood',
+    'tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs',
+    'deepCuts', 'recentlyAdded', 'starredSongs', 'randomSongs',
+  ]));
+  assert.equal(rotating.length, 5);
+  assert.ok(['tracksTowardJourney', 'tracksByMood'].includes(rotating[0].source));
+  assert.ok(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs'].includes(rotating[1].source));
+  assert.ok(['deepCuts', 'recentlyAdded', 'starredSongs', 'randomSongs'].includes(rotating[2].source));
+  assert.ok(['tracksTowardJourney', 'tracksByMood'].includes(rotating[3].source));
+  assert.ok(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs'].includes(rotating[4].source));
+  assert.notEqual(rotating[0].source, rotating[3].source);
+  assert.notEqual(rotating[1].source, rotating[4].source);
 
   const strictPlaylist = planShortlistSources({
     scope: pickerScope({ playlistTracks: [{ id: 'in-show' }], playlistLock: new Set(['in-show']) }),
@@ -46,7 +64,7 @@ test('plans the observed journey, strict-show and empty-source lanes without add
     moods: ['reflective'], energies: ['low'], explore: true,
   }, new Set(['showPlaylistTracks', 'tracksByMood', 'deepCuts']));
   assert.deepEqual(strictPlaylist.map((call) => call.source), [
-    'showPlaylistTracks', 'tracksByMood', 'deepCuts', 'showPlaylistTracks', 'showPlaylistTracks',
+    'showPlaylistTracks', 'deepCuts', 'deepCuts', 'showPlaylistTracks', 'deepCuts',
   ]);
 
   const empty = planShortlistSources({
@@ -61,15 +79,15 @@ test('plans the observed journey, strict-show and empty-source lanes without add
 });
 
 test('native builder plans from source-owned availability before execution', async () => {
-  // A no-index scope exposes mood but not either similarity source. The builder
-  // must therefore plan a usable mood call rather than logging unavailable
-  // similarity probes just because a current track id exists.
+  // A no-index scope still keeps its usable mood source and an available
+  // exploration source, without logging unavailable similarity probes.
   const result = await buildShortlist({
     scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 3,
     moods: ['calm'], energies: ['low'],
   });
   assert.ok(result.sourceRuns.length > 0);
-  assert.ok(result.sourceRuns.every((run) => run.source === 'tracksByMood'));
+  assert.ok(result.sourceRuns.some((run) => run.source === 'tracksByMood'));
+  assert.ok(result.sourceRuns.every((run) => run.status !== 'unavailable'));
 });
 
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
