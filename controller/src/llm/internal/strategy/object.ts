@@ -59,6 +59,10 @@ export async function djObject({
   temperature = 0.4,
   maxOutputTokens = resolveMaxOutputTokens(MAX_TOKENS_OBJECT),
   kind = 'sdk.djObject',
+  // Callers which perform controller-side work before asking the model to make
+  // the final decision can attach that work to the same Debug entry.  This is
+  // deliberately record metadata, not part of the object returned to callers.
+  telemetry = {},
   leg = undefined,
   // Optional caller-supplied abort signal. No live caller wraps djObject in
   // withDeadline today, so this is inert unless one starts to — kept in the
@@ -155,7 +159,7 @@ export async function djObject({
             // the ring buffer holds only 120 entries so size isn't a concern.
             // (A .slice(0, 500) here used to cut pick reasons mid-sentence in
             // /admin/debug; the durable events.jsonl still caps via cap().)
-            extra: { system, user: prompt, response: JSON.stringify(object) },
+            extra: { system, user: prompt, response: JSON.stringify(object), ...telemetry },
           };
         } catch (err) {
           lastErr = err;

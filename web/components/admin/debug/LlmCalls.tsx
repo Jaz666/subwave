@@ -18,6 +18,29 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
+function callUsesMusicalLeanings(call: { kind?: string; response?: string }): boolean {
+  if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick') return false;
+  try {
+    const response = JSON.parse(call.response || '{}') as {
+      usedMusicalLeanings?: unknown;
+      selectionReason?: unknown;
+      reason?: unknown;
+    };
+    // Older local models can write a Leanings-led reason while incorrectly
+    // returning false for the companion flag. The server reconciles that same
+    // case before it reaches the Booth, so keep this Debug marker truthful.
+    return response.usedMusicalLeanings === true
+      || /\bmusical\s+leanings\b/i.test(String(response.selectionReason ?? response.reason ?? ''));
+  } catch {
+    return false;
+  }
+}
+
+function toolReadout(calls: Array<{ name?: string }> | undefined): string {
+  const names = [...new Set((calls || []).map(call => call.name).filter((name): name is string => !!name))];
+  return names.join(' · ');
+}
+
 function MessageList({ messages }: { messages: Array<{ role?: string; content?: unknown }> }) {
   return (
     // Short exchanges size to content; agent runs (~40 turns) get a bounded,
@@ -229,9 +252,16 @@ export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pau
                 <span className={cn('font-bold', c.ok ? 'text-vermilion' : 'text-[var(--danger)]')}>
                   {c.ok ? '✓' : '✗'}
                 </span>
-                <span className="truncate text-[12px] font-bold">{c.kind}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[12px] font-bold">{c.kind}</span>
+                  {callUsesMusicalLeanings(c) && (
+                    <span className="shrink-0 border border-vermilion/40 bg-vermilion/10 px-1 py-px text-[8px] font-bold tracking-[0.08em] text-vermilion" title="This selection used Musical Leanings">
+                      LEANINGS
+                    </span>
+                  )}
+                </span>
                 <span className="caption text-[10px] whitespace-nowrap">
-                  {c.toolCalls?.length ? `🔧 ${c.toolCalls.length}` : ''}
+                  {c.toolCalls?.length ? `🔧 ${toolReadout(c.toolCalls) || c.toolCalls.length}` : ''}
                   {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}
                 </span>
                 <span className="mono-num text-[11px] text-muted">{c.ms}ms</span>
