@@ -957,7 +957,15 @@ export async function load() {
           ? stored.llm.pickerAgent
           : DEFAULTS.llm.pickerAgent,
       trackSelection:
-        stored.llm?.trackSelection === 'shortlist' ? 'shortlist' : DEFAULTS.llm.trackSelection,
+        stored.llm?.trackSelection === 'shortlist'
+          ? 'shortlist'
+          // `pickerAgent: false` was the retired Candidate Pool setting.  It
+          // represented a controller-led pool plus one final model choice, so
+          // carry those stations forward to its named replacement rather than
+          // presenting Agentic Tools while silently using the old fallback.
+          : stored.llm?.trackSelection === undefined && stored.llm?.pickerAgent === false
+            ? 'shortlist'
+            : DEFAULTS.llm.trackSelection,
       shortlistPasses: clampShortlistPasses(stored.llm?.shortlistPasses, DEFAULTS.llm.shortlistPasses),
       requestMatching:
         stored.llm?.requestMatching === 'direct' ? 'direct' : DEFAULTS.llm.requestMatching,
