@@ -25,6 +25,10 @@ assert.match(shortlistRoute, /djPick\(/, 'Shortlist makes one bounded structured
 assert.doesNotMatch(shortlistRoute, /pickerAgent\.run/, 'Shortlist must not instantiate the picker tool loop');
 assert.match(picker, /shortlistSelectionReason\(song, object\.reason\)/,
   'the final queued shortlist track must validate its own Booth reason');
+assert.match(djAgent, /shortlistRepick \? shortlistPickSchema\(ids\)/,
+  'a shortlist corrective re-pick must use the shortlist selection schema');
+assert.match(djAgent, /prompt: shortlistRepick\s+\? shortlistPickPrompt/,
+  'a shortlist corrective re-pick must use the shortlist prompt');
 
 assert.match(djAgent, /requestMatching !== 'agentic'/,
   'direct request matching must bypass the request tool loop');

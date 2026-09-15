@@ -22,6 +22,9 @@ function comparable(value: unknown): string {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    // Library metadata commonly uses “feat.” while models naturally write
+    // “featuring”. They identify the same credited artist list.
+    .replace(/\bfeaturing\b/g, 'feat')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
