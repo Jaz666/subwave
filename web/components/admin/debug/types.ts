@@ -100,6 +100,7 @@ interface LlmCall {
   shortlistResolution?: {
     track?: { id?: string; title?: string | null; artist?: string | null };
     selectionReason?: string;
+    usedMusicalLeanings?: boolean;
   };
   response?: string;
   /** What the model said INSTEAD of the expected structured output on a failed call.

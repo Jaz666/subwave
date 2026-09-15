@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, resolvedMusicalLeaningsFlag } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -134,7 +134,10 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       artist: track?.artist ?? null,
     };
     shortlistResolution.selectionReason = selectionReason;
-    return { ...outcome, selectionReason, reason: selectionReason };
+    shortlistResolution.usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+      editorialLeaningsForPick(showAt), outcome.usedMusicalLeanings, selectionReason,
+    );
+    return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings: shortlistResolution.usedMusicalLeanings };
   } catch {
     return null;
   }
@@ -572,8 +575,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Leanings informed the choice while returning its diagnostic flag as
     // false. Preserve the natural explanation and make the operator signal
     // truthful when configured Leanings are explicitly named.
-    const usedMusicalLeanings = object.usedMusicalLeanings === true
-      || (editorialLeaningsForPick(showAt) !== '' && /\bmusical\s+leanings\b/i.test(object.reason));
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+      editorialLeaningsForPick(showAt), object.usedMusicalLeanings, object.reason,
+    );
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
