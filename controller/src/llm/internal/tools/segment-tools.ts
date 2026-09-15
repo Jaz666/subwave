@@ -24,16 +24,29 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { buildStationServices } from './station-services.js';
 
-// Stations seeded before the feed-tool migration retain news/tool.mjs. Its
-// historic empty response was `{ headlines: [] }`, which left a grounded skill
-// looking usable and invited Direct runtime to invent a no-news bulletin. Keep
-// that persisted shape compatible with the current `{ available: false }`
-// contract without replacing an operator's skill file.
+// Stations seeded before a built-in tool changes retain their original tool.mjs.
+// Repair known no-evidence shapes here, so an upgrade never has to replace an
+// operator-owned skill file just to recover the Direct runtime's stand-down
+// contract.
 export function normalizeSegmentToolResult(cap: { kind?: unknown } | null | undefined, data: any): any {
   if (String(cap?.kind || '') === 'news'
       && data?.available === undefined
       && Array.isArray(data?.headlines)
       && data.headlines.length === 0) {
+    return { ...data, available: false };
+  }
+  // Older now-playing-dig tools accepted any search snippets as usable even
+  // when none named the current artist. At 09:55 BST this produced an empty
+  // answer plus unrelated results for “Missed the Boat”, then invited the
+  // Direct model to air “I'm not aware of any facts”. A title alone is not a
+  // safe relevance test — generic titles match unrelated pages — but the
+  // exact artist must appear in at least one retained snippet.
+  if (String(cap?.kind || '') === 'now-playing-dig'
+      && data?.available === undefined
+      && !String(data?.answer || '').trim()
+      && typeof data?.artist === 'string'
+      && Array.isArray(data?.sources)
+      && !data.sources.some((source: unknown) => String(source).toLocaleLowerCase().includes(data.artist.toLocaleLowerCase()))) {
     return { ...data, available: false };
   }
   return data;
