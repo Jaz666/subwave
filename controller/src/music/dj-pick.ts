@@ -128,13 +128,25 @@ export async function djPick({
 }): Promise<ShortlistPick> {
   const ids = candidates.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string');
   const toolCalls = shortlistDebugTools(sourceRuns);
+  // The call ring receives this nested object by reference. Populate it once
+  // the chosen id is known so Debug pairs the raw model response with the
+  // controller-resolved track and safe Booth reason.
+  const shortlistResolution: any = {};
   const selection = await djObject({
     system: pickSystem(showAt, playlistResolved, true),
     prompt: shortlistPickPrompt(candidates, editorialLeaningsForPick(showAt)),
     schema: shortlistPickSchema(ids),
     temperature: 0.5,
     kind: 'djShortlistPick',
-    telemetry: { toolCalls, steps: toolCalls.length + 1 },
+    telemetry: { toolCalls, steps: toolCalls.length + 1, shortlistResolution },
   }) as Omit<ShortlistPick, 'usedMusicalLeanings'> & { usedMusicalLeanings?: boolean };
-  return { ...selection, usedMusicalLeanings: selection.usedMusicalLeanings === true };
+  const track = candidates.find((candidate) => candidate.id === selection.id);
+  const selectionReason = usableSelectionReason(shortlistSelectionReason(track, selection.selectionReason), track ?? {});
+  shortlistResolution.track = {
+    id: selection.id,
+    title: track?.title ?? null,
+    artist: track?.artist ?? null,
+  };
+  shortlistResolution.selectionReason = selectionReason;
+  return { ...selection, selectionReason, usedMusicalLeanings: selection.usedMusicalLeanings === true };
 }
