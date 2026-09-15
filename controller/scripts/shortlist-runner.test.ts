@@ -100,6 +100,13 @@ test('shortlist presentation never attaches one track\'s note to another track',
     shortlistSelectionReason(selected, 'Sam Smith — How Do You Sleep? keeps the atmosphere moving.'),
     'Sam Smith — How Do You Sleep? keeps the atmosphere moving.',
   );
+  assert.equal(
+    shortlistSelectionReason(
+      { id: 'gabriel', title: 'Digging in the Dirt', artist: 'Peter Gabriel' },
+      'Peter Gabriel fits well with the current flow, and',
+    ),
+    '“Digging in the Dirt” by Peter Gabriel — fits well with the current flow.',
+  );
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
