@@ -131,6 +131,15 @@ test('an older now-playing dig with only unrelated snippets is unavailable', () 
   });
 });
 
+test('an older artist web-search with only unrelated snippets is unavailable', () => {
+  const data = normalizeSegmentToolResult({ kind: 'web-search' }, {
+    artist: 'Cue', answer: '', sources: ['Queueing etiquette: the latest advice'],
+  });
+  assert.deepEqual(data, {
+    artist: 'Cue', answer: '', sources: ['Queueing etiquette: the latest advice'], available: false,
+  });
+});
+
 test('now-playing dig drops unrelated generic-title results before Direct can see them', async () => {
   const data = await nowPlayingDig({}, {}, {
     nowPlaying: () => ({ artist: 'Modest Mouse', title: 'Missed the Boat' }),

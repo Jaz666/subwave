@@ -35,13 +35,13 @@ export function normalizeSegmentToolResult(cap: { kind?: unknown } | null | unde
       && data.headlines.length === 0) {
     return { ...data, available: false };
   }
-  // Older now-playing-dig tools accepted any search snippets as usable even
-  // when none named the current artist. At 09:55 BST this produced an empty
-  // answer plus unrelated results for “Missed the Boat”, then invited the
-  // Direct model to air “I'm not aware of any facts”. A title alone is not a
-  // safe relevance test — generic titles match unrelated pages — but the
+  // Older now-playing-dig and web-search tools accepted any search snippets as
+  // usable even when none named the current artist. At 09:55 BST this produced
+  // an empty answer plus unrelated results for “Missed the Boat”, then invited
+  // the Direct model to air “I'm not aware of any facts”. A title alone is not
+  // a safe relevance test — generic titles match unrelated pages — but the
   // exact artist must appear in at least one retained snippet.
-  if (String(cap?.kind || '') === 'now-playing-dig'
+  if ((String(cap?.kind || '') === 'now-playing-dig' || String(cap?.kind || '') === 'web-search')
       && data?.available === undefined
       && !String(data?.answer || '').trim()
       && typeof data?.artist === 'string'
