@@ -18,8 +18,11 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean } }): boolean {
-  if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick') return false;
+function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean }; agentPickResolution?: { usedMusicalLeanings?: boolean } }): boolean {
+  if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick' && call.kind !== 'djAgentPick') return false;
+  if (call.agentPickResolution?.usedMusicalLeanings !== undefined) {
+    return call.agentPickResolution.usedMusicalLeanings;
+  }
   if (call.shortlistResolution?.usedMusicalLeanings !== undefined) {
     return call.shortlistResolution.usedMusicalLeanings;
   }
@@ -326,6 +329,14 @@ export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pau
                     preview={[c.shortlistResolution.track.title, c.shortlistResolution.track.artist].filter(Boolean).join(' — ')}
                   >
                     <JsonBlock value={c.shortlistResolution} />
+                  </CallSection>
+                )}
+                {c.agentPickResolution?.track && (
+                  <CallSection
+                    label="verified selection"
+                    preview={[c.agentPickResolution.track.title, c.agentPickResolution.track.artist].filter(Boolean).join(' — ')}
+                  >
+                    <JsonBlock value={c.agentPickResolution} />
                   </CallSection>
                 )}
                 {c.response && (

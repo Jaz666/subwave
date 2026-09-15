@@ -102,6 +102,11 @@ interface LlmCall {
     selectionReason?: string;
     usedMusicalLeanings?: boolean;
   };
+  agentPickResolution?: {
+    track?: { id?: string; title?: string | null; artist?: string | null };
+    reason?: string | null;
+    usedMusicalLeanings?: boolean;
+  };
   response?: string;
   /** What the model said INSTEAD of the expected structured output on a failed call.
    * From the controller's failureDiagnostics(); absent on success (see `response`). */

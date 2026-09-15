@@ -337,6 +337,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   let toolCalls: any[];
   let extras: { seen: Map<string, any> };
   let object: any;
+  let agentPickResolution: any | null = null;
   if (useShortlist) {
     // This route builds and executes the controller's source plan directly.
     // It deliberately never instantiates the tool-loop agent or a tool schema.
@@ -373,10 +374,12 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     object = { ...selection, reason: selection.selectionReason };
     logEvent('shortlist.selected', { id: selection.id, candidates: shortlist.uniqueCandidates });
   } else {
+    agentPickResolution = {};
     const run = await pickerAgent.run({
       messages: session.windowMessages(),
       scope,
       showAt,
+      telemetry: { agentPickResolution },
     });
     steps = run.steps;
     toolCalls = run.toolCalls;
@@ -588,6 +591,16 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     };
     logEvent('shortlist.selected', selectionRecord);
     queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.usedMusicalLeanings ? 'Musical Leanings' : null, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
+  } else if (agentPickResolution) {
+    agentPickResolution.track = {
+      id: song.id,
+      title: song.title ?? null,
+      artist: song.artist ?? null,
+    };
+    agentPickResolution.reason = object.reason ?? null;
+    agentPickResolution.usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+      editorialLeaningsForPick(showAt), object.usedMusicalLeanings, object.reason,
+    );
   }
   if (useShortlist) {
     recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });
