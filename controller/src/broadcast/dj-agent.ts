@@ -60,7 +60,8 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistSelectionReason } from '../music/dj-pick.js';
+import { djPick, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
+import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
 
@@ -346,6 +347,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       candidates: shortlist.candidates,
       showAt,
       playlistResolved: !!playlistTracks?.length,
+      sourceRuns: shortlist.sourceRuns,
     });
     object = { ...selection, reason: selection.selectionReason };
     logEvent('shortlist.selected', { id: selection.id, candidates: shortlist.uniqueCandidates });
@@ -538,7 +540,20 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // The Shortlist model's note must never describe an earlier choice after a
   // corrective artist/album repick. Replace an unsafe note at the final-track
   // boundary, before either Booth/session text or queue metadata can see it.
-  if (useShortlist) object.reason = shortlistSelectionReason(song, object.reason);
+  if (useShortlist) {
+    // Both safeguards matter: validate against the final (possibly guarded)
+    // track first, then ensure the resulting Booth note remains informative.
+    object.reason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
+    const selectionRecord = {
+      id: song.id,
+      track: { title: song.title ?? null, artist: song.artist ?? null },
+      selectionReason: object.reason,
+      sourceHint: shortlistSourceHint(song.shortlistSources),
+      shortlistSources: song.shortlistSources ?? [],
+    };
+    logEvent('shortlist.selected', selectionRecord);
+    queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
+  }
   if (useShortlist) {
     recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });
   }

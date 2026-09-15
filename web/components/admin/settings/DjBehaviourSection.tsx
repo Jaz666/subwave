@@ -78,6 +78,81 @@ export function DjBehaviourSection({ data, form, setForm, busy, saveSettings, fi
         sub="These controls shape speech placement and show-boundary behaviour. Voice engines and voices stay under TTS voice."
       />
 
+      <Card title="Music selection" sub={form.llm.trackSelection === 'agentic' ? 'Agentic Tools' : 'Track Shortlist'}>
+        <div className="field">
+          <Label>How the DJ finds its next track</Label>
+          <Seg
+            accent
+            value={form.llm.trackSelection}
+            options={[
+              { id: 'agentic', label: 'Agentic Tools', title: 'The LLM explores the library and chooses the track' },
+              { id: 'shortlist', label: 'Track Shortlist', title: 'The controller explores the library, then the LLM chooses from eligible tracks' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              llm: { ...f.llm, trackSelection: v as 'agentic' | 'shortlist' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Both routes use the same library exploration tools and apply the same show rules,
+            recency protections, requests and Musical Leanings. With <strong>Agentic Tools</strong>,
+            the LLM uses those tools to explore the library and makes the final pick. With
+            <strong> Track Shortlist</strong>, the controller explores with those same tools first,
+            builds an eligible shortlist, then asks the LLM to choose from it.
+          </p>
+        </div>
+
+        {form.llm.trackSelection === 'agentic' ? (
+          <>
+            <div className="field mt-5">
+              <Label>Agent deadline (seconds)</Label>
+              <Input
+                type="number" min={5} max={300} step={5}
+                value={Math.round(form.llm.agentTimeoutMs / 1000)}
+                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, agentTimeoutMs: Number(e.target.value) * 1000 } }))}
+                className="max-w-[200px]"
+              />
+              <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+                How long an Agentic pick may run before the station uses its safe fallback. 5–300 seconds.
+              </p>
+            </div>
+            <div className="field mt-5">
+              <Label>Discovery rounds per pick</Label>
+              <Input
+                type="number" min={0} max={5} step={1} value={form.llm.discoverySteps}
+                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, discoverySteps: Number(e.target.value) } }))}
+                className="max-w-[200px]"
+              />
+              <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+                How many library searches the agent may make before choosing. Zero follows the provider default.
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="field mt-5">
+            <Label>Track Shortlist passes</Label>
+            <Seg
+              value={String(form.llm.shortlistPasses)}
+              options={[
+                { id: '1', label: '1', title: 'Context only — the narrowest shortlist' },
+                { id: '2', label: '2', title: 'Context and Continuity — no Exploration pass' },
+                { id: '3', label: '3', title: 'Default: Context, Continuity, then Exploration' },
+                { id: '4', label: '4', title: 'Repeats Context after the complete three-lane cycle' },
+                { id: '5', label: '5', title: 'Repeats Context and Continuity for the broadest shortlist' },
+              ]}
+              onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, shortlistPasses: Number(v) } }))}
+            />
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+              Three passes are the default: <strong>Context</strong> grounds the show or journey,
+              <strong> Continuity</strong> follows the track on air, and <strong>Exploration</strong>
+              reaches beyond the familiar. Two passes omit Exploration; one uses Context only, for a
+              deliberately narrow shortlist. Four and five repeat Context then Continuity, widening the
+              candidate set and final DJ selection prompt. This does not change Agentic Segment tools.
+            </p>
+          </div>
+        )}
+      </Card>
+
       <Card title="Talk placement" sub={form.djTalkOnlyBetweenTracks ? 'between tracks' : 'any time'}>
         <div className="field">
           <Label {...talkPlacementAria.labelledByProps}>Scheduled speech</Label>
@@ -160,69 +235,6 @@ export function DjBehaviourSection({ data, form, setForm, busy, saveSettings, fi
             </p>
           )}
         </div>
-      </Card>
-
-      <Card title="Track selection" sub={form.llm.trackSelection === 'agentic' ? 'Agentic Tools' : 'Track Shortlist'}>
-        <div className="field">
-          <Label>How the DJ finds its next track</Label>
-          <Seg
-            accent
-            value={form.llm.trackSelection}
-            options={[
-              { id: 'agentic', label: 'Agentic Tools', title: 'The DJ explores the library with its tools before choosing' },
-              { id: 'shortlist', label: 'Track Shortlist', title: 'The controller builds eligible choices, then the DJ selects from them' },
-            ]}
-            onChange={v => setForm(f => ({
-              ...f,
-              llm: { ...f.llm, trackSelection: v as 'agentic' | 'shortlist' },
-            }))}
-          />
-          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-            Both routes apply the same show rules, recency protections, requests and Musical Leanings.
-            Agentic Tools suit an open-ended, exploratory process. Track Shortlist is a bounded,
-            tool-free route that can suit local models and cloud stations reducing LLM work.
-          </p>
-        </div>
-
-        {form.llm.trackSelection === 'agentic' ? (
-          <>
-            <div className="field mt-5">
-              <Label>Agent deadline (seconds)</Label>
-              <Input
-                type="number" min={5} max={300} step={5}
-                value={Math.round(form.llm.agentTimeoutMs / 1000)}
-                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, agentTimeoutMs: Number(e.target.value) * 1000 } }))}
-                className="max-w-[200px]"
-              />
-              <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-                How long an Agentic pick may run before the station uses its safe fallback. 5–300 seconds.
-              </p>
-            </div>
-            <div className="field mt-5">
-              <Label>Discovery rounds per pick</Label>
-              <Input
-                type="number" min={0} max={5} step={1} value={form.llm.discoverySteps}
-                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, discoverySteps: Number(e.target.value) } }))}
-                className="max-w-[200px]"
-              />
-              <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-                How many library searches the agent may make before choosing. Zero follows the provider default.
-              </p>
-            </div>
-          </>
-        ) : (
-          <div className="field mt-5">
-            <Label>Shortlist passes</Label>
-            <Input
-              type="number" min={1} max={5} step={1} value={form.llm.shortlistPasses}
-              onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, shortlistPasses: Number(e.target.value) } }))}
-              className="max-w-[200px]"
-            />
-            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-              How many controller-led discovery passes build the shortlist before the DJ chooses one eligible track.
-            </p>
-          </div>
-        )}
       </Card>
 
       <Card title="Track selection policy" sub="shared rules">
