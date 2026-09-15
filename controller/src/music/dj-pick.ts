@@ -17,6 +17,15 @@ export type ShortlistPick = {
   transition: 'normal' | 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop' | null;
 };
 
+export function resolvedMusicalLeaningsFlag(
+  configuredLeanings: string,
+  modelFlag: unknown,
+  verifiedReason: unknown,
+): boolean {
+  return modelFlag === true
+    || (configuredLeanings.trim() !== '' && /\bmusical\s+leanings\b/i.test(String(verifiedReason ?? '')));
+}
+
 function comparable(value: unknown): string {
   return String(value ?? '')
     .normalize('NFKD')
@@ -142,11 +151,15 @@ export async function djPick({
   }) as Omit<ShortlistPick, 'usedMusicalLeanings'> & { usedMusicalLeanings?: boolean };
   const track = candidates.find((candidate) => candidate.id === selection.id);
   const selectionReason = usableSelectionReason(shortlistSelectionReason(track, selection.selectionReason), track ?? {});
+  const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+    editorialLeaningsForPick(showAt), selection.usedMusicalLeanings, selectionReason,
+  );
   shortlistResolution.track = {
     id: selection.id,
     title: track?.title ?? null,
     artist: track?.artist ?? null,
   };
   shortlistResolution.selectionReason = selectionReason;
-  return { ...selection, selectionReason, usedMusicalLeanings: selection.usedMusicalLeanings === true };
+  shortlistResolution.usedMusicalLeanings = usedMusicalLeanings;
+  return { ...selection, selectionReason, usedMusicalLeanings };
 }

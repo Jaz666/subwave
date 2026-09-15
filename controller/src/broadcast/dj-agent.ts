@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, resolvedMusicalLeaningsFlag } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -99,6 +99,10 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
   const why = reason
     ?? `You explored the library and then answered with ${badId ? `the id "${badId}", which matches none of the tracks your tools returned` : 'no usable track id'}. Only ids from the candidates above are real. Choose the best next track from them.`;
   try {
+    // djObject records this nested object by reference. Fill it after the
+    // structured reply is known so Debug can show the controller-resolved
+    // selection beside the raw model response (which may name another track).
+    const shortlistResolution: any = {};
     const outcome: any = await djObject({
       // Same show snapshot as the failed run (showAt) and the same playlist-
       // resolved gate — a tool-less salvage call must NOT reinstate "call
@@ -118,8 +122,22 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       schema,
       temperature: 0.5,
       kind: telemetryKind,
+      ...(shortlistRepick ? { telemetry: { shortlistResolution } } : {}),
     });
-    return shortlistRepick ? { ...outcome, reason: outcome.selectionReason } : outcome;
+    if (!shortlistRepick) return outcome;
+
+    const track = seen.get(outcome.id);
+    const selectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
+    shortlistResolution.track = {
+      id: outcome.id,
+      title: track?.title ?? null,
+      artist: track?.artist ?? null,
+    };
+    shortlistResolution.selectionReason = selectionReason;
+    shortlistResolution.usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+      editorialLeaningsForPick(showAt), outcome.usedMusicalLeanings, selectionReason,
+    );
+    return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings: shortlistResolution.usedMusicalLeanings };
   } catch {
     return null;
   }
@@ -557,8 +575,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Leanings informed the choice while returning its diagnostic flag as
     // false. Preserve the natural explanation and make the operator signal
     // truthful when configured Leanings are explicitly named.
-    const usedMusicalLeanings = object.usedMusicalLeanings === true
-      || (editorialLeaningsForPick(showAt) !== '' && /\bmusical\s+leanings\b/i.test(object.reason));
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+      editorialLeaningsForPick(showAt), object.usedMusicalLeanings, object.reason,
+    );
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },

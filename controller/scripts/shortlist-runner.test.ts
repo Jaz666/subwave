@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -113,6 +113,21 @@ test('shortlist presentation never attaches one track\'s note to another track',
       "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
     ),
     "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
+  );
+});
+
+test('resolved Musical Leanings flag follows the verified reason, not a contradictory model flag', () => {
+  assert.equal(
+    resolvedMusicalLeaningsFlag('Musical Leanings — Favour patient dub.', false, 'The selected track suits these Musical Leanings.'),
+    true,
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag('Musical Leanings — Favour patient dub.', false, 'Selected "One by Artist" from the eligible shortlist.'),
+    false,
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag('', false, 'The selected track suits these Musical Leanings.'),
+    false,
   );
 });
 

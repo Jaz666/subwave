@@ -97,6 +97,11 @@ interface LlmCall {
   systemPreview?: string;
   messages?: Array<{ role?: string; content?: unknown }>;
   toolCalls?: Array<{ name?: string; args?: unknown; result?: unknown }>;
+  shortlistResolution?: {
+    track?: { id?: string; title?: string | null; artist?: string | null };
+    selectionReason?: string;
+    usedMusicalLeanings?: boolean;
+  };
   response?: string;
   /** What the model said INSTEAD of the expected structured output on a failed call.
    * From the controller's failureDiagnostics(); absent on success (see `response`). */

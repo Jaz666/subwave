@@ -18,8 +18,11 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-function callUsesMusicalLeanings(call: { kind?: string; response?: string }): boolean {
+function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean } }): boolean {
   if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick') return false;
+  if (call.shortlistResolution?.usedMusicalLeanings !== undefined) {
+    return call.shortlistResolution.usedMusicalLeanings;
+  }
   try {
     const response = JSON.parse(call.response || '{}') as {
       usedMusicalLeanings?: unknown;
