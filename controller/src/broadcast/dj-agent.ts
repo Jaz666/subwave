@@ -342,7 +342,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       candidates: shortlist.candidates,
       showAt,
       playlistResolved: !!playlistTracks?.length,
-      sourceRuns: shortlist.sourceRuns,
     });
     object = { ...selection, reason: selection.selectionReason };
     logEvent('shortlist.selected', { id: selection.id, candidates: shortlist.uniqueCandidates });

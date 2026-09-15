@@ -70,6 +70,16 @@ export function shortlistSelectionReason(track: any, reason: unknown): string {
   return identity ? `Selected "${identity}" from the eligible shortlist.` : 'Selected from the eligible shortlist.';
 }
 
+// A verified note can still be too thin to be useful in the Booth. Keep a
+// controller-written, track-specific floor without spending another model call.
+export function usableSelectionReason(reason: unknown, song: { artist?: unknown; title?: unknown }): string {
+  const note = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
+  if (note.length >= 24) return note;
+  const artist = typeof song.artist === 'string' && song.artist.trim() ? song.artist.trim() : 'This artist';
+  const title = typeof song.title === 'string' && song.title.trim() ? song.title.trim() : 'this track';
+  return `${artist} — ${title}: selected for its fit with the current musical flow.`;
+}
+
 export function shortlistPickSchema(ids: string[]) {
   if (!ids.length) throw new Error('cannot select from an empty Track Shortlist');
   const idEnum = z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied Track Shortlist');
