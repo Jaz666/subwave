@@ -39,7 +39,7 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
         <div className="field">
           <Label>How the DJ finds its next track</Label>
           <Seg
-            accent value={form.llm.trackSelection}
+            value={form.llm.trackSelection}
             options={[
               { id: 'agentic', label: 'Agentic Tools', title: 'The LLM explores the library and chooses the track' },
               { id: 'shortlist', label: 'Track Shortlist', title: 'The controller explores the library, then the LLM chooses from eligible tracks' },
@@ -88,7 +88,7 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
       <Card title="Request matching" sub={form.llm.requestMatching === 'agentic' ? 'Agent-assisted' : 'Direct'}>
         <div className="field">
           <Label>How listener requests are matched</Label>
-          <Seg accent value={form.llm.requestMatching} options={[
+          <Seg value={form.llm.requestMatching} options={[
             { id: 'direct', label: 'Direct matching', title: 'Fast, tool-free matching for straightforward requests' },
             { id: 'agentic', label: 'Agent-assisted', title: 'Uses music-search tools for detailed or compound requests' },
           ]} onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, requestMatching: v as 'agentic' | 'direct' } }))} />
