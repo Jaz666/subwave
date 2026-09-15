@@ -36,9 +36,8 @@ function callUsesMusicalLeanings(call: { kind?: string; response?: string }): bo
   }
 }
 
-function toolReadout(calls: Array<{ name?: string }> | undefined): string {
-  const names = [...new Set((calls || []).map(call => call.name).filter((name): name is string => !!name))];
-  return names.join(' · ');
+function isShortlistCall(kind?: string): boolean {
+  return kind === 'djShortlistPick' || kind === 'djShortlistRepick';
 }
 
 function MessageList({ messages }: { messages: Array<{ role?: string; content?: unknown }> }) {
@@ -261,7 +260,11 @@ export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pau
                   )}
                 </span>
                 <span className="caption text-[10px] whitespace-nowrap">
-                  {c.toolCalls?.length ? `🔧 ${toolReadout(c.toolCalls) || c.toolCalls.length}` : ''}
+                  {c.toolCalls?.length
+                    ? isShortlistCall(c.kind)
+                      ? `${c.toolCalls.length} SHORTLIST PASSES`
+                      : `🔧 ${c.toolCalls.length}`
+                    : ''}
                   {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}
                 </span>
                 <span className="mono-num text-[11px] text-muted">{c.ms}ms</span>
