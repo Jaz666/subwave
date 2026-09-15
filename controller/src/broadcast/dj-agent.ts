@@ -99,6 +99,10 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
   const why = reason
     ?? `You explored the library and then answered with ${badId ? `the id "${badId}", which matches none of the tracks your tools returned` : 'no usable track id'}. Only ids from the candidates above are real. Choose the best next track from them.`;
   try {
+    // djObject records this nested object by reference. Fill it after the
+    // structured reply is known so Debug can show the controller-resolved
+    // selection beside the raw model response (which may name another track).
+    const shortlistResolution: any = {};
     const outcome: any = await djObject({
       // Same show snapshot as the failed run (showAt) and the same playlist-
       // resolved gate — a tool-less salvage call must NOT reinstate "call
@@ -118,8 +122,19 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       schema,
       temperature: 0.5,
       kind: telemetryKind,
+      ...(shortlistRepick ? { telemetry: { shortlistResolution } } : {}),
     });
-    return shortlistRepick ? { ...outcome, reason: outcome.selectionReason } : outcome;
+    if (!shortlistRepick) return outcome;
+
+    const track = seen.get(outcome.id);
+    const selectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
+    shortlistResolution.track = {
+      id: outcome.id,
+      title: track?.title ?? null,
+      artist: track?.artist ?? null,
+    };
+    shortlistResolution.selectionReason = selectionReason;
+    return { ...outcome, selectionReason, reason: selectionReason };
   } catch {
     return null;
   }

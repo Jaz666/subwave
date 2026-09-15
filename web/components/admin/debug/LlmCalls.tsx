@@ -317,6 +317,14 @@ export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pau
                     <ToolList calls={c.toolCalls} />
                   </CallSection>
                 )}
+                {c.shortlistResolution?.track && (
+                  <CallSection
+                    label="verified selection"
+                    preview={[c.shortlistResolution.track.title, c.shortlistResolution.track.artist].filter(Boolean).join(' — ')}
+                  >
+                    <JsonBlock value={c.shortlistResolution} />
+                  </CallSection>
+                )}
                 {c.response && (
                   <CallSection label="response" preview={oneLine(c.response)}>
                     <JsonOrText text={c.response} />
