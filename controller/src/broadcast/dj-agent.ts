@@ -60,7 +60,8 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistSelectionReason } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
+import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
 
@@ -88,16 +89,17 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
-async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null }) {
+async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick' }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick' }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
-  const schema = modelTolerant(pickSchemaBase().extend({
+  const shortlistRepick = telemetryKind === 'djShortlistRepick';
+  const schema = shortlistRepick ? shortlistPickSchema(ids) : modelTolerant(pickSchemaBase().extend({
     id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
   }));
   const why = reason
     ?? `You explored the library and then answered with ${badId ? `the id "${badId}", which matches none of the tracks your tools returned` : 'no usable track id'}. Only ids from the candidates above are real. Choose the best next track from them.`;
   try {
-    return await djObject({
+    const outcome: any = await djObject({
       // Same show snapshot as the failed run (showAt) and the same playlist-
       // resolved gate — a tool-less salvage call must NOT reinstate "call
       // showPlaylistTracks first / every pick MUST come from the playlist" when
@@ -109,13 +111,15 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       // favourites clause is absent (it rides the pick EVENT turn, not this
       // system prompt) — acceptable because `seen` was discovered under the
       // favourites-aware run this salvages.
-      system: pickSystem(showAt, playlistResolved),
-      prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
-        + `\n\n${why}`,
+      system: pickSystem(showAt, playlistResolved, shortlistRepick),
+      prompt: shortlistRepick
+        ? shortlistPickPrompt([...seen.values()]) + `\n\n${why}`
+        : JSON.stringify({ candidates: [...seen.values()] }, null, 2) + `\n\n${why}`,
       schema,
       temperature: 0.5,
-      kind: 'djAgentRepick',
+      kind: telemetryKind,
     });
+    return shortlistRepick ? { ...outcome, reason: outcome.selectionReason } : outcome;
   } catch {
     return null;
   }
@@ -338,6 +342,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       candidates: shortlist.candidates,
       showAt,
       playlistResolved: !!playlistTracks?.length,
+      sourceRuns: shortlist.sourceRuns,
     });
     object = { ...selection, reason: selection.selectionReason };
     logEvent('shortlist.selected', { id: selection.id, candidates: shortlist.uniqueCandidates });
@@ -385,7 +390,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }
   }
   if (!song && extras.seen.size) {
-    const repicked = await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, showAt, playlistResolved: !!playlistTracks?.length });
+    const repicked = await repickFromSeen({
+      seen: extras.seen, badId: object?.id ?? null, showAt,
+      playlistResolved: !!playlistTracks?.length,
+      telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
+    });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
       queue.log('picker', `agent returned unknown id "${object?.id}" — re-picked "${repicked.id}" from its own candidates`);
@@ -471,6 +480,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       seen: alt, badId: null, showAt,
       playlistResolved: !!playlistTracks?.length,
       reason,
+      telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
     }),
     poolRescue: (avoidArtist) => pickViaPool(
       queue, ctx, { wantLink, pickAnchor, showAt }, rankTarget, audioWaypoint,
@@ -517,6 +527,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         seen: alt, badId: null, showAt,
         playlistResolved: !!playlistTracks?.length,
         reason,
+        telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
       }),
       log: (line) => queue.log('picker', line),
       logEvent,
@@ -531,7 +542,20 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // The Shortlist model's note must never describe an earlier choice after a
   // corrective artist/album repick. Replace an unsafe note at the final-track
   // boundary, before either Booth/session text or queue metadata can see it.
-  if (useShortlist) object.reason = shortlistSelectionReason(song, object.reason);
+  if (useShortlist) {
+    // Both safeguards matter: validate against the final (possibly guarded)
+    // track first, then ensure the resulting Booth note remains informative.
+    object.reason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
+    const selectionRecord = {
+      id: song.id,
+      track: { title: song.title ?? null, artist: song.artist ?? null },
+      selectionReason: object.reason,
+      sourceHint: shortlistSourceHint(song.shortlistSources),
+      shortlistSources: song.shortlistSources ?? [],
+    };
+    logEvent('shortlist.selected', selectionRecord);
+    queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
+  }
   if (useShortlist) {
     recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });
   }

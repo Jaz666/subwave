@@ -102,6 +102,13 @@ test('shortlist presentation never attaches one track\'s note to another track',
     ),
     '“Digging in the Dirt” by Peter Gabriel — fits well with the current flow.',
   );
+  assert.equal(
+    shortlistSelectionReason(
+      { id: 'qualls', title: 'Black Qualls', artist: 'Thundercat feat. Steve Lacy, Steve Arrington & Childish Gambino' },
+      "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
+    ),
+    "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
+  );
 });
 
 test('replays a source plan, keeping the picker accumulator as the source of truth', async () => {
