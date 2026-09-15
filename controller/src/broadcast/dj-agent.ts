@@ -55,12 +55,12 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
-import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js';
+import { editorialLeaningsForPick, pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -92,13 +92,14 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick' }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick' }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
-  const schema = modelTolerant(pickSchemaBase().extend({
+  const shortlistRepick = telemetryKind === 'djShortlistRepick';
+  const schema = shortlistRepick ? shortlistPickSchema(ids) : modelTolerant(pickSchemaBase().extend({
     id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
   }));
   const why = reason
     ?? `You explored the library and then answered with ${badId ? `the id "${badId}", which matches none of the tracks your tools returned` : 'no usable track id'}. Only ids from the candidates above are real. Choose the best next track from them.`;
   try {
-    return await djObject({
+    const outcome: any = await djObject({
       // Same show snapshot as the failed run (showAt) and the same playlist-
       // resolved gate — a tool-less salvage call must NOT reinstate "call
       // showPlaylistTracks first / every pick MUST come from the playlist" when
@@ -110,13 +111,15 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       // favourites clause is absent (it rides the pick EVENT turn, not this
       // system prompt) — acceptable because `seen` was discovered under the
       // favourites-aware run this salvages.
-      system: pickSystem(showAt, playlistResolved),
-      prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
-        + `\n\n${why}`,
+      system: pickSystem(showAt, playlistResolved, shortlistRepick),
+      prompt: shortlistRepick
+        ? shortlistPickPrompt([...seen.values()], editorialLeaningsForPick(showAt)) + `\n\n${why}`
+        : JSON.stringify({ candidates: [...seen.values()] }, null, 2) + `\n\n${why}`,
       schema,
       temperature: 0.5,
       kind: telemetryKind,
     });
+    return shortlistRepick ? { ...outcome, reason: outcome.selectionReason } : outcome;
   } catch {
     return null;
   }
@@ -550,11 +553,17 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Both safeguards matter: validate against the final (possibly guarded)
     // track first, then ensure the resulting Booth note remains informative.
     object.reason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
+    // Weak local models can contradict themselves by explaining that Musical
+    // Leanings informed the choice while returning its diagnostic flag as
+    // false. Preserve the natural explanation and make the operator signal
+    // truthful when configured Leanings are explicitly named.
+    const usedMusicalLeanings = object.usedMusicalLeanings === true
+      || (editorialLeaningsForPick(showAt) !== '' && /\bmusical\s+leanings\b/i.test(object.reason));
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
       selectionReason: object.reason,
-      usedMusicalLeanings: object.usedMusicalLeanings === true,
+      usedMusicalLeanings,
       sourceHint: shortlistSourceHint(song.shortlistSources),
       shortlistSources: song.shortlistSources ?? [],
     };
