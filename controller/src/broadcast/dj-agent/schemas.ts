@@ -162,6 +162,14 @@ export function pickerMusicLeanings(
   return hostLine + guestLine;
 }
 
+export function editorialLeaningsForPick(showAt: Date | null = null): string {
+  const persona = session.onAirPersona();
+  return pickerMusicLeanings(
+    settings.personaMusicLeanings(persona),
+    settings.guestEditorialNudge(showAt ?? new Date()),
+  );
+}
+
 export function pickSystem(showAt: Date | null = null, playlistResolved = true, nativeShortlist = false) {
   const persona = session.onAirPersona();
   // In DJ mode, lean on the live session history: a working DJ runs threads
@@ -190,9 +198,11 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true, 
   // this is a private soft tie-breaker for music choice, not a voice or
   // discovery instruction. Keep it in the agentic picker too, so changing
   // picker implementation does not change the station's musical identity.
-  const personaMusicLean = settings.personaMusicLeanings(persona);
-  const guestMusicalNudge = settings.guestEditorialNudge(showAt ?? new Date());
-  const editorialLeanings = pickerMusicLeanings(personaMusicLean, guestMusicalNudge);
+  // Agentic Tools retains its variable editorial cue at the end of the system
+  // prompt. Track Shortlist places the same cue immediately above its supplied
+  // candidates instead, where a small local model can weigh it while comparing
+  // tracks without imposing any wording on the eventual link or Booth note.
+  const editorialLeanings = nativeShortlist ? '' : editorialLeaningsForPick(showAt);
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of

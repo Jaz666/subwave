@@ -83,6 +83,11 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /Track Shortlist/);
+  const promptedWithLeanings = shortlistPickPrompt(
+    [{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }],
+    'Musical Leanings — Favour patient dub.',
+  );
+  assert.ok(promptedWithLeanings.indexOf('Musical Leanings') < promptedWithLeanings.indexOf('"shortlist"'));
 });
 
 test('shortlist presentation never attaches one track\'s note to another track', () => {
