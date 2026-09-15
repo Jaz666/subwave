@@ -23,7 +23,8 @@ assert.equal(
 
 const prompt = pickSystem();
 assert.match(prompt, /Musical Leanings — Favour patient dub, deep electronic cuts, and melodic post-punk\./);
-assert.match(prompt, /only to break a close tie/i);
+assert.match(prompt, /soft editorial preference/i);
+assert.match(prompt, /may guide an otherwise sound selection/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
 
 const guest = settings.guestEditorialNudgeFromGuests([

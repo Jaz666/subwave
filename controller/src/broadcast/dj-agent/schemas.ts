@@ -154,10 +154,10 @@ export function pickerMusicLeanings(
   guest: GuestMusicalNudge | null,
 ): string {
   const hostLine = host
-    ? `\n\nMusical Leanings — ${host}\nUse this only to break a close tie between otherwise suitable tracks. It never overrides show rules, rotation, safety, or the musical flow.`
+    ? `\n\nMusical Leanings — ${host}\nTreat this as a soft editorial preference when choosing between eligible tracks that fit the current flow. It may guide an otherwise sound selection, and may be reflected naturally in the private selection reason when it materially matters. It never overrides show rules, rotation, safety, or the musical flow.`
     : '';
   const guestLine = guest
-    ? `\n\nGuest Musical Leanings — ${guest.guest.name}: ${guest.musicalLeanings}\nThis is weaker than the host's Musical Leanings. Use it only to break a genuinely close tie; never override show rules, rotation, safety, or the musical flow.`
+    ? `\n\nGuest Musical Leanings — ${guest.guest.name}: ${guest.musicalLeanings}\nThis is weaker than the host's Musical Leanings. It may guide an otherwise sound selection when it naturally fits the flow; never override show rules, rotation, safety, or the musical flow.`
     : '';
   return hostLine + guestLine;
 }
