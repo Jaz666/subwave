@@ -878,10 +878,9 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';
     const eventText = explicitPickAnchor
-      ? `Pick-cycle anchor: "${pickAnchor?.title}" by ${pickAnchor?.artist}`
-        + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
-        + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
-        + '. This queued track is the intended predecessor for this selection. Pick the track intended to follow that anchor.'
+      ? `Pick next after "${pickAnchor?.title}" by ${pickAnchor?.artist}`
+        + (anchorPriorTrack ? ` (following "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
+        + '.'
       : `Now playing "${pickAnchor?.title}" by ${pickAnchor?.artist}`
         + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
         + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
