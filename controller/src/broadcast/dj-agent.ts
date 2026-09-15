@@ -89,7 +89,7 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
-async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null }) {
+async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick' }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick' }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const schema = modelTolerant(pickSchemaBase().extend({
@@ -115,7 +115,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
         + `\n\n${why}`,
       schema,
       temperature: 0.5,
-      kind: 'djAgentRepick',
+      kind: telemetryKind,
     });
   } catch {
     return null;
@@ -394,7 +394,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }
   }
   if (!song && extras.seen.size) {
-    const repicked = await repickFromSeen({ seen: extras.seen, badId: object?.id ?? null, showAt, playlistResolved: !!playlistTracks?.length });
+    const repicked = await repickFromSeen({
+      seen: extras.seen, badId: object?.id ?? null, showAt,
+      playlistResolved: !!playlistTracks?.length,
+      telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
+    });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
       queue.log('picker', `agent returned unknown id "${object?.id}" — re-picked "${repicked.id}" from its own candidates`);
@@ -480,6 +484,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       seen: alt, badId: null, showAt,
       playlistResolved: !!playlistTracks?.length,
       reason,
+      telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
     }),
     poolRescue: (avoidArtist) => pickViaPool(
       queue, ctx, { wantLink, pickAnchor, showAt }, rankTarget, audioWaypoint,
@@ -526,6 +531,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         seen: alt, badId: null, showAt,
         playlistResolved: !!playlistTracks?.length,
         reason,
+        telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
       }),
       log: (line) => queue.log('picker', line),
       logEvent,
