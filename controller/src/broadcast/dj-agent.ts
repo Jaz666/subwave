@@ -554,11 +554,12 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
       selectionReason: object.reason,
+      usedMusicalLeanings: object.usedMusicalLeanings === true,
       sourceHint: shortlistSourceHint(song.shortlistSources),
       shortlistSources: song.shortlistSources ?? [],
     };
     logEvent('shortlist.selected', selectionRecord);
-    queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
+    queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.usedMusicalLeanings ? 'Musical Leanings' : null, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
   }
   if (useShortlist) {
     recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });
