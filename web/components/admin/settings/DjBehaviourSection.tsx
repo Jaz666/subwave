@@ -62,7 +62,68 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         sub="These controls shape speech placement and show-boundary behaviour. Voice engines and voices stay under TTS voice."
       />
 
+      <Card title="Segments & Skills" sub={form.llm.segmentRuntime === 'agentic' ? 'Agentic runtime' : 'Direct runtime'}>
+        <div className="field">
+          <Label>How the DJ prepares scheduled segments</Label>
+          <Seg
+            value={form.llm.segmentRuntime}
+            options={[
+              { id: 'direct', label: 'Direct runtime', title: 'The controller fetches evidence, then the DJ writes one bounded response' },
+              { id: 'agentic', label: 'Agentic runtime', title: 'The DJ may use its tools to research and prepare a segment' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              llm: { ...f.llm, segmentRuntime: v as 'agentic' | 'direct' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Both runtimes use the same briefs, schedules, cooldowns and evidence rules. Direct runtime
+            fetches the selected evidence in the controller and makes one bounded writing call; Agentic
+            runtime lets a tool-capable model decide how to use the available tools.
+          </p>
+        </div>
+      </Card>
 
+      <section className="mt-10" aria-labelledby="show-behaviour-heading">
+        <h2 id="show-behaviour-heading" className="bs-eyebrow mb-4">Show behaviour</h2>
+        <Card title="Show changes" sub={form.djBehaviour.showWelcome ? 'welcome at the hour' : 'quiet'}>
+          <div className="field">
+            <Label>Welcome the new show</Label>
+            <Seg
+              value={form.djBehaviour.showWelcome ? 'on' : 'off'}
+              options={[
+                { id: 'off', label: 'Off', title: 'Keep the normal hourly time check' },
+                { id: 'on', label: 'On', title: 'Extend the first hourly check with a welcome to the new show' },
+              ]}
+              onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, showWelcome: v === 'on' } }))}
+            />
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+              At a scheduled show change, the incoming DJ’s first hourly time check adds a
+              short natural welcome to the new show. It does not replace a presenter handoff,
+              and ordinary hourly checks stay unchanged.
+            </p>
+          </div>
+          <div className="field mt-5">
+            <Label>Acknowledge a same-host change</Label>
+            <Seg
+              value={form.djBehaviour.sameHostAcknowledgement ? 'on' : 'off'}
+              options={[
+                { id: 'off', label: 'Off', title: 'Keep adjacent shows by the same DJ quiet' },
+                { id: 'on', label: 'On', title: 'Let the DJ briefly acknowledge moving into their next show' },
+              ]}
+              onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, sameHostAcknowledgement: v === 'on' } }))}
+            />
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+              When the same DJ hosts two adjacent scheduled shows, add one brief spoken
+              acknowledgement of the new show. Different-DJ handoffs keep their normal
+              sign-off and greeting.
+            </p>
+          </div>
+        </Card>
+      </section>
+
+      <section className="mt-10" aria-labelledby="talk-behaviour-heading">
+        <h2 id="talk-behaviour-heading" className="bs-eyebrow mb-4">Talk behaviour</h2>
       <Card title="Talk placement" sub={form.djTalkOnlyBetweenTracks ? 'between tracks' : 'any time'}>
         <div className="field">
           <Label {...talkPlacementAria.labelledByProps}>Scheduled speech</Label>
@@ -96,30 +157,6 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Card title="Segments & Skills" sub={form.llm.segmentRuntime === 'agentic' ? 'Agentic runtime' : 'Direct runtime'}>
-        <div className="field">
-          <Label>How the DJ prepares scheduled segments</Label>
-          <Seg
-            accent
-            value={form.llm.segmentRuntime}
-            options={[
-              { id: 'direct', label: 'Direct runtime', title: 'The controller fetches evidence, then the DJ writes one bounded response' },
-              { id: 'agentic', label: 'Agentic runtime', title: 'The DJ may use its tools to research and prepare a segment' },
-            ]}
-            onChange={v => setForm(f => ({
-              ...f,
-              llm: { ...f.llm, segmentRuntime: v as 'agentic' | 'direct' },
-            }))}
-          />
-          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-            Both runtimes use the same briefs, schedules, cooldowns and evidence rules. Direct runtime
-            fetches the selected evidence in the controller and makes one bounded writing call; Agentic
-            runtime lets a tool-capable model decide how to use the available tools.
-          </p>
-        </div>
-      </Card>
-
-
       <Card title="Pause-and-talk" sub={`${form.pauseTalkMinSeconds}s minimum`}>
         <div className="field" data-invalid={pauseTalkAria.invalid || undefined}>
           <Label {...pauseTalkAria.labelProps}>Minimum segment length</Label>
@@ -142,6 +179,29 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             errors={fieldErrors}
             {...pauseTalkAria.errorProps}
           />
+        </div>
+      </Card>
+
+      <Card title="Link style" sub={form.djBehaviour.releaseYearMentions + ' release-year mentions'}>
+        <div className="field">
+          <Label {...linkStyleAria.labelledByProps}>Release-year mentions</Label>
+          <Seg
+            {...linkStyleAria.groupProps}
+            value={form.djBehaviour.releaseYearMentions}
+            options={[
+              { id: 'regular', label: 'Regular', title: 'Keep release years available on every eligible link' },
+              { id: 'occasional', label: 'Occasional', title: 'Make release years available on roughly one in four eligible links' },
+              { id: 'rare', label: 'Rare', title: 'Make release years available on roughly one in six eligible links' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              djBehaviour: { ...f.djBehaviour, releaseYearMentions: v as typeof f.djBehaviour.releaseYearMentions },
+            }))}
+          />
+          <p {...linkStyleAria.descriptionProps} className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Release years stay verified in the library. This controls how often one is supplied
+            to the DJ for a link, keeping factual grounding intact without making every link sound like metadata.
+          </p>
         </div>
       </Card>
 
@@ -216,64 +276,6 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </p>
       </Card>
 
-      <Card title="Show changes" sub={form.djBehaviour.showWelcome ? 'welcome at the hour' : 'quiet'}>
-        <div className="field">
-          <Label>Welcome the new show</Label>
-          <Seg
-            value={form.djBehaviour.showWelcome ? 'on' : 'off'}
-            options={[
-              { id: 'off', label: 'Off', title: 'Keep the normal hourly time check' },
-              { id: 'on', label: 'On', title: 'Extend the first hourly check with a welcome to the new show' },
-            ]}
-            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, showWelcome: v === 'on' } }))}
-          />
-          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-            At a scheduled show change, the incoming DJ’s first hourly time check adds a
-            short natural welcome to the new show. It does not replace a presenter handoff,
-            and ordinary hourly checks stay unchanged.
-          </p>
-        </div>
-        <div className="field mt-5">
-          <Label>Acknowledge a same-host change</Label>
-          <Seg
-            value={form.djBehaviour.sameHostAcknowledgement ? 'on' : 'off'}
-            options={[
-              { id: 'off', label: 'Off', title: 'Keep adjacent shows by the same DJ quiet' },
-              { id: 'on', label: 'On', title: 'Let the DJ briefly acknowledge moving into their next show' },
-            ]}
-            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, sameHostAcknowledgement: v === 'on' } }))}
-          />
-          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
-            When the same DJ hosts two adjacent scheduled shows, add one brief spoken
-            acknowledgement of the new show. Different-DJ handoffs keep their normal
-            sign-off and greeting.
-          </p>
-        </div>
-      </Card>
-
-      <Card title="Link style" sub={form.djBehaviour.releaseYearMentions + ' release-year mentions'}>
-        <div className="field">
-          <Label {...linkStyleAria.labelledByProps}>Release-year mentions</Label>
-          <Seg
-            {...linkStyleAria.groupProps}
-            value={form.djBehaviour.releaseYearMentions}
-            options={[
-              { id: 'regular', label: 'Regular', title: 'Keep release years available on every eligible link' },
-              { id: 'occasional', label: 'Occasional', title: 'Make release years available on roughly one in four eligible links' },
-              { id: 'rare', label: 'Rare', title: 'Make release years available on roughly one in six eligible links' },
-            ]}
-            onChange={v => setForm(f => ({
-              ...f,
-              djBehaviour: { ...f.djBehaviour, releaseYearMentions: v as typeof f.djBehaviour.releaseYearMentions },
-            }))}
-          />
-          <p {...linkStyleAria.descriptionProps} className="mt-2 text-[13px] leading-[1.55] text-muted">
-            Release years stay verified in the library. This controls how often one is supplied
-            to the DJ for a link, keeping factual grounding intact without making every link sound like metadata.
-          </p>
-        </div>
-      </Card>
-
       <Card title="Extended Sleeve Notes" sub={form.djBehaviour.extendedSleeveNotes ? 'enabled' : 'off'}>
         <div className="field">
           <Label>Station-wide extended collection</Label>
@@ -292,6 +294,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           While it is off, it starts no provider work.
         </p>
       </Card>
+      </section>
 
       <SaveBar
         note="DJ behaviour applies to newly scheduled speech straight away · no mixer restart."
