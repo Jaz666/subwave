@@ -6,14 +6,15 @@ import { requireAdmin } from '../middleware/auth.js';
 import { recentCalls } from '../llm/log.js';
 import * as llmProvider from '../llm/provider.js';
 import * as settings from '../settings.js';
-import { ttsCalls, shortlistPicks, summarizeLlm, summarizeTts, summarizeDjLog, summarizeRequests, summarizeShortlistPicks } from '../stats.js';
+import { ttsCalls, shortlistPicks, toolCalls, trackTransitions, summarizeLlm, summarizeTts, summarizeDjLog, summarizeRequests, summarizeShortlistPicks, summarizeDebug } from '../stats.js';
 import { queue } from '../broadcast/queue.js';
 import { recentRequests } from '../broadcast/request-log.js';
 import { budgetStatus } from '../broadcast/dj-budget.js';
+import { PICKER_TOOLS } from '../llm/internal/tools/picker/index.js';
 
 export const router = express.Router();
 
-router.get('/stats', requireAdmin, (req, res) => {
+router.get('/stats', requireAdmin, async (req, res) => {
   try {
     const llm: any = summarizeLlm(recentCalls);
     llm.provider = llmProvider.providerName();
@@ -24,6 +25,9 @@ router.get('/stats', requireAdmin, (req, res) => {
     // Durable per-UTC-day tally, unlike the rings above. enabled:false with no cap.
     llm.budget = budgetStatus();
 
+    // Resolve this at request time so the diagnostic list reflects skill
+    // rescans without making the Stats route a controller startup-cycle edge.
+    const { loadedCapabilities } = await import('../skills/loader.js');
     res.json({
       t: new Date().toISOString(),
       llm,
@@ -32,6 +36,12 @@ router.get('/stats', requireAdmin, (req, res) => {
       tts: summarizeTts(ttsCalls),
       djLog: summarizeDjLog(queue.djLog),
       requests: summarizeRequests(recentRequests),
+      debug: summarizeDebug(toolCalls, trackTransitions, [
+        ...PICKER_TOOLS.map(tool => tool.name),
+        ...loadedCapabilities()
+          .filter(cap => typeof cap.toolFn === 'function' && typeof cap.toolName === 'string')
+          .map(cap => cap.toolName),
+      ]),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

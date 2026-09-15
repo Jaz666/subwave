@@ -54,6 +54,7 @@ writeSkill('own-material', 'export const requiresData = false;\nexport default a
 const { requiresGrounding, unusableDataReason, standDownReason, declaredBool } =
   await import('../src/skills/abstain-policy.js');
 const { agenticTick, forcedSchema, forcedSystem, runCapability } = await import('../src/skills/_agent.js');
+const { normalizeSegmentToolResult } = await import('../src/llm/segment-tools.js');
 const { queue } = await import('../src/broadcast/queue.js');
 const webSearch = (await import('../src/skills/builtins/web-search/tool.mjs')).default;
 
@@ -110,6 +111,12 @@ test('an unrecognised declaration falls through to the default, not to false', (
 test('a fetch error and an explicit available:false are both unusable', () => {
   assert.match(String(unusableDataReason({ error: 'Brave HTTP 429' })), /429/);
   assert.equal(typeof unusableDataReason({ available: false }), 'string');
+});
+
+test('a persisted legacy news tool empty response is unavailable', () => {
+  const data = normalizeSegmentToolResult({ kind: 'news' }, { headlines: [] });
+  assert.equal(typeof unusableDataReason(data), 'string');
+  assert.deepEqual(data, { headlines: [], available: false });
 });
 
 test('real data — and no data at all — are not stand-down reasons', () => {

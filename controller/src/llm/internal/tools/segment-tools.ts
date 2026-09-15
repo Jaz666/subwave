@@ -24,6 +24,21 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { buildStationServices } from './station-services.js';
 
+// Stations seeded before the feed-tool migration retain news/tool.mjs. Its
+// historic empty response was `{ headlines: [] }`, which left a grounded skill
+// looking usable and invited Direct runtime to invent a no-news bulletin. Keep
+// that persisted shape compatible with the current `{ available: false }`
+// contract without replacing an operator's skill file.
+export function normalizeSegmentToolResult(cap: { kind?: unknown } | null | undefined, data: any): any {
+  if (String(cap?.kind || '') === 'news'
+      && data?.available === undefined
+      && Array.isArray(data?.headlines)
+      && data.headlines.length === 0) {
+    return { ...data, available: false };
+  }
+  return data;
+}
+
 // `onResult(kind, data)` reports what each tool handed back, including the
 // `{ error }` degradation. The forced segment path needs it because the AGENT
 // calls the tool, not the caller: without it, "did this skill actually get
@@ -66,6 +81,7 @@ export function buildSegmentTools(
         // degraded shape too — a tool that threw is exactly the case the
         // grounding check exists for. A throwing observer must not turn a
         // usable tool result into a tool error.
+        data = normalizeSegmentToolResult(cap, data);
         try { onResult?.(cap.kind, data); } catch { /* observation is never fatal */ }
         return data;
       },
@@ -87,7 +103,7 @@ export async function fetchSegmentData(cap: any, ctx: any, state: any): Promise<
   const services = buildStationServices();
   try {
     const p = Promise.resolve(cap.toolFn(ctx, state, services, cap.config, {}));
-    return await withTimeout(p, 8000);
+    return normalizeSegmentToolResult(cap, await withTimeout(p, 8000));
   } catch (err: any) {
     return { error: err?.message || String(err) };
   }
