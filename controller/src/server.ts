@@ -18,7 +18,7 @@ import * as pocketTts from './audio/pocketTts.js';
 import { getFullContext } from './context.js';
 import { loadCuriosityLedger } from './skills/curiosity.js';
 import { startScheduler } from './broadcast/scheduler.js';
-import { startListenerMonitor } from './broadcast/listeners.js';
+import { djCallsAllowed, startListenerMonitor } from './broadcast/listeners.js';
 import { startStreamIdleMonitor } from './broadcast/stream-idle.js';
 import { startAudienceMonitor } from './broadcast/audience.js';
 import * as likes from './broadcast/likes.js';
@@ -313,9 +313,11 @@ app.listen(config.server.port, async () => {
   startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   // Research uses the same LLM as the named picking/request agents. It yields
-  // to them, while the small MusicBrainz/Wikipedia metadata workers may keep
-  // using ordinary quiet time.
-  startResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() && !agentWorkActive() });
+  // to them and honours Pause DJ when empty; the small MusicBrainz/Wikipedia
+  // metadata workers are non-LLM work and may keep using ordinary quiet time.
+  startResearchWorker({
+    isQuiet: () => !queue.playbackCriticalBusy() && !agentWorkActive() && djCallsAllowed(),
+  });
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));
