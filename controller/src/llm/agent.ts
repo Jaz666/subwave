@@ -4,3 +4,4 @@
 
 export { defineAgent } from './internal/agent-factory.js';
 export type { AgentDefinition, AgentRunResult, DjAgentInstance } from './internal/agent-factory.js';
+export { agentWorkActive } from './agent-activity.js';

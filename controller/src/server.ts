@@ -58,6 +58,7 @@ import * as sleeveNotesDb from './sleeve-notes/db.js';
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
 import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
+import { agentWorkActive } from './llm/agent.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadSetupConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
@@ -311,7 +312,10 @@ app.listen(config.server.port, async () => {
   startScheduler();
   startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
-  startResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
+  // Research uses the same LLM as the named picking/request agents. It yields
+  // to them, while the small MusicBrainz/Wikipedia metadata workers may keep
+  // using ordinary quiet time.
+  startResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() && !agentWorkActive() });
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));
