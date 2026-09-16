@@ -28,6 +28,10 @@ function callUsesMusicalLeanings(call: { kind?: string; response?: string; short
   }
 }
 
+function isShortlistCall(kind?: string): boolean {
+  return kind === 'djShortlistPick' || kind === 'djShortlistRepick';
+}
+
 function MessageList({ messages }: { messages: Array<{ role?: string; content?: unknown }> }) {
   return (
     // Short exchanges size to content; agent runs (~40 turns) get a bounded,
