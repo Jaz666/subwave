@@ -29,5 +29,12 @@ test('the research readout exposes claims with their evidence rather than raw pr
     wording: 'Example Band formed in Liverpool.', evidence: 'Example Band formed in Liverpool.', sourceUrl: 'https://example.test/wiki' }]);
   assert.deepEqual(readout.jobs, [{ provider: 'wikipedia', subjectType: 'artist', capability: 'biography',
     state: 'retry-at', priority: 300, attempts: 2, runAfter: '2026-09-14T15:30:00.000Z', updatedAt: now }]);
+  assert.deepEqual(readout.jobSummary, [{ provider: 'wikipedia', capability: 'biography', state: 'retry-at',
+    jobs: 1, attempts: 2, nextDue: '2026-09-14T15:30:00.000Z', updatedAt: now }]);
+  assert.deepEqual(readout.providerSummary, []);
+  assert.deepEqual({ localAttachments: readout.localAttachments, encounters: readout.encounters,
+    pendingMatches: readout.pendingMatches, retainedClaims: readout.retainedClaims, researchJobs: readout.researchJobs }, {
+    localAttachments: 0, encounters: 0, pendingMatches: 0, retainedClaims: 1, researchJobs: 1,
+  });
   db.close();
 });

@@ -12,19 +12,31 @@ type NotesStatus = {
   providerEnabled: boolean;
   providerConfigured: boolean;
   collectionRunning: boolean;
-  collectionBlockedReason: 'disabled' | 'provider-unconfigured' | null;
-  coverage: Record<string, number>;
+  collectionBlockedReason: string | null;
+  replacement?: { localAttachments: number; encounters: number; pendingMatches: number; retainedClaims: number; researchJobs: number } | null;
 };
 
 type NotesReadout = {
   active: boolean;
-  entities: Array<{ id: string; kind: string; title: string; artist: string | null; releaseTitle: string | null; local: boolean; providerId: string | null; resolutionState: string | null; coverage: string | null; discoveredAt: string | null; relationships: number }>;
-  relationships: Array<{ id: string; type: string; fromTitle: string; fromArtist: string | null; toTitle: string; toArtist: string | null; createdAt: string }>;
-  jobs: Array<{ id: string; kind: string; state: string; priority: number; attempts: number; depth: number; title: string; artist: string | null; updatedAt: string }>;
+  localAttachments: number;
+  encounters: number;
+  pendingMatches: number;
+  retainedClaims: number;
+  researchJobs: number;
+  claims: Array<{ artist: string; category: string; topic: string; wording: string; evidence: string; sourceUrl: string }>;
+  jobSummary: Array<{ provider: string; capability: string; state: string; jobs: number; attempts: number; nextDue: string | null; updatedAt: string }>;
+  providerSummary: Array<{ provider: string; capability: string; outcome: string; status: number | null; requests: number; lastRequestedAt: string }>;
 };
 
-function displaySong(title: string, artist: string | null) {
-  return artist ? `${title} — ${artist}` : title;
+function clock(value: string | null | undefined) {
+  if (!value) return '—';
+  try {
+    return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value));
+  } catch { return '—'; }
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-md border border-border/70 px-3 py-2"><div className="text-xl font-semibold tabular-nums">{value}</div><div className="text-xs text-muted">{label}</div></div>;
 }
 
 export default function NotesPanel() {
@@ -34,87 +46,74 @@ export default function NotesPanel() {
     request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/status', undefined, signal),
     staleTime: 10_000, refetchInterval: 30_000,
   });
-  const active = status.data?.collectionRunning === true;
+  const enabled = status.data?.enabled === true;
   const readout = useAdminQuery<NotesReadout>({
-    key: ['sleeve-notes', 'readout'], adminFetch, enabled: hydrated && active,
+    key: ['sleeve-notes', 'readout'], adminFetch, enabled: hydrated && enabled,
     request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/readout', undefined, signal),
     staleTime: 10_000, refetchInterval: 30_000,
   });
-  const blocked = status.data?.collectionBlockedReason === 'provider-unconfigured'
-    ? 'Genius needs its access token before collection can start.'
-    : 'Turn on Extended Sleeve Notes to allow any background collection.';
+  const data = readout.data;
+
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
+    <div className="mx-auto max-w-5xl space-y-5">
       <div>
         <Eyebrow>Programming</Eyebrow>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Extended Sleeve Notes</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          An optional, source-backed extension to the default Sleeve Notes and Verified Facts.
-          It is collected in the background and never delays playback.
+          Source-backed music research collected in the background. It never delays playback or adds material to DJ links during this test.
         </p>
       </div>
-      <Card title={active ? 'Collection active' : 'Not collecting'} sub={active ? 'background only' : 'safe by default'}>
+
+      <Card title={enabled ? 'Collection enabled' : 'Not collecting'} sub={enabled ? 'background only' : 'safe by default'}>
         <p className="text-sm leading-6 text-muted">
-          {active
-            ? 'Genius work is low-priority and never delays playback. Extended material is collected locally only; it is not yet used in DJ links.'
-            : `${blocked} While inactive, Sub/Wave makes no provider calls or background jobs, and the default Sleeve Notes and Verified Facts path remains unchanged.`}
+          {enabled
+            ? 'MusicBrainz matching, Wikipedia retrieval, and cautious claim extraction run only when the station gates allow them.'
+            : 'Turn on Extended Sleeve Notes before the station creates provider work or opens its collection database.'}
         </p>
         <Link href="/admin/settings" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
           Review the master switch <ShieldCheck className="size-4" />
         </Link>
       </Card>
+
       <div className="grid gap-4 md:grid-cols-3">
-        <Card title="On air" sub="coming in Phase 4">
-          <Radio className="mb-3 size-5 text-muted" />
-          <p className="text-sm leading-6 text-muted">A permanent ledger of supplied notes and the final spoken link.</p>
-        </Card>
-        <Card title="Collected" sub="coming in Phase 4">
-          <BookOpen className="mb-3 size-5 text-muted" />
-          <p className="text-sm leading-6 text-muted">Source-backed claims, relationships, freshness, and correction state.</p>
-        </Card>
-        <Card title="Sources" sub={active ? 'Genius' : 'configured safely'}>
-          <ShieldCheck className="mb-3 size-5 text-muted" />
-          <p className="text-sm leading-6 text-muted">
-            {status.isLoading ? 'Checking provider status…' : active
-              ? `Genius is collecting. Ready: ${status.data?.coverage.ready ?? 0}; queued: ${status.data?.coverage.queued ?? 0}; retrying: ${status.data?.coverage['retry-at'] ?? 0}.`
-              : status.data?.providerEnabled
-                ? 'Genius is enabled but not ready to collect.'
-                : 'Genius is disabled independently of the station-wide switch.'}
-          </p>
-        </Card>
+        <Card title="On air" sub="not yet supplied to links"><Radio className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">The normal Verified Facts path remains unchanged.</p></Card>
+        <Card title="Collected" sub="development inspection"><BookOpen className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">Claims stay reviewable with their exact retained evidence.</p></Card>
+        <Card title="Sources" sub="identity-first"><ShieldCheck className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">MusicBrainz resolves identity before Wikipedia research; Genius remains separately disabled.</p></Card>
       </div>
-      {active && (
-        <Card title="Collection database" sub="temporary Phase 2 inspection · refreshes every 30 seconds">
-          {readout.isLoading ? <p className="text-sm text-muted">Loading collected records…</p> : (
-            <div className="space-y-6">
-              <ReadoutTable title="Entities" empty="No records collected yet." headings={['Track', 'Kind', 'Local', 'Resolution', 'Coverage', 'Links']}>
-                {readout.data?.entities.map((entity) => (
-                  <tr key={entity.id} className="border-t border-border/60">
-                    <td className="py-2 pr-4 font-medium">{displaySong(entity.title, entity.artist)}</td>
-                    <td className="py-2 pr-4">{entity.kind}</td><td className="py-2 pr-4">{entity.local ? 'yes' : 'external'}</td>
-                    <td className="py-2 pr-4">{entity.resolutionState ?? '—'}</td><td className="py-2 pr-4">{entity.coverage ?? '—'}</td><td className="py-2">{entity.relationships}</td>
-                  </tr>
-                ))}
-              </ReadoutTable>
-              <ReadoutTable title="Relationships" empty="No relationships collected yet." headings={['From', 'Relationship', 'To']}>
-                {readout.data?.relationships.map((relationship) => (
-                  <tr key={relationship.id} className="border-t border-border/60"><td className="py-2 pr-4 font-medium">{displaySong(relationship.fromTitle, relationship.fromArtist)}</td><td className="py-2 pr-4">{relationship.type}</td><td className="py-2">{displaySong(relationship.toTitle, relationship.toArtist)}</td></tr>
-                ))}
-              </ReadoutTable>
-              <ReadoutTable title="Jobs" empty="No collection jobs yet." headings={['Track', 'Work', 'State', 'Depth', 'Attempts']}>
-                {readout.data?.jobs.map((job) => (
-                  <tr key={job.id} className="border-t border-border/60"><td className="py-2 pr-4 font-medium">{displaySong(job.title, job.artist)}</td><td className="py-2 pr-4">{job.kind}</td><td className="py-2 pr-4">{job.state}</td><td className="py-2 pr-4">{job.depth}</td><td className="py-2">{job.attempts}</td></tr>
-                ))}
-              </ReadoutTable>
+
+      {enabled && <Card title="Development readout" sub="temporary · read-only · refreshes every 30 seconds">
+        {readout.isLoading ? <p className="text-sm text-muted">Loading Sleeve Notes activity…</p> : !data ? <p className="text-sm text-muted">Could not load the collection readout.</p> : (
+          <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <Metric label="tracks encountered" value={data.localAttachments} />
+              <Metric label="encounters" value={data.encounters} />
+              <Metric label="retained claims" value={data.retainedClaims} />
+              <Metric label="research jobs" value={data.researchJobs} />
+              <Metric label="MusicBrainz pending" value={data.pendingMatches} />
             </div>
-          )}
-        </Card>
-      )}
+            <ReadoutTable title="Job state" empty="No provider jobs yet." headings={['Provider', 'Work', 'State', 'Jobs', 'Attempts', 'Next due']}>
+              {data.jobSummary.map((job) => <tr key={`${job.provider}-${job.capability}-${job.state}`} className="border-t border-border/60">
+                <td className="py-2 pr-4 font-medium">{job.provider}</td><td className="py-2 pr-4">{job.capability}</td><td className="py-2 pr-4">{job.state}</td><td className="py-2 pr-4 tabular-nums">{job.jobs}</td><td className="py-2 pr-4 tabular-nums">{job.attempts}</td><td className="py-2">{clock(job.nextDue)}</td>
+              </tr>)}
+            </ReadoutTable>
+            <ReadoutTable title="Recent provider outcomes" empty="No completed provider calls yet." headings={['Provider', 'Work', 'Outcome', 'Status', 'Requests', 'Latest']}>
+              {data.providerSummary.map((request) => <tr key={`${request.provider}-${request.capability}-${request.outcome}-${request.status ?? 'none'}`} className="border-t border-border/60">
+                <td className="py-2 pr-4 font-medium">{request.provider}</td><td className="py-2 pr-4">{request.capability}</td><td className="py-2 pr-4">{request.outcome}</td><td className="py-2 pr-4">{request.status ?? '—'}</td><td className="py-2 pr-4 tabular-nums">{request.requests}</td><td className="py-2">{clock(request.lastRequestedAt)}</td>
+              </tr>)}
+            </ReadoutTable>
+            <ReadoutTable title="Latest retained claims" empty="No claims retained yet." headings={['Artist', 'Category', 'Claim', 'Evidence']}>
+              {data.claims.slice(0, 16).map((claim, index) => <tr key={`${claim.artist}-${claim.topic}-${index}`} className="border-t border-border/60 align-top">
+                <td className="py-2 pr-4 font-medium">{claim.artist}</td><td className="py-2 pr-4">{claim.category}</td><td className="py-2 pr-4">{claim.wording}</td><td className="py-2"><a href={claim.sourceUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{claim.evidence}</a></td>
+              </tr>)}
+            </ReadoutTable>
+          </div>
+        )}
+      </Card>}
     </div>
   );
 }
 
 function ReadoutTable({ title, empty, headings, children }: { title: string; empty: string; headings: string[]; children: ReactNode }) {
   const rows = Array.isArray(children) ? children : [];
-  return <section><h2 className="mb-2 text-sm font-medium">{title}</h2><div className="max-h-80 overflow-auto rounded-md border border-border/70"><table className="w-full min-w-[620px] text-left text-xs"><thead className="sticky top-0 bg-card text-muted"><tr>{headings.map((heading) => <th key={heading} className="px-3 py-2 font-medium">{heading}</th>)}</tr></thead><tbody>{rows.length ? rows : <tr><td colSpan={headings.length} className="px-3 py-3 text-muted">{empty}</td></tr>}</tbody></table></div></section>;
+  return <section><h2 className="mb-2 text-sm font-medium">{title}</h2><div className="max-h-80 overflow-auto rounded-md border border-border/70"><table className="w-full min-w-[680px] text-left text-xs"><thead className="sticky top-0 bg-card text-muted"><tr>{headings.map((heading) => <th key={heading} className="px-3 py-2 font-medium">{heading}</th>)}</tr></thead><tbody>{rows.length ? rows : <tr><td colSpan={headings.length} className="px-3 py-3 text-muted">{empty}</td></tr>}</tbody></table></div></section>;
 }
