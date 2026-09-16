@@ -249,7 +249,7 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 <span className="caption text-[10px] whitespace-nowrap">
                   {c.toolCalls?.length
                     ? isShortlistCall(c.kind)
-                      ? <span title={`${c.toolCalls.length} Shortlist passes`} aria-label={`${c.toolCalls.length} Shortlist passes`}>◈ {c.toolCalls.length}</span>
+                      ? `◈ ${c.toolCalls.length}`
                       : `🔧 ${c.toolCalls.length}`
                     : ''}
                   {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}
