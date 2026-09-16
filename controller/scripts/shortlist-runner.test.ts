@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -146,6 +146,37 @@ test('shortlist presentation never attaches one track\'s note to another track',
       "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
     ),
     "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
+  );
+});
+
+test('resolved Musical Leanings flag requires an explicit model decision', () => {
+  assert.equal(
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'The selected track suits these Musical Leanings.'),
+    false,
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'Selected "One by Artist" from the eligible shortlist.'),
+    true,
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'Selected "One by Artist" from the eligible shortlist.'),
+    false,
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag(null, false, 'The selected track suits these Musical Leanings.'),
+    false,
+  );
+});
+
+test('an unclaimed Leanings reference is replaced with a neutral Booth note', () => {
+  const song = { artist: 'Prince', title: '1999' };
+  assert.equal(
+    shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', false, song),
+    'Prince — 1999: selected for its fit with the current musical flow.',
+  );
+  assert.equal(
+    shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', true, song),
+    'Prince - 1999 fits because the DJ has a broad alternative taste.',
   );
 });
 
