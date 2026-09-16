@@ -25,8 +25,8 @@ export default function HowTheDjWorks() {
         <p>
           Track Shortlist is useful where tool calling is slow, unreliable or costly;
           Agentic Tools remains available for models that are comfortable with an
-          exploratory, multi-step search. Choose either under <strong>Settings &rarr; DJ
-          Behaviour</strong>. If the model can&rsquo;t be reached at all, a pre-built playlist
+          exploratory, multi-step search. Choose either under <strong>Settings &rarr; Music
+          Selection</strong>. If the model can&rsquo;t be reached at all, a pre-built playlist
           keyed to the current mood keeps the station on the air. The music never stops;
           the DJ just goes quiet until the model comes back.
         </p>

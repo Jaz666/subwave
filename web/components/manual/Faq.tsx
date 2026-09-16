@@ -34,8 +34,9 @@ export default function Faq() {
           to support a chain of tool calls. Direct request matching and the direct
           segments-and-skills runtime can also be selected independently to keep the work
           within a smaller model&rsquo;s comfort zone. Larger or cloud-hosted models can use
-          Agentic Tools where that suits the station. The choices live under{' '}
-          <strong>Settings &rarr; DJ Behaviour</strong>; more model guidance is on the{' '}
+          Agentic Tools where that suits the station. Track selection lives under{' '}
+          <strong>Settings &rarr; Music Selection</strong>; direct segments and skills
+          remain under <strong>Settings &rarr; DJ Behaviour</strong>. More model guidance is on the{' '}
           <Link href="/manual/llm" className="bs-link">Models &amp; Tokens</Link> page.
         </p>
       </section>

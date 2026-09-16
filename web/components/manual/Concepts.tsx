@@ -136,7 +136,7 @@ export default function Concepts() {
           cause a re-pick. And <strong>the daily token budget degrades in tiers</strong>:
           optional work is reduced first; at the cap the station coasts on the fallback
           playlist. The music never stops. Choose the track-selection path under Settings
-          &rarr; DJ Behaviour; the model side is on{' '}
+          &rarr; Music Selection; the model side is on{' '}
           <Link href="/manual/llm" className="bs-link">Models &amp; Tokens</Link>.
         </p>
       </section>
