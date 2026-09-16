@@ -389,8 +389,9 @@ const PENDING_ROTATE_JINGLE_MAX = 1;
 // stops that from wedging the button shut. Generously past any single track, so
 // it never retires a press that is merely waiting for its boundary.
 const PENDING_JINGLE_TTL_MS = 30 * 60 * 1000;
-// Give the next show a natural seam if one is close, but never let a complete
-// handoff pair become a detached greeting several minutes into that show.
+// Give the next show a natural seam if one is close, but never let either a
+// complete handoff pair, or an as-yet-unrendered handoff, become a detached
+// greeting several minutes into that show.
 const HANDOFF_BOUNDARY_WAIT_MS = 2 * 60_000;
 
 // transitions far more often — a working DJ talks across most of them.
@@ -420,6 +421,7 @@ class Queue {
   _deadlinePickAt = 0;          // last deadline-pick ATTEMPT (ms epoch) — failure-retry cooldown, see maybeDeadlinePick
   _pendingVoice: PendingVoice | null = null; // one boundary-deferred segment awaiting the next track start — see announceAtNextTrack
   _handoffBoundaryTimer: NodeJS.Timeout | null = null;
+  _handoffGenerationTimer: NodeJS.Timeout | null = null;
   _introRenders = new IntroRenderTracker<QueueItem>(); // timed-out pre-renders stay reusable by airIntro
   // Jingle handoffs made but not yet heard — see playJingle. ONE map for both
   // callers on purpose: the de-duplication question ("is this clip already
@@ -488,6 +490,52 @@ class Queue {
       this._handoffBoundaryTimer = null;
       if (this._pendingVoice === p) void this.airPendingVoice();
     }, Math.max(0, Number(p.notBefore) + HANDOFF_BOUNDARY_WAIT_MS - Date.now()));
+  }
+
+  // The rendered-pair fallback above starts only once TTS has completed. A
+  // very long final track can otherwise defer even STARTING that work well
+  // beyond the new show's boundary. Keep a separate deadline for the durable
+  // session record; at expiry the normal immediate voice path ducks the pair
+  // over the song already playing. Re-checking pendingHandoff() at fire time
+  // makes normal seam delivery and restart recovery harmless no-ops.
+  armHandoffGenerationFallback() {
+    if (this._handoffGenerationTimer) clearTimeout(this._handoffGenerationTimer);
+    this._handoffGenerationTimer = null;
+    const pending = session.pendingHandoff();
+    if (!pending) return;
+    const boundaryAt = 'incomingPersonaId' in pending ? session.handoffBoundaryAt() : null;
+    const startedAt = boundaryAt ?? pending.at;
+    if (!Number.isFinite(startedAt)) return;
+    const deadlineAt = Number(startedAt) + HANDOFF_BOUNDARY_WAIT_MS;
+    this._handoffGenerationTimer = setTimeout(() => {
+      this._handoffGenerationTimer = null;
+      void this.runHandoffGenerationFallback();
+    }, Math.max(0, deadlineAt - Date.now()));
+  }
+
+  async runHandoffGenerationFallback({
+    getContext = getFullContext,
+    runHandoff = (ctx: session.SessionContext) => djAgent.runPersonaHandoff(this, ctx),
+  }: {
+    getContext?: typeof getFullContext;
+    runHandoff?: (ctx: session.SessionContext) => Promise<void>;
+  } = {}) {
+    const pending = session.pendingHandoff();
+    if (!pending) return;
+    try {
+      // A final-track handoff retains the target boundary's context while the
+      // outgoing show is live. An ordinary post-roll handoff needs live facts
+      // for the show it is now introducing.
+      const contextAt = 'incomingPersonaId' in pending ? session.boundaryHandoffContextAt() : null;
+      const ctx = contextAt ? await getContext(contextAt) : await getContext();
+      await runHandoff(ctx);
+    } catch (err) {
+      this.log('error', `Boundary handoff fallback failed: ${(err as Error).message}`);
+    } finally {
+      // A successful immediate handoff consumes the session record; a refused
+      // or failed one should not leave an obsolete timer behind either.
+      this.armHandoffGenerationFallback();
+    }
   }
 
   recoverPendingHandoff(raw: unknown) {
@@ -613,6 +661,11 @@ class Queue {
     } catch (err) {
       console.error('[queue] recover failed:', (err as Error).message);
     }
+    // Session recovery runs immediately before queue recovery, but queue.json
+    // itself may not exist on a fresh station. Restore an unrendered durable
+    // handoff's deadline in either case rather than relying on another picker
+    // or track transition.
+    this.armHandoffGenerationFallback();
     this.recoverPauseTalk();
     if (existsSync(config.queue.recentPlaysFile)) {
       try {
@@ -3323,6 +3376,8 @@ class Queue {
       }
     } catch (err) {
       this.log('error', `Boundary handoff failed: ${(err as Error).message}`);
+    } finally {
+      this.armHandoffGenerationFallback();
     }
   }
 

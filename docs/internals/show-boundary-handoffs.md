@@ -54,10 +54,11 @@ or co-host exchange.
 3. Prepare one atomic outgoing-sign-off/incoming-greeting pair without rolling
    the live session early.
 4. With normal talk placement, air that pair during the final track. With
-   **Talk only between tracks**, render it during the final track but hold it
-   for the first real track seam at or after the scheduled boundary. If no
-   eligible seam arrives within two minutes, release that same rendered pair
-   through the light-duck intro channel rather than waiting without bound.
+   **Talk only between tracks**, prefer the first real track seam at or after
+   the scheduled boundary. That preference has one absolute two-minute
+   deadline: if the pair is already rendered, release it through the light-duck
+   intro channel; if it has not started rendering because the final track is
+   still live, generate and duck it over that track instead.
 5. After the handoff is claimed, suppress ordinary outgoing-presenter speech.
 6. At the real changeover, activate the incoming session and roster; its first
    track then starts under the new show's identity. There is no mandatory
@@ -100,6 +101,12 @@ the corresponding on-air moment.
   missing or invalid manifest/audio leaves the session record eligible for the
   established regeneration path. Only the final line's stream-edge marker
   settles the complete pair as aired.
+- The same absolute deadline also covers an **unrendered** durable handoff.
+  This prevents a long final track from postponing generation until a seam many
+  minutes into the incoming show. At expiry the normal immediate voice path is
+  used, so the pair is ducked over the current track; pending-state checks and
+  the handoff runner's claim keep a late seam or a concurrent trigger from
+  duplicating it.
 - If the wall-clock session roll wins the race with the final-track marker, the
   armed record transfers to the incoming session and generic roll/drain hooks
   still leave it for the confirmed-track runner.
@@ -134,6 +141,7 @@ Tests should cover at least:
 - a host/guest role reversal between adjacent shows;
 - no schedule-fact repetition outside an optional integration's cadence allowance;
 - a real seam before the two-minute bound, and light-duck fallback when no seam arrives;
+- a long final track where no handoff has rendered by the deadline;
 - a controller restart that preserves the rendered pair and its original deadline;
 
 ## Resolved live finding — 8 September 2026
