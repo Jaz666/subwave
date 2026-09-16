@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -127,16 +127,18 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
     if (!shortlistRepick) return outcome;
 
     const track = seen.get(outcome.id);
-    const selectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
+    const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
+      editorialLeanings, outcome.usedMusicalLeanings, rawSelectionReason,
+    );
+    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track);
     shortlistResolution.track = {
       id: outcome.id,
       title: track?.title ?? null,
       artist: track?.artist ?? null,
     };
     shortlistResolution.selectionReason = selectionReason;
-    shortlistResolution.usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-      editorialLeanings, outcome.usedMusicalLeanings, selectionReason,
-    );
+    shortlistResolution.usedMusicalLeanings = usedMusicalLeanings;
     return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings: shortlistResolution.usedMusicalLeanings };
   } catch {
     return null;
@@ -588,14 +590,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   if (useShortlist) {
     // Both safeguards matter: validate against the final (possibly guarded)
     // track first, then ensure the resulting Booth note remains informative.
-    object.reason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
-    // Weak local models can contradict themselves by explaining that Musical
-    // Leanings informed the choice while returning its diagnostic flag as
-    // false. Preserve the natural explanation and make the operator signal
-    // truthful when configured Leanings are explicitly named.
+    const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
     const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-      editorialLeanings, object.usedMusicalLeanings, object.reason,
+      editorialLeanings, object.usedMusicalLeanings, rawSelectionReason,
     );
+    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song);
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
