@@ -102,6 +102,7 @@ interface LlmCall {
    * From the controller's failureDiagnostics(); absent on success (see `response`). */
   responseText?: string;
   steps?: number;
+  agentPickResolution?: { usedMusicalLeanings?: boolean };
 }
 
 export interface DebugLlm {
@@ -215,5 +216,4 @@ export interface DebugData {
   mounts?: DebugMounts;
   error?: string;
 }
-
 
