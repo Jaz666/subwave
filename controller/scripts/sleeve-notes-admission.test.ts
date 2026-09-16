@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { migrate } from '../src/sleeve-notes/db.js';
-import { admitLocalEncounterInDatabase, musicBrainzRetryDelay, retryResearchJobInDatabase } from '../src/sleeve-notes/research-repository.js';
+import { admitLocalEncounterInDatabase, deferMusicBrainzMatchesInDatabase, musicBrainzOutageDelay, musicBrainzRetryDelay, retryResearchJobInDatabase } from '../src/sleeve-notes/research-repository.js';
 
 test('an encounter creates one local attachment and one durable MusicBrainz match task', () => {
   const db = new Database(':memory:');
@@ -51,4 +51,27 @@ test('a transient provider failure remains a timed retry rather than a no-match'
 
 test('MusicBrainz retries recover quickly from one blip but back off boundedly during an outage', () => {
   assert.deepEqual([1, 2, 3, 4, 5, 6].map((attempt) => musicBrainzRetryDelay(attempt) / 60_000), [1, 5, 15, 30, 60, 60]);
+  assert.deepEqual([1, 2, 3, 4, 5].map((attempt) => musicBrainzOutageDelay(attempt) / 60_000), [5, 15, 30, 60, 60]);
+});
+
+test('a MusicBrainz outage defers every pending external match together', () => {
+  const db = new Database(':memory:');
+  migrate(db);
+  for (const id of ['one', 'two']) {
+    admitLocalEncounterInDatabase(db, {
+      localTrackId: id, title: `Track ${id}`, artist: 'Example Band', releaseTitle: null,
+      musicbrainzRecordingId: null, source: 'queue', priority: 0,
+    });
+  }
+  db.prepare(`INSERT INTO sleeve_research_jobs (id, provider, subject_type, subject_id, capability,
+    state, priority, attempts, run_after, created_at, updated_at)
+    VALUES ('release', 'musicbrainz', 'release', 'release-id', 'release-context', 'queued', 200, 0, NULL, 'old', 'old')`).run();
+  assert.equal(deferMusicBrainzMatchesInDatabase(db, 300_000, new Date('2026-09-16T12:00:00.000Z')), 2);
+  assert.deepEqual(db.prepare(`SELECT subject_type AS subjectType, capability, state, run_after AS runAfter
+    FROM sleeve_research_jobs ORDER BY subject_type, capability`).all(), [
+    { subjectType: 'local-track', capability: 'match', state: 'retry-at', runAfter: '2026-09-16T12:05:00.000Z' },
+    { subjectType: 'local-track', capability: 'match', state: 'retry-at', runAfter: '2026-09-16T12:05:00.000Z' },
+    { subjectType: 'release', capability: 'release-context', state: 'queued', runAfter: null },
+  ]);
+  db.close();
 });

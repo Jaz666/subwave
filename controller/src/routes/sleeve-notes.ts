@@ -18,12 +18,11 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
     provider: 'genius',
     providerEnabled,
     providerConfigured,
-    collectionRunning: false,
-    collectionBlockedReason: enabled ? 'replacement-stage-1-only' : 'disabled',
+    collectionRunning: enabled,
+    collectionBlockedReason: enabled ? null : 'disabled',
     coverage: {},
-    // The replacement path is live only as a local Stage-1 admission queue.
-    // A quiet-time MusicBrainz worker is introduced separately, so this makes
-    // the temporary state explicit rather than suggesting that Genius runs.
+    // Temporary development readout for the live MusicBrainz → Wikipedia → LLM
+    // path. It remains read-only and deliberately does not expose notes on air.
     replacement: enabled ? {
       admissionActive: true,
       researchWorkerActive: true,
