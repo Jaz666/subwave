@@ -220,6 +220,62 @@ export function finishResearchJob(id: string, state: 'complete' | 'failed'): voi
     .run(state, new Date().toISOString(), id);
 }
 
+/** Return work left marked running when a controller process was interrupted. */
+export function recoverInterruptedResearchJobs(): number {
+  return recoverInterruptedResearchJobsInDatabase(open());
+}
+
+export function recoverInterruptedResearchJobsInDatabase(db: Database.Database, now = new Date()): number {
+  const result = db.prepare(`UPDATE sleeve_research_jobs
+    SET state = 'queued', run_after = NULL, updated_at = ?
+    WHERE state = 'running'`).run(now.toISOString());
+  return result.changes;
+}
+
+export interface WikipediaClaimRebuild {
+  claimsRemoved: number;
+  jobsQueued: number;
+}
+
+/**
+ * Discard only claims derived from cached Wikipedia prose and replay their
+ * extraction jobs. No identity or provider work is repeated: a safer evidence
+ * validator can therefore rebuild the editorial layer without hammering APIs.
+ */
+export function rebuildWikipediaClaims(): WikipediaClaimRebuild {
+  return rebuildWikipediaClaimsInDatabase(open());
+}
+
+export function rebuildWikipediaClaimsInDatabase(db: Database.Database, now = new Date()): WikipediaClaimRebuild {
+  const timestamp = now.toISOString();
+  const transaction = db.transaction(() => {
+    const claimsRemoved = db.prepare(`DELETE FROM sleeve_claims
+      WHERE source_document_id IN (
+        SELECT id FROM sleeve_source_documents
+        WHERE provider = 'wikipedia' AND entity_type = 'artist'
+      )`).run().changes;
+    db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
+      id, provider, subject_type, subject_id, capability, state, priority,
+      attempts, run_after, created_at, updated_at
+    ) SELECT lower(hex(randomblob(16))), 'researcher', 'artist', entity_id,
+      'extract-wikipedia', 'queued', 300, 0, NULL, ?, ?
+      FROM sleeve_source_documents
+      WHERE provider = 'wikipedia' AND entity_type = 'artist'
+      GROUP BY entity_id`).run(timestamp, timestamp);
+    const jobsQueued = db.prepare(`UPDATE sleeve_research_jobs
+      SET state = 'queued', attempts = 0, run_after = NULL, updated_at = ?
+      WHERE provider = 'researcher' AND subject_type = 'artist'
+        AND capability = 'extract-wikipedia'
+        AND EXISTS (
+          SELECT 1 FROM sleeve_source_documents s
+          WHERE s.provider = 'wikipedia' AND s.entity_type = 'artist'
+            AND s.entity_id = sleeve_research_jobs.subject_id
+        )`).run(timestamp).changes;
+    return { claimsRemoved, jobsQueued };
+  });
+  return transaction();
+}
+
 /** A provider outage is not a content verdict. Keep the job durable and pause it. */
 export function retryResearchJob(id: string, delayMs = 5 * 60_000): void {
   retryResearchJobInDatabase(open(), id, delayMs);

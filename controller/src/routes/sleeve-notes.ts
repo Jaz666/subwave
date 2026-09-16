@@ -3,7 +3,7 @@
 import express from 'express';
 import * as settings from '../settings.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
+import { rebuildWikipediaClaims, researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
 
 export const router = express.Router();
 
@@ -41,4 +41,14 @@ router.get('/sleeve-notes/readout', requireAdmin, async (_req, res) => {
     return res.json({ active: false, artists: [], claims: [], jobs: [] });
   }
   return res.json({ active: true, ...researchStoreReadout() });
+});
+
+// Deliberate maintenance action after changing claim validation. It replays
+// only cached Wikipedia documents; it never repeats MusicBrainz/Wikipedia IO.
+router.post('/sleeve-notes/rebuild-wikipedia-claims', requireAdmin, async (_req, res) => {
+  await settings.load();
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) {
+    return res.status(409).json({ error: 'Extended Sleeve Notes is disabled' });
+  }
+  return res.json({ active: true, ...rebuildWikipediaClaims() });
 });

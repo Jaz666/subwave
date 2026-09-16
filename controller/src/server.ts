@@ -55,6 +55,7 @@ import { router as connectRoutes } from './routes/connect.js';
 import { router as mcpRoutes } from './routes/mcp.js';
 import { router as sleeveNotesRoutes } from './routes/sleeve-notes.js';
 import * as sleeveNotesDb from './sleeve-notes/db.js';
+import { recoverInterruptedResearchJobs } from './sleeve-notes/research-repository.js';
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
 import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
@@ -216,6 +217,18 @@ app.listen(config.server.port, async () => {
     );
   } catch (err) {
     console.error('[settings] load failed:', err.message);
+  }
+
+  // A restart can interrupt a quiet-time worker after it claims durable work.
+  // Put those jobs back before any workers are allowed to start, but leave the
+  // Sleeve Notes DB unopened when the feature itself remains disabled.
+  if (settings.get().djBehaviour.extendedSleeveNotes === true) {
+    try {
+      const recovered = recoverInterruptedResearchJobs();
+      if (recovered) console.log(`[sleeve-notes] recovered ${recovered} interrupted research job${recovered === 1 ? '' : 's'}`);
+    } catch (err: any) {
+      console.error('[sleeve-notes] job recovery failed:', err.message);
+    }
   }
 
   // Must be in memory before the first auto-playlist build and queue push.
