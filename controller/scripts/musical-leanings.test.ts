@@ -11,7 +11,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 
 const settings = await import('../src/settings.js');
 await settings.load();
-const { pickSystem, pickerMusicLeanings } = await import('../src/broadcast/dj-agent/schemas.js');
+const { PICK_SCHEMA, pickSystem, pickerMusicLeanings } = await import('../src/broadcast/dj-agent/schemas.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
 await settings.update({ personas: [persona], activePersonaId: persona.id });
@@ -26,6 +26,7 @@ assert.match(prompt, /Musical Leanings — Favour patient dub, deep electronic c
 assert.match(prompt, /soft editorial preference/i);
 assert.match(prompt, /may guide an otherwise sound selection/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
+assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, true);
 
 const guest = settings.guestEditorialNudgeFromGuests([
   { id: 'p_f023a4', name: 'Carrie Marshall', musicLean: 'Favour great guitar work and unexpected rock records.' },
