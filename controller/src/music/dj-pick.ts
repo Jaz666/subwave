@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { djObject, modelTolerant } from '../llm/sdk.js';
-import { editorialLeaningsForPick, pickSchemaBase, pickSystem } from '../broadcast/dj-agent/schemas.js';
+import { pickSchemaBase, pickSystem, type EditorialLeaningsContext } from '../broadcast/dj-agent/schemas.js';
 import type { ShortlistCandidate, ShortlistSourceRun } from './shortlist.js';
 
 export type ShortlistPick = {
@@ -17,13 +17,18 @@ export type ShortlistPick = {
   transition: 'normal' | 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop' | null;
 };
 
+export type ShortlistSelectionContext = {
+  currentTrack?: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null } | null;
+  journeyActive?: boolean;
+  link?: string;
+};
+
 export function resolvedMusicalLeaningsFlag(
-  configuredLeanings: string,
+  context: EditorialLeaningsContext | null,
   modelFlag: unknown,
   verifiedReason: unknown,
 ): boolean {
-  return modelFlag === true
-    || (configuredLeanings.trim() !== '' && /\bmusical\s+leanings\b/i.test(String(verifiedReason ?? '')));
+  return !!context?.promptValue && (modelFlag === true || /\bmusical\s+leanings\b/i.test(String(verifiedReason ?? '')));
 }
 
 function comparable(value: unknown): string {
@@ -117,11 +122,9 @@ export function shortlistPickSchema(ids: string[]) {
   }), { objectFallbacks: { selectionReason: UNUSABLE_SELECTION_REASON } });
 }
 
-export function shortlistPickPrompt(candidates: ShortlistCandidate[], editorialLeanings = ''): string {
-  const leanings = editorialLeanings.trim();
-  return (leanings ? `${leanings}\n\n` : '')
-    + JSON.stringify({ shortlist: candidates }, null, 2)
-    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Set usedMusicalLeanings to true only when Musical Leanings genuinely settled a close choice; otherwise false.';
+export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
+  return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, shortlist: candidates }, null, 2)
+    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Use Musical Leanings, when supplied, as a soft editorial preference among already eligible tracks. They may inform the final choice without being decisive, but never override show rules, rotation, safety, or musical flow. Set usedMusicalLeanings to true when they materially informed this selection; otherwise false. In selectionReason, describe the real musical fit naturally; if relevant, you may refer to the DJ’s preferences without using a fixed phrase.';
 }
 
 export async function djPick({
@@ -129,11 +132,15 @@ export async function djPick({
   showAt = null,
   playlistResolved = true,
   sourceRuns = [],
+  context = {},
+  editorialLeanings = null,
 }: {
   candidates: ShortlistCandidate[];
   showAt?: Date | null;
   playlistResolved?: boolean;
   sourceRuns?: ShortlistSourceRun[];
+  context?: ShortlistSelectionContext;
+  editorialLeanings?: EditorialLeaningsContext | null;
 }): Promise<ShortlistPick> {
   const ids = candidates.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string');
   const toolCalls = shortlistDebugTools(sourceRuns);
@@ -142,8 +149,8 @@ export async function djPick({
   // controller-resolved track and safe Booth reason.
   const shortlistResolution: any = {};
   const selection = await djObject({
-    system: pickSystem(showAt, playlistResolved, true),
-    prompt: shortlistPickPrompt(candidates, editorialLeaningsForPick(showAt)),
+    system: pickSystem(showAt, playlistResolved, true, editorialLeanings),
+    prompt: shortlistPickPrompt(candidates, context, editorialLeanings),
     schema: shortlistPickSchema(ids),
     temperature: 0.5,
     kind: 'djShortlistPick',
@@ -152,7 +159,7 @@ export async function djPick({
   const track = candidates.find((candidate) => candidate.id === selection.id);
   const selectionReason = usableSelectionReason(shortlistSelectionReason(track, selection.selectionReason), track ?? {});
   const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-    editorialLeaningsForPick(showAt), selection.usedMusicalLeanings, selectionReason,
+    editorialLeanings, selection.usedMusicalLeanings, selectionReason,
   );
   shortlistResolution.track = {
     id: selection.id,

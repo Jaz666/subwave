@@ -103,9 +103,10 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.match(prompt, /Track Shortlist/);
   const promptedWithLeanings = shortlistPickPrompt(
     [{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }],
-    'Musical Leanings — Favour patient dub.',
+    {},
+    { host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' },
   );
-  assert.ok(promptedWithLeanings.indexOf('Musical Leanings') < promptedWithLeanings.indexOf('"shortlist"'));
+  assert.ok(promptedWithLeanings.indexOf('musicalLeanings') < promptedWithLeanings.indexOf('"shortlist"'));
 });
 
 test('shortlist presentation never attaches one track\'s note to another track', () => {
@@ -136,15 +137,15 @@ test('shortlist presentation never attaches one track\'s note to another track',
 
 test('resolved Musical Leanings flag follows the verified reason, not a contradictory model flag', () => {
   assert.equal(
-    resolvedMusicalLeaningsFlag('Musical Leanings — Favour patient dub.', false, 'The selected track suits these Musical Leanings.'),
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'The selected track suits these Musical Leanings.'),
     true,
   );
   assert.equal(
-    resolvedMusicalLeaningsFlag('Musical Leanings — Favour patient dub.', false, 'Selected "One by Artist" from the eligible shortlist.'),
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'Selected "One by Artist" from the eligible shortlist.'),
     false,
   );
   assert.equal(
-    resolvedMusicalLeaningsFlag('', false, 'The selected track suits these Musical Leanings.'),
+    resolvedMusicalLeaningsFlag(null, false, 'The selected track suits these Musical Leanings.'),
     false,
   );
 });

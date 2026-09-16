@@ -142,9 +142,15 @@ export const LISTENER_TEXT_CLAUSE = instruction('shared', 'listener-text');
 // same look-ahead has already rolled — the mic-pass aired ahead of this pick,
 // so the incoming DJ introduces their own opener rather than the outgoing DJ
 // teeing up a show they've already signed off from.
-type GuestMusicalNudge = {
+export type GuestMusicalNudge = {
   guest: { id: string; name: string };
   musicalLeanings: string;
+};
+
+export type EditorialLeaningsContext = {
+  host: string | null;
+  guest: GuestMusicalNudge | null;
+  promptValue: string | null;
 };
 
 // Keep variable editorial preference at the end of the system prompt. Guest
@@ -163,15 +169,20 @@ export function pickerMusicLeanings(
   return hostLine + guestLine;
 }
 
-export function editorialLeaningsForPick(showAt: Date | null = null): string {
+export function resolveEditorialLeanings(showAt: Date | null = null): EditorialLeaningsContext {
   const persona = session.onAirPersona();
-  return pickerMusicLeanings(
-    settings.personaMusicLeanings(persona),
-    settings.guestEditorialNudge(showAt ?? new Date()),
-  );
+  const host = settings.personaMusicLeanings(persona);
+  const guest = settings.guestEditorialNudge(showAt ?? new Date());
+  const lines = [host ? `Host: ${host}` : '', guest ? `Guest (${guest.guest.name}, secondary): ${guest.musicalLeanings}` : ''].filter(Boolean);
+  return { host, guest, promptValue: lines.join('\n') || null };
 }
 
-export function pickSystem(showAt: Date | null = null, playlistResolved = true, nativeShortlist = false) {
+export function editorialLeaningsForPick(showAt: Date | null = null): string {
+  const leanings = resolveEditorialLeanings(showAt);
+  return pickerMusicLeanings(leanings.host, leanings.guest);
+}
+
+export function pickSystem(showAt: Date | null = null, playlistResolved = true, nativeShortlist = false, editorialLeanings: EditorialLeaningsContext | null = null) {
   const persona = session.onAirPersona();
   // In DJ mode, lean on the live session history: a working DJ runs threads
   // and calls back to a track or a remark from earlier in the shift. This pairs
@@ -203,7 +214,8 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true, 
   // prompt. Track Shortlist places the same cue immediately above its supplied
   // candidates instead, where a small local model can weigh it while comparing
   // tracks without imposing any wording on the eventual link or Booth note.
-  const editorialLeanings = nativeShortlist ? '' : editorialLeaningsForPick(showAt);
+  const leanings = editorialLeanings ?? resolveEditorialLeanings(showAt);
+  const editorialLeaningsPrompt = nativeShortlist ? '' : pickerMusicLeanings(leanings.host, leanings.guest);
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of
@@ -243,7 +255,7 @@ ${dj.PICKER_CRITERIA}
 
 ${instruction('picker', 'listener-requests', { listenerText: LISTENER_TEXT_CLAUSE })}${dj.REQUESTER_NAME_CLAUSE}
 
-${findingCandidates}${dj.effectsGuidance()}${editorialLeanings}`;
+${findingCandidates}${dj.effectsGuidance()}${editorialLeaningsPrompt}`;
 }
 
 // Exported for scripts/llm-bench, like requestSchema above.
