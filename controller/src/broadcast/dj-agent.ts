@@ -55,12 +55,12 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
-import { pickSchemaBase, pickSystem, requestSystem } from './dj-agent/schemas.js';
+import { pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -89,7 +89,7 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
-async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick' }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick' }) {
+async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', editorialLeanings = null, shortlistContext = {} }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; editorialLeanings?: EditorialLeaningsContext | null; shortlistContext?: ShortlistSelectionContext }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const shortlistRepick = telemetryKind === 'djShortlistRepick';
@@ -111,15 +111,23 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       // favourites clause is absent (it rides the pick EVENT turn, not this
       // system prompt) — acceptable because `seen` was discovered under the
       // favourites-aware run this salvages.
-      system: pickSystem(showAt, playlistResolved, shortlistRepick),
+      system: pickSystem(showAt, playlistResolved, shortlistRepick, editorialLeanings),
       prompt: shortlistRepick
-        ? shortlistPickPrompt([...seen.values()]) + `\n\n${why}`
+        ? shortlistPickPrompt([...seen.values()], shortlistContext, editorialLeanings) + `\n\n${why}`
         : JSON.stringify({ candidates: [...seen.values()] }, null, 2) + `\n\n${why}`,
       schema,
       temperature: 0.5,
       kind: telemetryKind,
     });
-    return shortlistRepick ? { ...outcome, reason: outcome.selectionReason } : outcome;
+    if (!shortlistRepick) return outcome;
+    const track = seen.get(outcome.id);
+    const selectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track ?? {});
+    return {
+      ...outcome,
+      selectionReason,
+      reason: selectionReason,
+      usedMusicalLeanings: resolvedMusicalLeaningsFlag(editorialLeanings, outcome.usedMusicalLeanings, selectionReason),
+    };
   } catch {
     return null;
   }
@@ -315,6 +323,20 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   const pickStarted = performance.now();
   const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
   const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
+  // One immutable editorial snapshot follows this logical selection through
+  // every model call and final resolution. Guest influence is occasional, not
+  // randomly re-decided after the original prompt has already been sent.
+  const editorialLeanings = resolveEditorialLeanings(showAt);
+  const shortlistContext: ShortlistSelectionContext = {
+    currentTrack: pickAnchor ? {
+      id: pickAnchor.id ?? null,
+      title: pickAnchor.title ?? null,
+      artist: pickAnchor.artist ?? null,
+      album: pickAnchor.album ?? null,
+    } : null,
+    journeyActive: !!audioWaypoint?.length,
+    link: wantLink ? 'A separate safe link may air for this pick.' : 'No link airs for this pick.',
+  };
   let steps: number;
   let toolCalls: any[];
   let extras: { seen: Map<string, any> };
@@ -350,6 +372,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       candidates: shortlist.candidates,
       showAt,
       playlistResolved: !!playlistTracks?.length,
+      context: shortlistContext,
+      editorialLeanings,
     });
     object = { ...selection, reason: selection.selectionReason };
     logEvent('shortlist.selected', { id: selection.id, candidates: shortlist.uniqueCandidates });
@@ -358,6 +382,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       messages: session.windowMessages(),
       scope,
       showAt,
+      editorialLeanings,
     });
     steps = run.steps;
     toolCalls = run.toolCalls;
@@ -400,6 +425,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       seen: extras.seen, badId: object?.id ?? null, showAt,
       playlistResolved: !!playlistTracks?.length,
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
+      editorialLeanings,
+      shortlistContext,
     });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
@@ -487,6 +514,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       playlistResolved: !!playlistTracks?.length,
       reason,
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
+      editorialLeanings,
+      shortlistContext,
     }),
     poolRescue: (avoidArtist) => pickViaPool(
       queue, ctx, { wantLink, pickAnchor, showAt }, rankTarget, audioWaypoint,
@@ -534,6 +563,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         playlistResolved: !!playlistTracks?.length,
         reason,
         telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
+        editorialLeanings,
+        shortlistContext,
       }),
       log: (line) => queue.log('picker', line),
       logEvent,
@@ -552,10 +583,16 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Both safeguards matter: validate against the final (possibly guarded)
     // track first, then ensure the resulting Booth note remains informative.
     object.reason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, object.usedMusicalLeanings, object.reason);
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
       selectionReason: object.reason,
+      usedMusicalLeanings,
+      musicalLeanings: {
+        host: !!editorialLeanings.host,
+        guest: editorialLeanings.guest?.guest.name ?? null,
+      },
       sourceHint: shortlistSourceHint(song.shortlistSources),
       shortlistSources: song.shortlistSources ?? [],
     };

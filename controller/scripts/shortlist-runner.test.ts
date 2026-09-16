@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -98,9 +98,29 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   assert.equal(schema.safeParse({
     id: 'invented', selectionReason: 'not allowed', say: null, transition: null,
   }).success, false);
-  const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
+  const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }], {
+    currentTrack: { id: 'current', title: 'Current', artist: 'Artist' },
+    journeyActive: true,
+    link: 'A separate safe link may air for this pick.',
+  }, {
+    host: 'Favour patient dub.',
+    guest: { guest: { id: 'guest-1', name: 'Carrie Marshall' }, musicalLeanings: 'Favour unexpected rock records.' },
+    promptValue: 'Host: Favour patient dub.\nGuest (Carrie Marshall, secondary): Favour unexpected rock records.',
+  });
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /Track Shortlist/);
+  const payload = JSON.parse(prompt.split('\n\nChoose one id')[0]);
+  assert.deepEqual(payload.context, {
+    currentTrack: { id: 'current', title: 'Current', artist: 'Artist' },
+    journeyActive: true,
+    link: 'A separate safe link may air for this pick.',
+    musicalLeanings: 'Host: Favour patient dub.\nGuest (Carrie Marshall, secondary): Favour unexpected rock records.',
+  });
+  assert.ok(payload.context.musicalLeanings.indexOf('Host:') < prompt.indexOf('"shortlist"'));
+  assert.match(prompt, /soft editorial preference among already eligible/i);
+  assert.match(prompt, /materially informed this selection/i);
+  assert.equal(resolvedMusicalLeaningsFlag({ host: 'x', guest: null, promptValue: 'Host: x' }, true, 'plain reason'), true);
+  assert.equal(resolvedMusicalLeaningsFlag(null, true, 'plain reason'), false);
 });
 
 test('shortlist presentation never attaches one track\'s note to another track', () => {
