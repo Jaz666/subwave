@@ -129,18 +129,24 @@ export async function djPick({
   editorialLeanings?: EditorialLeaningsContext | null;
 }): Promise<ShortlistPick> {
   const ids = candidates.map((candidate) => candidate.id).filter((id): id is string => typeof id === 'string');
+  const shortlistResolution: any = {};
   const selection = await djObject({
     system: pickSystem(showAt, playlistResolved, true, editorialLeanings),
     prompt: shortlistPickPrompt(candidates, context, editorialLeanings),
     schema: shortlistPickSchema(ids),
     temperature: 0.5,
     kind: 'djShortlistPick',
+    telemetry: { shortlistResolution },
   }) as Omit<ShortlistPick, 'usedMusicalLeanings'> & { usedMusicalLeanings?: boolean };
   const track = candidates.find(candidate => candidate.id === selection.id);
   const selectionReason = usableSelectionReason(shortlistSelectionReason(track, selection.selectionReason), track ?? {});
+  const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, selection.usedMusicalLeanings, selectionReason);
+  shortlistResolution.track = { id: selection.id, title: track?.title ?? null, artist: track?.artist ?? null };
+  shortlistResolution.selectionReason = selectionReason;
+  shortlistResolution.usedMusicalLeanings = usedMusicalLeanings;
   return {
     ...selection,
     selectionReason,
-    usedMusicalLeanings: resolvedMusicalLeaningsFlag(editorialLeanings, selection.usedMusicalLeanings, selectionReason),
+    usedMusicalLeanings,
   };
 }

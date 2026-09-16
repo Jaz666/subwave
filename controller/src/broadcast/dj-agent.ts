@@ -99,6 +99,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
   const why = reason
     ?? `You explored the library and then answered with ${badId ? `the id "${badId}", which matches none of the tracks your tools returned` : 'no usable track id'}. Only ids from the candidates above are real. Choose the best next track from them.`;
   try {
+    const shortlistResolution: any = {};
     const outcome: any = await djObject({
       // Same show snapshot as the failed run (showAt) and the same playlist-
       // resolved gate — a tool-less salvage call must NOT reinstate "call
@@ -118,15 +119,20 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       schema,
       temperature: 0.5,
       kind: telemetryKind,
+      ...(shortlistRepick ? { telemetry: { shortlistResolution } } : {}),
     });
     if (!shortlistRepick) return outcome;
     const track = seen.get(outcome.id);
     const selectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track ?? {});
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, outcome.usedMusicalLeanings, selectionReason);
+    shortlistResolution.track = { id: outcome.id, title: track?.title ?? null, artist: track?.artist ?? null };
+    shortlistResolution.selectionReason = selectionReason;
+    shortlistResolution.usedMusicalLeanings = usedMusicalLeanings;
     return {
       ...outcome,
       selectionReason,
       reason: selectionReason,
-      usedMusicalLeanings: resolvedMusicalLeaningsFlag(editorialLeanings, outcome.usedMusicalLeanings, selectionReason),
+      usedMusicalLeanings,
     };
   } catch {
     return null;

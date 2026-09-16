@@ -102,6 +102,11 @@ interface LlmCall {
    * From the controller's failureDiagnostics(); absent on success (see `response`). */
   responseText?: string;
   steps?: number;
+  shortlistResolution?: {
+    track?: { id?: string; title?: string | null; artist?: string | null };
+    selectionReason?: string;
+    usedMusicalLeanings?: boolean;
+  };
 }
 
 export interface DebugLlm {
@@ -215,5 +220,4 @@ export interface DebugData {
   mounts?: DebugMounts;
   error?: string;
 }
-
 
