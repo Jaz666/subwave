@@ -75,7 +75,9 @@ function hasMaterialEvidence(wording: string, evidence: string): boolean {
   let shared = 0;
   for (const term of wordingTerms) if (evidenceTerms.has(term)) shared++;
   const wordingNumbers = wording.match(/\b\d+(?:[.,]\d+)?\b/g) ?? [];
-  return shared >= 2 && wordingNumbers.every((number) => normal(evidence).includes(number));
+  const evidenceNumbers = new Set(evidence.match(/\b\d+(?:[.,]\d+)?\b/g) ?? []);
+  return shared + wordingNumbers.filter((number) => evidenceNumbers.has(number)).length >= 2
+    && wordingNumbers.every((number) => evidenceNumbers.has(number));
 }
 
 const DETAIL_LEADS = new Set(['a', 'an', 'and', 'for', 'from', 'her', 'his', 'in', 'it', 'its', 'she', 'the', 'their', 'they', 'this', 'was']);
@@ -94,6 +96,36 @@ function wordingCarriesEvidenceDetail(wording: string, evidence: string): boolea
     .map((phrase) => normal(phrase))
     .filter((phrase) => !DETAIL_LEADS.has(phrase.toLowerCase()))
     .some((phrase) => normalizedWording.includes(phrase.toLowerCase()));
+}
+
+const CAPITALIZED_NON_DETAILS = new Set([
+  'a', 'an', 'and', 'but', 'for', 'from', 'he', 'her', 'his', 'i', 'in', 'it',
+  'its', 'she', 'the', 'their', 'they', 'this', 'we', 'with', 'you',
+]);
+
+/**
+ * Shared terms alone can join two unrelated facts. Require every meaningful
+ * capitalised detail in each spoken sentence to occur in its exact evidence:
+ * a name, title, award or place cannot be borrowed from elsewhere in an
+ * article merely because one other keyword happens to overlap.
+ */
+function sentenceCarriesAllNamedDetails(wording: string, evidence: string): boolean {
+  const evidenceTerms = materialTerms(evidence);
+  const details = wording.match(/\b[A-Z][\p{L}\p{M}'’-]*\b/gu) ?? [];
+  return details
+    .map((detail) => normal(detail).toLowerCase())
+    .filter((detail) => detail.length >= 2 && !CAPITALIZED_NON_DETAILS.has(detail))
+    .every((detail) => evidenceTerms.has(detail));
+}
+
+function claimSentences(wording: string): string[] {
+  return normal(wording).split(/(?<=[.!?])\s+/).filter(Boolean);
+}
+
+/** Every sentence must independently be supported by the supplied receipt. */
+function everySentenceSupported(wording: string, evidence: string): boolean {
+  return claimSentences(wording).every((sentence) =>
+    hasMaterialEvidence(sentence, evidence) && sentenceCarriesAllNamedDetails(sentence, evidence));
 }
 
 /** A release date alone is catalogue metadata, not a useful DJ note. */
@@ -137,7 +169,8 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
       rejected.push({ candidate, reason: 'unsupported' });
       continue;
     }
-    if (!hasMaterialEvidence(candidate.wording, candidate.evidence)) {
+    if (!hasMaterialEvidence(candidate.wording, candidate.evidence)
+      || !everySentenceSupported(candidate.wording, candidate.evidence)) {
       rejected.push({ candidate, reason: 'unsupported' });
       continue;
     }

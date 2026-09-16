@@ -70,6 +70,38 @@ test('researcher rejects evidence whose concrete detail is absent from the wordi
   assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
 });
 
+test('researcher rejects a sentence that adds names or facts from elsewhere in the article', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: [
+    'Duke Erikson and Butch Vig had been in several bands together, including Spooner and Fire Town.',
+    'In 1990, the band explored jazz fusion, punk rock and Delta blues on its second album.',
+  ].join(' ') } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'artist-stories', topic: 'line-up',
+    wording: 'Shirley Manson, Duke Erikson, Steve Marker and Butch Vig have remained in the band since its inception.',
+    evidence: 'Duke Erikson and Butch Vig had been in several bands together, including Spooner and Fire Town.',
+  }, {
+    category: 'milestones', topic: 'awards',
+    wording: 'The band won a Grammy Award for Best Hard Rock Performance in 1990.',
+    evidence: 'In 1990, the band explored jazz fusion, punk rock and Delta blues on its second album.',
+  }]);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported', 'unsupported']);
+});
+
+test('researcher requires each sentence of a compound note to be evidenced', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: [
+    'The band were created by German record producer Frank Farian, who was the group\'s primary songwriter.',
+    'The four original members were Liz Mitchell, Marcia Barrett, Maizie Williams and Bobby Farrell.',
+  ].join(' ') } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'artist-stories', topic: 'formation',
+    wording: 'The band was created by German record producer Frank Farian. The original line-up included Liz Mitchell, Marcia Barrett, Maizie Williams and Bobby Farrell.',
+    evidence: 'The band were created by German record producer Frank Farian, who was the group\'s primary songwriter.',
+  }]);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
+});
+
 test('researcher refuses a bare name or date as evidence for a larger claim', () => {
   const result = validateResearchCandidates(job, [{
     category: 'artist-stories', topic: 'label', wording: "They were originally signed to Tony Wilson's Factory Records label.",
