@@ -58,7 +58,13 @@ export class MusicBrainzMatchWorker {
         repository.finishProviderRequest(requestId, status === 429 ? 'rate-limited' : 'failed', status);
         const delayMs = repository.musicBrainzRetryDelay(job.attempts + 1);
         repository.retryResearchJob(job.id, delayMs);
-        console.warn(`[sleeve-notes] MusicBrainz temporarily unavailable; retrying in ${Math.round(delayMs / 60_000)}m (attempt ${job.attempts + 1}): ${err?.message || 'unknown error'}`);
+        if (status === 429 || status === 503) {
+          const outageDelay = repository.musicBrainzOutageDelay(job.attempts + 1);
+          const deferred = repository.deferMusicBrainzMatches(outageDelay);
+          console.warn(`[sleeve-notes] MusicBrainz ${status}; deferred ${deferred} pending match${deferred === 1 ? '' : 'es'} for ${Math.round(outageDelay / 60_000)}m (attempt ${job.attempts + 1})`);
+        } else {
+          console.warn(`[sleeve-notes] MusicBrainz temporarily unavailable; retrying in ${Math.round(delayMs / 60_000)}m (attempt ${job.attempts + 1}): ${err?.message || 'unknown error'}`);
+        }
       }
       return true;
     } finally {

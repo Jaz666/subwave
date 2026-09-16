@@ -291,11 +291,34 @@ export function musicBrainzRetryDelay(attempts: number): number {
   return minutes * 60_000;
 }
 
+/** Shared pause after MusicBrainz tells us it is unavailable or rate-limited. */
+export function musicBrainzOutageDelay(attempts: number): number {
+  const minutes = [5, 15, 30, 60][Math.min(Math.max(0, attempts - 1), 3)];
+  return minutes * 60_000;
+}
+
 export function retryResearchJobInDatabase(db: Database.Database, id: string, delayMs = 5 * 60_000, now = new Date()): void {
   const runAfter = new Date(now.getTime() + delayMs).toISOString();
   db.prepare(`UPDATE sleeve_research_jobs
     SET state = 'retry-at', run_after = ?, updated_at = ? WHERE id = ?`)
     .run(runAfter, now.toISOString(), id);
+}
+
+/**
+ * A 503 is a provider-level condition, not one bad track. Put every pending
+ * external match behind one durable retry window so the single worker cannot
+ * turn an outage into a five-second stream of requests.
+ */
+export function deferMusicBrainzMatchesInDatabase(db: Database.Database, delayMs: number, now = new Date()): number {
+  const runAfter = new Date(now.getTime() + delayMs).toISOString();
+  return db.prepare(`UPDATE sleeve_research_jobs
+    SET state = 'retry-at', run_after = ?, updated_at = ?
+    WHERE provider = 'musicbrainz' AND subject_type = 'local-track' AND capability = 'match'
+      AND state IN ('queued', 'retry-at')`).run(runAfter, now.toISOString()).changes;
+}
+
+export function deferMusicBrainzMatches(delayMs: number): number {
+  return deferMusicBrainzMatchesInDatabase(open(), delayMs);
 }
 
 /** Persist canonical identity and every returned release appearance atomically. */
@@ -400,12 +423,16 @@ export interface ResearchStoreSummary {
   localAttachments: number;
   encounters: number;
   pendingMatches: number;
+  retainedClaims: number;
+  researchJobs: number;
 }
 
 export interface ResearchStoreReadout extends ResearchStoreSummary {
   artists: Array<{ name: string; musicbrainzId: string | null; sources: number; claims: number }>;
   claims: Array<{ artist: string; category: string; topic: string; wording: string; evidence: string; sourceUrl: string }>;
   jobs: Array<{ provider: string; subjectType: string; capability: string; state: string; priority: number; attempts: number; runAfter: string | null; updatedAt: string }>;
+  jobSummary: Array<{ provider: string; capability: string; state: string; jobs: number; attempts: number; nextDue: string | null; updatedAt: string }>;
+  providerSummary: Array<{ provider: string; capability: string; outcome: string; status: number | null; requests: number; lastRequestedAt: string }>;
 }
 
 export function researchStoreSummary(): ResearchStoreSummary {
@@ -419,6 +446,8 @@ export function researchStoreSummaryInDatabase(db: Database.Database): ResearchS
     encounters: count('SELECT COUNT(*) AS count FROM sleeve_encounters'),
     pendingMatches: count(`SELECT COUNT(*) AS count FROM sleeve_research_jobs
       WHERE provider = 'musicbrainz' AND capability = 'match' AND state IN ('queued', 'retry-at')`),
+    retainedClaims: count('SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1'),
+    researchJobs: count('SELECT COUNT(*) AS count FROM sleeve_research_jobs'),
   };
 }
 
@@ -443,5 +472,13 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
   const jobs = db.prepare(`SELECT provider, subject_type AS subjectType, capability, state, priority,
     attempts, run_after AS runAfter, updated_at AS updatedAt
     FROM sleeve_research_jobs ORDER BY updated_at DESC LIMIT ?`).all(capped) as ResearchStoreReadout['jobs'];
-  return { ...summary, artists, claims, jobs };
+  const jobSummary = db.prepare(`SELECT provider, capability, state, COUNT(*) AS jobs,
+    SUM(attempts) AS attempts, MIN(run_after) AS nextDue, MAX(updated_at) AS updatedAt
+    FROM sleeve_research_jobs GROUP BY provider, capability, state
+    ORDER BY provider, capability, state`).all() as ResearchStoreReadout['jobSummary'];
+  const providerSummary = db.prepare(`SELECT provider, capability, outcome, status_code AS status,
+    COUNT(*) AS requests, MAX(requested_at) AS lastRequestedAt
+    FROM sleeve_provider_requests GROUP BY provider, capability, outcome, status_code
+    ORDER BY provider, capability, requests DESC`).all() as ResearchStoreReadout['providerSummary'];
+  return { ...summary, artists, claims, jobs, jobSummary, providerSummary };
 }
