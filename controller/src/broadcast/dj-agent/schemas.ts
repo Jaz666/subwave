@@ -173,8 +173,18 @@ export function pickerMusicLeanings(
 
 export function resolveEditorialLeanings(showAt: Date | null = null): EditorialLeaningsContext {
   const persona = session.onAirPersona();
-  const host = settings.personaMusicLeanings(persona);
-  const guest = settings.guestEditorialNudge(showAt ?? new Date());
+  const host = String((persona as { musicLean?: unknown } | null)?.musicLean || '').trim() || null;
+  // Keep this local to the Shortlist branch until #1678 lands. It is the same
+  // rare secondary nudge policy as settings.guestEditorialNudge(), but avoids
+  // making this draft branch fail its own controller build on that PR's export.
+  const eligibleGuests = settings.getOnAirRoster(showAt ?? new Date()).guests
+    .filter((candidate: any) => String(candidate?.musicLean || '').trim());
+  const selectedGuest = eligibleGuests.length && Math.random() < 0.25
+    ? eligibleGuests[Math.floor(Math.random() * eligibleGuests.length)]
+    : null;
+  const guest = selectedGuest && typeof selectedGuest.id === 'string' && typeof selectedGuest.name === 'string'
+    ? { guest: { id: selectedGuest.id, name: selectedGuest.name }, musicalLeanings: String(selectedGuest.musicLean).trim() }
+    : null;
   const lines = [
     host ? `Host: ${host}` : '',
     guest ? `Guest (${guest.guest.name}, secondary): ${guest.musicalLeanings}` : '',
