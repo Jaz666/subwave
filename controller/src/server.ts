@@ -341,14 +341,12 @@ app.listen(config.server.port, async () => {
   // Up front so the sync readers see data from the first pick.
   await likes.load().catch(err => console.error('[likes] init failed:', err.message));
   startScheduler();
-  startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
-  startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
-  // Research uses the same LLM as the named picking/request agents. It yields
-  // to them and honours Pause DJ when empty unless the operator has opted into
-  // Sleeve Notes-only maintenance while Icecast has confirmed an empty station.
-  // The small MusicBrainz/Wikipedia metadata workers are non-LLM work and may
-  // keep using ordinary quiet time.
-  startResearchWorker({
+  // The entire Sleeve Notes pipeline shares the listener-aware research gate.
+  // Otherwise, an unattended autoplay stream could keep queuing MusicBrainz
+  // and Wikipedia work while its LLM extractor is paused. The opt-in setting
+  // permits deliberate empty-station catch-up, but its default keeps the
+  // backlog stable until a listener returns.
+  const sleeveNotesQuietGate = {
     isQuiet: () => researchRunAllowed({
       playbackCriticalBusy: queue.playbackCriticalBusy(),
       agentWorkActive: agentWorkActive(),
@@ -357,7 +355,10 @@ app.listen(config.server.port, async () => {
       maintenanceWhenEmpty: settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true,
       listenerCount: gatedListenerCount(),
     }),
-  });
+  };
+  startMusicBrainzMatchWorker(sleeveNotesQuietGate);
+  startWikipediaArtistWorker(sleeveNotesQuietGate);
+  startResearchWorker(sleeveNotesQuietGate);
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));
