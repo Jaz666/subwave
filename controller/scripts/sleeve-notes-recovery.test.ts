@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { migrate } from '../src/sleeve-notes/db.js';
 import {
   rebuildWikipediaClaimsInDatabase,
+  rebuildWikipediaClaimsForArtistInDatabase,
   recoverInterruptedResearchJobsInDatabase,
 } from '../src/sleeve-notes/research-repository.js';
 
@@ -61,5 +62,29 @@ test('Wikipedia claim rebuild retains cached sources and non-Wikipedia claims', 
     { state: 'queued', attempts: 0, runAfter: null },
   ]);
   assert.equal((db.prepare(`SELECT COUNT(*) AS count FROM sleeve_source_documents WHERE provider='wikipedia'`).get() as { count: number }).count, 1);
+  db.close();
+});
+
+test('artist-scoped Wikipedia claim rebuild leaves other artists untouched', () => {
+  const db = seededDatabase();
+  db.prepare(`INSERT INTO sleeve_artists (id, name, musicbrainz_id, created_at, updated_at)
+    VALUES ('other-artist', 'Other Band', 'mb-other', 'old', 'old')`).run();
+  db.prepare(`INSERT INTO sleeve_source_documents (id, entity_type, entity_id, provider, source_url,
+    revision_id, content_hash, content_kind, content, attribution, retrieved_at)
+    VALUES ('other-wiki-source', 'artist', 'other-artist', 'wikipedia', 'https://example.test/other-wiki', '1', 'other-wiki-hash',
+      'bounded-text', 'Other Band story.', 'Wikipedia contributors', 'old')`).run();
+  db.prepare(`INSERT INTO sleeve_claims (id, entity_type, entity_id, category, topic, wording,
+    source_document_id, evidence, created_at, updated_at)
+    VALUES ('other-wiki-claim', 'artist', 'other-artist', 'artist-stories', 'story', 'Other Band story.',
+      'other-wiki-source', 'Other Band story.', 'old', 'old')`).run();
+
+  assert.deepEqual(rebuildWikipediaClaimsForArtistInDatabase(db, 'artist', new Date('2026-09-17T16:30:00.000Z')), {
+    claimsRemoved: 1, jobsQueued: 1,
+  });
+  assert.deepEqual(db.prepare(`SELECT id FROM sleeve_claims ORDER BY id`).all(), [
+    { id: 'other-claim' }, { id: 'other-wiki-claim' },
+  ]);
+  assert.deepEqual(rebuildWikipediaClaimsForArtistInDatabase(db, 'missing'),
+    { claimsRemoved: 0, jobsQueued: 0 });
   db.close();
 });
