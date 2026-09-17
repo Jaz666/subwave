@@ -43,7 +43,7 @@ export interface Researcher {
 
 export interface ValidatedResearch {
   accepted: ResearchCandidate[];
-  rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'bare-milestone' | 'duplicate' }>;
+  rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'bare-milestone' | 'editorial' | 'duplicate' }>;
 }
 
 export interface ResearchOutcomeObserver {
@@ -159,6 +159,22 @@ function isBareReleaseMilestone(candidate: ResearchCandidate): boolean {
   return release && !story;
 }
 
+/** Facts that are accurate but read as catalogue metadata rather than a DJ note. */
+function isEditoriallyThin(candidate: ResearchCandidate): boolean {
+  const wording = normal(candidate.wording).toLowerCase();
+  const count = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)';
+  const genericFormation = /\bformed\b/.test(wording)
+    && /\b(?:19|20)\d{2}\b/.test(wording)
+    && !/\b(advert|after|before|met|friend|school|recruit|member|festival|renam|originally|perform)\w*/.test(wording);
+  const discographyTally = new RegExp(`\\b(?:released|have released|has released)\\s+${count}\\s+(?:studio\\s+)?(?:album|single)s?\\b`).test(wording);
+  const chartTally = new RegExp(`\\b(?:had|have had|have|has had|has)\\s+${count}\\s+(?:top\\s+(?:five|ten|forty)|number\\s+one)\\s+(?:hit|single)s?\\b`).test(wording)
+    && !/\b(song|single|album|track|duet|called|named|featur)\w*/.test(wording);
+  const standaloneRecognition = /\b(?:won|received|awarded|inducted)\b/.test(wording)
+    && /\b(?:award|hall of fame)\b/.test(wording)
+    && !/\b(for|after|following|alongside|during|while|because)\b/.test(wording);
+  return genericFormation || discographyTally || chartTally || standaloneRecognition;
+}
+
 /**
  * The controller's trust boundary for researcher output.
  *
@@ -203,6 +219,10 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
     }
     if (isBareReleaseMilestone({ ...candidate, wording })) {
       rejected.push({ candidate, reason: 'bare-milestone' });
+      continue;
+    }
+    if (isEditoriallyThin({ ...candidate, wording })) {
+      rejected.push({ candidate, reason: 'editorial' });
       continue;
     }
     const key = `${candidate.category}\u0000${normal(candidate.topic).toLowerCase()}`;
