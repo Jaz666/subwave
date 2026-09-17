@@ -122,6 +122,28 @@ function claimSentences(wording: string): string[] {
   return normal(wording).split(/(?<=[.!?])\s+/).filter(Boolean);
 }
 
+function hasSentenceEnding(value: string): boolean {
+  return /[.!?…]["')\]]*$/.test(value);
+}
+
+/**
+ * A model occasionally returns a verbatim source fragment that stops just
+ * before the detail which completes its sentence. Preserve the model's chosen
+ * claim only when it can be extended directly from that same evidence; this is
+ * a source-grounded recovery, not a guessed editorial completion.
+ */
+function completeVerbatimFragment(wording: string, evidence: string): string {
+  if (hasSentenceEnding(wording)) return wording;
+  const start = evidence.indexOf(wording);
+  if (start < 0) return wording;
+  const remaining = evidence.slice(start + wording.length);
+  const ending = remaining.match(/[.!?]["')\]]*(?=\s|$)/);
+  const end = ending?.index === undefined
+    ? evidence.length
+    : start + wording.length + ending.index + ending[0].length;
+  return normal(evidence.slice(start, end));
+}
+
 /** Every sentence must independently be supported by the supplied receipt. */
 function everySentenceSupported(wording: string, evidence: string): boolean {
   return claimSentences(wording).every((sentence) =>
@@ -169,16 +191,17 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
       rejected.push({ candidate, reason: 'unsupported' });
       continue;
     }
-    if (!hasMaterialEvidence(candidate.wording, candidate.evidence)
-      || !everySentenceSupported(candidate.wording, candidate.evidence)) {
+    const wording = completeVerbatimFragment(normal(candidate.wording), normal(candidate.evidence));
+    if (!hasMaterialEvidence(wording, candidate.evidence)
+      || !everySentenceSupported(wording, candidate.evidence)) {
       rejected.push({ candidate, reason: 'unsupported' });
       continue;
     }
-    if (!wordingCarriesEvidenceDetail(candidate.wording, candidate.evidence)) {
+    if (!wordingCarriesEvidenceDetail(wording, candidate.evidence)) {
       rejected.push({ candidate, reason: 'unsupported' });
       continue;
     }
-    if (isBareReleaseMilestone(candidate)) {
+    if (isBareReleaseMilestone({ ...candidate, wording })) {
       rejected.push({ candidate, reason: 'bare-milestone' });
       continue;
     }
@@ -191,7 +214,7 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
     accepted.push({
       category: candidate.category,
       topic: normal(candidate.topic),
-      wording: normal(candidate.wording),
+      wording,
       evidence: normal(candidate.evidence),
     });
   }

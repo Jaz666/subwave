@@ -70,6 +70,36 @@ test('researcher rejects evidence whose concrete detail is absent from the wordi
   assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['unsupported']);
 });
 
+test('researcher completes an unfinished verbatim wording fragment from its evidence', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: [
+    'In 1990, the Beautiful South released their second album, Choke.',
+    'The album also provided the band\'s only Number 1 hit, a Hemingway/Corrigan duet called "A Little Time".',
+    'They broke up in January 2007, saying the split was due to "musical similarities", having sold around 15 million records.',
+  ].join(' ') } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'milestones', topic: 'number one',
+    wording: 'The album also provided the band\'s only Number 1 hit, a Hemingway/Corrigan duet called',
+    evidence: 'The album also provided the band\'s only Number 1 hit, a Hemingway/Corrigan duet called "A Little Time".',
+  }, {
+    category: 'artist-stories', topic: 'split',
+    wording: 'They broke up in January 2007, saying the split was due to',
+    evidence: 'They broke up in January 2007, saying the split was due to "musical similarities", having sold around 15 million records.',
+  }]);
+  assert.deepEqual(result.accepted.map((candidate) => candidate.wording), [
+    'The album also provided the band\'s only Number 1 hit, a Hemingway/Corrigan duet called "A Little Time".',
+    'They broke up in January 2007, saying the split was due to "musical similarities", having sold around 15 million records.',
+  ]);
+});
+
+test('researcher does not replace a complete paraphrase with its evidence', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: 'The Example Band formed in Liverpool in 1980, before touring Europe.' } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed in Liverpool in 1980.',
+    evidence: 'The Example Band formed in Liverpool in 1980, before touring Europe.',
+  }]);
+  assert.equal(result.accepted[0]?.wording, 'The Example Band formed in Liverpool in 1980.');
+});
+
 test('researcher rejects a sentence that adds names or facts from elsewhere in the article', () => {
   const evidenceJob = { ...job, document: { ...job.document, text: [
     'Duke Erikson and Butch Vig had been in several bands together, including Spooner and Fire Town.',
