@@ -164,7 +164,7 @@ function isEditoriallyThin(candidate: ResearchCandidate): boolean {
   const count = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)';
   const genericFormation = /\bformed\b/.test(wording)
     && /\b(?:19|20)\d{2}\b/.test(wording)
-    && !/\b(advert|after|before|met|friend|school|recruit|member|festival|renam|originally|perform)\w*/.test(wording);
+    && !/\b(?:advert\w*|after\w*|before\w*|met|friend\w*|school\w*|recruit\w*|member\w*|festival\w*|renam\w*|originally|perform\w*)\b/.test(wording);
   const discographyTally = new RegExp(`\\b(?:released|have released|has released)\\s+${count}\\s+(?:studio\\s+)?(?:album|single)s?\\b`).test(wording);
   const chartTally = new RegExp(`\\b(?:had|have had|have|has had|has)\\s+${count}\\s+(?:top\\s+(?:five|ten|forty)|number\\s+one)\\s+(?:hit|single)s?\\b`).test(wording)
     && !/\b(song|single|album|track|duet|called|named|featur)\w*/.test(wording);
