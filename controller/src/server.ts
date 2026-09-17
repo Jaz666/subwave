@@ -18,7 +18,7 @@ import * as pocketTts from './audio/pocketTts.js';
 import { getFullContext } from './context.js';
 import { loadCuriosityLedger } from './skills/curiosity.js';
 import { startScheduler } from './broadcast/scheduler.js';
-import { djCallsAllowed, startListenerMonitor } from './broadcast/listeners.js';
+import { djCallsAllowed, gatedListenerCount, startListenerMonitor } from './broadcast/listeners.js';
 import { startStreamIdleMonitor } from './broadcast/stream-idle.js';
 import { startAudienceMonitor } from './broadcast/audience.js';
 import * as likes from './broadcast/likes.js';
@@ -59,6 +59,7 @@ import { recoverInterruptedResearchJobs } from './sleeve-notes/research-reposito
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
 import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
+import { researchRunAllowed } from './sleeve-notes/research-policy.js';
 import { agentWorkActive } from './llm/agent.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadSetupConfig } from './setup/config.js';
@@ -326,10 +327,19 @@ app.listen(config.server.port, async () => {
   startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   // Research uses the same LLM as the named picking/request agents. It yields
-  // to them and honours Pause DJ when empty; the small MusicBrainz/Wikipedia
-  // metadata workers are non-LLM work and may keep using ordinary quiet time.
+  // to them and honours Pause DJ when empty unless the operator has opted into
+  // Sleeve Notes-only maintenance while Icecast has confirmed an empty station.
+  // The small MusicBrainz/Wikipedia metadata workers are non-LLM work and may
+  // keep using ordinary quiet time.
   startResearchWorker({
-    isQuiet: () => !queue.playbackCriticalBusy() && !agentWorkActive() && djCallsAllowed(),
+    isQuiet: () => researchRunAllowed({
+      playbackCriticalBusy: queue.playbackCriticalBusy(),
+      agentWorkActive: agentWorkActive(),
+      djCallsAllowed: djCallsAllowed(),
+      pauseWhenEmpty: settings.get().llm.pauseWhenEmpty === true,
+      maintenanceWhenEmpty: settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true,
+      listenerCount: gatedListenerCount(),
+    }),
   });
   jingles
     .ensureDefaultIdent()

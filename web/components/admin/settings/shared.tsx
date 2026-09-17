@@ -345,6 +345,7 @@ export interface DjBehaviourForm {
   showWelcome: boolean;
   sameHostAcknowledgement: boolean;
   extendedSleeveNotes: boolean;
+  sleeveNotesMaintenanceWhenEmpty: boolean;
   releaseYearMentions: 'regular' | 'occasional' | 'rare';
 }
 

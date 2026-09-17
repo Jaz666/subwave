@@ -165,6 +165,24 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNotes: v === 'on' } }))}
           />
         </div>
+        <div className="field mt-5">
+          <Label>Research while the station is empty</Label>
+          <Seg
+            value={form.djBehaviour.sleeveNotesMaintenanceWhenEmpty ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Pause Sleeve Notes LLM research with the DJ when nobody is listening' },
+              { id: 'on', label: 'On', title: 'Let Sleeve Notes backfill only while Icecast confirms no listeners' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              djBehaviour: { ...f.djBehaviour, sleeveNotesMaintenanceWhenEmpty: v === 'on' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            This affects only non-airing Sleeve Notes research. It never resumes DJ speech or
+            picks, still yields to Agent work, and only runs when Icecast confirms zero listeners.
+          </p>
+        </div>
         <p className="text-[13px] leading-[1.55] text-muted">
           Default Sleeve Notes remain local Verified Facts. Extended Sleeve Notes adds optional
           provider-backed context and does not alter links until its later on-air projection phase.

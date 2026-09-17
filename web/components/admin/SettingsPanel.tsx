@@ -434,6 +434,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         showWelcome: v.djBehaviour?.showWelcome === true,
         sameHostAcknowledgement: v.djBehaviour?.sameHostAcknowledgement === true,
         extendedSleeveNotes: v.djBehaviour?.extendedSleeveNotes === true,
+        sleeveNotesMaintenanceWhenEmpty: v.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === true,
         releaseYearMentions: v.djBehaviour?.releaseYearMentions ?? 'regular',
       },
       weather: {
