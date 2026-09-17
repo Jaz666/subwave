@@ -3,7 +3,7 @@
 import express from 'express';
 import * as settings from '../settings.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { rebuildWikipediaClaims, researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
+import { rebuildWikipediaClaims, rebuildWikipediaClaimsForArtist, researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
 
 export const router = express.Router();
 
@@ -50,4 +50,18 @@ router.post('/sleeve-notes/rebuild-wikipedia-claims', requireAdmin, async (_req,
     return res.status(409).json({ error: 'Extended Sleeve Notes is disabled' });
   }
   return res.json({ active: true, ...rebuildWikipediaClaims() });
+});
+
+// Narrow maintenance path for a known editorial correction. Artist-scoped
+// because extraction jobs select the latest cached Wikipedia source by artist.
+router.post('/sleeve-notes/rebuild-wikipedia-artist/:artistId', requireAdmin, async (req, res) => {
+  await settings.load();
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) {
+    return res.status(409).json({ error: 'Extended Sleeve Notes is disabled' });
+  }
+  const artistId = String(req.params.artistId ?? '');
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(artistId)) {
+    return res.status(400).json({ error: 'artistId must be a UUID' });
+  }
+  return res.json({ active: true, artistId, ...rebuildWikipediaClaimsForArtist(artistId) });
 });
