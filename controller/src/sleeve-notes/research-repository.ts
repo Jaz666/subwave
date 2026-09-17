@@ -276,6 +276,42 @@ export function rebuildWikipediaClaimsInDatabase(db: Database.Database, now = ne
   return transaction();
 }
 
+/**
+ * Replay only one artist's cached Wikipedia research. The research job is
+ * artist-scoped, so every cached Wikipedia claim for that artist is replaced
+ * together; provider identity and source retrieval remain untouched.
+ */
+export function rebuildWikipediaClaimsForArtist(artistId: string): WikipediaClaimRebuild {
+  return rebuildWikipediaClaimsForArtistInDatabase(open(), artistId);
+}
+
+export function rebuildWikipediaClaimsForArtistInDatabase(
+  db: Database.Database, artistId: string, now = new Date(),
+): WikipediaClaimRebuild {
+  const timestamp = now.toISOString();
+  const transaction = db.transaction(() => {
+    const sourceExists = db.prepare(`SELECT 1 FROM sleeve_source_documents
+      WHERE provider = 'wikipedia' AND entity_type = 'artist' AND entity_id = ? LIMIT 1`).get(artistId);
+    if (!sourceExists) return { claimsRemoved: 0, jobsQueued: 0 };
+    const claimsRemoved = db.prepare(`DELETE FROM sleeve_claims
+      WHERE entity_type = 'artist' AND entity_id = ? AND source_document_id IN (
+        SELECT id FROM sleeve_source_documents
+        WHERE provider = 'wikipedia' AND entity_type = 'artist' AND entity_id = ?
+      )`).run(artistId, artistId).changes;
+    db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
+      id, provider, subject_type, subject_id, capability, state, priority,
+      attempts, run_after, created_at, updated_at
+    ) VALUES (lower(hex(randomblob(16))), 'researcher', 'artist', ?,
+      'extract-wikipedia', 'queued', 300, 0, NULL, ?, ?)`).run(artistId, timestamp, timestamp);
+    const jobsQueued = db.prepare(`UPDATE sleeve_research_jobs
+      SET state = 'queued', attempts = 0, run_after = NULL, updated_at = ?
+      WHERE provider = 'researcher' AND subject_type = 'artist' AND subject_id = ?
+        AND capability = 'extract-wikipedia'`).run(timestamp, artistId).changes;
+    return { claimsRemoved, jobsQueued };
+  });
+  return transaction();
+}
+
 /** A provider outage is not a content verdict. Keep the job durable and pause it. */
 export function retryResearchJob(id: string, delayMs = 5 * 60_000): void {
   retryResearchJobInDatabase(open(), id, delayMs);
