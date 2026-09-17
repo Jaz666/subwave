@@ -248,6 +248,9 @@ export const DEFAULTS = {
     showWelcome: false,
     sameHostAcknowledgement: false,
     extendedSleeveNotes: false,
+    // Research-only maintenance exception for an Icecast-confirmed empty
+    // station. DJ LLM work remains governed by llm.pauseWhenEmpty.
+    sleeveNotesMaintenanceWhenEmpty: false,
     releaseYearMentions: 'regular',
     // Compact anti-repeat material carried into every DJ script prompt. These
     // are deliberately ordinary live settings rather than boot environment:

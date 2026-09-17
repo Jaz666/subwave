@@ -622,6 +622,8 @@ export async function load() {
         : DEFAULTS.djBehaviour.sameHostAcknowledgement,
       extendedSleeveNotes: typeof stored.djBehaviour?.extendedSleeveNotes === 'boolean'
         ? stored.djBehaviour.extendedSleeveNotes : DEFAULTS.djBehaviour.extendedSleeveNotes,
+      sleeveNotesMaintenanceWhenEmpty: typeof stored.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === 'boolean'
+        ? stored.djBehaviour.sleeveNotesMaintenanceWhenEmpty : DEFAULTS.djBehaviour.sleeveNotesMaintenanceWhenEmpty,
       releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)
         ? stored.djBehaviour.releaseYearMentions : DEFAULTS.djBehaviour.releaseYearMentions,
       recapLimit: parsedIntIn(
@@ -1634,7 +1636,7 @@ export async function update(patch) {
     }>(
       'djBehaviour', patch.djBehaviour,
     );
-    for (const key of ['showWelcome', 'sameHostAcknowledgement', 'extendedSleeveNotes'] as const) {
+    for (const key of ['showWelcome', 'sameHostAcknowledgement', 'extendedSleeveNotes', 'sleeveNotesMaintenanceWhenEmpty'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
     }
     if (behaviour.releaseYearMentions !== undefined) {

@@ -12,13 +12,17 @@ const { setCache } = await import('../src/settings/store.js');
 test('DJ link-style defaults survive a cold load', async () => {
   await settings.load();
   assert.equal(settings.get().djBehaviour.extendedSleeveNotes, false);
+  assert.equal(settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty, false);
   assert.equal(settings.get().djBehaviour.releaseYearMentions, 'regular');
 
-  await settings.update({ djBehaviour: { extendedSleeveNotes: true, releaseYearMentions: 'rare' } } as never);
+  await settings.update({ djBehaviour: {
+    extendedSleeveNotes: true, sleeveNotesMaintenanceWhenEmpty: true, releaseYearMentions: 'rare',
+  } } as never);
 
   setCache(null);
   await settings.load();
   assert.equal(settings.get().djBehaviour.extendedSleeveNotes, true);
+  assert.equal(settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty, true);
   assert.equal(settings.get().djBehaviour.releaseYearMentions, 'rare');
 });
 
