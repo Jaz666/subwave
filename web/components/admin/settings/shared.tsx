@@ -358,6 +358,7 @@ export interface DjBehaviourValues {
   showWelcome?: boolean;
   sameHostAcknowledgement?: boolean;
   extendedSleeveNotes?: boolean;
+  sleeveNotesMaintenanceWhenEmpty?: boolean;
   releaseYearMentions?: 'regular' | 'occasional' | 'rare';
   recapLimit?: number;
   recapMinutes?: number;
