@@ -121,6 +121,7 @@ test('researcher does not replace a complete paraphrase with its evidence', () =
 test('researcher rejects generic biography metadata but keeps a specific story', () => {
   const evidenceJob = { ...job, document: { ...job.document, text: [
     'The Example Band formed in Liverpool in 1980.',
+    'The American heavy metal band Saviours was formed in Oakland, California, in 2004.',
     'The Example Band have released 3 studio albums.',
     'The Example Band have had 7 top five hits in Ireland.',
     'They were inducted into the Rock and Roll Hall of Fame in 2022.',
@@ -129,6 +130,9 @@ test('researcher rejects generic biography metadata but keeps a specific story',
   const result = validateResearchCandidates(evidenceJob, [{
     category: 'artist-stories', topic: 'formation', wording: 'The Example Band formed in Liverpool in 1980.',
     evidence: 'The Example Band formed in Liverpool in 1980.',
+  }, {
+    category: 'artist-stories', topic: 'metal formation', wording: 'The American heavy metal band Saviours was formed in Oakland, California, in 2004.',
+    evidence: 'The American heavy metal band Saviours was formed in Oakland, California, in 2004.',
   }, {
     category: 'milestones', topic: 'discography', wording: 'The Example Band have released 3 studio albums.',
     evidence: 'The Example Band have released 3 studio albums.',
@@ -143,7 +147,7 @@ test('researcher rejects generic biography metadata but keeps a specific story',
     evidence: 'The band formed after its singer answered a newspaper advert in Liverpool in 1980.',
   }]);
   assert.deepEqual(result.accepted.map((candidate) => candidate.topic), ['advert']);
-  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['editorial', 'editorial', 'editorial', 'editorial']);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['editorial', 'editorial', 'editorial', 'editorial', 'editorial']);
 });
 
 test('researcher rejects a sentence that adds names or facts from elsewhere in the article', () => {
