@@ -531,11 +531,11 @@ class Queue {
       await runHandoff(ctx);
     } catch (err) {
       this.log('error', `Boundary handoff fallback failed: ${(err as Error).message}`);
-    } finally {
-      // A successful immediate handoff consumes the session record; a refused
-      // or failed one should not leave an obsolete timer behind either.
-      this.armHandoffGenerationFallback();
     }
+    // Do not re-arm from here. The deadline is already in the past, so a
+    // persistent LLM/TTS failure would otherwise schedule a zero-delay retry
+    // loop. A later track transition or session roll remains a normal retry
+    // opportunity, while this timer is one bounded delivery attempt.
   }
 
   recoverPendingHandoff(raw: unknown) {
