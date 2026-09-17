@@ -150,12 +150,11 @@ function everySentenceSupported(wording: string, evidence: string): boolean {
     hasMaterialEvidence(sentence, evidence) && sentenceCarriesAllNamedDetails(sentence, evidence));
 }
 
-/** A release date alone is catalogue metadata, not a useful DJ note. */
+/** A release date alone is catalogue metadata, whatever category the model chose. */
 function isBareReleaseMilestone(candidate: ResearchCandidate): boolean {
-  if (candidate.category !== 'milestones') return false;
   const wording = normal(candidate.wording).toLowerCase();
   const release = /\b(album|single|ep|record)\b/.test(wording) && /\b(released|arrived|issued|came out)\b/.test(wording);
-  const story = /\b(produc|record|writ|collabor|featur|chart|award|nominat|critical|commercial|label|band|member|tour|soundtrack|concept|inspir|dedicat)\w*/.test(wording);
+  const story = /\b(produc|record|writ|collabor|featur|concept|soundtrack|inspir|dedicat|sampl|cover|adapt|commission|rework)\w*/.test(wording);
   return release && !story;
 }
 
@@ -172,7 +171,8 @@ function isEditoriallyThin(candidate: ResearchCandidate): boolean {
   const standaloneRecognition = /\b(?:won|received|awarded|inducted)\b/.test(wording)
     && /\b(?:award|hall of fame)\b/.test(wording)
     && !/\b(for|after|following|alongside|during|while|because)\b/.test(wording);
-  return genericFormation || discographyTally || chartTally || standaloneRecognition;
+  const sensitivePersonalFact = /\b(?:died|death|cancer|tumou?r|surgery|divorc(?:e|ed|ing))\b/.test(wording);
+  return genericFormation || discographyTally || chartTally || standaloneRecognition || sensitivePersonalFact;
 }
 
 /**

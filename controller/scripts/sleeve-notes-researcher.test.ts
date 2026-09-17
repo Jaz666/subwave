@@ -203,6 +203,29 @@ test('researcher rejects a bare release-date milestone but keeps an evidenced re
   assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['bare-milestone']);
 });
 
+test('researcher blocks category bypasses and sensitive personal facts', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: [
+    'Their debut album, Letter to Self, was released in January 2024 to widespread critical acclaim.',
+    'Idina Menzel\'s parents divorced when she was a toddler.',
+    'Graeme Kelling died from pancreatic cancer in 2004.',
+  ].join(' ') } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'artist-stories', topic: 'debut',
+    wording: 'Their debut album, Letter to Self, was released in January 2024 to widespread critical acclaim.',
+    evidence: 'Their debut album, Letter to Self, was released in January 2024 to widespread critical acclaim.',
+  }, {
+    category: 'artist-stories', topic: 'family',
+    wording: 'Idina Menzel\'s parents divorced when she was a toddler.',
+    evidence: 'Idina Menzel\'s parents divorced when she was a toddler.',
+  }, {
+    category: 'artist-stories', topic: 'death',
+    wording: 'Graeme Kelling died from pancreatic cancer in 2004.',
+    evidence: 'Graeme Kelling died from pancreatic cancer in 2004.',
+  }]);
+  assert.deepEqual(result.accepted, []);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['bare-milestone', 'unsupported', 'editorial']);
+});
+
 test('the LLM researcher reads candidates from djObject\'s decoded result', () => {
   const candidates = [{
     category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed in Liverpool in 1980.',
