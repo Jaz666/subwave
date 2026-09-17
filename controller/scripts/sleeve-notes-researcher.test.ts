@@ -8,7 +8,7 @@ const job: ResearchJob = {
   document: {
     id: 'source-1', entityId: 'artist-1', provider: 'wikipedia',
     sourceUrl: 'https://en.wikipedia.org/wiki/Example', revisionId: '123',
-    text: 'The Example Band formed in Liverpool in 1980. Their debut album arrived in 1982.',
+    text: 'The Example Band formed after friends met in Liverpool in 1980. Their debut album arrived in 1982.',
   },
   categories: ['artist-stories', 'milestones'],
   maxCandidates: 3,
@@ -16,8 +16,8 @@ const job: ResearchJob = {
 
 test('researcher output must be grounded in the supplied source document', () => {
   const result = validateResearchCandidates(job, [{
-    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed in Liverpool in 1980.',
-    evidence: 'The Example Band formed in Liverpool in 1980.',
+    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed after friends met in Liverpool in 1980.',
+    evidence: 'The Example Band formed after friends met in Liverpool in 1980.',
   }, {
     category: 'artist-stories', topic: 'invented', wording: 'The band invented stadium rock.',
     evidence: 'The band invented stadium rock.',
@@ -31,11 +31,11 @@ test('researcher output respects enabled categories, topic diversity and bounds'
     category: 'credits', topic: 'producer', wording: 'Produced by A Producer.',
     evidence: 'The Example Band formed in Liverpool in 1980.',
   }, {
-    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed in Liverpool in 1980.',
-    evidence: 'The Example Band formed in Liverpool in 1980.',
+    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed after friends met in Liverpool in 1980.',
+    evidence: 'The Example Band formed after friends met in Liverpool in 1980.',
   }, {
-    category: 'artist-stories', topic: 'ORIGIN', wording: 'They began in Liverpool in 1980.',
-    evidence: 'The Example Band formed in Liverpool in 1980.',
+    category: 'artist-stories', topic: 'ORIGIN', wording: 'They began after friends met in Liverpool in 1980.',
+    evidence: 'The Example Band formed after friends met in Liverpool in 1980.',
   }, {
     category: 'milestones', topic: 'debut', wording: 'Their debut album arrived in 1982.',
     evidence: 'Their debut album arrived in 1982.',
@@ -49,6 +49,24 @@ test('researcher output respects enabled categories, topic diversity and bounds'
 test('an empty research result is a valid no-claim outcome', () => {
   const result = validateResearchCandidates(job, []);
   assert.deepEqual(result, { accepted: [], rejected: [] });
+});
+
+test('researcher retains up to five distinct supported notes for a rich source', () => {
+  const evidenceJob = { ...job, maxCandidates: 5, document: { ...job.document, text: [
+    'The Example Band formed after its singer answered a newspaper advert.',
+    'Its debut album was recorded with Producer Alpha after a late-night session.',
+    'The band wrote Song Journey during a train journey to Glasgow.',
+    'Artist Three joined after meeting the group at a festival.',
+    'Their fourth album used a children\'s choir on Track Five.',
+  ].join(' ') } };
+  const result = validateResearchCandidates(evidenceJob, [
+    { category: 'artist-stories', topic: 'advert', wording: 'The Example Band formed after its singer answered a newspaper advert.', evidence: 'The Example Band formed after its singer answered a newspaper advert.' },
+    { category: 'milestones', topic: 'debut session', wording: 'Its debut album was recorded with Producer Alpha after a late-night session.', evidence: 'Its debut album was recorded with Producer Alpha after a late-night session.' },
+    { category: 'artist-stories', topic: 'train song', wording: 'The band wrote Song Journey during a train journey to Glasgow.', evidence: 'The band wrote Song Journey during a train journey to Glasgow.' },
+    { category: 'artist-stories', topic: 'festival member', wording: 'Artist Three joined after meeting the group at a festival.', evidence: 'Artist Three joined after meeting the group at a festival.' },
+    { category: 'milestones', topic: 'choir', wording: 'Their fourth album used a children\'s choir on Track Five.', evidence: 'Their fourth album used a children\'s choir on Track Five.' },
+  ]);
+  assert.equal(result.accepted.length, 5);
 });
 
 test('researcher rejects evidence that appears in source but does not entail the wording', () => {
@@ -92,12 +110,40 @@ test('researcher completes an unfinished verbatim wording fragment from its evid
 });
 
 test('researcher does not replace a complete paraphrase with its evidence', () => {
-  const evidenceJob = { ...job, document: { ...job.document, text: 'The Example Band formed in Liverpool in 1980, before touring Europe.' } };
+  const evidenceJob = { ...job, document: { ...job.document, text: 'The Example Band formed after friends met in Liverpool in 1980, before touring Europe.' } };
   const result = validateResearchCandidates(evidenceJob, [{
-    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed in Liverpool in 1980.',
-    evidence: 'The Example Band formed in Liverpool in 1980, before touring Europe.',
+    category: 'artist-stories', topic: 'origin', wording: 'The Example Band formed after friends met in Liverpool in 1980.',
+    evidence: 'The Example Band formed after friends met in Liverpool in 1980, before touring Europe.',
   }]);
-  assert.equal(result.accepted[0]?.wording, 'The Example Band formed in Liverpool in 1980.');
+  assert.equal(result.accepted[0]?.wording, 'The Example Band formed after friends met in Liverpool in 1980.');
+});
+
+test('researcher rejects generic biography metadata but keeps a specific story', () => {
+  const evidenceJob = { ...job, document: { ...job.document, text: [
+    'The Example Band formed in Liverpool in 1980.',
+    'The Example Band have released 3 studio albums.',
+    'The Example Band have had 7 top five hits in Ireland.',
+    'They were inducted into the Rock and Roll Hall of Fame in 2022.',
+    'The band formed after its singer answered a newspaper advert in Liverpool in 1980.',
+  ].join(' ') } };
+  const result = validateResearchCandidates(evidenceJob, [{
+    category: 'artist-stories', topic: 'formation', wording: 'The Example Band formed in Liverpool in 1980.',
+    evidence: 'The Example Band formed in Liverpool in 1980.',
+  }, {
+    category: 'milestones', topic: 'discography', wording: 'The Example Band have released 3 studio albums.',
+    evidence: 'The Example Band have released 3 studio albums.',
+  }, {
+    category: 'milestones', topic: 'chart tally', wording: 'The Example Band have had 7 top five hits in Ireland.',
+    evidence: 'The Example Band have had 7 top five hits in Ireland.',
+  }, {
+    category: 'milestones', topic: 'recognition', wording: 'They were inducted into the Rock and Roll Hall of Fame in 2022.',
+    evidence: 'They were inducted into the Rock and Roll Hall of Fame in 2022.',
+  }, {
+    category: 'artist-stories', topic: 'advert', wording: 'The band formed after its singer answered a newspaper advert in Liverpool in 1980.',
+    evidence: 'The band formed after its singer answered a newspaper advert in Liverpool in 1980.',
+  }]);
+  assert.deepEqual(result.accepted.map((candidate) => candidate.topic), ['advert']);
+  assert.deepEqual(result.rejected.map((candidate) => candidate.reason), ['editorial', 'editorial', 'editorial', 'editorial']);
 });
 
 test('researcher rejects a sentence that adds names or facts from elsewhere in the article', () => {

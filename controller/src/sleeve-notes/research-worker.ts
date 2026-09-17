@@ -29,7 +29,7 @@ export class ResearchWorker {
           id: queued.id,
           document: { ...source, text: source.content.slice(0, MAX_SOURCE_CHARS) },
           categories: ['artist-stories', 'milestones'] as const,
-          maxCandidates: 3,
+          maxCandidates: 5,
         };
         const candidates = await this.researcher.extract(job, controller.signal);
         const validated = validateResearchCandidates(job, candidates);
