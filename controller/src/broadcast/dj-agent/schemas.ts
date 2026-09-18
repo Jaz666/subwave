@@ -185,6 +185,18 @@ export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | 
   return !!context?.promptValue && modelFlag === true;
 }
 
+const LEANINGS_REASON_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:'s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
+
+// The Agentic reason becomes queue metadata and the next session turn. Match
+// the Shortlist final-boundary safeguard: a model that mentions Leanings but
+// did not explicitly claim the diagnostic cannot pass that assertion forward
+// as ordinary selection context.
+export function agentReasonForLeanings(reason: unknown, usedMusicalLeanings: boolean): string {
+  const compact = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
+  if (usedMusicalLeanings || !LEANINGS_REASON_REFERENCE.test(compact)) return compact;
+  return 'flow fit after the current track';
+}
+
 // The system prompt holds the complete editorial policy, while this compact
 // reminder rides the newest pick event so a long Agentic session cannot bury
 // the tie-breaker beneath its own earlier selections. It receives the one

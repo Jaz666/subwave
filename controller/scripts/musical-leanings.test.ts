@@ -11,7 +11,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 
 const settings = await import('../src/settings.js');
 await settings.load();
-const { PICK_SCHEMA, musicalLeaningsPickReminder, pickSystem, pickerMusicLeanings, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
+const { PICK_SCHEMA, agentReasonForLeanings, musicalLeaningsPickReminder, pickSystem, pickerMusicLeanings, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
 await settings.update({ personas: [persona], activePersonaId: persona.id });
@@ -36,6 +36,15 @@ assert.match(reminder, /mention them in "reason" only then/i);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true), true);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false), false);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined), false);
+assert.equal(
+  agentReasonForLeanings('warm voices and strong melodies from Musical Leanings', false),
+  'flow fit after the current track',
+  'an Agentic omission must not leave a Leanings claim in queue or session metadata',
+);
+assert.equal(
+  agentReasonForLeanings('warm voices and strong melodies from Musical Leanings', true),
+  'warm voices and strong melodies from Musical Leanings',
+);
 
 const guest = settings.guestEditorialNudgeFromGuests([
   { id: 'p_f023a4', name: 'Carrie Marshall', musicLean: 'Favour great guitar work and unexpected rock records.' },

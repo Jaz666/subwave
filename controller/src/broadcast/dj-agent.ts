@@ -55,7 +55,7 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
-import { musicalLeaningsPickReminder, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag, type EditorialLeaningsContext } from './dj-agent/schemas.js';
+import { agentReasonForLeanings, musicalLeaningsPickReminder, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
@@ -473,9 +473,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }
   }
 
+  const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, object.usedMusicalLeanings);
+  object.reason = agentReasonForLeanings(object.reason, usedMusicalLeanings);
   agentPickResolution.track = { id: song.id, title: song.title ?? null, artist: song.artist ?? null };
   agentPickResolution.reason = object.reason ?? null;
-  agentPickResolution.usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, object.usedMusicalLeanings);
+  agentPickResolution.usedMusicalLeanings = usedMusicalLeanings;
 
   // The picker has seen private selection context. Only after its final choice
   // do we invoke the isolated listener-facing writer with safe prompt data.
