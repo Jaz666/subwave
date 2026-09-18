@@ -19,7 +19,19 @@ export type ShortlistPick = {
 
 export type ShortlistSelectionContext = {
   currentTrack?: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null } | null;
-  journeyActive?: boolean;
+  precedingTrack?: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null } | null;
+  transition?: {
+    recentChoices: string[];
+    guidance: string;
+  } | null;
+  journey?: {
+    direction: string;
+    targetBpm?: number | null;
+    targetKey?: string | null;
+  } | null;
+  curatedPlaylist?: {
+    mode: 'soft' | 'strict';
+  } | null;
   link?: string;
 };
 
@@ -127,7 +139,7 @@ export function shortlistPickSchema(ids: string[]) {
 
 export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
   return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, shortlist: candidates }, null, 2)
-    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Use Musical Leanings, when supplied, as a soft editorial preference among already eligible tracks. They may inform the final choice without being decisive, but never override show rules, rotation, safety, or musical flow. Set usedMusicalLeanings to true when they materially informed this selection; otherwise false. Only when it is true may selectionReason naturally refer to the DJ’s preferences. When false, selectionReason must not quote, paraphrase, or refer to Musical Leanings, preferences, or tastes; describe the track’s fit only.';
+    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Use the current and preceding tracks to judge continuity. When transition context is supplied, set transition by what THIS moment needs and vary deliberately from its recent choices. When journey context is supplied, move one step toward its direction while maintaining the stated energy; never mention the journey on air. When curatedPlaylist.mode is "soft", strongly prefer candidates whose shortlistSources contain "showPlaylistTracks"; only step outside when the flow clearly calls for it. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Use Musical Leanings, when supplied, as a soft editorial preference among already eligible tracks. They may inform the final choice without being decisive, but never override show rules, rotation, safety, or musical flow. Set usedMusicalLeanings to true when they materially informed this selection; otherwise false. Only when it is true may selectionReason naturally refer to the DJ’s preferences. When false, selectionReason must not quote, paraphrase, or refer to Musical Leanings, preferences, or tastes; describe the track’s fit only.';
 }
 
 export async function djPick({

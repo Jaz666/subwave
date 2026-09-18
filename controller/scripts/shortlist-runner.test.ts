@@ -100,7 +100,10 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   }).success, false);
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }], {
     currentTrack: { id: 'current', title: 'Current', artist: 'Artist' },
-    journeyActive: true,
+    precedingTrack: { id: 'prior', title: 'Prior', artist: 'Earlier Artist' },
+    transition: { recentChoices: ['normal', 'sweep'], guidance: 'Choose deliberately.' },
+    journey: { direction: 'Move toward the destination.', targetBpm: 116, targetKey: '8A' },
+    curatedPlaylist: { mode: 'soft' },
     link: 'A separate safe link may air for this pick.',
   }, {
     host: 'Favour patient dub.',
@@ -112,12 +115,17 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
   const payload = JSON.parse(prompt.split('\n\nChoose one id')[0]);
   assert.deepEqual(payload.context, {
     currentTrack: { id: 'current', title: 'Current', artist: 'Artist' },
-    journeyActive: true,
+    precedingTrack: { id: 'prior', title: 'Prior', artist: 'Earlier Artist' },
+    transition: { recentChoices: ['normal', 'sweep'], guidance: 'Choose deliberately.' },
+    journey: { direction: 'Move toward the destination.', targetBpm: 116, targetKey: '8A' },
+    curatedPlaylist: { mode: 'soft' },
     link: 'A separate safe link may air for this pick.',
     musicalLeanings: 'Host: Favour patient dub.\nGuest (Carrie Marshall, secondary): Favour unexpected rock records.',
   });
   assert.ok(payload.context.musicalLeanings.indexOf('Host:') < prompt.indexOf('"shortlist"'));
   assert.match(prompt, /soft editorial preference among already eligible/i);
+  assert.match(prompt, /strongly prefer candidates whose shortlistSources contain "showPlaylistTracks"/i);
+  assert.match(prompt, /transition context is supplied/i);
   assert.match(prompt, /materially informed this selection/i);
   assert.equal(resolvedMusicalLeaningsFlag({ host: 'x', guest: null, promptValue: 'Host: x' }, true, 'plain reason'), true);
   assert.equal(resolvedMusicalLeaningsFlag(null, true, 'plain reason'), false);

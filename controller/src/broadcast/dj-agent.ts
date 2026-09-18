@@ -327,13 +327,16 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, editorialLeanings }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, anchorPriorTrack = null, showAt = null, rankTarget = null, editorialLeanings }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; anchorPriorTrack?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext }): Promise<boolean> {
   const pickStarted = performance.now();
   const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
   const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
   // One immutable editorial snapshot follows this logical selection through
   // every model call and final resolution. Guest influence is occasional, not
   // randomly re-decided after the original prompt has already been sent.
+  const recentTransitionChoices = settings.effectsActive() && typeof queue.recentTransitionChoices === 'function'
+    ? queue.recentTransitionChoices()
+    : [];
   const shortlistContext: ShortlistSelectionContext = {
     currentTrack: pickAnchor ? {
       id: pickAnchor.id ?? null,
@@ -341,7 +344,24 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       artist: pickAnchor.artist ?? null,
       album: pickAnchor.album ?? null,
     } : null,
-    journeyActive: !!audioWaypoint?.length,
+    precedingTrack: anchorPriorTrack ? {
+      id: anchorPriorTrack.id ?? null,
+      title: anchorPriorTrack.title ?? null,
+      artist: anchorPriorTrack.artist ?? null,
+      album: anchorPriorTrack.album ?? null,
+    } : null,
+    transition: settings.effectsActive() ? {
+      recentChoices: recentTransitionChoices,
+      guidance: 'Choose for this moment; never repeat one transition three picks running, and lean normal after an effect unless the music clearly calls for another.',
+    } : null,
+    journey: audioWaypoint?.length ? {
+      direction: 'Move one musical step toward the active sonic journey while keeping its energy heading the same way.',
+      targetBpm: rankTarget?.bpm ?? null,
+      targetKey: rankTarget?.key ?? null,
+    } : null,
+    curatedPlaylist: playlistTracks?.length ? {
+      mode: activeShow?.playlistStrict ? 'strict' : 'soft',
+    } : null,
     link: wantLink ? 'A separate safe link may air for this pick.' : 'No link airs for this pick.',
   };
   let steps: number;
@@ -965,7 +985,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     if (!cheap && (shortlistSelected || (settings.get().llm?.pickerAgent && !breakerOpen()))) {
       try {
         const queued = await pickViaAgent(queue, ctx, {
-          wantLink, audioWaypoint, pickAnchor, showAt, rankTarget, editorialLeanings,
+          wantLink, audioWaypoint, pickAnchor, anchorPriorTrack, showAt, rankTarget, editorialLeanings,
         });
         if (!shortlistSelected) breakerSuccess();
         if (queued) return;
