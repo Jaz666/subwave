@@ -331,11 +331,10 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
 // (#1187) — the agent's own run needs neither. They're the same values
 // runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
 // from exactly the pool a failed agent run would have produced.
-async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null }): Promise<boolean> {
+async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, editorialLeanings }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext }): Promise<boolean> {
   const pickStarted = performance.now();
   const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
   const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
-  const editorialLeanings = resolveEditorialLeanings(showAt);
   const shortlistContext: ShortlistSelectionContext = {
     currentTrack: pickAnchor ? { id: pickAnchor.id ?? null, title: pickAnchor.title ?? null, artist: pickAnchor.artist ?? null, album: pickAnchor.album ?? null } : null,
     journeyActive: !!audioWaypoint?.length,
@@ -864,6 +863,10 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
       return;
     }
     const cheap = budget.preferCheapPicker();
+    // Resolve once for the complete logical selection: the prompt event, main
+    // model run and every corrective re-pick must agree on whether the rare
+    // guest nudge was present.
+    const editorialLeanings = resolveEditorialLeanings(showAt);
     // Station voice off (settings.tts.enabled) → still pick, never link. The
     // agent path's event message then orders silence (`say` stays in the
     // schema but nullable, and a disobedient line is dropped at the
@@ -968,7 +971,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     if (!cheap && (shortlistSelected || (settings.get().llm?.pickerAgent && !breakerOpen()))) {
       try {
         const queued = await pickViaAgent(queue, ctx, {
-          wantLink, audioWaypoint, pickAnchor, showAt, rankTarget,
+          wantLink, audioWaypoint, pickAnchor, showAt, rankTarget, editorialLeanings,
         });
         if (!shortlistSelected) breakerSuccess();
         if (queued) return;
