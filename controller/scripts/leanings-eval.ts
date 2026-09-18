@@ -60,9 +60,12 @@ const SCENARIOS: Scenario[] = [
     current: { title: 'Breathe', artist: 'The Prodigy' },
     hostLeanings: 'Favour electronic music, especially synth-pop, leftfield production, unusual textures and deeper discoveries.',
     candidates: [
-      { id: 'eval-electronic-1', title: 'Circuit Bloom', artist: 'Signal Glass', album: 'Night Lines', year: 2019, genre: 'synth-pop', moods: ['night', 'driving'], energy: 'high', editorialFit: 'synth-pop with unusual electronic textures and a distinctive production' },
-      { id: 'eval-electronic-2', title: 'Open Road', artist: 'Northbound', album: 'Headlights', year: 2020, genre: 'indie rock', moods: ['night', 'driving'], energy: 'high', editorialFit: 'driving guitars and a direct singalong chorus' },
-      { id: 'eval-electronic-3', title: 'Soft Landing', artist: 'Halogen', album: 'Afterimage', year: 2018, genre: 'electronic', moods: ['night'], energy: 'medium', editorialFit: 'warm pads but a gentler energy drop' },
+      // The ordinary flow case has a slight preference for Breakline's direct
+      // breakbeat continuation. Circuit Bloom remains fully eligible, but its
+      // unusual synth texture is the intended Leanings tie-breaker.
+      { id: 'eval-electronic-1', title: 'Circuit Bloom', artist: 'Signal Glass', album: 'Night Lines', year: 2019, genre: 'synth-pop', moods: ['night', 'driving'], energy: 'high', editorialFit: 'equally high-energy synth-pop with unusual electronic textures and distinctive production' },
+      { id: 'eval-electronic-2', title: 'Breakline', artist: 'Pressure Unit', album: 'Headlights', year: 2020, genre: 'electronic', moods: ['night', 'driving'], energy: 'high', editorialFit: 'the closest same-pace breakbeat continuation with raw club energy' },
+      { id: 'eval-electronic-3', title: 'Soft Landing', artist: 'Halogen', album: 'Afterimage', year: 2018, genre: 'electronic', moods: ['night'], energy: 'medium', editorialFit: 'warm pads but a clearly gentler energy drop' },
     ],
   },
   {
@@ -70,8 +73,11 @@ const SCENARIOS: Scenario[] = [
     current: { title: 'The Bitterest Pill', artist: 'The Jam' },
     hostLeanings: 'Favour warm voices, strong melodies, melodic post-punk and indie discoveries.',
     candidates: [
-      { id: 'eval-melody-1', title: 'Gold Thread', artist: 'The Lanterns', album: 'Small Hours', year: 2021, genre: 'post-punk', moods: ['reflective'], energy: 'medium', editorialFit: 'warm lead vocal and a strong melodic post-punk hook' },
-      { id: 'eval-melody-2', title: 'Grey Parade', artist: 'Static Youth', album: 'Side Streets', year: 2020, genre: 'post-punk', moods: ['reflective'], energy: 'medium', editorialFit: 'angular guitar lines and a detached vocal' },
+      // Grey Parade carries the more direct guitar-and-pace handoff; Gold
+      // Thread is still close enough to win only when warmth and melody really
+      // break that otherwise even choice.
+      { id: 'eval-melody-1', title: 'Gold Thread', artist: 'The Lanterns', album: 'Small Hours', year: 2021, genre: 'post-punk', moods: ['reflective'], energy: 'medium', editorialFit: 'warm lead vocal and a strong melodic post-punk hook, slightly less abrasive but still same energy' },
+      { id: 'eval-melody-2', title: 'Grey Parade', artist: 'Static Youth', album: 'Side Streets', year: 2020, genre: 'post-punk', moods: ['reflective'], energy: 'medium', editorialFit: 'the closest same-pace guitar-driven post-punk continuation with a detached vocal' },
       { id: 'eval-melody-3', title: 'Slow Signal', artist: 'Lowlight', album: 'Distant Rooms', year: 2022, genre: 'ambient', moods: ['reflective'], energy: 'low', editorialFit: 'atmospheric but noticeably lower energy' },
     ],
   },
@@ -308,6 +314,8 @@ async function main() {
   const leaningsRuns = records.filter((r) => r.arm === 'leanings').length;
   const changed = pairs.filter((p) => p.choiceChanged).length;
   const completePairs = pairs.filter((p) => p.controlId && p.leaningsId).length;
+  const counterfactualLeanings = pairs.filter((p) => p.verifiedLeanings && p.choiceChanged).length;
+  const unprovenTieBreaks = pairs.filter((p) => p.verifiedLeanings && !p.choiceChanged).length;
   const report = {
     meta: {
       startedAt: new Date().toISOString(),
@@ -319,6 +327,8 @@ async function main() {
     summary: {
       verifiedLeanings: `${verified}/${leaningsRuns}`,
       changedChoices: `${changed}/${completePairs}`,
+      counterfactualLeanings: `${counterfactualLeanings}/${leaningsRuns}`,
+      unprovenTieBreaks,
       violations: records.filter((r) => r.outcome === 'violation').length,
       failures: records.filter((r) => r.outcome === 'thrown').length,
     },
@@ -327,7 +337,7 @@ async function main() {
   };
   mkdirSync(resolve(outPath, '..'), { recursive: true });
   writeFileSync(outPath, JSON.stringify(report, null, 2));
-  console.log(`\nVerified Leanings: ${report.summary.verifiedLeanings}; changed paired choices: ${report.summary.changedChoices}`);
+  console.log(`\nEvidenced Leanings: ${report.summary.verifiedLeanings}; counterfactual Leanings: ${report.summary.counterfactualLeanings}; changed paired choices: ${report.summary.changedChoices}`);
   console.log(`Report: ${outPath}`);
 }
 
