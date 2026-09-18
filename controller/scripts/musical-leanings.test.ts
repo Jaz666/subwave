@@ -27,15 +27,16 @@ assert.match(prompt, /soft editorial preference/i);
 assert.match(prompt, /may guide an otherwise sound selection/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
 assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, true);
-assert.match(PICK_SCHEMA.shape.reason.description ?? '', /only when usedMusicalLeanings is true/i);
-assert.match(PICK_SCHEMA.shape.usedMusicalLeanings.description ?? '', /may affect the choice, but never listener-facing output/i);
+assert.match(PICK_SCHEMA.shape.reason.description ?? '', /Default to actual flow/i);
+assert.match(PICK_SCHEMA.shape.usedMusicalLeanings.description ?? '', /Default false/i);
 const reminder = musicalLeaningsPickReminder(resolveEditorialLeanings());
 assert.match(reminder, /soft tie-breaker/i);
-assert.match(reminder, /materially settle your final choice/i);
-assert.match(reminder, /mention them in "reason" only then/i);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true), true);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false), false);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined), false);
+assert.match(reminder, /two or more eligible tracks/i);
+assert.match(reminder, /Leanings: /i);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'Leanings: warm vocal and melody'), true);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'energetic flow fit'), false);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false, 'Leanings: warm vocal and melody'), false);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined, 'Leanings: warm vocal and melody'), false);
 assert.equal(
   agentReasonForLeanings('warm voices and strong melodies from Musical Leanings', false),
   'flow fit after the current track',
