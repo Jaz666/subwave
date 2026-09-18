@@ -28,8 +28,8 @@ export const PICK_SCHEMA = z.object({
   // the run was discarded, and the slot fell to the pool picker. One shared
   // wording, in util/pick-seed.ts; don't inline a second copy here.
   id: z.string().describe(`the exact song id returned by one of the discovery tools — never invent or compose ids. ${SEED_NOT_A_PICK_CLAUSE}`),
-  reason: z.string().describe('internal scratchpad only — max 12 words, never shown to the listener; do not justify, just note what makes THIS pick a fresh step (a shift in energy/era/texture, or an artist genuinely new to the rotation), not a vibe label you would recycle pick after pick (e.g. "warmer, driving energy", never a repeated "mellow reflective step"). Only call a pick a "new artist" when it has no "artist_play_count"/"artist_last_played_days_ago"; "unaired" means this song is new to the station, not that its artist is. If the artist shows recent or frequent plays, describe the real reason instead (energy shift, texture, flow)'),
-  usedMusicalLeanings: z.boolean().optional().describe('private diagnostic flag. True when supplied Musical Leanings materially informed this final choice among otherwise eligible tracks; otherwise false. They never override show rules, rotation, safety, or musical flow.'),
+  reason: z.string().describe('internal scratchpad only — max 12 words, never shown to the listener; do not justify, just note what makes THIS pick a fresh step (a shift in energy/era/texture, or an artist genuinely new to the rotation), not a vibe label you would recycle pick after pick (e.g. "warmer, driving energy", never a repeated "mellow reflective step"). Mention Musical Leanings here only when usedMusicalLeanings is true; otherwise describe the actual flow. Only call a pick a "new artist" when it has no "artist_play_count"/"artist_last_played_days_ago"; "unaired" means this song is new to the station, not that its artist is. If the artist shows recent or frequent plays, describe the real reason instead (energy shift, texture, flow)'),
+  usedMusicalLeanings: z.boolean().optional().describe('private diagnostic flag. True only when supplied Musical Leanings materially settled this final choice among otherwise eligible tracks; otherwise false. Leanings may affect the choice, but never listener-facing output; they never override show rules, rotation, safety, or musical flow.'),
   // Transition effects (only honoured when the system prompt offers them — persona djMode, see settings.effectsActive).
   // One-line pointer only: the full coaching is dj.effectsGuidance() in the
   // system prompt. This description used to repeat all of it, so every agent
@@ -177,8 +177,21 @@ export function resolveEditorialLeanings(showAt: Date | null = null): EditorialL
   return { host, guest, promptValue: lines.join('\n') || null };
 }
 
-export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown, verifiedReason: unknown): boolean {
-  return !!context?.promptValue && (modelFlag === true || /\bmusical\s+leanings\b/i.test(String(verifiedReason ?? '')));
+export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown): boolean {
+  // The flag is diagnostic evidence, not a controller inference from a model's
+  // free-text reason. Omissions deliberately resolve false; that keeps an
+  // untruthful Leanings reference visible as a contract failure rather than
+  // silently converting it into a claimed Leanings-led selection.
+  return !!context?.promptValue && modelFlag === true;
+}
+
+// The system prompt holds the complete editorial policy, while this compact
+// reminder rides the newest pick event so a long Agentic session cannot bury
+// the tie-breaker beneath its own earlier selections. It receives the one
+// snapshot resolved for the logical selection; never resolve a guest again.
+export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): string {
+  if (!context.promptValue) return '';
+  return ' Musical Leanings are supplied for this pick as a soft tie-breaker: use them only when eligible tracks otherwise fit the flow. Set "usedMusicalLeanings" true only if they materially settle your final choice; mention them in "reason" only then. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
 }
 
 export function pickSystem(showAt: Date | null = null, playlistResolved = true, editorialLeanings: EditorialLeaningsContext | null = null) {
