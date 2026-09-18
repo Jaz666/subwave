@@ -605,15 +605,21 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     logEvent('shortlist.selected', selectionRecord);
     queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.usedMusicalLeanings ? 'Musical Leanings' : null, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
   } else if (agentPickResolution) {
+    // Mirror the Shortlist Booth-note safeguard. The Agentic reason is saved
+    // into both queue metadata and the next session window, so an omitted or
+    // false diagnostic must not leave a Leanings claim behind as if it were a
+    // normal flow explanation.
+    const usedMusicalLeanings = resolvedAgentMusicalLeaningsFlag(
+      editorialLeanings, object.usedMusicalLeanings,
+    );
+    object.reason = shortlistReasonForLeanings(object.reason, usedMusicalLeanings, song);
     agentPickResolution.track = {
       id: song.id,
       title: song.title ?? null,
       artist: song.artist ?? null,
     };
     agentPickResolution.reason = object.reason ?? null;
-    agentPickResolution.usedMusicalLeanings = resolvedAgentMusicalLeaningsFlag(
-      editorialLeanings, object.usedMusicalLeanings,
-    );
+    agentPickResolution.usedMusicalLeanings = usedMusicalLeanings;
   }
   if (useShortlist) {
     recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });

@@ -12,6 +12,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 const settings = await import('../src/settings.js');
 await settings.load();
 const { PICK_SCHEMA, musicalLeaningsPickReminder, pickSystem, pickerMusicLeanings, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
+const { shortlistReasonForLeanings } = await import('../src/music/dj-pick.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
 await settings.update({ personas: [persona], activePersonaId: persona.id });
@@ -36,6 +37,15 @@ assert.match(reminder, /mention them in "reason" only then/i);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true), true);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false), false);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined), false);
+assert.equal(
+  shortlistReasonForLeanings(
+    'calm fit and Musical Leanings for warm voices and strong melodies',
+    resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined),
+    { artist: 'Delerium feat. Sarah McLachlan', title: 'Silence (Michael Woods remix)' },
+  ),
+  'Delerium feat. Sarah McLachlan — Silence (Michael Woods remix): selected for its fit with the current musical flow.',
+  'an Agentic omission must not leave a Leanings claim in queue or session metadata',
+);
 
 const guest = settings.guestEditorialNudgeFromGuests([
   { id: 'p_f023a4', name: 'Carrie Marshall', musicLean: 'Favour great guitar work and unexpected rock records.' },
