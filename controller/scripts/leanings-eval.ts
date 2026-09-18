@@ -13,7 +13,7 @@
 // (for example OPENAI_API_KEY). Reports default to
 // scripts/leanings-eval/reports/, which is intentionally separate from state.
 
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { tool } from 'ai';
@@ -99,7 +99,7 @@ function parseArgs(argv: string[]) {
 
 function usage(message?: string): never {
   if (message) console.error(`error: ${message}\n`);
-  console.error('Usage: npm run leanings-eval -- --models provider:model[,provider:model...] [--iterations N] [--dry-run] [--out report.json]');
+  console.error('Usage: npm run leanings-eval -- --models provider:model[,provider:model...] [--iterations N] [--env-file path] [--dry-run] [--out report.json]');
   process.exit(2);
 }
 
@@ -110,6 +110,20 @@ function modelSpecs(raw: string) {
     if (separator < 1 || separator === trimmed.length - 1) usage(`bad model spec "${trimmed}" — expected provider:model`);
     return { label: trimmed, provider: trimmed.slice(0, separator), model: trimmed.slice(separator + 1) };
   });
+}
+
+// Docker env files are data, not shell programs: station descriptions and
+// other ordinary values are allowed to contain spaces without shell quoting.
+// Read only the credential the direct OpenAI provider needs, and never source
+// or evaluate a supplied file.
+function readOpenAiKey(envFile: string): string | undefined {
+  if (!existsSync(envFile)) usage(`env file does not exist: ${envFile}`);
+  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*OPENAI_API_KEY\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+    return match[1].replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return undefined;
 }
 
 function frozenTools(candidates: Candidate[]) {
@@ -163,6 +177,10 @@ async function main() {
   const models = modelSpecs(args.models);
   const defaultOut = join('scripts', 'leanings-eval', 'reports', `${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   const outPath = resolve(args.out || defaultOut);
+  if (args['env-file']) {
+    const key = readOpenAiKey(resolve(args['env-file']));
+    if (key) process.env.OPENAI_API_KEY = key;
+  }
 
   // Lets an operator inspect exactly what will be exercised, with no provider
   // request and no controller import. It also gives this CLI a cheap safety
@@ -205,7 +223,10 @@ async function main() {
     // The direct OpenAI provider reads apiKey from this in-memory config. Do
     // not write it to settings; a caller can instead provide it in the normal
     // environment used by the controller.
-    if (target.provider === 'openai' && process.env.OPENAI_API_KEY) cfg.llm.apiKey = process.env.OPENAI_API_KEY;
+    if (target.provider === 'openai') {
+      if (!process.env.OPENAI_API_KEY) usage('OpenAI model requested but OPENAI_API_KEY is unavailable (set it in the environment or pass --env-file)');
+      cfg.llm.apiKey = process.env.OPENAI_API_KEY;
+    }
 
     for (const scenario of SCENARIOS) {
       for (let iteration = 1; iteration <= iterations; iteration++) {
