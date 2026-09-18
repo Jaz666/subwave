@@ -192,6 +192,19 @@ track lookup, while MusicBrainz/Discogs-like sources may begin at release or
 artist. Track-level lookup is not inherently too detailed; track-level
 **on-air use** remains sparse.
 
+### Deferred album-level claim: *1001 Albums You Must Hear Before You Die*
+
+When album/release-group claims are introduced, evaluate a narrowly scoped
+MusicBrainz Series capability for the 2005-edition *1001 Albums You Must Hear
+Before You Die* release-group series
+(`4bc2a338-e1d8-4546-8a61-640da8aaf888`). Compare a cached, source-attributed
+membership snapshot with the canonical home release group retained for an
+encountered recording. A positive match may yield one concise album-scoped
+fact such as “the album is included in the 2005 edition of *1001 Albums You
+Must Hear Before You Die*.” It must retain the Series URL and edition as
+evidence, remain optional and novelty-gated, and must not become general
+MusicBrainz Series crawling or a proxy for critical judgement.
+
 ### Genius feasibility boundary
 
 Genius is a promising first research candidate because of its music context
