@@ -610,7 +610,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // false diagnostic must not leave a Leanings claim behind as if it were a
     // normal flow explanation.
     const usedMusicalLeanings = resolvedAgentMusicalLeaningsFlag(
-      editorialLeanings, object.usedMusicalLeanings,
+      editorialLeanings, object.usedMusicalLeanings, object.reason,
     );
     object.reason = shortlistReasonForLeanings(object.reason, usedMusicalLeanings, song);
     agentPickResolution.track = {
