@@ -216,6 +216,19 @@ authority, not a source of rich biography prose.
 Use its `url-rels` data, where present, to reach a stable Wikidata identity.
 That is the preferred bridge to a selected-language Wikipedia article.
 
+#### Deferred album-level claim: *1001 Albums You Must Hear Before You Die*
+
+When album/release-group claims are introduced, evaluate a narrowly scoped
+MusicBrainz Series capability for the 2005-edition *1001 Albums You Must Hear
+Before You Die* release-group series
+(`4bc2a338-e1d8-4546-8a61-640da8aaf888`). Compare a cached, source-attributed
+membership snapshot with the canonical home release group already retained for
+an encountered recording. A positive match may yield one concise album-scoped
+fact such as “the album is included in the 2005 edition of *1001 Albums You
+Must Hear Before You Die*.” It must retain the Series URL and edition as
+evidence, remain optional and novelty-gated, and must not become general
+MusicBrainz Series crawling or a proxy for critical judgement.
+
 ### Wikipedia — required artist-story research source
 
 Wikipedia is a source of artist histories, career turns, scenes,
