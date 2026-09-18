@@ -248,6 +248,9 @@ export const DEFAULTS = {
     showWelcome: false,
     sameHostAcknowledgement: false,
     extendedSleeveNotes: false,
+    // Research-only maintenance exception for an Icecast-confirmed empty
+    // station. DJ LLM work remains governed by llm.pauseWhenEmpty.
+    sleeveNotesMaintenanceWhenEmpty: false,
     releaseYearMentions: 'regular',
     // Compact anti-repeat material carried into every DJ script prompt. These
     // are deliberately ordinary live settings rather than boot environment:
@@ -255,6 +258,12 @@ export const DEFAULTS = {
     recapLimit: 10,
     recapMinutes: 120,
     recapChars: 140,
+  },
+  // Provider configuration stays independent from the station-wide Sleeve
+  // Notes switch. A provider may be configured but inert while the master
+  // setting is off, or the master may be on while no provider is enabled.
+  sleeveNotes: {
+    providers: { genius: { enabled: false } },
   },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
   // boundary the outgoing host signs off — the programme outro beat's window.

@@ -1,86 +1,178 @@
-# Enriched Sleeve Notes — future development note
+# Sleeve Notes — design and delivery plan
 
-## Status and scope
+## Status
 
-This is a future, opt-in enrichment feature. It is not part of the current
-Verified Facts deployment and must not delay music selection, link generation,
-TTS, queue draining, or show handoffs.
+This document is the agreed design handoff for `feat/extended-sleeve-notes`.
+It extends the existing Verified Facts and Sleeve Notes foundation; it does
+not replace it. `settings.djBehaviour.extendedSleeveNotes` is a
+disabled-by-default collection control in the DJ Behaviour panel.
 
-It is independent of the retired Producer Routing architecture. It uses native
-controller jobs and a local knowledge cache; no Producer or local-LLM
-fact-checking stage is proposed.
+Phases 0–2 are implemented on the Extended Sleeve Notes branch. Genius is the
+approved first provider, limited to the non-lyric metadata and relationship
+contract in [`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md). The feature
+remains collection-only: it is not connected to DJ links.
 
-## Purpose
+## Product intent
 
-`Sleeve Notes` currently supplies a small deterministic set of trustworthy
-library, station-history, and schedule facts to a DJ link. Enriched Sleeve
-Notes would add optional, source-backed editorial context for music that the
-station actually encounters. It is an enhancement, not a requirement for every
-track or every station.
+Sleeve Notes is a provenance-aware, local music knowledge store that grows
+from music a station actually encounters. Its first consumer is a small,
+optional editorial layer for DJ links. It must also be useful to future Skills
+and DJ banter segments without making the on-air link path complicated or
+slow.
 
-The intended station behaviour is:
+It is deliberately both of these things:
+
+- a rich, accumulating store of source-backed music claims and relationships;
+- a sparse presentation layer that offers a DJ zero or one relevant note when
+  it genuinely improves a link.
+
+The normal operator experience is automatic. Review is a correction mechanism
+for material that has already influenced speech, not a publishing queue.
+
+## Vocabulary and boundaries
+
+Keep these concepts distinct in code, storage, prompts, and UI:
+
+- **Verified Facts** are deterministic controller, library, station-history,
+  and schedule facts. They remain the factual floor for DJ links.
+- **Sleeve Notes** are source-backed claims or relationships retained locally
+  with provenance. They are optional editorial context, not guaranteed truth.
+- **Creative material** is persona direction and writing style. It must never
+  become the basis for a factual assertion.
+- **Lyrics** are out of scope. The separate lyrics feature owns structured
+  lyric display and its own opt-in/publication decisions. Sleeve Notes must
+  never fetch, retain, display, quote, prompt with, or derive context from
+  lyric text.
+
+The writer may naturally rephrase a supplied Sleeve Note, but must not extend
+it using model memory or strengthen an editorial/source claim into an
+undisputed fact.
+
+## Non-negotiable runtime contract
+
+`generateLink`, music selection, TTS, queue draining, and show handoffs must
+never wait for a provider call, a provider-match calculation, or heavyweight
+claim curation. A cache miss always uses the present Verified Facts-only link
+path.
 
 ```text
-Track queued
-    |
-    +-- local knowledge exists --> optional eligible Sleeve Note
-    |
-    +-- knowledge absent ------> add low-priority enrichment candidate
-                                      |
-                                      +-- runs only when playback-critical work is idle
-                                      +-- later tracks may use the result
+Background work                         On-air link path
+
+provider response                        current track + context
+  -> validate and retain                  -> local eligible-claim lookup
+  -> source-specific match                -> novelty/scope checks
+  -> compact safe claim                   -> zero or one Sleeve Note
+  -> local database                         -> normal link writer
 ```
 
-A cache miss always falls back to the present link path. No network call is
-allowed from `generateLink` or any other on-air critical path.
+The background job is low priority, rate-limited, bounded in concurrency, and
+yielding to all playback-critical work. Link-time selection is a small,
+deterministic local read; it never chooses a raw provider response.
 
-## Editorial classification
+## Product surfaces
 
-Keep the categories distinct in storage and prompt construction:
+### Navigation and disabled state
 
-- **Verified Facts** are deterministic controller/library/station facts.
-- **Sourced Sleeve Notes** are optional editorial material retrieved from a
-  configured source. They are useful on-air context, not a guarantee that a
-  source claim is indisputable.
-- **Creative material** is persona and writing direction. It is never a source
-  of factual assertions.
+The main admin sidebar uses concise one-word destinations. The navigation item
+will be **Notes**, under Programming. Its page title and feature name remain
+**Sleeve Notes**.
 
-The DJ receives one compact, approved note, not a raw provider response. Prompt
-rules must prevent it from strengthening or extending a source claim using
-model memory.
+The destination is visible even when the station-wide feature is disabled. It
+is an explanation and discovery surface rather than a hidden empty route. Its
+disabled state should make these promises explicit:
 
-## Opt-in station setting
+- no provider calls or background jobs occur while globally disabled;
+- no source material can reach on-air speech until enabled;
+- collection never delays playback; and
+- future use is source-backed, sparse, and reviewable after airing.
 
-Add a per-station master setting, provisionally named **Enriched Sleeve
-Notes**, disabled by default.
+The existing DJ Behaviour card stays the station-wide master switch. The Notes
+page is the fuller operational and explanatory home.
 
-When disabled, it must make no provider calls, schedule no enrichment jobs, and
-leave current Verified Facts and Sleeve Notes behaviour unchanged. This keeps
-fictional, fantasy, and deliberately non-real-world stations fully supported.
+### On-air scope
 
-When enabled, the UI should distinguish:
+Global collection/exposure capability and DJ-link eligibility are separate.
+A Sleeve Note is eligible for an on-air DJ link only when all of the following
+are true:
 
-1. disabled;
-2. enabled but no source configured; and
-3. enabled and gathering knowledge.
+```text
+station feature enabled
+  AND (current persona selected OR current show selected)
+  AND claim is source-enabled, safe, fresh, and currently novel
+```
 
-Provider credentials are supplied by the station operator, not bundled with
-Subwave. Provider configuration sits below the master setting.
+Selecting a persona enables it for that persona across shows. Selecting a show
+enables it for whichever persona hosts that show. Selecting both is additive,
+not restrictive. With neither selected, the station may still collect Notes
+for the shared store and future Skills, but no DJ link receives them.
 
-## Gained-knowledge backlog
+Skills and future banter segments need their own explicit consumer-access
+policy. They must not silently inherit a DJ/show assignment.
 
-Do not scan the whole library. Enrichment is gained knowledge: candidates enter
-a small, persistent backlog only when their tracks are queued. Prefer common
-station artists/releases, for example by admitting an entity after a second
-queued appearance or by weighting it with recent play count.
+### Normal and corrective workflows
 
-Jobs are deduplicated by entity and run with strict low priority, bounded
-concurrency, rate limiting, retry backoff, and negative-cache results for
-unmatched entities. Playback, picking, link writing, TTS and handoffs always
-win. The controller need not be literally idle; it must merely have no
-higher-priority work waiting.
+The Notes page has three primary views:
 
-Suggested job lifecycle:
+- **On air** — an immutable airing ledger: supplied claim, final spoken link,
+  track, time, consumer, source, excerpt/evidence, and source URL.
+- **Collected** — retained claims and relationships, their source, freshness,
+  eligibility, and local match state.
+- **Sources** — configured providers, health, rate/backlog state, and
+  station-wide controls.
+
+Corrections alter future exposure, never the historical record. Operators can
+disable a claim, replace its compact presentation wording while retaining the
+source evidence, suppress a source for an artist/release/track, refresh a
+record, or disable a provider immediately. Disabling a provider removes its
+claims from future selection while retaining audit history.
+
+## Stored knowledge model
+
+Use a sidecar SQLite database keyed to existing library/Subsonic identity;
+never modify Navidrome's database. Store canonical local entities separately
+from provider identities, so multiple sources can enrich the same artist,
+release, or track.
+
+The first schema should support these durable records:
+
+- **entities** — local artist, release, track, and external-only entities;
+- **provider identities** — provider, provider ID, canonical URL, match
+  confidence, and provider-to-local resolution state;
+- **claims** — constrained claim type, compact DJ-safe wording, classification,
+  freshness, eligibility, and suppression/correction state;
+- **evidence** — bounded supporting excerpt/structured source fields,
+  retrieval time, and attribution needed for the operator audit view;
+- **relationships** — directed music graph edges such as `samples`,
+  `sampled-by`, `cover-of`, and `covered-by`, with their own provenance;
+- **provider coverage** — lifecycle for each provider/entity pair;
+- **jobs** — deduplicated background retrieval, retry, and local-resolution
+  work; and
+- **uses** — consumer/aired history used for audit and repetition control.
+
+Claims and relationships must be source-scoped. Two providers agreeing can
+corroborate a normalized claim; conflicting claims remain independently
+attributed and must not be merged into a stronger assertion.
+
+### Music relationships and local IDs
+
+Source links such as samples, songs that sample a record, and cover versions
+are relationships, not prose facts. Preserve the direction exactly.
+
+When a provider supplies a linked song, queue a local Navidrome search in the
+background. A confident match may attach one or more local track IDs; release
+and compilation duplicates are valid. An uncertain result remains an
+external-only relation with `ambiguous` or `unavailable` resolution state.
+Never force a same-title match. Future Skills can use only confident local
+links when they need something playable from the station library.
+
+## Collection, providers, and freshness
+
+Sleeve Notes is gained knowledge, not a whole-library scanner. A track entering
+the queue/play history can create a small, persistent candidate. Admission
+priority can favour repeated plays, recent plays, and entities already known
+to matter to the station.
+
+Provider/entity coverage has an independent lifecycle:
 
 ```text
 unknown -> queued -> fetching -> ready
@@ -89,55 +181,214 @@ unknown -> queued -> fetching -> ready
                     +-> retry-at
 ```
 
-Start with artist and release context. Track-specific context should remain
-sparse and be attempted only where the broader entities do not already offer a
-suitable note.
+Adding a provider does not re-fetch existing providers or replace stored
+claims. It queues a low-priority source-specific backfill for already-known,
+likely-to-matter entities, rather than scanning the full library. The Sources
+UI should report the resulting ready, queued, retrying, and no-match counts.
 
-## Local data contract
+The store is artist/release/track capable, but provider strategy is
+source-specific. For example, a track-oriented provider may begin with a
+track lookup, while MusicBrainz/Discogs-like sources may begin at release or
+artist. Track-level lookup is not inherently too detailed; track-level
+**on-air use** remains sparse.
 
-Use a sidecar database keyed through Subwave's existing library/Subsonic track
-identity, rather than modifying Navidrome's own database. Represent artist,
-release and track entities separately so many tracks can share one artist or
-release lookup.
+### Deferred album-level claim: *1001 Albums You Must Hear Before You Die*
 
-Each claim should retain at least:
+When album/release-group claims are introduced, evaluate a narrowly scoped
+MusicBrainz Series capability for the 2005-edition *1001 Albums You Must Hear
+Before You Die* release-group series
+(`4bc2a338-e1d8-4546-8a61-640da8aaf888`). Compare a cached, source-attributed
+membership snapshot with the canonical home release group retained for an
+encountered recording. A positive match may yield one concise album-scoped
+fact such as “the album is included in the 2005 edition of *1001 Albums You
+Must Hear Before You Die*.” It must retain the Series URL and edition as
+evidence, remain optional and novelty-gated, and must not become general
+MusicBrainz Series crawling or a proxy for critical judgement.
 
-- entity and constrained claim type;
-- short approved on-air wording;
-- provider, provider entity ID and canonical URL;
-- supporting source excerpt;
-- retrieval time and freshness state;
-- source/editorial classification; and
-- eligibility or operator-review state.
+### Genius feasibility boundary
 
-The runtime selection step reads only approved local claims and lets them
-compete with existing Sleeve Notes, preserving sparse and varied speech.
+Genius is a promising first research candidate because of its music context
+and potential credits/relationship data. Before implementation, confirm what
+the supported API actually returns and permits us to retrieve, retain,
+transform, and expose. Do not build any feature on page scraping or an
+undocumented endpoint.
 
-## Provider model
+The Genius adapter must never retrieve or process lyric text. If useful
+credits or relationship links are only page-rendered rather than available
+through supported, permitted access, they are not part of this adapter's
+contract.
 
-Make sources pluggable behind a small native provider interface. Each provider
-owns authentication, rate limiting, matching, retrieval, and its source policy;
-the cache exposes one common claim format to the rest of Subwave.
+**Phase 0 decision (2026-09-13):** Genius is the approved first Sleeve Notes
+provider for structured identity, credit, and relationship metadata only.
+The authenticated two-request spike confirmed `song_relationships` on the
+official `GET /songs/:id` response. The adapter must use the explicit field
+allowlist, rate ceiling, attribution, and lyrics/annotation prohibition in
+[`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md); it must never use the
+undocumented endpoints employed by unrelated features in `genius-mcp`.
 
-Possible avenues, subject to API terms and an implementation spike:
+## Link-time selection and repetition
 
-- MusicBrainz for structured release identity, dates, credits and relationships;
-- Discogs for edition, label and personnel context;
-- Genius for song-specific, crowdsourced editorial hooks;
-- Last.fm for broad artist biography and community tags; and
-- Wikidata/Wikipedia for wider artist history and cultural context.
+The stored model may be rich; a normal DJ link gets zero or one selected Sleeve
+Note. Selection considers consumer policy, confidence/classification,
+freshness, current track context, existing Verified Facts, and repetition.
 
-Prefer official APIs or explicitly permitted feeds. Do not make scraping a
-foundational dependency.
+Knowledge value and on-air cadence deliberately run in opposite directions:
 
-## First implementation slice
+| Entity level | Knowledge value | Repetition risk | Exposure cadence |
+| --- | --- | --- | --- |
+| Artist | Highest; reusable across a catalogue | Highest | Most restrained |
+| Release | Shared context for its tracks | Medium | Moderated |
+| Track | Narrowest and most specific | Lowest | Most freely eligible |
 
-1. Add the disabled-by-default station setting and provider configuration
-   contract.
-2. Add the persistent, deduplicated gained-knowledge backlog, with no runtime
-   consumer initially.
-3. Implement one source adapter and its provenance-preserving local records.
-4. Add deterministic claim selection to Sleeve Notes, guarded by the master
-   setting and the existing prompt-safety boundary.
-5. Observe cache hit rate, work backlog, fetch failures, link latency, and
-   on-air repetition before adding further providers or track-level material.
+Use both an exact-claim cooldown and a broader entity-level cooldown. A recent
+artist fact should suppress other artist facts about that artist for a longer
+window, while a genuinely novel track fact may still be suitable later. The
+selector asks for the best *currently novel* fact, not merely the highest
+ranked one. Saying nothing remains a successful outcome.
+
+## Delivery plan
+
+### Phase 0 — provider spike and policy decision
+
+**Complete — Genius response and policy verification.** The evidence,
+local-resolution spike, and provider contract are recorded in
+[`sleeve-notes-phase-0.md`](sleeve-notes-phase-0.md).
+
+1. Genius's supported endpoints, authentication, data shape, unreported quota,
+   permission scope, and attribution requirements are documented.
+2. The official two-request spike confirmed credits and relationships, and
+   established an explicit response field allowlist. Lyrics and scraping remain
+   excluded.
+3. A disposable local exact-match spike established conservative attachment,
+   duplicate, and no-match rules without persisting provider data.
+4. The resulting contract approves a narrow Genius adapter. It must not expand
+   its field or endpoint scope without a new provider review.
+
+### Phase 1 — foundation and inactive product surface
+
+**Complete — separate sidecar storage and the always-visible Notes surface.**
+The disabled state makes no provider call and does not open the sidecar
+database. Default Sleeve Notes and Verified Facts remain distinct, user-facing
+terms and behaviour.
+
+1. Add the sidecar database migrations and repository layer for entities,
+   provider coverage, claims/evidence, relationships, jobs, and uses.
+2. Define source-neutral schemas and the native provider interface.
+3. Extend the existing disabled `extendedSleeveNotes` setting into a complete
+   master setting/provider configuration contract.
+4. Add the always-visible **Notes** route and its disabled explanation state.
+5. Add controller tests proving that the disabled state schedules no jobs,
+   makes no provider calls, and cannot alter existing link output.
+
+### Phase 2 — background collection and first provider
+
+**Complete — bounded Genius collection is present but remains disabled by
+default.** Queue admission is deferred and non-blocking; the worker has one
+active job at a time, durable deduplication, exponential retry state and
+negative caching. The adapter performs only the approved `/search` then
+`/songs/:id` flow and retains a projected source-scoped result. It reads the
+dedicated Genius producer and writer lists, using custom performance labels
+only as a supplement.
+
+Relationship targets receive a separate exact title-and-artist Navidrome
+lookup, allowing multiple confident local copies while leaving uncertainty
+external. A relationship-discovered target may be enriched once, but the depth
+is strictly capped at one and each root has a small target cap; a depth-one
+result cannot enqueue or retain a second related layer. When that external
+target is later queued or played by the station, its provider identity, claims,
+relationships and discovery record promote onto the direct local track entity.
+This avoids both recursive provider work and duplicate local/external graph
+nodes.
+
+Only accepted queued/played tracks enter collection: vetoed proposed picks do
+not generate provider work. The Debug timeline shows timestamped safe provider
+calls (search/song, HTTP status and latency) above Subsonic calls; it never
+includes tokens or raw provider responses. During the Phase 2 bedding-in
+period, Notes also has a bounded, read-only database readout for entities,
+relationships and jobs. No collected material is connected to DJ link
+generation until Phase 3.
+
+1. Add candidate admission from queued/played music, deduplication, priority,
+   bounded concurrency, retry backoff, negative caching, and observability.
+2. Implement the validated first provider adapter and source-scoped local
+   retention.
+3. Add background provider-target-to-Navidrome resolution with conservative
+   match/ambiguous/no-match states.
+4. Surface provider coverage and job state in Notes → Sources, with the
+   temporary bounded operational readout retained only while Phase 2 data is
+   being evaluated.
+
+### Phase 3 — DJ-link projection
+
+1. Add persona/show assignment controls and resolve the additive eligibility
+   rule at link time.
+2. Implement deterministic local selection, one-note maximum, freshness,
+   claim/entity cooldowns, and source/provider suppression.
+3. Extend the existing factual-grounding prompt boundary for sourced notes;
+   retain its prohibition on model expansion or invention.
+4. Write an airing record whenever a claim is supplied to a consumer, including
+   the final generated speech where available.
+5. Measure link latency and assert that source/network work cannot occur in
+   the on-air path.
+
+### Phase 4 — operator correction desk
+
+1. Build Notes → On air and Collected views with source attribution and
+   evidence.
+2. Add future-facing correction actions: claim suppression, presentation
+   correction, entity/provider suppression, refresh, and provider kill switch.
+3. Ensure every correction is auditable and takes effect immediately for new
+   selection without rewriting past use records.
+
+### Phase 5 — expand consumers and providers
+
+1. Add explicit Skills access to structured claims/relationships and source
+   links; do not expose raw provider payloads by default.
+2. Design a separately scoped DJ-banter consumer using a small themed set of
+   facts and the same provenance/repetition guarantees.
+3. Add artist and release enrichment as separately queued background work.
+   A track encounter may seed those candidates, but it must not make an
+   unconditional artist-and-album lookup: admission uses provider coverage,
+   freshness, repeat station encounters, priority and a bounded station-wide
+   budget.
+4. Add providers one at a time with their own capability, policy, matching,
+   and backfill rules. Direct Genius album lookup (`/albums/:id` and its
+   track-list endpoint) is a candidate for this work; it still requires its
+   own field/permission review before use. Do not use undocumented Genius
+   album search or artist-discography endpoints.
+5. Consider relationship-driven Skills, such as sample trails, cover stories,
+   and local-library follow-up playlisting, only after local relation matching
+   is reliable.
+
+### Phase 6 — knowledge observatory
+
+1. Add an optional visual exploration surface inspired by the Library
+   Observatory: an interactive graph of the station's collected artists,
+   releases, tracks, and source-backed relationships.
+2. Keep provenance first-class in every view: each node and edge must identify
+   its provider, source URL, retrieval time, confidence, and whether a linked
+   track has a confident local Navidrome match.
+3. Offer small useful lenses rather than one decorative map: relationship type
+   (samples/covers), a local-library-only filter, artist/release/track scope,
+   source coverage, and recent collection activity.
+4. Make external-only and ambiguous nodes visually distinct from playable local
+   tracks. The visualization must never imply that an uncertain relationship is
+   a confirmed local match.
+5. Keep it an operator/research surface: it does not create provider work,
+   alter source claims, or supply DJ speech by itself.
+
+## Completion checks for the first DJ-link release
+
+- No provider or heavyweight curation work can be triggered by `generateLink`
+  or another playback-critical path.
+- Station-wide off means no external calls, jobs, or changed current behaviour.
+- DJ links receive a sourced note only when global, persona/show, provider,
+  claim, freshness, and repetition gates all pass.
+- Every selected note has durable source provenance and an audit/use record.
+- Suppression, correction, and provider disablement affect future use
+  immediately and leave history intact.
+- Ambiguous external-to-local music matches are never treated as playable
+  local tracks.
+- Lyrics are absent from all Sleeve Notes data, prompts, APIs, UI, and tests.
+- The existing Verified Facts regression suite continues to prove that sparse
+  metadata cannot cause invented music history or show steering.

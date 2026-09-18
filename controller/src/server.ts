@@ -18,7 +18,7 @@ import * as pocketTts from './audio/pocketTts.js';
 import { getFullContext } from './context.js';
 import { loadCuriosityLedger } from './skills/curiosity.js';
 import { startScheduler } from './broadcast/scheduler.js';
-import { startListenerMonitor } from './broadcast/listeners.js';
+import { djCallsAllowed, gatedListenerCount, startListenerMonitor } from './broadcast/listeners.js';
 import { startStreamIdleMonitor } from './broadcast/stream-idle.js';
 import { startAudienceMonitor } from './broadcast/audience.js';
 import * as likes from './broadcast/likes.js';
@@ -54,6 +54,14 @@ import { router as generateRoutes } from './routes/generate.js';
 import { router as doctorRoutes } from './routes/doctor.js';
 import { router as connectRoutes } from './routes/connect.js';
 import { router as mcpRoutes } from './routes/mcp.js';
+import { router as sleeveNotesRoutes } from './routes/sleeve-notes.js';
+import * as sleeveNotesDb from './sleeve-notes/db.js';
+import { recoverInterruptedResearchJobs } from './sleeve-notes/research-repository.js';
+import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
+import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
+import { startResearchWorker } from './sleeve-notes/research-worker.js';
+import { researchRunAllowed } from './sleeve-notes/research-policy.js';
+import { agentWorkActive } from './llm/agent.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadSetupConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
@@ -90,6 +98,11 @@ function shutdown(signal: string): void {
     library.shutdown();
   } catch (err: any) {
     console.error('[shutdown] library close failed:', err.message);
+  }
+  try {
+    sleeveNotesDb.close();
+  } catch (err: any) {
+    console.error('[shutdown] Sleeve Notes DB close failed:', err.message);
   }
   process.exit(0);
 }
@@ -156,6 +169,7 @@ app.use(generateRoutes);
 app.use(doctorRoutes);
 app.use(connectRoutes);
 app.use(mcpRoutes);
+app.use(sleeveNotesRoutes);
 
 // There is no manual skip — Liquidsoap controls pacing.
 
@@ -210,6 +224,18 @@ app.listen(config.server.port, async () => {
     );
   } catch (err) {
     console.error('[settings] load failed:', err.message);
+  }
+
+  // A restart can interrupt a quiet-time worker after it claims durable work.
+  // Put those jobs back before any workers are allowed to start, but leave the
+  // Sleeve Notes DB unopened when the feature itself remains disabled.
+  if (settings.get().djBehaviour.extendedSleeveNotes === true) {
+    try {
+      const recovered = recoverInterruptedResearchJobs();
+      if (recovered) console.log(`[sleeve-notes] recovered ${recovered} interrupted research job${recovered === 1 ? '' : 's'}`);
+    } catch (err: any) {
+      console.error('[sleeve-notes] job recovery failed:', err.message);
+    }
   }
 
   // Must be in memory before the first auto-playlist build and queue push.
@@ -315,6 +341,24 @@ app.listen(config.server.port, async () => {
   // Up front so the sync readers see data from the first pick.
   await likes.load().catch(err => console.error('[likes] init failed:', err.message));
   startScheduler();
+  // The entire Sleeve Notes pipeline shares the listener-aware research gate.
+  // Otherwise, an unattended autoplay stream could keep queuing MusicBrainz
+  // and Wikipedia work while its LLM extractor is paused. The opt-in setting
+  // permits deliberate empty-station catch-up, but its default keeps the
+  // backlog stable until a listener returns.
+  const sleeveNotesQuietGate = {
+    isQuiet: () => researchRunAllowed({
+      playbackCriticalBusy: queue.playbackCriticalBusy(),
+      agentWorkActive: agentWorkActive(),
+      djCallsAllowed: djCallsAllowed(),
+      pauseWhenEmpty: settings.get().llm.pauseWhenEmpty === true,
+      maintenanceWhenEmpty: settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true,
+      listenerCount: gatedListenerCount(),
+    }),
+  };
+  startMusicBrainzMatchWorker(sleeveNotesQuietGate);
+  startWikipediaArtistWorker(sleeveNotesQuietGate);
+  startResearchWorker(sleeveNotesQuietGate);
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));

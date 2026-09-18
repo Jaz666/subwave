@@ -80,6 +80,7 @@ import {
 } from './queue/pause-voice-delivery.js';
 import * as webhooks from './webhooks.js';
 import * as scrobble from './scrobble.js';
+import { admitSleeveNotesEncounter } from '../sleeve-notes/admission.js';
 import * as liquidsoapControl from './liquidsoap-control.js';
 import {
   drainAction,
@@ -150,6 +151,21 @@ import {
 } from './queue/voice-io.js';
 import { awaitIntroRender, IntroRenderTracker } from './queue/intro-render.js';
 import { notifyQueued, notifySpoken } from './voice-events.js';
+
+// Both queueing and confirmed playback are admission points. Deferring this
+// tiny local write keeps the queue mutation and watcher tick entirely free of
+// Sleeve Notes work. The new admission path records an encounter and one
+// durable MusicBrainz match task; it never contacts a provider here.
+function admitSleeveNotesLater(track: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null }, source: 'queue' | 'played', priority = 0): void {
+  setTimeout(() => {
+    try {
+      admitSleeveNotesEncounter({
+        localTrackId: track.id, title: track.title, artist: track.artist,
+        releaseTitle: track.album,
+      }, source, priority);
+    } catch {}
+  }, 0).unref();
+}
 
 // Everything the outside world is told about ONE spoken segment, held in a
 // single value because it is now read twice — once when the clip is committed
@@ -979,6 +995,9 @@ class Queue {
     }
     this.warnIfSwallowedByCrossfade(item);
     this.persist();
+    // Candidate admission is deferred out of the queue mutation. It is never
+    // awaited and makes no provider request while the feature is off.
+    admitSleeveNotesLater(track, 'queue');
     this.drainToLiquidsoap();  // fire-and-forget
     return this.upcoming.length;
   }
@@ -2516,6 +2535,17 @@ class Queue {
     return p ? { kind: p.kind, queuedAt: p.t } : null;
   }
 
+  /**
+   * A conservative gate for work that must yield to station delivery. It is
+   * intentionally narrower than “a track is playing”: background research may
+   * use the ordinary between-boundary time, but never compete with a drain,
+   * pick, voice render, deferred speech or show handoff.
+   */
+  playbackCriticalBusy(): boolean {
+    return this.senderBusy || this.pickerBusy || this._introRenders.busy()
+      || !!this._pendingVoice || session.handoffInProgress();
+  }
+
   // Discard a scheduled-but-unaired deferred segment. A mic-pass supersedes an
   // ident: sign-off + greeting name the station, the outgoing show and the
   // incoming one, so an ident in front of it is three spoken segments in a row
@@ -3074,6 +3104,9 @@ class Queue {
       return;
     }
     this.lastSeenKey = key;
+    // Covers tracks that were already queued before collection was enabled,
+    // plus untracked auto-playlist music. This is deliberately not awaited.
+    admitSleeveNotesLater({ id: np.subsonic_id, title: np.title, artist: np.artist, album: np.album }, 'played', 1);
     // The rotate's own clock (#1619). Only real MUSIC boundaries reach here —
     // a bed branches before now-playing.json's title gate and a jingle is
     // captured outside music_meta entirely — so this counts the same thing

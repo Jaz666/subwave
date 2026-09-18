@@ -434,6 +434,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         showWelcome: v.djBehaviour?.showWelcome === true,
         sameHostAcknowledgement: v.djBehaviour?.sameHostAcknowledgement === true,
         extendedSleeveNotes: v.djBehaviour?.extendedSleeveNotes === true,
+        sleeveNotesMaintenanceWhenEmpty: v.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === true,
         releaseYearMentions: v.djBehaviour?.releaseYearMentions ?? 'regular',
         recapLimit: String(v.djBehaviour?.recapLimit ?? 10),
         recapMinutes: String(v.djBehaviour?.recapMinutes ?? 120),

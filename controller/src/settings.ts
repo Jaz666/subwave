@@ -615,6 +615,8 @@ export async function load() {
         : DEFAULTS.djBehaviour.sameHostAcknowledgement,
       extendedSleeveNotes: typeof stored.djBehaviour?.extendedSleeveNotes === 'boolean'
         ? stored.djBehaviour.extendedSleeveNotes : DEFAULTS.djBehaviour.extendedSleeveNotes,
+      sleeveNotesMaintenanceWhenEmpty: typeof stored.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === 'boolean'
+        ? stored.djBehaviour.sleeveNotesMaintenanceWhenEmpty : DEFAULTS.djBehaviour.sleeveNotesMaintenanceWhenEmpty,
       releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)
         ? stored.djBehaviour.releaseYearMentions : DEFAULTS.djBehaviour.releaseYearMentions,
       recapLimit: parsedIntIn(
@@ -632,6 +634,11 @@ export async function load() {
         DEFAULTS.djBehaviour.recapChars,
         DJ_RECAP_CHARS_BOUNDS,
       ),
+    },
+    sleeveNotes: {
+      providers: {
+        genius: { enabled: stored.sleeveNotes?.providers?.genius?.enabled === true },
+      },
     },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
@@ -1605,7 +1612,7 @@ export async function update(patch) {
     }>(
       'djBehaviour', patch.djBehaviour,
     );
-    for (const key of ['showWelcome', 'sameHostAcknowledgement', 'extendedSleeveNotes'] as const) {
+    for (const key of ['showWelcome', 'sameHostAcknowledgement', 'extendedSleeveNotes', 'sleeveNotesMaintenanceWhenEmpty'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
     }
     if (behaviour.releaseYearMentions !== undefined) {
@@ -1613,6 +1620,14 @@ export async function update(patch) {
     }
     for (const key of ['recapLimit', 'recapMinutes', 'recapChars'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
+    }
+  }
+  if ('sleeveNotes' in patch) {
+    const sleeveNotes = parseSettingsPatchKey<{ providers?: { genius?: { enabled?: boolean } } }>(
+      'sleeveNotes', patch.sleeveNotes,
+    );
+    if (sleeveNotes.providers?.genius?.enabled !== undefined) {
+      next.sleeveNotes.providers.genius.enabled = sleeveNotes.providers.genius.enabled;
     }
   }
   if ('handover' in patch) {
