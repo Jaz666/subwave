@@ -473,8 +473,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }
   }
 
-  const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, object.usedMusicalLeanings, object.reason);
-  object.reason = agentReasonForLeanings(object.reason, usedMusicalLeanings);
+  const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, object.usedMusicalLeanings, object.leaningsTieBreak);
+  object.reason = agentReasonForLeanings(object.reason, usedMusicalLeanings, object.leaningsTieBreak);
   agentPickResolution.track = { id: song.id, title: song.title ?? null, artist: song.artist ?? null };
   agentPickResolution.reason = object.reason ?? null;
   agentPickResolution.usedMusicalLeanings = usedMusicalLeanings;

@@ -26,25 +26,26 @@ assert.match(prompt, /Musical Leanings — Favour patient dub, deep electronic c
 assert.match(prompt, /soft editorial preference/i);
 assert.match(prompt, /may guide an otherwise sound selection/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
-assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, true);
+assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, leaningsTieBreak: 'warm vocal and melody', transition: null }).success, true);
+assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, false, 'the tie-break evidence must be explicit');
 assert.match(PICK_SCHEMA.shape.reason.description ?? '', /Default to actual flow/i);
 assert.match(PICK_SCHEMA.shape.usedMusicalLeanings.description ?? '', /Default false/i);
 const reminder = musicalLeaningsPickReminder(resolveEditorialLeanings());
 assert.match(reminder, /soft tie-breaker/i);
 assert.match(reminder, /two or more eligible tracks/i);
-assert.match(reminder, /Leanings: /i);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'Leanings: warm vocal and melody'), true);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'energetic flow fit'), false);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false, 'Leanings: warm vocal and melody'), false);
-assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined, 'Leanings: warm vocal and melody'), false);
+assert.match(reminder, /leaningsTieBreak/i);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'warm vocal and melody'), true);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, null), false);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false, 'warm vocal and melody'), false);
+assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined, 'warm vocal and melody'), false);
 assert.equal(
   agentReasonForLeanings('warm voices and strong melodies from Musical Leanings', false),
   'flow fit after the current track',
   'an Agentic omission must not leave a Leanings claim in queue or session metadata',
 );
 assert.equal(
-  agentReasonForLeanings('warm voices and strong melodies from Musical Leanings', true),
-  'warm voices and strong melodies from Musical Leanings',
+  agentReasonForLeanings('ordinary flow note', true, 'warm vocal and melody'),
+  'Leanings: warm vocal and melody',
 );
 
 const guest = settings.guestEditorialNudgeFromGuests([

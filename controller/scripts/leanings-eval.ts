@@ -262,18 +262,21 @@ async function main() {
             const object: any = result.object;
             const selected = seen.get(object?.id);
             const reason = safeReason(object?.reason);
-            const verifiedLeanings = resolvedMusicalLeaningsFlag(context, object?.usedMusicalLeanings, reason);
+            const tieBreak = safeReason(object?.leaningsTieBreak);
+            const verifiedLeanings = resolvedMusicalLeaningsFlag(context, object?.usedMusicalLeanings, tieBreak);
             record.selected = selected ? { id: selected.id, title: selected.title, artist: selected.artist, editorialFit: selected.editorialFit } : null;
             record.reason = reason;
             record.rawUsedMusicalLeanings = object?.usedMusicalLeanings ?? null;
+            record.leaningsTieBreak = tieBreak || null;
             record.verifiedLeanings = verifiedLeanings;
-            record.reasonSupportsSelectedFixture = fixtureSupport(selected, reason);
+            record.reasonSupportsSelectedFixture = fixtureSupport(selected, tieBreak);
             record.steps = result.steps;
             record.toolCalls = result.toolCalls?.length ?? 0;
             if (!selected) record.violations.push('hallucinated-id');
             if (arm === 'control' && verifiedLeanings) record.violations.push('leanings-without-context');
             if (scenario.expectNoLeanings && verifiedLeanings) record.violations.push('leanings-without-close-call');
             if (verifiedLeanings && !record.reasonSupportsSelectedFixture) record.violations.push('unsupported-leanings-rationale');
+            if (object?.usedMusicalLeanings === false && tieBreak) record.violations.push('tie-break-without-claim');
             if (record.violations.length) record.outcome = 'violation';
           } catch (error: any) {
             record.outcome = 'thrown';
