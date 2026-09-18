@@ -933,6 +933,15 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
       && Math.random() < EXPLORE_SEED_PROBABILITY
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';
+    // Musical Leanings live in the variable tail of the system prompt so they
+    // do not disturb its reusable cache prefix. Repeat the current snapshot on
+    // the selection event as well: this is where the picker weighs the actual
+    // musical moment, rather than merely learning that a preference exists.
+    // The snapshot was captured once above, so an occasional guest nudge cannot
+    // change between the main pick and any corrective re-pick.
+    const musicalLeaningsClause = editorialLeanings.promptValue
+      ? ` Musical Leanings for this selection: ${editorialLeanings.promptValue}. Treat them as a soft editorial tie-breaker only between tracks that already fit this moment; never override the flow, show rules, rotation, or safety.`
+      : '';
     const eventText = explicitPickAnchor
       ? `Pick next after "${pickAnchor?.title}" by ${pickAnchor?.artist}`
         + (anchorPriorTrack ? ` (following "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
@@ -941,7 +950,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
         + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
         + '. Pick the track to play next.';
-    const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
+    const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}${musicalLeaningsClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
       meta: promptSuffix ? { promptSuffix } : {},
