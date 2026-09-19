@@ -13,6 +13,7 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
       llm: {
         trackSelection: form.llm.trackSelection,
         shortlistPasses: form.llm.shortlistPasses,
+        guestMusicalLeanings: form.llm.guestMusicalLeanings,
         requestMatching: form.llm.requestMatching,
         noRepeatWindow: Math.max(0, parseInt(form.llm.noRepeatWindow, 10) || 0),
         artistVarietyWindow: Math.max(0, parseInt(form.llm.artistVarietyWindow, 10) || 0),
@@ -83,6 +84,20 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
             </p>
           </div>
         )}
+        <div className="field mt-5">
+          <Label>Guest Musical Leanings</Label>
+          <Seg
+            value={form.llm.guestMusicalLeanings ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Only the on-air DJ’s Musical Leanings can influence selection' },
+              { id: 'on', label: 'On', title: 'An eligible guest may occasionally add a weaker secondary preference' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, guestMusicalLeanings: v === 'on' } }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            When enabled, an eligible guest&apos;s Musical Leanings can occasionally provide a weaker secondary tie-breaker. Off by default. This never uses a guest&apos;s Soul and never overrides the host, show rules, rotation, safety or the current musical flow.
+          </p>
+        </div>
       </Card>
 
       <Card title="Request matching" sub={form.llm.requestMatching === 'agentic' ? 'Agent-assisted' : 'Direct'}>
@@ -104,7 +119,7 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
       </Card>
 
       <SaveBar note="Music selection applies from the next pick · no mixer restart." busy={busy} onSave={save} saveLabel="Save music selection" errors={fieldErrors}
-        ownedKeys={['llm.trackSelection', 'llm.shortlistPasses', 'llm.requestMatching', 'llm.noRepeatWindow', 'llm.artistVarietyWindow', 'llm.discoverySteps', 'llm.agentTimeoutMs', 'picker']} />
+        ownedKeys={['llm.trackSelection', 'llm.shortlistPasses', 'llm.guestMusicalLeanings', 'llm.requestMatching', 'llm.noRepeatWindow', 'llm.artistVarietyWindow', 'llm.discoverySteps', 'llm.agentTimeoutMs', 'picker']} />
     </>
   );
 }

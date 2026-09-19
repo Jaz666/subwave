@@ -977,6 +977,12 @@ export async function load() {
             ? 'shortlist'
             : DEFAULTS.llm.trackSelection,
       shortlistPasses: clampShortlistPasses(stored.llm?.shortlistPasses, DEFAULTS.llm.shortlistPasses),
+      // A new explicit opt-in. Older settings files and malformed values remain
+      // off, so guests never become an invisible source of editorial influence.
+      guestMusicalLeanings:
+        typeof stored.llm?.guestMusicalLeanings === 'boolean'
+          ? stored.llm.guestMusicalLeanings
+          : DEFAULTS.llm.guestMusicalLeanings,
       requestMatching:
         stored.llm?.requestMatching === 'direct' ? 'direct' : DEFAULTS.llm.requestMatching,
       segmentRuntime:
@@ -1972,6 +1978,9 @@ export async function update(patch) {
     }
     if (l.shortlistPasses !== undefined) {
       next.llm.shortlistPasses = clampShortlistPasses(Number(l.shortlistPasses), next.llm.shortlistPasses);
+    }
+    if (l.guestMusicalLeanings !== undefined) {
+      next.llm.guestMusicalLeanings = !!l.guestMusicalLeanings;
     }
     if (l.requestMatching !== undefined) {
       next.llm.requestMatching = l.requestMatching === 'direct' ? 'direct' : 'agentic';
