@@ -18,6 +18,21 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
+function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean; leaningsTieBreak?: string | null } }): boolean {
+  if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick') return false;
+  if (call.shortlistResolution?.usedMusicalLeanings !== undefined) return call.shortlistResolution.usedMusicalLeanings && !!call.shortlistResolution.leaningsTieBreak;
+  try {
+    const response = JSON.parse(call.response || '{}');
+    return response.usedMusicalLeanings === true && typeof response.leaningsTieBreak === 'string' && response.leaningsTieBreak.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function isShortlistCall(kind?: string): boolean {
+  return kind === 'djShortlistPick' || kind === 'djShortlistRepick';
+}
+
 function MessageList({ messages }: { messages: Array<{ role?: string; content?: unknown }> }) {
   return (
     // Short exchanges size to content; agent runs (~40 turns) get a bounded,
@@ -228,9 +243,20 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 <span className={cn('font-bold', c.ok ? 'text-vermilion' : 'text-[var(--danger)]')}>
                   {c.ok ? '✓' : '✗'}
                 </span>
-                <span className="truncate text-[12px] font-bold">{c.kind}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[12px] font-bold">{c.kind}</span>
+                  {callUsesMusicalLeanings(c) && (
+                    <span className="shrink-0 border border-vermilion/40 bg-vermilion/10 px-1 py-px text-[8px] font-bold tracking-[0.08em] text-vermilion" title="This selection used Musical Leanings">
+                      LEANINGS
+                    </span>
+                  )}
+                </span>
                 <span className="caption text-[10px] whitespace-nowrap">
-                  {c.toolCalls?.length ? `🔧 ${c.toolCalls.length}` : ''}
+                  {c.toolCalls?.length
+                    ? isShortlistCall(c.kind)
+                      ? `◈ ${c.toolCalls.length}`
+                      : `🔧 ${c.toolCalls.length}`
+                    : ''}
                   {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}
                 </span>
                 <span className="mono-num text-[11px] text-muted">{c.ms}ms</span>
@@ -296,4 +322,3 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
     </Card>
   );
 }
-
