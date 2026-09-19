@@ -185,34 +185,11 @@ export function resolveEditorialLeanings(showAt: Date | null = null): EditorialL
   return { host, guest, promptValue: lines.join('\n') || null };
 }
 
-const GENERIC_LEANINGS_FLOW_WORDS = new Set([
-  'energy', 'energetic', 'pace', 'pacing', 'tempo', 'bpm', 'key', 'club',
-  'feel', 'flow', 'vibe', 'mood', 'driving', 'celebratory', 'upbeat',
-  'high', 'low', 'medium', 'brisk', 'brisker', 'calm', 'reflective', 'late',
-  'early',
-]);
-
-const LEANINGS_TIE_BREAK_FILLER_WORDS = new Set([
-  'a', 'an', 'and', 'or', 'the', 'with', 'of', 'for', 'to', 'in', 'on',
-]);
-
-export function meaningfulLeaningsTieBreak(tieBreak: unknown): string | null {
-  const compact = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim() : '';
-  if (compact.length < 3) return null;
-  // A qualifying trait needs something beyond flow-state vocabulary. This
-  // permits “heavy metal riffs and intense vocalist”, while rejecting live
-  // false positives such as “energetic”, “high energy”, and “late 90s energy”.
-  const specificWords = compact.toLowerCase().match(/[a-z]+/g)?.filter((word) =>
-    word.length > 1 && !GENERIC_LEANINGS_FLOW_WORDS.has(word) && !LEANINGS_TIE_BREAK_FILLER_WORDS.has(word),
-  ) ?? [];
-  return specificWords.length ? compact : null;
-}
-
 export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown, tieBreak: unknown): boolean {
   // A badge is evidence of a specific claimed tie-break, not an inference from
   // generic flow prose. This rejects routine true values from small models that
   // simply see a compatible taste cue in every pick.
-  return !!context?.promptValue && modelFlag === true && meaningfulLeaningsTieBreak(tieBreak) !== null;
+  return !!context?.promptValue && modelFlag === true && typeof tieBreak === 'string' && tieBreak.trim().length > 2;
 }
 
 const LEANINGS_REASON_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:'s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
