@@ -131,7 +131,6 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
         playlistResolved: !!playlistTracks?.length,
         context: {
           currentTrack: current ? { id: current.id ?? null, title: current.title ?? null, artist: current.artist ?? null, album: current.album ?? null } : null,
-          journeyActive: !!scope.audioWaypoint?.length,
           link: 'No link airs for this diagnostic pick.',
         },
         editorialLeanings,
