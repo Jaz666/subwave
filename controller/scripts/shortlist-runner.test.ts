@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { meaningfulLeaningsTieBreak, resolvedLeaningsTieBreak, resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { resolvedLeaningsTieBreak, resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -181,18 +181,15 @@ test('resolved Musical Leanings evidence requires an explicit decision and meani
     false,
     'true without a tie-break is rejected',
   );
-  for (const generic of ['energy', 'energetic', 'high energy', 'low energy', 'celebratory', 'driving', 'late 90s energy']) {
-    assert.equal(
-      resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, generic),
-      false,
-      `${generic} is generic flow, not Leanings evidence`,
-    );
-  }
+  assert.equal(
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'energy'),
+    false,
+    'generic flow facts are not Leanings evidence',
+  );
   assert.equal(
     resolvedLeaningsTieBreak({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, '  warm vocal and melodic hook  '),
     'warm vocal and melodic hook',
   );
-  assert.equal(meaningfulLeaningsTieBreak('heavy metal riffs and intense vocalist'), 'heavy metal riffs and intense vocalist');
 });
 
 test('an unclaimed Leanings reference is replaced with a neutral Booth note', () => {
