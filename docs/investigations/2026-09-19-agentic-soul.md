@@ -210,29 +210,34 @@ settings surface and is part of the companion #1687 delivery.
 
 ## Track Shortlist status and required parity work
 
-PR #1687 already passes Leanings into the controller-built final-choice prompt,
-records `usedMusicalLeanings`, preserves state through corrective re-picks, and
-shows the `LEANINGS` badge in the LLM-call inspector. It is not yet fully
-equivalent to the Agentic contract.
+PR #1687 now has the same operator-facing Leanings contract as the strengthened
+Agentic path. It resolves host and guest context through the shared
+`personaMusicLeanings()` and `guestEditorialNudge()` helpers, so the
+station-level guest opt-in is honoured rather than bypassed by a local sampler.
 
-Before release it must:
+The Shortlist response requires both `usedMusicalLeanings` and nullable
+`leaningsTieBreak`. The controller accepts a positive result only when
+Leanings were supplied, the model explicitly declares a close-call use, and it
+provides a non-empty, non-generic tie-break trait. Generic flow claims such as
+energy, pace, key, or club feel are rejected. An unaccepted result is stripped
+of Leanings rhetoric before it reaches private Booth/session text.
 
-1. replace its temporary inline guest sampler with shared
-   `personaMusicLeanings()` and `guestEditorialNudge()` helpers, so the guest
-   opt-in is honoured;
-2. add required nullable `leaningsTieBreak` to the Shortlist response shape and
-   apply the same close-call/direct-match rules;
-3. retain the accepted compact trait in `shortlistResolution` telemetry and the
-   verified-selection Debug panel;
-4. reject false, missing, generic, or unsupported claims and scrub Leanings
-   rhetoric from private selection notes when the claim is not accepted;
-5. add deterministic coverage for blank host Leanings, guest opt-in, missing
-   tie-break rejection, and accepted/rejected telemetry.
+The final-track guard applies this decision after any corrective re-pick. An
+accepted trait is normalised to `Leanings: <trait>`, retained in
+`shortlistResolution` telemetry, and shown with the verified selection in
+Debug. The `LEANINGS` badge now requires that accepted evidence rather than a
+bare boolean or raw reason-text reference.
 
-The existing Shortlist Soul harness,
-`controller/scripts/shortlist-soul-eval.ts`, remains useful for aggregate
-calibration. It must not be used to manufacture a live “Soul changed this
-pick” indicator.
+Focused Shortlist tests cover the required structured fields, missing and
+generic evidence rejection, compact-trait normalisation, and private-note
+scrubbing. `shortlist-runner` and controller type checking passed for the PR
+and for the live-station adaptation. The live checkout contains the parity
+commit `d2e7ec97`; no Docker rebuild is implied by this record.
+
+The Shortlist Soul harness is now committed to #1687 as
+`controller/scripts/shortlist-soul-eval.ts` (`npm run shortlist-soul-eval`).
+It remains useful for aggregate calibration only and must not be used to
+manufacture a live “Soul changed this pick” indicator.
 
 ## Release plan
 
@@ -243,8 +248,8 @@ Keep the work as two reviewable PRs and release them in the same window:
 - #1687 — Track Shortlist contract parity and the Music Selection settings UI.
 
 Merge #1678 first, then update #1687 from `develop` using a non-destructive
-merge and complete the parity work. This prevents a route-dependent operator
-meaning for the `LEANINGS` marker.
+merge and rerun the parity checks against the merged source. This prevents a
+route-dependent operator meaning for the `LEANINGS` marker.
 
 ## Reports and reproducibility
 
