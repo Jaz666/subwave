@@ -18,11 +18,12 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean } }): boolean {
+function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean; leaningsTieBreak?: string | null } }): boolean {
   if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick') return false;
-  if (call.shortlistResolution?.usedMusicalLeanings !== undefined) return call.shortlistResolution.usedMusicalLeanings;
+  if (call.shortlistResolution?.usedMusicalLeanings !== undefined) return call.shortlistResolution.usedMusicalLeanings && !!call.shortlistResolution.leaningsTieBreak;
   try {
-    return JSON.parse(call.response || '{}').usedMusicalLeanings === true;
+    const response = JSON.parse(call.response || '{}');
+    return response.usedMusicalLeanings === true && typeof response.leaningsTieBreak === 'string' && response.leaningsTieBreak.trim().length > 0;
   } catch {
     return false;
   }

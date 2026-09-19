@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedLeaningsTieBreak, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -124,10 +124,11 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
     if (!shortlistRepick) return outcome;
     const track = seen.get(outcome.id);
     const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
-    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-      editorialLeanings, outcome.usedMusicalLeanings, rawSelectionReason,
+    const leaningsTieBreak = resolvedLeaningsTieBreak(
+      editorialLeanings, outcome.usedMusicalLeanings, outcome.leaningsTieBreak,
     );
-    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track);
+    const usedMusicalLeanings = leaningsTieBreak !== null;
+    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track, leaningsTieBreak);
     shortlistResolution.track = {
       id: outcome.id,
       title: track?.title ?? null,
@@ -135,7 +136,8 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
     };
     shortlistResolution.selectionReason = selectionReason;
     shortlistResolution.usedMusicalLeanings = usedMusicalLeanings;
-    return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings: shortlistResolution.usedMusicalLeanings };
+    shortlistResolution.leaningsTieBreak = leaningsTieBreak;
+    return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings, leaningsTieBreak };
   } catch {
     return null;
   }
@@ -610,15 +612,17 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Both safeguards matter: validate against the final (possibly guarded)
     // track first, then ensure the resulting Booth note remains informative.
     const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
-    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-      editorialLeanings, object.usedMusicalLeanings, rawSelectionReason,
+    const leaningsTieBreak = resolvedLeaningsTieBreak(
+      editorialLeanings, object.usedMusicalLeanings, object.leaningsTieBreak,
     );
-    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song);
+    const usedMusicalLeanings = leaningsTieBreak !== null;
+    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song, leaningsTieBreak);
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
       selectionReason: object.reason,
       usedMusicalLeanings,
+      leaningsTieBreak,
       musicalLeanings: {
         host: !!editorialLeanings.host,
         guest: editorialLeanings.guest?.guest.name ?? null,

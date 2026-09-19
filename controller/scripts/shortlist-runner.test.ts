@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { resolvedLeaningsTieBreak, resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -93,10 +93,12 @@ test('native builder plans from source-owned availability before execution', asy
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
   const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
   assert.equal(schema.safeParse({
-    id: 'candidate-a', selectionReason: 'warmer texture after the opener', say: null, transition: null,
+    id: 'candidate-a', selectionReason: 'warmer texture after the opener', usedMusicalLeanings: false, leaningsTieBreak: null, say: null, transition: null,
   }).success, true);
+  // modelTolerant repairs missing nullable fields for less capable providers;
+  // the final controller gate below still rejects true without real evidence.
   assert.equal(schema.safeParse({
-    id: 'invented', selectionReason: 'not allowed', say: null, transition: null,
+    id: 'invented', selectionReason: 'not allowed', usedMusicalLeanings: false, leaningsTieBreak: null, say: null, transition: null,
   }).success, false);
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }], {
     currentTrack: { id: 'current', title: 'Current', artist: 'Artist' },
@@ -123,11 +125,11 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
     musicalLeanings: 'Host: Favour patient dub.\nGuest (Carrie Marshall, secondary): Favour unexpected rock records.',
   });
   assert.ok(payload.context.musicalLeanings.indexOf('Host:') < prompt.indexOf('"shortlist"'));
-  assert.match(prompt, /soft editorial preference among already eligible/i);
+  assert.match(prompt, /soft tie-breaker between two or more already eligible/i);
   assert.match(prompt, /strongly prefer candidates whose shortlistSources contain "showPlaylistTracks"/i);
   assert.match(prompt, /transition context is supplied/i);
-  assert.match(prompt, /materially informed this selection/i);
-  assert.equal(resolvedMusicalLeaningsFlag({ host: 'x', guest: null, promptValue: 'Host: x' }, true, 'plain reason'), true);
+  assert.match(prompt, /leaningsTieBreak/i);
+  assert.equal(resolvedMusicalLeaningsFlag({ host: 'x', guest: null, promptValue: 'Host: x' }, true, 'warm vocal and melodic hook'), true);
   assert.equal(resolvedMusicalLeaningsFlag(null, true, 'plain reason'), false);
 });
 
@@ -157,22 +159,36 @@ test('shortlist presentation never attaches one track\'s note to another track',
   );
 });
 
-test('resolved Musical Leanings flag requires an explicit model decision', () => {
+test('resolved Musical Leanings evidence requires an explicit decision and meaningful tie-break', () => {
   assert.equal(
-    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'The selected track suits these Musical Leanings.'),
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'warm vocal and melodic hook'),
     false,
   );
   assert.equal(
-    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'Selected "One by Artist" from the eligible shortlist.'),
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'warm vocal and melodic hook'),
     true,
   );
   assert.equal(
-    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'Selected "One by Artist" from the eligible shortlist.'),
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'warm vocal and melodic hook'),
     false,
   );
   assert.equal(
-    resolvedMusicalLeaningsFlag(null, false, 'The selected track suits these Musical Leanings.'),
+    resolvedMusicalLeaningsFlag(null, true, 'warm vocal and melodic hook'),
     false,
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, null),
+    false,
+    'true without a tie-break is rejected',
+  );
+  assert.equal(
+    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'energy'),
+    false,
+    'generic flow facts are not Leanings evidence',
+  );
+  assert.equal(
+    resolvedLeaningsTieBreak({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, '  warm vocal and melodic hook  '),
+    'warm vocal and melodic hook',
   );
 });
 
@@ -183,8 +199,8 @@ test('an unclaimed Leanings reference is replaced with a neutral Booth note', ()
     'Prince — 1999: selected for its fit with the current musical flow.',
   );
   assert.equal(
-    shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', true, song),
-    'Prince - 1999 fits because the DJ has a broad alternative taste.',
+    shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', true, song, 'bright synth hook'),
+    'Leanings: bright synth hook',
   );
   assert.equal(
     shortlistReasonForLeanings('Blood Orange - Charcoal Baby matches Carol’s preference for atmospheric tracks.', false, { artist: 'Blood Orange', title: 'Charcoal Baby' }),
