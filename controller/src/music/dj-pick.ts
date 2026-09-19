@@ -130,7 +130,7 @@ export function shortlistReasonForLeanings(
 export function shortlistPickSchema(ids: string[]) {
   if (!ids.length) throw new Error('cannot select from an empty Track Shortlist');
   const idEnum = z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied Track Shortlist');
-  return modelTolerant(pickSchemaBase().omit({ reason: true }).extend({
+  return modelTolerant(pickSchemaBase().omit({ reason: true, leaningsTieBreak: true }).extend({
     id: idEnum,
     // Editorial only: provenance remains controller-written and must never be
     // reconstructed from the model's interpretation of the shortlist.

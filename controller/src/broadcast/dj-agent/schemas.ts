@@ -28,8 +28,11 @@ export const PICK_SCHEMA = z.object({
   // the run was discarded, and the slot fell to the pool picker. One shared
   // wording, in util/pick-seed.ts; don't inline a second copy here.
   id: z.string().describe(`the exact song id returned by one of the discovery tools — never invent or compose ids. ${SEED_NOT_A_PICK_CLAUSE}`),
-  reason: z.string().describe('internal scratchpad only — max 12 words, never shown to the listener; do not justify, just note what makes THIS pick a fresh step (a shift in energy/era/texture, or an artist genuinely new to the rotation), not a vibe label you would recycle pick after pick (e.g. "warmer, driving energy", never a repeated "mellow reflective step"). Default to actual flow. Only when usedMusicalLeanings is true, write "Leanings: " followed by the specific trait that broke a genuine close choice; never mention Leanings otherwise. Only call a pick a "new artist" when it has no "artist_play_count"/"artist_last_played_days_ago"; "unaired" means this song is new to the station, not that its artist is. If the artist shows recent or frequent plays, describe the real reason instead (energy shift, texture, flow)'),
-  usedMusicalLeanings: z.boolean().optional().describe('private diagnostic flag. Default false. Set true ONLY when two or more eligible tracks already fit the flow and supplied Musical Leanings genuinely settle that close choice; compatibility alone is not enough. A true value requires reason to use "Leanings: " plus the specific decisive trait. Leanings may affect the choice, but never listener-facing output; they never override show rules, rotation, safety, or musical flow.'),
+  reason: z.string().describe('internal scratchpad only — max 12 words, never shown to the listener; do not justify, just note what makes THIS pick a fresh step (a shift in energy/era/texture, or an artist genuinely new to the rotation), not a vibe label you would recycle pick after pick (e.g. "warmer, driving energy", never a repeated "mellow reflective step"). Default to actual flow; never mention Musical Leanings here. Only call a pick a "new artist" when it has no "artist_play_count"/"artist_last_played_days_ago"; "unaired" means this song is new to the station, not that its artist is. If the artist shows recent or frequent plays, describe the real reason instead (energy shift, texture, flow)'),
+  // Required rather than optional: strict structured-output providers need an
+  // explicit decision, and an omitted diagnostic tells the operator nothing.
+  usedMusicalLeanings: z.boolean().describe('private diagnostic decision — always include this. Default false with leaningsTieBreak null. Set true ONLY when two or more eligible tracks already fit the flow and supplied Musical Leanings genuinely settle that close choice; compatibility alone is not enough. Leanings never override show rules, rotation, safety, or musical flow.'),
+  leaningsTieBreak: z.string().nullable().describe('always include this. Set null when usedMusicalLeanings is false. When true, give the short specific trait of the chosen discovered candidate that directly matches the supplied Musical Leanings (for example "warm vocal and melodic hook"). Do not use generic flow facts such as energy, pace, key, or club feel as Leanings evidence.'),
   // Transition effects (only honoured when the system prompt offers them — persona djMode, see settings.effectsActive).
   // One-line pointer only: the full coaching is dj.effectsGuidance() in the
   // system prompt. This description used to repeat all of it, so every agent
@@ -182,11 +185,22 @@ export function editorialLeaningsForPick(showAt: Date | null = null): string {
   return pickerMusicLeanings(leanings.host, leanings.guest);
 }
 
-export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown, reason: unknown): boolean {
+export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown, tieBreak: unknown): boolean {
   // A badge is evidence of a specific claimed tie-break, not an inference from
   // generic flow prose. This rejects routine true values from small models that
   // simply see a compatible taste cue in every pick.
-  return !!context?.promptValue && modelFlag === true && /\bleanings\s*:\s*\S/i.test(String(reason ?? ''));
+  return !!context?.promptValue && modelFlag === true && typeof tieBreak === 'string' && tieBreak.trim().length > 2;
+}
+
+const LEANINGS_REASON_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:'s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
+
+export function agentReasonForLeanings(reason: unknown, usedMusicalLeanings: boolean, tieBreak: unknown = null): string {
+  const compact = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
+  if (usedMusicalLeanings) {
+    const evidence = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
+    return evidence ? `Leanings: ${evidence}` : 'flow fit after the current track';
+  }
+  return LEANINGS_REASON_REFERENCE.test(compact) ? 'flow fit after the current track' : compact;
 }
 
 // The system prompt holds the complete editorial policy, while this compact
@@ -195,7 +209,7 @@ export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | 
 // snapshot resolved for the logical selection; never resolve a guest again.
 export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): string {
   if (!context.promptValue) return '';
-  return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Default "usedMusicalLeanings" to false: set it true ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. When true, reason must say "Leanings: " followed by the specific decisive trait; otherwise describe actual flow and never mention Leanings. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
+  return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track AND directly match the supplied Musical Leanings; generic flow facts such as energy, pace, key, or club feel are not Leanings evidence. Otherwise use false and null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
 }
 
 export function pickSystem(showAt: Date | null = null, playlistResolved = true, nativeShortlist = false, editorialLeanings: EditorialLeaningsContext | null = null) {

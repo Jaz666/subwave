@@ -55,7 +55,7 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
-import { musicalLeaningsPickReminder, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag as resolvedAgentMusicalLeaningsFlag, type EditorialLeaningsContext } from './dj-agent/schemas.js';
+import { agentReasonForLeanings, musicalLeaningsPickReminder, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag as resolvedAgentMusicalLeaningsFlag, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
@@ -610,9 +610,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // false diagnostic must not leave a Leanings claim behind as if it were a
     // normal flow explanation.
     const usedMusicalLeanings = resolvedAgentMusicalLeaningsFlag(
-      editorialLeanings, object.usedMusicalLeanings, object.reason,
+      editorialLeanings, object.usedMusicalLeanings, object.leaningsTieBreak,
     );
-    object.reason = shortlistReasonForLeanings(object.reason, usedMusicalLeanings, song);
+    object.reason = agentReasonForLeanings(object.reason, usedMusicalLeanings, object.leaningsTieBreak);
     agentPickResolution.track = {
       id: song.id,
       title: song.title ?? null,
@@ -620,6 +620,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     };
     agentPickResolution.reason = object.reason ?? null;
     agentPickResolution.usedMusicalLeanings = usedMusicalLeanings;
+    agentPickResolution.leaningsTieBreak = usedMusicalLeanings ? object.leaningsTieBreak : null;
   }
   if (useShortlist) {
     recordShortlistPick({ ms: Math.round(performance.now() - pickStarted), primary: !shortlistCorrected });
