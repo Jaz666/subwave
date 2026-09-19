@@ -439,6 +439,10 @@ export const DEFAULTS = {
     // Native discovery passes. Kept separate from agent discoverySteps: the
     // latter is a tool-loop budget, while this is a controller source budget.
     shortlistPasses: 3,
+    // Guest preferences are a deliberately optional, secondary programming
+    // input. Keep them off for upgrades and new stations: a blank host field
+    // must mean no Musical Leanings are sent to either picker.
+    guestMusicalLeanings: false,
     // Kept independent from Track selection: requests are the one place an
     // operator may deliberately retain tool use beside a tool-free shortlist.
     requestMatching: 'agentic',
