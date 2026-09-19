@@ -130,10 +130,11 @@ export function shortlistReasonForLeanings(
   reason: unknown,
   usedMusicalLeanings: boolean,
   song: { artist?: unknown; title?: unknown },
-  tieBreak: string | null = null,
 ): string {
-  if (usedMusicalLeanings && tieBreak) return `Leanings: ${tieBreak}`;
-  if (!LEANINGS_REFERENCE.test(String(reason ?? ''))) {
+  // The tie-break is a private diagnostic. Keep the model's track-specific
+  // Booth reason intact when it was genuinely relevant; replacing it with a
+  // terse trait discarded the useful editorial explanation.
+  if (usedMusicalLeanings || !LEANINGS_REFERENCE.test(String(reason ?? ''))) {
     return usableSelectionReason(reason, song);
   }
   return usableSelectionReason('', song);
@@ -186,7 +187,7 @@ export async function djPick({
     editorialLeanings, selection.usedMusicalLeanings, selection.leaningsTieBreak,
   );
   const usedMusicalLeanings = leaningsTieBreak !== null;
-  const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track ?? {}, leaningsTieBreak);
+  const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track ?? {});
   shortlistResolution.track = {
     id: selection.id,
     title: track?.title ?? null,

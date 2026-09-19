@@ -192,15 +192,15 @@ test('resolved Musical Leanings evidence requires an explicit decision and meani
   );
 });
 
-test('an unclaimed Leanings reference is replaced with a neutral Booth note', () => {
+test('Shortlist keeps natural claimed Leanings reasons and removes unclaimed ones', () => {
   const song = { artist: 'Prince', title: '1999' };
   assert.equal(
     shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', false, song),
     'Prince — 1999: selected for its fit with the current musical flow.',
   );
   assert.equal(
-    shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', true, song, 'bright synth hook'),
-    'Leanings: bright synth hook',
+    shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', true, song),
+    'Prince - 1999 fits because the DJ has a broad alternative taste.',
   );
   assert.equal(
     shortlistReasonForLeanings('Blood Orange - Charcoal Baby matches Carol’s preference for atmospheric tracks.', false, { artist: 'Blood Orange', title: 'Charcoal Baby' }),

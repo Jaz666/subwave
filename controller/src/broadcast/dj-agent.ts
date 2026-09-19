@@ -128,7 +128,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       editorialLeanings, outcome.usedMusicalLeanings, outcome.leaningsTieBreak,
     );
     const usedMusicalLeanings = leaningsTieBreak !== null;
-    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track, leaningsTieBreak);
+    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track);
     shortlistResolution.track = {
       id: outcome.id,
       title: track?.title ?? null,
@@ -616,7 +616,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       editorialLeanings, object.usedMusicalLeanings, object.leaningsTieBreak,
     );
     const usedMusicalLeanings = leaningsTieBreak !== null;
-    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song, leaningsTieBreak);
+    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song);
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
