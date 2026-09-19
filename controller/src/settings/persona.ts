@@ -87,6 +87,7 @@ export function guestEditorialNudgeFromGuests(
 }
 
 export function guestEditorialNudge(date: Date = new Date(), random: () => number = Math.random) {
+  if (get().llm?.guestMusicalLeanings !== true) return null;
   return guestEditorialNudgeFromGuests(getOnAirRoster(date).guests, random);
 }
 

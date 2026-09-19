@@ -58,6 +58,13 @@ assert.deepEqual(guest, {
   musicalLeanings: 'Favour great guitar work and unexpected rock records.',
 });
 assert.equal(
+  settings.guestEditorialNudge(new Date(), () => 0),
+  null,
+  'guest influence is disabled by default',
+);
+await settings.update({ llm: { guestMusicalLeanings: true } });
+assert.equal(settings.get().llm.guestMusicalLeanings, true, 'the station-wide opt-in persists');
+assert.equal(
   settings.guestEditorialNudgeFromGuests([
     { id: 'p_f023a4', name: 'Carrie Marshall', musicLean: 'Favour great guitar work and unexpected rock records.' },
   ], () => 0.25),
