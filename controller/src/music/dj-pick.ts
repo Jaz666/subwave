@@ -24,32 +24,14 @@ export type ShortlistSelectionContext = {
   link?: string;
 };
 
-const GENERIC_LEANINGS_FLOW_WORDS = new Set([
-  'energy', 'energetic', 'pace', 'pacing', 'tempo', 'bpm', 'key', 'club',
-  'feel', 'flow', 'vibe', 'mood', 'driving', 'celebratory', 'upbeat',
-  'high', 'low', 'medium', 'brisk', 'brisker', 'calm', 'reflective', 'late',
-  'early',
-]);
-
-const LEANINGS_TIE_BREAK_FILLER_WORDS = new Set([
-  'a', 'an', 'and', 'or', 'the', 'with', 'of', 'for', 'to', 'in', 'on',
-]);
-
-export function meaningfulLeaningsTieBreak(tieBreak: unknown): string | null {
-  const compact = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim() : '';
-  if (compact.length < 3) return null;
-  const specificWords = compact.toLowerCase().match(/[a-z]+/g)?.filter((word) =>
-    word.length > 1 && !GENERIC_LEANINGS_FLOW_WORDS.has(word) && !LEANINGS_TIE_BREAK_FILLER_WORDS.has(word),
-  ) ?? [];
-  return specificWords.length ? compact : null;
-}
-
 export function resolvedMusicalLeaningsFlag(
   context: EditorialLeaningsContext | null,
   modelFlag: unknown,
   tieBreak: unknown,
 ): boolean {
-  return !!context?.promptValue && modelFlag === true && meaningfulLeaningsTieBreak(tieBreak) !== null;
+  const evidence = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim() : '';
+  return !!context?.promptValue && modelFlag === true && evidence.length >= 3
+    && !/^(?:energy|pace|key|club(?:\s+feel)?|flow|tempo|bpm|vibe)$/i.test(evidence);
 }
 
 export function resolvedLeaningsTieBreak(
@@ -58,7 +40,7 @@ export function resolvedLeaningsTieBreak(
   tieBreak: unknown,
 ): string | null {
   if (!resolvedMusicalLeaningsFlag(context, modelFlag, tieBreak)) return null;
-  return meaningfulLeaningsTieBreak(tieBreak);
+  return String(tieBreak).replace(/\s+/g, ' ').trim();
 }
 
 function comparable(value: unknown): string {
