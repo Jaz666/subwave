@@ -11,7 +11,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 
 const settings = await import('../src/settings.js');
 await settings.load();
-const { PICK_SCHEMA, agentReasonForLeanings, musicalLeaningsPickReminder, pickSystem, pickerMusicLeanings, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
+const { PICK_SCHEMA, agentReasonForLeanings, meaningfulLeaningsTieBreak, musicalLeaningsPickReminder, pickSystem, pickerMusicLeanings, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
 await settings.update({ personas: [persona], activePersonaId: persona.id });
@@ -40,6 +40,10 @@ assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'warm
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, null), false);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false, 'warm vocal and melody'), false);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), undefined, 'warm vocal and melody'), false);
+for (const generic of ['energetic', 'high energy', 'low energy', 'celebratory', 'driving', 'late 90s energy']) {
+  assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, generic), false, `${generic} is generic flow, not Leanings evidence`);
+}
+assert.equal(meaningfulLeaningsTieBreak('heavy metal riffs and intense vocalist'), 'heavy metal riffs and intense vocalist');
 assert.equal(
   agentReasonForLeanings('warm voices and strong melodies from Musical Leanings', false),
   'flow fit after the current track',
