@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedLeaningsTieBreak, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -128,10 +128,11 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
 
     const track = seen.get(outcome.id);
     const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
-    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-      editorialLeanings, outcome.usedMusicalLeanings, rawSelectionReason,
+    const leaningsTieBreak = resolvedLeaningsTieBreak(
+      editorialLeanings, outcome.usedMusicalLeanings, outcome.leaningsTieBreak,
     );
-    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track);
+    const usedMusicalLeanings = leaningsTieBreak !== null;
+    const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track, leaningsTieBreak);
     shortlistResolution.track = {
       id: outcome.id,
       title: track?.title ?? null,
@@ -139,7 +140,8 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
     };
     shortlistResolution.selectionReason = selectionReason;
     shortlistResolution.usedMusicalLeanings = usedMusicalLeanings;
-    return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings: shortlistResolution.usedMusicalLeanings };
+    shortlistResolution.leaningsTieBreak = leaningsTieBreak;
+    return { ...outcome, selectionReason, reason: selectionReason, usedMusicalLeanings, leaningsTieBreak };
   } catch {
     return null;
   }
@@ -590,20 +592,22 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Both safeguards matter: validate against the final (possibly guarded)
     // track first, then ensure the resulting Booth note remains informative.
     const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
-    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(
-      editorialLeanings, object.usedMusicalLeanings, rawSelectionReason,
+    const leaningsTieBreak = resolvedLeaningsTieBreak(
+      editorialLeanings, object.usedMusicalLeanings, object.leaningsTieBreak,
     );
-    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song);
+    const usedMusicalLeanings = leaningsTieBreak !== null;
+    object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song, leaningsTieBreak);
     const selectionRecord = {
       id: song.id,
       track: { title: song.title ?? null, artist: song.artist ?? null },
       selectionReason: object.reason,
       usedMusicalLeanings,
+      leaningsTieBreak,
       sourceHint: shortlistSourceHint(song.shortlistSources),
       shortlistSources: song.shortlistSources ?? [],
     };
     logEvent('shortlist.selected', selectionRecord);
-    queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.usedMusicalLeanings ? 'Musical Leanings' : null, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
+    queue.log('shortlist', ['Shortlist Pick', selectionRecord.selectionReason, selectionRecord.sourceHint].filter(Boolean).join(' — '), selectionRecord);
   } else if (agentPickResolution) {
     // Mirror the Shortlist Booth-note safeguard. The Agentic reason is saved
     // into both queue metadata and the next session window, so an omitted or

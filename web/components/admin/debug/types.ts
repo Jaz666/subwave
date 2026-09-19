@@ -101,6 +101,7 @@ interface LlmCall {
     track?: { id?: string; title?: string | null; artist?: string | null };
     selectionReason?: string;
     usedMusicalLeanings?: boolean;
+    leaningsTieBreak?: string | null;
   };
   agentPickResolution?: {
     track?: { id?: string; title?: string | null; artist?: string | null };

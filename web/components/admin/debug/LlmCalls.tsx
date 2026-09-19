@@ -18,25 +18,24 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean }; agentPickResolution?: { usedMusicalLeanings?: boolean } }): boolean {
+function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean; leaningsTieBreak?: string | null }; agentPickResolution?: { usedMusicalLeanings?: boolean } }): boolean {
   if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick' && call.kind !== 'djAgentPick') return false;
   if (call.agentPickResolution?.usedMusicalLeanings !== undefined) {
     return call.agentPickResolution.usedMusicalLeanings;
   }
   if (call.shortlistResolution?.usedMusicalLeanings !== undefined) {
-    return call.shortlistResolution.usedMusicalLeanings;
+    return call.shortlistResolution.usedMusicalLeanings && !!call.shortlistResolution.leaningsTieBreak;
   }
   try {
     const response = JSON.parse(call.response || '{}') as {
       usedMusicalLeanings?: unknown;
+      leaningsTieBreak?: unknown;
       selectionReason?: unknown;
       reason?: unknown;
     };
-    // Older local models can write a Leanings-led reason while incorrectly
-    // returning false for the companion flag. The server reconciles that same
-    // case before it reaches the Booth, so keep this Debug marker truthful.
     return response.usedMusicalLeanings === true
-      || /\bmusical\s+leanings\b/i.test(String(response.selectionReason ?? response.reason ?? ''));
+      && typeof response.leaningsTieBreak === 'string'
+      && response.leaningsTieBreak.trim().length > 0;
   } catch {
     return false;
   }
