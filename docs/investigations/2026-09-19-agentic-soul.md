@@ -220,6 +220,18 @@ The shared debug component now recognises controller-verified Leanings diagnosti
 
 The harness was typechecked and its `shortlist-runner` tests passed after a minor pre-existing debug-only type mismatch was removed (`journeyActive` was supplied by the debug route but was not a `ShortlistSelectionContext` property or consumed by the prompt). That repair does not change a production selection input.
 
-## Decision rule
+## Final decision
 
-If the real-library result corroborates the frozen experiment, Agentic Picker should keep natural Soul prose as its musical identity surface and separate Musical Leanings should be Shortlist Picker-only. If not, refine fixtures/instrumentation before considering any explicit Agentic comparison mechanism.
+Natural prose in a DJ Soul remains useful persona and editorial direction, but
+neither picker can truthfully expose it as a verifiable per-pick musical-choice
+attribution. Musical Leanings therefore remains the shared, explicit, private
+editorial control for both Agentic and Track Shortlist selection. It can only
+be retained when the picker supplies a concrete close-call tie-break that the
+controller accepts; the resulting `LEANINGS` marker is a model-reported,
+validated diagnostic, not proof that the selected track ID would otherwise
+have differed.
+
+Further offline A/A-versus-A/B calibration can improve our understanding of a
+given model or Soul, but it does not change that runtime contract. Guest
+Leanings remains an optional, secondary station-level policy rather than an
+alternative attribution mechanism.
