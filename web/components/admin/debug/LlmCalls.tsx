@@ -18,9 +18,17 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-function callUsesMusicalLeanings(call: { kind?: string; response?: string; agentPickResolution?: { usedMusicalLeanings?: boolean } }): boolean {
-  if (call.kind !== 'djAgentPick') return false;
-  if (call.agentPickResolution?.usedMusicalLeanings !== undefined) return call.agentPickResolution.usedMusicalLeanings;
+function callUsesMusicalLeanings(call: {
+  kind?: string;
+  response?: string;
+  agentPickResolution?: { usedMusicalLeanings?: boolean };
+  shortlistResolution?: { usedMusicalLeanings?: boolean };
+}): boolean {
+  const agentic = call.kind === 'djAgentPick';
+  const shortlist = call.kind === 'djShortlistPick' || call.kind === 'djShortlistRepick';
+  if (!agentic && !shortlist) return false;
+  const resolved = agentic ? call.agentPickResolution : call.shortlistResolution;
+  if (resolved?.usedMusicalLeanings !== undefined) return resolved.usedMusicalLeanings;
   try { return JSON.parse(call.response || '{}').usedMusicalLeanings === true; } catch { return false; }
 }
 

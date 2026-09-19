@@ -48,6 +48,16 @@ type Scenario = {
   candidates: Candidate[];
 };
 
+type SoulScenario = {
+  name: string;
+  current: { title: string; artist: string };
+  /** The treatment direction, measured from choices rather than model prose. */
+  preferredCandidateIds: string[];
+  /** A flow-only fixture must retain this one eligible choice in both arms. */
+  soleFlowCandidateId?: string;
+  candidates: Candidate[];
+};
+
 type EditorialLeaningsContext = {
   host: string | null;
   guest: null;
@@ -94,6 +104,73 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
+// Kept outside the candidates returned by frozen tools: this is evaluator
+// evidence, not an extra hint that production picks would receive. A claimed
+// tie-break must identify a distinctive trait of the chosen fixture candidate,
+// not merely reuse broad words such as "energy" or "electronic".
+const FIXTURE_LEANINGS_EVIDENCE: Record<string, string[]> = {
+  'eval-electronic-1': ['unusual electronic textures', 'distinctive production'],
+  'eval-melody-1': ['warm lead vocal', 'strong melodic post-punk hook'],
+};
+
+// These are deliberately ordinary operator-facing Souls. The only difference
+// between arms is the treatment's musical taste: no musicLean, editorial
+// Leanings context, badge reminder, or production prompt is involved.
+const BOB_CONTROL_SOUL = 'Bob is a warm, knowledgeable and enthusiastic radio DJ who loves sharing discoveries with listeners and explaining what makes a great record special.';
+const BOB_TREATMENT_SOUL = 'Bob is a lifelong music obsessive with an encyclopaedic knowledge of rock, indie and alternative music. Growing up on the great guitar bands of the 70s, 80s and 90s, he particularly loves classic rock, alternative rock, indie, Britpop, post-punk and progressive rock. His favourites include Pink Floyd, Led Zeppelin, Dire Straits, R.E.M., The Cure, The Smiths, Radiohead, Oasis, Blur and The Stone Roses. Bob loves melodic guitar music, prominent basslines, acoustic guitars, interesting production and songs with strong musicianship. He prefers deeper album tracks and overlooked gems rather than obvious hits, and enjoys discovering newer artists influenced by the music he grew up with. He dislikes manufactured pop, repetitive dance music and novelty records, and avoids overly commercial chart music. Warm, knowledgeable and enthusiastic, Bob loves sharing his musical discoveries with listeners and explaining what makes a great record special.';
+
+const SOUL_SCENARIOS: SoulScenario[] = [
+  {
+    name: 'bob-melodic-guitar-close-call',
+    current: { title: 'There She Goes', artist: 'The La\'s' },
+    preferredCandidateIds: ['soul-guitar-1'],
+    candidates: [
+      { id: 'soul-guitar-1', title: 'After the Static', artist: 'Harbour Lights', album: 'Second Avenue', year: 2022, genre: 'indie rock', moods: ['driving', 'reflective'], energy: 'medium', editorialFit: 'a flowing indie handoff with melodic guitars, a prominent bassline and an overlooked-album-track feel' },
+      { id: 'soul-guitar-2', title: 'Straight Through', artist: 'The Traffic', album: 'Fast Lane', year: 2021, genre: 'alternative rock', moods: ['driving'], energy: 'medium', editorialFit: 'the most direct same-pace guitar continuation with a tight rhythmic drive' },
+      { id: 'soul-guitar-3', title: 'Glass Ceiling', artist: 'Pulse Club', album: 'Weekend', year: 2023, genre: 'dance-pop', moods: ['energetic'], energy: 'high', editorialFit: 'a brighter and more commercial energy jump' },
+    ],
+  },
+  {
+    name: 'bob-post-punk-deep-cut-close-call',
+    current: { title: 'A Forest', artist: 'The Cure' },
+    preferredCandidateIds: ['soul-post-punk-1'],
+    candidates: [
+      { id: 'soul-post-punk-1', title: 'Maps of the Rain', artist: 'North Arcade', album: 'Quiet Signals', year: 2020, genre: 'post-punk', moods: ['reflective', 'night'], energy: 'medium', editorialFit: 'a warm melodic post-punk deep cut with textured production and an expressive bassline' },
+      { id: 'soul-post-punk-2', title: 'Grey Corridor', artist: 'Static Youth', album: 'City Work', year: 2021, genre: 'post-punk', moods: ['reflective', 'night'], energy: 'medium', editorialFit: 'the closest austere same-pace post-punk continuation with a cool detached vocal' },
+      { id: 'soul-post-punk-3', title: 'Festival Lights', artist: 'The Headlines', album: 'Singles', year: 2024, genre: 'pop rock', moods: ['energetic'], energy: 'high', editorialFit: 'an obvious chorus-led hit that makes a sizeable energy jump' },
+    ],
+  },
+  {
+    name: 'bob-no-tie-flow-control',
+    current: { title: 'Wish You Were Here', artist: 'Pink Floyd' },
+    preferredCandidateIds: [],
+    soleFlowCandidateId: 'soul-no-tie-2',
+    candidates: [
+      { id: 'soul-no-tie-1', title: 'Bassline City', artist: 'Night Shift', album: 'Neon', year: 2022, genre: 'post-punk', moods: ['driving'], energy: 'high', editorialFit: 'a prominent bassline but a sharp high-energy jump from the acoustic current track' },
+      { id: 'soul-no-tie-2', title: 'Open Window', artist: 'Cedar Lane', album: 'Long Way Home', year: 2018, genre: 'folk rock', moods: ['reflective'], energy: 'low', editorialFit: 'the only candidate preserving the acoustic, low-energy reflective flow' },
+      { id: 'soul-no-tie-3', title: 'Chart Parade', artist: 'Golden Hour', album: 'Saturday', year: 2024, genre: 'pop', moods: ['energetic'], energy: 'high', editorialFit: 'a manufactured glossy pop production and an abrupt energy clash' },
+    ],
+  },
+];
+
+function orderedCandidates(candidates: Candidate[], iteration: number) {
+  const offset = (iteration - 1) % candidates.length;
+  return [...candidates.slice(offset), ...candidates.slice(0, offset)];
+}
+
+function setBobPersona(cfg: any, arm: 'control' | 'soul') {
+  cfg.personas = [{
+    id: 'eval-bob', name: 'Bob', soul: arm === 'soul' ? BOB_TREATMENT_SOUL : BOB_CONTROL_SOUL,
+    // Keep all normal personality/presentation settings stable and omit
+    // musicLean entirely: this experiment isolates natural Soul prose.
+    language: 'English', djMode: false,
+  }];
+  cfg.activePersonaId = 'eval-bob';
+  cfg.shows = [];
+  cfg.schedule = [];
+  cfg.scheduleOverride = null;
+}
+
 function parseArgs(argv: string[]) {
   const args: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
@@ -105,7 +182,7 @@ function parseArgs(argv: string[]) {
 
 function usage(message?: string): never {
   if (message) console.error(`error: ${message}\n`);
-  console.error('Usage: npm run leanings-eval -- --models provider:model[,provider:model...] [--iterations N] [--env-file path] [--dry-run] [--out report.json]');
+  console.error('Usage: npm run leanings-eval -- --models provider:model[,provider:model...] [--experiment leanings|soul] [--base-url http://host:port] [--iterations N] [--env-file path] [--dry-run] [--out report.json]');
   process.exit(2);
 }
 
@@ -169,17 +246,27 @@ function safeReason(value: unknown) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
-function fixtureSupport(candidate: Candidate | undefined, reason: string) {
-  if (!candidate || !reason) return false;
-  const words = candidate.editorialFit.toLowerCase().match(/[a-z]{4,}/g) || [];
-  const lower = reason.toLowerCase();
-  return words.some((word) => lower.includes(word));
+function fixtureSupport(candidate: Candidate | undefined, tieBreak: string) {
+  if (!candidate || !tieBreak) return false;
+  const claimedWords = new Set(tieBreak.toLowerCase().match(/[a-z]{3,}/g) || []);
+  return (FIXTURE_LEANINGS_EVIDENCE[candidate.id] || []).some((trait) => {
+    const traitWords = trait.toLowerCase().match(/[a-z]{3,}/g) || [];
+    // A three-word trait permits a concise two-word paraphrase ("warm vocal");
+    // a longer trait needs at least three words, while a two-word trait must
+    // be identified completely. This avoids both brittle exact-phrase matching
+    // and generic one-word matches.
+    const required = traitWords.length <= 3 ? traitWords.length === 2 ? 2 : 2 : 3;
+    return traitWords.filter((word) => claimedWords.has(word)).length >= required;
+  });
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.models) usage('--models is required');
+  const experiment = args.experiment || 'leanings';
+  if (experiment !== 'leanings' && experiment !== 'soul') usage('--experiment must be "leanings" or "soul"');
   const iterations = Math.max(1, Number.parseInt(args.iterations || '5', 10) || 5);
+  const baseUrl = args['base-url']?.trim();
   const models = modelSpecs(args.models);
   const defaultOut = join('scripts', 'leanings-eval', 'reports', `${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   const outPath = resolve(args.out || defaultOut);
@@ -196,11 +283,15 @@ async function main() {
       meta: {
         dryRun: true,
         stateIsolation: true,
+        experiment,
         models: models.map((model) => model.label),
+        baseUrl: baseUrl || null,
         iterations,
-        scenarios: SCENARIOS.map(({ name, expectNoLeanings }) => ({ name, expected: expectNoLeanings ? 'no-leanings' : 'close-call' })),
+        scenarios: experiment === 'soul'
+          ? SOUL_SCENARIOS.map(({ name, soleFlowCandidateId }) => ({ name, expected: soleFlowCandidateId ? 'no-tie-flow-control' : 'soul-close-call' }))
+          : SCENARIOS.map(({ name, expectNoLeanings }) => ({ name, expected: expectNoLeanings ? 'no-leanings' : 'close-call' })),
       },
-      plannedRuns: models.length * SCENARIOS.length * iterations * 2,
+      plannedRuns: models.length * (experiment === 'soul' ? SOUL_SCENARIOS.length : SCENARIOS.length) * iterations * 2,
     };
     mkdirSync(resolve(outPath, '..'), { recursive: true });
     writeFileSync(outPath, JSON.stringify(plan, null, 2));
@@ -219,13 +310,19 @@ async function main() {
   cfg.llm.fallback = { ...(cfg.llm.fallback || {}), enabled: false };
 
   const records: any[] = [];
-  console.log(`\nLeanings evaluation: ${models.length} model(s) × ${SCENARIOS.length} scenarios × ${iterations} paired runs`);
+  const scenarios = experiment === 'soul' ? SOUL_SCENARIOS : SCENARIOS;
+  const arms = experiment === 'soul' ? ['control', 'soul'] as const : ['control', 'leanings'] as const;
+  console.log(`\n${experiment === 'soul' ? 'Soul' : 'Leanings'} evaluation: ${models.length} model(s) × ${scenarios.length} scenarios × ${iterations} paired runs`);
   console.log(`Isolated STATE_DIR: ${evaluationStateDir}`);
 
   for (const target of models) {
     cfg.llm.provider = target.provider;
     cfg.llm.model = target.model;
     cfg.llm.reasoning = false;
+    // Evaluations begin from disposable settings. An explicit endpoint makes
+    // the frozen harness usable with the station's host-reachable local
+    // OpenAI-compatible llama.cpp server, without touching live settings.
+    if (baseUrl) cfg.llm.baseUrl = baseUrl;
     // The direct OpenAI provider reads apiKey from this in-memory config. Do
     // not write it to settings; a caller can instead provide it in the normal
     // environment used by the controller.
@@ -234,21 +331,31 @@ async function main() {
       cfg.llm.apiKey = process.env.OPENAI_API_KEY;
     }
 
-    for (const scenario of SCENARIOS) {
+    for (const scenario of scenarios) {
       for (let iteration = 1; iteration <= iterations; iteration++) {
-        for (const arm of ['control', 'leanings'] as const) {
-          const context: EditorialLeaningsContext | null = arm === 'leanings'
-            ? { host: scenario.hostLeanings, guest: null, promptValue: `Host: ${scenario.hostLeanings}` }
+        for (const arm of arms) {
+          const isSoulExperiment = experiment === 'soul';
+          if (isSoulExperiment) setBobPersona(cfg, arm as 'control' | 'soul');
+          const leaningsScenario = scenario as Scenario;
+          const soulScenario = scenario as SoulScenario;
+          const context: EditorialLeaningsContext | null = !isSoulExperiment && arm === 'leanings'
+            ? { host: leaningsScenario.hostLeanings, guest: null, promptValue: `Host: ${leaningsScenario.hostLeanings}` }
             : null;
           const reminder = context ? musicalLeaningsPickReminder(context) : '';
-          const { tools, seen } = frozenTools(scenario.candidates);
+          // Rotation is identical for the two arms of each pair, but shifts
+          // between iterations so a deterministic first-result preference
+          // cannot masquerade as a Soul effect.
+          const candidates = isSoulExperiment ? orderedCandidates(soulScenario.candidates, iteration) : leaningsScenario.candidates;
+          const { tools, seen } = frozenTools(candidates);
           const started = Date.now();
           const record: any = {
             model: target.label,
             scenario: scenario.name,
             arm,
             iteration,
-            expected: scenario.expectNoLeanings ? 'no-leanings' : 'close-call',
+            expected: isSoulExperiment
+              ? (soulScenario.soleFlowCandidateId ? 'no-tie-flow-control' : 'soul-close-call')
+              : (leaningsScenario.expectNoLeanings ? 'no-leanings' : 'close-call'),
             outcome: 'ok',
             violations: [] as string[],
           };
@@ -268,20 +375,31 @@ async function main() {
             const object: any = result.object;
             const selected = seen.get(object?.id);
             const reason = safeReason(object?.reason);
-            const tieBreak = safeReason(object?.leaningsTieBreak);
-            const verifiedLeanings = resolvedMusicalLeaningsFlag(context, object?.usedMusicalLeanings, tieBreak);
+            const rawTieBreak = safeReason(object?.leaningsTieBreak);
+            // Leanings diagnostics are not evidence in the Soul experiment.
+            // Keep the public analysis fields intentionally false/null while
+            // retaining raw values for debugging a schema/provider failure.
+            const tieBreak = isSoulExperiment ? '' : rawTieBreak;
+            const verifiedLeanings = isSoulExperiment ? false : resolvedMusicalLeaningsFlag(context, object?.usedMusicalLeanings, tieBreak);
             record.selected = selected ? { id: selected.id, title: selected.title, artist: selected.artist, editorialFit: selected.editorialFit } : null;
             record.reason = reason;
             record.rawUsedMusicalLeanings = object?.usedMusicalLeanings ?? null;
             record.leaningsTieBreak = tieBreak || null;
             record.verifiedLeanings = verifiedLeanings;
-            record.reasonSupportsSelectedFixture = fixtureSupport(selected, tieBreak);
+            if (isSoulExperiment) {
+              record.usedMusicalLeanings = false;
+              record.leaningsTieBreak = null;
+              record.rawLeaningsTieBreak = rawTieBreak || null;
+              record.soulPreferenceCandidate = soulScenario.preferredCandidateIds.includes(selected?.id || '');
+              record.noTieFlowPreserved = !soulScenario.soleFlowCandidateId || selected?.id === soulScenario.soleFlowCandidateId;
+            }
+            record.fixtureSpecificTieBreak = fixtureSupport(selected, tieBreak);
             record.steps = result.steps;
             record.toolCalls = result.toolCalls?.length ?? 0;
             if (!selected) record.violations.push('hallucinated-id');
             if (arm === 'control' && verifiedLeanings) record.violations.push('leanings-without-context');
-            if (scenario.expectNoLeanings && verifiedLeanings) record.violations.push('leanings-without-close-call');
-            if (verifiedLeanings && !record.reasonSupportsSelectedFixture) record.violations.push('unsupported-leanings-rationale');
+            if (!isSoulExperiment && leaningsScenario.expectNoLeanings && verifiedLeanings) record.violations.push('leanings-without-close-call');
+            if (verifiedLeanings && !record.fixtureSpecificTieBreak) record.violations.push('unsupported-leanings-evidence');
             if (object?.usedMusicalLeanings === false && tieBreak) record.violations.push('tie-break-without-claim');
             if (record.violations.length) record.outcome = 'violation';
           } catch (error: any) {
@@ -296,38 +414,77 @@ async function main() {
     }
   }
 
-  const pairs = models.flatMap((target) => SCENARIOS.flatMap((scenario) => Array.from({ length: iterations }, (_, index) => {
+  const pairs = models.flatMap((target) => scenarios.flatMap((scenario) => Array.from({ length: iterations }, (_, index) => {
     const iteration = index + 1;
     const control = records.find((r) => r.model === target.label && r.scenario === scenario.name && r.iteration === iteration && r.arm === 'control');
-    const leanings = records.find((r) => r.model === target.label && r.scenario === scenario.name && r.iteration === iteration && r.arm === 'leanings');
+    const treatment = records.find((r) => r.model === target.label && r.scenario === scenario.name && r.iteration === iteration && r.arm === (experiment === 'soul' ? 'soul' : 'leanings'));
+    const soulScenario = scenario as SoulScenario;
     return {
       model: target.label,
       scenario: scenario.name,
       iteration,
       controlId: control?.selected?.id ?? null,
-      leaningsId: leanings?.selected?.id ?? null,
-      choiceChanged: !!control?.selected?.id && !!leanings?.selected?.id && control.selected.id !== leanings.selected.id,
-      verifiedLeanings: leanings?.verifiedLeanings === true,
+      treatmentId: treatment?.selected?.id ?? null,
+      choiceChanged: !!control?.selected?.id && !!treatment?.selected?.id && control.selected.id !== treatment.selected.id,
+      verifiedLeanings: treatment?.verifiedLeanings === true,
+      ...(experiment === 'soul' ? {
+        treatmentInPreferenceDirection: !!treatment?.selected?.id && soulScenario.preferredCandidateIds.includes(treatment.selected.id) && !soulScenario.preferredCandidateIds.includes(control?.selected?.id || ''),
+        treatmentAwayFromPreference: soulScenario.preferredCandidateIds.includes(control?.selected?.id || '') && !soulScenario.preferredCandidateIds.includes(treatment?.selected?.id || ''),
+        noTieRegression: !!soulScenario.soleFlowCandidateId && treatment?.selected?.id !== soulScenario.soleFlowCandidateId,
+      } : {}),
     };
   })));
+  const treatmentArm = experiment === 'soul' ? 'soul' : 'leanings';
   const verified = records.filter((r) => r.arm === 'leanings' && r.verifiedLeanings).length;
-  const leaningsRuns = records.filter((r) => r.arm === 'leanings').length;
+  const treatmentRuns = records.filter((r) => r.arm === treatmentArm).length;
   const changed = pairs.filter((p) => p.choiceChanged).length;
-  const completePairs = pairs.filter((p) => p.controlId && p.leaningsId).length;
+  const completePairs = pairs.filter((p) => p.controlId && p.treatmentId).length;
   const counterfactualLeanings = pairs.filter((p) => p.verifiedLeanings && p.choiceChanged).length;
   const unprovenTieBreaks = pairs.filter((p) => p.verifiedLeanings && !p.choiceChanged).length;
+  const leaningsRecords = records.filter((record) => record.arm === 'leanings');
+  const closeCallLeanings = leaningsRecords.filter((record) => !SCENARIOS.find((scenario) => scenario.name === record.scenario)?.expectNoLeanings);
+  const noTieLeanings = leaningsRecords.filter((record) => SCENARIOS.find((scenario) => scenario.name === record.scenario)?.expectNoLeanings);
+  const rawControlDeclarations = records.filter((record) => record.arm === 'control' && record.rawUsedMusicalLeanings === true).length;
+  const selectedDistribution = Object.fromEntries(scenarios.map((scenario) => [scenario.name, Object.fromEntries(arms.map((arm) => [arm, records
+    .filter((record) => record.scenario === scenario.name && record.arm === arm)
+    .reduce((counts, record) => {
+      const id = record.selected?.id || 'none';
+      counts[id] = (counts[id] || 0) + 1;
+      return counts;
+    }, {} as Record<string, number>)]))]));
   const report = {
     meta: {
       startedAt: new Date().toISOString(),
       stateIsolation: true,
+      experiment,
       models: models.map((model) => model.label),
+      baseUrl: baseUrl || null,
       iterations,
-      scenarios: SCENARIOS.map(({ name, expectNoLeanings }) => ({ name, expected: expectNoLeanings ? 'no-leanings' : 'close-call' })),
+      ...(experiment === 'soul' ? {
+        personaArms: { control: BOB_CONTROL_SOUL, soul: BOB_TREATMENT_SOUL },
+        showBrief: null,
+        scenarios: SOUL_SCENARIOS.map(({ name, preferredCandidateIds, soleFlowCandidateId }) => ({ name, preferredCandidateIds, soleFlowCandidateId: soleFlowCandidateId || null })),
+      } : {
+        scenarios: SCENARIOS.map(({ name, expectNoLeanings }) => ({ name, expected: expectNoLeanings ? 'no-leanings' : 'close-call' })),
+        fixtureLeaningsEvidence: FIXTURE_LEANINGS_EVIDENCE,
+      }),
     },
-    summary: {
-      verifiedLeanings: `${verified}/${leaningsRuns}`,
+    summary: experiment === 'soul' ? {
+      selectedDistribution,
       changedChoices: `${changed}/${completePairs}`,
-      counterfactualLeanings: `${counterfactualLeanings}/${leaningsRuns}`,
+      preferenceDirectionChanges: `${pairs.filter((pair) => pair.treatmentInPreferenceDirection).length}/${completePairs}`,
+      awayFromPreference: pairs.filter((pair) => pair.treatmentAwayFromPreference).length,
+      noTieRegressions: pairs.filter((pair) => pair.noTieRegression).length,
+      violations: records.filter((r) => r.outcome === 'violation').length,
+      failures: records.filter((r) => r.outcome === 'thrown').length,
+    } : {
+      verifiedLeanings: `${verified}/${treatmentRuns}`,
+      closeCallDeclarations: `${closeCallLeanings.filter((record) => record.verifiedLeanings).length}/${closeCallLeanings.length}`,
+      noTieFalsePositives: `${noTieLeanings.filter((record) => record.verifiedLeanings).length}/${noTieLeanings.length}`,
+      rawControlDeclarationsRejected: `${rawControlDeclarations}/${records.filter((record) => record.arm === 'control').length}`,
+      fixtureSpecificEvidence: `${leaningsRecords.filter((record) => record.verifiedLeanings && record.fixtureSpecificTieBreak).length}/${leaningsRecords.filter((record) => record.verifiedLeanings).length}`,
+      changedChoices: `${changed}/${completePairs}`,
+      counterfactualLeanings: `${counterfactualLeanings}/${treatmentRuns}`,
       unprovenTieBreaks,
       violations: records.filter((r) => r.outcome === 'violation').length,
       failures: records.filter((r) => r.outcome === 'thrown').length,
@@ -337,7 +494,11 @@ async function main() {
   };
   mkdirSync(resolve(outPath, '..'), { recursive: true });
   writeFileSync(outPath, JSON.stringify(report, null, 2));
-  console.log(`\nEvidenced Leanings: ${report.summary.verifiedLeanings}; counterfactual Leanings: ${report.summary.counterfactualLeanings}; changed paired choices: ${report.summary.changedChoices}`);
+  if (experiment === 'soul') {
+    console.log(`\nSoul preference-direction changes: ${report.summary.preferenceDirectionChanges}; no-tie regressions: ${report.summary.noTieRegressions}; changed paired choices: ${report.summary.changedChoices}`);
+  } else {
+    console.log(`\nEvidenced Leanings: ${report.summary.verifiedLeanings}; close-call declarations: ${report.summary.closeCallDeclarations}; no-tie false positives: ${report.summary.noTieFalsePositives}; fixture-specific evidence: ${report.summary.fixtureSpecificEvidence}; raw control declarations rejected: ${report.summary.rawControlDeclarationsRejected}`);
+  }
   console.log(`Report: ${outPath}`);
 }
 

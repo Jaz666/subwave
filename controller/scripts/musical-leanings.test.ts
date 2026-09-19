@@ -34,6 +34,8 @@ const reminder = musicalLeaningsPickReminder(resolveEditorialLeanings());
 assert.match(reminder, /soft tie-breaker/i);
 assert.match(reminder, /two or more eligible tracks/i);
 assert.match(reminder, /leaningsTieBreak/i);
+assert.match(reminder, /directly match the supplied Musical Leanings/i);
+assert.match(reminder, /club feel are not Leanings evidence/i);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, 'warm vocal and melody'), true);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), true, null), false);
 assert.equal(resolvedMusicalLeaningsFlag(resolveEditorialLeanings(), false, 'warm vocal and melody'), false);

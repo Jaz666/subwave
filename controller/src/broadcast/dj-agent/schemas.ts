@@ -37,7 +37,7 @@ export const PICK_SCHEMA = z.object({
   // second free-text field made both local and cloud models silently omit the
   // diagnostic. `null` is an explicit, cheap no-use answer; a short trait is
   // auditable evidence when the model claims a real tie-break.
-  leaningsTieBreak: z.string().nullable().describe('always include this. Set null when usedMusicalLeanings is false. When true, give the short specific trait from the discovered candidates that Musical Leanings used to settle the close choice (for example "warm vocal and melodic hook").'),
+  leaningsTieBreak: z.string().nullable().describe('always include this. Set null when usedMusicalLeanings is false. When true, give the short specific trait of the chosen discovered candidate that directly matches the supplied Musical Leanings (for example "warm vocal and melodic hook"). Do not use generic flow facts such as energy, pace, key, or club feel as Leanings evidence.'),
   // Transition effects (only honoured when the system prompt offers them — persona djMode, see settings.effectsActive).
   // One-line pointer only: the full coaching is dj.effectsGuidance() in the
   // system prompt. This description used to repeat all of it, so every agent
@@ -214,7 +214,7 @@ export function agentReasonForLeanings(reason: unknown, usedMusicalLeanings: boo
 // snapshot resolved for the logical selection; never resolve a guest again.
 export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): string {
   if (!context.promptValue) return '';
-  return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track; otherwise use null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
+  return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track AND directly match the supplied Musical Leanings; generic flow facts such as energy, pace, key, or club feel are not Leanings evidence. Otherwise use false and null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
 }
 
 export function pickSystem(showAt: Date | null = null, playlistResolved = true, editorialLeanings: EditorialLeaningsContext | null = null) {
