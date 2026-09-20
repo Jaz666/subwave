@@ -62,6 +62,17 @@ export function pickSchema() {
   return modelTolerant(pickSchemaBase());
 }
 
+// The Agentic tool loop is discovery only when a presenter has Musical
+// Leanings. Its final choice is made later from the candidates it actually
+// surfaced, so this contract must not ask the discovery model to make or
+// explain a Leanings provenance claim.
+export function agenticDiscoverySchema() {
+  return modelTolerant(pickSchemaBase().omit({
+    usedMusicalLeanings: true,
+    leaningsTieBreak: true,
+  }));
+}
+
 // Resolved per run, like pickSchema: the intro length follows the on-air
 // persona's scriptLength. The stateless fallback's generateIntro gets
 // lengthPhrase('intro') in its prompt, so without this overlay an 'extended'
