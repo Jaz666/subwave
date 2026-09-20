@@ -10,8 +10,8 @@ import { resolve } from 'node:path';
 import { tool } from 'ai';
 import { z } from 'zod';
 import * as settings from '../src/settings.js';
-import { djAgent } from '../src/llm/sdk.js';
-import { pickSchema } from '../src/broadcast/dj-agent/schemas.js';
+import { djAgent, modelTolerant } from '../src/llm/sdk.js';
+import { pickSchema, pickSchemaBase } from '../src/broadcast/dj-agent/schemas.js';
 
 type Fixture = {
   name: string;
@@ -32,7 +32,7 @@ type SessionTurn = {
 };
 
 function usage(): never {
-  console.error('Usage: npm run leanings:replay -- [fixture-path] [iterations]');
+  console.error('Usage: npm run leanings:replay -- [fixture-path] [iterations] [baseline|no-tie-break]');
   process.exit(2);
 }
 
@@ -62,9 +62,9 @@ function resultIds(calls: NonNullable<SessionTurn['meta']>['toolCalls']) {
 }
 
 async function main() {
-  const [fixtureArg = 'scripts/fixtures/agentic-leanings/dante-porcupine-tree.json', iterationsArg = '5'] = process.argv.slice(2);
+  const [fixtureArg = 'scripts/fixtures/agentic-leanings/dante-porcupine-tree.json', iterationsArg = '5', variant = 'baseline'] = process.argv.slice(2);
   const iterations = Number.parseInt(iterationsArg, 10);
-  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50) usage();
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['baseline', 'no-tie-break'].includes(variant)) usage();
 
   const fixture = JSON.parse(await readFile(resolve(fixtureArg), 'utf8')) as Fixture;
   const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { name?: string }; show?: { name?: string; topic?: string }; messages?: SessionTurn[]; turns?: SessionTurn[] };
@@ -84,9 +84,18 @@ async function main() {
     'This is an internal picker decision. Choose only an id returned by a discovery tool. Do not invent ids.',
     session.show?.topic ?? '',
   ].filter(Boolean).join('\n\n');
-  const message = `${event.text}\n${event.meta?.promptSuffix ?? ''}`;
+  const noTieBreak = variant === 'no-tie-break';
+  const tieBreakMarker = ' Musical Leanings are supplied for this pick as a soft tie-breaker.';
+  const promptSuffix = event.meta?.promptSuffix ?? '';
+  const replaySuffix = noTieBreak && promptSuffix.includes(tieBreakMarker)
+    ? `${promptSuffix.slice(0, promptSuffix.indexOf(tieBreakMarker))}${tieBreakMarker} Always return "usedMusicalLeanings": default false; set true only when Leanings genuinely settle a close choice between otherwise eligible tracks. Do not return or explain a tie-break trait. Leanings never override show rules, rotation, safety, or musical flow.`
+    : promptSuffix;
+  const message = `${event.text}\n${replaySuffix}`;
+  const schema = noTieBreak
+    ? modelTolerant(pickSchemaBase().omit({ leaningsTieBreak: true }))
+    : pickSchema();
 
-  console.log(`\n=== Agentic Leanings replay: ${fixture.name} × ${iterations} ===`);
+  console.log(`\n=== Agentic Leanings replay: ${fixture.name} × ${iterations} (${variant}) ===`);
   console.log(`Expected provenance: usedMusicalLeanings=${fixture.expected.usedMusicalLeanings}`);
   console.log(`${fixture.expected.note}\n`);
 
@@ -100,7 +109,7 @@ async function main() {
         system,
         messages: [{ role: 'user', content: message }],
         tools: buildTools(calls),
-        schema: pickSchema(),
+        schema,
         maxSteps: 4,
         timeoutMs: 90_000,
         kind: 'agenticLeaningsReplay',
@@ -112,13 +121,14 @@ async function main() {
       const isValid = !!id && candidateIds.has(id);
       if (isValid) valid += 1;
       if (used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
-      const evidenceMatches = fixture.expected.usedMusicalLeanings
+      const evidenceMatches = !noTieBreak && fixture.expected.usedMusicalLeanings
         ? !!tieBreak && fixture.expected.tieBreakPatterns.some((pattern) => new RegExp(pattern, 'i').test(tieBreak))
-        : tieBreak === null;
+        : noTieBreak || tieBreak === null;
       if (evidenceMatches) expectedEvidence += 1;
       if (/warm vocal and melodic hook/i.test(tieBreak ?? '')) copiedExample += 1;
       const provenance = used === fixture.expected.usedMusicalLeanings ? 'match' : 'mismatch';
-      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${used} (${provenance}) evidence=${evidenceMatches ? 'match' : 'mismatch'} tieBreak=${JSON.stringify(tieBreak)}`);
+      const evidence = noTieBreak ? 'omitted' : evidenceMatches ? 'match' : 'mismatch';
+      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${used} (${provenance}) evidence=${evidence} tieBreak=${JSON.stringify(tieBreak)}`);
     } catch (error) {
       console.log(`FAIL run ${run}: ${String(error).replace(/\s+/g, ' ').slice(0, 220)}`);
     }
@@ -127,7 +137,9 @@ async function main() {
   console.log('\n=== summary ===');
   console.log(`valid picks: ${valid}/${iterations}`);
   console.log(`expected Leanings provenance: ${expectedProvenance}/${iterations}`);
-  console.log(`expected tie-break evidence: ${expectedEvidence}/${iterations}`);
+  console.log(noTieBreak
+    ? 'expected tie-break evidence: n/a (field omitted)'
+    : `expected tie-break evidence: ${expectedEvidence}/${iterations}`);
   if (fixture.expected.usedMusicalLeanings) {
     console.log(`missing Leanings claims: ${iterations - expectedProvenance}/${iterations}`);
   } else {
