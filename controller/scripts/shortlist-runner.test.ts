@@ -93,12 +93,12 @@ test('native builder plans from source-owned availability before execution', asy
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
   const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
   assert.equal(schema.safeParse({
-    id: 'candidate-a', selectionReason: 'warmer texture after the opener', usedMusicalLeanings: false, leaningsTieBreak: null, say: null, transition: null,
+    id: 'candidate-a', selectionReason: 'One by Artist A brings a warmer texture after the opener.', usedMusicalLeanings: false, say: null, transition: null,
   }).success, true);
   // modelTolerant repairs missing nullable fields for less capable providers;
   // the final controller gate below still rejects true without real evidence.
   assert.equal(schema.safeParse({
-    id: 'invented', selectionReason: 'not allowed', usedMusicalLeanings: false, leaningsTieBreak: null, say: null, transition: null,
+    id: 'invented', selectionReason: 'not allowed', usedMusicalLeanings: false, say: null, transition: null,
   }).success, false);
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }], {
     currentTrack: { id: 'current', title: 'Current', artist: 'Artist' },
@@ -125,11 +125,11 @@ test('DJ shortlist selection accepts only supplied ids and keeps provenance out 
     musicalLeanings: 'Host: Favour patient dub.\nGuest (Carrie Marshall, secondary): Favour unexpected rock records.',
   });
   assert.ok(payload.context.musicalLeanings.indexOf('Host:') < prompt.indexOf('"shortlist"'));
-  assert.match(prompt, /soft tie-breaker between two or more already eligible/i);
+  assert.match(prompt, /soft editorial preference among already eligible/i);
   assert.match(prompt, /strongly prefer candidates whose shortlistSources contain "showPlaylistTracks"/i);
   assert.match(prompt, /transition context is supplied/i);
-  assert.match(prompt, /leaningsTieBreak/i);
-  assert.equal(resolvedMusicalLeaningsFlag({ host: 'x', guest: null, promptValue: 'Host: x' }, true, 'warm vocal and melodic hook'), true);
+  assert.doesNotMatch(prompt, /leaningsTieBreak/i);
+  assert.equal(resolvedMusicalLeaningsFlag({ host: 'x', guest: null, promptValue: 'Host: x' }, true), true);
   assert.equal(resolvedMusicalLeaningsFlag(null, true, 'plain reason'), false);
 });
 
@@ -159,7 +159,7 @@ test('shortlist presentation never attaches one track\'s note to another track',
   );
 });
 
-test('resolved Musical Leanings evidence requires an explicit decision and meaningful tie-break', () => {
+test('Shortlist Leanings provenance requires an explicit decision', () => {
   assert.equal(
     resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'warm vocal and melodic hook'),
     false,
@@ -178,17 +178,11 @@ test('resolved Musical Leanings evidence requires an explicit decision and meani
   );
   assert.equal(
     resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, null),
-    false,
-    'true without a tie-break is rejected',
+    true,
   );
   assert.equal(
     resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'energy'),
-    false,
-    'generic flow facts are not Leanings evidence',
-  );
-  assert.equal(
-    resolvedLeaningsTieBreak({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, '  warm vocal and melodic hook  '),
-    'warm vocal and melodic hook',
+    true,
   );
 });
 

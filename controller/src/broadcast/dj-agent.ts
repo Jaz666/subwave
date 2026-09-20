@@ -60,7 +60,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedLeaningsTieBreak, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -124,10 +124,8 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
     if (!shortlistRepick) return outcome;
     const track = seen.get(outcome.id);
     const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(track, outcome.selectionReason), track);
-    const leaningsTieBreak = resolvedLeaningsTieBreak(
-      editorialLeanings, outcome.usedMusicalLeanings, outcome.leaningsTieBreak,
-    );
-    const usedMusicalLeanings = leaningsTieBreak !== null;
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, outcome.usedMusicalLeanings);
+    const leaningsTieBreak = null;
     const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track);
     shortlistResolution.track = {
       id: outcome.id,
@@ -612,10 +610,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Both safeguards matter: validate against the final (possibly guarded)
     // track first, then ensure the resulting Booth note remains informative.
     const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(song, object.reason), song);
-    const leaningsTieBreak = resolvedLeaningsTieBreak(
-      editorialLeanings, object.usedMusicalLeanings, object.leaningsTieBreak,
-    );
-    const usedMusicalLeanings = leaningsTieBreak !== null;
+    const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, object.usedMusicalLeanings);
+    const leaningsTieBreak = null;
     object.reason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, song);
     const selectionRecord = {
       id: song.id,

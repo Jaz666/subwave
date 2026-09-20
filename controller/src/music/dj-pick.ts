@@ -39,22 +39,12 @@ export type ShortlistSelectionContext = {
 export function resolvedMusicalLeaningsFlag(
   context: EditorialLeaningsContext | null,
   modelFlag: unknown,
-  tieBreak: unknown,
+  _verifiedReason?: unknown,
 ): boolean {
-  // A model must explicitly claim this AND give non-generic evidence. Inferring
-  // it from prose turns an incidental taste reference into a false diagnostic.
-  const evidence = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim() : '';
-  return !!context?.promptValue && modelFlag === true && evidence.length >= 3
-    && !/^(?:energy|pace|key|club(?:\s+feel)?|flow|tempo|bpm|vibe)$/i.test(evidence);
-}
-
-export function resolvedLeaningsTieBreak(
-  context: EditorialLeaningsContext | null,
-  modelFlag: unknown,
-  tieBreak: unknown,
-): string | null {
-  if (!resolvedMusicalLeaningsFlag(context, modelFlag, tieBreak)) return null;
-  return String(tieBreak).replace(/\s+/g, ' ').trim();
+  // Shortlist's controller-resolved declaration is deliberately a boolean.
+  // Requiring a free-text trait made the local model re-label ordinary flow
+  // facts as Leanings evidence.
+  return !!context?.promptValue && modelFlag === true;
 }
 
 function comparable(value: unknown): string {
@@ -143,19 +133,19 @@ export function shortlistReasonForLeanings(
 export function shortlistPickSchema(ids: string[]) {
   if (!ids.length) throw new Error('cannot select from an empty Track Shortlist');
   const idEnum = z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied Track Shortlist');
-  return modelTolerant(pickSchemaBase().omit({ reason: true }).extend({
+  return modelTolerant(pickSchemaBase().omit({ reason: true, leaningsTieBreak: true }).extend({
     id: idEnum,
     // Editorial only: provenance remains controller-written and must never be
     // reconstructed from the model's interpretation of the shortlist.
-    selectionReason: z.string().describe('internal editorial reason only — max 12 words. Explain why this candidate fits the musical moment; never claim source names, source counts, or diagnostic facts.'),
-    usedMusicalLeanings: z.boolean().describe('private diagnostic decision — always include this. Default false with leaningsTieBreak null. Set true ONLY when two or more eligible shortlist tracks already fit the flow and supplied Musical Leanings genuinely settle that close choice; compatibility alone is not enough. Leanings never override show rules, rotation, safety, or musical flow.'),
-    leaningsTieBreak: z.string().nullable().describe('always include this. Set null when usedMusicalLeanings is false. When true, give the short specific trait of the chosen shortlist candidate that directly matches supplied Musical Leanings. Generic flow facts such as energy, pace, key, or club feel are not Leanings evidence.'),
+    selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit in this moment. Do not introduce or announce the track, imply queue position, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Never claim source names, source counts, or diagnostic facts.'),
+    usedMusicalLeanings: z.boolean().optional().describe('private diagnostic flag. True only when supplied Musical Leanings materially settled this final choice among otherwise eligible shortlist tracks; otherwise false. If false, selectionReason must not mention, quote, paraphrase, or refer to the DJ’s Musical Leanings, preferences, or tastes. This must not change any on-air link.'),
+  }), { objectFallbacks: { selectionReason: UNUSABLE_SELECTION_REASON } });
   }));
 }
 
 export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
   return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, shortlist: candidates }, null, 2)
-    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Use the current and preceding tracks to judge continuity. When transition context is supplied, set transition by what THIS moment needs and vary deliberately from its recent choices. When journey context is supplied, move one step toward its direction while maintaining the stated energy; never mention the journey on air. When curatedPlaylist.mode is "soft", strongly prefer candidates whose shortlistSources contain "showPlaylistTracks"; only step outside when the flow clearly calls for it. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Use Musical Leanings only as a soft tie-breaker between two or more already eligible shortlist tracks. Always return both diagnostic fields: default usedMusicalLeanings to false and leaningsTieBreak to null. Set true and give a short, specific tie-break trait only when Leanings genuinely settle that close choice—not merely because a track is compatible. The trait must describe the chosen track and directly match supplied Leanings; generic energy, pace, key, or club feel claims are not evidence. Leanings never override show rules, rotation, safety, or musical flow. When false, selectionReason must not quote, paraphrase, or refer to Musical Leanings, preferences, or tastes.';
+    + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Use the current and preceding tracks to judge continuity. When transition context is supplied, set transition by what THIS moment needs and vary deliberately from its recent choices. When journey context is supplied, move one step toward its direction while maintaining the stated energy; never mention the journey on air. When curatedPlaylist.mode is "soft", strongly prefer candidates whose shortlistSources contain "showPlaylistTracks"; only step outside when the flow clearly calls for it. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Use Musical Leanings, when supplied, as a soft editorial preference among already eligible tracks. They may inform the final choice without being decisive, but never override show rules, rotation, safety, or musical flow. Set usedMusicalLeanings to true when they materially informed this selection; otherwise false. Only when it is true may selectionReason naturally refer to the DJ’s preferences. When false, selectionReason must not quote, paraphrase, or refer to Musical Leanings, preferences, or tastes; describe the track’s fit only.';
 }
 
 export async function djPick({
