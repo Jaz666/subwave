@@ -144,9 +144,27 @@ export function shortlistPickSchema(ids: string[]) {
   }), { objectFallbacks: { selectionReason: UNUSABLE_SELECTION_REASON } });
 }
 
+// Agentic discovery deliberately runs without Musical Leanings, then hands
+// its actual tool results to this constrained final selection. Unlike native
+// Shortlist, the Agentic path must not ask the model to self-report Leanings
+// provenance: replay testing showed that flag is unreliable even when the
+// cue changes the selected track.
+export function agenticFinalPickSchema(ids: string[]) {
+  if (!ids.length) throw new Error('cannot select from an empty Agentic candidate set');
+  return modelTolerant(pickSchemaBase().omit({ reason: true, usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
+    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied candidate set'),
+    selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit in this moment. Do not introduce or announce the track, imply queue position, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not claim that Musical Leanings, preferences, or tastes decided the pick.'),
+  }), { objectFallbacks: { selectionReason: UNUSABLE_SELECTION_REASON } });
+}
+
 export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
   return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, shortlist: candidates }, null, 2)
     + '\n\nChoose one id from this Track Shortlist. The controller has already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not name shortlist sources: the controller adds that factual hint. Use Musical Leanings, when supplied, as a soft editorial preference among already eligible tracks. They may inform the final choice without being decisive, but never override show rules, rotation, safety, or musical flow. Set usedMusicalLeanings to true when they materially informed this selection; otherwise false. Only when it is true may selectionReason naturally refer to the DJ’s preferences. When false, selectionReason must not quote, paraphrase, or refer to Musical Leanings, preferences, or tastes; describe the track’s fit only.';
+}
+
+export function agenticFinalPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
+  return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, candidates }, null, 2)
+    + '\n\nChoose one id from these candidates. The discovery tools and controller have already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Use Musical Leanings, when supplied, only as a soft editorial preference among tracks that already fit. They may inform the final choice but never override show rules, rotation, safety, or musical flow. Do not state or imply that Musical Leanings, preferences, or tastes decided the choice; describe the selected track’s fit only.';
 }
 
 export async function djPick({

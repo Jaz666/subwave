@@ -67,6 +67,17 @@ export function pickSchema() {
   return modelTolerant(pickSchemaBase());
 }
 
+// The Agentic tool loop is discovery only when a presenter has Musical
+// Leanings. Its final choice is made later from the candidates it actually
+// surfaced, so this contract must not ask the discovery model to make or
+// explain a Leanings provenance claim.
+export function agenticDiscoverySchema() {
+  return modelTolerant(pickSchemaBase().omit({
+    usedMusicalLeanings: true,
+    leaningsTieBreak: true,
+  }));
+}
+
 // Resolved per run, like pickSchema: the intro length follows the on-air
 // persona's scriptLength. The stateless fallback's generateIntro gets
 // lengthPhrase('intro') in its prompt, so without this overlay an 'extended'
@@ -184,33 +195,6 @@ export function resolveEditorialLeanings(showAt: Date | null = null): EditorialL
 export function editorialLeaningsForPick(showAt: Date | null = null): string {
   const leanings = resolveEditorialLeanings(showAt);
   return pickerMusicLeanings(leanings.host, leanings.guest);
-}
-
-export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown, tieBreak: unknown): boolean {
-  // A badge is evidence of a specific claimed tie-break, not an inference from
-  // generic flow prose. This rejects routine true values from small models that
-  // simply see a compatible taste cue in every pick.
-  return !!context?.promptValue && modelFlag === true && typeof tieBreak === 'string' && tieBreak.trim().length > 2;
-}
-
-const LEANINGS_REASON_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:'s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
-
-export function agentReasonForLeanings(reason: unknown, usedMusicalLeanings: boolean, tieBreak: unknown = null): string {
-  const compact = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
-  if (usedMusicalLeanings) {
-    const evidence = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
-    return evidence ? `Leanings: ${evidence}` : 'flow fit after the current track';
-  }
-  return LEANINGS_REASON_REFERENCE.test(compact) ? 'flow fit after the current track' : compact;
-}
-
-// The system prompt holds the complete editorial policy, while this compact
-// reminder rides the newest pick event so a long Agentic session cannot bury
-// the tie-breaker beneath its own earlier selections. It receives the one
-// snapshot resolved for the logical selection; never resolve a guest again.
-export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): string {
-  if (!context.promptValue) return '';
-  return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track AND directly match the supplied Musical Leanings; generic flow facts such as energy, pace, key, or club feel are not Leanings evidence. Otherwise use false and null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
 }
 
 export function pickSystem(
