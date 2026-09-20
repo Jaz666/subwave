@@ -17,7 +17,7 @@ type Fixture = {
   name: string;
   sessionPath: string;
   eventAt: string;
-  expected: { usedMusicalLeanings: boolean; note: string };
+  expected: { usedMusicalLeanings: boolean; tieBreakPatterns: string[]; note: string };
 };
 
 type SessionTurn = {
@@ -92,6 +92,7 @@ async function main() {
 
   let valid = 0;
   let expectedProvenance = 0;
+  let expectedEvidence = 0;
   let copiedExample = 0;
   for (let run = 1; run <= iterations; run += 1) {
     try {
@@ -111,9 +112,13 @@ async function main() {
       const isValid = !!id && candidateIds.has(id);
       if (isValid) valid += 1;
       if (used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
+      const evidenceMatches = fixture.expected.usedMusicalLeanings
+        ? !!tieBreak && fixture.expected.tieBreakPatterns.some((pattern) => new RegExp(pattern, 'i').test(tieBreak))
+        : tieBreak === null;
+      if (evidenceMatches) expectedEvidence += 1;
       if (/warm vocal and melodic hook/i.test(tieBreak ?? '')) copiedExample += 1;
       const provenance = used === fixture.expected.usedMusicalLeanings ? 'match' : 'mismatch';
-      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${used} (${provenance}) tieBreak=${JSON.stringify(tieBreak)}`);
+      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${used} (${provenance}) evidence=${evidenceMatches ? 'match' : 'mismatch'} tieBreak=${JSON.stringify(tieBreak)}`);
     } catch (error) {
       console.log(`FAIL run ${run}: ${String(error).replace(/\s+/g, ' ').slice(0, 220)}`);
     }
@@ -122,6 +127,7 @@ async function main() {
   console.log('\n=== summary ===');
   console.log(`valid picks: ${valid}/${iterations}`);
   console.log(`expected Leanings provenance: ${expectedProvenance}/${iterations}`);
+  console.log(`expected tie-break evidence: ${expectedEvidence}/${iterations}`);
   if (fixture.expected.usedMusicalLeanings) {
     console.log(`missing Leanings claims: ${iterations - expectedProvenance}/${iterations}`);
   } else {
