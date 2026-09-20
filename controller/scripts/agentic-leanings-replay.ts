@@ -33,7 +33,7 @@ type SessionTurn = {
 };
 
 function usage(): never {
-  console.error('Usage: npm run leanings:replay -- [fixture-path] [iterations] [baseline|no-tie-break|soul-only|frozen-final]');
+  console.error('Usage: npm run leanings:replay -- [fixture-path] [iterations] [baseline|no-tie-break|soul-only|frozen-final|frozen-final-no-leanings]');
   process.exit(2);
 }
 
@@ -81,7 +81,7 @@ function frozenCandidates(calls: NonNullable<SessionTurn['meta']>['toolCalls']) 
 async function main() {
   const [fixtureArg = 'scripts/fixtures/agentic-leanings/dante-porcupine-tree.json', iterationsArg = '5', variant = 'baseline'] = process.argv.slice(2);
   const iterations = Number.parseInt(iterationsArg, 10);
-  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['baseline', 'no-tie-break', 'soul-only', 'frozen-final'].includes(variant)) usage();
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['baseline', 'no-tie-break', 'soul-only', 'frozen-final', 'frozen-final-no-leanings'].includes(variant)) usage();
 
   const fixture = JSON.parse(await readFile(resolve(fixtureArg), 'utf8')) as Fixture;
   const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { id?: string; name?: string }; show?: { name?: string; topic?: string }; messages?: SessionTurn[]; turns?: SessionTurn[] };
@@ -109,11 +109,13 @@ async function main() {
   ].filter(Boolean).join('\n\n');
   const noTieBreak = variant === 'no-tie-break';
   const soulOnly = variant === 'soul-only';
-  const frozenFinal = variant === 'frozen-final';
+  const frozenFinal = variant === 'frozen-final' || variant === 'frozen-final-no-leanings';
+  const frozenFinalNoLeanings = variant === 'frozen-final-no-leanings';
+  const provenanceUnavailable = soulOnly || frozenFinalNoLeanings;
   if (frozenFinal && (!persona || !soulLeanings)) {
     throw new Error(`fixture persona ${session.persona?.id ?? '(unknown)'} has no resolved Musical Leanings`);
   }
-  const editorialLeanings = frozenFinal
+  const editorialLeanings = frozenFinal && !frozenFinalNoLeanings
     ? { host: soulLeanings, guest: null, promptValue: `Host: ${soulLeanings}` }
     : null;
   const system = soulOnly
@@ -145,6 +147,11 @@ async function main() {
     ? modelTolerant(pickSchemaBase().omit({ usedMusicalLeanings: true, leaningsTieBreak: true }))
     : noTieBreak
     ? modelTolerant(pickSchemaBase().omit({ leaningsTieBreak: true }))
+    : frozenFinalNoLeanings
+    ? modelTolerant(pickSchemaBase().omit({ reason: true, usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
+      id: z.enum(candidates.map((candidate) => candidate.id) as [string, ...string[]]),
+      selectionReason: z.string().trim().min(24).max(280),
+    }), { objectFallbacks: { selectionReason: '[selection note unavailable]' } })
     : frozenFinal
     ? shortlistPickSchema(candidates.map((candidate) => candidate.id))
     : pickSchema();
@@ -184,15 +191,15 @@ async function main() {
         : typeof pick?.selectionReason === 'string' ? pick.selectionReason : null;
       const isValid = !!id && candidateIds.has(id);
       if (isValid) valid += 1;
-      if (!soulOnly && used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
-      const evidenceMatches = !soulOnly && !noTieBreak && !frozenFinal && fixture.expected.usedMusicalLeanings
+      if (!provenanceUnavailable && used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
+      const evidenceMatches = !provenanceUnavailable && !noTieBreak && !frozenFinal && fixture.expected.usedMusicalLeanings
         ? !!tieBreak && fixture.expected.tieBreakPatterns.some((pattern) => new RegExp(pattern, 'i').test(tieBreak))
         : soulOnly || noTieBreak || tieBreak === null;
       if (evidenceMatches) expectedEvidence += 1;
       if (/warm vocal and melodic hook/i.test(tieBreak ?? '')) copiedExample += 1;
-      const provenance = soulOnly ? 'unreported' : used === fixture.expected.usedMusicalLeanings ? 'match' : 'mismatch';
-      const evidence = soulOnly || noTieBreak || frozenFinal ? 'omitted' : evidenceMatches ? 'match' : 'mismatch';
-      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${soulOnly ? 'n/a' : used} (${provenance}) evidence=${evidence} reason=${JSON.stringify(reason)}`);
+      const provenance = provenanceUnavailable ? 'unreported' : used === fixture.expected.usedMusicalLeanings ? 'match' : 'mismatch';
+      const evidence = provenanceUnavailable || noTieBreak || frozenFinal ? 'omitted' : evidenceMatches ? 'match' : 'mismatch';
+      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${provenanceUnavailable ? 'n/a' : used} (${provenance}) evidence=${evidence} reason=${JSON.stringify(reason)}`);
     } catch (error) {
       console.log(`FAIL run ${run}: ${String(error).replace(/\s+/g, ' ').slice(0, 220)}`);
     }
@@ -200,13 +207,13 @@ async function main() {
 
   console.log('\n=== summary ===');
   console.log(`valid picks: ${valid}/${iterations}`);
-  console.log(soulOnly
-    ? 'expected Leanings provenance: n/a (Soul-only)'
+  console.log(provenanceUnavailable
+    ? `expected Leanings provenance: n/a (${soulOnly ? 'Soul-only' : 'no Leanings control'})`
     : `expected Leanings provenance: ${expectedProvenance}/${iterations}`);
-  console.log(soulOnly || noTieBreak || frozenFinal
+  console.log(provenanceUnavailable || noTieBreak || frozenFinal
     ? 'expected tie-break evidence: n/a (field omitted)'
     : `expected tie-break evidence: ${expectedEvidence}/${iterations}`);
-  if (soulOnly) {
+  if (provenanceUnavailable) {
     console.log('Leanings claims: n/a (field omitted)');
   } else if (fixture.expected.usedMusicalLeanings) {
     console.log(`missing Leanings claims: ${iterations - expectedProvenance}/${iterations}`);
