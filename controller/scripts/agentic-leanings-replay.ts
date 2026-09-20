@@ -91,7 +91,7 @@ async function main() {
   console.log(`${fixture.expected.note}\n`);
 
   let valid = 0;
-  let claimed = 0;
+  let expectedProvenance = 0;
   let copiedExample = 0;
   for (let run = 1; run <= iterations; run += 1) {
     try {
@@ -110,9 +110,10 @@ async function main() {
       const tieBreak = typeof pick?.leaningsTieBreak === 'string' ? pick.leaningsTieBreak : null;
       const isValid = !!id && candidateIds.has(id);
       if (isValid) valid += 1;
-      if (used) claimed += 1;
+      if (used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
       if (/warm vocal and melodic hook/i.test(tieBreak ?? '')) copiedExample += 1;
-      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${used} tieBreak=${JSON.stringify(tieBreak)}`);
+      const provenance = used === fixture.expected.usedMusicalLeanings ? 'match' : 'mismatch';
+      console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${used} (${provenance}) tieBreak=${JSON.stringify(tieBreak)}`);
     } catch (error) {
       console.log(`FAIL run ${run}: ${String(error).replace(/\s+/g, ' ').slice(0, 220)}`);
     }
@@ -120,7 +121,12 @@ async function main() {
 
   console.log('\n=== summary ===');
   console.log(`valid picks: ${valid}/${iterations}`);
-  console.log(`false Leanings claims: ${claimed}/${iterations}`);
+  console.log(`expected Leanings provenance: ${expectedProvenance}/${iterations}`);
+  if (fixture.expected.usedMusicalLeanings) {
+    console.log(`missing Leanings claims: ${iterations - expectedProvenance}/${iterations}`);
+  } else {
+    console.log(`false Leanings claims: ${iterations - expectedProvenance}/${iterations}`);
+  }
   console.log(`copied schema example: ${copiedExample}/${iterations}`);
 }
 
