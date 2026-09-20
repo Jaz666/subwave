@@ -78,6 +78,12 @@ function frozenCandidates(calls: NonNullable<SessionTurn['meta']>['toolCalls']) 
   return [...candidates.values()];
 }
 
+function candidateLabel(candidate: { artist?: unknown; title?: unknown } | undefined, id: string) {
+  const artist = typeof candidate?.artist === 'string' ? candidate.artist : null;
+  const title = typeof candidate?.title === 'string' ? candidate.title : null;
+  return artist && title ? `${artist} — ${title}` : id;
+}
+
 async function main() {
   const [fixtureArg = 'scripts/fixtures/agentic-leanings/dante-porcupine-tree.json', iterationsArg = '5', variant = 'baseline'] = process.argv.slice(2);
   const iterations = Number.parseInt(iterationsArg, 10);
@@ -164,6 +170,8 @@ async function main() {
   let expectedProvenance = 0;
   let expectedEvidence = 0;
   let copiedExample = 0;
+  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const selectionFrequency = new Map<string, number>();
   for (let run = 1; run <= iterations; run += 1) {
     try {
       const pick = (frozenFinal
@@ -190,7 +198,10 @@ async function main() {
         ? pick.reason
         : typeof pick?.selectionReason === 'string' ? pick.selectionReason : null;
       const isValid = !!id && candidateIds.has(id);
-      if (isValid) valid += 1;
+      if (isValid) {
+        valid += 1;
+        if (frozenFinal) selectionFrequency.set(id, (selectionFrequency.get(id) ?? 0) + 1);
+      }
       if (!provenanceUnavailable && used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
       const evidenceMatches = !provenanceUnavailable && !noTieBreak && !frozenFinal && fixture.expected.usedMusicalLeanings
         ? !!tieBreak && fixture.expected.tieBreakPatterns.some((pattern) => new RegExp(pattern, 'i').test(tieBreak))
@@ -221,6 +232,12 @@ async function main() {
     console.log(`false Leanings claims: ${iterations - expectedProvenance}/${iterations}`);
   }
   console.log(`copied schema example: ${copiedExample}/${iterations}`);
+  if (frozenFinal) {
+    console.log('selection frequency:');
+    for (const [id, count] of [...selectionFrequency.entries()].sort(([leftId, leftCount], [rightId, rightCount]) => rightCount - leftCount || leftId.localeCompare(rightId))) {
+      console.log(`  ${count}/${iterations} ${candidateLabel(candidateById.get(id), id)}`);
+    }
+  }
 }
 
 main().catch((error) => {
