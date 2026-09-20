@@ -67,8 +67,10 @@ async function main() {
   if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50) usage();
 
   const fixture = JSON.parse(await readFile(resolve(fixtureArg), 'utf8')) as Fixture;
-  const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { name?: string }; show?: { name?: string; topic?: string }; turns?: SessionTurn[] };
-  const turns = session.turns ?? [];
+  const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { name?: string }; show?: { name?: string; topic?: string }; messages?: SessionTurn[]; turns?: SessionTurn[] };
+  // Persisted station sessions use `messages`; retain `turns` as a fallback so
+  // exported or older snapshots can be replayed too.
+  const turns = session.messages ?? session.turns ?? [];
   const eventIndex = turns.findIndex((turn) => turn.t === fixture.eventAt && turn.role === 'event' && turn.kind === 'pick');
   const event = turns[eventIndex];
   const recordedPick = turns.slice(eventIndex + 1).find((turn) => turn.role === 'dj' && turn.kind === 'pick');
