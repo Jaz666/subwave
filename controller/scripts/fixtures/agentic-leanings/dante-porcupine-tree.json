@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Dante / Porcupine Tree false Leanings claim",
-  "sessionPath": "/app/state/sessions/sess_dfdb8660.json",
+  "sessionPath": "/var/sub-wave/sessions/sess_dfdb8660.json",
   "eventAt": "2026-09-19T20:08:27.422Z",
   "expected": {
     "usedMusicalLeanings": false,
