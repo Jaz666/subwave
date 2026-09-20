@@ -18,12 +18,21 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean; leaningsTieBreak?: string | null } }): boolean {
+<<<<<<< HEAD
+function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean } }): boolean {
+  // Agentic deliberately exposes no Leanings provenance badge: its final
+  // editorial choice is useful, but model-reported causality was unreliable.
+  // Native Shortlist retains its controller-resolved boolean. The former
+  // free-text tie-break was removed, so it must not gate this badge.
   if (call.kind !== 'djShortlistPick' && call.kind !== 'djShortlistRepick') return false;
-  if (call.shortlistResolution?.usedMusicalLeanings !== undefined) return call.shortlistResolution.usedMusicalLeanings && !!call.shortlistResolution.leaningsTieBreak;
+  if (call.shortlistResolution?.usedMusicalLeanings !== undefined) {
+    return call.shortlistResolution.usedMusicalLeanings;
+  }
   try {
-    const response = JSON.parse(call.response || '{}');
-    return response.usedMusicalLeanings === true && typeof response.leaningsTieBreak === 'string' && response.leaningsTieBreak.trim().length > 0;
+    const response = JSON.parse(call.response || '{}') as {
+      usedMusicalLeanings?: unknown;
+    };
+    return response.usedMusicalLeanings === true;
   } catch {
     return false;
   }
