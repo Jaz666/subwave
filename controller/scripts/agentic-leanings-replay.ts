@@ -10,8 +10,9 @@ import { resolve } from 'node:path';
 import { tool } from 'ai';
 import { z } from 'zod';
 import * as settings from '../src/settings.js';
-import { djAgent, modelTolerant } from '../src/llm/sdk.js';
+import { djAgent, djObject, modelTolerant } from '../src/llm/sdk.js';
 import { pickSchema, pickSchemaBase, pickSystem } from '../src/broadcast/dj-agent/schemas.js';
+import { shortlistPickPrompt, shortlistPickSchema } from '../src/music/dj-pick.js';
 
 type Fixture = {
   name: string;
@@ -32,7 +33,7 @@ type SessionTurn = {
 };
 
 function usage(): never {
-  console.error('Usage: npm run leanings:replay -- [fixture-path] [iterations] [baseline|no-tie-break|soul-only]');
+  console.error('Usage: npm run leanings:replay -- [fixture-path] [iterations] [baseline|no-tie-break|soul-only|frozen-final]');
   process.exit(2);
 }
 
@@ -61,10 +62,26 @@ function resultIds(calls: NonNullable<SessionTurn['meta']>['toolCalls']) {
   return ids;
 }
 
+function frozenCandidates(calls: NonNullable<SessionTurn['meta']>['toolCalls']) {
+  const candidates = new Map<string, any>();
+  for (const call of calls) {
+    if (!Array.isArray(call.result)) continue;
+    for (const candidate of call.result) {
+      if (!candidate || typeof candidate !== 'object' || typeof candidate.id !== 'string') continue;
+      const existing = candidates.get(candidate.id);
+      candidates.set(candidate.id, {
+        ...(existing ?? candidate),
+        shortlistSources: [...new Set([...(existing?.shortlistSources ?? []), call.name])],
+      });
+    }
+  }
+  return [...candidates.values()];
+}
+
 async function main() {
   const [fixtureArg = 'scripts/fixtures/agentic-leanings/dante-porcupine-tree.json', iterationsArg = '5', variant = 'baseline'] = process.argv.slice(2);
   const iterations = Number.parseInt(iterationsArg, 10);
-  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['baseline', 'no-tie-break', 'soul-only'].includes(variant)) usage();
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['baseline', 'no-tie-break', 'soul-only', 'frozen-final'].includes(variant)) usage();
 
   const fixture = JSON.parse(await readFile(resolve(fixtureArg), 'utf8')) as Fixture;
   const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { id?: string; name?: string }; show?: { name?: string; topic?: string }; messages?: SessionTurn[]; turns?: SessionTurn[] };
@@ -92,6 +109,13 @@ async function main() {
   ].filter(Boolean).join('\n\n');
   const noTieBreak = variant === 'no-tie-break';
   const soulOnly = variant === 'soul-only';
+  const frozenFinal = variant === 'frozen-final';
+  if (frozenFinal && (!persona || !soulLeanings)) {
+    throw new Error(`fixture persona ${session.persona?.id ?? '(unknown)'} has no resolved Musical Leanings`);
+  }
+  const editorialLeanings = frozenFinal
+    ? { host: soulLeanings, guest: null, promptValue: `Host: ${soulLeanings}` }
+    : null;
   const system = soulOnly
     ? pickSystem(
       new Date(fixture.eventAt),
@@ -109,11 +133,20 @@ async function main() {
     : noTieBreak && promptSuffix.includes(tieBreakMarker)
     ? `${promptSuffix.slice(0, promptSuffix.indexOf(tieBreakMarker))}${tieBreakMarker} Always return "usedMusicalLeanings": default false; set true only when Leanings genuinely settle a close choice between otherwise eligible tracks. Do not return or explain a tie-break trait. Leanings never override show rules, rotation, safety, or musical flow.`
     : promptSuffix;
-  const message = `${event.text}\n${replaySuffix}`;
+  const currentMatch = event.text.match(/^Pick next after "(.+)" by (.+?)(?: \(following|\.)/);
+  const candidates = frozenFinal ? frozenCandidates(calls) : [];
+  const message = frozenFinal
+    ? shortlistPickPrompt(candidates, {
+      currentTrack: currentMatch ? { title: currentMatch[1], artist: currentMatch[2] } : null,
+      link: 'No link airs for this pick.',
+    }, editorialLeanings)
+    : `${event.text}\n${replaySuffix}`;
   const schema = soulOnly
     ? modelTolerant(pickSchemaBase().omit({ usedMusicalLeanings: true, leaningsTieBreak: true }))
     : noTieBreak
     ? modelTolerant(pickSchemaBase().omit({ leaningsTieBreak: true }))
+    : frozenFinal
+    ? shortlistPickSchema(candidates.map((candidate) => candidate.id))
     : pickSchema();
 
   console.log(`\n=== Agentic Leanings replay: ${fixture.name} × ${iterations} (${variant}) ===`);
@@ -126,30 +159,39 @@ async function main() {
   let copiedExample = 0;
   for (let run = 1; run <= iterations; run += 1) {
     try {
-      const result = await djAgent({
-        system,
-        messages: [{ role: 'user', content: message }],
-        tools: buildTools(calls),
-        schema,
-        maxSteps: 4,
-        timeoutMs: 90_000,
-        kind: 'agenticLeaningsReplay',
-      });
-      const pick = result.object as { id?: unknown; reason?: unknown; usedMusicalLeanings?: unknown; leaningsTieBreak?: unknown } | undefined;
+      const pick = (frozenFinal
+        ? await djObject({
+          system: pickSystem(new Date(fixture.eventAt), true, true, editorialLeanings, persona),
+          prompt: message,
+          schema,
+          temperature: 0.5,
+          kind: 'agenticFrozenFinalReplay',
+        })
+        : (await djAgent({
+          system,
+          messages: [{ role: 'user', content: message }],
+          tools: buildTools(calls),
+          schema,
+          maxSteps: 4,
+          timeoutMs: 90_000,
+          kind: 'agenticLeaningsReplay',
+        })).object) as { id?: unknown; reason?: unknown; selectionReason?: unknown; usedMusicalLeanings?: unknown; leaningsTieBreak?: unknown } | undefined;
       const id = typeof pick?.id === 'string' ? pick.id : null;
       const used = pick?.usedMusicalLeanings === true;
       const tieBreak = typeof pick?.leaningsTieBreak === 'string' ? pick.leaningsTieBreak : null;
-      const reason = typeof pick?.reason === 'string' ? pick.reason : null;
+      const reason = typeof pick?.reason === 'string'
+        ? pick.reason
+        : typeof pick?.selectionReason === 'string' ? pick.selectionReason : null;
       const isValid = !!id && candidateIds.has(id);
       if (isValid) valid += 1;
       if (!soulOnly && used === fixture.expected.usedMusicalLeanings) expectedProvenance += 1;
-      const evidenceMatches = !soulOnly && !noTieBreak && fixture.expected.usedMusicalLeanings
+      const evidenceMatches = !soulOnly && !noTieBreak && !frozenFinal && fixture.expected.usedMusicalLeanings
         ? !!tieBreak && fixture.expected.tieBreakPatterns.some((pattern) => new RegExp(pattern, 'i').test(tieBreak))
         : soulOnly || noTieBreak || tieBreak === null;
       if (evidenceMatches) expectedEvidence += 1;
       if (/warm vocal and melodic hook/i.test(tieBreak ?? '')) copiedExample += 1;
       const provenance = soulOnly ? 'unreported' : used === fixture.expected.usedMusicalLeanings ? 'match' : 'mismatch';
-      const evidence = soulOnly || noTieBreak ? 'omitted' : evidenceMatches ? 'match' : 'mismatch';
+      const evidence = soulOnly || noTieBreak || frozenFinal ? 'omitted' : evidenceMatches ? 'match' : 'mismatch';
       console.log(`${isValid ? 'OK  ' : 'BAD '} run ${run}: id=${id ?? '-'} leanings=${soulOnly ? 'n/a' : used} (${provenance}) evidence=${evidence} reason=${JSON.stringify(reason)}`);
     } catch (error) {
       console.log(`FAIL run ${run}: ${String(error).replace(/\s+/g, ' ').slice(0, 220)}`);
@@ -161,7 +203,7 @@ async function main() {
   console.log(soulOnly
     ? 'expected Leanings provenance: n/a (Soul-only)'
     : `expected Leanings provenance: ${expectedProvenance}/${iterations}`);
-  console.log(soulOnly || noTieBreak
+  console.log(soulOnly || noTieBreak || frozenFinal
     ? 'expected tie-break evidence: n/a (field omitted)'
     : `expected tie-break evidence: ${expectedEvidence}/${iterations}`);
   if (soulOnly) {
