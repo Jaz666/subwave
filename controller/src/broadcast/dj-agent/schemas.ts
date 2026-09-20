@@ -12,6 +12,7 @@ import { modelTolerant } from '../../llm/sdk.js';
 import { autoVoiceAllowed } from '../voice-policy.js';
 import { SEED_NOT_A_PICK_CLAUSE } from '../../util/pick-seed.js';
 import { instruction } from '../../llm/dj.js';
+import type { Persona } from '../queue/types.js';
 
 // Plain .nullable() fields, deliberately — GLM's malformed spellings of
 // "nothing" (the string "null", an omitted key, a double-JSON-encoded object)
@@ -212,8 +213,14 @@ export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): 
   return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track AND directly match the supplied Musical Leanings; generic flow facts such as energy, pace, key, or club feel are not Leanings evidence. Otherwise use false and null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
 }
 
-export function pickSystem(showAt: Date | null = null, playlistResolved = true, nativeShortlist = false, editorialLeanings: EditorialLeaningsContext | null = null) {
-  const persona = session.onAirPersona();
+export function pickSystem(
+  showAt: Date | null = null,
+  playlistResolved = true,
+  nativeShortlist = false,
+  editorialLeanings: EditorialLeaningsContext | null = null,
+  personaOverride: Persona | null = null,
+) {
+  const persona = personaOverride ?? session.onAirPersona();
   // In DJ mode, lean on the live session history: a working DJ runs threads
   // and calls back to a track or a remark from earlier in the shift. This pairs
   // with the cross-hour memory in broadcast/session.ts, which now keeps that

@@ -11,7 +11,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import * as settings from '../src/settings.js';
 import { djAgent, modelTolerant } from '../src/llm/sdk.js';
-import { pickSchema, pickSchemaBase } from '../src/broadcast/dj-agent/schemas.js';
+import { pickSchema, pickSchemaBase, pickSystem } from '../src/broadcast/dj-agent/schemas.js';
 
 type Fixture = {
   name: string;
@@ -67,7 +67,7 @@ async function main() {
   if (!Number.isInteger(iterations) || iterations < 1 || iterations > 50 || !['baseline', 'no-tie-break', 'soul-only'].includes(variant)) usage();
 
   const fixture = JSON.parse(await readFile(resolve(fixtureArg), 'utf8')) as Fixture;
-  const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { name?: string }; show?: { name?: string; topic?: string }; messages?: SessionTurn[]; turns?: SessionTurn[] };
+  const session = JSON.parse(await readFile(fixture.sessionPath, 'utf8')) as { persona?: { id?: string; name?: string }; show?: { name?: string; topic?: string }; messages?: SessionTurn[]; turns?: SessionTurn[] };
   // Persisted station sessions use `messages`; retain `turns` as a fallback so
   // exported or older snapshots can be replayed too.
   const turns = session.messages ?? session.turns ?? [];
@@ -85,14 +85,22 @@ async function main() {
     throw new Error(`fixture persona ${session.persona?.id ?? '(unknown)'} has no Soul or Musical Leanings`);
   }
   const candidateIds = resultIds(calls);
-  const system = [
+  const compactSystem = [
     `You are ${session.persona?.name ?? 'the station DJ'}, selecting a record for ${session.show?.name ?? 'the current show'}.`,
     'This is an internal picker decision. Choose only an id returned by a discovery tool. Do not invent ids.',
     session.show?.topic ?? '',
-    variant === 'soul-only' ? `${soul}\n${soulLeanings}` : '',
   ].filter(Boolean).join('\n\n');
   const noTieBreak = variant === 'no-tie-break';
   const soulOnly = variant === 'soul-only';
+  const system = soulOnly
+    ? pickSystem(
+      new Date(fixture.eventAt),
+      true,
+      false,
+      { host: null, guest: null, promptValue: null },
+      { ...persona, soul: `${soul}\n${soulLeanings}` },
+    )
+    : compactSystem;
   const tieBreakMarker = ' Musical Leanings are supplied for this pick as a soft tie-breaker.';
   const eventLeaningsMarker = ' Musical Leanings for this selection:';
   const promptSuffix = event.meta?.promptSuffix ?? '';
