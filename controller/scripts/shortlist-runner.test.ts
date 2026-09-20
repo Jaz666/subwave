@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { resolvedLeaningsTieBreak, resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -93,10 +93,10 @@ test('native builder plans from source-owned availability before execution', asy
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
   const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
   assert.equal(schema.safeParse({
-    id: 'candidate-a', selectionReason: 'One by Artist A brings a warmer texture after the opener.', usedMusicalLeanings: false, leaningsTieBreak: null, say: null, transition: null,
+    id: 'candidate-a', selectionReason: 'One by Artist A brings a warmer texture after the opener.', usedMusicalLeanings: false, say: null, transition: null,
   }).success, true);
   assert.equal(schema.safeParse({
-    id: 'invented', selectionReason: 'not allowed', usedMusicalLeanings: false, leaningsTieBreak: null, say: null, transition: null,
+    id: 'invented', selectionReason: 'not allowed', usedMusicalLeanings: false, say: null, transition: null,
   }).success, false);
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
   assert.match(prompt, /candidate-a/);
@@ -135,7 +135,7 @@ test('shortlist presentation never attaches one track\'s note to another track',
   );
 });
 
-test('resolved Musical Leanings evidence requires a meaningful tie-break', () => {
+test('Shortlist Leanings provenance requires an explicit decision', () => {
   assert.equal(
     resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'warm vocal and melodic hook'),
     false,
@@ -152,9 +152,8 @@ test('resolved Musical Leanings evidence requires a meaningful tie-break', () =>
     resolvedMusicalLeaningsFlag(null, true, 'warm vocal and melodic hook'),
     false,
   );
-  assert.equal(resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, null), false);
-  assert.equal(resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'energy'), false);
-  assert.equal(resolvedLeaningsTieBreak({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, '  warm vocal and melodic hook  '), 'warm vocal and melodic hook');
+  assert.equal(resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, null), true);
+  assert.equal(resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'energy'), true);
 });
 
 test('Shortlist keeps natural claimed Leanings reasons and removes unclaimed ones', () => {
