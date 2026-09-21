@@ -140,7 +140,6 @@ export function shortlistPickSchema(ids: string[]) {
     selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit in this moment. Do not introduce or announce the track, imply queue position, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Never claim source names, source counts, or diagnostic facts.'),
     usedMusicalLeanings: z.boolean().optional().describe('private diagnostic flag. True only when supplied Musical Leanings materially settled this final choice among otherwise eligible shortlist tracks; otherwise false. If false, selectionReason must not mention, quote, paraphrase, or refer to the DJ’s Musical Leanings, preferences, or tastes. This must not change any on-air link.'),
   }), { objectFallbacks: { selectionReason: UNUSABLE_SELECTION_REASON } });
-  }));
 }
 
 export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
