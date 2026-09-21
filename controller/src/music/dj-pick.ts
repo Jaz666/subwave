@@ -133,13 +133,13 @@ export function shortlistReasonForLeanings(
 export function shortlistPickSchema(ids: string[]) {
   if (!ids.length) throw new Error('cannot select from an empty Track Shortlist');
   const idEnum = z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied Track Shortlist');
-  return modelTolerant(pickSchemaBase().omit({ reason: true, leaningsTieBreak: true }).extend({
+  return modelTolerant(pickSchemaBase().omit({ reason: true }).extend({
     id: idEnum,
     // Editorial only: provenance remains controller-written and must never be
     // reconstructed from the model's interpretation of the shortlist.
     selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit in this moment. Do not introduce or announce the track, imply queue position, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Never claim source names, source counts, or diagnostic facts.'),
     usedMusicalLeanings: z.boolean().optional().describe('private diagnostic flag. True only when supplied Musical Leanings materially settled this final choice among otherwise eligible shortlist tracks; otherwise false. If false, selectionReason must not mention, quote, paraphrase, or refer to the DJ’s Musical Leanings, preferences, or tastes. This must not change any on-air link.'),
-  }), { objectFallbacks: { selectionReason: UNUSABLE_SELECTION_REASON } });
+  }), { objectFallbacks: { selectionReason: 'Selected for its fit with the current musical flow.' } });
 }
 
 export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: ShortlistSelectionContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
@@ -172,10 +172,8 @@ export async function djPick({
   }) as ShortlistPick;
   const track = candidates.find((candidate) => candidate.id === selection.id);
   const rawSelectionReason = usableSelectionReason(shortlistSelectionReason(track, selection.selectionReason), track ?? {});
-  const leaningsTieBreak = resolvedLeaningsTieBreak(
-    editorialLeanings, selection.usedMusicalLeanings, selection.leaningsTieBreak,
-  );
-  const usedMusicalLeanings = leaningsTieBreak !== null;
+  const usedMusicalLeanings = resolvedMusicalLeaningsFlag(editorialLeanings, selection.usedMusicalLeanings);
+  const leaningsTieBreak = null;
   const selectionReason = shortlistReasonForLeanings(rawSelectionReason, usedMusicalLeanings, track ?? {});
   shortlistResolution.track = {
     id: selection.id,
