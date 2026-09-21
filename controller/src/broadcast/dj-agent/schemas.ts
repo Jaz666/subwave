@@ -71,6 +71,28 @@ export function pickSchema() {
   return modelTolerant(pickSchemaBase());
 }
 
+export function agenticDiscoverySchema() {
+  return modelTolerant(pickSchemaBase().omit({ usedMusicalLeanings: true, leaningsTieBreak: true }));
+}
+
+export type AgenticEditorialPickContext = {
+  currentTrack?: { id?: string | null; title?: string | null; artist?: string | null } | null;
+  link?: string;
+};
+
+export function agenticEditorialPickSchema(ids: string[]) {
+  if (!ids.length) throw new Error('cannot select from an empty Agentic candidate set');
+  return modelTolerant(pickSchemaBase().omit({ reason: true, usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
+    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied candidate set'),
+    selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit. Do not claim that Musical Leanings, preferences, or tastes decided the pick.'),
+  }), { objectFallbacks: { selectionReason: '[selection note unavailable]' } });
+}
+
+export function agenticEditorialPickPrompt(candidates: any[], context: AgenticEditorialPickContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
+  return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, candidates }, null, 2)
+    + '\n\nChoose one id from these candidates. The controller has already applied the station guards. Write selectionReason as a private Booth Log note: name the selected artist and track title, then explain its musical fit. Use Musical Leanings, when supplied, only as a soft editorial preference among tracks that already fit. They never override show rules, rotation, safety, or musical flow. Do not state or imply that Musical Leanings, preferences, or tastes decided the choice.';
+}
+
 // Resolved per run, like pickSchema: the intro length follows the on-air
 // persona's scriptLength. The stateless fallback's generateIntro gets
 // lengthPhrase('intro') in its prompt, so without this overlay an 'extended'
@@ -217,7 +239,7 @@ export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): 
   return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track AND directly match the supplied Musical Leanings; generic flow facts such as energy, pace, key, or club feel are not Leanings evidence. Otherwise use false and null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
 }
 
-export function pickSystem(showAt: Date | null = null, playlistResolved = true, editorialLeanings: EditorialLeaningsContext | null = null) {
+export function pickSystem(showAt: Date | null = null, playlistResolved = true, editorialLeanings: EditorialLeaningsContext | null = null, candidateSelection = false) {
   const persona = session.onAirPersona();
   // In DJ mode, lean on the live session history: a working DJ runs threads
   // and calls back to a track or a remark from earlier in the shift. This pairs
@@ -246,7 +268,7 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true, 
   // discovery instruction. Keep it in the agentic picker too, so changing
   // picker implementation does not change the station's musical identity.
   const leanings = editorialLeanings ?? resolveEditorialLeanings(showAt);
-  const editorialLeaningsPrompt = pickerMusicLeanings(leanings.host, leanings.guest);
+  const editorialLeaningsPrompt = candidateSelection ? '' : pickerMusicLeanings(leanings.host, leanings.guest);
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of
@@ -273,7 +295,9 @@ export function pickSystem(showAt: Date | null = null, playlistResolved = true, 
   // that could run, because this prompt is built before failover picks one and
   // over-promising is the more expensive way to be wrong.
   const rounds = dj.promptDiscoverySteps();
-  const findingCandidates = rounds > 1
+  const findingCandidates = candidateSelection
+    ? 'The controller has already supplied eligible candidates. Choose exactly one supplied id; do not request or invent candidates.'
+    : rounds > 1
     ? instruction('picker', 'finding-candidates-multi', { rounds })
     : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}

@@ -55,7 +55,7 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
-import { agentReasonForLeanings, musicalLeaningsPickReminder, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag, type EditorialLeaningsContext } from './dj-agent/schemas.js';
+import { agenticEditorialPickPrompt, agenticEditorialPickSchema, agentReasonForLeanings, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
@@ -302,11 +302,29 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     messages: session.windowMessages(),
     scope,
     showAt,
-    editorialLeanings,
     telemetry: { agentPickResolution },
   });
-  const { steps, toolCalls, extras } = run;
+  let { steps, toolCalls, extras } = run;
   let object = run.object;
+  if (editorialLeanings.promptValue && extras.seen.size) {
+    try {
+      const finalSelection: any = await djObject({
+        system: pickSystem(showAt, !!playlistTracks?.length, editorialLeanings, true),
+        prompt: agenticEditorialPickPrompt([...extras.seen.values()], {
+          currentTrack: pickAnchor ? { id: pickAnchor.id ?? null, title: pickAnchor.title ?? null, artist: pickAnchor.artist ?? null } : null,
+          link: wantLink ? 'A separate safe link may air for this pick.' : 'No link airs for this pick.',
+        }, editorialLeanings),
+        schema: agenticEditorialPickSchema([...extras.seen.keys()]),
+        temperature: 0.5,
+        kind: 'djAgentEditorialPick',
+      });
+      object = { ...finalSelection, reason: finalSelection.selectionReason };
+      steps += 1;
+    } catch (error) {
+      logEvent('pick.editorialSelectionFailed', { agent: 'pick', candidates: extras.seen.size, error: String(error) });
+      queue.log('picker', 'Agentic editorial selection failed — using discovery pick');
+    }
+  }
 
   let song = object?.id ? extras.seen.get(object.id) : null;
 
@@ -778,7 +796,6 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     // every constrained re-pick. In particular, guest sampling is not retried
     // after the event turn has told the model which Leanings apply.
     const editorialLeanings = resolveEditorialLeanings(showAt);
-    const leaningsClause = musicalLeaningsPickReminder(editorialLeanings);
     // Exploration nudge (ε-greedy seed break, music/airing.ts): every pick
     // seeding discovery from the on-air track is a random walk that never
     // leaves its similarity cluster, so a fraction of picks steer the round
@@ -801,7 +818,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
         + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
         + '. Pick the track to play next.';
-    const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}${leaningsClause}`;
+    const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
       meta: promptSuffix ? { promptSuffix } : {},
