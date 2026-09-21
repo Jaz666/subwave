@@ -18,7 +18,6 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
-<<<<<<< HEAD
 function callUsesMusicalLeanings(call: { kind?: string; response?: string; shortlistResolution?: { usedMusicalLeanings?: boolean } }): boolean {
   // Agentic deliberately exposes no Leanings provenance badge: its final
   // editorial choice is useful, but model-reported causality was unreliable.
