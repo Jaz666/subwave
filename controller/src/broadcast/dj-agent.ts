@@ -305,7 +305,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     showAt,
     telemetry: { agentPickResolution },
   });
-  const { steps, toolCalls, extras } = run;
+  const { toolCalls, extras } = run;
+  let { steps } = run;
   let object = run.object;
   if (editorialLeanings.promptValue && extras.seen.size) {
     try {
