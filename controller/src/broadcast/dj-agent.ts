@@ -55,12 +55,12 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
-import { pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, type EditorialLeaningsContext } from './dj-agent/schemas.js';
+import { agenticEditorialPickPrompt, agenticEditorialPickSchema, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { agenticFinalPickPrompt, agenticFinalPickSchema, djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { djPick, shortlistPickPrompt, shortlistPickSchema, shortlistSelectionReason, usableSelectionReason, shortlistReasonForLeanings, resolvedMusicalLeaningsFlag, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -100,7 +100,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
   const agenticFinalRepick = !shortlistRepick && !!editorialLeanings?.promptValue;
   const constrainedEditorialRepick = shortlistRepick || agenticFinalRepick;
   const schema = shortlistRepick ? shortlistPickSchema(ids) : agenticFinalRepick
-    ? agenticFinalPickSchema(ids)
+    ? agenticEditorialPickSchema(ids)
     : modelTolerant(pickSchemaBase().extend({
     id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
   }));
@@ -124,7 +124,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       prompt: shortlistRepick
         ? shortlistPickPrompt([...seen.values()], shortlistContext, editorialLeanings) + `\n\n${why}`
         : agenticFinalRepick
-        ? agenticFinalPickPrompt([...seen.values()], shortlistContext, editorialLeanings) + `\n\n${why}`
+        ? agenticEditorialPickPrompt([...seen.values()], shortlistContext, editorialLeanings) + `\n\n${why}`
         : JSON.stringify({ candidates: [...seen.values()] }, null, 2) + `\n\n${why}`,
       schema,
       temperature: 0.5,
@@ -458,8 +458,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         const finalResolution: any = {};
         const finalSelection: any = await djObject({
           system: pickSystem(showAt, !!playlistTracks?.length, true, editorialLeanings),
-          prompt: agenticFinalPickPrompt([...extras.seen.values()], shortlistContext, editorialLeanings),
-          schema: agenticFinalPickSchema([...extras.seen.keys()]),
+          prompt: agenticEditorialPickPrompt([...extras.seen.values()], shortlistContext, editorialLeanings),
+          schema: agenticEditorialPickSchema([...extras.seen.keys()]),
           temperature: 0.5,
           kind: 'djAgentEditorialPick',
           telemetry: { agentPickResolution: finalResolution },

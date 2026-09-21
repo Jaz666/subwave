@@ -11,8 +11,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 
 const settings = await import('../src/settings.js');
 await settings.load();
-const { PICK_SCHEMA, agenticDiscoverySchema, pickSystem, pickerMusicLeanings, resolveEditorialLeanings } = await import('../src/broadcast/dj-agent/schemas.js');
-const { agenticFinalPickPrompt, agenticFinalPickSchema } = await import('../src/music/dj-pick.js');
+const { PICK_SCHEMA, agenticDiscoverySchema, agenticEditorialPickPrompt, agenticEditorialPickSchema, pickSystem, pickerMusicLeanings, resolveEditorialLeanings } = await import('../src/broadcast/dj-agent/schemas.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
 await settings.update({ personas: [persona], activePersonaId: persona.id });
@@ -33,10 +32,10 @@ assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', u
 assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, false);
 assert.match(PICK_SCHEMA.shape.reason.description ?? '', /Default to actual flow/i);
 assert.match(PICK_SCHEMA.shape.usedMusicalLeanings.description ?? '', /Default false/i);
-const finalSchema = agenticFinalPickSchema(['candidate']);
+const finalSchema = agenticEditorialPickSchema(['candidate']);
 assert.equal(finalSchema.safeParse({ id: 'candidate', selectionReason: 'Artist — Track: it fits this reflective moment.', transition: null }).success, true);
 assert.equal(finalSchema.safeParse({ id: 'candidate', selectionReason: 'Artist — Track: it fits this reflective moment.', usedMusicalLeanings: true, transition: null }).success, true, 'final Agentic selection does not require provenance');
-const finalPrompt = agenticFinalPickPrompt([{ id: 'candidate', artist: 'Artist', title: 'Track' }], {}, resolveEditorialLeanings());
+const finalPrompt = agenticEditorialPickPrompt([{ id: 'candidate', artist: 'Artist', title: 'Track' }], {}, resolveEditorialLeanings());
 assert.match(finalPrompt, /soft editorial preference/i);
 assert.match(finalPrompt, /Do not state or imply that Musical Leanings/i);
 

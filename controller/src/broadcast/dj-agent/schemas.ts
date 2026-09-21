@@ -73,6 +73,25 @@ export function agenticDiscoverySchema() {
   }));
 }
 
+export type AgenticEditorialPickContext = {
+  currentTrack?: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null } | null;
+  journeyActive?: boolean;
+  link?: string;
+};
+
+export function agenticEditorialPickSchema(ids: string[]) {
+  if (!ids.length) throw new Error('cannot select from an empty Agentic candidate set');
+  return modelTolerant(pickSchemaBase().omit({ reason: true, usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
+    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied candidate set'),
+    selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit in this moment. Do not introduce or announce the track, imply queue position, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not claim that Musical Leanings, preferences, or tastes decided the pick.'),
+  }), { objectFallbacks: { selectionReason: '[selection note unavailable]' } });
+}
+
+export function agenticEditorialPickPrompt(candidates: any[], context: AgenticEditorialPickContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
+  return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, candidates }, null, 2)
+    + '\n\nChoose one id from these candidates. The discovery tools and controller have already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Use Musical Leanings, when supplied, only as a soft editorial preference among tracks that already fit. They may inform the final choice but never override show rules, rotation, safety, or musical flow. Do not state or imply that Musical Leanings, preferences, or tastes decided the choice; describe the selected track’s fit only.';
+}
+
 // Resolved per run, like pickSchema: the intro length follows the on-air
 // persona's scriptLength. The stateless fallback's generateIntro gets
 // lengthPhrase('intro') in its prompt, so without this overlay an 'extended'
