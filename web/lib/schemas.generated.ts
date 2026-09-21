@@ -829,6 +829,22 @@ export function clampTtsSpeed(v: unknown): number {
   return Math.round(c * 20) / 20;
 }
 
+/** Bounds-clamp an effective speech rate without snapping it back to the saved
+ *  controls' 0.05 grid. Products such as 0.90 engine x 1.15 persona are real
+ *  1.035x rates, as are the non-grid daypart/show factors applied on air. */
+export function clampEffectiveTtsSpeed(v: unknown): number {
+  if (v === null || v === undefined || v === '') return TTS_SPEED_DEFAULT;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return TTS_SPEED_DEFAULT;
+  return Math.max(TTS_SPEED_MIN, Math.min(TTS_SPEED_MAX, n));
+}
+
+/** Compose the two saved speed controls for a deterministic persona preview.
+ *  Live programme pacing is deliberately a separate, on-air-only factor. */
+export function composeTtsControlSpeeds(engineSpeed: unknown, personaSpeed: unknown): number {
+  return clampEffectiveTtsSpeed(clampTtsSpeed(engineSpeed) * clampTtsSpeed(personaSpeed));
+}
+
 export interface TtsVoiceSlot {
   engine: string;
   cloudProvider: string;
@@ -2928,6 +2944,13 @@ export const pauseTalkMinSecondsSchema = settingsIntLike(
   'pauseTalkMinSeconds must be a whole number of seconds between 5 and 90',
 );
 
+// The prompt-memory recap injected into every DJ script. The four-hour session
+// roll is the hard ceiling on useful history, and the line/character caps keep
+// an operator typo from consuming the model's whole context window.
+export const DJ_RECAP_LIMIT_BOUNDS: SettingsNumericBound = { min: 1, max: 50 };
+export const DJ_RECAP_MINUTES_BOUNDS: SettingsNumericBound = { min: 1, max: 240 };
+export const DJ_RECAP_CHARS_BOUNDS: SettingsNumericBound = { min: 40, max: 1000 };
+
 // DJ policy controls are grouped so future speaking/transition behaviour has
 // one stable home in Settings. A missing block remains the pre-existing off.
 export const djBehaviourPatchSchema = settingsBlockOf({
@@ -2937,6 +2960,18 @@ export const djBehaviourPatchSchema = settingsBlockOf({
   releaseYearMentions: z.enum(['regular', 'occasional', 'rare'], {
     error: 'djBehaviour.releaseYearMentions must be regular, occasional or rare',
   }),
+  recapLimit: settingsIntLike(
+    DJ_RECAP_LIMIT_BOUNDS,
+    'djBehaviour.recapLimit must be a whole number between 1 and 50',
+  ),
+  recapMinutes: settingsIntLike(
+    DJ_RECAP_MINUTES_BOUNDS,
+    'djBehaviour.recapMinutes must be a whole number of minutes between 1 and 240',
+  ),
+  recapChars: settingsIntLike(
+    DJ_RECAP_CHARS_BOUNDS,
+    'djBehaviour.recapChars must be a whole number between 40 and 1000',
+  ),
 });
 
 /**
