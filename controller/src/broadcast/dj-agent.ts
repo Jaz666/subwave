@@ -435,7 +435,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
           prompt: agenticFinalPickPrompt([...extras.seen.values()], shortlistContext, editorialLeanings),
           schema: agenticFinalPickSchema([...extras.seen.keys()]),
           temperature: 0.5,
-          kind: 'djAgentFinalPick',
+          kind: 'djAgentEditorialPick',
           telemetry: { agentPickResolution: finalResolution },
         });
         object = { ...finalSelection, reason: finalSelection.selectionReason };
