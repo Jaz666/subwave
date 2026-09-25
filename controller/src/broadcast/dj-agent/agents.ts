@@ -5,7 +5,7 @@
 import * as settings from '../../settings.js';
 import { defineAgent } from '../../llm/agent.js';
 import { buildPickerTools, type PickerScope } from '../../llm/tools.js';
-import { pickSchema, pickSystem, requestSchema, requestSystem } from './schemas.js';
+import { pickSchema, pickSystem, requestSchema, requestSystem, type EditorialLeaningsContext } from './schemas.js';
 import { agentDeadline } from './breaker.js';
 import type { Persona } from '../queue/types.js';
 
@@ -19,6 +19,9 @@ export interface PickerRunArgs {
   // Forecast air time for the pick's link, prompt only — not a discovery
   // constraint, so it stays outside the scope.
   showAt?: Date | null;
+  // Captured once by the caller and reused by every corrective re-pick in the
+  // same selection cycle. See resolveEditorialLeanings().
+  editorialLeanings?: EditorialLeaningsContext | null;
 }
 
 export interface RequestRunArgs {
@@ -46,7 +49,7 @@ export const pickerAgent = defineAgent<PickerRunArgs, PickerExtras>({
   // since a caller's pinned step cap can be load-bearing.
   providerDiscoveryBudget: true,
   timeoutMs: agentDeadline,
-  buildSystem: ({ showAt, scope }) => pickSystem(showAt ?? null, !!scope?.playlistTracks?.length),
+  buildSystem: ({ showAt, scope, editorialLeanings }) => pickSystem(showAt ?? null, !!scope?.playlistTracks?.length, false, editorialLeanings ?? null),
   buildTools: ({ scope }) => {
     const { tools, seen } = buildPickerTools(scope);
     return { tools, extras: { seen } };
@@ -79,4 +82,3 @@ export const requestAgent = defineAgent<RequestRunArgs, PickerExtras>({
   // Same native-path acceptance as pickerAgent.
   validateObject: (object, extras) => !!(object?.id && extras?.seen?.has(object.id)),
 });
-
