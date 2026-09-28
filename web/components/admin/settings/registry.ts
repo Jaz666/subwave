@@ -71,7 +71,7 @@ export const SECTIONS = [
   {
     id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
     hint: 'speech · segments · handovers', icon: MessageCircle,
-    formKeys: ['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'llm.segmentRuntime'],
+    formKeys: ['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes', 'llm.segmentRuntime'],
   },
   {
     // One-field setup for the hosted DJ Brain: writes both `llm` and
