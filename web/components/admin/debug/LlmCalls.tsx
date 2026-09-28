@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { adminResponse, useAdminMutation } from '../../../lib/admin-query';
 import { notify, errorMessage } from '../../../lib/notify';
@@ -122,7 +122,7 @@ function filenameFrom(res: Response, fallback: string): string {
   return m?.[1] || fallback;
 }
 
-export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pauseControl?: ReactNode }) {
+export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
   const { adminFetch } = useAdminAuth();
   const calls = llm?.recentCalls || [];
   const [filter, setFilter] = useState('all');
@@ -192,7 +192,6 @@ export function LlmCalls({ llm, pauseControl }: { llm: DebugLlm | undefined; pau
       sub={`${calls.length} calls · ${llm?.provider || '—'} / ${llm?.activeModel || '—'}`}
       right={
         <div className="flex flex-wrap items-center justify-end gap-1">
-          {pauseControl}
           <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
             all {calls.length}
           </FilterChip>

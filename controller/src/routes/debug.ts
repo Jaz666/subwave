@@ -39,7 +39,6 @@ import { BadStatePathError, listStateDir } from '../util/state-tree.js';
 import { buildPickerTools, PICKER_TOOLS } from '../llm/tools.js';
 import { livePickerScope } from '../broadcast/dj-agent.js';
 import { pickerAgent } from '../broadcast/dj-agent/agents.js';
-import { resolveEditorialLeanings } from '../broadcast/dj-agent/schemas.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick } from '../music/dj-pick.js';
 
@@ -114,9 +113,8 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
   try {
     const { scope, activeShow, playlistTracks } = await livePickerScope(queue);
     const current = queue.current?.track ?? null;
-    const editorialLeanings = resolveEditorialLeanings();
     const agentStarted = performance.now();
-    const agent = await pickerAgent.run({ messages: session.windowMessages(), scope, editorialLeanings });
+    const agent = await pickerAgent.run({ messages: session.windowMessages(), scope });
     const agentElapsedMs = Math.round(performance.now() - agentStarted);
     const shortlistStarted = performance.now();
     const shortlist = await buildShortlist({
@@ -135,7 +133,6 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
           currentTrack: current ? { id: current.id ?? null, title: current.title ?? null, artist: current.artist ?? null, album: current.album ?? null } : null,
           link: 'No link airs for this diagnostic pick.',
         },
-        editorialLeanings,
       })
       : null;
     const compact = (track: any) => track?.id

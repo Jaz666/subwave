@@ -19,9 +19,6 @@ export interface PickerRunArgs {
   // Forecast air time for the pick's link, prompt only — not a discovery
   // constraint, so it stays outside the scope.
   showAt?: Date | null;
-  // Captured once by the caller and reused by every corrective re-pick in the
-  // same selection cycle. See resolveEditorialLeanings().
-  editorialLeanings?: EditorialLeaningsContext | null;
 }
 
 export interface RequestRunArgs {

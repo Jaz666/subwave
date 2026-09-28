@@ -24,7 +24,7 @@ assert.equal(
 
 const prompt = pickSystem();
 assert.match(prompt, /Musical Leanings — Favour patient dub, deep electronic cuts, and melodic post-punk\./);
-assert.match(prompt, /only to break a close tie/i);
+assert.match(prompt, /soft editorial preference when choosing between eligible tracks/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
 const discovery = agenticDiscoverySchema();
 assert.equal(discovery.safeParse({ id: 'candidate', reason: 'fresh texture', transition: null }).success, true);

@@ -160,35 +160,6 @@ export interface DebugLlm {
   };
 }
 
-interface SleeveNotesCall {
-  t?: string;
-  endpoint?: 'search' | 'song';
-  title?: string;
-  artist?: string | null;
-  ok?: boolean;
-  status?: number | null;
-  ms?: number;
-  error?: string;
-}
-
-interface SleeveNotesJob {
-  provider?: string;
-  subjectType?: string;
-  capability?: string;
-  state?: string;
-  priority?: number;
-  attempts?: number;
-  runAfter?: string | null;
-  updatedAt?: string;
-}
-
-export interface DebugSleeveNotes {
-  recentCalls?: SleeveNotesCall[];
-  active?: boolean;
-  jobs?: SleeveNotesJob[];
-  error?: string;
-}
-
 interface SubsonicEndpoint {
   endpoint: string;
   calls: number;
@@ -281,7 +252,6 @@ export interface DebugData {
   context?: DebugContext | null;
   tts?: DebugTts;
   subsonic?: DebugSubsonic;
-  sleeveNotes?: DebugSleeveNotes;
   session?: DebugSession;
   config?: Record<string, unknown>;
   mounts?: DebugMounts;
