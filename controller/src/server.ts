@@ -60,6 +60,7 @@ import { recoverInterruptedResearchJobs } from './sleeve-notes/research-reposito
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
 import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
+import { startGeniusResearchWorker } from './sleeve-notes/genius-worker.js';
 import { researchRunAllowed } from './sleeve-notes/research-policy.js';
 import { agentWorkActive } from './llm/agent.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
@@ -359,6 +360,7 @@ app.listen(config.server.port, async () => {
   startMusicBrainzMatchWorker(sleeveNotesQuietGate);
   startWikipediaArtistWorker(sleeveNotesQuietGate);
   startResearchWorker(sleeveNotesQuietGate);
+  startGeniusResearchWorker(sleeveNotesQuietGate);
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));

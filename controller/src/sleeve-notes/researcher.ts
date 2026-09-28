@@ -13,6 +13,17 @@ export const SLEEVE_NOTE_CATEGORIES = [
 
 export type SleeveNoteCategory = typeof SLEEVE_NOTE_CATEGORIES[number];
 
+/** Leave slots empty when the evidence does not clear the bar. */
+export const MAX_CANDIDATES_PER_ARTIST_RESEARCH = 8;
+
+export const SLEEVE_NOTE_CATEGORY_GUIDANCE: Record<SleeveNoteCategory, string> = {
+  'artist-stories': 'origin, creative development, scenes, career turns, distinctive collaborations, or legacy',
+  'track-stories': 'the creation, recording, or cultural story of a particular song or recording',
+  'musical-connections': 'specific covers, samples, interpolations, or other clear links between artists and recordings',
+  milestones: 'a genuinely notable career achievement; skip routine release, chart, and award listings',
+  credits: 'a named writer, producer, featured performer, or other contributor and their specific role',
+};
+
 export interface ResearchDocument {
   id: string;
   entityId: string;

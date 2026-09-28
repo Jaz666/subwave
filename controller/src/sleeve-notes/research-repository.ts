@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import { open } from './db.js';
 import type { CanonicalMusicBrainzRecording } from '../music/musicbrainz.js';
 import type { ResearchCandidate } from './researcher.js';
+import type { ProviderRelationship, SleeveProviderResult } from './provider.js';
 
 export interface LocalEncounterInput {
   localTrackId: string;
@@ -150,6 +151,15 @@ export function canonicalReleaseForResearchInDatabase(db: Database.Database, id:
   return row ?? null;
 }
 
+export interface RecordingForGenius { id: string; title: string; artist: string | null; }
+
+export function recordingForGenius(id: string): RecordingForGenius | null {
+  const row = open().prepare(`SELECT r.id, r.title, a.name AS artist
+    FROM sleeve_recordings r LEFT JOIN sleeve_artists a ON a.id = r.artist_id
+    WHERE r.id = ? AND r.match_state = 'matched' AND a.name IS NOT NULL`).get(id) as RecordingForGenius | undefined;
+  return row ?? null;
+}
+
 export function retainSourceDocument(input: {
   entityType: 'artist' | 'recording' | 'release';
   entityId: string;
@@ -159,9 +169,10 @@ export function retainSourceDocument(input: {
   contentKind: 'bounded-text' | 'structured-json';
   content: string;
   attribution: string;
-}): void {
+}): string {
+  const db = open();
   const contentHash = createHash('sha256').update(input.content).digest('hex');
-  open().prepare(`INSERT INTO sleeve_source_documents (id, entity_type, entity_id, provider,
+  db.prepare(`INSERT INTO sleeve_source_documents (id, entity_type, entity_id, provider,
     source_url, revision_id, content_hash, content_kind, content, attribution, retrieved_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(provider, source_url, revision_id, content_hash) DO UPDATE SET
@@ -169,6 +180,86 @@ export function retainSourceDocument(input: {
     .run(randomUUID(), input.entityType, input.entityId, input.provider, input.sourceUrl,
       input.revisionId, contentHash, input.contentKind, input.content, input.attribution,
       new Date().toISOString());
+  const row = db.prepare(`SELECT id FROM sleeve_source_documents
+    WHERE provider = ? AND source_url = ? AND revision_id IS ? AND content_hash = ?`)
+    .get(input.provider, input.sourceUrl, input.revisionId, contentHash) as { id: string } | undefined;
+  if (!row) throw new Error('Sleeve Notes source document was not retained');
+  return row.id;
+}
+
+function relationshipClaim(recording: RecordingForGenius, relationship: ProviderRelationship): ResearchCandidate | null {
+  const source = `${recording.title}${recording.artist ? ` by ${recording.artist}` : ''}`;
+  const target = `${relationship.target.title}${relationship.target.artist ? ` by ${relationship.target.artist}` : ''}`;
+  const wording = {
+    samples: `${source} samples ${target}.`, sampled_in: `${source} is sampled in ${target}.`,
+    cover_of: `${source} is a cover of ${target}.`, covered_by: `${source} has been covered by ${target}.`,
+  }[relationship.type];
+  if (!wording) return null;
+  return { category: 'musical-connections', topic: `${relationship.type.replaceAll('_', ' ')}: ${target}`.slice(0, 100), wording, evidence: JSON.stringify(relationship) };
+}
+
+/** Store only the provider adapter's lyrics-free allowlist. */
+export function retainGeniusResult(recording: RecordingForGenius, result: SleeveProviderResult): void {
+  const sourceDocumentId = retainSourceDocument({ entityType: 'recording', entityId: recording.id, provider: 'genius',
+    sourceUrl: result.identity.canonicalUrl, revisionId: null, contentKind: 'structured-json',
+    content: JSON.stringify(result), attribution: result.attribution });
+  const candidates: ResearchCandidate[] = [
+    ...result.credits.map((credit): ResearchCandidate => ({ category: 'credits',
+      topic: `${credit.role}: ${credit.names.join(', ')}`.slice(0, 100),
+      wording: `${recording.title} is credited to ${credit.names.join(', ')} for ${credit.role.toLowerCase()}.`, evidence: JSON.stringify(credit) })),
+    ...result.relationships.map((relationship) => relationshipClaim(recording, relationship))
+      .filter((candidate): candidate is ResearchCandidate => candidate !== null),
+  ];
+  retainResearchClaims({ entityType: 'recording', entityId: recording.id, sourceDocumentId, candidates });
+}
+
+export type ProviderRequestOutcome = 'ready' | 'no-match' | 'failed' | 'rate-limited';
+export type ProviderRequestReservation = { requestId: string } | { waitMs: number };
+
+/** Atomically enforce the station's conservative Genius request budget. */
+export function reserveGeniusProviderRequest(now = new Date()): ProviderRequestReservation {
+  const db = open();
+  return db.transaction((): ProviderRequestReservation => {
+    const nowMs = now.getTime();
+    const minuteCutoff = new Date(nowMs - 60_000).toISOString();
+    const dayCutoff = new Date(nowMs - 86_400_000).toISOString();
+    const failures = db.prepare(`SELECT outcome, status_code AS statusCode, requested_at AS requestedAt
+      FROM sleeve_provider_requests WHERE provider = 'genius' AND requested_at >= ?
+      ORDER BY requested_at DESC LIMIT 100`).all(dayCutoff) as Array<{ outcome: string; statusCode: number | null; requestedAt: string }>;
+    let consecutiveFailures = 0;
+    for (const request of failures) {
+      const retryable = request.outcome === 'rate-limited'
+        || (request.statusCode !== null && request.statusCode >= 500)
+        || (request.outcome === 'failed' && request.statusCode === null);
+      if (!retryable) break;
+      consecutiveFailures++;
+    }
+    if (consecutiveFailures) {
+      const delayMs = Math.min(60_000 * 2 ** Math.min(consecutiveFailures - 1, 6), 3_600_000);
+      const backoffUntil = Date.parse(failures[0].requestedAt) + delayMs;
+      if (backoffUntil > nowMs) return { waitMs: backoffUntil - nowMs };
+    }
+    const recent = db.prepare(`SELECT requested_at AS requestedAt FROM sleeve_provider_requests
+      WHERE provider = 'genius' AND requested_at >= ? ORDER BY requested_at`).all(minuteCutoff) as Array<{ requestedAt: string }>;
+    if (recent.length >= 3) return { waitMs: Math.max(1_000, Date.parse(recent[0].requestedAt) + 60_000 - nowMs) };
+    const daily = db.prepare(`SELECT requested_at AS requestedAt FROM sleeve_provider_requests
+      WHERE provider = 'genius' AND requested_at >= ? ORDER BY requested_at`).all(dayCutoff) as Array<{ requestedAt: string }>;
+    if (daily.length >= 4_320) return { waitMs: Math.max(1_000, Date.parse(daily[0].requestedAt) + 86_400_000 - nowMs) };
+    const requestId = randomUUID();
+    db.prepare(`INSERT INTO sleeve_provider_requests (id, provider, capability, requested_at, outcome)
+      VALUES (?, 'genius', 'connections', ?, 'started')`).run(requestId, now.toISOString());
+    return { requestId };
+  }).immediate();
+}
+
+export function finishGeniusProviderRequest(id: string, outcome: ProviderRequestOutcome, statusCode: number | null): void {
+  open().prepare(`UPDATE sleeve_provider_requests SET completed_at = ?, outcome = ?, status_code = ? WHERE id = ? AND provider = 'genius'`)
+    .run(new Date().toISOString(), outcome, statusCode, id);
+}
+
+export function requeueResearchJob(id: string): void {
+  open().prepare(`UPDATE sleeve_research_jobs SET state = 'queued', run_after = NULL, updated_at = ? WHERE id = ?`)
+    .run(new Date().toISOString(), id);
 }
 
 export interface SourceDocumentForResearch {
@@ -463,9 +554,19 @@ export interface ResearchStoreSummary {
   researchJobs: number;
 }
 
+export interface ResearchStoreCoverage { processed: number; queued: number; 'retry-at': number; failed: number; }
+
+export function researchStoreCoverage(): ResearchStoreCoverage {
+  const rows = open().prepare(`SELECT state, COUNT(*) AS count FROM sleeve_research_jobs
+    WHERE provider = 'genius' AND capability = 'connections' GROUP BY state`).all() as Array<{ state: string; count: number }>;
+  const counts = Object.fromEntries(rows.map((row) => [row.state, row.count])) as Record<string, number>;
+  return { processed: counts.complete ?? 0, queued: counts.queued ?? 0,
+    'retry-at': counts['retry-at'] ?? 0, failed: counts.failed ?? 0 };
+}
+
 export interface ResearchStoreReadout extends ResearchStoreSummary {
   artists: Array<{ name: string; musicbrainzId: string | null; sources: number; claims: number }>;
-  claims: Array<{ artist: string; category: string; topic: string; wording: string; evidence: string; sourceUrl: string }>;
+  claims: Array<{ artist: string | null; recording: string | null; category: string; topic: string; wording: string; evidence: string; sourceUrl: string; provider: string }>;
   jobs: Array<{ provider: string; subjectType: string; capability: string; state: string; priority: number; attempts: number; runAfter: string | null; updatedAt: string }>;
   jobSummary: Array<{ provider: string; capability: string; state: string; jobs: number; attempts: number; nextDue: string | null; updatedAt: string }>;
   providerSummary: Array<{ provider: string; capability: string; outcome: string; status: number | null; requests: number; lastRequestedAt: string }>;
@@ -500,9 +601,11 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
     LEFT JOIN sleeve_source_documents s ON s.entity_type = 'artist' AND s.entity_id = a.id
     LEFT JOIN sleeve_claims c ON c.entity_type = 'artist' AND c.entity_id = a.id AND c.enabled = 1
     GROUP BY a.id ORDER BY claims DESC, sources DESC, a.name LIMIT ?`).all(capped) as ResearchStoreReadout['artists'];
-  const claims = db.prepare(`SELECT a.name AS artist, c.category, c.topic, c.wording, c.evidence,
-    s.source_url AS sourceUrl FROM sleeve_claims c
-    JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
+  const claims = db.prepare(`SELECT COALESCE(a.name, ra.name) AS artist, r.title AS recording,
+    c.category, c.topic, c.wording, c.evidence, s.source_url AS sourceUrl, s.provider FROM sleeve_claims c
+    LEFT JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
+    LEFT JOIN sleeve_recordings r ON c.entity_type = 'recording' AND c.entity_id = r.id
+    LEFT JOIN sleeve_artists ra ON ra.id = r.artist_id
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     WHERE c.enabled = 1 ORDER BY c.updated_at DESC LIMIT ?`).all(capped) as ResearchStoreReadout['claims'];
   const jobs = db.prepare(`SELECT provider, subject_type AS subjectType, capability, state, priority,

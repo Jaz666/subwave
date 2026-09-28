@@ -1,7 +1,7 @@
 import * as settings from '../settings.js';
 import { LlmResearcher } from './llm-researcher.js';
 import type { Researcher, ResearchOutcomeObserver } from './researcher.js';
-import { validateResearchCandidates } from './researcher.js';
+import { MAX_CANDIDATES_PER_ARTIST_RESEARCH, SLEEVE_NOTE_CATEGORIES, validateResearchCandidates } from './researcher.js';
 import * as repository from './research-repository.js';
 import type { QuietGate } from './musicbrainz-worker.js';
 
@@ -28,8 +28,8 @@ export class ResearchWorker {
         const job = {
           id: queued.id,
           document: { ...source, text: source.content.slice(0, MAX_SOURCE_CHARS) },
-          categories: ['artist-stories', 'milestones'] as const,
-          maxCandidates: 5,
+          categories: SLEEVE_NOTE_CATEGORIES,
+          maxCandidates: MAX_CANDIDATES_PER_ARTIST_RESEARCH,
         };
         const candidates = await this.researcher.extract(job, controller.signal);
         const validated = validateResearchCandidates(job, candidates);

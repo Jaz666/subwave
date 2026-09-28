@@ -263,14 +263,15 @@ relationship, and popularity is not a permanent historical achievement. Last.fm
 does not own canonical release history or credits. It needs its own conservative
 rate/backoff policy because no numeric quota is published.
 
-### Genius — optional musical-connections source
+### Genius — controlled metadata and musical-connections source
 
-Genius remains opt-in and bounded by its 5,000-call daily budget. Its initial
-high-value role is the relationships graph: covers, samples, sampled-by and
-interpolations. It may also offer editorial track material after a dedicated
-provider review defines the approved fields, source treatment and claim
-extraction policy. The adapter must use documented endpoints only and never
-fetch lyrics, referents, annotations, page HTML or undocumented endpoints.
+Genius is enabled only when both the Sleeve Notes master switch and its
+provider switch are on and a server-held token is configured. Its conservative
+station-wide ceiling is three requests per minute and 4,320 per day. The
+worker retains only exact matched song identity, writer/producer credits, and
+the allowlisted cover/sample relationships as structured source data and
+claims. It never fetches lyrics, referents, annotations, page HTML or
+undocumented endpoints.
 
 The existing Genius spike's search/detail telemetry, exact matching rules,
 one-hop expansion limit and local-resolution findings are useful inputs, but
@@ -287,9 +288,10 @@ provenance. Provider names never become listener-facing categories.
 
 The selector does not give the DJ a raw database result or a bundle of facts.
 It offers a concise, prepared **story spark** plus source metadata for audit.
-The default subject is the artist; a track note wins only when it is genuinely
-more interesting, especially a cover/sample/interpolation connection or a
-strong song story. Release context is supporting material.
+Selection prioritises a recording-specific story, then the canonical release
+or album, and uses artist-level material only as a fallback or when it directly
+illuminates the song. The DJ receives at most one spark. Regular Sleeve Notes
+remain available separately as Verified Facts.
 
 Collection and exposure are separate. The operator may retain an enabled
 provider's source-backed claims while allowing only selected categories to be
@@ -314,9 +316,19 @@ Use all of these novelty gates:
 4. **relationship neighbourhood** — suppress both directions of a recently
    used connection and related near-duplicates.
 
-The airing ledger records the supplied claim, final speech where available,
-consumer, track, time, source/evidence and source URL. Corrections affect
-future use immediately and never rewrite history.
+The use ledger records the supplied claim and generated link, consumer, local
+track, time, source/evidence and source URL; actual airing can be attached when
+the broadcast path confirms it. Corrections affect future use immediately and
+never rewrite history.
+
+The initial `generateLink` pilot applies local specificity and novelty gates
+without provider calls: recording → canonical release → artist; exact claim
+(21 days), topic (60 days), entity (21/45/90 days for recording/release/artist),
+and relationship neighbourhood (60 days). It requires an enabled claim with
+stored evidence and a source URL. Provider/category/persona/show policy and
+explicit source freshness controls remain follow-up work; the pilot does not
+claim to implement those table rows yet. Cooldowns begin when the claim is
+supplied to the writer, which is conservative if a queued link is later dropped.
 
 ## Product surfaces
 
@@ -347,8 +359,9 @@ local-library match and must not create provider work just by being viewed.
 
 ### Phase A — rebase the experiment on this model
 
-1. Mark the current Genius track-first collection as experimental and keep it
-   disabled.
+1. Keep the retired Genius track-first collector experimental and dormant;
+   run the separate canonical, metadata-only Genius worker only behind the
+   Sleeve Notes master switch, its provider switch, and a server-held token.
 2. Replace the old provider policy/documentation with this provider-neutral
    architecture and record the retained operational findings.
 3. Define migration/backfill policy for existing experimental claims,
@@ -385,19 +398,29 @@ provider: each provider still requires its own explicit enablement and worker.
 1. Resolve Wikipedia through MusicBrainz/Wikidata, fetch/cache versioned
    revisions according to Wikimedia API policy, and retain attribution.
 2. Build bounded, injection-safe research extraction producing evidenced,
-   categorised individual claims.
+   categorised individual claims. An artist biography may yield up to eight
+   distinct claims when the source supports them; this is a ceiling, not a
+   quota. Give every category explicit guidance, choose categories by the
+   subject of each claim, and require specific topics and standalone wording.
 3. Add Last.fm community context through the existing credential path and
    separate its ephemeral popularity/similarity data from durable facts.
 4. Build Collected and Sources readouts around coverage and claim diversity,
    rather than raw provider rows.
 
-### Phase E — optional Genius connections graph
+### Phase E — Genius metadata and musical connections
 
-1. Rework the existing adapter onto canonical recordings and the new job
-   budget, retaining documented-endpoint and lyric exclusion guarantees.
-2. Store/source relationships as graph edges and resolve local attachments
-   conservatively.
-3. Add Connections as a read-only operator/discovery surface, including
+1. Reuse the documented song search/detail adapter only for exact recording
+   identity, writer/producer credits, and cover/sample relationships. Retain
+   only the adapter's structured allowlist; never fetch, retain, display, or
+   prompt with lyrics or Genius prose.
+2. Run the provider behind its own setting and token, the station-wide
+   playback quiet gate, and durable station-wide limits of three requests per
+   minute and 4,320 per day.
+3. Store the structured Genius source projection and source-backed credit and
+   musical-connection claims on canonical recordings. Promote relationships
+   into canonical graph edges and resolve local attachments conservatively in
+   the later Connections surface.
+4. Add Connections as a read-only operator/discovery surface, including
    external-only nodes.
 
 ### Phase F — DJ-link projection and operator policy

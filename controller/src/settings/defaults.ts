@@ -263,7 +263,7 @@ export const DEFAULTS = {
   // Notes switch. A provider may be configured but inert while the master
   // setting is off, or the master may be on while no provider is enabled.
   sleeveNotes: {
-    providers: { genius: { enabled: false } },
+    providers: { genius: { enabled: true } },
   },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
   // boundary the outgoing host signs off — the programme outro beat's window.
