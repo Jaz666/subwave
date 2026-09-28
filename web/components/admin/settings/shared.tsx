@@ -365,6 +365,10 @@ export interface DjBehaviourValues {
   recapChars?: number;
 }
 
+export interface SleeveNotesForm {
+  providers: { genius: { enabled: boolean } };
+}
+
 export interface FormState {
   crossfadeDuration: string;
   ducking: DuckingForm;
@@ -388,6 +392,7 @@ export interface FormState {
   /** Station-wide minimum length before a show may use pause-and-talk. */
   pauseTalkMinSeconds: string;
   djBehaviour: DjBehaviourForm;
+  sleeveNotes: SleeveNotesForm;
   weather: WeatherCfg;
   tts: TtsForm;
   llm: LlmForm;
@@ -464,6 +469,7 @@ export interface SettingsData {
     djTalkOnlyBetweenTracks?: boolean;
     pauseTalkMinSeconds?: number;
     djBehaviour?: DjBehaviourValues;
+    sleeveNotes?: { providers?: { genius?: { enabled?: boolean } } };
     /** Absent on a settings.json predating the key — the controller's own
      *  coercion reads it as the 5-minute default. */
     handover?: { offsetMinutes?: number };

@@ -637,7 +637,8 @@ export async function load() {
     },
     sleeveNotes: {
       providers: {
-        genius: { enabled: stored.sleeveNotes?.providers?.genius?.enabled === true },
+        genius: { enabled: typeof stored.sleeveNotes?.providers?.genius?.enabled === 'boolean'
+          ? stored.sleeveNotes.providers.genius.enabled : DEFAULTS.sleeveNotes.providers.genius.enabled },
       },
     },
     // Repaired rather than refused, like ducking above: an offset the talk

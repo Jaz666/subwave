@@ -27,6 +27,13 @@ The `docs/internals/` files are **not** optional reading when you are changing t
 
 ## Common commands
 
+### Docker execution
+
+When working with the station owner, **do not run Docker or Docker Compose
+commands yourself**. Provide the exact command and a brief note of its effect
+for the owner to run locally, then use the reported result for any follow-up.
+This includes builds, starts, restarts, logs, `exec`, and status checks.
+
 Three operator entry points, all driving the same compose files + `state/` layout: the **standalone `subwave` CLI** (single binary, no clone — default for new installs), raw `docker compose` (no-CLI alternative), and `npm start` (contributor convenience inside a clone).
 
 ```bash

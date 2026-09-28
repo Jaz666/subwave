@@ -48,6 +48,10 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         recapMinutes: Number(form.djBehaviour.recapMinutes),
         recapChars: Number(form.djBehaviour.recapChars),
       },
+      sleeveNotes: form.sleeveNotes,
+      llm: {
+        segmentRuntime: form.llm.segmentRuntime,
+      },
     });
   };
 
@@ -259,6 +263,20 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           />
         </div>
         <div className="field mt-5">
+          <Label>Genius metadata collection</Label>
+          <Seg
+            value={form.sleeveNotes.providers.genius.enabled ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Do not queue Genius recording research' },
+              { id: 'on', label: 'On', title: 'Collect Genius recording credits and musical connections when configured' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, sleeveNotes: { providers: { genius: { enabled: v === 'on' } } } }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Genius requests collect recording credits and musical connections only. Lyrics are not fetched or retained.
+          </p>
+        </div>
+        <div className="field mt-5">
           <Label>Research while the station is empty</Label>
           <Seg
             value={form.djBehaviour.sleeveNotesMaintenanceWhenEmpty ? 'on' : 'off'}
@@ -277,9 +295,8 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           </p>
         </div>
         <p className="text-[13px] leading-[1.55] text-muted">
-          Default Sleeve Notes remain local Verified Facts. Extended Sleeve Notes adds optional
-          provider-backed context and does not alter links until its later on-air projection phase.
-          While it is off, it starts no provider work.
+          Regular Sleeve Notes remain part of every link. When available, one Extended Sleeve Note
+          may be supplied separately as an optional story spark; it can be omitted by the DJ.
         </p>
       </Card>
 
@@ -289,7 +306,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes', 'llm.segmentRuntime']}
       />
     </>
   );

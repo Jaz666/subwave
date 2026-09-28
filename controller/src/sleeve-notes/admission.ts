@@ -14,8 +14,8 @@ export interface SleeveNotesEncounter {
 
 export function admitSleeveNotesEncounter(input: SleeveNotesEncounter, source: 'queue' | 'played', priority = 0): void {
   // This master switch continues to be the operator's consent for all Sleeve
-  // Notes collection. Unlike the retired Genius worker, MusicBrainz itself is
-  // public and does not require a separately configured token.
+  // Notes collection. MusicBrainz itself is public; Genius additionally has
+  // its own provider switch and access token.
   if (settings.get().djBehaviour.extendedSleeveNotes !== true) return;
   const localTrackId = String(input.localTrackId ?? '').trim();
   const title = String(input.title ?? '').trim();

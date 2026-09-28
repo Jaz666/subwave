@@ -13,6 +13,7 @@ type NotesStatus = {
   providerConfigured: boolean;
   collectionRunning: boolean;
   collectionBlockedReason: string | null;
+  coverage?: Record<string, number>;
   replacement?: { localAttachments: number; encounters: number; pendingMatches: number; retainedClaims: number; researchJobs: number } | null;
 };
 
@@ -23,7 +24,7 @@ type NotesReadout = {
   pendingMatches: number;
   retainedClaims: number;
   researchJobs: number;
-  claims: Array<{ artist: string; category: string; topic: string; wording: string; evidence: string; sourceUrl: string }>;
+  claims: Array<{ artist: string | null; recording: string | null; provider: string; category: string; topic: string; wording: string; evidence: string; sourceUrl: string }>;
   jobSummary: Array<{ provider: string; capability: string; state: string; jobs: number; attempts: number; nextDue: string | null; updatedAt: string }>;
   providerSummary: Array<{ provider: string; capability: string; outcome: string; status: number | null; requests: number; lastRequestedAt: string }>;
 };
@@ -60,14 +61,14 @@ export default function NotesPanel() {
         <Eyebrow>Programming</Eyebrow>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Extended Sleeve Notes</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Source-backed music research collected in the background. It never delays playback or adds material to DJ links during this test.
+          Source-backed music research collected in the background and offered as optional context for DJ links.
         </p>
       </div>
 
       <Card title={enabled ? 'Collection enabled' : 'Not collecting'} sub={enabled ? 'background only' : 'safe by default'}>
         <p className="text-sm leading-6 text-muted">
           {enabled
-            ? 'MusicBrainz matching, Wikipedia retrieval, and cautious claim extraction run only when the station gates allow them.'
+            ? 'MusicBrainz matching, Wikipedia retrieval, Genius metadata collection, and cautious claim extraction run only when their settings and station gates allow them.'
             : 'Turn on Extended Sleeve Notes before the station creates provider work or opens its collection database.'}
         </p>
         <Link href="/admin/settings" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
@@ -76,9 +77,9 @@ export default function NotesPanel() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card title="On air" sub="not yet supplied to links"><Radio className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">The normal Verified Facts path remains unchanged.</p></Card>
+        <Card title="On air" sub="optional story spark"><Radio className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">Regular Sleeve Notes remain available. One eligible Extended Sleeve Note may be offered separately and can be omitted by the DJ.</p></Card>
         <Card title="Collected" sub="development inspection"><BookOpen className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">Claims stay reviewable with their exact retained evidence.</p></Card>
-        <Card title="Sources" sub="identity-first"><ShieldCheck className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">MusicBrainz resolves identity before Wikipedia research; Genius remains separately disabled.</p></Card>
+        <Card title="Sources" sub="identity-first"><ShieldCheck className="mb-3 size-5 text-muted" /><p className="text-sm leading-6 text-muted">MusicBrainz resolves identity before Wikipedia and Genius research. Genius coverage: {status.data?.coverage?.processed ?? 0} processed, {status.data?.coverage?.queued ?? 0} queued, {status.data?.coverage?.['retry-at'] ?? 0} retrying, {status.data?.coverage?.failed ?? 0} failed.</p></Card>
       </div>
 
       {enabled && <Card title="Development readout" sub="temporary · read-only · refreshes every 30 seconds">
@@ -103,7 +104,7 @@ export default function NotesPanel() {
             </ReadoutTable>
             <ReadoutTable title="Latest retained claims" empty="No claims retained yet." headings={['Artist', 'Category', 'Claim', 'Evidence']}>
               {data.claims.slice(0, 16).map((claim, index) => <tr key={`${claim.artist}-${claim.topic}-${index}`} className="border-t border-border/60 align-top">
-                <td className="py-2 pr-4 font-medium">{claim.artist}</td><td className="py-2 pr-4">{claim.category}</td><td className="py-2 pr-4">{claim.wording}</td><td className="py-2"><a href={claim.sourceUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{claim.evidence}</a></td>
+                <td className="py-2 pr-4 font-medium">{claim.recording ? `${claim.recording}${claim.artist ? ` · ${claim.artist}` : ''}` : claim.artist ?? 'Unknown entity'}<span className="block text-[10px] text-muted">{claim.provider}</span></td><td className="py-2 pr-4">{claim.category}<span className="block text-[10px] text-muted">{claim.topic}</span></td><td className="py-2 pr-4">{claim.wording}</td><td className="py-2"><a href={claim.sourceUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{claim.evidence}</a></td>
               </tr>)}
             </ReadoutTable>
           </div>

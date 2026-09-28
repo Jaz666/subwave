@@ -3,7 +3,7 @@
 import express from 'express';
 import * as settings from '../settings.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { rebuildWikipediaClaims, rebuildWikipediaClaimsForArtist, researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
+import { rebuildWikipediaClaims, rebuildWikipediaClaimsForArtist, researchStoreCoverage, researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
 
 export const router = express.Router();
 
@@ -12,23 +12,24 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   const value = settings.get();
   const enabled = value.djBehaviour.extendedSleeveNotes === true;
   const providerEnabled = value.sleeveNotes.providers.genius.enabled === true;
-  const providerConfigured = providerEnabled && !!process.env.GENIUS_ACCESS_TOKEN;
+  const providerConfigured = !!process.env.GENIUS_ACCESS_TOKEN;
+  const collectionRunning = enabled && providerEnabled && providerConfigured;
   res.json({
     enabled,
     provider: 'genius',
     providerEnabled,
     providerConfigured,
-    collectionRunning: enabled,
-    collectionBlockedReason: enabled ? null : 'disabled',
-    coverage: {},
+    collectionRunning,
+    collectionBlockedReason: !enabled ? 'disabled' : !providerEnabled ? 'provider-disabled' : !providerConfigured ? 'provider-unconfigured' : null,
+    coverage: enabled ? researchStoreCoverage() : {},
     // Temporary development readout for the live MusicBrainz → Wikipedia → LLM
     // path. It remains read-only and deliberately does not expose notes on air.
     replacement: enabled ? {
       admissionActive: true,
-      researchWorkerActive: true,
+      researchWorkerActive: collectionRunning,
       ...researchStoreSummary(),
     } : null,
-    onAirExposure: false,
+    onAirExposure: enabled,
   });
 });
 

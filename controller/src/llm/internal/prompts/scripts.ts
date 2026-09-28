@@ -15,6 +15,7 @@ import { trackFeelSuffix } from './track-feel.js';
 import { announceLine, nextAnnounceForm } from '../../../broadcast/announce-line.js';
 import * as library from '../../../music/library.js';
 import { contextSleeveNotesFor, releaseYearMentionEligible, selectSleeveNotes, stationHistoryNoteFor } from './sleeve-notes.js';
+import { recordExtendedSleeveNoteSupplied, selectExtendedSleeveNote } from '../../../sleeve-notes/link-selection.js';
 import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
@@ -87,7 +88,7 @@ export const REQUESTER_GREETING_CLAUSE = ' When the request comes with a name, s
 
 const PERSONA_GROUNDING_RULE = 'FACTUAL GROUNDING: Treat supplied facts, including Sleeve Notes, as the factual ground truth for the current task. For factual claims about music, supplied facts are your only source of truth. Do not supplement them with your own knowledge of an artist, track, album or music history, even when you believe that knowledge is correct. You may naturally rephrase supplied facts, but do not expand, strengthen, upgrade or generalise them into unsupported claims, explanations, causes, relationships or historical context. “First station play” is not a premiere or a world premiere, and an album title does not make that album belong to the station or presenter. Do not invent or assume release dates, albums, chart history, credits, artist biography, lyrics, instrumentation, production details or other music trivia unless supplied. Sleeve Notes are optional material for natural conversation, not a checklist. Use only what helps the current on-air line. You do not need to mention them at all. You may freely express subjective, in-character reactions and musical impressions provided they are not presented as additional facts; describe the presenter’s response to the music, not an invented world around the station. Do not invent weather, season, date, clock time, programme state, people being present or events around the station. If approximate air time is supplied, you may infer the corresponding time of day but never make it more precise than supplied. Style or Tone instructions never override these factual-grounding rules. Use local colour, time, weather or other contextual texture only when the necessary information has been supplied.';
 
-function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false, includeSleeves = true): string {
+function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false, includeSleeves = true, extendedSleeveNote: any = null): string {
   const moment: string[] = [];
   const day = String(context?.date?.dayLabel || "").trim();
   if (day) moment.push("Day: " + day + ".");
@@ -120,6 +121,12 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
     "Current Context:\n" + (moment.length ? moment.map((fact) => "- " + fact).join("\n") : "- No additional verified moment facts."),
   ];
   if (includeSleeves) sections.push("Sleeve Notes:\n" + (sleeves.length ? sleeves.map((fact) => "- " + fact).join("\n") : "- None selected for this line."));
+  if (extendedSleeveNote?.wording) {
+    sections.push("Extended Sleeve Note — optional story spark:\n"
+      + `- ${String(extendedSleeveNote.wording).trim()}\n`
+      + `  Category: ${String(extendedSleeveNote.category || 'music story')}.\n`
+      + `  Source: ${String(extendedSleeveNote.attribution || extendedSleeveNote.provider || 'researched source')}.`);
+  }
   if (current?.title || current?.artist) {
     sections.push("Track on air:\n- " + String(current?.title || "Unknown") + " by " + String(current?.artist || "unknown") + ".");
   }
@@ -342,14 +349,15 @@ export function linkPrompt({
   persona = null,
   includeIntroBudget = true,
   guestContribution = null,
+  extendedSleeveNote = null,
 }: any): string {
   const speaker = persona || settings.getEffectivePersona();
   const rules = [
     'Output only the words to be spoken on air.',
     'The named track is already playing. Focus on it and do not refer to the previous track.',
-    'Treat supplied sleeve notes as verified facts, but do not add or infer further music-history claims.',
+    'Treat entries in Verified Facts and regular Sleeve Notes as factual ground truth. An Extended Sleeve Note is a separate optional, source-backed story spark: use only its supported claim, do not broaden it or imply station verification, and omit it if it does not fit. Its source metadata is for grounding, not required spoken copy.',
     'The supplied day of week is for accuracy, not generic atmosphere. Mention it only when it adds something specific and natural; do not use it as a default opener or repeat it from link to link.',
-    'Music facts are limited to the exact entries in Verified facts: do not use remembered or learned album, release, chart, reputation, influence, relationship or history information.',
+    'Music facts are limited to the exact entries in Verified Facts, regular Sleeve Notes and the selected Extended Sleeve Note: do not use remembered or learned album, release, chart, reputation, influence, relationship or history information.',
     'Never strengthen an approved station-history fact: “First station play” is not a premiere or a world premiere, and an album fact never means the album belongs to the station or presenter.',
     'Do not describe instrumentation, production, lyrics or other audio properties unless they are explicitly supplied. Subjective reaction is welcome, but do not present it as observation.',
     'Prefer a plain, accurate introduction to invented atmosphere. Do not add weather, season, local scenery, programme progress or station activity unless it appears in Current Context.',
@@ -367,7 +375,7 @@ export function linkPrompt({
     : '';
   if (budget) rules.push(budget);
 
-  const facts = verifiedContextPacket(context, current, clockIsAirTime);
+  const facts = verifiedContextPacket(context, current, clockIsAirTime, true, extendedSleeveNote);
   if (clockIsAirTime && fuzzyAirTime(context?.clock)) {
     rules.push("If you mention the time, use only the approximate phrase supplied in Current Context; do not turn it into an exact minute.");
   } else {
@@ -442,15 +450,30 @@ export async function generateLink(args: any) {
       kind: 'generateAnnounceLinkFallback',
     });
   }
-  return djText({
+  let extendedSleeveNote: ReturnType<typeof selectExtendedSleeveNote> = null;
+  try {
+    extendedSleeveNote = selectExtendedSleeveNote(args.current);
+  } catch {
+    // Sleeve Notes are opportunistic context: a local-store error must never
+    // prevent or delay the ordinary track link.
+  }
+  const script = await djText({
     system: djSystem(speaker),
-    prompt: linkPrompt({ ...args, persona: speaker }),
+    prompt: linkPrompt({ ...args, persona: speaker, extendedSleeveNote }),
     temperature: 0.95,
     topP: 0.92,
     repeatPenalty: 1.2,
     seed: randomSeed(),
     kind: 'generatePersonaLink',
   });
+  if (extendedSleeveNote && script.trim()) {
+    try {
+      recordExtendedSleeveNoteSupplied(extendedSleeveNote, script);
+    } catch {
+      // Repetition bookkeeping must not turn a successful link into a failure.
+    }
+  }
+  return script;
 }
 
 // Stage C delivery packet for a Producer-selected skill segment. The Producer's
