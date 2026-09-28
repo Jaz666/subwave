@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { BookOpen, Radio, ShieldCheck } from 'lucide-react';
 import { Card, Eyebrow } from './ui';
 import { useAdminAuth } from '../../lib/adminAuth';
@@ -54,6 +55,24 @@ export default function NotesPanel() {
     staleTime: 10_000, refetchInterval: 30_000,
   });
   const data = readout.data;
+  const [requeueing, setRequeueing] = useState(false);
+  const [requeueMessage, setRequeueMessage] = useState('');
+
+  async function requeueCachedWikipediaResearch() {
+    setRequeueing(true);
+    setRequeueMessage('');
+    try {
+      const result = await adminJson<{ artistsWithCachedSources: number; jobsQueued: number }>(
+        adminFetch, '/sleeve-notes/requeue-wikipedia-research', { method: 'POST' },
+      );
+      setRequeueMessage(`Queued ${result.jobsQueued} research jobs from cached Wikipedia sources for ${result.artistsWithCachedSources} artists. Existing claims and source data were preserved.`);
+      await Promise.all([readout.refetch(), status.refetch()]);
+    } catch (error) {
+      setRequeueMessage(error instanceof Error ? error.message : 'Could not requeue cached Wikipedia research.');
+    } finally {
+      setRequeueing(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -74,6 +93,14 @@ export default function NotesPanel() {
         <Link href="/admin/settings" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
           Review the master switch <ShieldCheck className="size-4" />
         </Link>
+        {enabled && <div className="mt-4">
+          <button type="button" disabled={requeueing} onClick={() => void requeueCachedWikipediaResearch()}
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted/40 disabled:opacity-60">
+            {requeueing ? 'Queueing cached research…' : 'Requeue from cached sources'}
+          </button>
+          <p className="mt-2 text-xs text-muted">Re-runs extraction using stored Wikipedia text. It preserves existing claims and source documents and makes no Wikimedia requests.</p>
+          {requeueMessage && <p role="status" className="mt-2 text-xs text-muted">{requeueMessage}</p>}
+        </div>}
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">

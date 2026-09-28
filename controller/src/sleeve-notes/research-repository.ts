@@ -328,6 +328,40 @@ export interface WikipediaClaimRebuild {
   jobsQueued: number;
 }
 
+export interface WikipediaResearchRequeue {
+  artistsWithCachedSources: number;
+  jobsQueued: number;
+}
+
+/** Queue extraction against cached Wikipedia text without changing claims or sources. */
+export function requeueCachedWikipediaResearch(now = new Date()): WikipediaResearchRequeue {
+  const db = open();
+  const timestamp = now.toISOString();
+  const transaction = db.transaction(() => {
+    const artistsWithCachedSources = (db.prepare(`SELECT COUNT(DISTINCT entity_id) AS count
+      FROM sleeve_source_documents WHERE provider = 'wikipedia' AND entity_type = 'artist'`)
+      .get() as { count: number }).count;
+    db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
+      id, provider, subject_type, subject_id, capability, state, priority,
+      attempts, run_after, created_at, updated_at
+    ) SELECT lower(hex(randomblob(16))), 'researcher', 'artist', s.entity_id,
+      'extract-wikipedia', 'queued', 300, 0, NULL, ?, ?
+      FROM sleeve_source_documents s
+      WHERE s.provider = 'wikipedia' AND s.entity_type = 'artist'
+      GROUP BY s.entity_id`).run(timestamp, timestamp);
+    const jobsQueued = db.prepare(`UPDATE sleeve_research_jobs
+      SET state = 'queued', attempts = 0, run_after = NULL, updated_at = ?
+      WHERE provider = 'researcher' AND subject_type = 'artist'
+        AND capability = 'extract-wikipedia'
+        AND EXISTS (SELECT 1 FROM sleeve_source_documents s
+          WHERE s.provider = 'wikipedia' AND s.entity_type = 'artist'
+            AND s.entity_id = sleeve_research_jobs.subject_id)`)
+      .run(timestamp).changes;
+    return { artistsWithCachedSources, jobsQueued };
+  });
+  return transaction.immediate();
+}
+
 /**
  * Discard only claims derived from cached Wikipedia prose and replay their
  * extraction jobs. No identity or provider work is repeated: a safer evidence
