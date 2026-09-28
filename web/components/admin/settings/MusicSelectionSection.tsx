@@ -76,11 +76,11 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
           <div className="field mt-5">
             <Label>Track Shortlist passes</Label>
             <Seg value={String(form.llm.shortlistPasses)} options={[
-              { id: '1', label: '1', title: 'Context only — the narrowest shortlist' },
-              { id: '2', label: '2', title: 'Context and Continuity — no Exploration pass' },
-              { id: '3', label: '3', title: 'Default: Context, Continuity, then Exploration' },
-              { id: '4', label: '4', title: 'Repeats Context after the complete three-lane cycle' },
-              { id: '5', label: '5', title: 'Repeats Context and Continuity for the broadest shortlist' },
+              { id: '1', label: '1', title: 'Quickest, narrowest search' },
+              { id: '2', label: '2', title: 'Adds another suitable discovery source' },
+              { id: '3', label: '3', title: 'Recommended balance of fit and variety' },
+              { id: '4', label: '4', title: 'Searches one more source for a wider choice' },
+              { id: '5', label: '5', title: 'Widest search, with more candidates to compare' },
             ]} onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, shortlistPasses: Number(v) } }))} />
             <p className="mt-2 text-[13px] leading-[1.55] text-muted">
               Each pass gathers candidates from one suitable part of your library. SUB/WAVE balances
