@@ -19,15 +19,24 @@ import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
 function callUsesMusicalLeanings(call: {
+  ok?: boolean;
   kind?: string;
   response?: string;
-  agentPickResolution?: { usedMusicalLeanings?: boolean };
+  agentPickResolution?: {
+    usedMusicalLeanings?: boolean;
+    preliminary?: { id?: string; title?: string | null; artist?: string | null };
+    final?: { id?: string; title?: string | null; artist?: string | null };
+  };
   shortlistResolution?: { usedMusicalLeanings?: boolean };
 }): boolean {
-  const agentic = call.kind === 'djAgentPick';
+  if (call.ok === false) return false;
+  const agentic = call.kind === 'djAgentPick' || call.kind === 'djAgentLeaningsReview';
   const shortlist = call.kind === 'djShortlistPick' || call.kind === 'djShortlistRepick';
   if (!agentic && !shortlist) return false;
-  const resolved = agentic ? call.agentPickResolution : call.shortlistResolution;
+  // Agentic influence is controller-derived after guards and enqueue. Never
+  // resurrect the old self-reported model flag from the raw response.
+  if (agentic) return call.agentPickResolution?.usedMusicalLeanings === true;
+  const resolved = call.shortlistResolution;
   if (resolved?.usedMusicalLeanings !== undefined) return resolved.usedMusicalLeanings;
   try { return JSON.parse(call.response || '{}').usedMusicalLeanings === true; } catch { return false; }
 }
@@ -244,7 +253,7 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 </span>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate text-[12px] font-bold">{c.kind}</span>
-                  {callUsesMusicalLeanings(c) && <span className="shrink-0 border border-vermilion/40 bg-vermilion/10 px-1 py-px text-[8px] font-bold tracking-[0.08em] text-vermilion">LEANINGS</span>}
+                  {callUsesMusicalLeanings(c) && <span title="Musical Leanings changed the preliminary choice, and that replacement reached the queue" className="shrink-0 border border-vermilion/40 bg-vermilion/10 px-1 py-px text-[8px] font-bold tracking-[0.08em] text-vermilion">LEANINGS</span>}
                 </span>
                 <span className="caption text-[10px] whitespace-nowrap">
                   {c.toolCalls?.length ? `🔧 ${c.toolCalls.length}` : ''}
@@ -303,6 +312,14 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 {c.response && (
                   <CallSection label="response" preview={oneLine(c.response)}>
                     <JsonOrText text={c.response} />
+                  </CallSection>
+                )}
+                {c.agentPickResolution && (
+                  <CallSection
+                    label="verified selection"
+                    preview={oneLine(c.agentPickResolution.final || c.agentPickResolution)}
+                  >
+                    <JsonBlock value={c.agentPickResolution} />
                   </CallSection>
                 )}
               </div>

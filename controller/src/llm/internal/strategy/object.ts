@@ -60,6 +60,10 @@ export async function djObject({
   maxOutputTokens = resolveMaxOutputTokens(MAX_TOKENS_OBJECT),
   kind = 'sdk.djObject',
   leg = undefined,
+  // Mutable controller-owned resolution objects may be supplied here. The
+  // ring keeps their references, allowing a caller to settle a diagnostic
+  // after downstream guards/enqueue without trusting the model's response.
+  telemetry = {},
   // Optional caller-supplied abort signal. No live caller wraps djObject in
   // withDeadline today, so this is inert unless one starts to — kept in the
   // shape as a precaution so a future deadline-wrapped call can cut the
@@ -69,7 +73,7 @@ export async function djObject({
 }: any): Promise<any> {
   return withFailover(
     kind,
-    (err) => ({ user: prompt, ...failureDiagnostics(err) }),
+    (err) => ({ user: prompt, ...failureDiagnostics(err), ...telemetry }),
     async (l) => {
       let lastErr;
       // Track the strategy actually attempted so a failure record attributes to
@@ -155,7 +159,7 @@ export async function djObject({
             // the ring buffer holds only 120 entries so size isn't a concern.
             // (A .slice(0, 500) here used to cut pick reasons mid-sentence in
             // /admin/debug; the durable events.jsonl still caps via cap().)
-            extra: { system, user: prompt, response: JSON.stringify(object) },
+            extra: { system, user: prompt, response: JSON.stringify(object), ...telemetry },
           };
         } catch (err) {
           lastErr = err;
