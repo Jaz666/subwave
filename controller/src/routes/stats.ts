@@ -11,6 +11,7 @@ import { queue } from '../broadcast/queue.js';
 import { recentRequests } from '../broadcast/request-log.js';
 import { budgetStatus } from '../broadcast/dj-budget.js';
 import { PICKER_TOOLS } from '../llm/internal/tools/picker/index.js';
+import { agenticPickerContextWindow, contextWindowByKind, shortlistContextWindow } from '../llm/context-window.js';
 
 export const router = express.Router();
 
@@ -24,6 +25,11 @@ router.get('/stats', requireAdmin, async (req, res) => {
     llm.agentTimeoutMs = settings.get().llm?.agentTimeoutMs ?? 45000;
     // Durable per-UTC-day tally, unlike the rings above. enabled:false with no cap.
     llm.budget = budgetStatus();
+    llm.contextWindows = {
+      shortlist: shortlistContextWindow(recentCalls),
+      agenticPicker: agenticPickerContextWindow(recentCalls),
+      byKind: contextWindowByKind(recentCalls),
+    };
 
     // Resolve this at request time so the diagnostic list reflects skill
     // rescans without making the Stats route a controller startup-cycle edge.
