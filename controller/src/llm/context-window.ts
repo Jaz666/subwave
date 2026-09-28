@@ -2,7 +2,7 @@
 // ring. Providers that do not report input usage are shown as unsampled rather
 // than estimated: a made-up token figure is worse than an incomplete table.
 
-const SHORTLIST_PICK_KINDS = new Set(['djShortlistPick', 'djShortlistRepick']);
+const SHORTLIST_PICK_KINDS = new Set(['djShortlistPick', 'djShortlistRepick', 'djShortlistLeaningsReview']);
 const AGENTIC_PICK_KINDS = new Set(['djAgentPick']);
 export const CONTEXT_WINDOW_STEP = 1024;
 export const CONTEXT_WINDOW_MIN = 8192;
