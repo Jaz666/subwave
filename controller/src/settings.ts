@@ -956,9 +956,11 @@ export async function load() {
       // llama.cpp fell back to its own 1.0 default with nothing in the logs.
       repeatPenalty: clampRepeatPenalty(stored.llm?.repeatPenalty, DEFAULTS.llm.repeatPenalty),
       pickerAgent:
-        typeof stored.llm?.pickerAgent === 'boolean'
-          ? stored.llm.pickerAgent
-          : DEFAULTS.llm.pickerAgent,
+        stored.llm?.trackSelection !== undefined
+          ? stored.llm.trackSelection !== 'shortlist'
+          : typeof stored.llm?.pickerAgent === 'boolean'
+            ? stored.llm.pickerAgent
+            : DEFAULTS.llm.pickerAgent,
       trackSelection:
         stored.llm?.trackSelection === 'shortlist'
           ? 'shortlist'
@@ -971,7 +973,9 @@ export async function load() {
             : DEFAULTS.llm.trackSelection,
       shortlistPasses: clampShortlistPasses(stored.llm?.shortlistPasses, DEFAULTS.llm.shortlistPasses),
       requestMatching:
-        stored.llm?.requestMatching === 'direct' ? 'direct' : DEFAULTS.llm.requestMatching,
+        stored.llm?.requestMatching === 'direct' || (stored.llm?.requestMatching === undefined && stored.llm?.pickerAgent === false)
+          ? 'direct'
+          : DEFAULTS.llm.requestMatching,
       segmentRuntime:
         stored.llm?.segmentRuntime === 'direct' || (stored.llm?.segmentRuntime === undefined && stored.llm?.pickerAgent === false)
           ? 'direct'
@@ -1954,6 +1958,7 @@ export async function update(patch) {
     }
     if (l.trackSelection !== undefined) {
       next.llm.trackSelection = l.trackSelection === 'shortlist' ? 'shortlist' : 'agentic';
+      next.llm.pickerAgent = next.llm.trackSelection === 'agentic';
     }
     if (l.shortlistPasses !== undefined) {
       next.llm.shortlistPasses = clampShortlistPasses(Number(l.shortlistPasses), next.llm.shortlistPasses);

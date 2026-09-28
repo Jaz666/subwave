@@ -28,35 +28,17 @@ test('makes a redacted, replayable trace with source arguments and candidate ids
   assert.equal('title' in trace.sourceCalls[0], false);
 });
 
-test('cycles context, continuity, and exploration source lanes without adding sources', () => {
+test('balances context, continuity and diversity lanes without inventing intent-driven sources', () => {
   const journey = planShortlistSources({
     scope: pickerScope({ audioWaypoint: [0.1] }),
     currentTrackId: 'seed', discoveryPasses: 3,
     moods: ['celebratory'], energies: ['high'],
   }, new Set(['tracksTowardJourney', 'tracksByMood', 'tracksThatSoundLikeThis', 'tracksLikeThis']));
   assert.deepEqual(journey, [
-    { source: 'tracksByMood', args: { mood: 'celebratory', energy: 'high' } },
-    { source: 'tracksThatSoundLikeThis', args: { songId: 'seed' } },
-    { source: 'tracksTowardJourney', args: {} },
+    { source: 'tracksTowardJourney', args: {}, family: 'context' },
+    { source: 'tracksThatSoundLikeThis', args: { songId: 'seed' }, family: 'continuity' },
+    { source: 'tracksByMood', args: { mood: 'celebratory', energy: 'high' }, family: 'context' },
   ]);
-
-  const rotating = planShortlistSources({
-    scope: pickerScope({ audioWaypoint: [0.1] }),
-    currentTrackId: 'seed', discoveryPasses: 5,
-    moods: ['celebratory'], energies: ['high'],
-  }, new Set([
-    'tracksTowardJourney', 'tracksByMood',
-    'tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs',
-    'deepCuts', 'recentlyAdded', 'starredSongs', 'randomSongs',
-  ]));
-  assert.equal(rotating.length, 5);
-  assert.ok(['tracksTowardJourney', 'tracksByMood'].includes(rotating[0].source));
-  assert.ok(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs'].includes(rotating[1].source));
-  assert.ok(['deepCuts', 'recentlyAdded', 'starredSongs', 'randomSongs'].includes(rotating[2].source));
-  assert.ok(['tracksTowardJourney', 'tracksByMood'].includes(rotating[3].source));
-  assert.ok(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs'].includes(rotating[4].source));
-  assert.notEqual(rotating[0].source, rotating[3].source);
-  assert.notEqual(rotating[1].source, rotating[4].source);
 
   const strictPlaylist = planShortlistSources({
     scope: pickerScope({ playlistTracks: [{ id: 'in-show' }], playlistLock: new Set(['in-show']) }),
@@ -64,7 +46,7 @@ test('cycles context, continuity, and exploration source lanes without adding so
     moods: ['reflective'], energies: ['low'], explore: true,
   }, new Set(['showPlaylistTracks', 'tracksByMood', 'deepCuts']));
   assert.deepEqual(strictPlaylist.map((call) => call.source), [
-    'showPlaylistTracks', 'deepCuts', 'deepCuts', 'showPlaylistTracks', 'deepCuts',
+    'showPlaylistTracks', 'tracksByMood', 'showPlaylistTracks', 'tracksByMood', 'showPlaylistTracks',
   ]);
 
   const empty = planShortlistSources({
@@ -72,22 +54,32 @@ test('cycles context, continuity, and exploration source lanes without adding so
     moods: ['calm'], energies: ['low'],
   }, new Set(['tracksByMood']));
   assert.deepEqual(empty, [
-    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' } },
-    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' } },
-    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' } },
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' }, family: 'context' },
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' }, family: 'context' },
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' }, family: 'context' },
   ]);
+
+  const balanced = planShortlistSources({
+    scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 3,
+    moods: ['calm'], energies: ['low'], genres: ['ambient'], explore: true,
+  }, new Set([
+    'tracksByMood', 'songsByGenre', 'tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs',
+    'deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs',
+  ]));
+  assert.deepEqual(balanced.map((call) => call.family), ['context', 'continuity', 'diversity']);
+  assert.equal(balanced[2].source, 'deepCuts');
+  assert.ok(!balanced.some((call) => ['searchLibrary', 'identifyRequestedTrack'].includes(call.source)));
 });
 
 test('native builder plans from source-owned availability before execution', async () => {
   // A no-index scope still keeps its usable mood source and an available
   // exploration source, without logging unavailable similarity probes.
   const result = await buildShortlist({
-    scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 3,
+    scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 1,
     moods: ['calm'], energies: ['low'],
   });
   assert.ok(result.sourceRuns.length > 0);
-  assert.ok(result.sourceRuns.some((run) => run.source === 'tracksByMood'));
-  assert.ok(result.sourceRuns.every((run) => run.status !== 'unavailable'));
+  assert.ok(result.sourceRuns.every((run) => run.source === 'tracksByMood'));
 });
 
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
@@ -220,9 +212,9 @@ test('replays a source plan, keeping the picker accumulator as the source of tru
   };
 
   const result = await executeShortlistPlan(tools, seen, [
-    { source: 'energy', args: { energy: 'high' } },
-    { source: 'duplicate', args: {} },
-    { source: 'unavailable', args: {} },
+    { source: 'energy', args: { energy: 'high' }, family: 'context' },
+    { source: 'duplicate', args: {}, family: 'continuity' },
+    { source: 'unavailable', args: {}, family: 'diversity' },
   ]);
 
   assert.equal(result.uniqueCandidates, 2);
@@ -248,8 +240,8 @@ test('records invalid input and source errors without abandoning later sources',
   };
 
   const result = await executeShortlistPlan(tools, seen, [
-    { source: 'invalid', args: {} },
-    { source: 'failed', args: {} },
+    { source: 'invalid', args: {}, family: 'context' },
+    { source: 'failed', args: {}, family: 'diversity' },
   ]);
 
   assert.deepEqual(result.sourceRuns.map((run) => [run.status, run.error]), [
