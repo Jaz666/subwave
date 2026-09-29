@@ -451,12 +451,16 @@ export async function generateLink(args: any) {
     });
   }
   let extendedSleeveNote: ReturnType<typeof selectExtendedSleeveNote> = null;
+  const extendedSleeveNotesEnabled = settings.get().djBehaviour.extendedSleeveNotes === true;
+  const currentTrackId = String(args.current?.id ?? '').trim();
   try {
     extendedSleeveNote = selectExtendedSleeveNote(args.current);
-  } catch {
+  } catch (error) {
     // Sleeve Notes are opportunistic context: a local-store error must never
     // prevent or delay the ordinary track link.
+    console.warn(`[sleeve-notes] generateLink selection failed (enabled=${extendedSleeveNotesEnabled}, trackId=${currentTrackId || 'missing'}): ${error instanceof Error ? error.message : String(error)}`);
   }
+  console.info(`[sleeve-notes] generateLink selection ${extendedSleeveNote ? `selected claim=${extendedSleeveNote.claimId}` : 'miss'} (enabled=${extendedSleeveNotesEnabled}, trackId=${currentTrackId || 'missing'})`);
   const script = await djText({
     system: djSystem(speaker),
     prompt: linkPrompt({ ...args, persona: speaker, extendedSleeveNote }),
@@ -469,8 +473,9 @@ export async function generateLink(args: any) {
   if (extendedSleeveNote && script.trim()) {
     try {
       recordExtendedSleeveNoteSupplied(extendedSleeveNote, script);
-    } catch {
+    } catch (error) {
       // Repetition bookkeeping must not turn a successful link into a failure.
+      console.warn(`[sleeve-notes] generateLink use record failed (claimId=${extendedSleeveNote.claimId}, trackId=${currentTrackId || 'missing'}): ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   return script;
