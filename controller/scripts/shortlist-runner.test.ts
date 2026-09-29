@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
+import { buildPickerContext } from '../src/llm/internal/tools/picker/scope.js';
+import { cacheSourcePool } from '../src/llm/internal/tools/picker/source-pool-cache.js';
 import { shortlistCandidateForPick, shortlistClauseSelectionReason, shortlistLeaningsSource, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
@@ -250,6 +252,55 @@ test('replays a source plan, keeping the picker accumulator as the source of tru
     ['duplicate', 'ok', 1, 0],
     ['unavailable', 'unavailable', 0, 0],
   ]);
+});
+
+test('repeated mood passes reuse one library pool but still surface new candidates', async () => {
+  const ctx = buildPickerContext(pickerScope());
+  const pool = Array.from({ length: 5 }, (_, index) => ({
+    id: `mood-${index}`, title: `Song ${index}`, artist: `Artist ${index}`,
+    moods: ['calm'], energy: 'low',
+  }));
+  let reads = 0;
+  const moodPool = cacheSourcePool((mood: string) => {
+    reads++;
+    assert.equal(mood, 'calm');
+    return pool;
+  });
+  const tools = {
+    tracksByMood: {
+      inputSchema: { safeParse: (value: unknown) => ({ success: true, data: value }) },
+      execute: async ({ mood, energy }: { mood: string; energy: string | null }) =>
+        ctx.collect(moodPool(mood).filter((track) => !energy || track.energy === energy), 2),
+    },
+  };
+
+  const result = await executeShortlistPlan(tools, ctx.seen, [
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' }, family: 'context' },
+    { source: 'tracksByMood', args: { mood: 'calm', energy: 'low' }, family: 'context' },
+  ]);
+
+  assert.equal(reads, 1, 'the expensive source query runs only once for this pick');
+  assert.deepEqual(result.sourceRuns.map((run) => run.accepted), [2, 2]);
+  assert.equal(result.uniqueCandidates, 4, 'the second pass still broadens the shortlist');
+  assert.equal(new Set(result.candidates.map((candidate) => candidate.id)).size, 4);
+});
+
+test('source-pool cache is keyed, retains empty results and retries failures', () => {
+  let reads = 0;
+  const pool = cacheSourcePool((key: string) => {
+    reads++;
+    if (key === 'broken') throw new Error('temporary read failure');
+    return key === 'empty' ? [] : [key];
+  });
+
+  assert.deepEqual(pool('empty'), []);
+  assert.deepEqual(pool('empty'), []);
+  assert.deepEqual(pool('low'), ['low']);
+  assert.deepEqual(pool('low'), ['low']);
+  assert.deepEqual(pool('high'), ['high']);
+  assert.throws(() => pool('broken'), /temporary read failure/);
+  assert.throws(() => pool('broken'), /temporary read failure/);
+  assert.equal(reads, 5);
 });
 
 test('records invalid input and source errors without abandoning later sources', async () => {
