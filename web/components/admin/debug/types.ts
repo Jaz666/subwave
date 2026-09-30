@@ -97,6 +97,15 @@ interface LlmCall {
   systemPreview?: string;
   messages?: Array<{ role?: string; content?: unknown }>;
   toolCalls?: Array<{ name?: string; args?: unknown; result?: unknown }>;
+  extendedSleeveNote?: {
+    status?: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown';
+    claimId?: string | null;
+    entityType?: 'artist' | 'recording' | 'release' | 'release-group' | null;
+    category?: string | null;
+    topic?: string | null;
+    candidateCount?: number;
+    detection?: string | null;
+  };
   response?: string;
   /** What the model said INSTEAD of the expected structured output on a failed call.
    * From the controller's failureDiagnostics(); absent on success (see `response`). */
@@ -116,6 +125,35 @@ export interface DebugLlm {
     file?: string;
     max?: number;
   };
+}
+
+interface SleeveNotesCall {
+  t?: string;
+  endpoint?: 'search' | 'song';
+  title?: string;
+  artist?: string | null;
+  ok?: boolean;
+  status?: number | null;
+  ms?: number;
+  error?: string;
+}
+
+interface SleeveNotesJob {
+  provider?: string;
+  subjectType?: string;
+  capability?: string;
+  state?: string;
+  priority?: number;
+  attempts?: number;
+  runAfter?: string | null;
+  updatedAt?: string;
+}
+
+export interface DebugSleeveNotes {
+  recentCalls?: SleeveNotesCall[];
+  active?: boolean;
+  jobs?: SleeveNotesJob[];
+  error?: string;
 }
 
 interface SubsonicEndpoint {
@@ -210,10 +248,9 @@ export interface DebugData {
   context?: DebugContext | null;
   tts?: DebugTts;
   subsonic?: DebugSubsonic;
+  sleeveNotes?: DebugSleeveNotes;
   session?: DebugSession;
   config?: Record<string, unknown>;
   mounts?: DebugMounts;
   error?: string;
 }
-
-

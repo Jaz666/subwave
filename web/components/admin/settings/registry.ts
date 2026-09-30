@@ -67,8 +67,8 @@ export const SECTIONS = [
   // frame the service-specific configuration which follows.
   {
     id: 'behaviour', group: 'the dj', label: 'DJ behaviour',
-    hint: 'talk placement · prompt memory', icon: MessageCircle,
-    formKeys: ['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour'],
+    hint: 'speech · segments · handovers', icon: MessageCircle,
+    formKeys: ['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes'],
   },
   {
     // One-field setup for the hosted DJ Brain: writes both `llm` and

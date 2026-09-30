@@ -860,6 +860,7 @@ export const djBehaviourPatchSchema = settingsBlockOf({
   showWelcome: z.boolean({ error: 'djBehaviour.showWelcome must be a boolean' }),
   sameHostAcknowledgement: z.boolean({ error: 'djBehaviour.sameHostAcknowledgement must be a boolean' }),
   extendedSleeveNotes: z.boolean({ error: 'djBehaviour.extendedSleeveNotes must be a boolean' }),
+  sleeveNotesMaintenanceWhenEmpty: z.boolean({ error: 'djBehaviour.sleeveNotesMaintenanceWhenEmpty must be a boolean' }),
   releaseYearMentions: z.enum(['regular', 'occasional', 'rare'], {
     error: 'djBehaviour.releaseYearMentions must be regular, occasional or rare',
   }),
@@ -875,6 +876,14 @@ export const djBehaviourPatchSchema = settingsBlockOf({
     DJ_RECAP_CHARS_BOUNDS,
     'djBehaviour.recapChars must be a whole number between 40 and 1000',
   ),
+});
+
+export const sleeveNotesPatchSchema = settingsBlockOf({
+  providers: settingsBlockOf({
+    genius: settingsBlockOf({
+      enabled: z.boolean({ error: 'sleeveNotes.providers.genius.enabled must be a boolean' }),
+    }),
+  }),
 });
 
 /**
