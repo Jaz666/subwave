@@ -97,6 +97,15 @@ interface LlmCall {
   systemPreview?: string;
   messages?: Array<{ role?: string; content?: unknown }>;
   toolCalls?: Array<{ name?: string; args?: unknown; result?: unknown }>;
+  extendedSleeveNote?: {
+    status?: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown';
+    claimId?: string | null;
+    entityType?: 'artist' | 'recording' | 'release' | 'release-group' | null;
+    category?: string | null;
+    topic?: string | null;
+    candidateCount?: number;
+    detection?: string | null;
+  };
   response?: string;
   /** What the model said INSTEAD of the expected structured output on a failed call.
    * From the controller's failureDiagnostics(); absent on success (see `response`). */

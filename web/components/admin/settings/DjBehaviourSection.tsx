@@ -49,9 +49,6 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         recapChars: Number(form.djBehaviour.recapChars),
       },
       sleeveNotes: form.sleeveNotes,
-      llm: {
-        segmentRuntime: form.llm.segmentRuntime,
-      },
     });
   };
 
@@ -306,7 +303,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes', 'llm.segmentRuntime']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes']}
       />
     </>
   );

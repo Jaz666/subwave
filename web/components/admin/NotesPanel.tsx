@@ -62,10 +62,10 @@ export default function NotesPanel() {
     setRequeueing(true);
     setRequeueMessage('');
     try {
-      const result = await adminJson<{ artistsWithCachedSources: number; jobsQueued: number }>(
+      const result = await adminJson<{ artistsWithCachedSources: number; releaseGroupsWithCachedSources: number; jobsQueued: number }>(
         adminFetch, '/sleeve-notes/requeue-wikipedia-research', { method: 'POST' },
       );
-      setRequeueMessage(`Queued ${result.jobsQueued} research jobs from cached Wikipedia sources for ${result.artistsWithCachedSources} artists. Existing claims and source data were preserved.`);
+      setRequeueMessage(`Queued ${result.jobsQueued} research jobs from cached Wikipedia sources for ${result.artistsWithCachedSources} artists and ${result.releaseGroupsWithCachedSources} albums. Existing claims and source data were preserved.`);
       await Promise.all([readout.refetch(), status.refetch()]);
     } catch (error) {
       setRequeueMessage(error instanceof Error ? error.message : 'Could not requeue cached Wikipedia research.');
@@ -129,7 +129,7 @@ export default function NotesPanel() {
                 <td className="py-2 pr-4 font-medium">{request.provider}</td><td className="py-2 pr-4">{request.capability}</td><td className="py-2 pr-4">{request.outcome}</td><td className="py-2 pr-4">{request.status ?? '—'}</td><td className="py-2 pr-4 tabular-nums">{request.requests}</td><td className="py-2">{clock(request.lastRequestedAt)}</td>
               </tr>)}
             </ReadoutTable>
-            <ReadoutTable title="Latest retained claims" empty="No claims retained yet." headings={['Artist', 'Category', 'Claim', 'Evidence']}>
+            <ReadoutTable title="Latest retained claims" empty="No claims retained yet." headings={['Artist / track / album', 'Category', 'Claim', 'Evidence']}>
               {data.claims.slice(0, 16).map((claim, index) => <tr key={`${claim.artist}-${claim.topic}-${index}`} className="border-t border-border/60 align-top">
                 <td className="py-2 pr-4 font-medium">{claim.recording ? `${claim.recording}${claim.artist ? ` · ${claim.artist}` : ''}` : claim.artist ?? 'Unknown entity'}<span className="block text-[10px] text-muted">{claim.provider}</span></td><td className="py-2 pr-4">{claim.category}<span className="block text-[10px] text-muted">{claim.topic}</span></td><td className="py-2 pr-4">{claim.wording}</td><td className="py-2"><a href={claim.sourceUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{claim.evidence}</a></td>
               </tr>)}

@@ -1,26 +1,40 @@
 import * as settings from '../settings.js';
 import { LlmResearcher } from './llm-researcher.js';
 import type { Researcher, ResearchOutcomeObserver } from './researcher.js';
-import { MAX_CANDIDATES_PER_ARTIST_RESEARCH, SLEEVE_NOTE_CATEGORIES, validateResearchCandidates } from './researcher.js';
+import {
+  MAX_CANDIDATES_PER_ARTIST_RESEARCH,
+  RELEASE_GROUP_NOTE_CATEGORIES,
+  SLEEVE_NOTE_CATEGORIES,
+  validateResearchCandidates,
+} from './researcher.js';
 import * as repository from './research-repository.js';
 import type { QuietGate } from './musicbrainz-worker.js';
 
 const MAX_SOURCE_CHARS = 6_000;
 
-/** Controller-owned final gate from stored evidence to retained artist claims. */
+/** Controller-owned final gate from stored evidence to retained research claims. */
 export class ResearchWorker {
   private running = false;
   constructor(private readonly quietGate: QuietGate, private readonly researcher: Researcher = new LlmResearcher()) {}
 
   async runOnce(): Promise<boolean> {
     if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
-    const queued = repository.nextPendingResearchJob('researcher', { subjectType: 'artist', capability: 'extract-wikipedia' });
+    const releaseGroupJob = repository.nextPendingResearchJob('researcher', {
+      subjectType: 'release', capability: 'extract-wikipedia-release-group',
+    });
+    const artistJob = releaseGroupJob ? null : repository.nextPendingResearchJob('researcher', {
+      subjectType: 'artist', capability: 'extract-wikipedia',
+    });
+    const queued = releaseGroupJob ?? artistJob;
     if (!queued) return false;
-    const source = repository.latestSourceDocumentForResearch('artist', queued.subjectId, 'wikipedia');
+    const entityType = releaseGroupJob ? 'release-group' : 'artist';
+    const source = repository.latestSourceDocumentForResearch(entityType, queued.subjectId, 'wikipedia');
     if (!source) { repository.finishResearchJob(queued.id, 'failed'); return true; }
     this.running = true;
     try {
-      console.log('[sleeve-notes] Researching Wikipedia biography');
+      console.log(releaseGroupJob
+        ? `[sleeve-notes] Researching Wikipedia release group ${queued.subjectId}`
+        : '[sleeve-notes] Researching Wikipedia biography');
       repository.markResearchJobRunning(queued.id);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 45_000);
@@ -28,14 +42,14 @@ export class ResearchWorker {
         const job = {
           id: queued.id,
           document: { ...source, text: source.content.slice(0, MAX_SOURCE_CHARS) },
-          categories: SLEEVE_NOTE_CATEGORIES,
+          categories: releaseGroupJob ? RELEASE_GROUP_NOTE_CATEGORIES : SLEEVE_NOTE_CATEGORIES,
           maxCandidates: MAX_CANDIDATES_PER_ARTIST_RESEARCH,
         };
         const candidates = await this.researcher.extract(job, controller.signal);
         const validated = validateResearchCandidates(job, candidates);
         (this.researcher as Partial<ResearchOutcomeObserver>).recordOutcome?.(job, validated);
         repository.retainResearchClaims({
-          entityType: 'artist', entityId: source.entityId, sourceDocumentId: source.id,
+          entityType, entityId: source.entityId, sourceDocumentId: source.id,
           candidates: validated.accepted,
         });
         repository.finishResearchJob(queued.id, 'complete');

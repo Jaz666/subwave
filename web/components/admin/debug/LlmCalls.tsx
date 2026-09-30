@@ -18,6 +18,42 @@ import { CallSection, FilterChip, JsonBlock, JsonOrText } from './bits';
 import { mapChatRole } from './TtsPanels';
 import { debugKeys } from './queries';
 
+function extendedSleeveNoteBadge(call: {
+  kind?: string;
+  extendedSleeveNote?: {
+    status?: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown';
+    category?: string | null;
+    entityType?: string | null;
+    topic?: string | null;
+    candidateCount?: number;
+  };
+}): { label: string; title: string; colorClass: string } | null {
+  const note = call.extendedSleeveNote;
+  if (call.kind !== 'generateLink' || !note) return null;
+  const status = note.status;
+  if (!status) return null;
+  const classByStatus: Record<NonNullable<typeof note.status>, string> = {
+    unavailable: 'text-[var(--muted-2)] border-[color-mix(in_srgb,var(--muted-2)_40%,transparent)] bg-[color-mix(in_srgb,var(--muted-2)_10%,transparent)]',
+    available: 'text-muted border-muted/40 bg-muted/10',
+    offered: 'text-accent-2 border-accent-2/40 bg-accent-2/10',
+    chosen: 'text-vermilion border-vermilion/40 bg-vermilion/10',
+    cooldown: 'text-[var(--danger)] border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]',
+  };
+  const colorClass = classByStatus[status];
+  const detail = [note.entityType, note.category, note.topic].filter(Boolean).join(' · ');
+  const title = status === 'unavailable'
+    ? 'No eligible Extended Sleeve Note was available from the matched recording, canonical release group, or an unambiguous exact artist match.'
+    : status === 'available'
+      ? `An eligible Extended Sleeve Note was found${detail ? `: ${detail}` : ''}.`
+      : status === 'offered'
+        ? `The note was sent to the model, with no high-confidence wording match${detail ? `: ${detail}` : ''}. Paraphrases may not be recognized.`
+        : status === 'chosen'
+          ? `The generated link has a high-confidence wording match for the note${detail ? `: ${detail}` : ''}.`
+          : `${note.candidateCount ?? 'Matching'} eligible claim(s) were blocked by repetition cooldown.`;
+  const label = status === 'cooldown' ? 'COOLDOWN' : status === 'unavailable' ? 'NO DATA' : status.toUpperCase();
+  return { label, title, colorClass };
+}
+
 function MessageList({ messages }: { messages: Array<{ role?: string; content?: unknown }> }) {
   return (
     // Short exchanges size to content; agent runs (~40 turns) get a bounded,
@@ -228,7 +264,23 @@ export function LlmCalls({ llm }: { llm: DebugLlm | undefined }) {
                 <span className={cn('font-bold', c.ok ? 'text-vermilion' : 'text-[var(--danger)]')}>
                   {c.ok ? '✓' : '✗'}
                 </span>
-                <span className="truncate text-[12px] font-bold">{c.kind}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[12px] font-bold">{c.kind}</span>
+                  {(() => {
+                    const badge = extendedSleeveNoteBadge(c);
+                    return badge ? (
+                      <span
+                        className={cn(
+                          'shrink-0 border px-1 py-px text-[8px] font-bold tracking-[0.08em]',
+                          badge.colorClass,
+                        )}
+                        title={badge.title}
+                      >
+                        {badge.label}
+                      </span>
+                    ) : null;
+                  })()}
+                </span>
                 <span className="caption text-[10px] whitespace-nowrap">
                   {c.toolCalls?.length ? `🔧 ${c.toolCalls.length}` : ''}
                   {c.steps != null ? `${c.toolCalls?.length ? ' · ' : ''}${c.steps} steps` : ''}

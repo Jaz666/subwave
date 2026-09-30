@@ -2,20 +2,27 @@
 
 ## Status
 
-This is the agreed replacement handoff for `feat/extended-sleeve-notes`, dated
-2026-09-14. It supersedes the branch's earlier track-first, Genius-first
-delivery plan.
+Updated 2026-09-30 for the current `feat/extended-sleeve-notes` implementation.
+This document remains the product and architecture contract; the earlier
+track-first, Genius-first plan and the collection-only milestone are retired.
 
-The existing sidecar database, Notes route, collection worker, Genius adapter,
-and operational readout are useful experiments, not the architecture to extend.
-They remain disabled by default and their already-collected data is experimental.
-Before enabling DJ use or adding more collection, rework them around the
-artist-first model in this document.
+The branch now has the canonical artist, recording and release-group store;
+quiet-time MusicBrainz, Wikipedia/Wikidata and controlled Genius research;
+MusicBrainz Series recognition with recording lists collected first; and
+link-time selection that keeps regular Sleeve Notes while offering at most one
+eligible Extended Sleeve Note as optional context. Canonical release-group
+Wikipedia research supports album-level facts. The Notes admin page exposes
+collection state, and `generateLink` recent-call rows show whether a note was
+unavailable, available, offered, chosen or held by cooldown. Only the
+station-wide Extended Sleeve Notes switch is configurable now; per-list and
+user-supplied Series remain future work.
 
-The first replacement migration deliberately clears the experimental
-Genius-only rows once. It creates the canonical store beside the retired
-tables and records local encounters as durable MusicBrainz match jobs; it does
-not yet run provider research or expose notes to a DJ.
+The branch is still under station review. Before it is ready for an upstream
+PR, measure whether synchronous link-time lookups or background research can
+delay other controller jobs, verify that MusicBrainz release-group Series
+membership now retains correctly after the parser/requeue fix, and review the
+accuracy of the `chosen` badge against generated wording. DJ banter and
+user-defined Skill consumers remain later extensions.
 
 ## Product test
 
@@ -539,25 +546,33 @@ both values, the selected release and the evidence, but never silently rewrite
 library tags or change picker behaviour. An operator may later choose to adopt
 a confident canonical result.
 
-## First station test checkpoint
+## Current station test checkpoint
 
-The first live test is collection-only. It requires a controller rebuild and
-restart but must not change the broadcast container or give Sleeve Notes to the
-DJ writer.
+The current test exercises both background collection and optional link-time
+selection. It requires a controller rebuild and restart; the web container also
+needs rebuilding for the recent-call badge.
 
 1. Enable Extended Sleeve Notes and let ordinary queue/play activity create a
-   small set of encounters.
-2. Confirm the Notes readout shows local attachments, canonical MusicBrainz
-   recordings/release appearances, artist source documents and (where the
-   research LLM is available) up to three evidenced artist claims.
-3. Inspect several claims against their stored evidence and source URL,
-   including one compilation-local track whose selected canonical release is
-   different from the local compilation.
-4. Confirm the regular DJ links remain byte-for-byte on the existing Verified
-   Facts path: no Sleeve Note is yet supplied to the link writer.
-5. Disable Extended Sleeve Notes and verify that no new background jobs start
-   or provider calls occur; existing collected material remains inspectable
-   only after the feature is re-enabled.
+   small set of encounters; confirm collection yields to broadcast-critical
+   controller work.
+2. Confirm the Notes readout shows canonical MusicBrainz recordings and
+   release groups, attributed Wikipedia sources, and retained claims at track,
+   album and artist levels where the sources support them.
+3. Confirm the MusicBrainz Series cache has members for the two recording lists
+   and the release-group album lists, including cumulative 1001 Albums
+   recognition. An empty fetched list should be deferred and retried rather
+   than refreshed every minute.
+4. Inspect claims against their evidence and source URLs, including a
+   compilation-local track whose canonical release group differs from its
+   local compilation.
+5. Compare `generateLink` badge states with its selected-note payload and
+   generated wording. In particular, check that `chosen` means a
+   high-confidence wording match, and that cooldown prevents recent repetition.
+6. Verify that the regular Sleeve Notes section remains available when
+   Extended Sleeve Notes is disabled, and that disabled mode makes no
+   Extended-Sleeve-Notes provider calls or background jobs.
+7. Capture timing evidence for link-time lookups and provider/research jobs;
+   this is the upstream-review gate recorded above.
 
 ## Completion checks for first DJ-link release
 

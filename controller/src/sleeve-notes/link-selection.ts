@@ -12,12 +12,13 @@ const RELATIONSHIP_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
 const ENTITY_COOLDOWN_MS = {
   recording: 21 * 24 * 60 * 60 * 1000,
   release: 45 * 24 * 60 * 60 * 1000,
+  'release-group': 45 * 24 * 60 * 60 * 1000,
   artist: 90 * 24 * 60 * 60 * 1000,
 } as const;
 
 export interface ExtendedSleeveNote {
   claimId: string;
-  entityType: 'artist' | 'recording' | 'release';
+  entityType: 'artist' | 'recording' | 'release' | 'release-group';
   entityId: string;
   category: string;
   topic: string;
@@ -43,18 +44,29 @@ export interface SleeveNoteRecentUse {
   suppliedAt: string;
 }
 
+export type ExtendedSleeveNoteAvailability = 'disabled' | 'unavailable' | 'available' | 'cooldown';
+
+export interface ExtendedSleeveNoteInspection {
+  status: ExtendedSleeveNoteAvailability;
+  note: ExtendedSleeveNote | null;
+  candidateCount: number;
+}
+
 const ENTITY_PRIORITY: Record<ExtendedSleeveNote['entityType'], number> = {
   recording: 0,
   release: 1,
+  'release-group': 1,
   artist: 2,
 };
 
 const CATEGORY_PRIORITY: Record<string, number> = {
   'track-stories': 0,
-  'musical-connections': 1,
-  credits: 2,
-  milestones: 3,
-  'artist-stories': 4,
+  'release-stories': 1,
+  'musical-connections': 2,
+  credits: 3,
+  recognition: 4,
+  milestones: 5,
+  'artist-stories': 6,
 };
 
 function relationshipKey(provider: string, sourceContent: string, evidence: string): string | null {
@@ -74,6 +86,7 @@ function relationshipKey(provider: string, sourceContent: string, evidence: stri
 function eligibleProvider(provider: string): boolean {
   if (provider === 'wikipedia') return true;
   if (provider === 'genius') return settings.get().sleeveNotes.providers.genius.enabled === true;
+  if (provider === 'musicbrainz-series') return true;
   return false;
 }
 
@@ -95,7 +108,7 @@ function isNovel(candidate: SleeveNoteSelectionCandidate, uses: readonly SleeveN
   return true;
 }
 
-/** Pure ordering seam: recording first, canonical release second, artist fallback. */
+/** Pure ordering seam: recording first, album/release group second, artist fallback. */
 export function selectMostSpecificEligibleClaim(
   candidates: readonly SleeveNoteSelectionCandidate[],
   uses: readonly SleeveNoteRecentUse[],
@@ -109,15 +122,40 @@ export function selectMostSpecificEligibleClaim(
       || a.claimId.localeCompare(b.claimId))[0] ?? null;
 }
 
-function loadCandidates(db: Database.Database, localTrackId: string): SleeveNoteSelectionCandidate[] {
+function exactMusicBrainzArtistId(db: Database.Database, artistName: unknown): string | null {
+  const name = typeof artistName === 'string' ? artistName.trim() : '';
+  if (!name) return null;
+  // Only a unique exact canonical-name match is safe before the recording has
+  // resolved. Compound credits, aliases and duplicate artist names stay misses.
+  const matches = db.prepare(`SELECT id FROM sleeve_artists
+    WHERE musicbrainz_id IS NOT NULL AND trim(name) = ? COLLATE NOCASE
+    LIMIT 2`).all(name) as Array<{ id: string }>;
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+function loadCandidates(
+  db: Database.Database,
+  localTrackId: string,
+  currentArtist: unknown,
+): SleeveNoteSelectionCandidate[] {
   const matches = db.prepare(`SELECT a.recording_id AS recordingId, r.artist_id AS artistId,
       (SELECT rr.release_id FROM sleeve_recording_releases rr
-        WHERE rr.recording_id = r.id AND rr.is_canonical_home = 1 LIMIT 1) AS releaseId
+        WHERE rr.recording_id = r.id AND rr.is_canonical_home = 1 LIMIT 1) AS releaseId,
+      (SELECT release.musicbrainz_release_group_id
+        FROM sleeve_recording_releases rr
+        JOIN sleeve_releases release ON release.id = rr.release_id
+        WHERE rr.recording_id = r.id AND rr.is_canonical_home = 1 LIMIT 1) AS releaseGroupId
     FROM sleeve_local_attachments a
     JOIN sleeve_recordings r ON r.id = a.recording_id
     WHERE a.local_track_id = ? AND a.match_state = 'matched' AND r.match_state = 'matched'
-    LIMIT 1`).get(localTrackId) as { recordingId: string; artistId: string | null; releaseId: string | null } | undefined;
-  if (!matches) return [];
+    LIMIT 1`).get(localTrackId) as {
+      recordingId: string; artistId: string | null; releaseId: string | null; releaseGroupId: string | null;
+    } | undefined;
+  const recordingId = matches?.recordingId ?? null;
+  const releaseId = matches?.releaseId ?? null;
+  const releaseGroupId = matches?.releaseGroupId ?? null;
+  const artistId = matches?.artistId ?? exactMusicBrainzArtistId(db, currentArtist);
+  if (!recordingId && !artistId) return [];
 
   const rows = db.prepare(`SELECT c.id AS claimId, c.entity_type AS entityType,
       c.entity_id AS entityId, c.category, c.topic, c.wording, c.evidence,
@@ -128,9 +166,10 @@ function loadCandidates(db: Database.Database, localTrackId: string): SleeveNote
       AND length(trim(s.source_url)) > 0
       AND ((c.entity_type = 'recording' AND c.entity_id = ?)
         OR (? IS NOT NULL AND c.entity_type = 'release' AND c.entity_id = ?)
+        OR (? IS NOT NULL AND c.entity_type = 'release-group' AND c.entity_id = ?)
         OR (? IS NOT NULL AND c.entity_type = 'artist' AND c.entity_id = ?))
     ORDER BY c.updated_at DESC`)
-    .all(matches.recordingId, matches.releaseId, matches.releaseId, matches.artistId, matches.artistId) as Array<{
+    .all(recordingId, releaseId, releaseId, releaseGroupId, releaseGroupId, artistId, artistId) as Array<{
       claimId: string; entityType: ExtendedSleeveNote['entityType']; entityId: string;
       category: string; topic: string; wording: string; evidence: string;
       provider: string; attribution: string; sourceUrl: string; sourceContent: string;
@@ -159,14 +198,16 @@ function loadCandidates(db: Database.Database, localTrackId: string): SleeveNote
   return [...byClaim.values()];
 }
 
-/** Synchronous local lookup; returns null when the feature is off or unmatched. */
-export function selectExtendedSleeveNote(current: { id?: unknown } | null | undefined, nowMs = Date.now()): ExtendedSleeveNote | null {
-  if (settings.get().djBehaviour.extendedSleeveNotes !== true) return null;
+/** Synchronous local lookup with the reason a note is or is not available. */
+export function inspectExtendedSleeveNote(current: { id?: unknown; artist?: unknown } | null | undefined, nowMs = Date.now()): ExtendedSleeveNoteInspection {
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) {
+    return { status: 'disabled', note: null, candidateCount: 0 };
+  }
   const localTrackId = String(current?.id ?? '').trim();
-  if (!localTrackId) return null;
+  if (!localTrackId) return { status: 'unavailable', note: null, candidateCount: 0 };
   const db = open();
-  const candidates = loadCandidates(db, localTrackId);
-  if (!candidates.length) return null;
+  const candidates = loadCandidates(db, localTrackId, current?.artist);
+  if (!candidates.length) return { status: 'unavailable', note: null, candidateCount: 0 };
   const latestUses = db.prepare(`SELECT claim_id AS claimId, entity_type AS entityType,
       entity_id AS entityId, topic, relationship_key AS relationshipKey, supplied_at AS suppliedAt
     FROM sleeve_claim_uses
@@ -174,9 +215,14 @@ export function selectExtendedSleeveNote(current: { id?: unknown } | null | unde
     ORDER BY supplied_at DESC LIMIT 500`)
     .all(new Date(nowMs - 180 * 24 * 60 * 60 * 1000).toISOString()) as SleeveNoteRecentUse[];
   const selected = selectMostSpecificEligibleClaim(candidates, latestUses, nowMs);
-  if (!selected) return null;
+  if (!selected) return { status: 'cooldown', note: null, candidateCount: candidates.length };
   const { sourceContent: _sourceContent, evidence: _evidence, ...publicNote } = selected;
-  return publicNote;
+  return { status: 'available', note: publicNote, candidateCount: candidates.length };
+}
+
+/** Synchronous local lookup; returns null when the feature is off or unmatched. */
+export function selectExtendedSleeveNote(current: { id?: unknown; artist?: unknown } | null | undefined, nowMs = Date.now()): ExtendedSleeveNote | null {
+  return inspectExtendedSleeveNote(current, nowMs).note;
 }
 
 /** Record the claim and rendered line supplied to the model for repetition control. */

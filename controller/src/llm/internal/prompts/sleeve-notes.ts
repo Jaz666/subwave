@@ -4,6 +4,7 @@
 
 import { trackEraYear } from '../../../music/show-filter.js';
 import { unairedFlag, type AiredIndex } from '../../../music/airing.js';
+import { canonicalReleaseForLocalTrack } from '../../../sleeve-notes/research-repository.js';
 
 export const RELEASE_YEAR_MENTION_FREQUENCIES = ['regular', 'occasional', 'rare'] as const;
 export type ReleaseYearMentionFrequency = (typeof RELEASE_YEAR_MENTION_FREQUENCIES)[number];
@@ -15,12 +16,23 @@ function text(value: unknown, max = 180): string {
 /** Facts derived from controller/library state, safe to hand to the DJ as facts. */
 export function sleeveNotesFor(track: any, playCount: number | null = null): string[] {
   const notes: string[] = [];
-  const album = text(track?.album);
+  let canonicalRelease: ReturnType<typeof canonicalReleaseForLocalTrack> = null;
+  try {
+    const localTrackId = String(track?.id ?? '').trim();
+    if (localTrackId) canonicalRelease = canonicalReleaseForLocalTrack(localTrackId);
+  } catch {
+    // Canonical metadata is an optional enrichment. Keep ordinary library
+    // facts available if its local research store cannot be read.
+  }
+  const album = text(canonicalRelease?.title ?? track?.album);
   const title = text(track?.title);
   if (album && album.toLocaleLowerCase() !== title.toLocaleLowerCase()) {
     notes.push(`Album: ${album}.`);
   }
-  const year = trackEraYear(track);
+  const canonicalYear = canonicalRelease?.date?.match(/^(\d{4})(?:-|$)/)?.[1];
+  const year = canonicalRelease
+    ? (canonicalYear ? Number(canonicalYear) : null)
+    : trackEraYear(track);
   if (year != null && Number.isInteger(year) && year >= 1880 && year <= new Date().getFullYear()) {
     notes.push(`Release year: ${year}.`);
   }

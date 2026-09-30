@@ -2,9 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { open } from './db.js';
-import type { CanonicalMusicBrainzRecording } from '../music/musicbrainz.js';
+import type { CanonicalMusicBrainzRecording, MusicBrainzSeriesSnapshot } from '../music/musicbrainz.js';
 import type { ResearchCandidate } from './researcher.js';
 import type { ProviderRelationship, SleeveProviderResult } from './provider.js';
+import {
+  DEFAULT_MUSICBRAINZ_SERIES,
+  MUSICBRAINZ_SERIES_BY_ID,
+  type DefaultMusicBrainzSeries,
+} from './musicbrainz-series-catalog.js';
 
 export interface LocalEncounterInput {
   localTrackId: string;
@@ -151,6 +156,21 @@ export function canonicalReleaseForResearchInDatabase(db: Database.Database, id:
   return row ?? null;
 }
 
+/** Return the station's selected canonical release for a matched local track. */
+export function canonicalReleaseForLocalTrack(localTrackId: string): { title: string; date: string | null } | null {
+  const id = String(localTrackId ?? '').trim();
+  if (!id) return null;
+  const row = open().prepare(`SELECT release.title, rr.release_date AS date
+    FROM sleeve_local_attachments attachment
+    JOIN sleeve_recordings recording ON recording.id = attachment.recording_id
+    JOIN sleeve_recording_releases rr ON rr.recording_id = recording.id AND rr.is_canonical_home = 1
+    JOIN sleeve_releases release ON release.id = rr.release_id
+    WHERE attachment.local_track_id = ? AND attachment.match_state = 'matched'
+      AND recording.match_state = 'matched'
+    LIMIT 1`).get(id) as { title: string; date: string | null } | undefined;
+  return row ?? null;
+}
+
 export interface RecordingForGenius { id: string; title: string; artist: string | null; }
 
 export function recordingForGenius(id: string): RecordingForGenius | null {
@@ -161,7 +181,7 @@ export function recordingForGenius(id: string): RecordingForGenius | null {
 }
 
 export function retainSourceDocument(input: {
-  entityType: 'artist' | 'recording' | 'release';
+  entityType: 'artist' | 'recording' | 'release' | 'release-group';
   entityId: string;
   provider: string;
   sourceUrl: string;
@@ -170,21 +190,304 @@ export function retainSourceDocument(input: {
   content: string;
   attribution: string;
 }): string {
-  const db = open();
+  return retainSourceDocumentInDatabase(open(), input);
+}
+
+function retainSourceDocumentInDatabase(db: Database.Database, input: {
+  entityType: 'artist' | 'recording' | 'release' | 'release-group';
+  entityId: string;
+  provider: string;
+  sourceUrl: string;
+  revisionId: string | null;
+  contentKind: 'bounded-text' | 'structured-json';
+  content: string;
+  attribution: string;
+}): string {
   const contentHash = createHash('sha256').update(input.content).digest('hex');
   db.prepare(`INSERT INTO sleeve_source_documents (id, entity_type, entity_id, provider,
     source_url, revision_id, content_hash, content_kind, content, attribution, retrieved_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(provider, source_url, revision_id, content_hash) DO UPDATE SET
+    ON CONFLICT(provider, entity_type, entity_id, source_url, revision_id, content_hash) DO UPDATE SET
       retrieved_at = excluded.retrieved_at, attribution = excluded.attribution`)
     .run(randomUUID(), input.entityType, input.entityId, input.provider, input.sourceUrl,
       input.revisionId, contentHash, input.contentKind, input.content, input.attribution,
       new Date().toISOString());
   const row = db.prepare(`SELECT id FROM sleeve_source_documents
-    WHERE provider = ? AND source_url = ? AND revision_id IS ? AND content_hash = ?`)
-    .get(input.provider, input.sourceUrl, input.revisionId, contentHash) as { id: string } | undefined;
+    WHERE provider = ? AND entity_type = ? AND entity_id = ? AND source_url = ?
+      AND revision_id IS ? AND content_hash = ?`)
+    .get(input.provider, input.entityType, input.entityId, input.sourceUrl,
+      input.revisionId, contentHash) as { id: string } | undefined;
   if (!row) throw new Error('Sleeve Notes source document was not retained');
   return row.id;
+}
+
+const MUSICBRAINZ_SERIES_REFRESH_MS = 30 * 24 * 60 * 60 * 1000;
+const MUSICBRAINZ_SERIES_LEASE_MS = 15 * 60 * 1000;
+
+export interface DueMusicBrainzSeries extends DefaultMusicBrainzSeries {
+  attempts: number;
+}
+
+function ensureDefaultMusicBrainzSeriesRows(db: Database.Database, now: Date): void {
+  const insert = db.prepare(`INSERT INTO sleeve_musicbrainz_series (
+    series_mbid, series_name, entity_type, ranked, series_order,
+    edition_group, edition_year, next_refresh_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(series_mbid) DO UPDATE SET
+    series_name = excluded.series_name, entity_type = excluded.entity_type,
+    ranked = excluded.ranked, series_order = excluded.series_order,
+    edition_group = excluded.edition_group, edition_year = excluded.edition_year,
+    updated_at = excluded.updated_at`);
+  for (const series of DEFAULT_MUSICBRAINZ_SERIES) {
+    insert.run(series.id, series.label, series.entityType, series.ranked ? 1 : 0, series.order,
+      series.editionGroup ?? null, series.editionYear ?? null, new Date(0).toISOString(), now.toISOString());
+  }
+}
+
+/** Reserve one due allowlisted Series refresh; the short lease survives a process restart. */
+export function reserveDueMusicBrainzSeries(now = new Date()): DueMusicBrainzSeries | null {
+  const db = open();
+  return db.transaction((): DueMusicBrainzSeries | null => {
+    ensureDefaultMusicBrainzSeriesRows(db, now);
+    const row = db.prepare(`SELECT series_mbid AS id, attempts
+      FROM sleeve_musicbrainz_series WHERE next_refresh_at <= ?
+      ORDER BY series_order ASC LIMIT 1`).get(now.toISOString()) as { id: string; attempts: number } | undefined;
+    if (!row) return null;
+    const series = MUSICBRAINZ_SERIES_BY_ID.get(row.id);
+    if (!series) return null;
+    const leaseUntil = new Date(now.getTime() + MUSICBRAINZ_SERIES_LEASE_MS).toISOString();
+    db.prepare(`UPDATE sleeve_musicbrainz_series
+      SET next_refresh_at = ?, attempts = attempts + 1, last_error = NULL, updated_at = ?
+      WHERE series_mbid = ?`).run(leaseUntil, now.toISOString(), row.id);
+    return { ...series, attempts: row.attempts + 1 };
+  }).immediate();
+}
+
+/** Retry a failed Series fetch without blocking other MusicBrainz capabilities. */
+export function deferMusicBrainzSeriesRefresh(id: string, error: string, delayMs: number, now = new Date()): void {
+  const boundedError = error.slice(0, 500);
+  const next = new Date(now.getTime() + Math.max(60_000, delayMs)).toISOString();
+  open().prepare(`UPDATE sleeve_musicbrainz_series
+    SET next_refresh_at = ?, last_error = ?, updated_at = ? WHERE series_mbid = ?`)
+    .run(next, boundedError, now.toISOString(), id);
+}
+
+export interface RetainedMusicBrainzSeriesSnapshot { members: number; claimsEnabled: number; }
+
+/** Replace one cached list snapshot and refresh only already matched local entities. */
+export function retainMusicBrainzSeriesSnapshot(
+  series: DefaultMusicBrainzSeries,
+  snapshot: MusicBrainzSeriesSnapshot,
+  now = new Date(),
+): RetainedMusicBrainzSeriesSnapshot {
+  if (snapshot.id !== series.id) throw new Error('MusicBrainz Series response ID did not match the requested list');
+  const db = open();
+  return db.transaction((): RetainedMusicBrainzSeriesSnapshot => {
+    ensureDefaultMusicBrainzSeriesRows(db, now);
+    const previous = db.prepare(`SELECT entity_mbid AS entityMbid
+      FROM sleeve_musicbrainz_series_members WHERE series_mbid = ?`).all(series.id) as Array<{ entityMbid: string }>;
+    const incoming = new Map(snapshot.members.map((member) => [member.id, member]));
+    const affected = new Set([...previous.map((member) => member.entityMbid), ...incoming.keys()]);
+
+    db.prepare('DELETE FROM sleeve_musicbrainz_series_members WHERE series_mbid = ?').run(series.id);
+    const insertMember = db.prepare(`INSERT INTO sleeve_musicbrainz_series_members
+      (series_mbid, entity_mbid, entity_title, rank_value) VALUES (?, ?, ?, ?)`);
+    for (const member of incoming.values()) {
+      insertMember.run(series.id, member.id, member.title, member.rank);
+    }
+
+    let claimsEnabled = 0;
+    for (const memberId of affected) {
+      if (series.entityType === 'recording') {
+        claimsEnabled += reconcileRecordingRecognitionInDatabase(db, memberId, [series.id]);
+      } else {
+        const familyIds = series.editionGroup === '1001-albums'
+          ? DEFAULT_MUSICBRAINZ_SERIES.filter((item) => item.editionGroup === '1001-albums').map((item) => item.id)
+          : [series.id];
+        claimsEnabled += reconcileReleaseGroupRecognitionInDatabase(db, memberId, familyIds);
+      }
+    }
+
+    const fetchedAt = now.toISOString();
+    const nextRefresh = new Date(now.getTime() + MUSICBRAINZ_SERIES_REFRESH_MS).toISOString();
+    db.prepare(`UPDATE sleeve_musicbrainz_series SET fetched_at = ?, next_refresh_at = ?,
+      attempts = 0, last_error = NULL, updated_at = ? WHERE series_mbid = ?`)
+      .run(fetchedAt, nextRefresh, fetchedAt, series.id);
+    return { members: snapshot.members.length, claimsEnabled };
+  }).immediate();
+}
+
+function seriesSourceUrl(seriesId: string): string {
+  return `https://musicbrainz.org/series/${encodeURIComponent(seriesId)}`;
+}
+
+function disableSeriesClaimsForLocalEntity(
+  db: Database.Database,
+  seriesIds: readonly string[],
+  entityType: 'recording' | 'release',
+  entityId: string,
+): void {
+  if (!seriesIds.length) return;
+  const urls = seriesIds.map(seriesSourceUrl);
+  const placeholders = urls.map(() => '?').join(', ');
+  db.prepare(`UPDATE sleeve_claims SET enabled = 0
+    WHERE entity_type = ? AND entity_id = ? AND category = 'recognition'
+      AND source_document_id IN (
+        SELECT id FROM sleeve_source_documents
+        WHERE provider = 'musicbrainz-series' AND source_url IN (${placeholders})
+      )`).run(entityType, entityId, ...urls);
+}
+
+function recognitionWording(
+  series: DefaultMusicBrainzSeries,
+  title: string,
+  rank: string | null,
+): string {
+  if (series.editionGroup === '1001-albums' && series.editionYear) {
+    const action = series.editionYear === 2005 ? 'was included in' : 'was added to';
+    return `“${title}” ${action} the ${series.editionYear} edition of 1001 Albums You Must Hear Before You Die.`;
+  }
+  if (series.ranked && rank) return `“${title}” was ranked number ${rank} in ${series.label}.`;
+  return `“${title}” was included in ${series.label}.`;
+}
+
+function retainSeriesRecognitionClaim(
+  db: Database.Database,
+  series: DefaultMusicBrainzSeries,
+  entityType: 'recording' | 'release',
+  entityId: string,
+  member: { id: string; title: string; rank: string | null },
+  now: Date,
+): void {
+  const sourceUrl = seriesSourceUrl(series.id);
+  const evidence = JSON.stringify({
+    seriesId: series.id,
+    seriesName: series.label,
+    localEntityId: entityId,
+    memberType: series.entityType,
+    memberId: member.id,
+    memberTitle: member.title,
+    rank: series.ranked ? member.rank : null,
+    editionYear: series.editionYear ?? null,
+  });
+  const sourceDocumentId = retainSourceDocumentInDatabase(db, {
+    entityType, entityId, provider: 'musicbrainz-series', sourceUrl,
+    revisionId: null, contentKind: 'structured-json', content: evidence,
+    attribution: 'MusicBrainz data, CC0',
+  });
+  const topic = series.editionGroup === '1001-albums'
+    ? '1001 Albums You Must Hear Before You Die'
+    : series.label;
+  db.prepare(`INSERT INTO sleeve_claims (
+    id, entity_type, entity_id, category, topic, wording, source_document_id,
+    evidence, enabled, created_at, updated_at
+  ) VALUES (?, ?, ?, 'recognition', ?, ?, ?, ?, 1, ?, ?)
+  ON CONFLICT(entity_type, entity_id, category, topic, source_document_id) DO UPDATE SET
+    wording = excluded.wording, evidence = excluded.evidence,
+    enabled = 1, updated_at = excluded.updated_at`)
+    .run(randomUUID(), entityType, entityId, topic,
+      recognitionWording(series, member.title, series.ranked ? member.rank : null),
+      sourceDocumentId, evidence, now.toISOString(), now.toISOString());
+}
+
+function reconcileRecordingRecognitionInDatabase(
+  db: Database.Database,
+  recordingMbid: string,
+  seriesIds: readonly string[],
+): number {
+  const recordings = db.prepare(`SELECT r.id, r.title
+    FROM sleeve_recordings r WHERE r.musicbrainz_id = ? AND r.match_state = 'matched'`)
+    .all(recordingMbid) as Array<{ id: string; title: string }>;
+  if (!recordings.length) return 0;
+  let count = 0;
+  for (const recording of recordings) {
+    disableSeriesClaimsForLocalEntity(db, seriesIds, 'recording', recording.id);
+    for (const seriesId of seriesIds) {
+      const series = MUSICBRAINZ_SERIES_BY_ID.get(seriesId);
+      if (!series) continue;
+      const member = db.prepare(`SELECT entity_mbid AS id, entity_title AS title, rank_value AS rank
+        FROM sleeve_musicbrainz_series_members WHERE series_mbid = ? AND entity_mbid = ?`)
+        .get(series.id, recordingMbid) as { id: string; title: string; rank: string | null } | undefined;
+      if (!member) continue;
+      retainSeriesRecognitionClaim(db, series, 'recording', recording.id,
+        { ...member, title: recording.title }, new Date());
+      count++;
+    }
+  }
+  return count;
+}
+
+function releaseGroupMembersInCatalogOrder(db: Database.Database, releaseGroupMbid: string, seriesIds: readonly string[]): Array<{
+  series: DefaultMusicBrainzSeries; member: { id: string; title: string; rank: string | null };
+}> {
+  const result: Array<{ series: DefaultMusicBrainzSeries; member: { id: string; title: string; rank: string | null } }> = [];
+  for (const seriesId of seriesIds) {
+    const series = MUSICBRAINZ_SERIES_BY_ID.get(seriesId);
+    if (!series) continue;
+    const member = db.prepare(`SELECT entity_mbid AS id, entity_title AS title, rank_value AS rank
+      FROM sleeve_musicbrainz_series_members WHERE series_mbid = ? AND entity_mbid = ?`)
+      .get(series.id, releaseGroupMbid) as { id: string; title: string; rank: string | null } | undefined;
+    if (member) result.push({ series, member });
+  }
+  return result.sort((a, b) => a.series.order - b.series.order);
+}
+
+function reconcileReleaseGroupRecognitionInDatabase(
+  db: Database.Database,
+  releaseGroupMbid: string,
+  seriesIds: readonly string[],
+): number {
+  const releases = db.prepare(`SELECT DISTINCT r.id, r.title
+    FROM sleeve_releases r
+    JOIN sleeve_recording_releases rr ON rr.release_id = r.id AND rr.is_canonical_home = 1
+    JOIN sleeve_recordings recording ON recording.id = rr.recording_id AND recording.match_state = 'matched'
+    WHERE r.musicbrainz_release_group_id = ?`)
+    .all(releaseGroupMbid) as Array<{ id: string; title: string }>;
+  if (!releases.length) return 0;
+  const refresh1001Family = seriesIds.some((id) => MUSICBRAINZ_SERIES_BY_ID.get(id)?.editionGroup === '1001-albums');
+  const familyIds = refresh1001Family
+    ? DEFAULT_MUSICBRAINZ_SERIES.filter((series) => series.editionGroup === '1001-albums').map((series) => series.id)
+    : [];
+  const independentIds = seriesIds.filter((id) => MUSICBRAINZ_SERIES_BY_ID.get(id)?.editionGroup !== '1001-albums');
+  const effectiveSeriesIds = [...familyIds, ...independentIds];
+  const foundFamily = familyIds.length
+    ? releaseGroupMembersInCatalogOrder(db, releaseGroupMbid, familyIds)[0] ?? null
+    : null;
+  const foundIndependent = releaseGroupMembersInCatalogOrder(db, releaseGroupMbid, independentIds);
+  const now = new Date();
+  let count = 0;
+  for (const release of releases) {
+    disableSeriesClaimsForLocalEntity(db, effectiveSeriesIds, 'release', release.id);
+    if (foundFamily) {
+      // The 1001 follow-up lists are additions. When the same album is found
+      // in more than one cached edition, retain the earliest edition wording.
+      retainSeriesRecognitionClaim(db, foundFamily.series, 'release', release.id,
+        { ...foundFamily.member, title: release.title }, now);
+      count++;
+    }
+    for (const entry of foundIndependent) {
+      retainSeriesRecognitionClaim(db, entry.series, 'release', release.id,
+        { ...entry.member, title: release.title }, now);
+      count++;
+    }
+  }
+  return count;
+}
+
+/** Reattach already cached Series facts as soon as a new canonical match lands. */
+function materializeCachedMusicBrainzSeriesInDatabase(
+  db: Database.Database,
+  recordingMbid: string,
+  releaseGroupMbids: readonly string[],
+): void {
+  const recordingSeriesIds = DEFAULT_MUSICBRAINZ_SERIES
+    .filter((series) => series.entityType === 'recording').map((series) => series.id);
+  reconcileRecordingRecognitionInDatabase(db, recordingMbid, recordingSeriesIds);
+  const releaseGroupSeriesIds = DEFAULT_MUSICBRAINZ_SERIES
+    .filter((series) => series.entityType === 'release-group').map((series) => series.id);
+  for (const releaseGroupMbid of new Set(releaseGroupMbids.filter(Boolean))) {
+    reconcileReleaseGroupRecognitionInDatabase(db, releaseGroupMbid, releaseGroupSeriesIds);
+  }
 }
 
 function relationshipClaim(recording: RecordingForGenius, relationship: ProviderRelationship): ResearchCandidate | null {
@@ -271,7 +574,7 @@ export interface SourceDocumentForResearch {
   content: string;
 }
 
-export function latestSourceDocumentForResearch(entityType: 'artist' | 'recording' | 'release', entityId: string, provider: string): SourceDocumentForResearch | null {
+export function latestSourceDocumentForResearch(entityType: 'artist' | 'recording' | 'release' | 'release-group', entityId: string, provider: string): SourceDocumentForResearch | null {
   const row = open().prepare(`SELECT id, entity_id AS entityId, provider, source_url AS sourceUrl,
     revision_id AS revisionId, content FROM sleeve_source_documents
     WHERE entity_type = ? AND entity_id = ? AND provider = ?
@@ -280,7 +583,7 @@ export function latestSourceDocumentForResearch(entityType: 'artist' | 'recordin
 }
 
 export function retainResearchClaims(input: {
-  entityType: 'artist' | 'recording' | 'release';
+  entityType: 'artist' | 'recording' | 'release' | 'release-group';
   entityId: string;
   sourceDocumentId: string;
   candidates: readonly ResearchCandidate[];
@@ -330,6 +633,7 @@ export interface WikipediaClaimRebuild {
 
 export interface WikipediaResearchRequeue {
   artistsWithCachedSources: number;
+  releaseGroupsWithCachedSources: number;
   jobsQueued: number;
 }
 
@@ -340,6 +644,9 @@ export function requeueCachedWikipediaResearch(now = new Date()): WikipediaResea
   const transaction = db.transaction(() => {
     const artistsWithCachedSources = (db.prepare(`SELECT COUNT(DISTINCT entity_id) AS count
       FROM sleeve_source_documents WHERE provider = 'wikipedia' AND entity_type = 'artist'`)
+      .get() as { count: number }).count;
+    const releaseGroupsWithCachedSources = (db.prepare(`SELECT COUNT(DISTINCT entity_id) AS count
+      FROM sleeve_source_documents WHERE provider = 'wikipedia' AND entity_type = 'release-group'`)
       .get() as { count: number }).count;
     db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
       id, provider, subject_type, subject_id, capability, state, priority,
@@ -357,7 +664,27 @@ export function requeueCachedWikipediaResearch(now = new Date()): WikipediaResea
           WHERE s.provider = 'wikipedia' AND s.entity_type = 'artist'
             AND s.entity_id = sleeve_research_jobs.subject_id)`)
       .run(timestamp).changes;
-    return { artistsWithCachedSources, jobsQueued };
+    db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
+      id, provider, subject_type, subject_id, capability, state, priority,
+      attempts, run_after, created_at, updated_at
+    ) SELECT lower(hex(randomblob(16))), 'researcher', 'release', s.entity_id,
+      'extract-wikipedia-release-group', 'queued', 350, 0, NULL, ?, ?
+      FROM sleeve_source_documents s
+      WHERE s.provider = 'wikipedia' AND s.entity_type = 'release-group'
+      GROUP BY s.entity_id`).run(timestamp, timestamp);
+    const releaseGroupJobsQueued = db.prepare(`UPDATE sleeve_research_jobs
+      SET state = 'queued', attempts = 0, run_after = NULL, updated_at = ?
+      WHERE provider = 'researcher' AND subject_type = 'release'
+        AND capability = 'extract-wikipedia-release-group'
+        AND EXISTS (SELECT 1 FROM sleeve_source_documents s
+          WHERE s.provider = 'wikipedia' AND s.entity_type = 'release-group'
+            AND s.entity_id = sleeve_research_jobs.subject_id)`)
+      .run(timestamp).changes;
+    return {
+      artistsWithCachedSources,
+      releaseGroupsWithCachedSources,
+      jobsQueued: jobsQueued + releaseGroupJobsQueued,
+    };
   });
   return transaction.immediate();
 }
@@ -458,6 +785,30 @@ export function musicBrainzOutageDelay(attempts: number): number {
   return minutes * 60_000;
 }
 
+/** Retry spacing for the multi-request MusicBrainz → Wikidata → Wikipedia path. */
+export function wikipediaRetryDelay(attempts: number): number {
+  const minutes = [1, 5, 15, 30, 60][Math.min(Math.max(0, attempts - 1), 4)];
+  return minutes * 60_000;
+}
+
+/** Shared pause when one Wikimedia/MusicBrainz endpoint reports an outage. */
+export function wikipediaOutageDelay(attempts: number): number {
+  const minutes = [5, 15, 30, 60][Math.min(Math.max(0, attempts - 1), 3)];
+  return minutes * 60_000;
+}
+
+export function deferWikipediaResearchJobsInDatabase(db: Database.Database, delayMs: number, now = new Date()): number {
+  const runAfter = new Date(now.getTime() + delayMs).toISOString();
+  return db.prepare(`UPDATE sleeve_research_jobs
+    SET state = 'retry-at', run_after = ?, updated_at = ?
+    WHERE provider = 'wikipedia' AND capability IN ('biography', 'release-group-biography')
+      AND state IN ('queued', 'retry-at')`).run(runAfter, now.toISOString()).changes;
+}
+
+export function deferWikipediaResearchJobs(delayMs: number): number {
+  return deferWikipediaResearchJobsInDatabase(open(), delayMs);
+}
+
 export function retryResearchJobInDatabase(db: Database.Database, id: string, delayMs = 5 * 60_000, now = new Date()): void {
   const runAfter = new Date(now.getTime() + delayMs).toISOString();
   db.prepare(`UPDATE sleeve_research_jobs
@@ -536,6 +887,8 @@ export function retainCanonicalMusicBrainzMatchInDatabase(db: Database.Database,
           release.id === homeId ? 'earliest-official-non-compilation' : null);
       if (release.id === homeId) canonicalReleaseId = releaseId;
     }
+    materializeCachedMusicBrainzSeriesInDatabase(db, result.id,
+      result.releases.map((release) => release.releaseGroupId).filter((id): id is string => !!id));
     // Priorities are intentionally separated by a wide gap. Provider workers
     // select their own due work, while the future cross-provider scheduler can
     // still retain this artist -> release -> track order without guessing from
@@ -578,6 +931,53 @@ function enqueueResearchJobInDatabase(db: Database.Database, input: {
 
 export function enqueueResearchJob(input: Omit<Parameters<typeof enqueueResearchJobInDatabase>[1], 'now'>): void {
   enqueueResearchJobInDatabase(open(), { ...input, now: new Date().toISOString() });
+}
+
+/**
+ * Queue album-level Wikipedia discovery for every known canonical release
+ * group. This also backfills groups already matched before the capability was
+ * added; existing jobs and retained source documents are left alone.
+ */
+export function enqueueMissingWikipediaReleaseGroupJobs(now = new Date()): number {
+  const timestamp = now.toISOString();
+  const db = open();
+  return db.transaction(() => {
+    const discoveryJobs = db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
+      id, provider, subject_type, subject_id, capability, state, priority,
+      attempts, run_after, created_at, updated_at
+    ) SELECT lower(hex(randomblob(16))), 'wikipedia', 'release', groups.releaseGroupId,
+      'release-group-biography', 'queued', 350, 0, NULL, ?, ?
+      FROM (
+        SELECT DISTINCT r.musicbrainz_release_group_id AS releaseGroupId
+        FROM sleeve_releases r
+        JOIN sleeve_recording_releases rr ON rr.release_id = r.id AND rr.is_canonical_home = 1
+        WHERE r.musicbrainz_release_group_id IS NOT NULL
+          AND trim(r.musicbrainz_release_group_id) <> ''
+      ) groups
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sleeve_source_documents s
+        WHERE s.entity_type = 'release-group' AND s.entity_id = groups.releaseGroupId
+          AND s.provider = 'wikipedia'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM sleeve_research_jobs j
+        WHERE j.provider = 'wikipedia' AND j.subject_type = 'release'
+          AND j.subject_id = groups.releaseGroupId AND j.capability = 'release-group-biography'
+      )`).run(timestamp, timestamp).changes;
+    const extractionJobs = db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
+      id, provider, subject_type, subject_id, capability, state, priority,
+      attempts, run_after, created_at, updated_at
+    ) SELECT lower(hex(randomblob(16))), 'researcher', 'release', s.entity_id,
+      'extract-wikipedia-release-group', 'queued', 350, 0, NULL, ?, ?
+      FROM sleeve_source_documents s
+      WHERE s.entity_type = 'release-group' AND s.provider = 'wikipedia'
+        AND NOT EXISTS (
+          SELECT 1 FROM sleeve_research_jobs j
+          WHERE j.provider = 'researcher' AND j.subject_type = 'release'
+            AND j.subject_id = s.entity_id AND j.capability = 'extract-wikipedia-release-group'
+        )`).run(timestamp, timestamp).changes;
+    return discoveryJobs + extractionJobs;
+  }).immediate();
 }
 
 export interface ResearchStoreSummary {
@@ -635,10 +1035,15 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
     LEFT JOIN sleeve_source_documents s ON s.entity_type = 'artist' AND s.entity_id = a.id
     LEFT JOIN sleeve_claims c ON c.entity_type = 'artist' AND c.entity_id = a.id AND c.enabled = 1
     GROUP BY a.id ORDER BY claims DESC, sources DESC, a.name LIMIT ?`).all(capped) as ResearchStoreReadout['artists'];
-  const claims = db.prepare(`SELECT COALESCE(a.name, ra.name) AS artist, r.title AS recording,
+  const claims = db.prepare(`SELECT COALESCE(a.name, ra.name) AS artist,
+    COALESCE(r.title, local_release.title, (SELECT rg_release.title FROM sleeve_releases rg_release
+      WHERE c.entity_type = 'release-group'
+        AND rg_release.musicbrainz_release_group_id = c.entity_id
+      ORDER BY rg_release.title LIMIT 1)) AS recording,
     c.category, c.topic, c.wording, c.evidence, s.source_url AS sourceUrl, s.provider FROM sleeve_claims c
     LEFT JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
     LEFT JOIN sleeve_recordings r ON c.entity_type = 'recording' AND c.entity_id = r.id
+    LEFT JOIN sleeve_releases local_release ON c.entity_type = 'release' AND c.entity_id = local_release.id
     LEFT JOIN sleeve_artists ra ON ra.id = r.artist_id
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     WHERE c.enabled = 1 ORDER BY c.updated_at DESC LIMIT ?`).all(capped) as ResearchStoreReadout['claims'];

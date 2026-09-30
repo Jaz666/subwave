@@ -58,7 +58,8 @@ import { router as sleeveNotesRoutes } from './routes/sleeve-notes.js';
 import * as sleeveNotesDb from './sleeve-notes/db.js';
 import { recoverInterruptedResearchJobs } from './sleeve-notes/research-repository.js';
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
-import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
+import { startMusicBrainzSeriesWorker } from './sleeve-notes/musicbrainz-series-worker.js';
+import { startWikipediaWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
 import { startGeniusResearchWorker } from './sleeve-notes/genius-worker.js';
 import { researchRunAllowed } from './sleeve-notes/research-policy.js';
@@ -358,7 +359,8 @@ app.listen(config.server.port, async () => {
     }),
   };
   startMusicBrainzMatchWorker(sleeveNotesQuietGate);
-  startWikipediaArtistWorker(sleeveNotesQuietGate);
+  startMusicBrainzSeriesWorker(sleeveNotesQuietGate);
+  startWikipediaWorker(sleeveNotesQuietGate);
   startResearchWorker(sleeveNotesQuietGate);
   startGeniusResearchWorker(sleeveNotesQuietGate);
   jingles

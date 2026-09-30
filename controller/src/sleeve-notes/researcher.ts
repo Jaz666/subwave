@@ -5,23 +5,32 @@
 
 export const SLEEVE_NOTE_CATEGORIES = [
   'artist-stories',
+  'release-stories',
   'track-stories',
   'musical-connections',
   'milestones',
   'credits',
+  'recognition',
 ] as const;
 
 export type SleeveNoteCategory = typeof SLEEVE_NOTE_CATEGORIES[number];
+
+/** Album/release-group articles can support stories about the release itself. */
+export const RELEASE_GROUP_NOTE_CATEGORIES: readonly SleeveNoteCategory[] = [
+  'release-stories', 'credits', 'milestones', 'recognition',
+];
 
 /** Leave slots empty when the evidence does not clear the bar. */
 export const MAX_CANDIDATES_PER_ARTIST_RESEARCH = 8;
 
 export const SLEEVE_NOTE_CATEGORY_GUIDANCE: Record<SleeveNoteCategory, string> = {
   'artist-stories': 'origin, creative development, scenes, career turns, distinctive collaborations, or legacy',
+  'release-stories': 'the creation, recording, concept, collaborators, or cultural story of a specific album or release',
   'track-stories': 'the creation, recording, or cultural story of a particular song or recording',
   'musical-connections': 'specific covers, samples, interpolations, or other clear links between artists and recordings',
   milestones: 'a genuinely notable career achievement; skip routine release, chart, and award listings',
   credits: 'a named writer, producer, featured performer, or other contributor and their specific role',
+  recognition: 'inclusion or an explicit rank in a named editorial, critics, or award list; state inclusion without turning it into a universal quality judgement',
 };
 
 export interface ResearchDocument {

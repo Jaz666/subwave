@@ -348,6 +348,191 @@ export function migrate(d: Database.Database): void {
     `);
     d.pragma('user_version = 6');
   }
+  if (version < 7) {
+    // Recognition is a first-class note category. Rebuild the claims table so
+    // the category CHECK remains strict, while preserving the existing claim
+    // IDs referenced by the supplied-note history table.
+    const foreignKeysWereEnabled = Boolean(d.pragma('foreign_keys', { simple: true }));
+    d.pragma('foreign_keys = OFF');
+    try {
+      d.transaction(() => {
+        d.exec(`
+          CREATE TABLE sleeve_claims_v7 (
+            id TEXT PRIMARY KEY,
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release')),
+            entity_id TEXT NOT NULL,
+            category TEXT NOT NULL CHECK (category IN ('artist-stories', 'track-stories', 'musical-connections', 'milestones', 'credits', 'recognition')),
+            topic TEXT NOT NULL,
+            wording TEXT NOT NULL,
+            source_document_id TEXT NOT NULL REFERENCES sleeve_source_documents(id),
+            evidence TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(entity_type, entity_id, category, topic, source_document_id)
+          );
+          INSERT INTO sleeve_claims_v7 (
+            id, entity_type, entity_id, category, topic, wording,
+            source_document_id, evidence, enabled, created_at, updated_at
+          ) SELECT
+            id, entity_type, entity_id, category, topic, wording,
+            source_document_id, evidence, enabled, created_at, updated_at
+          FROM sleeve_claims;
+          DROP TABLE sleeve_claims;
+          ALTER TABLE sleeve_claims_v7 RENAME TO sleeve_claims;
+          CREATE INDEX idx_sleeve_claims_selection
+            ON sleeve_claims(entity_type, entity_id, category, enabled);
+
+          CREATE TABLE sleeve_musicbrainz_series (
+            series_mbid TEXT PRIMARY KEY,
+            series_name TEXT NOT NULL,
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('recording', 'release-group')),
+            ranked INTEGER NOT NULL DEFAULT 0 CHECK (ranked IN (0, 1)),
+            series_order INTEGER NOT NULL,
+            edition_group TEXT,
+            edition_year INTEGER,
+            fetched_at TEXT,
+            next_refresh_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            updated_at TEXT NOT NULL
+          );
+          CREATE INDEX idx_sleeve_mb_series_refresh
+            ON sleeve_musicbrainz_series(next_refresh_at, series_order);
+
+          CREATE TABLE sleeve_musicbrainz_series_members (
+            series_mbid TEXT NOT NULL REFERENCES sleeve_musicbrainz_series(series_mbid) ON DELETE CASCADE,
+            entity_mbid TEXT NOT NULL,
+            entity_title TEXT NOT NULL,
+            rank_value TEXT,
+            PRIMARY KEY(series_mbid, entity_mbid)
+          );
+          CREATE INDEX idx_sleeve_mb_series_members_entity
+            ON sleeve_musicbrainz_series_members(entity_mbid, series_mbid);
+        `);
+        d.pragma('user_version = 7');
+      }).immediate();
+    } finally {
+      if (foreignKeysWereEnabled) d.pragma('foreign_keys = ON');
+    }
+  }
+  if (version < 8) {
+    // Album stories belong to the release group, across all its editions.
+    // Extend the strict entity/category checks and scope source uniqueness to
+    // the entity so one Wikipedia page can be retained for each linked entity.
+    const foreignKeysWereEnabled = Boolean(d.pragma('foreign_keys', { simple: true }));
+    d.pragma('foreign_keys = OFF');
+    try {
+      d.transaction(() => {
+        d.exec(`
+          CREATE TABLE sleeve_source_documents_v8 (
+            id TEXT PRIMARY KEY,
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release', 'release-group')),
+            entity_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            source_url TEXT NOT NULL,
+            revision_id TEXT,
+            content_hash TEXT NOT NULL,
+            content_kind TEXT NOT NULL CHECK (content_kind IN ('bounded-text', 'structured-json')),
+            content TEXT NOT NULL,
+            attribution TEXT NOT NULL,
+            retrieved_at TEXT NOT NULL,
+            UNIQUE(provider, entity_type, entity_id, source_url, revision_id, content_hash)
+          );
+          INSERT INTO sleeve_source_documents_v8 (
+            id, entity_type, entity_id, provider, source_url, revision_id,
+            content_hash, content_kind, content, attribution, retrieved_at
+          ) SELECT
+            id, entity_type, entity_id, provider, source_url, revision_id,
+            content_hash, content_kind, content, attribution, retrieved_at
+          FROM sleeve_source_documents;
+
+          CREATE TABLE sleeve_claims_v8 (
+            id TEXT PRIMARY KEY,
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release', 'release-group')),
+            entity_id TEXT NOT NULL,
+            category TEXT NOT NULL CHECK (category IN ('artist-stories', 'release-stories', 'track-stories', 'musical-connections', 'milestones', 'credits', 'recognition')),
+            topic TEXT NOT NULL,
+            wording TEXT NOT NULL,
+            source_document_id TEXT NOT NULL REFERENCES sleeve_source_documents_v8(id),
+            evidence TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(entity_type, entity_id, category, topic, source_document_id)
+          );
+          INSERT INTO sleeve_claims_v8 (
+            id, entity_type, entity_id, category, topic, wording,
+            source_document_id, evidence, enabled, created_at, updated_at
+          ) SELECT
+            id, entity_type, entity_id, category, topic, wording,
+            source_document_id, evidence, enabled, created_at, updated_at
+          FROM sleeve_claims;
+
+          CREATE TABLE sleeve_claim_uses_v8 (
+            id TEXT PRIMARY KEY,
+            claim_id TEXT NOT NULL REFERENCES sleeve_claims_v8(id),
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release', 'release-group')),
+            entity_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            relationship_key TEXT,
+            local_track_id TEXT,
+            consumer TEXT NOT NULL DEFAULT 'generateLink',
+            supplied_at TEXT NOT NULL,
+            final_text TEXT,
+            aired_at TEXT
+          );
+          INSERT INTO sleeve_claim_uses_v8 (
+            id, claim_id, entity_type, entity_id, category, topic,
+            relationship_key, local_track_id, consumer, supplied_at, final_text, aired_at
+          ) SELECT
+            id, claim_id, entity_type, entity_id, category, topic,
+            relationship_key, local_track_id, consumer, supplied_at, final_text, aired_at
+          FROM sleeve_claim_uses;
+
+          DROP TABLE sleeve_claim_uses;
+          DROP TABLE sleeve_claims;
+          DROP TABLE sleeve_source_documents;
+          ALTER TABLE sleeve_source_documents_v8 RENAME TO sleeve_source_documents;
+          ALTER TABLE sleeve_claims_v8 RENAME TO sleeve_claims;
+          ALTER TABLE sleeve_claim_uses_v8 RENAME TO sleeve_claim_uses;
+
+          CREATE INDEX idx_sleeve_source_entity_provider
+            ON sleeve_source_documents(entity_type, entity_id, provider, retrieved_at DESC);
+          CREATE INDEX idx_sleeve_claims_selection
+            ON sleeve_claims(entity_type, entity_id, category, enabled);
+          CREATE INDEX idx_sleeve_claim_uses_claim
+            ON sleeve_claim_uses(claim_id, supplied_at DESC);
+          CREATE INDEX idx_sleeve_claim_uses_topic
+            ON sleeve_claim_uses(entity_type, entity_id, topic, supplied_at DESC);
+          CREATE INDEX idx_sleeve_claim_uses_entity
+            ON sleeve_claim_uses(entity_type, entity_id, supplied_at DESC);
+          CREATE INDEX idx_sleeve_claim_uses_relationship
+            ON sleeve_claim_uses(relationship_key, supplied_at DESC);
+        `);
+        d.pragma('user_version = 8');
+      }).immediate();
+    } finally {
+      if (foreignKeysWereEnabled) d.pragma('foreign_keys = ON');
+    }
+  }
+  if (version < 9) {
+    // The first release-group Series parser read a hyphenated JSON key, but
+    // MusicBrainz returns `release_group`. Requeue cached empty album lists so
+    // the corrected parser can populate them promptly after this upgrade.
+    d.transaction(() => {
+      d.exec(`UPDATE sleeve_musicbrainz_series
+        SET next_refresh_at = '1970-01-01T00:00:00.000Z'
+        WHERE entity_type = 'release-group'
+          AND fetched_at IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM sleeve_musicbrainz_series_members member
+            WHERE member.series_mbid = sleeve_musicbrainz_series.series_mbid
+          )`);
+      d.pragma('user_version = 9');
+    }).immediate();
+  }
 }
 
 export function schemaVersion(): number {
