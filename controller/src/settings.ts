@@ -71,6 +71,7 @@ import {
   isDefaultTakeover,
   mintId,
   normalizeLlmHeaders,
+  normalizeGeminiSafety,
   normalizeLlmKeys,
   normalizeLlmProviderBaseUrls,
   normalizeMoodMap,
@@ -969,6 +970,7 @@ export async function load() {
       // value survived in memory for that process, vanished on restart, and
       // llama.cpp fell back to its own 1.0 default with nothing in the logs.
       repeatPenalty: clampRepeatPenalty(stored.llm?.repeatPenalty, DEFAULTS.llm.repeatPenalty),
+      geminiSafety: normalizeGeminiSafety(stored.llm?.geminiSafety),
       pickerAgent:
         typeof stored.llm?.pickerAgent === 'boolean'
           ? stored.llm.pickerAgent
@@ -1036,6 +1038,7 @@ export async function load() {
           toolChoice: fb.toolChoice === 'auto' ? 'auto' : DEFAULTS.llm.fallback.toolChoice,
           numCtx: clampNumCtx(fb.numCtx, DEFAULTS.llm.fallback.numCtx),
           repeatPenalty: clampRepeatPenalty(fb.repeatPenalty, DEFAULTS.llm.fallback.repeatPenalty),
+          geminiSafety: normalizeGeminiSafety(fb.geminiSafety),
           discoverySteps: clampDiscoverySteps(fb.discoverySteps, DEFAULTS.llm.fallback.discoverySteps),
         };
       })(),

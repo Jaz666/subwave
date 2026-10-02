@@ -55,12 +55,15 @@ import {
   LLM_HEADER_VALUE_MAX,
   LLM_HEADER_VALUE_RE,
   LLM_HEADERS_MAX,
+  normalizeGeminiSafety,
   SETTINGS_AAC_BITRATES,
   SETTINGS_LOUDNESS_SOURCES,
   SETTINGS_MP3_BITRATES,
   SETTINGS_OPUS_BITRATES,
   SETTINGS_SEARCH_PROVIDERS,
 } from '../schemas/settings.js';
+
+export { normalizeGeminiSafety } from '../schemas/settings.js';
 
 // Placeholders are substituted by renderDjPrompt(). {name} is mandatory:
 // update() refuses any custom template that drops it.
@@ -440,6 +443,15 @@ export function applyLlmLegPatch(target: Record<string, unknown>, patch: unknown
   }
   if (l.repeatPenalty !== undefined) {
     target.repeatPenalty = clampRepeatPenalty(Number(l.repeatPenalty), target.repeatPenalty as number);
+  }
+  // HARM_CATEGORY thresholds for the native `google` leg. Whole-object
+  // REPLACE (not a merge) so clearing a box in the editor actually clears it;
+  // each box is strictly boolean, anything else reads as allow.
+  if (l.geminiSafety !== undefined) {
+    if (!l.geminiSafety || typeof l.geminiSafety !== 'object' || Array.isArray(l.geminiSafety)) {
+      throw new Error(`${label}.geminiSafety must be an object map of category → boolean`);
+    }
+    target.geminiSafety = normalizeGeminiSafety(l.geminiSafety);
   }
   // Discovery-round budget. 0 = follow the provider capability table.
   if (l.discoverySteps !== undefined) {
