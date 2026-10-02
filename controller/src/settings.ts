@@ -57,6 +57,7 @@ import {
   canonicalKokoroLang,
   clamp01,
   clampAgentTimeout,
+  clampRequestTimeout,
   clampBudgetSoftPct,
   clampDailyTokenCap,
   clampMaxOutputTokens,
@@ -989,6 +990,8 @@ export async function load() {
         typeof stored.llm?.requestWebResolve === 'boolean'
           ? stored.llm.requestWebResolve
           : DEFAULTS.llm.requestWebResolve,
+      // Per-generation ceiling [5s, 30min], distinct from the agent cascade.
+      requestTimeoutMs: clampRequestTimeout(stored.llm?.requestTimeoutMs, DEFAULTS.llm.requestTimeoutMs),
       // Clamped to [5s, 300s]; settings.json files from before the field
       // existed pick up the default.
       agentTimeoutMs: clampAgentTimeout(stored.llm?.agentTimeoutMs, DEFAULTS.llm.agentTimeoutMs),
@@ -1995,6 +1998,11 @@ export async function update(patch) {
     }
     if (l.requestWebResolve !== undefined) {
       next.llm.requestWebResolve = !!l.requestWebResolve;
+    }
+    if (l.requestTimeoutMs !== undefined) {
+      const raw: unknown = l.requestTimeoutMs;
+      const numeric = typeof raw === 'number' || (typeof raw === 'string' && raw.trim() !== '') ? Number(raw) : NaN;
+      next.llm.requestTimeoutMs = clampRequestTimeout(numeric, next.llm.requestTimeoutMs);
     }
     if (l.agentTimeoutMs !== undefined) {
       next.llm.agentTimeoutMs = clampAgentTimeout(Number(l.agentTimeoutMs), next.llm.agentTimeoutMs);
