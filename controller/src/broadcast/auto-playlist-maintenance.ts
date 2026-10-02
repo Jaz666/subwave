@@ -18,7 +18,7 @@ export function autoPlaylistRefreshCron(intervalMinutes: number): string {
 
 // Immediate show/operator work must never join a potentially stale build.
 // Only expendable periodic work stands down, with no queue or trailing retry.
-export function createAutoPlaylistRefreshRunner(build: () => Promise<void>) {
+export function createAutoPlaylistRefreshRunner(build: () => Promise<void>, isBusy = () => false) {
   let activeBuilds = 0;
   async function refresh(): Promise<void> {
     activeBuilds++;
@@ -29,7 +29,9 @@ export function createAutoPlaylistRefreshRunner(build: () => Promise<void>) {
     }
   }
   async function refreshScheduled(): Promise<boolean> {
-    if (activeBuilds > 0) return false;
+    // The idle-aware writer also sees immediate and resume requests, including
+    // ones waiting to publish after another build. Do not queue periodic work.
+    if (activeBuilds > 0 || isBusy()) return false;
     await refresh();
     return true;
   }

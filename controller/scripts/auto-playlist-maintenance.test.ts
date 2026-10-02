@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import cron from 'node-cron';
 import { autoPlaylistRefreshCron, createAutoPlaylistRefreshRunner } from '../src/broadcast/auto-playlist-maintenance.js';
+import { createAutoPlaylistRefresh } from '../src/broadcast/auto-playlist-refresh.js';
 
 const scheduler = readFileSync(new URL('../src/broadcast/scheduler.ts', import.meta.url), 'utf8');
 
@@ -92,9 +93,9 @@ for (const scheduled of [false, true]) {
 }
 
 test('only the periodic cron uses scheduled admission; startup and the exported API stay immediate', () => {
-  assert.match(scheduler, /export async function refreshAutoPlaylist\(\) \{\s*return autoPlaylistRefresh\.refresh\(\);/);
-  assert.match(scheduler, /createAutoPlaylistRefreshRunner\(\(\) =>\s*withTrace\(\{ kind: 'auto-playlist' \}, \(\) => refreshAutoPlaylistInner\(\)\)\)/);
-  assert.match(scheduler, /export function startScheduler\(\) \{\s*refreshAutoPlaylist\(\)\.catch/);
+  assert.match(scheduler, /export async function refreshAutoPlaylist\(\{ automatic = false \} = \{\}\) \{\s*return playlistRefresh\.request\(\{ automatic \}\);/);
+  assert.match(scheduler, /createAutoPlaylistRefreshRunner\(async \(\) => \{\s*await refreshAutoPlaylist\(\{ automatic: true \}\);\s*\}, playlistRefresh\.isBusy\)/);
+  assert.match(scheduler, /export function startScheduler\(\) \{\s*refreshAutoPlaylist\(\{ automatic: true \}\)\.catch/);
   assert.match(scheduler, /const refreshCron = autoPlaylistRefreshCron\(config\.show\.autoQueueRefreshMinutes\);\s*cron\.schedule\(refreshCron, async \(\) => \{/);
   assert.match(scheduler, /await autoPlaylistRefresh\.refreshScheduled\(\)/);
   assert.match(scheduler, /Auto-playlist periodic refresh skipped/);
@@ -109,4 +110,99 @@ test('maintenance leaves talk, session and programme sequencing on their existin
   assert.match(scheduler, /cron\.schedule\('23 \* \* \* \*', scheduledBackupTick\);/);
   assert.match(scheduler, /cron\.schedule\('17 4 \* \* \*', nightlyDoctor\);/);
   assert.match(scheduler, /cron\.schedule\('\*\/5 \* \* \* \*', overrideJanitor\);/);
+});
+
+test('idle periodic ticks coalesce with show changes into one latest-context resume build', async () => {
+  let idle = true;
+  let show = 'first';
+  const published: string[] = [];
+  const writer = createAutoPlaylistRefresh({ isIdle: () => idle, build: async () => {
+    published.push(show);
+    return 'refreshed';
+  } });
+  const runner = createAutoPlaylistRefreshRunner(async () => {
+    await writer.request({ automatic: true });
+  }, writer.isBusy);
+  await runner.refreshScheduled();
+  show = 'latest';
+  await writer.request({ automatic: true });
+  await runner.refreshScheduled();
+  assert.deepEqual(published, []);
+  idle = false;
+  await writer.flushPending();
+  await writer.flushPending();
+  assert.deepEqual(published, ['latest']);
+});
+
+test('periodic admission sees active manual and queued show work without creating catch-up work', async () => {
+  const first = deferred();
+  const second = deferred();
+  let starts = 0;
+  const writer = createAutoPlaylistRefresh({ isIdle: () => false, build: async () => {
+    const gate = ++starts === 1 ? first : second;
+    await gate.promise;
+    return 'refreshed';
+  } });
+  const runner = createAutoPlaylistRefreshRunner(async () => {
+    await writer.request({ automatic: true });
+  }, writer.isBusy);
+  const manual = writer.request({ automatic: false });
+  // Busy includes a request waiting for its first microtask, not only builds.
+  assert.equal(await runner.refreshScheduled(), false);
+  const show = writer.request({ automatic: true });
+  assert.equal(await runner.refreshScheduled(), false);
+  first.resolve();
+  await manual;
+  assert.equal(await runner.refreshScheduled(), false);
+  second.resolve();
+  await show;
+  assert.equal(writer.isBusy(), false);
+  assert.equal(starts, 2, 'both requested builds execute; skipped periodic ticks add no work');
+});
+
+test('a resume build blocks periodic work and a failed build releases admission for retry', async () => {
+  let idle = true;
+  let starts = 0;
+  const first = deferred();
+  const writer = createAutoPlaylistRefresh({ isIdle: () => idle, build: async () => {
+    if (++starts === 1) await first.promise;
+    return 'refreshed';
+  } });
+  const runner = createAutoPlaylistRefreshRunner(async () => {
+    await writer.request({ automatic: true });
+  }, writer.isBusy);
+  await writer.request({ automatic: true });
+  idle = false;
+  const resume = writer.flushPending();
+  assert.equal(await runner.refreshScheduled(), false);
+  const rejected = assert.rejects(resume, /catalogue unavailable/);
+  first.reject(new Error('catalogue unavailable'));
+  await rejected;
+  assert.equal(writer.isBusy(), false);
+  assert.equal(await runner.refreshScheduled(), true);
+  await writer.flushPending();
+  assert.equal(starts, 2);
+});
+
+test('manual refresh bypasses idle while periodic work skips it and then defers', async () => {
+  let idle = true;
+  let starts = 0;
+  const first = deferred();
+  const writer = createAutoPlaylistRefresh({ isIdle: () => idle, build: async canPublish => {
+    assert.equal(canPublish(), true);
+    if (++starts === 1) await first.promise;
+    return 'refreshed';
+  } });
+  const runner = createAutoPlaylistRefreshRunner(async () => {
+    await writer.request({ automatic: true });
+  }, writer.isBusy);
+  const manual = writer.request({ automatic: false });
+  assert.equal(await runner.refreshScheduled(), false);
+  first.resolve();
+  await manual;
+  assert.equal(await runner.refreshScheduled(), true);
+  assert.equal(starts, 1, 'the idle periodic tick must not build');
+  idle = false;
+  await writer.flushPending();
+  assert.equal(starts, 2);
 });
