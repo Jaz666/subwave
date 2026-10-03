@@ -28,6 +28,7 @@ import {
   SETTINGS_MP3_BITRATES,
   SETTINGS_OPUS_BITRATES,
   TRANSITION_EFFECTS,
+  normalizeGeminiSafety,
 } from '@/lib/schemas.generated';
 import { AlertTriangle } from 'lucide-react';
 import {
@@ -43,6 +44,7 @@ import { Advanced, SectionChromeProvider } from './settings/section-chrome';
 import { SettingsSearch, type SettingsJump } from './settings/SettingsSearch';
 import { TtsSection } from './settings/TtsSection';
 import { DjBehaviourSection } from './settings/DjBehaviourSection';
+import { MusicSelectionSection } from './settings/MusicSelectionSection';
 import { LlmSection } from './settings/LlmSection';
 import { BrainSection } from './settings/BrainSection';
 import { SearchSection } from './settings/SearchSection';
@@ -104,6 +106,18 @@ function atPath(form: FormState | null, path: string): unknown {
     node = (node as Record<string, unknown>)[key];
   }
   return node;
+}
+
+function setPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const keys = path.split('.');
+  let node = target;
+  for (const key of keys.slice(0, -1)) {
+    const current = node[key];
+    node = current && typeof current === 'object' && !Array.isArray(current)
+      ? current as Record<string, unknown>
+      : (node[key] = {} as Record<string, unknown>);
+  }
+  node[keys[keys.length - 1]!] = value;
 }
 
 const samePath = (a: FormState | null, b: FormState | null, path: string) =>
@@ -461,6 +475,13 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         kokoro: { voice: v.tts?.kokoro?.voice ?? 'bf_isabella' },
         chatterbox: { referenceVoice: v.tts?.chatterbox?.referenceVoice ?? '' },
         pocketTts: { voice: v.tts?.pocketTts?.voice ?? 'alba' },
+        // Absent block = the engine's own defaults, matching the controller's
+        // coercion: an empty model means "walk the fallback chain".
+        gemini: {
+          model: v.tts?.gemini?.model ?? '',
+          voice: v.tts?.gemini?.voice ?? 'Puck',
+          pronunciation: v.tts?.gemini?.pronunciation ?? '',
+        },
         cloud: {
           enabled: v.tts?.cloud?.enabled ?? false,
           provider: v.tts?.cloud?.provider ?? 'openai',
@@ -528,6 +549,11 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         reasoning: !!v.llm?.reasoning,
         toolChoice: v.llm?.toolChoice === 'auto' ? 'auto' : 'required',
         pickerAgent: !!v.llm?.pickerAgent,
+        trackSelection: v.llm?.trackSelection === 'shortlist' ? 'shortlist' : 'agentic',
+        shortlistPasses: typeof v.llm?.shortlistPasses === 'number' ? v.llm.shortlistPasses : 3,
+        guestMusicalLeanings: v.llm?.guestMusicalLeanings === true,
+        requestMatching: v.llm?.requestMatching === 'direct' ? 'direct' : 'agentic',
+        segmentRuntime: v.llm?.segmentRuntime === 'direct' ? 'direct' : 'agentic',
         // Fallback must track the controller's default (config.ts, 250): a
         // settings.json written before the field existed omits the key, and
         // seeding the OLD default here means opening Settings and saving any
@@ -542,6 +568,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         exemptRequests: v.llm?.exemptRequests !== false,
         maxOutputTokens: typeof v.llm?.maxOutputTokens === 'number' ? v.llm.maxOutputTokens : 0,
         discoverySteps: typeof v.llm?.discoverySteps === 'number' ? v.llm.discoverySteps : 0,
+        geminiSafety: normalizeGeminiSafety(v.llm?.geminiSafety),
         fallback: {
           enabled: !!v.llm?.fallback?.enabled,
           provider: v.llm?.fallback?.provider ?? 'ollama',
@@ -550,6 +577,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
           numCtx: typeof v.llm?.fallback?.numCtx === 'number' ? v.llm.fallback.numCtx : 16384,
           repeatPenalty: typeof v.llm?.fallback?.repeatPenalty === 'number' ? v.llm.fallback.repeatPenalty : 1.15,
           discoverySteps: typeof v.llm?.fallback?.discoverySteps === 'number' ? v.llm.fallback.discoverySteps : 0,
+          geminiSafety: normalizeGeminiSafety(v.llm?.fallback?.geminiSafety),
           providerBaseUrls: (() => {
             const fbAny = v.llm?.fallback as ({ provider?: string; baseUrl?: string; providerBaseUrls?: Record<string, string> }) | undefined;
             const stored = fbAny?.providerBaseUrls;
@@ -827,9 +855,8 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   const discardSection = () => {
     if (!form || !baseline || !activeSpec) return;
     const next = JSON.parse(JSON.stringify(form)) as Record<string, unknown>;
-    const from = baseline as unknown as Record<string, unknown>;
     for (const key of activeSpec.formKeys) {
-      if (key in from) next[key] = JSON.parse(JSON.stringify(from[key] ?? null));
+      setPath(next, key, JSON.parse(JSON.stringify(atPath(baseline, key) ?? null)));
     }
     setForm(next as unknown as FormState);
     // The errors belonged to values that no longer exist — same ownership rule
@@ -992,6 +1019,12 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
             )}
             {activeSection === 'behaviour' && (
               <DjBehaviourSection
+                data={data} form={form} setForm={updateForm} busy={busy}
+                saveSettings={saveSettings} fieldErrors={fieldErrors}
+              />
+            )}
+            {activeSection === 'selection' && (
+              <MusicSelectionSection
                 data={data} form={form} setForm={updateForm} busy={busy}
                 saveSettings={saveSettings} fieldErrors={fieldErrors}
               />

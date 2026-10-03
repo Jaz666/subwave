@@ -22,9 +22,9 @@ import type { ModelMessage, ToolSet } from 'ai';
 import { z } from 'zod';
 import { withFailover } from '../core/failover.js';
 import { withTransientRetry, withDeadline } from '../core/retry.js';
-import { stripThinking, extractJson, usageOf, perfOf, warningsOf, flattenToolCalls, failureDiagnostics, renderTerminalPrompt } from '../core/pure.js';
+import { stripThinking, extractJson, usageOf, perfOf, warningsOf, flattenToolCalls, failureDiagnostics, renderTerminalPrompt, isModelUnavailable, isGenerationControlError } from '../core/pure.js';
 import type { StepLike, ToolCallLike, ToolCallSummary, TokenUsage } from '../core/pure.js';
-import { needsToolCallObject, reasoningFor, samplingWithLocalKnobs, forcedToolChoice, runDiscoverySteps } from '../provider/capabilities.js';
+import { needsToolCallObject, reasoningFor, samplingWithLocalKnobs, forcedToolChoice, runDiscoverySteps, googleSafetyOptions } from '../provider/capabilities.js';
 import type { Leg } from '../provider/legs.js';
 import { objectViaToolCall } from './object-via-tool.js';
 import { agentPlan } from './plan.js';
@@ -47,6 +47,14 @@ interface AgentLike {
   generate(options: { messages: ModelMessage[]; abortSignal?: AbortSignal }): Promise<AgentGenerateResult>;
 }
 
+function peakSingleRequestInput(result: AgentGenerateResult): number {
+  const steps = result.steps || [];
+  if (steps.length) return Math.max(0, ...steps.map(step => usageOf(step).input));
+  // objectViaToolCall and a few provider adapters do not expose a steps array;
+  // they are single model requests, so their ordinary usage is the safe value.
+  return usageOf(result).input;
+}
+
 interface AgentFailureError extends Error {
   text?: string;
   finishReason?: unknown;
@@ -64,6 +72,7 @@ interface DjAgentOptions {
   kind?: string;
   timeoutMs?: number;
   validate?: (object: unknown) => boolean;
+  telemetry?: Record<string, unknown>;
   // Follow the leg's per-provider discovery budget instead of the pinned single
   // historical step. Opt-in per agent, OFF by default: a caller's step cap can
   // be load-bearing, so only pick/request ask for it.
@@ -133,6 +142,7 @@ function buildRecoveryAgent(leg: Leg, system: string, allTools: ToolSet | undefi
     stopWhen: [isStepCount(2), hasToolCall('done')],
     temperature,
     maxOutputTokens,
+    ...googleSafetyOptions(leg.cfg),
     // Recovery forces done-only every step, so it has the same
     // Anthropic/DeepSeek thinking conflict as the main run — suppress here too.
     reasoning: reasoningFor(leg.cfg, { forceNoThink: true }),
@@ -182,6 +192,7 @@ export async function djAgent({
   kind = 'sdk.djAgent',
   timeoutMs,
   providerDiscoveryBudget = false,
+  telemetry = {},
   // Caller acceptance check on the NATIVE path's object only — that branch
   // validates schema shape, not content, so a fabricated-but-well-formed answer
   // would otherwise sail through. A miss falls through to the done-tool path.
@@ -209,16 +220,17 @@ export async function djAgent({
         // and ToolLoopAgent + Output.object would throw NoObjectGeneratedError.
         if (plan === 'object-via-tool') {
           lastVia = 'ai-sdk:tool';
-          const { object, usage, perf, warnings } = await withTransientRetry(kind,
-            () => objectViaToolCall(leg, { system, prompt: undefined, messages, schema, temperature, maxOutputTokens }));
+          const { object, usage, perf, warnings } = await runDeadlinedCall(deadlineAt, kind, 'agent object',
+            (signal) => objectViaToolCall(leg, { system, prompt: undefined, messages, schema, temperature, maxOutputTokens, signal }));
           return {
             value: { object, steps: 0, toolCalls: [] },
             via: lastVia,
             sampling: samplingWithLocalKnobs(leg.cfg, { temperature }),
             usage,
+            contextPeakInput: usage.input,
             perf,
             warnings,
-            extra: { system, messages, toolCalls: [], steps: 0, response: JSON.stringify(object, null, 2) },
+            extra: { system, messages, toolCalls: [], steps: 0, response: JSON.stringify(object, null, 2), ...telemetry },
           };
         }
 
@@ -227,12 +239,16 @@ export async function djAgent({
         // at the end would count only the last one. This sum is what
         // telemetry/log.ts records and what the daily token cap counts against.
         let spentUsage = { input: 0, output: 0, total: 0 };
+        let contextPeakInput = 0;
         const addUsage = (u: { input: number; output: number; total: number }) => {
           spentUsage = {
             input: spentUsage.input + u.input,
             output: spentUsage.output + u.output,
             total: spentUsage.total + u.total,
           };
+        };
+        const noteContextPeak = (result: AgentGenerateResult) => {
+          contextPeakInput = Math.max(contextPeakInput, peakSingleRequestInput(result));
         };
 
         // Native-first structured output. A miss falls through to the done-tool
@@ -251,6 +267,7 @@ export async function djAgent({
               stopWhen: [isStepCount(Math.max(maxSteps, gatedMaxSteps))],
               temperature,
               maxOutputTokens,
+              ...googleSafetyOptions(leg.cfg),
               timeout: { toolMs: TOOL_TIMEOUT_MS },
               // Thinking off — the pick is structured extraction; djText's
               // free text still reasons.
@@ -277,14 +294,17 @@ export async function djAgent({
                 via: lastVia,
                 sampling: samplingWithLocalKnobs(leg.cfg, { temperature }),
                 usage: usageOf(nr),
+                contextPeakInput: peakSingleRequestInput(nr),
                 perf: perfOf(nr),
                 warnings: warningsOf(nr),
-                extra: { system, messages, toolCalls, steps: nSteps, response: JSON.stringify(nObj, null, 2) },
+                extra: { system, messages, toolCalls, steps: nSteps, response: JSON.stringify(nObj, null, 2), ...telemetry },
               };
             }
             console.log(`[${kind}] native output produced no usable pick (explored=${explored}, accepted=${accepted}) — falling back to done-tool`);
             addUsage(usageOf(nr));
+            noteContextPeak(nr);
           } catch (e) {
+            if (isGenerationControlError(e) || isModelUnavailable(e)) throw e;
             console.log(`[${kind}] native output failed (${e?.message}) — falling back to done-tool`);
           }
         }
@@ -315,6 +335,7 @@ export async function djAgent({
           stopWhen: [isStepCount(effectiveMaxSteps), hasToolCall('done')],
           temperature,
           maxOutputTokens,
+          ...googleSafetyOptions(leg.cfg),
           timeout: { toolMs: TOOL_TIMEOUT_MS },
           // Suppress thinking on providers that reject forced tools mid-reasoning.
           reasoning: reasoningFor(leg.cfg, { forceNoThink: useDoneTool }),
@@ -326,6 +347,7 @@ export async function djAgent({
         let result = await runDeadlined(deadlineAt, kind, 'agent run', agent, messages);
         let steps = result.steps?.length ?? 0;
         addUsage(usageOf(result));
+        noteContextPeak(result);
 
         // The trail belongs to the MAIN run: `result` is reassigned by the
         // done-only recovery below, so reading it off the final result loses it
@@ -370,6 +392,7 @@ export async function djAgent({
             buildRecoveryAgent(leg, system, allTools, temperature, maxOutputTokens, forcedChoice), recoveryMessages);
           steps = result.steps?.length ?? 0;
           addUsage(usageOf(result));
+          noteContextPeak(result);
           captureTrail(result);
           noteIfDeclined('recovery', result);
 
@@ -391,10 +414,12 @@ export async function djAgent({
                 }));
               terminalObject = t.object;
               addUsage(t.usage);
+              contextPeakInput = Math.max(contextPeakInput, t.usage.input);
               terminalPrompt = prompt;
               // A real model call the record should count.
               steps += 1;
             } catch (e) {
+              if (isGenerationControlError(e) || isModelUnavailable(e)) throw e;
               // Text salvage below still gets a shot, then the caller's pool
               // fallback, so log and carry on rather than throwing past both.
               const why = (e as Error)?.message || String(e);
@@ -446,6 +471,7 @@ export async function djAgent({
           via: lastVia,
           sampling: samplingWithLocalKnobs(leg.cfg, { temperature }),
           usage: spentUsage,
+          contextPeakInput,
           perf: perfOf(result),
           warnings: warningsOf(result),
           // Full and untruncated. When the collapse answered, the flattened
@@ -454,11 +480,12 @@ export async function djAgent({
             system, messages, toolCalls, steps,
             ...(terminalPrompt ? { terminalPrompt } : {}),
             response: schema ? JSON.stringify(object, null, 2) : String(object ?? ''),
+            ...telemetry,
           },
         };
       } catch (err) {
         // Attribute to the path actually attempted; withFailover writes the
-        // record and decides whether a host-unreachable error tries the backup.
+        // record and decides whether this failure tries the backup.
         (err as { __via?: string }).__via = lastVia;
         throw err;
       }

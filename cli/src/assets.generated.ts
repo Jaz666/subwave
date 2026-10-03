@@ -137,6 +137,8 @@ services:
       - TZ=\${TZ:-Europe/London}
       - STATE_DIR=/var/sub-wave
       - SOUNDS_DIR=/sounds
+      # Maintainer-only, hidden Discovery Bench. Empty keeps its routes disabled.
+      - SUBWAVE_DISCOVERY_BENCH=\${SUBWAVE_DISCOVERY_BENCH:-}
       # Container path of the STEMS_DIR bind mount above — empty when the
       # operator did not relocate, which keeps the cache under the state dir
       # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
@@ -210,6 +212,7 @@ services:
     environment:
       - NODE_ENV=production
       - SUBWAVE_HOMEPAGE=\${SUBWAVE_HOMEPAGE:-player}
+      - SUBWAVE_DISCOVERY_BENCH=\${SUBWAVE_DISCOVERY_BENCH:-}
       - SUBWAVE_DJ_BRAIN_ENABLED=\${SUBWAVE_DJ_BRAIN_ENABLED:-false}
       # RUNTIME source of truth for absolute URLs (canonicals, og:url,
       # robots.txt, sitemap.xml) — the generic image serves any domain.
@@ -480,6 +483,8 @@ services:
       - TZ=\${TZ:-Europe/London}
       - STATE_DIR=/var/sub-wave
       - SOUNDS_DIR=/sounds
+      # Maintainer-only, hidden Discovery Bench. Empty keeps its routes disabled.
+      - SUBWAVE_DISCOVERY_BENCH=\${SUBWAVE_DISCOVERY_BENCH:-}
       # Container path of the STEMS_DIR bind mount above — empty when the
       # operator did not relocate, which keeps the cache under the state dir
       # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
@@ -551,6 +556,7 @@ services:
     environment:
       - NODE_ENV=production
       - SUBWAVE_HOMEPAGE=\${SUBWAVE_HOMEPAGE:-player}
+      - SUBWAVE_DISCOVERY_BENCH=\${SUBWAVE_DISCOVERY_BENCH:-}
       - SUBWAVE_DJ_BRAIN_ENABLED=\${SUBWAVE_DJ_BRAIN_ENABLED:-false}
       - SITE_URL=\${SITE_URL:-}
       # Set to 1 to keep the shared product pages (landing, docs, news,
@@ -787,6 +793,8 @@ services:
       - TZ=\${TZ:-Europe/London}
       - STATE_DIR=/var/sub-wave
       - SOUNDS_DIR=/sounds
+      # Maintainer-only, hidden Discovery Bench. Empty keeps its routes disabled.
+      - SUBWAVE_DISCOVERY_BENCH=\${SUBWAVE_DISCOVERY_BENCH:-}
       # Container path of the STEMS_DIR bind mount above — empty when the
       # operator did not relocate, which keeps the cache under the state dir
       # exactly as before. Named apart from STEMS_DIR on purpose: that one is a
@@ -1195,6 +1203,11 @@ SITE_URL=
 # nothing for the tracks whose paths don't line up.
 # MUSIC_LIBRARY_PATH=
 # TTS_SPEED=0.85
+# Routine fallback refresh uses hourly minute-step cadence, rotated off :00/:02:
+# default 60 (and values >=60) runs hourly at :07, not every N elapsed minutes.
+# Non-divisors retain uneven hour-rollover gaps; 1 still runs every minute.
+# Startup, show-change and manual/settings refreshes remain immediate.
+# Busy periodic slots are skipped without a catch-up run.
 # AUTO_QUEUE_REFRESH_MINUTES=60
 # Convenience only — seeds the News skill's feed on first boot. After that the
 # file wins: edit it in /admin/skills or state/skills/news/SKILL.md (changing
@@ -1395,4 +1408,4 @@ SITE_URL=
 
 // cli/package.json#version (embedded so the compiled binary can self-identify
 // — used by `subwave --version`).
-export const CLI_VERSION = `1.13.0`; // x-release-please-version
+export const CLI_VERSION = `1.16.0`; // x-release-please-version
