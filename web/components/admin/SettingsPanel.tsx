@@ -28,6 +28,7 @@ import {
   SETTINGS_MP3_BITRATES,
   SETTINGS_OPUS_BITRATES,
   TRANSITION_EFFECTS,
+  normalizeGeminiSafety,
 } from '@/lib/schemas.generated';
 import { AlertTriangle } from 'lucide-react';
 import {
@@ -56,6 +57,10 @@ import {
   useSettingsMutation,
   useSettingsQuery,
 } from './settings/queries';
+import {
+  cloudSaveSnapshot, cloudSaveReadReady, rebaselineSavedPatch, reconcileSavedCloud,
+  type PendingCloudSave,
+} from './settings/form-reconciliation';
 
 // Operator copy for the shared transition vocabulary. The drift test keeps
 // these labels in the schema's order and ensures every gesture has a hint.
@@ -241,57 +246,6 @@ function numberFields() {
 
 const sameForm = (a: FormState, b: FormState) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Mark only the fields represented by a successful patch as clean. */
-function rebaselineSavedPatch(
-  baseline: FormState,
-  current: FormState,
-  patch: Record<string, unknown>,
-): FormState {
-  const next = JSON.parse(JSON.stringify(baseline)) as FormState;
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    !!value && typeof value === 'object' && !Array.isArray(value);
-  const adopt = (
-    target: Record<string, unknown>,
-    source: Record<string, unknown>,
-    shape: Record<string, unknown>,
-  ) => {
-    for (const [key, value] of Object.entries(shape)) {
-      if (!(key in source)) continue;
-      if (isRecord(value) && isRecord(target[key]) && isRecord(source[key])) {
-        adopt(target[key], source[key], value);
-      } else {
-        target[key] = source[key];
-      }
-    }
-  };
-
-  const nextRecord = next as unknown as Record<string, unknown>;
-  const currentRecord = current as unknown as Record<string, unknown>;
-  for (const [key, value] of Object.entries(patch)) {
-    if (key === 'audio' && isRecord(value)) {
-      adopt(
-        next.transitions as unknown as Record<string, unknown>,
-        current.transitions as unknown as Record<string, unknown>,
-        value,
-      );
-      continue;
-    }
-    if (key === 'tts' && isRecord(value)) {
-      adopt(
-        next.tts as unknown as Record<string, unknown>,
-        current.tts as unknown as Record<string, unknown>,
-        value,
-      );
-      if (isRecord(value.kokoro) && 'lang' in value.kokoro) {
-        next.kokoroLang = current.kokoroLang;
-      }
-      continue;
-    }
-    adopt(nextRecord, currentRecord, { [key]: value });
-  }
-  return next;
-}
-
 export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabled?: boolean }) {
   const sections = useMemo(
     () => SECTIONS.filter(s => s.id !== 'brain' || djBrainEnabled),
@@ -310,6 +264,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   const formBaselineRef = useRef<FormState | null>(null);
   const appliedRevisionRef = useRef(0);
   const pendingFormRevisionRef = useRef<{ revision: number; form: FormState } | null>(null);
+  const [pendingCloudSave, setPendingCloudSave] = useState<PendingCloudSave | null>(null);
   const [pendingRestart, setPendingRestart] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
@@ -462,6 +417,16 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         kokoro: { voice: v.tts?.kokoro?.voice ?? 'bf_isabella' },
         chatterbox: { referenceVoice: v.tts?.chatterbox?.referenceVoice ?? '' },
         pocketTts: { voice: v.tts?.pocketTts?.voice ?? 'alba' },
+        // Absent block = the engine's own defaults, matching the controller's
+        // coercion: an empty model means "walk the fallback chain".
+        gemini: {
+          // Absent = browse every language, which is the pre-existing behaviour
+          // of a station that never set it.
+          libraryLanguage: v.tts?.gemini?.libraryLanguage ?? '',
+          model: v.tts?.gemini?.model ?? '',
+          voice: v.tts?.gemini?.voice ?? 'Puck',
+          pronunciation: v.tts?.gemini?.pronunciation ?? '',
+        },
         cloud: {
           enabled: v.tts?.cloud?.enabled ?? false,
           provider: v.tts?.cloud?.provider ?? 'openai',
@@ -543,6 +508,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         exemptRequests: v.llm?.exemptRequests !== false,
         maxOutputTokens: typeof v.llm?.maxOutputTokens === 'number' ? v.llm.maxOutputTokens : 0,
         discoverySteps: typeof v.llm?.discoverySteps === 'number' ? v.llm.discoverySteps : 0,
+        geminiSafety: normalizeGeminiSafety(v.llm?.geminiSafety),
         fallback: {
           enabled: !!v.llm?.fallback?.enabled,
           provider: v.llm?.fallback?.provider ?? 'ollama',
@@ -551,6 +517,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
           numCtx: typeof v.llm?.fallback?.numCtx === 'number' ? v.llm.fallback.numCtx : 16384,
           repeatPenalty: typeof v.llm?.fallback?.repeatPenalty === 'number' ? v.llm.fallback.repeatPenalty : 1.15,
           discoverySteps: typeof v.llm?.fallback?.discoverySteps === 'number' ? v.llm.fallback.discoverySteps : 0,
+          geminiSafety: normalizeGeminiSafety(v.llm?.fallback?.geminiSafety),
           providerBaseUrls: (() => {
             const fbAny = v.llm?.fallback as ({ provider?: string; baseUrl?: string; providerBaseUrls?: Record<string, string> }) | undefined;
             const stored = fbAny?.providerBaseUrls;
@@ -640,26 +607,50 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
     }
     const pending = pendingFormRevisionRef.current;
     if (!pending) return;
+    let displayed = form;
+    if (displayed && formBaselineRef.current && pendingCloudSave
+      && cloudSaveReadReady(pendingCloudSave, revision)) {
+      const reconciled = reconcileSavedCloud(
+        formBaselineRef.current, displayed, pendingCloudSave.snapshot, nextForm.tts.cloud,
+      );
+      displayed = reconciled.form;
+      formBaselineRef.current = reconciled.baseline;
+      setPendingCloudSave(null);
+    }
     const baseline = formBaselineRef.current;
-    const clean = !form || !baseline || sameForm(form, baseline);
-    if (!clean) return;
+    const clean = !displayed || !baseline || sameForm(displayed, baseline);
+    if (!clean) {
+      if (displayed !== form) setForm(displayed);
+      return;
+    }
+    // Compare against the rendered form: reconciliation may have restored
+    // omitted fields only in `displayed`, even when the GET was unchanged.
     if (!form || !sameForm(form, pending.form)) setForm(pending.form);
     formBaselineRef.current = pending.form;
     appliedRevisionRef.current = pending.revision;
     pendingFormRevisionRef.current = null;
-  }, [data, form, settingsQuery.dataUpdatedAt]);
+  }, [data, form, settingsQuery.dataUpdatedAt, pendingCloudSave]);
 
   const saveSettings: SaveSettings = async (patch) => {
+    const submitted = form;
+    const cloudSnapshot = submitted ? cloudSaveSnapshot(submitted, patch) : null;
     try {
       const j = await saveMutation.mutateAsync(patch);
       // The refetch may resolve while this local form is still dirty against
       // its old baseline. Mark only submitted fields clean: an edit in another
       // settings section must continue to hold the queued revision back.
-      if (form) {
+      if (submitted) {
         const baseline = formBaselineRef.current;
         formBaselineRef.current = baseline
-          ? rebaselineSavedPatch(baseline, form, patch)
-          : form;
+          ? rebaselineSavedPatch(baseline, submitted, patch)
+          : submitted;
+      }
+      if (cloudSnapshot) {
+        // Wake hydration even if the authoritative GET rendered before this
+        // continuation. After a failed GET, wait for a later successful poll.
+        setPendingCloudSave({
+          snapshot: cloudSnapshot, refreshedAt: j.refreshedAt, refreshAfter: Date.now(),
+        });
       }
       setFieldErrors((prev) => mergePatchErrors(prev, patch, undefined));
       if (j.requiresRestart) setPendingRestart(true);
