@@ -610,6 +610,17 @@ class Queue {
         .filter((i: QueueItem) => i?.track?.title && new Date(i.queuedAt || 0).getTime() > cutoff);
       this.current = stored.current || null;
       this.history = Array.isArray(stored.history) ? stored.history : [];
+      // Older snapshots named the outgoing cue blendStartSec. It was already
+      // the stamped cue, so migrate the name without adding another overlap.
+      for (const item of [...this.upcoming, this.current, ...this.history]) {
+        const blend = item?.stemBlend;
+        if (blend && typeof blend === 'object' && 'blendStartSec' in blend) {
+          if (blend.outCueSec == null && typeof blend.blendStartSec === 'number') {
+            blend.outCueSec = blend.blendStartSec;
+          }
+          delete blend.blendStartSec;
+        }
+      }
       // Restore the rotate's count (#1619). Repaired, not trusted: this file is
       // on the operator's disk, and a junk value here decides how long the
       // station goes without a stinger. A snapshot written before this field
@@ -2074,10 +2085,10 @@ class Queue {
                   STEM_BLEND_EXIT_KEYS.filter(key => key in originalExit)
                     .map(key => [key, originalExit[key]]),
                 ) : undefined };
-                item.cueOutSec = blend.blendStartSec;
+                item.cueOutSec = blend.outCueSec;
                 successor.stemSeam = true;
                 successor.stemCueInSec = blend.inCueSec;
-                this.log('mix', `stem blend armed: ${item.track.title} ✕ ${successor.track.title} (cut ${blend.blendStartSec}s, cue-in ${blend.inCueSec}s, clip ${blend.clipSec}s)`);
+                this.log('mix', `stem blend armed: ${item.track.title} ✕ ${successor.track.title} (cut ${blend.outCueSec}s, cue-in ${blend.inCueSec}s, clip ${blend.clipSec}s)`);
                 if (previousBlend && previousBlend.clipPath !== blend.clipPath) {
                   await unlink(previousBlend.clipPath).catch(() => {});
                 }
@@ -2123,7 +2134,7 @@ class Queue {
         const uri = () => {
           const liveMax = item.requestedBy ? null : settings.effectiveTrackLengthLimits().playbackMaxSec;
           // The annotation and queue clock must resolve the same live cap.
-          const earlyEnds = positiveCues([item.stemBlend?.blendStartSec, trim.cueOutSec, boundaryCueSec,
+          const earlyEnds = positiveCues([item.stemBlend?.outCueSec, trim.cueOutSec, boundaryCueSec,
             liveMax && itemDurSec > liveMax ? liveMax : null]);
           item.cueOutSec = earlyEnds.length ? Math.min(...earlyEnds) : undefined;
           if (!liveMax && item.track.washoutAuto) {

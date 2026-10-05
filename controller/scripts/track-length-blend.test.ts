@@ -38,7 +38,7 @@ for (const rejected of ['outgoing', 'incoming'] as const) {
     writeFileSync(clipPath, 'test render');
     writeFileSync(config.liquidsoap.queueFile, 'previous handoff');
     const render = queue._renderBlend;
-    queue._renderBlend = async () => ({ clipPath, blendStartSec: 280, inCueSec: 20, clipSec: 30 });
+    queue._renderBlend = async () => ({ clipPath, outCueSec: 280, inCueSec: 20, clipSec: 30 });
     const consumed: string[] = [];
     let draining: Promise<void> | undefined;
     let poll: ReturnType<typeof setInterval> | undefined;
@@ -78,7 +78,7 @@ for (const rejected of ['outgoing', 'incoming'] as const) {
 test('a published outgoing blend commits its successor across a live mode change', async () => {
   const { outgoing, incoming } = await stage(300, 2700);
   const render = queue._renderBlend;
-  queue._renderBlend = async () => ({ clipPath: join(root, 'committed.wav'), blendStartSec: 280, inCueSec: 20, clipSec: 30 });
+  queue._renderBlend = async () => ({ clipPath: join(root, 'committed.wav'), outCueSec: 280, inCueSec: 20, clipSec: 30 });
   const consumed: string[] = [];
   let poll: ReturnType<typeof setInterval> | undefined;
   const draining = queue.drainToLiquidsoap(true);
@@ -113,7 +113,7 @@ for (const originalExit of [undefined, { crossSec: 6 }]) {
   const clipPath = join(root, 'recovered-unpublished.wav');
   writeFileSync(clipPath, 'unused render');
   outgoing.track.crossSec = 0.3;
-  outgoing.stemBlend = { clipPath, blendStartSec: 280, inCueSec: 20, originalExit };
+  outgoing.stemBlend = { clipPath, outCueSec: 280, inCueSec: 20, originalExit };
   outgoing.cueOutSec = 280;
   incoming.stemSeam = true;
   incoming.stemCueInSec = 20;
@@ -150,7 +150,7 @@ for (const scenario of [
     const newClip = scenario.sameClip ? oldClip : join(root, `new-${scenario.name}.wav`);
     writeFileSync(oldClip, 'recovered render');
     outgoing.track.crossSec = 0.3;
-    outgoing.stemBlend = { clipPath: oldClip, blendStartSec: 280, inCueSec: 20, originalExit: scenario.originalExit };
+    outgoing.stemBlend = { clipPath: oldClip, outCueSec: 280, inCueSec: 20, originalExit: scenario.originalExit };
     outgoing.cueOutSec = 280;
     incoming.stemSeam = true;
     incoming.stemCueInSec = 20;
@@ -166,11 +166,11 @@ for (const scenario of [
     q._renderBlend = async () => {
       renders++;
       writeFileSync(newClip, 'replacement render');
-      return { clipPath: newClip, blendStartSec: 275, inCueSec: 25, clipSec: 30 };
+      return { clipPath: newClip, outCueSec: 275, inCueSec: 25, clipSec: 30 };
     };
     try {
       q.recover();
-      await waitUntil(() => q.upcoming[0]?.stemBlend?.blendStartSec === 275);
+      await waitUntil(() => q.upcoming[0]?.stemBlend?.outCueSec === 275);
       const restoredOut = q.upcoming[0];
       const restoredIn = q.upcoming[1];
       assert.equal(renders, 1, 'recovery successfully re-rendered the pair');
