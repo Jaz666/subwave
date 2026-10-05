@@ -19,6 +19,7 @@ import { normGenre, genreMatches, genreResolutionWarningOnce, preferGenre, prefe
 import { resolveShowPlaylistPool, resolveExcludedPlaylistIds, type PlaylistPool } from './show-playlist.js';
 import { showNoRepeatGuard } from './show-recency.js';
 import * as likes from '../broadcast/likes.js';
+import { ARTIST_VARIETY_WINDOW } from '../broadcast/dj-agent/artist-guard.js';
 
 // Raw Subsonic child, slimTrack library row, or Last.fm stub. A structural
 // superset of show-filter's FilterTrack and recency's CandidateLike.
@@ -221,7 +222,7 @@ async function tracksFromAlbums(albums: { id: string }[], perAlbum: number, max:
   return out;
 }
 
-async function buildCandidates(mood: string | null | undefined, recentIds: Set<string>, recentKeys: Set<string>, recentArtists: Set<string>, recentAlbums: Set<string>, currentTrack: Candidate | null, rankTarget: { bpm: number | null; key: string | null } | null = null, audioWaypoint: number[] | null = null, showFilter: ShowFilter = null, hardRecentIds: Set<string> = new Set(), hardRecentKeys: Set<string> = new Set(), playlistPool: PlaylistPool | null = null, playlistStrict = false, blockedArtists: Set<string> = new Set(), strictGenreResolution: StrictGenreResolution = { genres: [], warnings: [] }, lengthLimits: { minTrackSec: number | null; maxTrackSec: number | null } = { minTrackSec: null, maxTrackSec: null }, exhaustiveRotation = false) {
+async function buildCandidates(mood: string | null | undefined, recentIds: Set<string>, recentKeys: Set<string>, recentArtistRoots: Set<string>, recentAlbums: Set<string>, currentTrack: Candidate | null, rankTarget: { bpm: number | null; key: string | null } | null = null, audioWaypoint: number[] | null = null, showFilter: ShowFilter = null, hardRecentIds: Set<string> = new Set(), hardRecentKeys: Set<string> = new Set(), playlistPool: PlaylistPool | null = null, playlistStrict = false, blockedArtists: Set<string> = new Set(), strictGenreResolution: StrictGenreResolution = { genres: [], warnings: [] }, lengthLimits: { minTrackSec: number | null; maxTrackSec: number | null } = { minTrackSec: null, maxTrackSec: null }, exhaustiveRotation = false, excludedIds: Set<string> | null = null) {
   await library.load();
   const { minTrackSec, maxTrackSec } = lengthLimits;
   // Prohibited rows must not consume a source's finite sampling slots.
@@ -507,10 +508,13 @@ async function buildCandidates(mood: string | null | undefined, recentIds: Set<s
 
   // Strict playlist: drop off-playlist candidates before ranking, never-starving
   // to the unfiltered pool only if none survived. Recency still applies below.
-  let selectionPool = pool;
+  // Exclusions must precede soft preferences and the cap. Otherwise an excluded
+  // fresh artist can hide the only eligible (recent-artist) candidate from the
+  // never-starve cascade, then disappear at the final exclusion check.
+  let selectionPool = excludedIds ? pool.filter(t => t.id && !excludedIds.has(t.id)) : pool;
   let playlistInfo: { names: string[]; matched: number; total: number } | null = null;
   if (strictPlaylist) {
-    const inPl = pool.filter((t) => t?.id && playlistPool!.ids.has(t.id));
+    const inPl = selectionPool.filter((t) => t?.id && playlistPool!.ids.has(t.id));
     if (inPl.length) selectionPool = inPl;
   }
 
@@ -539,7 +543,7 @@ async function buildCandidates(mood: string | null | undefined, recentIds: Set<s
   const final = filterPickerCandidates(softRankByCompat(longEnough, curAnalysis, library.lastAiredInfo()), {
     recentIds,
     recentKeys,
-    recentArtists,
+    recentArtistRoots,
     // The SAME queue.recentAlbumKeys set the agent path's guard uses.
     recentAlbums,
     // Pool sources are mostly raw Subsonic children with no compilation flag.
@@ -613,7 +617,10 @@ export async function pickViaPool(queue, ctx, rankTarget: { bpm: number | null; 
   const librarySize = stats.mirrorTotal || stats.total;
   const windows = recencyWindowsForLibrary(stats.distinctArtists, librarySize);
   const { ids: recentIds, keys: recentKeys } = queue.recentlyPlayed(windows.trackHours);
-  const recentArtists = queue.recentArtistsSince(windows.artistHours);
+  // Same configured SLOTS and name fold as the agent guard. 0 disables this
+  // preference; the old library-scaled hours window did not honour that knob.
+  const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
+  const recentArtistRoots: Set<string> = queue.neighbourArtistRoots(varietyWindow);
   // Album cooldown: operator-set hours, not library-scaled. 0 = empty set.
   const recentAlbums = queue.recentAlbumKeys(settings.get().picker?.albumHours ?? 0);
   // Snapshot the predecessor this pick is expected to follow: the queued tail
@@ -668,7 +675,7 @@ export async function pickViaPool(queue, ctx, rankTarget: { bpm: number | null; 
     const key = artistRootKey({ artist: opts.avoidArtist });
     if (key) blockedArtists.add(key);
   }
-  const { candidates: rawCandidates, sources, strictInfo, playlistInfo } = await buildCandidates(ctx.dominantMood, recentIds, recentKeys, recentArtists, recentAlbums, currentTrack, rankTarget, audioWaypoint, showFilter, hardRecentIds, hardRecentKeys, playlistPool, playlistStrict, blockedArtists, strictGenreResolution, { minTrackSec, maxTrackSec }, noRepeat.exhaustive);
+  const { candidates: rawCandidates, sources, strictInfo, playlistInfo } = await buildCandidates(ctx.dominantMood, recentIds, recentKeys, recentArtistRoots, recentAlbums, currentTrack, rankTarget, audioWaypoint, showFilter, hardRecentIds, hardRecentKeys, playlistPool, playlistStrict, blockedArtists, strictGenreResolution, { minTrackSec, maxTrackSec }, noRepeat.exhaustive, excludedIds);
 
   // Excluded playlists: hard drop, no never-starve fallback.
   const candidates = excludedIds
@@ -680,6 +687,14 @@ export async function pickViaPool(queue, ctx, rankTarget: { bpm: number | null; 
       ? `no candidates available excluding "${opts.avoidArtist}", skipping LLM pick`
       : 'no candidates available, skipping LLM pick');
     return null;
+  }
+
+  if (candidates.some(c => recentArtistRoots.has(artistRootKey(c)))) {
+    queue.log('picker', `artist spacing relaxed (window ${varietyWindow} slots): no candidate survived spacing with the active selection rules; keeping music available`);
+    logEvent('pick.artistSpacingRelaxed', {
+      agent: 'pool', basis: 'recent-window', window: varietyWindow,
+      reason: 'no-eligible-fresh-artist', candidates: candidates.length,
+    });
   }
 
   queue.log(
