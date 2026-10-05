@@ -3574,6 +3574,8 @@ export const themePatchSchema = z.preprocess(
   }),
 );
 
+export const maxTrackLengthModeSchema = z.enum(['cut', 'exclude'], { error: 'maxTrackLengthMode must be cut or exclude' });
+
 // ── maxTrackSeconds ──────────────────────────────────────────────────────────
 
 /**
