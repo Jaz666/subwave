@@ -72,6 +72,7 @@ import {
   activeDjPromptIdSchema,
   djPromptTextSchema,
   maxTrackSecondsSchema,
+  maxTrackLengthModeSchema,
   themePatchSchema,
 } from '../schemas/settings.js';
 import {
@@ -112,6 +113,7 @@ export const SETTINGS_PATCH_KEYS = [
   'crossfadeDuration',
   'ducking',
   'handover',
+  'maxTrackLengthMode',
   'maxTrackSeconds',
   'maxTrackMinutes',
   'archive',
@@ -259,6 +261,7 @@ export const SETTINGS_PATCH_SCHEMAS: Readonly<Partial<Record<SettingsPatchKey, S
   // library. Registering the pure half is still worth it: it is what gives these
   // inputs a `fieldErrors` key, and it moves the refusal to the boundary.
   theme: themePatchSchema,
+  maxTrackLengthMode: maxTrackLengthModeSchema,
   maxTrackSeconds: maxTrackSecondsSchema(MAX_TRACK_SECONDS_BOUNDS),
   activeDjPromptId: activeDjPromptIdSchema,
   djPrompt: djPromptTextSchema({ min: DJ_PROMPT_TEXT_MIN, max: DJ_PROMPT_TEXT_MAX }),

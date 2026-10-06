@@ -16,6 +16,7 @@ import { Terminal, TerminalContent } from '../ai-elements/terminal';
 import { BudgetMeter } from './debug/BudgetMeter';
 import { StateTree } from './debug/StateTree';
 import { DjContext } from './debug/DjContext';
+import { PlaybackFailures } from './debug/PlaybackFailures';
 import { LlmCalls } from './debug/LlmCalls';
 import { SleeveNotesCalls } from './debug/SleeveNotesCalls';
 import { MountsTable } from './debug/MountsTable';
@@ -23,7 +24,7 @@ import { SessionChat } from './debug/SessionChat';
 import { SubsonicCalls } from './debug/SubsonicCalls';
 import { TtsRouting } from './debug/TtsPanels';
 import { HealthCell, KvTable } from './debug/bits';
-import { fmtListeners, kindTone } from './debug/format';
+import { fmtListeners, fmtListenerPeak, kindTone } from './debug/format';
 import type { DebugData } from './debug/types';
 import { debugKeys, fetchDebug } from './debug/queries';
 
@@ -82,7 +83,7 @@ export default function DebugPanel() {
             label="Icecast"
             status={data?.icecast && !data.icecast.error ? 'ok' : err ? 'down' : 'idle'}
             v={fmtListeners(data?.icecast)}
-            sub={data?.icecast?.peakListeners != null ? `peak ${data.icecast.peakListeners}` : '—'}
+            sub={fmtListenerPeak(data?.icecast)}
           />
           <HealthCell
             label="Liquidsoap"
@@ -111,6 +112,8 @@ export default function DebugPanel() {
         </div>
       </section>
 
+      <PlaybackFailures timezone={data?.timezone} locale={data?.locale} />
+
       {err && <ErrorState error={err} />}
 
       {!data && !err && (
@@ -122,15 +125,7 @@ export default function DebugPanel() {
       {data && (
         <>
           <div className="stack-mobile grid grid-cols-3 gap-4">
-            <Card
-              title="Now playing"
-              headClass="flex-nowrap"
-              sub={
-                <span className="text-[9px] tracking-[0.08em] normal-case">
-                  now-playing.json
-                </span>
-              }
-            >
+            <Card title="Now playing">
               <ScrollArea className="max-h-80">
                 <KvTable obj={data.nowPlaying} />
               </ScrollArea>

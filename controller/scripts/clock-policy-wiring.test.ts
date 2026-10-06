@@ -117,7 +117,7 @@ const queue = {
   log: (...args: unknown[]) => logs.push(args),
   recentlyPlayed: () => ({ ids: new Set<string>(), keys: new Set<string>() }),
   recentlyPlayedByCount: () => ({ ids: new Set<string>(), keys: new Set<string>() }),
-  recentArtistsSince: () => new Set<string>(),
+  neighbourArtistRoots: () => new Set<string>(),
   recentAlbumKeys: () => new Set<string>(),
   recentTransitionChoices: () => [],
   getDjRecap: () => null,
@@ -164,6 +164,6 @@ test('the real pool path with clock speech disabled does not offer an approximat
 });
 
 test('the real pool handover packet keeps show identity but withholds its start time when clock speech is disabled', () => {
-  assert.match(linkWire, /Following show: \\"Lunchtime Rocks\\" with Wren/);
+  assert.match(linkWire, /Following show: Wren presents \\"Lunchtime Rocks\\"/);
   assert.doesNotMatch(linkWire, new RegExp(String(handover!.nextShow.startsAt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });

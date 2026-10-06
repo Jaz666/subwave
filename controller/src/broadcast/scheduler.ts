@@ -4,13 +4,15 @@
 
 import cron, { type ScheduledTask } from 'node-cron';
 import { config } from '../config.js';
-import { writeFileAtomic } from '../util/atomic-file.js';
+import { writeFileAtomicSync } from '../util/atomic-file.js';
 import { shuffle } from '../util/shuffle.js';
 import { mapPool } from '../util/async-pool.js';
 import * as subsonic from '../music/subsonic.js';
 import * as silenceTrim from '../music/silence-trim.js';
 import * as dj from '../llm/dj.js';
 import * as library from '../music/library.js';
+import { onCacheChange } from '../settings/store.js';
+import { applyKnownTrackCeiling } from '../music/track-duration.js';
 import * as settings from '../settings.js';
 import { jingleRotateOwner, rotateJingleDue } from './jingle-rotate.js';
 import { normGenre, genreMatches, genreResolutionWarningOnce, inYearRange, preferEnergy, preferEnergyStrict, preferMood, applyStrictLocks, hasEraBound, eraSpan, type VocalMode } from '../music/show-filter.js';
@@ -22,6 +24,9 @@ import { queue } from './queue.js';
 import { createPoolBuilder } from './auto-pool.js';
 import { applyTrackFloor } from '../music/track-floor.js';
 import { autoPlaylistShowLabel, createShowBuildTracker } from './auto-playlist-show.js';
+import { createAutoPlaylistRefresh, type RefreshResult } from './auto-playlist-refresh.js';
+import { isIdle } from './stream-idle.js';
+import { autoPlaylistRefreshCron, createAutoPlaylistRefreshRunner } from './auto-playlist-maintenance.js';
 import { reloadAutoPlaylist } from './liquidsoap-control.js';
 import * as session from './session.js';
 import * as djAgent from './dj-agent.js';
@@ -69,22 +74,33 @@ const SHOW_NARROW_FACTOR = 0.5;      // shrink mood/playlist/recent/etc. for sho
 // matches music/picker.ts.
 const SHOW_GENRE_FETCH_CONCURRENCY = 4;
 
-async function tracksFromAlbums(albums: any[], perAlbum: number, max: number) {
+async function tracksFromAlbums(albums: any[], perAlbum: number, max: number, maxTrackSec: number | null) {
   const out: any[] = [];
   for (const a of albums) {
     if (out.length >= max) break;
     try {
       const songs = await subsonic.getAlbum(a.id);
-      out.push(...shuffle(songs).slice(0, perAlbum));
+      out.push(...shuffle(applyKnownTrackCeiling(songs, maxTrackSec)).slice(0, perAlbum));
     } catch {}
   }
   return out;
 }
 
 // Writes an M3U with mood-appropriate tracks for Liquidsoap's fallback source.
-export async function refreshAutoPlaylist() {
-  return withTrace({ kind: 'auto-playlist' }, () => refreshAutoPlaylistInner());
+const playlistRefresh = createAutoPlaylistRefresh({
+  isIdle,
+  build: canPublish => withTrace({ kind: 'auto-playlist' }, () => refreshAutoPlaylistInner(canPublish)),
+  onDeferred: () => queue.log('scheduler', 'Auto-playlist refresh deferred — programme idle-paused (coalescing until resume)'),
+});
+const autoPlaylistRefresh = createAutoPlaylistRefreshRunner(async () => {
+  await refreshAutoPlaylist({ automatic: true });
+}, playlistRefresh.isBusy);
+
+export async function refreshAutoPlaylist({ automatic = false } = {}) {
+  return playlistRefresh.request({ automatic });
 }
+
+export const flushPendingAutoPlaylist = playlistRefresh.flushPending;
 
 // Which show the file on disk holds (#1111); rules in auto-playlist-show.ts.
 const autoPlaylistBuild = createShowBuildTracker();
@@ -98,9 +114,13 @@ export async function refreshAutoPlaylistOnShowChange(reason: string): Promise<b
   if (!autoPlaylistBuild.needsRebuild(show)) return false;
   const rollback = autoPlaylistBuild.claim(show);
   queue.log('scheduler',
-    `Auto-playlist: active show changed to ${autoPlaylistShowLabel(show)} (${reason}) — rebuilding the fallback`);
+    `Auto-playlist: active show changed to ${autoPlaylistShowLabel(show)} (${reason}) — requesting fallback refresh`);
   try {
-    await refreshAutoPlaylist();
+    const result = await refreshAutoPlaylist({ automatic: true });
+    if (result === 'deferred') {
+      rollback();
+      return false;
+    }
   } catch (err: any) {
     rollback();  // still stale — the next boundary must retry
     throw err;
@@ -108,7 +128,26 @@ export async function refreshAutoPlaylistOnShowChange(reason: string): Promise<b
   return true;
 }
 
-async function refreshAutoPlaylistInner() {
+// All settings entrances (save, restore and load) publish through this seam.
+// The epoch also catches A → B → A while a slow catalogue build is pending.
+let lengthPolicyEpoch = 0;
+const lengthPolicyKey = () => JSON.stringify({
+  mode: settings.get().maxTrackLengthMode,
+  max: settings.get().maxTrackSeconds,
+  effectiveMax: settings.effectiveMaxTrackSec(),
+});
+let publishedLengthPolicy = lengthPolicyKey();
+onCacheChange(() => {
+  const key = lengthPolicyKey();
+  if (key === publishedLengthPolicy) return;
+  publishedLengthPolicy = key;
+  lengthPolicyEpoch++;
+  void refreshAutoPlaylist({ automatic: true }).catch(err => queue.log('error', `Length-policy fallback refresh failed: ${err.message}`));
+});
+
+async function refreshAutoPlaylistInner(canPublish: () => boolean): Promise<RefreshResult> {
+  const epoch = lengthPolicyEpoch;
+  const policyKey = lengthPolicyKey();
   const ctx = await getFullContext();
   const mood = ctx.dominantMood;
   // Same library-scaled recency window as the live picker, keyed by BOTH id and
@@ -178,7 +217,7 @@ async function refreshAutoPlaylistInner() {
   const nz = (cap: number) => ((narrow || hasPlaylist) ? Math.max(2, Math.ceil(cap * SHOW_NARROW_FACTOR)) : cap);
 
   // Length cap in seconds, show override or station default (#447). null = no cap.
-  const maxDurationSec = settings.effectiveMaxTrackSec(show);
+  const { playbackMaxSec: maxDurationSec, selectionMaxSec } = settings.effectiveTrackLengthLimits(show);
   // Minimum track length (#1573) is a SELECTION filter, not a cue_out cut like
   // the cap: applied to the assembled pool below, never-starve.
   const minDurationSec = settings.effectiveMinTrackSec(show);
@@ -190,10 +229,12 @@ async function refreshAutoPlaylistInner() {
     recentKeys,
     targetPool: TARGET_POOL,
     maxPerArtist: AUTO_MAX_PER_ARTIST,
+    selectionMaxSec,
   });
   const pool = builder.pool;
   const fromSource = builder.fromSource;
-  const take = builder.take;
+  const take: typeof builder.take = (label, items, cap, opts) =>
+    builder.take(label, applyKnownTrackCeiling(items, selectionMaxSec), cap, opts);
   // Replace the pool in place, aliasing-safe: a never-starve filter that hands
   // its input back would otherwise be cleared by `pool.length = 0`, emptying
   // the coast.
@@ -310,7 +351,7 @@ async function refreshAutoPlaylistInner() {
   // 3. Recently-added albums — surfaces new music without any tagging.
   try {
     const recentAlbums = await subsonic.getRecentlyAddedAlbums({ size: 8 });
-    const tracks = await tracksFromAlbums(shuffle(recentAlbums).slice(0, 4), 2, RECENT_WEIGHT * 2);
+    const tracks = await tracksFromAlbums(shuffle(recentAlbums).slice(0, 4), 2, RECENT_WEIGHT * 2, selectionMaxSec);
     take('recent', enforce(tracks), nz(RECENT_WEIGHT));
   } catch (err) {
     queue.log('error', `Recent-albums fetch failed: ${err.message}`);
@@ -323,7 +364,7 @@ async function refreshAutoPlaylistInner() {
     const freqOffset = Math.floor(Math.random() * 3) * 8;
     let freqAlbums = await subsonic.getFrequentAlbums({ size: 8, offset: freqOffset });
     if (!freqAlbums.length && freqOffset > 0) freqAlbums = await subsonic.getFrequentAlbums({ size: 8 });
-    const tracks = await tracksFromAlbums(shuffle(freqAlbums).slice(0, 4), 2, FREQUENT_WEIGHT * 2);
+    const tracks = await tracksFromAlbums(shuffle(freqAlbums).slice(0, 4), 2, FREQUENT_WEIGHT * 2, selectionMaxSec);
     take('frequent', enforce(tracks), nz(FREQUENT_WEIGHT));
   } catch (err) {
     queue.log('error', `Frequent-albums fetch failed: ${err.message}`);
@@ -409,6 +450,8 @@ async function refreshAutoPlaylistInner() {
   // loudness gain (same resolver, so both paths level identically), the
   // max-track cue_out cap (#447) and the silence trim (music/silence-trim.ts).
   // No loudness / off / unmeasured → no stamp → unity and an untouched entry.
+  replacePool(applyKnownTrackCeiling(pool, selectionMaxSec));
+  if (selectionMaxSec && !pool.length) queue.log('scheduler', 'Auto-playlist empty: no eligible tracks under the hard maximum; using existing dead-air safety');
   for (const t of pool) await queue.applyLoudnessGain(t);
 
   const lines = ['#EXTM3U', ...pool.map((t: any) => {
@@ -421,7 +464,12 @@ async function refreshAutoPlaylistInner() {
   })];
   // Atomic replace: Liquidsoap watches this file (reload_mode="watch"), so an
   // in-place write can trigger a reload of a truncated playlist.
-  await writeFileAtomic(config.liquidsoap.autoPlaylist, lines.join('\n'));
+  // A pause can land during catalogue work. Do not trigger either watcher or
+  // telnet reload in that case; already-started work cannot be cancelled.
+  if (!canPublish() || epoch !== lengthPolicyEpoch || policyKey !== lengthPolicyKey()) return 'deferred';
+  // Small IPC file: synchronous atomic commit leaves no policy-change gap
+  // between the freshness check and rename. Catalogue work stays asynchronous.
+  writeFileAtomicSync(config.liquidsoap.autoPlaylist, lines.join('\n'));
   // The atomic rename swaps the inode, so the inotify watch can orphan itself
   // and loop a stale snapshot forever (#874). Force a telnet reload;
   // best-effort, so an unreachable mixer never fails the refresh.
@@ -459,6 +507,7 @@ async function refreshAutoPlaylistInner() {
   // Every writer stamps, or the next boundary rebuilds a file already built for
   // this show (#1111).
   autoPlaylistBuild.built(show);
+  return 'refreshed';
 }
 
 // ---------------------------------------------------------------------------
@@ -534,6 +583,10 @@ export async function rollSessionNow(
   // it — the others no-op). No ctx → the roll above didn't happen either;
   // leave the handoff pending for the next call site.
   if (!ctx) return { ctx: null, introAired: false, showStarted: false };
+  // The normal :00 path preserves the next natural seam. This independent
+  // deadline makes that preference finite when the outgoing track runs long:
+  // after two minutes the queue generates and ducks the mic-pass over music.
+  queue.armHandoffGenerationFallback();
   // Plan the episode BEFORE the mic-pass so a persona handoff into a
   // programme show can weave the episode angle into the greeting (the
   // greeting doubles as the show's intro on a persona-change boundary).
@@ -548,6 +601,7 @@ export async function rollSessionNow(
     } catch (err) {
       queue.log('error', `Persona handoff failed: ${err.message}`);
     }
+    queue.armHandoffGenerationFallback();
   }
   // Programme shows: open the episode. The intro owns the top of the show's
   // first hour, so once it airs the generic time check stands down (#310).
@@ -618,7 +672,7 @@ export async function runBanter() {
       recentOpeners: queue.getRecentOpeners(),
     });
     if (!lines) throw new Error('banter generation returned no usable exchange');
-    const ok = await queue.announceExchange(lines, 'banter');
+    const ok = await queue.announceExchange(lines, 'banter', { castNames: [host, ...guests].map(p => p.name) });
     if (!ok) throw new Error('banter exchange failed to render');
     return lines.map(l => `${l.persona.name}: ${l.text}`).join('\n');
   });
@@ -1143,20 +1197,29 @@ async function overrideJanitor() {
 }
 
 export function startScheduler() {
-  refreshAutoPlaylist().catch(err => queue.log('error', `Initial playlist failed: ${err.message}`));
+  refreshAutoPlaylist({ automatic: true }).catch(err => queue.log('error', `Initial playlist failed: ${err.message}`));
 
-  cron.schedule(`*/${config.show.autoQueueRefreshMinutes} * * * *`, refreshAutoPlaylist);
+  const refreshCron = autoPlaylistRefreshCron(config.show.autoQueueRefreshMinutes);
+  cron.schedule(refreshCron, async () => {
+    try {
+      if (!await autoPlaylistRefresh.refreshScheduled()) {
+        queue.log('scheduler', 'Auto-playlist periodic refresh skipped — a fallback build is already active');
+      }
+    } catch (err) {
+      queue.log('error', `Periodic playlist failed: ${err.message}`);
+    }
+  });
 
   // Every spoken segment the station produces on its own, plus the
   // unconditional :00 session roll: one tick over one slot table (#1500).
   cron.schedule('* * * * *', talkTick);
 
   cron.schedule('*/5 * * * *', overrideJanitor);
-  cron.schedule('0 * * * *', cleanup);
+  cron.schedule('2 * * * *', cleanup, { noOverlap: true });
   cron.schedule('17 4 * * *', nightlyDoctor);
 
   // Hourly so a station only up part of the day still gets its daily snapshot;
-  // the elapsed-time cadence lives in backup/pure.ts. :23 keeps it off the :00
+  // the elapsed-time cadence lives in backup/pure.ts. :23 keeps it off the :02
   // cleanup and the */5 janitor. Off by default.
   cron.schedule('23 * * * *', scheduledBackupTick);
 
@@ -1168,5 +1231,5 @@ export function startScheduler() {
     syncSkillCrons();
   });
 
-  queue.log('scheduler', `Scheduler started · skills: ${skillCatalog().map((s: any) => s.name).join(', ')}`);
+  queue.log('scheduler', `Scheduler started · auto-playlist: ${refreshCron} · cleanup: 2 * * * * · skills: ${skillCatalog().map((s: any) => s.name).join(', ')}`);
 }

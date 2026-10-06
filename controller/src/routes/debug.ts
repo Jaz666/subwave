@@ -1,5 +1,6 @@
 // Admin-gated GET /debug — everything-at-a-glance for the debug UI.
 import express from 'express';
+import { readPlaybackFailures } from '../observability/playback-failures.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { config } from '../config.js';
@@ -11,6 +12,7 @@ import {
   LLM_DEBUG_LOG,
   LLM_DEBUG_MAX,
   agentDoneRetryCount,
+  generationHealthSnapshot,
   llmCallExportFormat,
   llmCallExportFilename,
   serializeLlmCalls,
@@ -38,6 +40,7 @@ import { getStationTimezone } from '../time.js';
 import { publicOrigin } from './public.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { BadStatePathError, listStateDir } from '../util/state-tree.js';
+import { icecastDebugSnapshot, type IcecastSource, type IcecastStats } from './debug-icecast.js';
 
 export const router = express.Router();
 
@@ -117,21 +120,13 @@ async function buildDebugSnapshot(req: express.Request): Promise<any> {
 
   // Capture the full source array so the per-mount block below reuses it
   // (one status-json fetch, not two).
-  let icecastSources: any[] = [];
+  let icecastSources: IcecastSource[] = [];
   try {
     const r = await fetch(config.icecast.statusUrl);
-    const ic: any = (await r.json() as any).icestats;
-    icecastSources = Array.isArray(ic.source) ? ic.source : ic.source ? [ic.source] : [];
-    const src = icecastSources[0];
-    out.icecast = src ? {
-      title: src.title,
-      bitrate: src.bitrate,
-      listeners: src.listeners,
-      listener_peak: src.listener_peak,
-      mount: src.listenurl,
-      stream_start: src.stream_start_iso8601,
-      server_start: ic.server_start_iso8601,
-    } : { error: 'no source connected' };
+    const ic = (await r.json() as { icestats: IcecastStats }).icestats;
+    const snapshot = icecastDebugSnapshot(ic);
+    icecastSources = snapshot.sources;
+    out.icecast = snapshot.status;
   } catch (err) {
     out.icecast = { error: err.message };
   }
@@ -203,6 +198,7 @@ async function buildDebugSnapshot(req: express.Request): Promise<any> {
   // No state-dir listing here on purpose: it is browsed lazily, one directory
   // per expand, via GET /debug/state-tree below.
   out.llm = {
+    generation: generationHealthSnapshot(),
     provider: llmProvider.providerName(),
     activeModel: llmProvider.activeModelLabel(),
     ollamaUrl: llmProvider.activeOllamaUrl(),
@@ -388,3 +384,25 @@ router.post('/debug/subsonic/reset', requireAdmin, (req, res) => {
   subsonicLog.reset();
   res.json({ ok: true });
 });
+
+// Explicit historical scans, deliberately separate from the fast /debug poll.
+for (const exportRows of [false, true]) {
+  router.get(`/debug/playback-failures${exportRows ? '/export' : ''}`,
+    (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); },
+    requireAdmin, async (_req, res) => {
+      try {
+        const history = await readPlaybackFailures({ stationDir: config.stateDir });
+        if (!exportRows) { res.json(history); return; }
+        res.setHeader('Content-Type', 'application/x-ndjson');
+        res.setHeader('Content-Disposition', `attachment; filename="subwave-playback-failures-${new Date().toISOString().replace(/[:.]/g, '-')}.ndjson"`);
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-History-Retention-Days, X-History-Limit, X-History-Truncated, X-History-Warnings');
+        res.setHeader('X-History-Retention-Days', String(history.retentionDays));
+        res.setHeader('X-History-Limit', '1000');
+        res.setHeader('X-History-Truncated', String(history.truncated));
+        res.setHeader('X-History-Warnings', String(history.warnings.length));
+        res.send(history.failures.map(row => JSON.stringify(row) + '\n').join(''));
+      } catch {
+        res.status(500).json({ error: 'Failure history could not be read.' });
+      }
+    });
+}

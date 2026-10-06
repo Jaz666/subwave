@@ -18,6 +18,7 @@ import {
   JINGLE_RATIO_BOUNDS,
   LOUDNESS_MAX_BOOST_DB_BOUNDS,
   LOUDNESS_TARGET_LUFS_BOUNDS,
+  normalizeGeminiSafety,
   type JingleRotateOwner,
 } from '../schemas/settings.js';
 import { SHOW_MAX_TRACK_SECONDS, SHOW_MIN_TRACK_LENGTH_MAX } from '../schemas/show.js';
@@ -56,10 +57,11 @@ export const DEFAULTS = {
   // time, weather, request intros); `intro` is the light talk-over duck
   // (intro.txt: between-track links) that leaves the song audible underneath.
   ducking: { voice: 0.22, intro: 0.30 },
-  // Station-wide cap on autonomously-picked track length; 0 = no cap (#447). A
+  // Station-wide maximum on autonomously-picked track length; 0 = no cap (#447). A
   // show's own maxTrackSeconds overrides it (0 there = unlimited). Listener
   // requests always bypass it.
   maxTrackSeconds: 0,
+  maxTrackLengthMode: 'cut',
   // Fade a long track out at the next show change instead of letting it spill
   // into the following show (#1574). Off by default, and a show's own
   // `fadeAtShowEnd` (null = inherit) overrides it — absent at both levels is
@@ -246,6 +248,11 @@ export const DEFAULTS = {
   // scheduled show change. Off preserves the established terse time check.
   djBehaviour: {
     showWelcome: false,
+    // The optional final-quarter-hour programme preview is independent of the
+    // presenter handoff. Keep the established preview on for existing stations;
+    // operators who prefer the handoff to be the only acknowledgement can turn
+    // it off in DJ Behaviour → Show changes.
+    previewNextShow: true,
     sameHostAcknowledgement: false,
     extendedSleeveNotes: false,
     // Research-only maintenance exception for an Icecast-confirmed empty
@@ -317,6 +324,21 @@ export const DEFAULTS = {
     // Built-in voice id used when the engine resolves to pocket-tts with no
     // persona-level voice.
     pocketTts: { voice: 'alba' },
+    // Station-level Gemini choice, used when a persona leaves its own voice (or
+    // follows the station default). `model: ''` means "walk the engine's own
+    // fallback chain", which is what an install that never picked one wants —
+    // pinning a model at install time would freeze the chain at whatever was
+    // newest today. `pronunciation` is free text and empty by default: it is for
+    // ONE station's place names, and nothing ships enabled for anyone else.
+    // `libraryLanguage` is the DEFAULT language filter for the Extended Voice
+    // Library browser — NOT a constraint on what a persona may use, and NOT a
+    // hint handed to the engine. Gemini takes its accent from the voice you
+    // pick (Google: "do not try to change immutable speaker traits in style …
+    // pick a regional voice"), so this only decides which page of the ~2,000
+    // voice catalogue the admin UI opens on. Empty means "no filter", so a
+    // station that does not care is not narrowed, and nothing is hardcoded:
+    // the dropdown is populated from what Google currently serves.
+    gemini: { model: '', voice: 'Puck', pronunciation: '', libraryLanguage: '' },
     // Used when an engine resolves to 'cloud'. A persona chooses provider+voice;
     // `model` stays shared. `enabled: false` makes the engine report unavailable
     // regardless of key, so the pickers grey it out.
@@ -400,6 +422,7 @@ export const DEFAULTS = {
     // bearer token alone (OpenCode Zen Go's `x-opencode-session` is the case
     // this was filed for). Ignored by every other provider.
     headers: {} as Record<string, string>,
+    compatibleMode: 'local' as 'local' | 'hosted',
     // Let reasoning models emit a chain-of-thought. Off by default: the DJ writes
     // short scripts and structured picks that don't benefit from it, and an
     // uncapped <think> block on a small model balloons every call.
@@ -438,6 +461,10 @@ export const DEFAULTS = {
     // field). Injected into the request body — the AI SDK has no field for it —
     // and ignored by every other provider, Ollama included.
     repeatPenalty: 1.15,
+    // HARM_CATEGORY thresholds for the native `google` provider leg. Checked =
+    // block that category; unchecked/absent = allow (BLOCK_NONE). Only the
+    // google leg reads them — every other provider ignores the field.
+    geminiSafety: normalizeGeminiSafety(undefined),
     // On: the session DJ agent drives picks, links and requests as a tool-loop
     // over the session chat history. Off: the stateless pool picker runs instead,
     // still inside a session and still logged.
@@ -461,10 +488,12 @@ export const DEFAULTS = {
     // searchReady().
     requestWebResolve: false,
     // Hard wall-clock ceiling on a single DJ-agent generation, enforced by
-    // withDeadline. The main and recovery runs each get the full budget, so worst
-    // case per pick is ~2x this before the stateless fallback. Reasoning-heavy
-    // cloud models routinely need 20-40s.
+    // withDeadline. Main, recovery and terminal runs share one budget per
+    // provider leg; tool work is included. Reasoning-heavy cloud models
+    // routinely need 20-40s.
     agentTimeoutMs: 45000,
+    // Per provider generation, independent of the whole agent/tool cascade.
+    requestTimeoutMs: 300000,
     // Pause autonomous DJ LLM work and listener requests whenever Icecast reports
     // zero listeners — the stream coasts on the auto playlist.
     pauseWhenEmpty: false,
@@ -510,10 +539,13 @@ export const DEFAULTS = {
       // Per-leg like providerBaseUrls: the backup may be a different gateway
       // with its own routing header.
       headers: {} as Record<string, string>,
+      compatibleMode: 'local' as 'local' | 'hosted',
       reasoning: false,
       toolChoice: 'required',
       numCtx: 16384,
       repeatPenalty: 1.15,
+      // Independent of the primary: only this leg's Google calls read it.
+      geminiSafety: normalizeGeminiSafety(undefined),
       // Per-leg like toolChoice/numCtx: the backup may be a different provider
       // running a different model, so it resolves its own budget.
       discoverySteps: 0,
@@ -539,6 +571,7 @@ export const DEFAULTS = {
     baseUrl: '',          // deprecated single slot — migration source only
     ollamaUrl: '',        // Ollama embedding server URL (ollama provider)
     apiKey: '',           // empty → inherit settings.llm.apiKey
+    headers: {} as Record<string, string>, // embedding-only headers; empty → inherit matching chat leg
     seedCount: 0,         // 0 → auto (autoSeedCount: ~4% of the library, 200–2500)
     // Confidence is topSim x coverage — a product of two sub-1 terms (see
     // tag-propagator.ts) — so the original 0.6 gates rejected even strong matches
