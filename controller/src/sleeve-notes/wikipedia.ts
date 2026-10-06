@@ -9,6 +9,7 @@ const MUSICBRAINZ_API = 'https://musicbrainz.org/ws/2';
 const USER_AGENT = 'Subwave Sleeve Notes/1.13 (https://github.com/Jaz666/subwave)';
 const TIMEOUT_MS = 8_000;
 const HEADERS = { 'User-Agent': USER_AGENT, Accept: 'application/json' };
+const WIKIPEDIA_REST = 'https://en.wikipedia.org/w/rest.php/v1/revision';
 
 async function fetchJson(url: string): Promise<unknown | null> {
   const response = await fetchWithTimeout(url, { timeoutMs: TIMEOUT_MS, headers: HEADERS });
@@ -30,6 +31,7 @@ export interface WikipediaArticleDocument {
   retrievedAt: string;
   text: string;
   attribution: string;
+  sourceFormatVersion: number;
 }
 
 /** Kept as an alias for the existing artist-source call sites. */
@@ -46,16 +48,87 @@ export function projectWikipediaArticleDocument(payload: unknown): WikipediaArti
   const revision = Array.isArray(page.revisions) ? page.revisions[0] as Record<string, unknown> | undefined : undefined;
   const revisionId = typeof revision?.revid === 'number' || typeof revision?.revid === 'string' ? String(revision.revid) : null;
   if (!title || !url || !text || !revisionId) return null;
-  // A bounded revision is enough for an initial dossier and prevents a
-  // huge article from becoming accidental prompt context later.
   return {
     title,
     url,
     revisionId,
     retrievedAt: new Date().toISOString(),
-    text: text.slice(0, 24_000),
+    text: text.slice(0, 250_000),
     attribution: `Wikipedia contributors, “${title}”, CC BY-SA`,
+    sourceFormatVersion: 1,
   };
+}
+
+function decodeHtml(value: string): string {
+  const named: Record<string, string> = {
+    amp: '&', apos: "'", copy: '©', gt: '>', hellip: '…', lt: '<', mdash: '—',
+    nbsp: ' ', ndash: '–', quot: '"', reg: '®', rsquo: '’', lsquo: '‘',
+    rdquo: '”', ldquo: '“', trade: '™',
+  };
+  return value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/giu, (entity, code: string) => {
+    if (code[0] === '#') {
+      const hex = code[1]?.toLowerCase() === 'x';
+      const point = Number.parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10);
+      try { return Number.isFinite(point) ? String.fromCodePoint(point) : entity; } catch { return entity; }
+    }
+    return named[code.toLowerCase()] ?? entity;
+  });
+}
+
+/** Reduce revision HTML to article prose while preserving block quotations. */
+export function wikipediaHtmlToProse(html: string, maxCharacters = 250_000): string {
+  const tokens = html.replace(/<!--[\s\S]*?-->/gu, '').match(/<[^>]+>|[^<]+/gu) ?? [];
+  const ignoredTags = new Set(['script', 'style', 'nav', 'table', 'ol', 'ul', 'sup', 'figure', 'noscript']);
+  const ignoredClasses = /(?:^|\s)(?:mw-editsection|reference|mw-references-wrap|navbox|infobox|metadata|ambox|hatnote|shortdescription|toc|vertical-navbox)(?:\s|$)/u;
+  const stack: Array<{ tag: string; ignored: boolean }> = [];
+  const paragraphs: string[] = [];
+  let text = '';
+  let quote = false;
+  let heading = false;
+  let total = 0;
+  const flush = () => {
+    const value = text.replace(/\s+/gu, ' ').trim();
+    text = '';
+    if (!value || total >= maxCharacters) return;
+    const line = heading ? `${'='.repeat(2)} ${value} ${'='.repeat(2)}` : quote ? `> ${value}` : value;
+    const bounded = line.slice(0, maxCharacters - total);
+    if (bounded) { paragraphs.push(bounded); total += bounded.length + 2; }
+  };
+  const ignoredNow = () => stack.some((entry) => entry.ignored);
+  for (const token of tokens) {
+    if (token.startsWith('<')) {
+      const match = token.match(/^<\s*(\/)?\s*([a-z][\w:-]*)\b([^>]*)>/iu);
+      if (!match) continue;
+      const closing = !!match[1];
+      const tag = match[2].toLowerCase();
+      if (closing) {
+        const index = stack.map((entry) => entry.tag).lastIndexOf(tag);
+        if (index >= 0) stack.splice(index);
+        if (!ignoredNow()) {
+          if (/^h[1-6]$/u.test(tag)) { heading = true; flush(); heading = false; }
+          else if (['p', 'blockquote', 'br', 'div'].includes(tag)) flush();
+          if (tag === 'blockquote') quote = false;
+        }
+      } else {
+        const attrs = match[3] ?? '';
+        const classValue = attrs.match(/\bclass\s*=\s*(["'])(.*?)\1/iu)?.[2] ?? '';
+        const ignored = ignoredTags.has(tag) || ignoredClasses.test(classValue) || ignoredNow();
+        if (!ignored && /^h[1-6]$/u.test(tag)) { flush(); heading = true; }
+        if (!ignored && tag === 'blockquote') { flush(); quote = true; }
+        stack.push({ tag, ignored });
+        if (!ignored && tag === 'br') text += ' ';
+        if (/\/\s*>$/u.test(token) || ['br', 'hr', 'img', 'meta', 'link', 'input', 'wbr'].includes(tag)) {
+          if (stack.at(-1)?.tag === tag) stack.pop();
+        }
+      }
+      continue;
+    }
+    if (ignoredNow()) continue;
+    const decoded = decodeHtml(token).replace(/\s+/gu, ' ');
+    if (decoded.trim()) text += `${text && !/\s$/u.test(text) ? ' ' : ''}${decoded}`;
+  }
+  flush();
+  return paragraphs.join('\n\n').slice(0, maxCharacters);
 }
 
 /** Existing artist projection API. */
@@ -118,7 +191,23 @@ async function fetchWikipediaDocumentFromMusicBrainzEntity(
   if (!title) return null;
   params.set('titles', title);
   const articlePayload = await fetchJson(`${API}?${params}`);
-  return articlePayload ? projectWikipediaArticleDocument(articlePayload) : null;
+  const projected = articlePayload ? projectWikipediaArticleDocument(articlePayload) : null;
+  if (!projected) return null;
+  const response = await fetchWithTimeout(`${WIKIPEDIA_REST}/${encodeURIComponent(projected.revisionId)}/html`, {
+    timeoutMs: TIMEOUT_MS,
+    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
+  });
+  if (!response.ok) {
+    if (response.status === 408 || response.status === 429 || response.status >= 500) throw new Error(`HTTP ${response.status}`);
+    return null;
+  }
+  const text = wikipediaHtmlToProse(await response.text());
+  if (!text) return null;
+  return {
+    ...projected,
+    text: `<!-- subwave-wikipedia-source-format:2 -->\n${text}`,
+    sourceFormatVersion: 2,
+  };
 }
 
 export function fetchWikipediaArtistDocument(musicBrainzArtistId: string): Promise<WikipediaArtistDocument | null> {

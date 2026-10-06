@@ -4,6 +4,7 @@ import * as settings from '../settings.js';
 import * as subsonic from '../music/subsonic.js';
 import * as repository from './repository.js';
 import { GeniusRequestError, GeniusProvider } from './genius.js';
+import { geniusAccessToken } from './genius-token.js';
 import { collectionPlan } from './runtime.js';
 import type { SleeveEntityInput, SleeveProvider } from './provider.js';
 import { exactLocalMatches } from './resolver.js';
@@ -20,7 +21,7 @@ export function configuredPlan() {
   const current = settings.get();
   return collectionPlan({
     enabled: current.djBehaviour.extendedSleeveNotes === true,
-    providerConfigured: current.sleeveNotes.providers.genius.enabled === true && !!process.env.GENIUS_ACCESS_TOKEN,
+    providerConfigured: current.sleeveNotes.providers.genius.enabled === true && !!geniusAccessToken(),
   });
 }
 
@@ -104,10 +105,19 @@ export class SleeveCollector {
 }
 
 let liveCollector: SleeveCollector | null = null;
+let liveCollectorToken = '';
 export function collector(): SleeveCollector | null {
-  const token = process.env.GENIUS_ACCESS_TOKEN;
-  if (!token) return null;
-  return liveCollector ??= new SleeveCollector(new GeniusProvider(token));
+  const token = geniusAccessToken();
+  if (!token) {
+    liveCollector = null;
+    liveCollectorToken = '';
+    return null;
+  }
+  if (token !== liveCollectorToken) {
+    liveCollector = new SleeveCollector(new GeniusProvider(token));
+    liveCollectorToken = token;
+  }
+  return liveCollector;
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;

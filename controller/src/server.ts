@@ -62,6 +62,7 @@ import * as sleeveNotesDb from './sleeve-notes/db.js';
 import { recoverInterruptedResearchJobs } from './sleeve-notes/research-repository.js';
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
 import { startMusicBrainzSeriesWorker } from './sleeve-notes/musicbrainz-series-worker.js';
+import { startMusicBrainzSeriesLibraryWorker } from './sleeve-notes/musicbrainz-series-library-worker.js';
 import { startWikipediaWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
 import { startGeniusResearchWorker } from './sleeve-notes/genius-worker.js';
@@ -372,6 +373,7 @@ app.listen(config.server.port, async () => {
   };
   startMusicBrainzMatchWorker(sleeveNotesQuietGate);
   startMusicBrainzSeriesWorker(sleeveNotesQuietGate);
+  startMusicBrainzSeriesLibraryWorker(sleeveNotesQuietGate);
   startWikipediaWorker(sleeveNotesQuietGate);
   startResearchWorker(sleeveNotesQuietGate);
   startGeniusResearchWorker(sleeveNotesQuietGate);

@@ -5,9 +5,12 @@
 import * as musicbrainz from '../music/musicbrainz.js';
 import * as settings from '../settings.js';
 import * as repository from './research-repository.js';
+import { gatedListenerCount } from '../broadcast/listeners.js';
 
 export interface QuietGate {
   isQuiet(): boolean;
+  /** True only for confirmed zero-listener background-maintenance windows. */
+  isEmptyMaintenanceAllowed?(): boolean;
 }
 
 export interface CanonicalRecordingLookup {
@@ -49,7 +52,8 @@ export class MusicBrainzMatchWorker {
         }
         else {
           repository.finishProviderRequest(requestId, 'ready');
-          repository.retainCanonicalMusicBrainzMatch(attachment.localTrackId, result);
+          repository.retainCanonicalMusicBrainzMatch(attachment.localTrackId, result,
+            (gatedListenerCount() ?? 0) > 0);
           repository.finishResearchJob(job.id, 'complete');
           console.log(`[sleeve-notes] MusicBrainz matched: ${result.artist?.name ?? 'Unknown artist'} — ${result.title}`);
         }

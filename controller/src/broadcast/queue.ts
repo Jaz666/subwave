@@ -54,7 +54,7 @@ import * as settings from '../settings.js';
 import { TRANSITION_EFFECTS } from '../settings/vocab.js';
 import { logEvent } from '../observability/events.js';
 import { recordPlaybackFailure } from '../observability/playback-failures.js';
-import { djCallsAllowed, presentListeners } from './listeners.js';
+import { djCallsAllowed, gatedListenerCount, presentListeners } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { speakClockAllowed, stationIdDaypartDrifted, stationIdDaypartStamp } from './clock-policy.js';
 import {
@@ -160,13 +160,15 @@ import { notifyQueued, notifySpoken } from './voice-events.js';
 // tiny local write keeps the queue mutation and watcher tick entirely free of
 // Sleeve Notes work. The new admission path records an encounter and one
 // durable MusicBrainz match task; it never contacts a provider here.
-function admitSleeveNotesLater(track: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null }, source: 'queue' | 'played', priority = 0): void {
+function admitSleeveNotesLater(track: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null }, source: 'queue' | 'played', priority = 0, autopilot = false): void {
   setTimeout(() => {
     try {
       admitSleeveNotesEncounter({
         localTrackId: track.id, title: track.title, artist: track.artist,
         releaseTitle: track.album,
-      }, source, priority);
+        autopilot,
+        listenerPresent: (gatedListenerCount() ?? 0) > 0,
+      }, source, priority, autopilot);
     } catch {}
   }, 0).unref();
 }
@@ -1114,7 +1116,7 @@ class Queue {
     this.persist();
     // Candidate admission is deferred out of the queue mutation. It is never
     // awaited and makes no provider request while the feature is off.
-    admitSleeveNotesLater(track, 'queue');
+    admitSleeveNotesLater(track, 'queue', 0, aiPicked);
     this.drainToLiquidsoap();  // fire-and-forget
     return this.upcoming.length;
   }

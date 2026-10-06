@@ -19,7 +19,7 @@ export class WikipediaWorker {
 
     const now = Date.now();
     if (now - this.lastBackfillAt >= BACKFILL_INTERVAL_MS) {
-      repository.enqueueMissingWikipediaReleaseGroupJobs();
+      repository.enqueueMissingWikipediaArticleJobs();
       this.lastBackfillAt = now;
     }
 
@@ -67,6 +67,7 @@ export class WikipediaWorker {
         repository.enqueueResearchJob({
           provider: 'researcher', subjectType: 'artist', subjectId: artist.id,
           capability: 'extract-wikipedia', priority: 300,
+          originLocalTrackId: job.originLocalTrackId,
         });
         repository.finishResearchJob(job.id, 'complete');
         console.log(`[sleeve-notes] Wikipedia biography retained: ${artist.name} (revision ${document.revisionId})`);
@@ -93,7 +94,12 @@ export class WikipediaWorker {
       if (!document) {
         repository.finishProviderRequest(requestId, 'no-match');
         repository.finishResearchJob(job.id, 'failed');
-        console.log(`[sleeve-notes] Wikipedia album article unavailable for release group ${releaseGroupId}`);
+        repository.enqueueResearchJob({
+          provider: 'genius', subjectType: 'release', subjectId: releaseGroupId,
+          capability: 'album-biography', priority: 340,
+          originLocalTrackId: job.originLocalTrackId,
+        });
+        console.log(`[sleeve-notes] Wikipedia album article unavailable; queued Genius fallback for release group ${releaseGroupId}`);
       } else {
         repository.finishProviderRequest(requestId, 'ready');
         repository.retainSourceDocument({
@@ -104,6 +110,7 @@ export class WikipediaWorker {
         repository.enqueueResearchJob({
           provider: 'researcher', subjectType: 'release', subjectId: releaseGroupId,
           capability: RELEASE_GROUP_EXTRACTION, priority: 350,
+          originLocalTrackId: job.originLocalTrackId,
         });
         repository.finishResearchJob(job.id, 'complete');
         console.log(`[sleeve-notes] Wikipedia album article retained: ${document.title} (release group ${releaseGroupId}, revision ${document.revisionId})`);

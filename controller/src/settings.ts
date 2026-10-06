@@ -636,6 +636,8 @@ export async function load() {
         ? stored.djBehaviour.sleeveNotesMaintenanceWhenEmpty : DEFAULTS.djBehaviour.sleeveNotesMaintenanceWhenEmpty,
       releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)
         ? stored.djBehaviour.releaseYearMentions : DEFAULTS.djBehaviour.releaseYearMentions,
+      extendedSleeveNoteUseFrequency: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.extendedSleeveNoteUseFrequency)
+        ? stored.djBehaviour.extendedSleeveNoteUseFrequency : DEFAULTS.djBehaviour.extendedSleeveNoteUseFrequency,
       recapLimit: parsedIntIn(
         stored.djBehaviour?.recapLimit,
         DEFAULTS.djBehaviour.recapLimit,
@@ -653,9 +655,17 @@ export async function load() {
       ),
     },
     sleeveNotes: {
+      wikipedia: {
+        extractPrompt: typeof stored.sleeveNotes?.wikipedia?.extractPrompt === 'string' ? stored.sleeveNotes.wikipedia.extractPrompt : DEFAULTS.sleeveNotes.wikipedia.extractPrompt,
+        artistClaimLimit: Number.isInteger(stored.sleeveNotes?.wikipedia?.artistClaimLimit) && stored.sleeveNotes.wikipedia.artistClaimLimit >= 1 && stored.sleeveNotes.wikipedia.artistClaimLimit <= 20 ? stored.sleeveNotes.wikipedia.artistClaimLimit : DEFAULTS.sleeveNotes.wikipedia.artistClaimLimit,
+        albumClaimLimit: Number.isInteger(stored.sleeveNotes?.wikipedia?.albumClaimLimit) && stored.sleeveNotes.wikipedia.albumClaimLimit >= 1 && stored.sleeveNotes.wikipedia.albumClaimLimit <= 20 ? stored.sleeveNotes.wikipedia.albumClaimLimit : DEFAULTS.sleeveNotes.wikipedia.albumClaimLimit,
+        chunkCharacterCeiling: Number.isInteger(stored.sleeveNotes?.wikipedia?.chunkCharacterCeiling) && stored.sleeveNotes.wikipedia.chunkCharacterCeiling >= 4000 && stored.sleeveNotes.wikipedia.chunkCharacterCeiling <= 60000 ? stored.sleeveNotes.wikipedia.chunkCharacterCeiling : DEFAULTS.sleeveNotes.wikipedia.chunkCharacterCeiling,
+      },
       providers: {
-        genius: { enabled: typeof stored.sleeveNotes?.providers?.genius?.enabled === 'boolean'
-          ? stored.sleeveNotes.providers.genius.enabled : DEFAULTS.sleeveNotes.providers.genius.enabled },
+        genius: {
+          enabled: typeof stored.sleeveNotes?.providers?.genius?.enabled === 'boolean' ? stored.sleeveNotes.providers.genius.enabled : DEFAULTS.sleeveNotes.providers.genius.enabled,
+          accessToken: typeof stored.sleeveNotes?.providers?.genius?.accessToken === 'string' ? stored.sleeveNotes.providers.genius.accessToken : DEFAULTS.sleeveNotes.providers.genius.accessToken,
+        },
       },
     },
     // Repaired rather than refused, like ducking above: an offset the talk
@@ -1659,6 +1669,7 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
       extendedSleeveNotes?: boolean;
       sleeveNotesMaintenanceWhenEmpty?: boolean;
       releaseYearMentions?: string;
+      extendedSleeveNoteUseFrequency?: string;
       recapLimit?: number;
       recapMinutes?: number;
       recapChars?: number;
@@ -1671,16 +1682,29 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     if (behaviour.releaseYearMentions !== undefined) {
       next.djBehaviour.releaseYearMentions = behaviour.releaseYearMentions as typeof next.djBehaviour.releaseYearMentions;
     }
+    if (behaviour.extendedSleeveNoteUseFrequency !== undefined) {
+      next.djBehaviour.extendedSleeveNoteUseFrequency = behaviour.extendedSleeveNoteUseFrequency as typeof next.djBehaviour.extendedSleeveNoteUseFrequency;
+    }
     for (const key of ['recapLimit', 'recapMinutes', 'recapChars'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
     }
   }
   if ('sleeveNotes' in patch) {
-    const sleeveNotes = parseSettingsPatchKey<{ providers?: { genius?: { enabled?: boolean } } }>(
+    const sleeveNotes = parseSettingsPatchKey<{
+      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number; chunkCharacterCeiling?: number };
+      providers?: { genius?: { enabled?: boolean; accessToken?: string } };
+    }>(
       'sleeveNotes', patch.sleeveNotes,
     );
+    if (sleeveNotes.wikipedia?.extractPrompt !== undefined) next.sleeveNotes.wikipedia.extractPrompt = sleeveNotes.wikipedia.extractPrompt;
+    if (sleeveNotes.wikipedia?.artistClaimLimit !== undefined) next.sleeveNotes.wikipedia.artistClaimLimit = sleeveNotes.wikipedia.artistClaimLimit;
+    if (sleeveNotes.wikipedia?.albumClaimLimit !== undefined) next.sleeveNotes.wikipedia.albumClaimLimit = sleeveNotes.wikipedia.albumClaimLimit;
+    if (sleeveNotes.wikipedia?.chunkCharacterCeiling !== undefined) next.sleeveNotes.wikipedia.chunkCharacterCeiling = sleeveNotes.wikipedia.chunkCharacterCeiling;
     if (sleeveNotes.providers?.genius?.enabled !== undefined) {
       next.sleeveNotes.providers.genius.enabled = sleeveNotes.providers.genius.enabled;
+    }
+    if (sleeveNotes.providers?.genius?.accessToken !== undefined && sleeveNotes.providers.genius.accessToken !== 'set') {
+      next.sleeveNotes.providers.genius.accessToken = sleeveNotes.providers.genius.accessToken;
     }
   }
   if ('handover' in patch) {

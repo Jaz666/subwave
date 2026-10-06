@@ -274,6 +274,18 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNotes: v === 'on' } }))}
           />
         </div>
+        <div className="field mt-4">
+          <Label>Offer an Extended Sleeve Note</Label>
+          <Seg
+            value={form.djBehaviour.extendedSleeveNoteUseFrequency}
+            options={[
+              { id: 'regular', label: 'Regular', title: 'Offer an eligible note on most links' },
+              { id: 'occasional', label: 'Occasional', title: 'Offer an eligible note on some links' },
+              { id: 'rare', label: 'Rare', title: 'Offer an eligible note infrequently' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNoteUseFrequency: v as typeof f.djBehaviour.extendedSleeveNoteUseFrequency } }))}
+          />
+        </div>
         <div className="field mt-5">
           <Label>Genius metadata collection</Label>
           <Seg
@@ -282,7 +294,13 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
               { id: 'off', label: 'Off', title: 'Do not queue Genius recording research' },
               { id: 'on', label: 'On', title: 'Collect Genius recording credits and musical connections when configured' },
             ]}
-            onChange={v => setForm(f => ({ ...f, sleeveNotes: { providers: { genius: { enabled: v === 'on' } } } }))}
+            onChange={v => setForm(f => ({
+              ...f,
+              sleeveNotes: {
+                ...f.sleeveNotes,
+                providers: { ...f.sleeveNotes.providers, genius: { ...f.sleeveNotes.providers.genius, enabled: v === 'on' } },
+              },
+            }))}
           />
           <p className="mt-2 text-[13px] leading-[1.55] text-muted">
             Genius requests collect recording credits and musical connections only. Lyrics are not fetched or retained.
