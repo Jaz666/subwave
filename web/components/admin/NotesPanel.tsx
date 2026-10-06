@@ -179,9 +179,9 @@ function Metric({ label, value, detail }: { label: string; value: number; detail
 }
 
 function CompactMetric({ label, value, detail }: { label: string; value: number | string; detail?: string }) {
-  return <div className="min-w-0 rounded-md border border-border/70 px-3 py-2">
+  return <div className="min-w-0 rounded-md border border-border/70 px-3 py-2 lg:px-2 lg:py-1.5">
     <div className="flex items-baseline gap-2">
-      <span className="text-lg font-semibold tabular-nums">{typeof value === 'number' ? value.toLocaleString('en-GB') : value}</span>
+      <span className="text-lg font-semibold tabular-nums lg:text-base">{typeof value === 'number' ? value.toLocaleString('en-GB') : value}</span>
       <span className="text-xs text-ink">{label}</span>
     </div>
     {detail && <p className="text-[11px] leading-4 text-muted">{detail}</p>}
@@ -542,7 +542,7 @@ function ActiveOverview({ data }: { data: NotesReadout }) {
   return (
     <div className="space-y-5">
       <Card title="Collection" sub={`${data.localAttachments.toLocaleString('en-GB')} tracks encountered · gathering stories for future DJ links`}>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
           <CompactMetric label="Claims for DJs" value={data.retainedClaims} detail="Ready for future links" />
           {data.workQueue && <CompactMetric label="Research queue" value={activeJobs}
             detail={`${readyJobs} ready · ${waitingJobs} waiting · ${runningJobs} running`} />}
