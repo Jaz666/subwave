@@ -258,6 +258,7 @@ function segmentDeadline(): number {
 // here; agenticTick only feeds the dynamic per-tick state.
 export const directorAgent = defineAgent({
   kind: 'djAgentSegment',
+  activityPriority: 'background',
   schema: () => segmentSchema(),
   // Discovery (step 0) + exactly one committed done-tool attempt (step 1), same
   // reasoning as pickerAgent.maxSteps: a taller budget only grows an "I already
@@ -643,6 +644,7 @@ ${cap.desc}${sfxBlock(sfxCatalog)}${settings.agentLanguageReminder(persona, 'the
 function defineForcedAgent(mayAbstain: boolean) {
   return defineAgent({
     kind: 'djAgentSegment',
+    activityPriority: 'background',
     schema: () => forcedSchema({ mayAbstain }),
     // Same wall-clock ceiling as the autonomous director (#555).
     timeoutMs: segmentDeadline,

@@ -3,7 +3,7 @@
 export interface SleeveNotesProviderCall {
   t: string;
   provider: 'genius';
-  endpoint: 'search' | 'song';
+  endpoint: 'search' | 'song' | 'album' | 'annotation';
   title: string;
   artist: string | null;
   ok: boolean;

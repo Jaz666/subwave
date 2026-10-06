@@ -8,8 +8,9 @@ import { generateText } from 'ai';
 import { withFailover } from '../core/failover.js';
 import { withTransientRetry } from '../core/retry.js';
 import { stripThinking, truncationError, usageOf, perfOf, warningsOf, failureDiagnostics } from '../core/pure.js';
-import { reasoningFor, repeatPenaltyApplies, samplingWithLocalKnobs, googleSafetyOptions } from '../provider/capabilities.js';
+import { reasoningFor, repeatPenaltyApplies, samplingWithLocalKnobs } from '../provider/capabilities.js';
 import { resolveMaxOutputTokens } from '../../../settings.js';
+import { withCompatibleRequestOptions } from '../provider/request-context.js';
 
 // Hard output-token cap. A reasoning model with no cap can generate until it
 // fills the whole context window — one runaway <think> ramble then ties up the
@@ -28,25 +29,45 @@ export async function djText({
   seed = null,
   maxOutputTokens = resolveMaxOutputTokens(MAX_TOKENS_TEXT),
   kind = 'sdk.djText',
-  // Caller budgets/cancellation take precedence over the provider deadline.
+  debugMetadata = null,
+  // Optional caller-supplied abort signal. No live caller wraps djText in
+  // withDeadline today, so this is inert unless one starts to — kept in the
+  // shape as a precaution so a future deadline-wrapped call can cut the
+  // Retry-After sleep short and prevent a ghost retry after the abort (mirrors
+  // djAgent's threading, PR #751 review).
   signal = undefined,
+  cachePrompt = undefined,
+  compatibleRepeatPenalty = undefined,
+  allowTruncatedOutput = false,
 }: any): Promise<string> {
+  const callMetadata = (response: string | null) => {
+    try {
+      return typeof debugMetadata === 'function' ? debugMetadata(response) || {} : {};
+    } catch {
+      return {};
+    }
+  };
   return withFailover(
     kind,
-    (err) => ({ user: prompt, ...failureDiagnostics(err) }),
+    (err) => ({ user: prompt, ...failureDiagnostics(err), ...callMetadata(null) }),
     async (leg) => {
-      const result = await withTransientRetry(kind, () => generateText({
-        model: leg.model,
-        instructions: system,
-        prompt,
-        temperature,
-        topP,
-        ...(seed != null ? { seed } : {}),
-        maxOutputTokens,
-        reasoning: reasoningFor(leg.cfg),
-        ...googleSafetyOptions(leg.cfg),
-        ...(signal ? { abortSignal: signal } : {}),
-      }), signal);
+      const generate = () => withTransientRetry(kind, () => generateText({
+          model: leg.model,
+          instructions: system,
+          prompt,
+          temperature,
+          topP,
+          ...(seed != null ? { seed } : {}),
+          maxOutputTokens,
+          reasoning: reasoningFor(leg.cfg),
+          ...(signal ? { abortSignal: signal } : {}),
+        }), signal);
+      const result = cachePrompt === false || compatibleRepeatPenalty != null
+        ? await withCompatibleRequestOptions({
+          ...(cachePrompt != null ? { cache_prompt: cachePrompt } : {}),
+          ...(compatibleRepeatPenalty != null ? { repeat_penalty: compatibleRepeatPenalty } : {}),
+        }, generate)
+        : await generate();
       // A free-text DJ script that hit the output-token cap is never a usable
       // reply — real scripts run ~150 tokens against the 4000-token backstop,
       // so 'length' means a reasoning model ran away mid-thought (issue #947:
@@ -54,7 +75,7 @@ export async function djText({
       // announce-path callers catch and skip the segment, so the station
       // stays on air, just without this talk break.
       const truncated = truncationError(result);
-      if (truncated) throw truncated;
+      if (truncated && !allowTruncatedOutput) throw truncated;
       const out = stripThinking(result.text);
       // Only record sampling knobs that actually reached the model — see
       // repeatPenaltyApplies() (currently false everywhere: ai-sdk-ollama v4
@@ -63,6 +84,7 @@ export async function djText({
       const sampling: any = { temperature, top_p: topP, seed };
       if (repeatPenaltyApplies(leg.cfg)) sampling.repeat_penalty = repeatPenalty;
       samplingWithLocalKnobs(leg.cfg, sampling);
+      if (compatibleRepeatPenalty != null) sampling.repeat_penalty = compatibleRepeatPenalty;
       return {
         value: out,
         via: 'ai-sdk',
@@ -71,7 +93,14 @@ export async function djText({
         perf: perfOf(result),
         warnings: warningsOf(result),
         // Full, untruncated — the /debug surface shows the whole system prompt.
-        extra: { system, user: prompt, response: out },
+        // Most spoken-text callers reject capped output. Research extractors
+        // may opt in to the complete items before a cut-off; their own parser
+        // and source screen discard an incomplete final item.
+        extra: { system, user: prompt, response: out,
+          ...(truncated ? { outputTruncated: true } : {}),
+          ...(cachePrompt != null || compatibleRepeatPenalty != null
+            ? { compatibleRequest: { cache_prompt: cachePrompt, repeat_penalty: compatibleRepeatPenalty } } : {}),
+          ...callMetadata(out) },
       };
     },
     undefined,

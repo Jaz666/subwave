@@ -14,7 +14,7 @@ import { Btn, Eyebrow, Metric } from '../ui';
 import { useSectionChrome, useReportDirty } from './section-chrome';
 import { Button } from '../../ui/button';
 import { FieldError } from '../../ui/field';
-import type { TransitionEffect, JingleRotateOwner, GeminiSafety } from '../../../lib/schemas.generated';
+import type { TransitionEffect, JingleRotateOwner } from '../../../lib/schemas.generated';
 export type { TransitionEffect } from '../../../lib/schemas.generated';
 
 export const KEY_HINTS: Record<string, string> = {
@@ -99,9 +99,6 @@ export interface TtsForm {
   kokoro: { voice: string };
   chatterbox: { referenceVoice: string };
   pocketTts: { voice: string };
-  // libraryLanguage is the voice-library BROWSER default, not a voice constraint
-  // and never sent to the engine — see the Gemini panel's hint.
-  gemini: { model: string; voice: string; pronunciation: string; libraryLanguage: string };
   cloud: CloudTtsCfg;
   remote: { url: string };
   // Keyed by engine id (note the hyphen in `pocket-tts`). Always carries all 6
@@ -162,10 +159,8 @@ export interface LlmFallbackForm {
   repeatPenalty: number;
   providerBaseUrls: Record<string, string>;
   headers: LlmHeaderRow[];
-  compatibleMode: 'local' | 'hosted';
   reasoning: boolean;
   discoverySteps: number;
-  geminiSafety: GeminiSafety;
 }
 
 export interface LlmForm {
@@ -176,10 +171,14 @@ export interface LlmForm {
   repeatPenalty: number;
   providerBaseUrls: Record<string, string>;
   headers: LlmHeaderRow[];
-  compatibleMode: 'local' | 'hosted';
   reasoning: boolean;
   toolChoice: string;
   pickerAgent: boolean;
+  trackSelection: 'agentic' | 'shortlist';
+  shortlistPasses: number;
+  guestMusicalLeanings: boolean;
+  requestMatching: 'agentic' | 'direct';
+  segmentRuntime: 'agentic' | 'direct';
   noRepeatWindow: string;
   artistVarietyWindow: string;
   requestWebResolve: boolean;
@@ -191,8 +190,6 @@ export interface LlmForm {
   maxOutputTokens: number;
   // 0 = auto (follow the provider capability table); 1-5 overrides it.
   discoverySteps: number;
-  // HARM_CATEGORY thresholds for the native `google` leg. Checked = block.
-  geminiSafety: GeminiSafety;
   fallback: LlmFallbackForm;
 }
 
@@ -214,7 +211,6 @@ export interface EmbeddingForm {
   provider: string;          // empty → follow llm.provider
   model: string;             // empty → sensible default per provider
   providerBaseUrls: Record<string, string>; // per-provider embedding server URLs; empty → inherit llm
-  headers: LlmHeaderRow[];
   ollamaUrl: string;         // dedicated embedding server URL (ollama); empty → inherit llm
   seedCount: string;         // '0' = auto
   knnNeighbours: string;
@@ -352,10 +348,8 @@ export interface DuckingForm {
 
 export interface DjBehaviourForm {
   showWelcome: boolean;
-  previewNextShow: boolean;
   sameHostAcknowledgement: boolean;
   extendedSleeveNotes: boolean;
-  sleeveNotesMaintenanceWhenEmpty: boolean;
   releaseYearMentions: 'regular' | 'occasional' | 'rare';
   recapLimit: string;
   recapMinutes: string;
@@ -366,11 +360,11 @@ export interface DjBehaviourForm {
  *  strings so a temporarily blank number input survives until Save. */
 export interface DjBehaviourValues {
   showWelcome?: boolean;
-  previewNextShow?: boolean;
   sameHostAcknowledgement?: boolean;
   extendedSleeveNotes?: boolean;
   sleeveNotesMaintenanceWhenEmpty?: boolean;
   releaseYearMentions?: 'regular' | 'occasional' | 'rare';
+  extendedSleeveNoteUseFrequency?: 'regular' | 'occasional' | 'rare';
   recapLimit?: number;
   recapMinutes?: number;
   recapChars?: number;
@@ -380,7 +374,6 @@ export interface FormState {
   crossfadeDuration: string;
   ducking: DuckingForm;
   maxTrackSeconds: string;
-  maxTrackLengthMode: 'cut' | 'exclude';
   /** Station default for the show-boundary fade (#1574). A show's own
    *  tri-state overrides it; this level is only ever on or off. */
   fadeAtShowEnd: boolean;
@@ -432,7 +425,6 @@ export interface SettingsData {
     crossfadeDuration?: number;
     ducking?: { voice?: number; intro?: number };
     maxTrackSeconds?: number;
-    maxTrackLengthMode?: 'cut' | 'exclude';
     minTrackSeconds?: number;
     archive?: { enabled?: boolean; bitrate?: number; retentionDays?: number };
     /** Scheduled backups (#1570). No FormState entry and no settings section —
@@ -477,6 +469,10 @@ export interface SettingsData {
     djTalkOnlyBetweenTracks?: boolean;
     pauseTalkMinSeconds?: number;
     djBehaviour?: DjBehaviourValues;
+    sleeveNotes?: {
+      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
+      providers?: { genius?: { enabled?: boolean; accessToken?: string } };
+    };
     /** Absent on a settings.json predating the key — the controller's own
      *  coercion reads it as the 5-minute default. */
     handover?: { offsetMinutes?: number };
@@ -495,7 +491,6 @@ export interface SettingsData {
       kokoro?: { voice?: string; lang?: string };
       chatterbox?: { referenceVoice?: string };
       pocketTts?: { voice?: string };
-      gemini?: { model?: string; voice?: string; pronunciation?: string; libraryLanguage?: string };
       // The saved shape also carries the redacted key sentinels ('set' when a
       // key is on file, '' otherwise) — GET /settings never returns raw keys.
       cloud?: Partial<CloudTtsCfg> & { apiKey?: string; compatApiKey?: string };
@@ -518,7 +513,6 @@ export interface SettingsData {
       enabled?: boolean;
       provider?: string;
       model?: string;
-      headers?: Record<string, string>;
       baseUrl?: string;
       ollamaUrl?: string;
       seedCount?: number;

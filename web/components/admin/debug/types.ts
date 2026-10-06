@@ -5,11 +5,7 @@ import type { StationLocale } from '../../../lib/types';
 
 export interface DebugIcecast {
   listeners?: number;
-  /** Sum of independent per-mount high-water marks, not a simultaneous peak.
-   * Matches the backend's raw Icecast field name. */
-  listener_peak?: number;
-  /** listenurl of every mount Icecast currently has a connected encoder on. */
-  activeMounts?: string[];
+  peakListeners?: number;
   error?: string;
 }
 
@@ -101,6 +97,59 @@ interface LlmCall {
   systemPreview?: string;
   messages?: Array<{ role?: string; content?: unknown }>;
   toolCalls?: Array<{ name?: string; args?: unknown; result?: unknown }>;
+  extendedSleeveNote?: {
+    status?: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown';
+    claimId?: string | null;
+    entityType?: 'artist' | 'recording' | 'release' | 'release-group' | null;
+    category?: string | null;
+    topic?: string | null;
+    wordingLevel?: 'full' | 'short' | null;
+    runwayMs?: number | null;
+    candidateCount?: number;
+    detection?: string | null;
+  };
+  shortlistResolution?: {
+    preliminary?: { id?: string; title?: string | null; artist?: string | null };
+    leaningsReview?: {
+      outcome?: 'not-run' | 'kept' | 'replaced' | 'invalid' | 'failed';
+      replacementId?: string | null;
+      track?: { id?: string; title?: string | null; artist?: string | null } | null;
+      leaningsBasis?: string | null;
+      leaningsSource?: 'host' | 'guest' | null;
+      baselineId?: string | null;
+      reviewedSelectedId?: string | null;
+      candidateIds?: string[];
+      leaningsOptions?: string[];
+      proposedReplacementId?: string | null;
+      rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
+    };
+    guardOutcome?: 'none' | 'artist-repick' | 'album-repick' | 'artist-and-album-repick' | 'pool-rescue';
+    final?: { id?: string; title?: string | null; artist?: string | null };
+    reason?: string | null;
+    queued?: boolean;
+    usedMusicalLeanings?: boolean;
+    rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | 'queue-collision' | 'pool-rescue' | null;
+  };
+  agentPickResolution?: {
+    preliminary?: { id?: string; title?: string | null; artist?: string | null };
+    leaningsReview?: {
+      outcome?: 'not-run' | 'kept' | 'replaced' | 'invalid' | 'failed';
+      replacementId?: string | null;
+      track?: { id?: string; title?: string | null; artist?: string | null } | null;
+      leaningsBasis?: string | null;
+      baselineId?: string | null;
+      reviewedSelectedId?: string | null;
+      candidateIds?: string[];
+      leaningsOptions?: string[];
+      proposedReplacementId?: string | null;
+      rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
+    };
+    guardOutcome?: 'none' | 'artist-repick' | 'album-repick' | 'artist-and-album-repick' | 'pool-rescue';
+    final?: { id?: string; title?: string | null; artist?: string | null };
+    reason?: string | null;
+    queued?: boolean;
+    usedMusicalLeanings?: boolean;
+  };
   response?: string;
   /** What the model said INSTEAD of the expected structured output on a failed call.
    * From the controller's failureDiagnostics(); absent on success (see `response`). */
@@ -249,4 +298,3 @@ export interface DebugData {
   mounts?: DebugMounts;
   error?: string;
 }
-export type { PlaybackFailureHistory } from '../../../lib/schemas.generated';

@@ -12,6 +12,8 @@ import { shiftOnsetMs } from '../../../music/silence-trim.js';
 // runway stops constraining at all (broadcast/vocal-runway.ts).
 import { VOCAL_RUNWAY_FLOOR_MS, VOCAL_RUNWAY_CEILING_MS } from '../../../broadcast/vocal-runway.js';
 
+export { VOCAL_RUNWAY_FLOOR_MS, VOCAL_RUNWAY_CEILING_MS };
+
 // Intro runway (ms to where the track 'comes in') for a track, from the track
 // object or a library lookup. Null when un-analysed.
 export function introMsFor(track: any): number | null {
@@ -34,6 +36,11 @@ export function firstVocalMsFor(track: any): number | null {
   return shiftOnsetMs(track, first);
 }
 
+/** The same on-air runway the hard link budget uses: measured vocals first, intro_ms otherwise. */
+export function effectiveVocalRunwayMs(track: any): number | null {
+  return firstVocalMsFor(track) ?? introMsFor(track);
+}
+
 // Delegates to library.bpmKeyFor — the shared resolver that prefers the
 // analyzer's numbers and treats Navidrome's ID3-derived `bpm: 0` as unknown
 // rather than "carries analysis" (#862).
@@ -51,13 +58,17 @@ export function bpmKeyFor(track: any): { bpm: number | null; key: string | null 
 // tells the model to skip the line the deterministic backstop would drop
 // anyway. Omitted/null (un-analysed or instrumental) changes nothing.
 export function introBudgetPhrase(introMs: number | null | undefined, firstVocalMs?: number | null): string {
-  if (typeof firstVocalMs === 'number' && Number.isFinite(firstVocalMs) && firstVocalMs < VOCAL_RUNWAY_FLOOR_MS) {
+  const measured = typeof firstVocalMs === 'number' && Number.isFinite(firstVocalMs) && firstVocalMs >= 0
+    ? firstVocalMs
+    : null;
+  if (measured != null && measured < VOCAL_RUNWAY_FLOOR_MS) {
     return 'The vocals start almost immediately on this one — skip the spoken intro and let the track speak.';
   }
-  if (!introMs || introMs < VOCAL_RUNWAY_FLOOR_MS) return '';
-  if (introMs >= VOCAL_RUNWAY_CEILING_MS) return '';
-  const sec = Math.floor(introMs / 1000);
-  if (introMs < 6000) {
+  const runway = measured ?? introMs;
+  if (!runway || runway < VOCAL_RUNWAY_FLOOR_MS) return '';
+  if (runway >= VOCAL_RUNWAY_CEILING_MS) return '';
+  const sec = Math.floor(runway / 1000);
+  if (runway < 6000) {
     return `The track's vocals come in around ${sec}s — keep this to a single short phrase that finishes before then; never run past it.`;
   }
   return `The track's vocals come in around ${sec}s — you have room for a sentence or two; use it, but land your last word before then rather than talking over the vocals.`;

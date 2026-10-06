@@ -21,7 +21,7 @@ const COLS: Record<number, string> = {
   3: 'grid-cols-3',
   4: 'grid-cols-2 sm:grid-cols-4',
   5: 'grid-cols-2 sm:grid-cols-5',
-  6: 'grid-cols-3 sm:grid-cols-6',
+  6: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6',
 };
 
 function pad2(n: number): string {
@@ -39,6 +39,7 @@ export function SectionTabs({
   // When the grid wraps, dividers must follow it: left rule on the right
   // column, top rule on the second row.
   const wraps = tabs.length >= 4;
+  const sixTabGrid = tabs.length === 6;
   return (
     <nav
       className={cn('grid border-t border-ink', COLS[tabs.length] ?? 'grid-cols-2 sm:grid-cols-4')}
@@ -58,7 +59,9 @@ export function SectionTabs({
             className={cn(
               'relative flex cursor-pointer items-center justify-center gap-2 px-2 py-[17px] transition-colors sm:gap-2.5 sm:px-3 sm:py-[19px]',
               wraps
-                ? 'border-ink max-sm:even:border-l sm:[&:not(:first-child)]:border-l max-sm:[&:nth-child(n+3)]:border-t'
+                ? sixTabGrid
+                  ? 'border-ink max-sm:even:border-l lg:[&:not(:first-child)]:border-l sm:[&:not(:nth-child(3n+1))]:border-l max-sm:[&:nth-child(n+3)]:border-t sm:[&:nth-child(n+4)]:border-t lg:[&:nth-child(n+4)]:border-t-0'
+                  : 'border-ink max-sm:even:border-l sm:[&:not(:first-child)]:border-l max-sm:[&:nth-child(n+3)]:border-t'
                 : 'border-ink [&:not(:first-child)]:border-l',
               active ? 'bg-ink text-bg' : 'text-ink hover:bg-[var(--ink-soft)]',
             )}

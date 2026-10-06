@@ -23,8 +23,16 @@ import { stripThinking } from '../llm/sdk.js';
 import * as settings from '../settings.js';
 import { recordTts } from '../stats.js';
 import { energyForDaypart } from '../context.js';
+import { recordExtendedSleeveNoteTtsRequest } from '../sleeve-notes/link-selection.js';
 
 export const ENGINES = ['piper', 'kokoro', 'chatterbox', 'pocket-tts', 'cloud', 'remote', 'gemini'];
+
+let activeTtsRenders = 0;
+
+/** True while Subwave is awaiting audio from any TTS engine. */
+export function ttsRenderActive(): boolean {
+  return activeTtsRenders > 0;
+}
 
 // Kinds NOT voiced by the on-air persona: they use the global defaultEngine.
 // Every other kind takes engine+voice from the effective persona's `tts`.
@@ -243,6 +251,15 @@ export function stationGeminiPick(opts: any, personaTts: any): { voice?: string;
 }
 
 async function speakWith(engine: string, text: string, opts: any, personaTts: any) {
+  activeTtsRenders++;
+  try {
+    return await speakWithEngine(engine, text, opts, personaTts);
+  } finally {
+    activeTtsRenders--;
+  }
+}
+
+async function speakWithEngine(engine: string, text: string, opts: any, personaTts: any) {
   if (engine === 'kokoro') {
     const voice = (personaTts && personaTts.engine === 'kokoro' && personaTts.voice)
       ? personaTts.voice
@@ -456,7 +473,13 @@ export async function speakExchange(
 // DJ never goes silent. Every call is timed into the TTS ring buffer (stats.js).
 export async function speak(
   text: string,
-  { kind = 'default', outPath, speedScale, persona }: { kind?: string; outPath?: string; speedScale?: number; persona?: any } = {},
+  { kind = 'default', outPath, speedScale, persona, sleeveClaimUseId }: {
+    kind?: string;
+    outPath?: string;
+    speedScale?: number;
+    persona?: any;
+    sleeveClaimUseId?: string | null;
+  } = {},
 ) {
   // Resolve before normalising the text: the same value owns both the cloud
   // pronunciation hint and the unsupported-script safety boundary.
@@ -497,6 +520,14 @@ export async function speak(
     : '';
   const rescueText = fallbackTextFor(requested, cloudCueFamily, speakText);
   const primaryText = primaryFellBack ? rescueText : speakText;
+  if (kind === 'link' && sleeveClaimUseId) {
+    try {
+      recordExtendedSleeveNoteTtsRequest(sleeveClaimUseId, primaryText);
+    } catch (error) {
+      // Observability must not turn an otherwise valid voice render into silence.
+      console.warn(`[sleeve-notes] TTS history update failed (useId=${sleeveClaimUseId}): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   // Persona soul rides to the cloud engine so delivery matches the writing
   // (#579), like `language` does for pronunciation (#558). DJ-voiced kinds only.
   // Cloud and Gemini consume the character; other engines ignore it.

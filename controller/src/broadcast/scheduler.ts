@@ -626,6 +626,7 @@ export async function runLink() {
     const previous = queue.history[0]?.track || null;
     const ctx = await getFullContext();
     const speaker = settings.pickOnAirSpeaker();
+    let sleeveClaimUseId: string | null = null;
     const script = await dj.generateLink({
       previous,
       current,
@@ -640,12 +641,14 @@ export async function runLink() {
       recentTracks: queue.getRecentTracks(),
       recentOpeners: queue.getRecentOpeners(),
       persona: speaker,
+      onSleeveNoteUse: (id: string) => { sleeveClaimUseId = id; },
     });
     // Announce mode drops the link when the track has no artist name; say so
     // rather than answering the press with a silent success.
     if (!script) throw new Error('no link to air — this track has no artist name to announce');
     await queue.announce(script, 'link', {
       persona: speaker, meta: { personaId: speaker?.id, personaName: speaker?.name },
+      sleeveClaimUseId,
     });
     return script;
   });

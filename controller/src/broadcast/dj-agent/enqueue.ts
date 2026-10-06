@@ -12,13 +12,16 @@ import { recordPick } from '../../llm/log.js';
 import * as requestLog from '../request-log.js';
 import { echoesRecentRequest } from '../../util/request-guard.js';
 import { speechPaceScale } from '../../audio/tts.js';
-import { normalizeForDisplay, normalizeForSpeech, spokenWordScale, stripSpeakerLabel } from '../../audio/speech-text.js';
+import { normalizeForDisplay, normalizeForSpeech, spokenWordScale } from '../../audio/speech-text.js';
 import { introMsOf } from './runs.js';
+import { releaseExtendedSleeveNoteReservation } from '../../sleeve-notes/link-selection.js';
+import { VOCAL_RUNWAY_FLOOR_MS } from '../vocal-runway.js';
 
 export interface GeneratedHostLink {
   link: string | null;
   introPersona: Persona | null;
   hostSpeech: HostSpeechStamp | null;
+  sleeveClaimUseId: string | null;
 }
 
 // The shared production seam for both picker paths: capture the author at the
@@ -30,11 +33,50 @@ export async function generatePickLink(
 ): Promise<GeneratedHostLink> {
   const hostSpeech = session.captureHostSpeech();
   const introPersona = session.onAirPersona();
-  const generated = await generate({ ...args, persona: introPersona });
+  const current = (args as any).current;
+  const run = async (suppressExtendedSleeveNote = false) => {
+    let sleeveClaimUseId: string | null = null;
+    const generated = await generate({
+      ...args,
+      ...(suppressExtendedSleeveNote ? { suppressExtendedSleeveNote: true } : {}),
+      persona: introPersona,
+      onSleeveNoteUse: (id: string) => { sleeveClaimUseId = id; },
+    });
+    return { generated, sleeveClaimUseId };
+  };
+  const initial = await run();
+  if (!session.isHostSpeechCurrent(hostSpeech)) {
+    return {
+      link: null, introPersona, hostSpeech,
+      sleeveClaimUseId: initial.sleeveClaimUseId,
+    };
+  }
+  const initialTrimmed = trimLinkToIntro(initial.generated, current);
+  if (initial.sleeveClaimUseId && !initialTrimmed) {
+    // A measured vocal onset below the safety floor rejects every link, so a
+    // vanilla retry cannot help. Otherwise retry once without the optional
+    // Spark, then pass the fallback through the identical airtime trim.
+    const firstVocalMs = dj.firstVocalMsFor(current);
+    try { releaseExtendedSleeveNoteReservation(initial.sleeveClaimUseId); } catch {}
+    if (firstVocalMs == null || firstVocalMs >= VOCAL_RUNWAY_FLOOR_MS) {
+      const fallback = await run(true);
+      const fallbackTrimmed = trimLinkToIntro(fallback.generated, current);
+      if (fallback.sleeveClaimUseId) {
+        try { releaseExtendedSleeveNoteReservation(fallback.sleeveClaimUseId); } catch {}
+      }
+      const hostSpeechStillCurrent = session.isHostSpeechCurrent(hostSpeech);
+      return {
+        link: hostSpeechStillCurrent ? fallbackTrimmed : null,
+        introPersona, hostSpeech, sleeveClaimUseId: null,
+      };
+    }
+    return { link: null, introPersona, hostSpeech, sleeveClaimUseId: null };
+  }
   return {
-    link: hostSpeech && !session.isHostSpeechCurrent(hostSpeech) ? null : generated,
+    link: initialTrimmed,
     introPersona,
     hostSpeech,
+    sleeveClaimUseId: initial.sleeveClaimUseId,
   };
 }
 
@@ -79,22 +121,20 @@ export function dropEchoedLink(link: string | null, queue: any): string | null {
 // Returns the DISPLAY form (#1186): it becomes introScript, which is
 // booth-logged, remembered in the session and shown in the player's feed. The
 // pronunciation layer is applied separately by speak() at render time.
-export function trimLinkToIntro(text: string | null | undefined, song: any, persona: Persona | null = null): string | null {
+export function trimLinkToIntro(text: string | null | undefined, song: any): string | null {
   const raw = (text || '').trim();
   if (!raw) return null;
-  const speaker = persona ?? settings.getEffectivePersona();
-  // Budget the words that will air, using the author captured at generation.
-  const clean = stripSpeakerLabel(stripThinking(raw), speaker?.name ? [speaker.name] : []);
+  const clean = stripThinking(raw);
   const display = normalizeForDisplay(clean);
   // Non-DJ personas skip the budget but not the cleanup.
-  if (!speaker?.djMode) return display || null;
+  if (!settings.getEffectivePersona()?.djMode) return display || null;
   // A DURATION budget, so it is counted on the words the engine will read.
   // spokenWordScale folds the display/spoken difference into the pace scale, so
   // the ceiling stays a spoken-word ceiling while the trim lands on the display
   // text's sentence boundaries. firstVocalMsFor arms the drop when a measured
   // vocal entry leaves no runway.
-  const spoken = normalizeForSpeech(clean, settings.get().tts?.corrections, String(speaker.language || ''));
-  const pace = speechPaceScale('link', speaker) * spokenWordScale(display, spoken);
+  const spoken = normalizeForSpeech(clean, settings.get().tts?.corrections);
+  const pace = speechPaceScale('link') * spokenWordScale(display, spoken);
   return dj.enforceIntroBudget(display, introMsOf(song), pace, dj.firstVocalMsFor(song)) || null;
 }
 
@@ -113,16 +153,24 @@ export async function enqueuePick(
   link: string | null = null,
   linkPrev: any = null,
   { sweep = false, washout = false, blend = false, dissolve = false, chop = false, loop = false }: { sweep?: boolean; washout?: boolean; blend?: boolean; dissolve?: boolean; chop?: boolean; loop?: boolean } = {},
-  { linkClockAt = null, introPersona = null, hostSpeech = null, showAt = null }: { linkClockAt?: Date | null; introPersona?: Persona | null; hostSpeech?: HostSpeechStamp | null; showAt?: Date | null } = {},
+  { linkClockAt = null, introPersona = null, hostSpeech = null, sleeveClaimUseId = null }: {
+    linkClockAt?: Date | null;
+    introPersona?: Persona | null;
+    hostSpeech?: HostSpeechStamp | null;
+    sleeveClaimUseId?: string | null;
+  } = {},
 ): Promise<number> {
   // Single chokepoint for the intro budget: every pick path funnels its link
   // through here, so a new caller can't skip it. Near-idempotent for callers
-  // that already budgeted — the agent passes the original output after its
-  // preview so we strip only one label. This pass recomputes spokenWordScale,
-  // and the queued text always honours the budget.
+  // that already trimmed — this pass recomputes spokenWordScale on the kept
+  // text and can trim slightly further, so air always honours the budget while
+  // the session turn may carry the marginally longer reading.
   const introLink = hostSpeech && !session.isHostSpeechCurrent(hostSpeech)
     ? null
-    : dropEchoedLink(trimLinkToIntro(link, song, introPersona), queue);
+    : dropEchoedLink(trimLinkToIntro(link, song), queue);
+  if (!introLink && sleeveClaimUseId) {
+    try { releaseExtendedSleeveNoteReservation(sleeveClaimUseId); } catch {}
+  }
   const track: any = trackFields(song);
   // Transition effects (DJ mode only); getAnnotatedUri stamps the liq_* flags
   // and radio.liq ramps them. sweep muffles the crossfade INTO this pick;
@@ -139,27 +187,34 @@ export async function enqueuePick(
     requestedBy: null,
     intent: reason || 'ai pick',
     introScript: introLink,
-    // Already stripped before budgeting; push/render/recovery must not strip
-    // a second leading name that was kept as part of the spoken line.
-    introLabelChecked: true,
     introKind: 'link',
     // Pin the author captured at generation. Never relabel an old script with
     // whoever happens to be live when the queue write finally runs.
     introPersona: introLink ? introPersona : null,
     introHostSpeech: introLink ? hostSpeech : null,
+    sleeveClaimUseId: introLink ? sleeveClaimUseId : null,
     aiPicked: true,
     linkPrev,
     linkClockAt,
-    selectionShowAt: showAt,
   });
   if (pos === -2) {
+    if (sleeveClaimUseId) {
+      try { releaseExtendedSleeveNoteReservation(sleeveClaimUseId); } catch {}
+    }
     // Never-play blocklist refused the pick (library-db candidates can slip
     // past the subsonic filter). Same "didn't queue" signal as dedup.
     queue.log('ai-pick', `${song.title} — ${song.artist} refused (never-play blocklist)`, { reason, source });
     return -1;
   }
-  if (pos === -1) return -1;
+  if (pos === -1) {
+    if (sleeveClaimUseId) {
+      try { releaseExtendedSleeveNoteReservation(sleeveClaimUseId); } catch {}
+    }
+    return -1;
+  }
   queue.log('ai-pick', `${song.title} — ${song.artist}`, { reason, source });
   recordPick({ song, reason, source });
   return pos;
 }
+
+

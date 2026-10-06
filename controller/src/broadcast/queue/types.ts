@@ -5,7 +5,6 @@
 
 import type { TrackOutro, TrackKeyRange } from '../../music/library-db.js';
 import type { HostSpeechStamp } from '../session.js';
-import type { ClipSeamCues } from '../stem-seam.js';
 
 // A persona as it flows through the queue's voice path — only `id`/`name`/
 // `djMode` are read here; the rest rides through to tts.speak()/voiceGainDb().
@@ -102,9 +101,8 @@ export interface QueueItem {
   block?: { id: string; label: string; index: number; size: number };
   intent?: string | null;
   introScript?: string | null;
-  // Persist the one-label pass so retries/recovery cannot eat a second label
-  // that belongs to the spoken text. Absent on legacy queue snapshots.
-  introLabelChecked?: boolean;
+  /** Sleeve Notes use row linked to a generated DJ link, when one was offered. */
+  sleeveClaimUseId?: string | null;
   introKind?: string;
   // Who WROTE introScript. Carried on the item because the line is rendered in
   // drainToLiquidsoap and aired in airIntro, both later than generation and
@@ -121,9 +119,6 @@ export interface QueueItem {
   // session — even when the same persona hosts both shows.
   introSessionKey?: string | null;
   aiPicked?: boolean;
-  // Picker's padded show forecast, independent of whether its link spoke a
-  // clock. Persisted so selection checks follow that show's live length limit.
-  selectionShowAt?: number | null;
   linkPrev?: { id: string | null; title: string | null; artist: string | null } | null;
   // Epoch ms of the air moment this item's link was WRITTEN against — stamped
   // only when the generator actually handed the model a clock to speak
@@ -176,14 +171,8 @@ export interface QueueItem {
   // behind its own URI). `stemSeam`/`stemCueInSec` ride the INCOMING item:
   // its entry-side effects are stripped at its own drain (the seam INTO it
   // is pre-rendered) and it cues in past the head the clip already played.
-  stemBlend?: ClipSeamCues & {
-    clipPath: string;
-    // Persist the provisional exit so restart recovery can undo it exactly.
-    originalExit?: Pick<Track, 'washout' | 'washoutAuto' | 'washoutDelay' | 'loop' | 'loopBar' | 'crossSec'>;
-  } | null;
+  stemBlend?: { clipPath: string; blendStartSec: number; inCueSec: number } | null;
   stemSeam?: boolean;
-  // Outgoing music already committed an early ending into this clip/track.
-  lengthPolicyCommitted?: boolean;
   stemCueInSec?: number;
 }
 
