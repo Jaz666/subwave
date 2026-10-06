@@ -46,7 +46,10 @@ export const pickerAgent = defineAgent<PickerRunArgs, PickerExtras>({
   // since a caller's pinned step cap can be load-bearing.
   providerDiscoveryBudget: true,
   timeoutMs: agentDeadline,
-  buildSystem: ({ showAt, scope }) => pickSystem(showAt ?? null, !!scope?.playlistTracks?.length, { host: null, guest: null, promptValue: null }),
+  // Discovery deliberately has no Musical Leanings. They are applied exactly
+  // once by the constrained final selector after this tool loop has surfaced
+  // its real candidate set.
+  buildSystem: ({ showAt, scope }) => pickSystem(showAt ?? null, !!scope?.playlistTracks?.length, false, { host: null, guest: null, promptValue: null }),
   buildTools: ({ scope }) => {
     const { tools, seen } = buildPickerTools(scope);
     return { tools, extras: { seen } };

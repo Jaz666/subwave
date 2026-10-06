@@ -48,6 +48,9 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         recapMinutes: Number(form.djBehaviour.recapMinutes),
         recapChars: Number(form.djBehaviour.recapChars),
       },
+      llm: {
+        segmentRuntime: form.llm.segmentRuntime,
+      },
     });
   };
 
@@ -58,6 +61,28 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         title="Decide how the DJ occupies the station."
         sub="These controls shape speech placement and show-boundary behaviour. Voice engines and voices stay under TTS voice."
       />
+
+      <Card title="Segments & Skills" sub={form.llm.segmentRuntime === 'agentic' ? 'Agentic runtime' : 'Direct runtime'}>
+        <div className="field">
+          <Label>How the DJ prepares scheduled segments</Label>
+          <Seg
+            value={form.llm.segmentRuntime}
+            options={[
+              { id: 'direct', label: 'Direct runtime', title: 'The controller fetches evidence, then the DJ writes one bounded response' },
+              { id: 'agentic', label: 'Agentic runtime', title: 'The DJ may use its tools to research and prepare a segment' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              llm: { ...f.llm, segmentRuntime: v as 'agentic' | 'direct' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Both runtimes use the same briefs, schedules, cooldowns and evidence rules. Direct runtime
+            fetches the selected evidence in the controller and makes one bounded writing call; Agentic
+            runtime lets a tool-capable model decide how to use the available tools.
+          </p>
+        </div>
+      </Card>
 
       <Card title="Talk placement" sub={form.djTalkOnlyBetweenTracks ? 'between tracks' : 'any time'}>
         <div className="field">
@@ -261,12 +286,22 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Card title="Extended Sleeve Notes" sub="coming soon">
+      <Card title="Extended Sleeve Notes" sub={form.djBehaviour.extendedSleeveNotes ? 'enabled' : 'off'}>
+        <div className="field">
+          <Label>Station-wide extended collection</Label>
+          <Seg
+            value={form.djBehaviour.extendedSleeveNotes ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Make no provider calls or background jobs' },
+              { id: 'on', label: 'On', title: 'Allow Extended Sleeve Notes collection when a provider is configured' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNotes: v === 'on' } }))}
+          />
+        </div>
         <p className="text-[13px] leading-[1.55] text-muted">
-          Soon, the DJ will be able to add optional, source-backed editorial notes—such as
-          release credits or wider artist context—with provider provenance. Album, trusted
-          release year and station-play history already come from today&apos;s Verified Facts
-          packet; this future layer will stay opt-in and separate from show steering.
+          Default Sleeve Notes remain local Verified Facts. Extended Sleeve Notes adds optional
+          provider-backed context and does not alter links until its later on-air projection phase.
+          While it is off, it starts no provider work.
         </p>
       </Card>
 
@@ -276,7 +311,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'llm.segmentRuntime']}
       />
     </>
   );
