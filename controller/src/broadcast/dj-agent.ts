@@ -1057,9 +1057,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     }
   }
   if (queued === -1) return false;
-  if (agentPickResolution.usedMusicalLeanings) {
-    queue.log('picker', `Musical Leanings changed Agentic pick "${preliminaryId}" to "${song.id}"`);
-  }
   session.appendTurn({
     role: 'dj', kind: 'pick',
     text: object.reason || `Selected "${song.title}".`,
