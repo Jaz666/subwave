@@ -1,3 +1,4 @@
+import { showPreparation } from './broadcast/show-preparation.js';
 // Controller HTTP API — thin entry point: wires middleware, mounts routes/ and
 // starts the background services.
 import express from 'express';
@@ -58,7 +59,7 @@ import { router as doctorRoutes } from './routes/doctor.js';
 import { router as connectRoutes } from './routes/connect.js';
 import { router as mcpRoutes } from './routes/mcp.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
-import { loadSetupConfig } from './setup/config.js';
+import { loadNavidromeConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
 import * as library from './music/library.js';
 
@@ -191,15 +192,9 @@ app.listen(config.server.port, async () => {
     console.error('[secrets] load failed:', err.message);
   }
 
-  // Wizard overlay for Navidrome creds. Env wins; this only fills gaps.
+  // Load the active station connection using the shared precedence policy.
   try {
-    const sc = await loadSetupConfig();
-    if (sc.navidrome) {
-      if (!process.env.NAVIDROME_URL && sc.navidrome.url) config.navidrome.url = sc.navidrome.url;
-      if (!process.env.NAVIDROME_USER && sc.navidrome.user) config.navidrome.user = sc.navidrome.user;
-      if (!process.env.NAVIDROME_PASS && sc.navidrome.pass)
-        config.navidrome.password = sc.navidrome.pass;
-    }
+    await loadNavidromeConfig();
   } catch (err: any) {
     console.error('[setup-config] load failed:', err.message);
   }
@@ -296,6 +291,7 @@ app.listen(config.server.port, async () => {
   // the queue and scheduler append turns into it.
   try {
     const ctx = await getFullContext();
+    await showPreparation.recover();
     const s = await session.recover(ctx);
     console.log(`[session] ${s.id} (${s.kind}/${s.key})`);
   } catch (err) {
