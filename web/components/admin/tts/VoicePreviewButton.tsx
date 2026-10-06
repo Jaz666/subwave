@@ -4,7 +4,7 @@
 // unavailable engine returns a real error here rather than quietly playing Piper.
 // Gain (dB) is a playout-time mix trim, so only voice + speed are auditioned, and
 // a sample is discarded as stale the moment either changes.
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { AdminAuth } from '../../../lib/adminAuth';
 import { Btn } from '../ui';
 import {
@@ -17,12 +17,16 @@ import {
   AudioPlayerTimeRange,
 } from '../../ai-elements/audio-player';
 import { fetchPreviewSample } from './previewApi';
+import { correctionsKey as correctionsDependency } from './correctionsKey';
 
 interface VoicePreviewButtonProps {
   engine: string;
   voice: string;
   cloudProvider?: string;
   cloudModel?: string;
+  // Gemini's own model id — the UNSAVED dropdown choice, so the sample
+  // auditions what is on screen rather than the saved station model.
+  geminiModel?: string;
   // Final saved-control rate to audition (server bounds-clamps to 0.5–2.0×);
   // current programme pacing is deliberately excluded from stable previews.
   speed?: number;
@@ -31,6 +35,7 @@ interface VoicePreviewButtonProps {
   // Persona's free-text on-air language ("Turkish", "Türkçe") — the server
   // renders the sample sentence in this language when it recognizes it.
   language?: string;
+  voiceStyle?: string;
   // Explicit sample text (overrides the default/localized sentence).
   text?: string;
   // Unsaved corrections override — tests rules that haven't been saved yet.
@@ -56,7 +61,7 @@ interface VoicePreviewButtonProps {
 type PreviewState = 'idle' | 'loading' | 'error';
 
 export function VoicePreviewButton({
-  engine, voice, cloudProvider, cloudModel, speed, lang, language, text, corrections, voiceSettings, fishSettings, adminFetch, disabled, className,
+  engine, voice, cloudProvider, cloudModel, geminiModel, speed, lang, language, voiceStyle, text, corrections, voiceSettings, fishSettings, adminFetch, disabled, className,
 }: VoicePreviewButtonProps) {
   const [state, setState] = useState<PreviewState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -74,13 +79,38 @@ export function VoicePreviewButton({
   // Unmounting mid-sample must abort synthesis and revoke the object URL.
   useEffect(() => () => discardSample(), [discardSample]);
 
-  // The player must never replay the old voice under a new label. voiceSettings is
-  // deliberately absent from the deps: it's an unstable inline object at the call site.
+  // The player must never replay the old voice under a new label, so every prop
+  // that changes the RENDERED WAV has to invalidate the sample now playing.
+  //
+  // That set is not the request payload, and the gap is a live bug rather than a
+  // hypothetical one. `text`, `corrections` and `voiceSettings` all reach
+  // `fetchPreviewSample` and none of them were listed, so editing the sample text
+  // left the PREVIOUS audio playable under the new label — a stale sample the
+  // player had no way to know was stale.
+  //
+  // `voiceSettings` and `corrections` are excluded as OBJECTS, because both are
+  // unstable at the call site: depend on an inline `{}` or a fresh array and the
+  // effect re-runs every render, discarding a sample the instant it finishes
+  // rendering. Their SCALAR fields are stable and are listed individually, which
+  // is what `fishSettings` already did. `corrections` is an array of pairs, so it
+  // gets a content-stable key instead.
+  //
+  // `tests/voice-preview-invalidation.test.ts` compares this array against the
+  // request payload by AST, so the next prop added to one and not the other is a
+  // test failure rather than a review comment.
+  const correctionsKey = useMemo(() => correctionsDependency(corrections), [corrections]);
   useEffect(() => {
     discardSample();
     setState('idle');
     setError(null);
-  }, [engine, voice, cloudProvider, cloudModel, speed, lang, language, fishSettings?.temperature, fishSettings?.topP, fishSettings?.latency, discardSample]);
+  }, [
+    engine, voice, cloudProvider, cloudModel, geminiModel, voiceStyle,
+    speed, lang, language, text, correctionsKey,
+    voiceSettings?.voiceStability, voiceSettings?.voiceStyle,
+    voiceSettings?.voiceSimilarityBoost, voiceSettings?.voiceUseSpeakerBoost,
+    fishSettings?.temperature, fishSettings?.topP, fishSettings?.latency,
+    discardSample,
+  ]);
 
   const onClick = async () => {
     // Re-click while synthesizing cancels the request.
@@ -93,7 +123,7 @@ export function VoicePreviewButton({
     try {
       const res = await fetchPreviewSample(
         adminFetch,
-        { engine, voice, cloudProvider, cloudModel, speed, lang, language, text, corrections, voiceSettings, fishSettings },
+        { engine, voice, cloudProvider, cloudModel, geminiModel, speed, lang, language, voiceStyle, text, corrections, voiceSettings, fishSettings },
         ac.signal,
       );
       if (ac.signal.aborted) return;

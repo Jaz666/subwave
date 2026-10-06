@@ -6,10 +6,9 @@ import * as subsonic from '../subsonic.js';
 import * as db from '../library-db.js';
 import * as embeddings from '../embeddings.js';
 import { adoptAndPrune } from '../id-rotation.js';
-import { config } from '../../config.js';
 import { loadSecretsIntoEnv } from '../../setup/secrets.js';
-import { loadSetupConfig } from '../../setup/config.js';
-import { reportProgress } from '../tagger-progress.js';
+import { loadNavidromeConfig } from '../../setup/config.js';
+import { reportProgress, reportCatalogueReady } from '../tagger-progress.js';
 import { logEvent } from './log.js';
 import { backfillOriginalYears, pendingOriginalYearIds } from './enrich.js';
 
@@ -108,7 +107,7 @@ export async function walkNavidrome(): Promise<{ walked: number; liveIds: Set<st
   // Blast radius of the era gate, reported once at the end so an operator sees
   // it in the log rather than as a show that stopped picking (#1418).
   const eraReasons = new Map<string, number>();
-  for await (const song of subsonic.iterateAllSongs()) {
+  for await (const song of subsonic.iterateAllSongs({ requireComplete: true })) {
     db.upsertTrackMeta(song.id, {
       title: song.title,
       artist: song.artist,
@@ -177,6 +176,7 @@ export async function reconcileOnly() {
   if (walked > 0) {
     ({ adopted, pruned } = await adoptAndPrune(liveIds));
     console.log(`[tag] reconcile pruned ${pruned} orphaned tracks no longer in Navidrome`);
+    reportCatalogueReady(walked);
     const resolved = await backfillOriginalYears(pendingOriginalYearIds(false), false, 4);
     if (resolved) console.log(`[tag] reconcile resolved ${resolved} original years via MusicBrainz`);
   } else {
@@ -206,15 +206,8 @@ export async function applyWizardOverlay() {
     console.error('[secrets] load failed:', err.message);
   }
   try {
-    const sc = await loadSetupConfig();
-    if (sc.navidrome) {
-      if (!process.env.NAVIDROME_URL && sc.navidrome.url) config.navidrome.url = sc.navidrome.url;
-      if (!process.env.NAVIDROME_USER && sc.navidrome.user) config.navidrome.user = sc.navidrome.user;
-      if (!process.env.NAVIDROME_PASS && sc.navidrome.pass)
-        config.navidrome.password = sc.navidrome.pass;
-    }
+    await loadNavidromeConfig();
   } catch (err: any) {
     console.error('[setup-config] load failed:', err.message);
   }
 }
-
