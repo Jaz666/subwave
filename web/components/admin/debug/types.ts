@@ -5,11 +5,11 @@ import type { StationLocale } from '../../../lib/types';
 
 export interface DebugIcecast {
   listeners?: number;
-  /** Sum of independent per-mount high-water marks, not a simultaneous peak.
-   * Matches the backend's raw Icecast field name. */
+  /** Sum of independent per-mount high-water marks, not a simultaneous peak. */
   listener_peak?: number;
   /** listenurl of every mount Icecast currently has a connected encoder on. */
   activeMounts?: string[];
+  peakListeners?: number;
   error?: string;
 }
 
@@ -101,6 +101,17 @@ interface LlmCall {
   systemPreview?: string;
   messages?: Array<{ role?: string; content?: unknown }>;
   toolCalls?: Array<{ name?: string; args?: unknown; result?: unknown }>;
+  extendedSleeveNote?: {
+    status?: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown';
+    claimId?: string | null;
+    entityType?: 'artist' | 'recording' | 'release' | 'release-group' | null;
+    category?: string | null;
+    topic?: string | null;
+    wordingLevel?: 'full' | 'short' | null;
+    runwayMs?: number | null;
+    candidateCount?: number;
+    detection?: string | null;
+  };
   shortlistResolution?: {
     preliminary?: { id?: string; title?: string | null; artist?: string | null };
     leaningsReview?: {
@@ -175,8 +186,22 @@ interface SleeveNotesCall {
   error?: string;
 }
 
+interface SleeveNotesJob {
+  provider?: string;
+  subjectType?: string;
+  capability?: string;
+  state?: string;
+  priority?: number;
+  attempts?: number;
+  runAfter?: string | null;
+  updatedAt?: string;
+}
+
 export interface DebugSleeveNotes {
   recentCalls?: SleeveNotesCall[];
+  active?: boolean;
+  jobs?: SleeveNotesJob[];
+  error?: string;
 }
 
 interface SubsonicEndpoint {

@@ -8,6 +8,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { useDynamicStyle } from '../../hooks/useDynamicStyle';
 import {
   Radio,
+  ShieldCheck,
   BarChart3,
   Disc3,
   CalendarClock,
@@ -42,6 +43,7 @@ import {
   Boxes,
   Webhook,
   Telescope,
+  Trash2,
 } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import type { SignInResult } from '../../lib/adminAuth';
@@ -174,7 +176,21 @@ const NAV_SECTIONS: NavSection[] = [
         ],
       },
       { href: '/admin/personas', id: 'personas', label: 'Personas', icon: Drama },
-      { href: '/admin/notes', id: 'notes', label: 'Notes', icon: BookOpen },
+      {
+        href: '/admin/notes',
+        id: 'notes',
+        label: 'Notes',
+        icon: BookOpen,
+        children: [
+          { href: '/admin/notes?tab=overview', id: 'notes-overview', label: 'Overview', icon: BookOpen, tab: 'overview', defaultTab: true },
+          { href: '/admin/notes?tab=research', id: 'notes-research', label: 'Research', icon: Sparkles, tab: 'research' },
+          { href: '/admin/notes?tab=explore', id: 'notes-explore', label: 'Explore', icon: Telescope, tab: 'explore' },
+          { href: '/admin/notes?tab=connections', id: 'notes-connections', label: 'Connections', icon: Boxes, tab: 'connections' },
+          { href: '/admin/notes?tab=sources', id: 'notes-sources', label: 'Sources', icon: ShieldCheck, tab: 'sources' },
+          { href: '/admin/notes?tab=config', id: 'notes-config', label: 'Config', icon: SlidersHorizontal, tab: 'config' },
+          { href: '/admin/notes?tab=moderation', id: 'notes-moderation', label: 'Recycle Bin', icon: Trash2, tab: 'moderation' },
+        ],
+      },
       { href: '/admin/skills', id: 'skills', label: 'Skills', icon: Sparkles },
       {
         href: '/admin/imaging',

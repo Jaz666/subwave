@@ -10,12 +10,15 @@ export interface SleeveNotesEncounter {
   artist?: string | null;
   releaseTitle?: string | null;
   musicbrainzRecordingId?: string | null;
+  autopilot?: boolean;
+  listenerPresent?: boolean;
 }
 
-export function admitSleeveNotesEncounter(input: SleeveNotesEncounter, source: 'queue' | 'played', priority = 0): void {
+export function admitSleeveNotesEncounter(input: SleeveNotesEncounter, source: 'queue' | 'played', priority = 0,
+  autopilot = false): void {
   // This master switch continues to be the operator's consent for all Sleeve
-  // Notes collection. MusicBrainz itself is public; Genius additionally has
-  // its own provider switch and access token.
+  // Notes collection. Unlike the retired Genius worker, MusicBrainz itself is
+  // public and does not require a separately configured token.
   if (settings.get().djBehaviour.extendedSleeveNotes !== true) return;
   const localTrackId = String(input.localTrackId ?? '').trim();
   const title = String(input.title ?? '').trim();
@@ -28,5 +31,7 @@ export function admitSleeveNotesEncounter(input: SleeveNotesEncounter, source: '
     musicbrainzRecordingId: input.musicbrainzRecordingId?.trim() || null,
     source,
     priority,
+    autopilot,
+    listenerPresent: input.listenerPresent,
   });
 }

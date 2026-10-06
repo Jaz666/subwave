@@ -20,10 +20,14 @@ function candidate(overrides: Partial<SleeveNoteSelectionCandidate> = {}): Sleev
 }
 
 function use(overrides: Partial<SleeveNoteRecentUse> = {}): SleeveNoteRecentUse {
+  const suppliedAt = overrides.suppliedAt ?? new Date(now - 1_000).toISOString();
   return {
     claimId: 'used-claim', entityType: 'recording', entityId: 'recording-1',
     topic: 'a different topic', relationshipKey: null,
-    suppliedAt: new Date(now - 1_000).toISOString(),
+    suppliedAt,
+    airedAt: suppliedAt,
+    releasedAt: null,
+    detectionStatus: 'detected',
     ...overrides,
   };
 }
@@ -36,7 +40,7 @@ test('prefers a recording story, then a release story, before an artist fallback
   assert.equal(selectMostSpecificEligibleClaim([artist, release], [], now)?.claimId, 'release-claim');
 });
 
-test('avoids a recently supplied exact claim, topic, or entity', () => {
+test('avoids a recently aired exact claim, topic, or entity', () => {
   const note = candidate({ entityType: 'recording', entityId: 'recording-1' });
   assert.equal(selectMostSpecificEligibleClaim([note], [use({ claimId: note.claimId })], now), null);
   assert.equal(selectMostSpecificEligibleClaim([note], [use({ entityId: note.entityId, topic: note.topic })], now), null);

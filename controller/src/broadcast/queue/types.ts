@@ -104,6 +104,8 @@ export interface QueueItem {
   block?: { id: string; label: string; index: number; size: number };
   intent?: string | null;
   introScript?: string | null;
+  /** Sleeve Notes use row linked to a generated DJ link, when one was offered. */
+  sleeveClaimUseId?: string | null;
   // Persist the one-label pass so retries/recovery cannot eat a second label
   // that belongs to the spoken text. Absent on legacy queue snapshots.
   introLabelChecked?: boolean;

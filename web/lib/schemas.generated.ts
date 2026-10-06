@@ -3091,8 +3091,12 @@ export const djBehaviourPatchSchema = settingsBlockOf({
   previewNextShow: z.boolean({ error: 'djBehaviour.previewNextShow must be a boolean' }),
   sameHostAcknowledgement: z.boolean({ error: 'djBehaviour.sameHostAcknowledgement must be a boolean' }),
   extendedSleeveNotes: z.boolean({ error: 'djBehaviour.extendedSleeveNotes must be a boolean' }),
+  sleeveNotesMaintenanceWhenEmpty: z.boolean({ error: 'djBehaviour.sleeveNotesMaintenanceWhenEmpty must be a boolean' }),
   releaseYearMentions: z.enum(['regular', 'occasional', 'rare'], {
     error: 'djBehaviour.releaseYearMentions must be regular, occasional or rare',
+  }),
+  extendedSleeveNoteUseFrequency: z.enum(['regular', 'occasional', 'rare'], {
+    error: 'djBehaviour.extendedSleeveNoteUseFrequency must be regular, occasional or rare',
   }),
   recapLimit: settingsIntLike(
     DJ_RECAP_LIMIT_BOUNDS,
@@ -3109,9 +3113,27 @@ export const djBehaviourPatchSchema = settingsBlockOf({
 });
 
 export const sleeveNotesPatchSchema = settingsBlockOf({
+  wikipedia: settingsBlockOf({
+    extractPrompt: settingsTrimmedString(
+      8000,
+      'sleeveNotes.wikipedia.extractPrompt must be no more than 8000 chars',
+    ),
+    artistClaimLimit: settingsIntLike(
+      { min: 1, max: 20 },
+      'sleeveNotes.wikipedia.artistClaimLimit must be a whole number between 1 and 20',
+    ),
+    albumClaimLimit: settingsIntLike(
+      { min: 1, max: 20 },
+      'sleeveNotes.wikipedia.albumClaimLimit must be a whole number between 1 and 20',
+    ),
+  }),
   providers: settingsBlockOf({
     genius: settingsBlockOf({
       enabled: z.boolean({ error: 'sleeveNotes.providers.genius.enabled must be a boolean' }),
+      accessToken: settingsTrimmedString(
+        2000,
+        'sleeveNotes.providers.genius.accessToken must be 0-2000 chars',
+      ),
     }),
   }),
 });

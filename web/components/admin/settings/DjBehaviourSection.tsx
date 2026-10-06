@@ -300,6 +300,27 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           />
         </div>
         <div className="field mt-4">
+          <Label>Offer an Extended Sleeve Note</Label>
+          <Seg
+            value={form.djBehaviour.extendedSleeveNoteUseFrequency}
+            options={[
+              { id: 'regular', label: 'Regular', title: 'Offer an eligible note on most links' },
+              { id: 'occasional', label: 'Occasional', title: 'Offer an eligible note on some links' },
+              { id: 'rare', label: 'Rare', title: 'Offer an eligible note infrequently' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              djBehaviour: {
+                ...f.djBehaviour,
+                extendedSleeveNoteUseFrequency: v as typeof f.djBehaviour.extendedSleeveNoteUseFrequency,
+              },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            This controls how often an available note is offered to the DJ. The DJ can still leave it out.
+          </p>
+        </div>
+        <div className="field mt-4">
           <Label>Genius metadata and connections</Label>
           <Seg
             value={form.sleeveNotes.providers.genius.enabled ? 'on' : 'off'}
@@ -325,9 +346,9 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           </p>
         </div>
         <p className="text-[13px] leading-[1.55] text-muted">
-          Default Sleeve Notes remain local Verified Facts. Extended Sleeve Notes adds optional
-          provider-backed context and does not alter links until its later on-air projection phase.
-          While it is off, it starts no provider work.
+          Regular Sleeve Notes remain part of every link. When available, an Extended Sleeve Note
+          may be supplied separately as an optional story spark; the DJ can leave it out. While
+          extended collection is off, it starts no provider work.
         </p>
       </Card>
 

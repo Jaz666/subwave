@@ -75,6 +75,22 @@ export interface CanonicalMusicBrainzRecording {
   releases: CanonicalMusicBrainzRelease[];
 }
 
+export interface MusicBrainzSeriesMember {
+  id: string;
+  title: string;
+  /** Rank explicitly supplied as the relation's numeric `number` attribute. */
+  rank: string | null;
+}
+
+export type MusicBrainzSeriesEntityType = 'recording' | 'release-group';
+
+export interface MusicBrainzSeriesSnapshot {
+  id: string;
+  name: string;
+  type: string | null;
+  members: MusicBrainzSeriesMember[];
+}
+
 function creditNames(r: MbRecording): string[] {
   return (r['artist-credit'] ?? [])
     .flatMap((c) => [c?.name, c?.artist?.name])
@@ -193,7 +209,10 @@ async function searchRecordings(query: string): Promise<MbRecording[]> {
     timeoutMs: TIMEOUT_MS,
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    if (res.status === 429 || res.status >= 500) throw new Error(`MusicBrainz search HTTP ${res.status}`);
+    return [];
+  }
   const body = (await res.json()) as { recordings?: MbRecording[] };
   return Array.isArray(body.recordings) ? body.recordings : [];
 }
@@ -204,7 +223,10 @@ async function recordingDetail(id: string): Promise<CanonicalMusicBrainzRecordin
     timeoutMs: TIMEOUT_MS,
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (res.status === 429 || res.status >= 500) throw new Error(`MusicBrainz recording HTTP ${res.status}`);
+    return null;
+  }
   return projectCanonicalRecording(await res.json());
 }
 
@@ -233,15 +255,96 @@ export async function lookupCanonicalRecording(track: {
   const mbid = track.mbid?.trim() ?? '';
   const title = track.title?.trim() ?? '';
   const artist = track.artist?.trim() ?? '';
-  try {
-    if (mbid) return await throttled(() => recordingDetail(mbid));
-    if (!title || !artist) return null;
-    const candidates = await throttled(() => searchRecordings(`recording:${phrase(title)} AND artist:${phrase(artist)}`));
-    const id = exactRecordingId(candidates, title, artist);
-    return id ? await throttled(() => recordingDetail(id)) : null;
-  } catch {
-    return null;
+  if (mbid) return await throttled(() => recordingDetail(mbid));
+  if (!title || !artist) return null;
+  const attempts: Array<{ title: string; artist: string }> = [{ title, artist }];
+  const stripped = stripTitleNoise(title);
+  const deDuplicated = dedupeRepeatedArtistCredit(artist);
+  if (stripped !== title || deDuplicated !== artist) attempts.push({ title: stripped, artist: deDuplicated });
+  for (const attempt of attempts) {
+    const candidates = await throttled(() => searchRecordings(`recording:${phrase(attempt.title)} AND artist:${phrase(attempt.artist)}`));
+    const id = exactRecordingId(candidates, attempt.title, attempt.artist);
+    if (id) return await throttled(() => recordingDetail(id));
   }
+  return null;
+}
+
+/** Resolve a tagged MusicBrainz release ID to its exact release group. */
+export async function lookupReleaseGroupForRelease(releaseId: string): Promise<string | null> {
+  const id = releaseId.toLowerCase();
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(id)) return null;
+  return throttled(async () => {
+    const url = `${MB_API}/release/${encodeURIComponent(id)}?inc=release-groups&fmt=json`;
+    const res = await fetchWithTimeout(url, {
+      timeoutMs: TIMEOUT_MS,
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      if (res.status === 429 || res.status >= 500) throw new Error(`MusicBrainz release HTTP ${res.status}`);
+      return null;
+    }
+    const value = await res.json() as Record<string, unknown>;
+    if (value.id !== id) return null;
+    const group = value['release-group'] as Record<string, unknown> | undefined;
+    return typeof group?.id === 'string' ? group.id : null;
+  });
+}
+
+/** Fetch one allowlisted Series and only its expected membership relations. */
+export async function lookupMusicBrainzSeries(
+  id: string,
+  entityType: MusicBrainzSeriesEntityType,
+): Promise<MusicBrainzSeriesSnapshot | null> {
+  return throttled(async () => {
+    const relationType = entityType === 'recording' ? 'recording-rels' : 'release-group-rels';
+    const url = `${MB_API}/series/${encodeURIComponent(id)}?inc=${relationType}&fmt=json`;
+    const res = await fetchWithTimeout(url, {
+      timeoutMs: TIMEOUT_MS,
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      if (res.status === 429 || res.status >= 500) throw new Error(`MusicBrainz Series HTTP ${res.status}`);
+      return null;
+    }
+    const body = (await res.json()) as Record<string, unknown>;
+    if (body.id !== id || typeof body.name !== 'string') return null;
+    const seriesType = typeof body.type === 'string' ? body.type : null;
+    const expectedType = entityType === 'recording' ? /recording/i : /release[ -]group/i;
+    if (seriesType && !expectedType.test(seriesType)) return null;
+    const rawRelations = Array.isArray(body.relations) ? body.relations : [];
+    const members = new Map<string, MusicBrainzSeriesMember>();
+    for (const raw of rawRelations) {
+      if (!raw || typeof raw !== 'object') continue;
+      const relation = raw as Record<string, unknown>;
+      // The Series endpoint serializes this target as `release_group`, while
+      // other MusicBrainz endpoints use `release-group`.
+      const target = entityType === 'recording'
+        ? relation.recording
+        : relation.release_group ?? relation['release-group'];
+      if (!target || typeof target !== 'object') continue;
+      const member = target as Record<string, unknown>;
+      if (typeof member.id !== 'string' || typeof member.title !== 'string') continue;
+      const values = relation['attribute-values'];
+      const rawRank = values && typeof values === 'object'
+        ? (values as Record<string, unknown>).number
+        : null;
+      const rank = typeof rawRank === 'number' && Number.isInteger(rawRank) && rawRank > 0
+        ? String(rawRank)
+        : typeof rawRank === 'string' && /^\d+$/.test(rawRank) && Number(rawRank) > 0
+          ? rawRank
+          : null;
+      const existing = members.get(member.id);
+      // MusicBrainz may expose duplicate relations to the same entity. Keep
+      // the explicit rank when any relation supplies it.
+      if (!existing || (!existing.rank && rank)) members.set(member.id, { id: member.id, title: member.title, rank });
+    }
+    return {
+      id,
+      name: body.name,
+      type: seriesType,
+      members: [...members.values()],
+    };
+  });
 }
 
 // Escape a value for use inside a quoted Lucene phrase.
@@ -269,6 +372,12 @@ export function stripTitleNoise(title: string): string {
 export function primaryArtist(artist: string): string {
   const cut = (artist ?? '').split(/\s+(?:feat\.?|ft\.?|featuring|with)\s+|\s*[,&]\s*|\s+x\s+/i)[0];
   return (cut || artist || '').trim();
+}
+
+/** A local tag can repeat its sole artist as `Artist & Artist`; query it once. */
+export function dedupeRepeatedArtistCredit(artist: string): string {
+  const parts = artist.split(/\s*&\s*/).map((part) => part.trim()).filter(Boolean);
+  return parts.length === 2 && norm(parts[0]) === norm(parts[1]) ? parts[0] : artist;
 }
 
 // Resolve the original release year for one track: MBID first (exact), then a

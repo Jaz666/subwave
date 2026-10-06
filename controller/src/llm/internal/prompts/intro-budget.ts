@@ -11,6 +11,7 @@ import { shiftOnsetMs } from '../../../music/silence-trim.js';
 // rule can never disagree about where "too early to talk" starts and where a
 // runway stops constraining at all (broadcast/vocal-runway.ts).
 import { VOCAL_RUNWAY_FLOOR_MS, VOCAL_RUNWAY_CEILING_MS } from '../../../broadcast/vocal-runway.js';
+export { VOCAL_RUNWAY_FLOOR_MS, VOCAL_RUNWAY_CEILING_MS };
 
 // Intro runway (ms to where the track 'comes in') for a track, from the track
 // object or a library lookup. Null when un-analysed.
@@ -32,6 +33,11 @@ export function firstVocalMsFor(track: any): number | null {
   const first = Number(ranges[0]?.startMs);
   if (!Number.isFinite(first) || first < 0) return null;
   return shiftOnsetMs(track, first);
+}
+
+/** The same on-air runway the hard link budget uses: measured vocals first, intro_ms otherwise. */
+export function effectiveVocalRunwayMs(track: any): number | null {
+  return firstVocalMsFor(track) ?? introMsFor(track);
 }
 
 // Delegates to library.bpmKeyFor — the shared resolver that prefers the

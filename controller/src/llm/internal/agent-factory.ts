@@ -19,6 +19,7 @@
 //     used to resolve the agent's chosen id to a full song object).
 
 import { djAgent } from './strategy/agent.js';
+import { withAgentActivity, type AgentActivityPriority } from '../agent-activity.js';
 
 // TArgs is the run-argument shape this agent accepts — the same object
 // buildSystem and buildTools are handed. Naming it makes the hand-off from the
@@ -27,6 +28,7 @@ import { djAgent } from './strategy/agent.js';
 // type error rather than a silently-defaulted constraint.
 export interface AgentDefinition<TArgs = Record<string, any>, TExtras = any> {
   kind: string;
+  activityPriority?: AgentActivityPriority;
   // A function form is resolved at each run, so the schema can follow live
   // state (the picker swaps its transition-field coaching off when the on-air
   // persona isn't in DJ mode) instead of being frozen at module load.
@@ -65,7 +67,7 @@ export interface DjAgentInstance<TArgs = Record<string, any>, TExtras = any> {
   readonly temperature: number | undefined;
   readonly maxOutputTokens: number | undefined;
   readonly providerDiscoveryBudget: boolean;
-  run(args: TArgs & { messages: any[]; telemetry?: Record<string, unknown> }): Promise<AgentRunResult<TExtras>>;
+  run(args: TArgs & { messages: any[]; telemetry?: Record<string, unknown>; activityPriority?: AgentActivityPriority }): Promise<AgentRunResult<TExtras>>;
 }
 
 function resolveTimeout(t: number | (() => number) | undefined): number | undefined {
@@ -96,39 +98,41 @@ export function defineAgent<TArgs = Record<string, any>, TExtras = any>(
     temperature: def.temperature,
     maxOutputTokens: def.maxOutputTokens,
     providerDiscoveryBudget: def.providerDiscoveryBudget === true,
-    async run({ messages, telemetry, ...rest }) {
-      const toolArgs = rest as TArgs;
-      const system = def.buildSystem(toolArgs);
-      // An agent with no buildTools has no extras. `extras` stays typed as
-      // TExtras on the result rather than TExtras | undefined, because the only
-      // agents that read it are the ones that build tools — widening it would
-      // push a null check into every call site to describe a case they can't hit.
-      const built = def.buildTools
-        ? def.buildTools(toolArgs)
-        : { tools: undefined, extras: undefined };
-      const extras = built.extras as TExtras;
-      const result = await djAgent({
-        system,
-        messages,
-        tools: built.tools,
-        schema: resolveSchema(def.schema),
-        maxSteps: def.maxSteps,
-        timeoutMs: resolveTimeout(def.timeoutMs),
-        temperature: def.temperature,
-        maxOutputTokens: def.maxOutputTokens,
-        kind: def.kind,
-        ...(telemetry ? { telemetry } : {}),
-        providerDiscoveryBudget: def.providerDiscoveryBudget === true,
-        ...(def.validateObject
-          ? { validate: (object: any) => def.validateObject!(object, extras) }
-          : {}),
-      });
-      return {
-        object: result.object,
-        steps: result.steps,
-        toolCalls: result.toolCalls,
-        extras,
-      };
+    async run({ messages, telemetry, activityPriority, ...rest }) {
+      return withAgentActivity(async () => {
+        const toolArgs = rest as TArgs;
+        const system = def.buildSystem(toolArgs);
+        // An agent with no buildTools has no extras. `extras` stays typed as
+        // TExtras on the result rather than TExtras | undefined, because the only
+        // agents that read it are the ones that build tools — widening it would
+        // push a null check into every call site to describe a case they can't hit.
+        const built = def.buildTools
+          ? def.buildTools(toolArgs)
+          : { tools: undefined, extras: undefined };
+        const extras = built.extras as TExtras;
+        const result = await djAgent({
+          system,
+          messages,
+          tools: built.tools,
+          schema: resolveSchema(def.schema),
+          maxSteps: def.maxSteps,
+          timeoutMs: resolveTimeout(def.timeoutMs),
+          temperature: def.temperature,
+          maxOutputTokens: def.maxOutputTokens,
+          kind: def.kind,
+          ...(telemetry ? { telemetry } : {}),
+          providerDiscoveryBudget: def.providerDiscoveryBudget === true,
+          ...(def.validateObject
+            ? { validate: (object: any) => def.validateObject!(object, extras) }
+            : {}),
+        });
+        return {
+          object: result.object,
+          steps: result.steps,
+          toolCalls: result.toolCalls,
+          extras,
+        };
+      }, activityPriority ?? def.activityPriority ?? 'interactive');
     },
   };
 }
