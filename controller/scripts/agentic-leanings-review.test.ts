@@ -302,7 +302,7 @@ const pickEnd = agentSource.indexOf('\nasync function ', pickStart + 1);
 const pickSource = agentSource.slice(pickStart, pickEnd);
 const preliminaryAt = pickSource.indexOf('const preliminaryId =');
 const reviewAt = pickSource.indexOf('schema: agenticLeaningsReviewSchema');
-const guardsAt = pickSource.indexOf('const guarded = await runArtistGuard');
+const guardsAt = pickSource.indexOf('await runArtistGuard<any>');
 const enqueueAt = pickSource.indexOf('const queued = await enqueuePick');
 const resolutionAt = pickSource.indexOf('agentPickResolution.usedMusicalLeanings = resolveAgenticLeaningsUsage');
 assert.ok(preliminaryAt >= 0 && preliminaryAt < reviewAt,

@@ -57,7 +57,7 @@ import {
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
 import { agenticLeaningsReviewPrompt, agenticLeaningsReviewSchema, agenticLeaningsReviewSystem, NO_AGENTIC_LEANINGS_INFLUENCE, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, type EditorialLeaningsContext } from './dj-agent/schemas.js';
-import { agenticDiscoverySelectionReason, agenticLeaningsPhrases, agenticLeaningsSelectionReason, agenticSelectionReason, agenticTrackRef, compactAgenticReviewCandidate, resolveAgenticLeaningsUsage, selectAgenticReviewCandidates, validateAgenticLeaningsReplacement, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
+import { agenticDiscoverySelectionReason, agenticLeaningsSources, eligibleAgenticLeanings, agenticLeaningsSelectionReason, agenticSelectionReason, agenticTrackRef, compactAgenticReviewCandidate, resolveAgenticLeaningsUsage, selectAgenticReviewCandidates, validateAgenticLeaningsReplacement, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
@@ -401,9 +401,11 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   agentPickResolution.preliminary = agenticTrackRef(song);
   agentPickResolution.leaningsReview = { outcome: 'not-run', replacementId: null };
   if (editorialLeanings.promptValue && extras.seen.size > 1) {
-    const leaningsOptions = agenticLeaningsPhrases(editorialLeanings);
-    const reviewCandidates = selectAgenticReviewCandidates(song, [...extras.seen.values()], leaningsOptions);
     const reviewDjName = session.onAirPersona()?.name ?? null;
+    const leaningsSources = agenticLeaningsSources(editorialLeanings, reviewDjName);
+    const eligibleLeanings = eligibleAgenticLeanings(song, [...extras.seen.values()], leaningsSources);
+    const leaningsOptions = eligibleLeanings.map(({ phrase }) => phrase);
+    const reviewCandidates = selectAgenticReviewCandidates(song, [...extras.seen.values()], leaningsOptions);
     if (reviewCandidates.length >= 2 && leaningsOptions.length > 0) try {
       const compactCandidates = reviewCandidates.map((candidate) => compactAgenticReviewCandidate(candidate, leaningsOptions, song));
       const compactCandidatesById = new Map(compactCandidates.map((candidate) => [String(candidate.id), candidate]));
@@ -413,6 +415,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
           baseline: compactCandidates[0],
           challengers: compactCandidates.slice(1),
           leaningsOptions,
+          leaningsSources,
           context: {
             currentTrack: pickAnchor ? { id: pickAnchor.id ?? null, title: pickAnchor.title ?? null, artist: pickAnchor.artist ?? null } : null,
             link: wantLink ? 'A separate safe link may air for this pick.' : 'No link airs for this pick.',
@@ -433,6 +436,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         reviewedSelectedId: review.selectedId,
         candidateIds: reviewCandidates.map((candidate) => String(candidate.id)),
         leaningsOptions,
+        leaningsSources,
       };
       if (selectedChanged && !replacement) {
         agentPickResolution.leaningsReview = {
@@ -453,16 +457,17 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
           flowCloseness: compactReplacement?.flowCloseness,
         });
         if (validation.valid) {
+          const owner = eligibleLeanings.find(({ phrase }) => phrase === validation.basis);
           object = {
             ...object,
             id: replacement.id,
-            reason: agenticLeaningsSelectionReason({ replacement, djName: reviewDjName, basis: validation.basis, musicalReason: review.musicalReason }),
+            reason: agenticLeaningsSelectionReason({ replacement, djName: reviewDjName, leaningsOwnerName: owner?.ownerName ?? (owner?.source === 'guest' ? 'The guest' : reviewDjName), basis: validation.basis, musicalReason: review.musicalReason }),
             transition: review.transition,
           };
           song = replacement;
           agentPickResolution.leaningsReview = {
             outcome: 'replaced', replacementId: String(replacement.id), track: agenticTrackRef(replacement),
-            leaningsBasis: validation.basis, ...common,
+            leaningsBasis: validation.basis, leaningsSource: owner?.source, ...common,
           };
         } else {
           agentPickResolution.leaningsReview = {
@@ -553,6 +558,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       proposedReplacementId: agentPickResolution.leaningsReview?.proposedReplacementId ?? null,
       rejectionReason: agentPickResolution.leaningsReview?.rejectionReason ?? null,
       leaningsBasis: agentPickResolution.leaningsReview?.leaningsBasis ?? null,
+    leaningsSource: agentPickResolution.leaningsReview?.leaningsSource ?? null,
       finalId: null,
       reviewOutcome: agentPickResolution.leaningsReview?.outcome ?? 'not-run',
       guardOutcome: agentPickResolution.guardOutcome,
@@ -704,6 +710,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     proposedReplacementId: agentPickResolution.leaningsReview?.proposedReplacementId ?? null,
     rejectionReason: agentPickResolution.leaningsReview?.rejectionReason ?? null,
     leaningsBasis: agentPickResolution.leaningsReview?.leaningsBasis ?? null,
+    leaningsSource: agentPickResolution.leaningsReview?.leaningsSource ?? null,
     finalId: String(song.id),
     reviewOutcome: agentPickResolution.leaningsReview?.outcome ?? 'not-run',
     guardOutcome: agentPickResolution.guardOutcome,

@@ -12,6 +12,7 @@ import { modelTolerant } from '../../llm/sdk.js';
 import { autoVoiceAllowed } from '../voice-policy.js';
 import { SEED_NOT_A_PICK_CLAUSE } from '../../util/pick-seed.js';
 import { instruction } from '../../llm/dj.js';
+import { agenticReasonMentionsLeanings, type AgenticLeaningsOption } from './leanings-review.js';
 
 // Plain .nullable() fields, deliberately — GLM's malformed spellings of
 // "nothing" (the string "null", an omitted key, a double-JSON-encoded object)
@@ -107,11 +108,13 @@ export function agenticLeaningsReviewPrompt({
   baseline,
   challengers,
   leaningsOptions,
+  leaningsSources = [],
   context = {},
 }: {
   baseline: Record<string, unknown>;
   challengers: Array<Record<string, unknown>>;
   leaningsOptions: string[];
+  leaningsSources?: AgenticLeaningsOption[];
   context?: AgenticLeaningsReviewContext;
 }): string {
   return JSON.stringify({
@@ -119,7 +122,9 @@ export function agenticLeaningsReviewPrompt({
     baseline,
     challengers,
     leaningsOptions,
+    leaningsSources,
   }, null, 2)
+    + '\n\nleaningsSources identifies the owner of each preference. Host preferences are primary; guest preferences are secondary. Only leaningsOptions are eligible: the controller excludes guest evidence whenever a viable host-supported choice exists.'
     + '\n\nUse this decision order: (1) scan every challenger for flowCloseness="close" plus a non-empty leaningsMatches; if present, choose the strongest such challenger and copy its matching phrase into leaningsBasis. (2) Otherwise consider a flowCloseness="possible" match only when its musical continuation is genuinely comparable. (3) Only when neither exists, keep the baseline and write leaningsBasis=NO_LEANINGS_INFLUENCE. Do not independently rerank tracks that have no supported match.'
     + '\n\nflowCloseness is a Leanings-blind controller comparison using energy, mood, tempo, key and genre. A candidate’s leaningsMatches contains exact active-profile phrases supported by its genre/mood tags. The controller independently verifies both fields, so copy ids and phrases exactly.'
     + '\n\nAlways write musicalReason for selectedId as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Write like a music lover: describe an audible texture, melody, rhythm, production choice or songwriting quality. Do not repeat the DJ, artist or title. Do not mention preferences, Leanings, baseline, challenger, preliminary choice, current flow, queue position, BPM, key, energy levels or mood tags. Avoid stock evaluator wording such as "complements the current flow". The controller adds the verified names and exact evidence. Set transition for selectedId.';
@@ -246,8 +251,6 @@ export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | 
   return !!context?.promptValue && modelFlag === true && typeof tieBreak === 'string' && tieBreak.trim().length > 2;
 }
 
-const LEANINGS_REASON_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:'s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
-
 // The Agentic reason becomes queue metadata and the next session turn. Match
 // the Shortlist final-boundary safeguard: a model that mentions Leanings but
 // did not explicitly claim the diagnostic cannot pass that assertion forward
@@ -258,7 +261,7 @@ export function agentReasonForLeanings(reason: unknown, usedMusicalLeanings: boo
     const evidence = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
     return evidence ? `Leanings: ${evidence}` : 'flow fit after the current track';
   }
-  if (!LEANINGS_REASON_REFERENCE.test(compact)) return compact;
+  if (!agenticReasonMentionsLeanings(compact)) return compact;
   return 'flow fit after the current track';
 }
 

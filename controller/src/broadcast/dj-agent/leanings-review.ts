@@ -34,6 +34,8 @@ export type AgenticPickResolution = {
     reviewedSelectedId?: string | null;
     candidateIds?: string[];
     leaningsOptions?: string[];
+    leaningsSources?: AgenticLeaningsOption[];
+    leaningsSource?: 'host' | 'guest';
     proposedReplacementId?: string | null;
     rejectionReason?: AgenticLeaningsReviewRejection | null;
   };
@@ -89,7 +91,7 @@ export function agenticSelectionReason(track: any, reason: unknown): string {
 }
 
 const QUEUE_LANGUAGE = /\b(?:next\s+up|up\s+next|coming\s+up|we(?:'|’)re\s+playing|we\s+have)\b/i;
-const LEANINGS_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:['’]s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
+const LEANINGS_REFERENCE = /\b(?:reflecting\b.*\btaste\s+for|(?:musical\s+)?leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:['’]s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’](?:s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
 
 function usableAgenticReason(reason: unknown, song: { artist?: unknown; title?: unknown }): string {
   const note = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
@@ -111,9 +113,16 @@ export function agenticDiscoverySelectionReason(track: any, reason: unknown): st
   return agenticSelectionReason(track, reason);
 }
 
+export function agenticReasonMentionsLeanings(reason: unknown): boolean {
+  return LEANINGS_REFERENCE.test(String(reason ?? ''));
+}
+
+export function leaningsBlindPickReason(reason: unknown, song: { artist?: unknown; title?: unknown }): string {
+  return agenticReasonMentionsLeanings(reason) ? usableAgenticReason('', song) : String(reason ?? '');
+}
+
 export function verifiedAgenticReason(reason: unknown, usedMusicalLeanings: boolean, song: { artist?: unknown; title?: unknown }): string {
-  if (usedMusicalLeanings || !LEANINGS_REFERENCE.test(String(reason ?? ''))) return usableAgenticReason(reason, song);
-  return usableAgenticReason('', song);
+  return usableAgenticReason(usedMusicalLeanings ? reason : leaningsBlindPickReason(reason, song), song);
 }
 
 function comparable(value: unknown): string {
@@ -133,41 +142,58 @@ function cleanLeaningsPhrase(value: string): string | null {
     .replace(/\s+/g, ' ')
     .replace(/^[,;:\s]+|[,;:\s]+$/g, '')
     .trim();
-  if ((phrase.length < 5 && !/^[A-Z0-9]{2,5}$/.test(phrase)) || phrase.length > 100) return null;
+  if (phrase.length < 2 || phrase.length > 100) return null;
   const words = phrase.split(/\s+/);
   if (words.length > 10) return null;
   if (words.length === 1 && UNHELPFUL_SINGLE_WORDS.has(phrase.toLocaleLowerCase('en-GB'))) return null;
   return phrase;
 }
 
-export function agenticLeaningsPhrases(editorialLeanings: {
-  host?: string | null;
-  guest?: { musicalLeanings?: string | null } | null;
-} | null): string[] {
-  const sources = [editorialLeanings?.host, editorialLeanings?.guest?.musicalLeanings]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+export type AgenticLeaningsOption = {
+  phrase: string;
+  source: 'host' | 'guest';
+  ownerName: string | null;
+};
+
+function phrasesFromSource(source: string): string[] {
   const phrases: string[] = [];
-  for (const source of sources) {
-    for (const rawSentence of source.split(/[.!?;]+/)) {
-      const sentence = rawSentence.trim();
-      const trigger = LEANINGS_TRIGGER.exec(sentence);
-      if (!trigger) continue;
-      const preference = sentence.slice((trigger.index ?? 0) + trigger[0].length).trim();
-      for (const rawPart of preference.split(/\s*,\s*|\s+and\s+|\s+alongside\s+|\s+across\s+/i)) {
-        const phrase = cleanLeaningsPhrase(rawPart);
-        if (phrase && !phrases.some((item) => comparable(item) === comparable(phrase))) phrases.push(phrase);
-      }
+  for (const rawSentence of source.split(/[.!?;]+/)) {
+    const sentence = rawSentence.trim();
+    const trigger = LEANINGS_TRIGGER.exec(sentence);
+    if (!trigger) continue;
+    const preference = sentence.slice(trigger.index + trigger[0].length).trim();
+    for (const rawPart of preference.split(/\s*,\s*|\s+and\s+|\s+alongside\s+|\s+across\s+/i)) {
+      const phrase = cleanLeaningsPhrase(rawPart);
+      if (phrase && !phrases.some((item) => comparable(item) === comparable(phrase))) phrases.push(phrase);
     }
   }
   if (phrases.length === 0) {
-    for (const source of sources) {
-      for (const rawPart of source.split(/[.!?;,]+|\s+and\s+/i)) {
-        const phrase = cleanLeaningsPhrase(rawPart);
-        if (phrase && !phrases.some((item) => comparable(item) === comparable(phrase))) phrases.push(phrase);
-      }
+    for (const rawPart of source.split(/[.!?;,]+|\s+and\s+/i)) {
+      const phrase = cleanLeaningsPhrase(rawPart);
+      if (phrase && !phrases.some((item) => comparable(item) === comparable(phrase))) phrases.push(phrase);
     }
   }
-  return phrases.slice(0, 16);
+  return phrases;
+}
+
+export function agenticLeaningsSources(editorialLeanings: {
+  host?: string | null;
+  guest?: { guest?: { name: string }; musicalLeanings?: string | null } | null;
+} | null, hostName: string | null = null): AgenticLeaningsOption[] {
+  const sources: AgenticLeaningsOption[] = [];
+  const add = (text: string | null | undefined, source: 'host' | 'guest', ownerName: string | null) => {
+    if (!text?.trim()) return;
+    for (const phrase of phrasesFromSource(text).slice(0, 16)) {
+      if (!sources.some((item) => comparable(item.phrase) === comparable(phrase))) sources.push({ phrase, source, ownerName });
+    }
+  };
+  add(editorialLeanings?.host, 'host', hostName);
+  add(editorialLeanings?.guest?.musicalLeanings, 'guest', editorialLeanings?.guest?.guest?.name ?? null);
+  return sources;
+}
+
+export function agenticLeaningsPhrases(editorialLeanings: Parameters<typeof agenticLeaningsSources>[0]): string[] {
+  return agenticLeaningsSources(editorialLeanings).map(({ phrase }) => phrase);
 }
 
 function stringList(value: unknown): string[] {
@@ -221,6 +247,17 @@ function exactLeaningsMetadataScore(candidate: any, leaningsOptions: string[]): 
     (score, phrase) => score + Math.min(3, comparable(phrase).split(' ').length),
     0,
   );
+}
+
+// Host preferences win whenever the baseline or a viable challenger supports
+// them. A guest can nudge only a choice the host's supplied evidence cannot settle.
+export function eligibleAgenticLeanings(baseline: any, candidates: any[], sources: AgenticLeaningsOption[]): AgenticLeaningsOption[] {
+  const host = sources.filter(({ source }) => source === 'host');
+  const hostPhrases = host.map(({ phrase }) => phrase);
+  const hostSupported = [baseline, ...candidates].some((candidate) =>
+    (String(candidate?.id) === String(baseline?.id) || ordinarySimilarity(baseline, candidate) >= 2.5)
+    && exactLeaningsMetadataMatches(candidate, hostPhrases).length > 0);
+  return hostSupported ? host : sources;
 }
 
 export function selectAgenticReviewCandidates(baseline: any, candidates: any[], leaningsOptions: string[] = [], limit = 6): any[] {
@@ -299,7 +336,8 @@ export function validateAgenticLeaningsReplacement({
 }): { valid: true; basis: string } | { valid: false; reason: AgenticLeaningsReviewRejection } {
   const rawBasis = typeof leaningsBasis === 'string' ? leaningsBasis.trim().replace(/\s+/g, ' ') : '';
   const basis = comparable(rawBasis);
-  if (!basis || !allowedLeanings.some((option) => comparable(option) === basis)) {
+  const allowedBasis = allowedLeanings.find((option) => comparable(option) === basis);
+  if (!basis || !allowedBasis) {
     return { valid: false, reason: 'missing-leanings-basis' };
   }
   if (!comparable(musicalLeanings).includes(basis)) {
@@ -313,24 +351,27 @@ export function validateAgenticLeaningsReplacement({
   }
   const reason = typeof musicalReason === 'string' ? musicalReason.replace(/\s+/g, ' ').trim() : '';
   if (reason.length < 16) return { valid: false, reason: 'weak-musical-reason' };
-  return { valid: true, basis: rawBasis };
+  return { valid: true, basis: allowedBasis };
 }
 
 export function agenticLeaningsSelectionReason({
   replacement,
   djName,
+  leaningsOwnerName,
   basis,
   musicalReason,
 }: {
   replacement: { title?: unknown; artist?: unknown };
   djName: unknown;
+  leaningsOwnerName?: string | null;
   basis: string;
   musicalReason: unknown;
 }): string {
   const title = typeof replacement.title === 'string' ? replacement.title.trim() : 'this track';
   const artist = typeof replacement.artist === 'string' ? replacement.artist.trim() : 'the selected artist';
   const presenter = typeof djName === 'string' && djName.trim() ? djName.trim() : 'The DJ';
-  const possessive = /s$/i.test(presenter) ? `${presenter}’` : `${presenter}’s`;
+  const owner = leaningsOwnerName?.trim() || presenter;
+  const possessive = /s$/i.test(owner) ? `${owner}’` : `${owner}’s`;
   let detail = typeof musicalReason === 'string'
     ? musicalReason.replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '')
     : 'its musical character brings a natural change of colour to the sequence';
