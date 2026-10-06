@@ -1318,10 +1318,6 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     // multiplies across the window. Mirrored by the pool picker's listener-liked
     // source so both paths lean the same way — a lean, never a lock.
     const favClause = likes.favouritesClause(settings.get()?.likes);
-    // One immutable selection snapshot spans the event, main Agentic run and
-    // every constrained re-pick. In particular, guest sampling is not retried
-    // after the event turn has told the model which Leanings apply.
-    const editorialLeanings = resolveEditorialLeanings(showAt);
     // Exploration nudge (ε-greedy seed break, music/airing.ts): every pick
     // seeding discovery from the expected predecessor is a random walk that never
     // leaves its similarity cluster, so a fraction of picks steer the round
