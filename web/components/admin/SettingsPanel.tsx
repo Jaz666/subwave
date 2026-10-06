@@ -337,6 +337,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   // flipping away to check another section and back does not re-collapse it.
   const [advOpen, setAdvOpen] = useState<Record<string, boolean>>({});
   const router = useRouter();
+  const scrolledCardRef = useRef<string | null>(null);
 
   const reportDirty = useCallback((id: string, dirty: boolean) => {
     setLocalDirty(prev => (!!prev[id] === dirty ? prev : { ...prev, [id]: dirty }));
@@ -365,6 +366,26 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
     }
     if (s && sections.some(x => x.id === s)) setActiveSection(s as SectionId);
   }, [router, searchParams, sections, djBrainEnabled]);
+
+  // Overview can deep-link to a particular DJ Behaviour card. The section
+  // state selects the correct panel first; wait for its form to render before
+  // scrolling to the stable card slug.
+  useEffect(() => {
+    const section = searchParams.get('section');
+    const card = searchParams.get('card');
+    if (!card || !section || activeSection !== section) return;
+    const requestKey = `${section}:${card}`;
+    if (scrolledCardRef.current === requestKey) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-card]'))
+        .find((element) => element.dataset.card === card);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrolledCardRef.current = requestKey;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSection, data, form, searchParams]);
 
   useEffect(() => {
     if (!data?.values) return;
@@ -447,16 +468,10 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         showWelcome: v.djBehaviour?.showWelcome === true,
         sameHostAcknowledgement: v.djBehaviour?.sameHostAcknowledgement === true,
         extendedSleeveNotes: v.djBehaviour?.extendedSleeveNotes === true,
-        sleeveNotesMaintenanceWhenEmpty: v.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === true,
         releaseYearMentions: v.djBehaviour?.releaseYearMentions ?? 'regular',
         recapLimit: String(v.djBehaviour?.recapLimit ?? 10),
         recapMinutes: String(v.djBehaviour?.recapMinutes ?? 120),
         recapChars: String(v.djBehaviour?.recapChars ?? 140),
-      },
-      sleeveNotes: {
-        providers: {
-          genius: { enabled: v.sleeveNotes?.providers?.genius?.enabled !== false },
-        },
       },
       weather: {
         lat: String(v.weather?.lat ?? ''),

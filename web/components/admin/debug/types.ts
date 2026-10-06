@@ -97,15 +97,57 @@ interface LlmCall {
   systemPreview?: string;
   messages?: Array<{ role?: string; content?: unknown }>;
   toolCalls?: Array<{ name?: string; args?: unknown; result?: unknown }>;
+  extendedSleeveNote?: {
+    status?: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown';
+    claimId?: string | null;
+    entityType?: 'artist' | 'recording' | 'release' | 'release-group' | null;
+    category?: string | null;
+    topic?: string | null;
+    wordingLevel?: 'full' | 'short' | null;
+    runwayMs?: number | null;
+    candidateCount?: number;
+    detection?: string | null;
+  };
   shortlistResolution?: {
-    track?: { id?: string; title?: string | null; artist?: string | null };
-    selectionReason?: string;
+    preliminary?: { id?: string; title?: string | null; artist?: string | null };
+    leaningsReview?: {
+      outcome?: 'not-run' | 'kept' | 'replaced' | 'invalid' | 'failed';
+      replacementId?: string | null;
+      track?: { id?: string; title?: string | null; artist?: string | null } | null;
+      leaningsBasis?: string | null;
+      leaningsSource?: 'host' | 'guest' | null;
+      baselineId?: string | null;
+      reviewedSelectedId?: string | null;
+      candidateIds?: string[];
+      leaningsOptions?: string[];
+      proposedReplacementId?: string | null;
+      rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
+    };
+    guardOutcome?: 'none' | 'artist-repick' | 'album-repick' | 'artist-and-album-repick' | 'pool-rescue';
+    final?: { id?: string; title?: string | null; artist?: string | null };
+    reason?: string | null;
+    queued?: boolean;
     usedMusicalLeanings?: boolean;
-    leaningsTieBreak?: string | null;
+    rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | 'queue-collision' | 'pool-rescue' | null;
   };
   agentPickResolution?: {
-    track?: { id?: string; title?: string | null; artist?: string | null };
+    preliminary?: { id?: string; title?: string | null; artist?: string | null };
+    leaningsReview?: {
+      outcome?: 'not-run' | 'kept' | 'replaced' | 'invalid' | 'failed';
+      replacementId?: string | null;
+      track?: { id?: string; title?: string | null; artist?: string | null } | null;
+      leaningsBasis?: string | null;
+      baselineId?: string | null;
+      reviewedSelectedId?: string | null;
+      candidateIds?: string[];
+      leaningsOptions?: string[];
+      proposedReplacementId?: string | null;
+      rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
+    };
+    guardOutcome?: 'none' | 'artist-repick' | 'album-repick' | 'artist-and-album-repick' | 'pool-rescue';
+    final?: { id?: string; title?: string | null; artist?: string | null };
     reason?: string | null;
+    queued?: boolean;
     usedMusicalLeanings?: boolean;
   };
   response?: string;

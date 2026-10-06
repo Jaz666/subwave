@@ -78,23 +78,83 @@ export function agenticDiscoverySchema() {
   }));
 }
 
-export type AgenticEditorialPickContext = {
-  currentTrack?: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null } | null;
+export type AgenticLeaningsReviewContext = {
+  currentTrack?: {
+    id?: string | null;
+    title?: string | null;
+    artist?: string | null;
+    album?: string | null;
+    bpm?: number | null;
+    key?: string | null;
+    pace?: number | null;
+  } | null;
   journeyActive?: boolean;
   link?: string;
+  recentTransitions?: string[];
+  djName?: string | null;
+  // Shortlist supplies provenance-separated options here while retaining the
+  // closed combined leaningsOptions list used by the shared schema validator.
+  // Agentic callers omit these fields, leaving its locked prompt unchanged.
+  hostLeaningsOptions?: string[];
+  guestLeaningsOptions?: string[];
 };
 
-export function agenticEditorialPickSchema(ids: string[]) {
-  if (!ids.length) throw new Error('cannot select from an empty Agentic candidate set');
-  return modelTolerant(pickSchemaBase().omit({ reason: true, usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
-    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied candidate set'),
-    selectionReason: z.string().trim().min(24).max(280).describe('private Booth Log selection note — never spoken on air. Name the selected artist and track title, then explain their musical fit in this moment. Do not introduce or announce the track, imply queue position, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Do not claim that Musical Leanings, preferences, or tastes decided the pick.'),
-  }), { objectFallbacks: { selectionReason: '[selection note unavailable]' } });
+// The full effect vocabulary and suitability rules already live in the system
+// prompt. This small latest-turn reminder gives one-shot Shortlist decisions
+// the same anti-monoculture signal as the Agentic and Pool paths without
+// repeating that expensive guidance. Presence of the array (even empty) is the
+// effects-active flag; when effects are off, the prompt remains unchanged.
+export function transitionChoiceNudge(recentTransitions: string[] | undefined): string {
+  return Array.isArray(recentTransitions)
+    ? ' The context recentTransitions list is oldest first; the station strips a third identical effect, so vary deliberately. Never use the same transition three picks running, and if the last choice used an effect, lean "normal" now unless this moment clearly calls for another.'
+    : '';
 }
 
-export function agenticEditorialPickPrompt(candidates: any[], context: AgenticEditorialPickContext = {}, editorialLeanings: EditorialLeaningsContext | null = null): string {
-  return JSON.stringify({ context: { ...context, musicalLeanings: editorialLeanings?.promptValue ?? null }, candidates }, null, 2)
-    + '\n\nChoose one id from these candidates. The discovery tools and controller have already applied the station guards. Write selectionReason as a private Booth Log note, never on-air DJ speech: name your selected artist and track title, then explain the musical fit. Do not introduce or announce the track, imply it is next in the queue, use first-person DJ framing, or say "next up", "coming up", "we are playing", or "we have". Use Musical Leanings, when supplied, only as a soft editorial preference among tracks that already fit. They may inform the final choice but never override show rules, rotation, safety, or musical flow. Do not state or imply that Musical Leanings, preferences, or tastes decided the choice; describe the selected track’s fit only.';
+export const NO_AGENTIC_LEANINGS_INFLUENCE = 'NO_LEANINGS_INFLUENCE';
+
+export function agenticLeaningsReviewSchema(ids: string[], leaningsOptions: string[], baselineId: string) {
+  const choices = [...new Set(ids)];
+  if (choices.length < 2) throw new Error('cannot review an Agentic pick without multiple candidates');
+  if (!choices.includes(baselineId)) throw new Error('Agentic Leanings baseline must be one of the reviewed candidates');
+  if (leaningsOptions.length < 1) throw new Error('cannot review an Agentic pick without exact Leanings options');
+  return modelTolerant(z.object({
+    // Deliberately strings rather than dynamic enums. llama.cpp showed a strong
+    // first-enum-value bias: baseline/sentinel at position zero produced an
+    // artificial 100% "keep" rate, while candidate ids at position zero drove
+    // the previous independent-rerank bias. The controller still validates
+    // both fields against these closed lists before a replacement can count.
+    selectedId: z.string().trim().min(1).max(160).describe(`copy the final exact id from baseline or challengers. Choose a close challenger with a supported Leanings match; otherwise use ${baselineId}. Never invent an id.`),
+    leaningsBasis: z.string().trim().min(1).max(100).describe(`write ${NO_AGENTIC_LEANINGS_INFLUENCE} when selectedId is ${baselineId}. When changing selectedId, copy exactly one supplied leaningsOptions phrase that materially caused that change; never invent or paraphrase evidence.`),
+    musicalReason: z.string().trim().min(16).max(180).describe('one natural, specific clause about the selected track, beginning with "its" or "it". Describe sound, texture, melody, rhythm, production or songwriting like a music lover, not a metadata report. Do not name the DJ, artist, title, preferences, Leanings, baseline, challenger, preliminary choice, current flow, queue position, BPM, key, energy level or mood tag; the controller adds verified identity and evidence.'),
+    transition: pickSchemaBase().shape.transition,
+  }), { objectFallbacks: { leaningsBasis: NO_AGENTIC_LEANINGS_INFLUENCE, musicalReason: '[musical reason unavailable]' } });
+}
+
+export function agenticLeaningsReviewSystem(): string {
+  return 'You are performing one private music-editor review. The controller has already selected an eligible baseline without Musical Leanings. First look for a supplied challenger that is a verified close ordinary-flow choice and has a controller-supported Leanings match; that is a genuine tie-break and should replace the baseline. Use a possible-flow match only when its musical fit is convincingly comparable. Keep the baseline when no such challenger exists. Never invent tracks, preference evidence or facts beyond the supplied data.';
+}
+
+export function agenticLeaningsReviewPrompt({
+  baseline,
+  challengers,
+  leaningsOptions,
+  context = {},
+}: {
+  baseline: Record<string, unknown>;
+  challengers: Array<Record<string, unknown>>;
+  leaningsOptions: string[];
+  context?: AgenticLeaningsReviewContext;
+}): string {
+  return JSON.stringify({
+    context,
+    baseline,
+    challengers,
+    leaningsOptions,
+  }, null, 2)
+    + '\n\nUse this decision order: (1) scan every challenger for flowCloseness="close" plus a non-empty leaningsMatches; if present, choose the strongest such challenger and copy its matching phrase into leaningsBasis. (2) Otherwise consider a flowCloseness="possible" match only when its musical continuation is genuinely comparable. (3) Only when neither exists, keep the baseline and write leaningsBasis=NO_LEANINGS_INFLUENCE. Do not independently rerank tracks that have no supported match.'
+    + '\n\nflowCloseness is a Leanings-blind controller comparison using energy, mood, tempo, key and genre. A candidate’s leaningsMatches contains exact active-profile phrases supported by its genre/mood tags. The controller independently verifies both fields, so copy ids and phrases exactly.'
+    + '\n\nAlways write musicalReason for selectedId as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Write like a music lover: describe an audible texture, melody, rhythm, production choice or songwriting quality. Do not repeat the DJ, artist or title. Do not mention preferences, Leanings, baseline, challenger, preliminary choice, current flow, queue position, BPM, key, energy levels or mood tags. Avoid stock evaluator wording such as "complements the current flow". The controller adds the verified names and exact evidence. Set transition for selectedId.'
+    + transitionChoiceNudge(context.recentTransitions);
 }
 
 // Resolved per run, like pickSchema: the intro length follows the on-air
@@ -283,7 +343,7 @@ export function pickSystem(
   // over-promising is the more expensive way to be wrong.
   const rounds = dj.promptDiscoverySteps();
   const findingCandidates = nativeShortlist
-    ? 'The controller has already built a Track Shortlist under the station guards. Choose exactly one supplied id; do not request or invent candidates.'
+      ? 'The controller has already built a Track Shortlist under the station guards. Choose exactly one supplied id; do not request or invent candidates.'
     : rounds > 1
       ? instruction('picker', 'finding-candidates-multi', { rounds })
       : instruction('picker', 'finding-candidates');

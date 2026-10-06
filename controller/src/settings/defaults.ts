@@ -252,6 +252,9 @@ export const DEFAULTS = {
     // station. DJ LLM work remains governed by llm.pauseWhenEmpty.
     sleeveNotesMaintenanceWhenEmpty: false,
     releaseYearMentions: 'regular',
+    // Controls whether an offered spark is mandatory, encouraged or optional.
+    // Claim selection and offering remain governed by link-selection.
+    extendedSleeveNoteUseFrequency: 'occasional',
     // Compact anti-repeat material carried into every DJ script prompt. These
     // are deliberately ordinary live settings rather than boot environment:
     // operators tune editorial behaviour from Admin → DJ behaviour.
@@ -263,7 +266,8 @@ export const DEFAULTS = {
   // Notes switch. A provider may be configured but inert while the master
   // setting is off, or the master may be on while no provider is enabled.
   sleeveNotes: {
-    providers: { genius: { enabled: true } },
+    wikipedia: { extractPrompt: '', artistClaimLimit: 20, albumClaimLimit: 5 },
+    providers: { genius: { enabled: true, accessToken: '' } },
   },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
   // boundary the outgoing host signs off — the programme outro beat's window.

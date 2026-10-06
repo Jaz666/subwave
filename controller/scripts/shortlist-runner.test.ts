@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
 import { pickerScope } from '../src/llm/tools.js';
-import { resolvedMusicalLeaningsFlag, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { shortlistCandidateForPick, shortlistClauseSelectionReason, shortlistLeaningsSource, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -84,21 +84,78 @@ test('native builder plans from source-owned availability before execution', asy
 
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
   const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
+  const parsed = schema.parse({
+    id: 'candidate-a', musicalReason: 'its warmer texture opens the arrangement without breaking the sequence', usedMusicalLeanings: true, say: null, transition: null,
+  });
+  assert.equal('usedMusicalLeanings' in parsed, false, 'the model cannot self-report Leanings provenance');
   assert.equal(schema.safeParse({
-    id: 'candidate-a', selectionReason: 'One by Artist A brings a warmer texture after the opener.', usedMusicalLeanings: false, say: null, transition: null,
-  }).success, true);
-  assert.equal(schema.safeParse({
-    id: 'invented', selectionReason: 'not allowed', usedMusicalLeanings: false, say: null, transition: null,
+    id: 'invented', musicalReason: 'its warmer texture opens the arrangement without breaking the sequence', say: null, transition: null,
   }).success, false);
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /Track Shortlist/);
-  const promptedWithLeanings = shortlistPickPrompt(
+  const leaningsBlindPrompt = shortlistPickPrompt(
     [{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }],
     {},
-    { host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' },
   );
-  assert.ok(promptedWithLeanings.indexOf('musicalLeanings') < promptedWithLeanings.indexOf('"shortlist"'));
+  assert.doesNotMatch(leaningsBlindPrompt, /Favour patient dub|"musicalLeanings"/i);
+  assert.match(leaningsBlindPrompt, /ordinary musical flow only/i);
+});
+
+test('Shortlist sees predecessor audio facts and applies the vanilla-neutral transition policy', () => {
+  const prompt = shortlistPickPrompt(
+    [{ id: 'candidate-a', title: 'One', bpm: 124, key: '8A' }],
+    {
+      currentTrack: {
+        id: 'current', title: 'Current Song', artist: 'Current Artist', album: 'Album',
+        bpm: 122, key: '7A', pace: 0.63,
+      },
+      recentTransitions: ['normal', 'washout', 'normal', 'washout'],
+    },
+  );
+  const payload = JSON.parse(prompt.slice(0, prompt.indexOf('\n\nChoose one id'))) as {
+    context: { currentTrack: Record<string, unknown>; recentTransitions: string[] };
+  };
+  assert.deepEqual(payload.context.currentTrack, {
+    id: 'current', title: 'Current Song', artist: 'Current Artist', album: 'Album',
+    bpm: 122, key: '7A', pace: 0.63,
+  });
+  assert.deepEqual(payload.context.recentTransitions, ['normal', 'washout', 'normal', 'washout']);
+  assert.match(prompt, /oldest first/);
+  assert.match(prompt, /strips a third identical effect/);
+  assert.match(prompt, /Never use the same transition three picks running/);
+  assert.match(prompt, /lean "normal" now unless this moment clearly calls for another/);
+  assert.doesNotMatch(prompt, /default to (?:washout|sweep|blend|dissolve|chop|loop)/i,
+    'the parity reminder must not bias the model away from one named effect');
+
+  const effectsOff = shortlistPickPrompt([{ id: 'candidate-a', title: 'One' }], {});
+  assert.doesNotMatch(effectsOff, /Never use the same transition three picks running/);
+});
+
+test('Shortlist sends a compact selection-only candidate payload', () => {
+  const candidate = {
+    id: 'candidate-a', title: 'One', artist: 'Artist', album: 'Album', year: 2001,
+    genre: 'Rock', moods: ['driving'], energy: 'high', instrumental: false,
+    bpm: 120, key: '8A', pace: 0.7, sections: 4, unaired: true,
+    play_count: 2, last_played_days_ago: 30, artist_play_count: 5,
+    artist_last_played_days_ago: 10, duration_sec: 240, intro_ms: 12_000,
+    shortlistSources: ['deepCuts'], controllerOnly: 'never send',
+  };
+  assert.deepEqual(shortlistCandidateForPick(candidate), {
+    id: 'candidate-a', title: 'One', artist: 'Artist', album: 'Album', year: 2001,
+    genre: 'Rock', moods: ['driving'], energy: 'high', instrumental: false,
+    bpm: 120, key: '8A', pace: 0.7, sections: 4, unaired: true,
+    play_count: 2, last_played_days_ago: 30, artist_play_count: 5,
+    artist_last_played_days_ago: 10,
+  });
+  const prompt = shortlistPickPrompt([candidate]);
+  const payload = JSON.parse(prompt.slice(0, prompt.indexOf('\n\nChoose one id'))) as { shortlist: Array<Record<string, unknown>> };
+  assert.equal(payload.shortlist.length, 1);
+  assert.equal('shortlistSources' in payload.shortlist[0], false);
+  assert.equal('duration_sec' in payload.shortlist[0], false);
+  assert.equal('intro_ms' in payload.shortlist[0], false);
+  assert.doesNotMatch(prompt.slice(0, prompt.indexOf('\n\nChoose one id')), /\n\s+"/,
+    'candidate JSON is compact rather than indentation-heavy');
 });
 
 test('shortlist presentation never attaches one track\'s note to another track', () => {
@@ -127,25 +184,23 @@ test('shortlist presentation never attaches one track\'s note to another track',
   );
 });
 
-test('Shortlist Leanings provenance requires an explicit decision', () => {
+test('Shortlist reasons use verified identity and reject model backstage language', () => {
+  const song = { artist: 'Prince', title: '1999' };
   assert.equal(
-    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'warm vocal and melodic hook'),
-    false,
+    shortlistClauseSelectionReason(song, 'its bright synth pulse gives the sequence a clean lift'),
+    '“1999” by Prince — its bright synth pulse gives the sequence a clean lift.',
   );
   assert.equal(
-    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'warm vocal and melodic hook'),
-    true,
+    shortlistClauseSelectionReason(song, 'I chose this candidate from the shortlist for the queue'),
+    '“1999” by Prince — its musical character fits the surrounding sequence naturally.',
   );
-  assert.equal(
-    resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, false, 'warm vocal and melodic hook'),
-    false,
-  );
-  assert.equal(
-    resolvedMusicalLeaningsFlag(null, true, 'warm vocal and melodic hook'),
-    false,
-  );
-  assert.equal(resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, null), true);
-  assert.equal(resolvedMusicalLeaningsFlag({ host: 'Favour patient dub.', guest: null, promptValue: 'Host: Favour patient dub.' }, true, 'energy'), true);
+  const context = {
+    host: 'Favour patient dub.',
+    guest: { musicalLeanings: 'Warm voices and strong melodies.' },
+  };
+  assert.equal(shortlistLeaningsSource(context, 'patient dub'), 'host');
+  assert.equal(shortlistLeaningsSource(context, 'Warm voices'), 'guest');
+  assert.equal(shortlistLeaningsSource(context, 'invented taste'), null);
 });
 
 test('Shortlist keeps natural claimed Leanings reasons and removes unclaimed ones', () => {

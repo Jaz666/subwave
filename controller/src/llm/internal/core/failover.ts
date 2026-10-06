@@ -101,6 +101,7 @@ export async function withFailover<T>(
   failExtra: (err: any) => any,
   attempt: (leg: any) => Promise<AttemptResult<T>>,
   pin?: 'primary' | 'fallback',
+  signal?: AbortSignal,
 ): Promise<T> {
   if (pin) {
     const leg = pin === 'fallback' ? fallbackLeg() : primaryLeg();
@@ -127,7 +128,13 @@ export async function withFailover<T>(
     const quotaOrAuth = isQuotaOrAuthError(err);
     const upstreamOverloaded = isUpstreamOverloaded(err);
     const rateLimited = isRateLimited(err);
-    const backup = (isUnreachable(err) || quotaOrAuth || upstreamOverloaded || rateLimited) ? fallbackLeg() : null;
+    // A caller-owned cancellation (e.g. Wikipedia's quiet-state or 45s
+    // deadline abort) can surface as DOMException AbortError, which the
+    // transport classifier also treats as a dead host. Do not turn that
+    // intentional cancellation into a second request on the cloud leg.
+    const backup = !signal?.aborted
+      && (isUnreachable(err) || quotaOrAuth || upstreamOverloaded || rateLimited)
+      ? fallbackLeg() : null;
     if (!backup) {
       logFailurePreview(kind, err);
       recordFailure({ kind, started: primaryStarted, via: primaryVia, model: primary.label, error: err?.message, extra: failExtra(err) });

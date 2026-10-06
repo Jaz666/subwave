@@ -101,6 +101,8 @@ export interface QueueItem {
   block?: { id: string; label: string; index: number; size: number };
   intent?: string | null;
   introScript?: string | null;
+  /** Sleeve Notes use row linked to a generated DJ link, when one was offered. */
+  sleeveClaimUseId?: string | null;
   introKind?: string;
   // Who WROTE introScript. Carried on the item because the line is rendered in
   // drainToLiquidsoap and aired in airIntro, both later than generation and

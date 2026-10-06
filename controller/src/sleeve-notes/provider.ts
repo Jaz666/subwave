@@ -23,9 +23,15 @@ export interface ProviderRelationship {
   target: ProviderIdentity;
 }
 
+export interface ProviderContributor {
+  providerId: string;
+  name: string;
+  canonicalUrl?: string;
+}
+
 export interface SleeveProviderResult {
   identity: ProviderIdentity;
-  credits: Array<{ role: string; names: string[] }>;
+  credits: Array<{ role: string; names: string[]; contributors?: ProviderContributor[] }>;
   relationships: ProviderRelationship[];
   attribution: string;
   retrievedAt: string;

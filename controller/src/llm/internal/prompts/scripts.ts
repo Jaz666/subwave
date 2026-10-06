@@ -9,13 +9,26 @@ import { djSystem, lengthPhrase } from './system.js';
 import { buildContextLines, decoratePrompt, pickTimePhrase, randomSeed } from './context.js';
 import { speakClockAllowed } from '../../../broadcast/clock-policy.js';
 import { isNamedRequester } from '../../../util/request-guard.js';
-import { introBudgetPhrase, introMsFor, firstVocalMsFor } from './intro-budget.js';
+import {
+  effectiveVocalRunwayMs,
+  introBudgetPhrase,
+  introMsFor,
+  firstVocalMsFor,
+  VOCAL_RUNWAY_CEILING_MS,
+} from './intro-budget.js';
 import { trackEraYear } from '../../../music/show-filter.js';
 import { trackFeelSuffix } from './track-feel.js';
 import { announceLine, nextAnnounceForm } from '../../../broadcast/announce-line.js';
 import * as library from '../../../music/library.js';
 import { contextSleeveNotesFor, releaseYearMentionEligible, selectSleeveNotes, stationHistoryNoteFor } from './sleeve-notes.js';
-import { recordExtendedSleeveNoteSupplied, selectExtendedSleeveNote } from '../../../sleeve-notes/link-selection.js';
+import {
+  extendedSleeveNoteAllowedForVocalRunway,
+  extendedSleeveNoteHasClearTextSignal,
+  inspectExtendedSleeveNote,
+  markExtendedSleeveNoteContextPass,
+  markExtendedSleeveNoteQualityRejection,
+  recordExtendedSleeveNoteSupplied,
+} from '../../../sleeve-notes/link-selection.js';
 import { stripRecapSpokenTags, stripSpokenTags } from './recent-speech.js';
 
 // The feel note appended to a track line (track-feel.ts) is a STEER, not copy.
@@ -86,9 +99,15 @@ export const REQUESTER_GREETING_CLAUSE = ' When the request comes with a name, s
   + ' — greet them by name once, naturally, as part of the line rather than tacked on.';
 
 
-const PERSONA_GROUNDING_RULE = 'FACTUAL GROUNDING: Treat supplied facts, including Sleeve Notes, as the factual ground truth for the current task. For factual claims about music, supplied facts are your only source of truth. Do not supplement them with your own knowledge of an artist, track, album or music history, even when you believe that knowledge is correct. You may naturally rephrase supplied facts, but do not expand, strengthen, upgrade or generalise them into unsupported claims, explanations, causes, relationships or historical context. “First station play” is not a premiere or a world premiere, and an album title does not make that album belong to the station or presenter. Do not invent or assume release dates, albums, chart history, credits, artist biography, lyrics, instrumentation, production details or other music trivia unless supplied. Sleeve Notes are optional material for natural conversation, not a checklist. Use only what helps the current on-air line. You do not need to mention them at all. You may freely express subjective, in-character reactions and musical impressions provided they are not presented as additional facts; describe the presenter’s response to the music, not an invented world around the station. Do not invent weather, season, date, clock time, programme state, people being present or events around the station. If approximate air time is supplied, you may infer the corresponding time of day but never make it more precise than supplied. Style or Tone instructions never override these factual-grounding rules. Use local colour, time, weather or other contextual texture only when the necessary information has been supplied.';
+const PERSONA_GROUNDING_RULE = 'FACTUAL GROUNDING: Treat supplied facts, including Sleeve Notes, as the factual ground truth for the current task. For factual claims about music, supplied facts are your only source of truth. Do not supplement them with your own knowledge of an artist, track, album or music history, even when you believe that knowledge is correct. You may naturally rephrase supplied facts, but do not expand, strengthen, upgrade or generalise them into unsupported claims, explanations, causes, relationships or historical context. “First station play” is not a premiere or a world premiere, and an album title does not make that album belong to the station or presenter. Do not invent or assume release dates, albums, chart history, credits, artist biography, lyrics, instrumentation, production details or other music trivia unless supplied. Sleeve Notes are optional material for natural conversation, not a checklist. Follow the frequency guidance for an Extended Sleeve Note when one is supplied. You may freely express subjective, in-character reactions and musical impressions provided they are not presented as additional facts; describe the presenter’s response to the music, not an invented world around the station. Do not invent weather, season, date, clock time, programme state, people being present or events around the station. If approximate air time is supplied, you may infer the corresponding time of day but never make it more precise than supplied. Style or Tone instructions never override these factual-grounding rules. Use local colour, time, weather or other contextual texture only when the necessary information has been supplied.';
 
-function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false, includeSleeves = true, extendedSleeveNote: any = null): string {
+function verifiedContextPacket(
+  context: any,
+  current: any = null,
+  clockIsAirTime = false,
+  includeSleeves = true,
+  extendedSleeveNote: any = null,
+): string {
   const moment: string[] = [];
   const day = String(context?.date?.dayLabel || "").trim();
   if (day) moment.push("Day: " + day + ".");
@@ -126,7 +145,11 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
   ];
   if (includeSleeves) sections.push("Sleeve Notes:\n" + (sleeves.length ? sleeves.map((fact) => "- " + fact).join("\n") : "- None selected for this line."));
   if (extendedSleeveNote?.wording) {
-    sections.push("Extended Sleeve Note — optional story spark:\n"
+    const level = extendedSleeveNote.wordingLevel === 'short'
+      ? 'Short semantic anchors — if used, turn this into a concise, complete spoken thought; it is not copy to read verbatim'
+      : 'Full story wording';
+    const heading = 'Extended Sleeve Note — optional story material';
+    sections.push(`${heading} (${level}):\n`
       + `- ${String(extendedSleeveNote.wording).trim()}\n`
       + `  Category: ${String(extendedSleeveNote.category || 'music story')}.\n`
       + `  Source: ${String(extendedSleeveNote.attribution || extendedSleeveNote.provider || 'researched source')}.`);
@@ -354,12 +377,19 @@ export function linkPrompt({
   includeIntroBudget = true,
   guestContribution = null,
   extendedSleeveNote = null,
+  extendedSleeveNoteUseFrequency = settings.get().djBehaviour.extendedSleeveNoteUseFrequency,
 }: any): string {
   const speaker = persona || settings.getEffectivePersona();
+  const extendedSleeveNoteGuidance = {
+    regular: 'Look for a natural way to weave the offered story spark into this link. Use it often when it suits the track and the time available, but let the link sound like this presenter: you may leave the spark out.',
+    occasional: 'Consider the offered story spark when it gives this particular link an interesting angle. Otherwise leave it out and talk about the track naturally.',
+    rare: 'Use the offered story spark only when it feels especially timely or adds a distinctive angle to this link. Most links can leave it out.',
+  }[extendedSleeveNoteUseFrequency];
   const rules = [
     'Output only the words to be spoken on air.',
     'The named track is already playing. Focus on it and do not refer to the previous track.',
-    'Treat entries in Verified Facts and regular Sleeve Notes as factual ground truth. An Extended Sleeve Note is a separate optional, source-backed story spark: use only its supported claim, do not broaden it or imply station verification, and omit it if it does not fit. Its source metadata is for grounding, not required spoken copy.',
+    'Treat entries in Verified Facts and regular Sleeve Notes as factual ground truth.',
+    'When you use a musical-connections note about a cover, preserve the relationship direction and name the other artist or track when supplied. If it says the on-air recording has been covered by another artist, make clear that the version playing is the original in this relationship and identify who covered it; do not reduce that to a vague phrase such as “reimagined”.',
     'The supplied day of week is for accuracy, not generic atmosphere. Mention it only when it adds something specific and natural; do not use it as a default opener or repeat it from link to link.',
     'Music facts are limited to the exact entries in Verified Facts, regular Sleeve Notes and the selected Extended Sleeve Note: do not use remembered or learned album, release, chart, reputation, influence, relationship or history information.',
     'Never strengthen an approved station-history fact: “First station play” is not a premiere or a world premiere, and an album fact never means the album belongs to the station or presenter.',
@@ -370,6 +400,16 @@ export function linkPrompt({
     PERSONA_GROUNDING_RULE,
     lengthPhrase('link', speaker) + '.',
   ];
+  if (extendedSleeveNote?.wording) {
+    rules.push(`${extendedSleeveNoteGuidance} If you use the spark, work its fact into a natural thought about the track; do not read it verbatim, bolt it on, or automatically make it the first sentence. You may omit it for an ordinary style choice without explanation. Preserve its supported meaning; do not broaden it or imply station verification. For Recognition, state only inclusion in the named list and any supplied rank; do not turn a list entry into a claim of universal quality or status. Its source metadata is for grounding, not required spoken copy.`);
+    if (extendedSleeveNote.category === 'credits') {
+      rules.push('A writing or production credit is optional material. Use it only if the named person and exact role make a natural detail for this link; do not turn a routine credit into a larger story or imply a contribution beyond the stated role.');
+    }
+    rules.push('If the spark is good material but does not fit this particular track, moment or speaking window, start with SPARK_NOT_NOW(reason): and then give an ordinary spoken introduction without the spark. This is a context pass, not a judgement on the spark itself. If the spark itself is factually doubtful, confusing, or too thin for any natural radio link, use SPARK_REJECTED(reason): instead. Use neither marker for a simple stylistic choice to omit it. Give a brief reason with either marker. The marker is removed before speech; never say it aloud.');
+  }
+  if (extendedSleeveNote?.wordingLevel === 'short') {
+    rules.push('Short story data is a semantic anchor, not spoken copy. If you use it, make a natural, complete thought that preserves the named subject, relationship, object and direction. Add no extra fact.');
+  }
   // Automatic links are attached to the track start, where measured intro and
   // first-vocal timing is meaningful. An on-demand link can be fired anywhere
   // in the song, so its original opening runway must not be presented as time
@@ -387,7 +427,7 @@ export function linkPrompt({
   }
 
   const sections = [
-    'Task: Give a brief spoken introduction to the track now playing.',
+    'Task: Give a brief, natural spoken introduction to the track now playing.',
     `Rules:\n${rules.map((rule) => `- ${rule}`).join('\n')}`,
     facts,
   ];
@@ -433,7 +473,12 @@ function announceFallbackSystem(speaker: unknown): string {
     + settings.languageDirective(speaker);
 }
 
+// The debug badge is deliberately high-precision: mark CHOSEN only when the
+// spoken text carries at least two distinctive claim terms beyond the expected
+// artist and track-title wording. A natural paraphrase can remain OFFERED; the
+// repetition ledger records supply separately and does not use this badge.
 export async function generateLink(args: any) {
+  const { onSleeveNoteUse, ...linkArgs } = args;
   const speaker = args.persona || settings.getEffectivePersona();
   if (settings.announceLinks(speaker)) {
     const composed = announceLine(args.current?.artist, speaker, {
@@ -454,29 +499,105 @@ export async function generateLink(args: any) {
       kind: 'generateAnnounceLinkFallback',
     });
   }
-  let extendedSleeveNote: ReturnType<typeof selectExtendedSleeveNote> = null;
+  let inspection: ReturnType<typeof inspectExtendedSleeveNote> = {
+    status: 'unavailable', note: null, candidateCount: 0,
+  };
   const extendedSleeveNotesEnabled = settings.get().djBehaviour.extendedSleeveNotes === true;
   const currentTrackId = String(args.current?.id ?? '').trim();
-  try {
-    extendedSleeveNote = selectExtendedSleeveNote(args.current);
-  } catch (error) {
-    // Sleeve Notes are opportunistic context: a local-store error must never
-    // prevent or delay the ordinary track link.
-    console.warn(`[sleeve-notes] generateLink selection failed (enabled=${extendedSleeveNotesEnabled}, trackId=${currentTrackId || 'missing'}): ${error instanceof Error ? error.message : String(error)}`);
+  const suppressExtendedSleeveNote = args.suppressExtendedSleeveNote === true;
+  const firstVocalMs = firstVocalMsFor(args.current);
+  const runwayMs = effectiveVocalRunwayMs(args.current);
+  const skipExtendedSleeveNoteForRunway = extendedSleeveNotesEnabled
+    && !suppressExtendedSleeveNote
+    && !extendedSleeveNoteAllowedForVocalRunway(firstVocalMs);
+  if (!suppressExtendedSleeveNote && !skipExtendedSleeveNoteForRunway) {
+    try {
+      inspection = inspectExtendedSleeveNote(
+        args.current, Date.now(), runwayMs == null || runwayMs <= VOCAL_RUNWAY_CEILING_MS,
+      );
+    } catch (error) {
+      // Sleeve Notes are opportunistic context: a local-store error must never
+      // prevent or delay the ordinary track link.
+      console.warn(`[sleeve-notes] generateLink selection failed (enabled=${extendedSleeveNotesEnabled}, trackId=${currentTrackId || 'missing'}): ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
-  console.info(`[sleeve-notes] generateLink selection ${extendedSleeveNote ? `selected claim=${extendedSleeveNote.claimId}` : 'miss'} (enabled=${extendedSleeveNotesEnabled}, trackId=${currentTrackId || 'missing'})`);
-  const script = await djText({
-    system: djSystem(speaker),
-    prompt: linkPrompt({ ...args, persona: speaker, extendedSleeveNote }),
+  const selectedSleeveNote = inspection.note;
+  // Full wording is reserved for a measured runway longer than the existing
+  // 18-second hard-budget ceiling. Unknown or shorter runways use compact
+  // anchors so the writer can form a supported sentence that fits.
+  const useShortWording = !!selectedSleeveNote?.shortWording
+    && (runwayMs == null || runwayMs <= VOCAL_RUNWAY_CEILING_MS);
+  const extendedSleeveNote = selectedSleeveNote
+    ? {
+        ...selectedSleeveNote,
+        wording: useShortWording ? selectedSleeveNote.shortWording! : selectedSleeveNote.fullWording,
+        wordingLevel: useShortWording ? 'short' as const : 'full' as const,
+      }
+    : null;
+  const extendedSleeveNoteUseFrequency = settings.get().djBehaviour.extendedSleeveNoteUseFrequency;
+  console.info(`[sleeve-notes] generateLink selection ${extendedSleeveNote
+    ? `selected claim=${extendedSleeveNote.claimId} wording=${extendedSleeveNote.wordingLevel} runwayMs=${runwayMs ?? 'unknown'}`
+    : skipExtendedSleeveNoteForRunway
+      ? `skipped vocalRunwayMs=${firstVocalMs}`
+      : 'miss'} (enabled=${extendedSleeveNotesEnabled}, trackId=${currentTrackId || 'missing'})`);
+  const system = djSystem(speaker);
+  const prompt = linkPrompt({ ...linkArgs, persona: speaker, extendedSleeveNote, extendedSleeveNoteUseFrequency });
+  const debugMetadata = (response: string | null) => {
+    let status: 'unavailable' | 'available' | 'offered' | 'chosen' | 'cooldown' | null = null;
+    if (extendedSleeveNote) {
+      status = response == null ? 'available'
+        : extendedSleeveNoteHasClearTextSignal(
+          response,
+          extendedSleeveNote.wording,
+          args.current?.artist,
+          args.current?.title,
+        ) ? 'chosen' : 'offered';
+    } else if (inspection.status === 'cooldown') {
+      status = 'cooldown';
+    } else if (!suppressExtendedSleeveNote && !skipExtendedSleeveNoteForRunway
+      && extendedSleeveNotesEnabled && inspection.status === 'unavailable') {
+      status = 'unavailable';
+    }
+    if (!status) return {};
+    return {
+      extendedSleeveNote: {
+        status,
+        claimId: extendedSleeveNote?.claimId ?? null,
+        entityType: extendedSleeveNote?.entityType ?? null,
+        category: extendedSleeveNote?.category ?? null,
+        topic: extendedSleeveNote?.topic ?? null,
+        wordingLevel: extendedSleeveNote?.wordingLevel ?? null,
+        runwayMs,
+        candidateCount: inspection.candidateCount,
+        detection: status === 'chosen' ? 'distinctive-term overlap' : null,
+      },
+    };
+  };
+  const rawScript = await djText({
+    system,
+    prompt,
     temperature: 0.95,
     topP: 0.92,
     repeatPenalty: 1.2,
     seed: randomSeed(),
-    kind: 'generateLink',
+    kind: suppressExtendedSleeveNote ? 'generateLinkAirtimeFallback' : 'generateLink',
+    debugMetadata,
   });
+  const sparkDecision = rawScript.match(/^\s*SPARK_(REJECTED|NOT_NOW)\(([^)\n]{3,240})\):\s*/iu);
+  const script = sparkDecision ? rawScript.slice(sparkDecision[0].length).trimStart() : rawScript;
   if (extendedSleeveNote && script.trim()) {
     try {
-      recordExtendedSleeveNoteSupplied(extendedSleeveNote, script);
+      const useId = recordExtendedSleeveNoteSupplied(extendedSleeveNote, script);
+      if (typeof onSleeveNoteUse === 'function') onSleeveNoteUse(useId);
+      if (sparkDecision && !extendedSleeveNoteHasClearTextSignal(
+        script, extendedSleeveNote.wording, args.current?.artist, args.current?.title,
+      )) {
+        if (sparkDecision[1].toUpperCase() === 'REJECTED') {
+          markExtendedSleeveNoteQualityRejection(useId, sparkDecision[2]);
+        } else {
+          markExtendedSleeveNoteContextPass(useId, sparkDecision[2]);
+        }
+      }
     } catch (error) {
       // Repetition bookkeeping must not turn a successful link into a failure.
       console.warn(`[sleeve-notes] generateLink use record failed (claimId=${extendedSleeveNote.claimId}, trackId=${currentTrackId || 'missing'}): ${error instanceof Error ? error.message : String(error)}`);

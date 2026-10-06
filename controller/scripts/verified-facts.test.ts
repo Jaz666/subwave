@@ -87,14 +87,36 @@ assert.doesNotMatch(prompt, /sustained energy|euphoric/);
 
 const extendedPrompt = linkPrompt({
   current: track(), context: {},
+  extendedSleeveNoteUseFrequency: 'occasional',
   extendedSleeveNote: {
     wording: 'The recording features an unusual collaboration.',
     category: 'musical-connections', attribution: 'Wikipedia',
   },
 });
 assert.match(extendedPrompt, /Sleeve Notes:\n- Album: After Laughter Comes Tears\./);
-assert.match(extendedPrompt, /Extended Sleeve Note — optional story spark:\n- The recording features an unusual collaboration\./);
+assert.match(extendedPrompt, /Extended Sleeve Note — favor when it gives the link a natural angle:\n- The recording features an unusual collaboration\./);
 assert.match(extendedPrompt, /Category: musical-connections\.\n  Source: Wikipedia\./);
-assert.match(extendedPrompt, /optional, source-backed story spark/);
+assert.match(extendedPrompt, /favor including its supported claim/);
+
+const regularPrompt = linkPrompt({
+  current: track(), context: {}, extendedSleeveNoteUseFrequency: 'regular',
+  extendedSleeveNote: {
+    wording: 'The recording features an unusual collaboration.',
+    category: 'musical-connections', attribution: 'Wikipedia',
+  },
+});
+assert.match(regularPrompt, /Begin with one concise, accurate sentence conveying the supplied Extended Sleeve Note claim/);
+assert.match(regularPrompt, /you must include its supported claim in this link/);
+assert.doesNotMatch(regularPrompt, /You do not need to mention them at all/);
+
+const rarePrompt = linkPrompt({
+  current: track(), context: {}, extendedSleeveNoteUseFrequency: 'rare',
+  extendedSleeveNote: {
+    wording: 'The recording features an unusual collaboration.',
+    category: 'musical-connections', attribution: 'Wikipedia',
+  },
+});
+assert.match(rarePrompt, /Extended Sleeve Note — optional story spark/);
+assert.match(rarePrompt, /omit it if it does not fit/);
 
 console.log('verified facts: all tests passed');

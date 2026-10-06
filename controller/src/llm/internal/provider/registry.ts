@@ -13,6 +13,7 @@ import { config } from '../../../config.js';
 import * as settings from '../../../settings.js';
 import { recordRawRequest, rawDebugEnabled } from '../telemetry/raw-debug.js';
 import { capabilitiesFor, appliedRepeatPenalty, appliedNumCtx } from './capabilities.js';
+import { compatibleRequestOptions } from './request-context.js';
 
 // Built clients, keyed by a signature covering every field captured at
 // construction, so a settings edit is picked up with no explicit invalidation.
@@ -90,8 +91,14 @@ export function openAICompatibleFetch(cfg: any, baseFetch: any = fetch, forceNoT
     if (init?.body && typeof init.body === 'string') {
       try {
         const body = JSON.parse(init.body);
-        if (penalty != null && body.repeat_penalty === undefined) {
+        const perCall = compatibleRequestOptions();
+        if (perCall.repeat_penalty != null && body.repeat_penalty === undefined) {
+          body.repeat_penalty = perCall.repeat_penalty;
+        } else if (penalty != null && body.repeat_penalty === undefined) {
           body.repeat_penalty = penalty;
+        }
+        if (perCall.cache_prompt != null && body.cache_prompt === undefined) {
+          body.cache_prompt = perCall.cache_prompt;
         }
         if (noThink) {
           body.chat_template_kwargs = {

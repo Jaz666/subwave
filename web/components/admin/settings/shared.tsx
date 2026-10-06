@@ -350,7 +350,6 @@ export interface DjBehaviourForm {
   showWelcome: boolean;
   sameHostAcknowledgement: boolean;
   extendedSleeveNotes: boolean;
-  sleeveNotesMaintenanceWhenEmpty: boolean;
   releaseYearMentions: 'regular' | 'occasional' | 'rare';
   recapLimit: string;
   recapMinutes: string;
@@ -365,13 +364,10 @@ export interface DjBehaviourValues {
   extendedSleeveNotes?: boolean;
   sleeveNotesMaintenanceWhenEmpty?: boolean;
   releaseYearMentions?: 'regular' | 'occasional' | 'rare';
+  extendedSleeveNoteUseFrequency?: 'regular' | 'occasional' | 'rare';
   recapLimit?: number;
   recapMinutes?: number;
   recapChars?: number;
-}
-
-export interface SleeveNotesForm {
-  providers: { genius: { enabled: boolean } };
 }
 
 export interface FormState {
@@ -397,7 +393,6 @@ export interface FormState {
   /** Station-wide minimum length before a show may use pause-and-talk. */
   pauseTalkMinSeconds: string;
   djBehaviour: DjBehaviourForm;
-  sleeveNotes: SleeveNotesForm;
   weather: WeatherCfg;
   tts: TtsForm;
   llm: LlmForm;
@@ -474,7 +469,10 @@ export interface SettingsData {
     djTalkOnlyBetweenTracks?: boolean;
     pauseTalkMinSeconds?: number;
     djBehaviour?: DjBehaviourValues;
-    sleeveNotes?: { providers?: { genius?: { enabled?: boolean } } };
+    sleeveNotes?: {
+      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
+      providers?: { genius?: { enabled?: boolean; accessToken?: string } };
+    };
     /** Absent on a settings.json predating the key — the controller's own
      *  coercion reads it as the 5-minute default. */
     handover?: { offsetMinutes?: number };
