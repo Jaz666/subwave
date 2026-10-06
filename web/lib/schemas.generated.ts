@@ -611,6 +611,13 @@ export interface SceneReference {
 // forwards partial patches to settings.update(), and z.object would strip
 // whatever the wizard learns to send next.
 
+// Persisted connection reads drop malformed fields so setup stays recoverable.
+export const savedNavidromeCredentialsSchema = z.object({
+  url: z.string().catch(''),
+  user: z.string().catch(''),
+  pass: z.string().catch(''),
+}).catch({ url: '', user: '', pass: '' });
+
 /**
  * One normalisation for Navidrome credentials: trim, and strip trailing slashes
  * off the url (`${url}/rest/ping` against a stored `…:4533/` double-slashes and
@@ -705,7 +712,25 @@ export const PERSONA_LIMIT = 48;
 export const PERSONA_NAME_MAX = 40;
 export const PERSONA_TAGLINE_MAX = 80;
 export const PERSONA_LANGUAGE_MAX = 60;
-export const PERSONA_VOICE_STYLE_MAX = 300;
+// HALF the composed-style budget, and that is the whole derivation.
+//
+// The 300 this replaces equalled `VOICE_STYLE_MAX` — the entire budget
+// `geminiStyle()` composes for one render — so a directive at the cap consumed
+// all of it and `budget = max(0, 300 - operator - station)` left the persona's
+// character excerpt at zero. Every station with a pronunciation note lost the
+// character on every segment, silently, with no error anywhere.
+//
+// It is NOT a provider limit. `speech_metadata.style` has no documented
+// per-field cap, and rendering with 300 / 1000 / 3000 / 6000-character styles all
+// returned 200 against both models in MODELS. The ceiling that matters is local:
+// operator directive first, station note second, character excerpt with whatever
+// is left. 300 therefore could never be right, because it is the total.
+//
+// Half the budget leaves the other half to the two things this must not crowd
+// out. With a typical station note that is a ~130-character character excerpt —
+// enough to read as character — and the note is still honoured in full, because
+// only the excerpt is budget-limited.
+export const PERSONA_VOICE_STYLE_MAX = 150;
 // A soul rides in the system prompt on every call: a per-call token cost.
 export const PERSONA_SOUL_MAX = 2000;
 // Unlike Soul, musical leanings are a compact backstage selection cue. Keeping
@@ -1523,6 +1548,47 @@ export function resolvePersonaVoiceSlot(
     speed,
   };
 }
+
+// ─── from controller/src/schemas/playback-failures.ts ────────────────────
+
+// Preserve the historical reader's repair rules for missing or unsafe metadata.
+// Never retain URLs, annotated URIs, absolute paths or unrecognised fields.
+const playbackFailureScalarSchema = z.unknown().optional().transform((value): string | null => {
+  if (typeof value !== 'string' || /(?:\w+:\/\/|^\/|^[A-Za-z]:\\|^annotate:)/.test(value)) return null;
+  return value.slice(0, 500);
+});
+
+export const playbackFailureIdentitySchema = z.object({
+  attemptId: playbackFailureScalarSchema.pipe(z.string().min(1)),
+  sourceTrackId: playbackFailureScalarSchema,
+  title: playbackFailureScalarSchema,
+  artist: playbackFailureScalarSchema,
+  album: playbackFailureScalarSchema,
+  source: z.enum(['ai', 'request', 'operator']),
+});
+
+export const playbackFailureSchema = playbackFailureIdentitySchema.extend({
+  t: z.string().refine(value => Number.isFinite(Date.parse(value)))
+    .transform(value => new Date(value).toISOString()),
+  stage: z.literal('fetch'),
+  reason: z.literal('source-resolution-failed'),
+});
+
+export const playbackFailureEventSchema = playbackFailureSchema.extend({
+  type: z.literal('track.failed'),
+});
+
+export const playbackFailureHistorySchema = z.object({
+  failures: z.array(playbackFailureSchema),
+  retentionDays: z.number(),
+  truncated: z.boolean(),
+  warnings: z.array(z.string()),
+});
+
+export type PlaybackFailure = z.output<typeof playbackFailureSchema>;
+export type PlaybackFailureInput = Pick<PlaybackFailure, 'attemptId' | 'source'>
+  & Partial<Pick<PlaybackFailure, 'sourceTrackId' | 'title' | 'artist' | 'album'>>;
+export type PlaybackFailureHistory = z.output<typeof playbackFailureHistorySchema>;
 
 // ─── from controller/src/schemas/playlist.ts ─────────────────────────────
 
