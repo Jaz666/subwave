@@ -3126,6 +3126,10 @@ export const sleeveNotesPatchSchema = settingsBlockOf({
       { min: 1, max: 20 },
       'sleeveNotes.wikipedia.albumClaimLimit must be a whole number between 1 and 20',
     ),
+    chunkCharacterCeiling: settingsIntLike(
+      { min: 4000, max: 60000 },
+      'sleeveNotes.wikipedia.chunkCharacterCeiling must be a whole number between 4000 and 60000',
+    ),
   }),
   providers: settingsBlockOf({
     genius: settingsBlockOf({

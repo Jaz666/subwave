@@ -488,7 +488,7 @@ export interface SettingsData {
     pauseTalkMinSeconds?: number;
     djBehaviour?: DjBehaviourValues;
     sleeveNotes?: {
-      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
+      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number; chunkCharacterCeiling?: number };
       providers?: { genius?: { enabled?: boolean; accessToken?: string } };
     };
     /** Absent on a settings.json predating the key — the controller's own

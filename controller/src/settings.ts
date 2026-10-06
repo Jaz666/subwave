@@ -673,6 +673,10 @@ export async function load() {
           && stored.sleeveNotes.wikipedia.albumClaimLimit >= 1
           && stored.sleeveNotes.wikipedia.albumClaimLimit <= 20
           ? stored.sleeveNotes.wikipedia.albumClaimLimit : DEFAULTS.sleeveNotes.wikipedia.albumClaimLimit,
+        chunkCharacterCeiling: Number.isInteger(stored.sleeveNotes?.wikipedia?.chunkCharacterCeiling)
+          && stored.sleeveNotes.wikipedia.chunkCharacterCeiling >= 4000
+          && stored.sleeveNotes.wikipedia.chunkCharacterCeiling <= 60000
+          ? stored.sleeveNotes.wikipedia.chunkCharacterCeiling : DEFAULTS.sleeveNotes.wikipedia.chunkCharacterCeiling,
       },
       providers: {
         genius: {
@@ -1733,7 +1737,7 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
   }
   if ('sleeveNotes' in patch) {
     const sleeveNotes = parseSettingsPatchKey<{
-      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
+      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number; chunkCharacterCeiling?: number };
       providers?: { genius?: { enabled?: boolean; accessToken?: string } };
     }>(
       'sleeveNotes', patch.sleeveNotes,
@@ -1746,6 +1750,9 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     }
     if (sleeveNotes.wikipedia?.albumClaimLimit !== undefined) {
       next.sleeveNotes.wikipedia.albumClaimLimit = sleeveNotes.wikipedia.albumClaimLimit;
+    }
+    if (sleeveNotes.wikipedia?.chunkCharacterCeiling !== undefined) {
+      next.sleeveNotes.wikipedia.chunkCharacterCeiling = sleeveNotes.wikipedia.chunkCharacterCeiling;
     }
     if (sleeveNotes.providers?.genius?.enabled !== undefined) {
       next.sleeveNotes.providers.genius.enabled = sleeveNotes.providers.genius.enabled;

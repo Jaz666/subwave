@@ -6,6 +6,7 @@ import type { ResearchCandidate, SleeveNoteCategory } from './researcher.js';
 // reducing prefill time and the chance a live task interrupts this call.
 export const MAX_WIKIPEDIA_CHUNK_CHARACTERS = 20_000;
 export const MIN_WIKIPEDIA_CHUNK_CHARACTERS = 4_000;
+export const MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS = 60_000;
 export const MAX_WIKIPEDIA_SPARKS_PER_CHUNK = 20;
 const SKIPPED_SECTIONS = /^(?:discography|song catalogue|filmography|selected filmography|track listing|personnel|band members|lineup|awards(?: and (?:nominations|achievements))?|charts?|certifications?|references|notes|see also|external links|further reading|bibliography|concert tours|tour dates|timeline)$/iu;
 const STOP = new Set(['about', 'after', 'also', 'among', 'and', 'are', 'as', 'at', 'been', 'but', 'by', 'for', 'from', 'had', 'has', 'have', 'her', 'his', 'into', 'its', 'more', 'most', 'not', 'of', 'on', 'one', 'or', 'over', 'she', 'that', 'the', 'their', 'them', 'then', 'they', 'this', 'through', 'to', 'was', 'were', 'which', 'with']);

@@ -934,10 +934,13 @@ function ConfigView({
   const storySparkFrequency = values?.djBehaviour?.extendedSleeveNoteUseFrequency ?? 'occasional';
   const artistClaimLimit = values?.sleeveNotes?.wikipedia?.artistClaimLimit ?? 20;
   const albumClaimLimit = values?.sleeveNotes?.wikipedia?.albumClaimLimit ?? 5;
+  const chunkCharacterCeiling = values?.sleeveNotes?.wikipedia?.chunkCharacterCeiling ?? 20_000;
   const [artistClaimDraft, setArtistClaimDraft] = useState(String(artistClaimLimit));
   const [albumClaimDraft, setAlbumClaimDraft] = useState(String(albumClaimLimit));
+  const [chunkCeilingDraft, setChunkCeilingDraft] = useState(String(chunkCharacterCeiling));
   useEffect(() => { setArtistClaimDraft(String(artistClaimLimit)); }, [artistClaimLimit]);
   useEffect(() => { setAlbumClaimDraft(String(albumClaimLimit)); }, [albumClaimLimit]);
+  useEffect(() => { setChunkCeilingDraft(String(chunkCharacterCeiling)); }, [chunkCharacterCeiling]);
   const savedInSettings = status?.providerTokenSource === 'settings';
   const prompt = values?.sleeveNotes?.wikipedia?.extractPrompt ?? '';
   const effectivePrompt = wikiPromptDraft.trim() || status?.wikipediaDefaultPrompt || '';
@@ -1020,6 +1023,11 @@ function ConfigView({
           <label className="field"><span className="text-[13px] font-medium">Claims per Artist article</span><Input type="number" min={1} max={20} step={1} value={artistClaimDraft} onChange={(event) => setArtistClaimDraft(event.target.value)} className="mt-1 w-28" /></label>
           <label className="field"><span className="text-[13px] font-medium">Claims per Album article</span><Input type="number" min={1} max={20} step={1} value={albumClaimDraft} onChange={(event) => setAlbumClaimDraft(event.target.value)} className="mt-1 w-28" /></label>
           <button type="button" disabled={busy || !/^([1-9]|1\d|20)$/u.test(artistClaimDraft) || !/^([1-9]|1\d|20)$/u.test(albumClaimDraft) || (Number(artistClaimDraft) === artistClaimLimit && Number(albumClaimDraft) === albumClaimLimit)} onClick={() => onSave({ sleeveNotes: { wikipedia: { artistClaimLimit: Number(artistClaimDraft), albumClaimLimit: Number(albumClaimDraft) } } }, 'Wikipedia claim limits saved.')} className="rounded-md border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">Save claim limits</button>
+        </div>
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <label className="field"><span className="text-[13px] font-medium">Temporary chunk ceiling</span><Input type="number" min={4000} max={60000} step={1000} value={chunkCeilingDraft} onChange={(event) => setChunkCeilingDraft(event.target.value)} className="mt-1 w-36" /></label>
+          <span className="max-w-2xl text-xs leading-[1.5] text-muted">4,000–60,000 characters. The chunker may choose smaller chunks at article section boundaries. Changing this affects previews and new scans; scans already in progress keep their saved plan.</span>
+          <button type="button" disabled={busy || !/^([4-9]\d{3}|[1-5]\d{4}|60000)$/u.test(chunkCeilingDraft) || Number(chunkCeilingDraft) % 1000 !== 0 || Number(chunkCeilingDraft) === chunkCharacterCeiling} onClick={() => onSave({ sleeveNotes: { wikipedia: { chunkCharacterCeiling: Number(chunkCeilingDraft) } } }, 'Wikipedia chunk ceiling saved.')} className="rounded-md border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">Save chunk ceiling</button>
         </div>
         <textarea
           aria-label="Wikipedia research prompt"

@@ -15,7 +15,7 @@ import * as repository from './research-repository.js';
 import { expireRecycleBin, retainRejectedCandidates } from './moderation.js';
 import { open } from './db.js';
 import {
-  MAX_WIKIPEDIA_CHUNK_CHARACTERS, MIN_WIKIPEDIA_CHUNK_CHARACTERS,
+  MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS, MIN_WIKIPEDIA_CHUNK_CHARACTERS,
   allocateWikipediaClaims, parseWikipediaSparks, planWikipediaChunks, wikipediaCandidatesFromSparks,
 } from './wikipedia-extract.js';
 import type { QuietGate } from './musicbrainz-worker.js';
@@ -30,8 +30,7 @@ const FIRST_ENCOUNTER_TWO_CHECKS_MS = 15_000;
 const ARTICLE_INDEX_TIMEOUT_MS = 75_000;
 const WIKIPEDIA_CHUNK_TIMEOUT_MS = 45_000;
 const WIKIPEDIA_CHUNK_P75_TARGET_MS = 30_000;
-// 20k chunks measured a timeout-inclusive P95 of 45s. Leave more room below
-// that ceiling until this install has enough fresh timings for its own model.
+// Default ceiling; the temporary Config control may raise this during station testing.
 const INITIAL_WIKIPEDIA_CHUNK_CHARACTERS = 16_000;
 
 type RejectedCandidate = ValidatedResearch['rejected'][number];
@@ -199,7 +198,9 @@ export function adaptiveWikipediaChunkCharacters(profileHash = wikipediaCalibrat
     FROM sleeve_wikipedia_chunk_attempts WHERE outcome IN ('success', 'deadline')
       AND input_characters > 0 AND profile_hash = ? ORDER BY created_at DESC LIMIT 40`)
     .all(profileHash) as Array<{ inputCharacters: number; elapsedMs: number }>;
-  if (!rows.length) return INITIAL_WIKIPEDIA_CHUNK_CHARACTERS;
+  const configuredCeiling = settings.get().sleeveNotes.wikipedia.chunkCharacterCeiling;
+  if (!rows.length) return Math.max(MIN_WIKIPEDIA_CHUNK_CHARACTERS,
+    Math.min(MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS, configuredCeiling, INITIAL_WIKIPEDIA_CHUNK_CHARACTERS));
   const elapsedPerCharacter = rows.map((row) => row.elapsedMs / row.inputCharacters).sort((a, b) => a - b);
   // A p95-per-character target collapsed to the 4k floor on this station:
   // structurally short chunks carry fixed per-call overhead, which inflates
@@ -211,7 +212,7 @@ export function adaptiveWikipediaChunkCharacters(profileHash = wikipediaCalibrat
   const target = Math.round(WIKIPEDIA_CHUNK_P75_TARGET_MS
     / Math.max(Number.EPSILON, p75) * timeoutHeadroom);
   return Math.max(MIN_WIKIPEDIA_CHUNK_CHARACTERS,
-    Math.min(MAX_WIKIPEDIA_CHUNK_CHARACTERS, target));
+    Math.min(MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS, configuredCeiling, target));
 }
 
 /** Mark every cached artist and album source for the next-play refresh action. */

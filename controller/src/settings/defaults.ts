@@ -273,7 +273,7 @@ export const DEFAULTS = {
   // Notes switch. A provider may be configured but inert while the master
   // setting is off, or the master may be on while no provider is enabled.
   sleeveNotes: {
-    wikipedia: { extractPrompt: '', artistClaimLimit: 20, albumClaimLimit: 5 },
+    wikipedia: { extractPrompt: '', artistClaimLimit: 20, albumClaimLimit: 5, chunkCharacterCeiling: 20_000 },
     providers: { genius: { enabled: true, accessToken: '' } },
   },
   // Show handover timing (#1576). How many station-clock minutes BEFORE a show
