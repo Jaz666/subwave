@@ -3536,10 +3536,8 @@ class Queue {
       }
     }
 
-    // Match upcoming by subsonic_id first (reliable), fall back to title+artist
-    // for older items that pre-date the id annotation. Same matcher
-    // airPendingVoice used above, so the two always agree on the incoming item.
-    const idx = this.matchUpcomingIndex(np);
+    // Reuse the match captured before the admission call; the queue has not
+    // yielded since then, so this still identifies the incoming item.
 
     if (idx >= 0) {
       // Drop everything ahead of the match too: the queue is strictly FIFO, so
