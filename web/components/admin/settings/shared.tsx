@@ -485,6 +485,7 @@ export interface SettingsData {
     djTalkOnlyBetweenTracks?: boolean;
     pauseTalkMinSeconds?: number;
     djBehaviour?: DjBehaviourValues;
+    sleeveNotes?: { providers?: { genius?: { enabled?: boolean } } };
     /** Absent on a settings.json predating the key — the controller's own
      *  coercion reads it as the 5-minute default. */
     handover?: { offsetMinutes?: number };
