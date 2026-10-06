@@ -3,11 +3,21 @@ import { fork, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import { createServer as createPortReservation } from 'node:net';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { z } from 'zod';
+import { createTempDir } from './test-utils/temp-dir.js';
+
+const taggerResponse = z.object({
+  tagger: z.object({
+    running: z.boolean(),
+    startedAt: z.string().nullable(),
+    lastRun: z.object({ outcome: z.string() }).nullable().optional(),
+  }),
+});
 
 const controller = fileURLToPath(new URL('../', import.meta.url));
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -15,7 +25,7 @@ const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // Hold a real settings read, rather than racing a sleep against a fast machine.
 // Only the test preload changes I/O: the production server has no test switches.
 test('HTTP readiness waits for startup recovery, then a new reconciliation survives', { timeout: 45_000 }, async (t) => {
-  const state = mkdtempSync(join(tmpdir(), 'subwave-startup-'));
+  const state = createTempDir(join(tmpdir(), 'subwave-startup-'));
   const preload = join(state, 'hold-startup.mjs');
   writeFileSync(join(state, 'settings.json'), JSON.stringify({
     tts: { enabled: false }, embedding: { enabled: false },
@@ -97,7 +107,12 @@ globalThis.fetch = (input, init) => {
   child.stderr!.on('data', chunk => { logs += chunk; });
   const childExit = once(child, 'exit');
   try {
-    const [held] = await once(child, 'message', { signal: t.signal });
+    const [held] = await Promise.race([
+      once(child, 'message', { signal: t.signal }),
+      childExit.then(([code, signal]) => {
+        throw new Error(`server exited before startup was held (${code ?? signal})\n${logs}`);
+      }),
+    ]);
     assert.equal(held.type, 'startup-held');
     assert.ok(held.port > 0);
     const url = `http://127.0.0.1:${held.port}`;
@@ -105,7 +120,8 @@ globalThis.fetch = (input, init) => {
     const health = await fetch(`${url}/health`);
     assert.equal(health.status, 503, 'health must not advertise readiness while startup recovery is pending');
     assert.equal(health.headers.get('retry-after'), '1');
-    assert.equal((await health.json()).status, 'starting');
+    const initialHealth = z.object({ status: z.string() }).parse(await health.json());
+    assert.equal(initialHealth.status, 'starting');
     for (const path of ['/library/reconcile', '/tag-library', '/library/analyze', '/settings']) {
       const r = await fetch(url + path, { method: 'POST', headers: auth, body: '{}' });
       assert.equal(r.status, 503, `${path} must not run during initialization`);
@@ -127,11 +143,11 @@ globalThis.fetch = (input, init) => {
     assert.equal(denied.status, 401, 'normal admin authentication still applies after readiness');
     const response = await fetch(`${url}/library/reconcile`, { method: 'POST', headers: auth, body: '{}' });
     assert.equal(response.status, 200, logs);
-    const start = await response.json();
+    const start = taggerResponse.parse(await response.json());
     let outcome: string | undefined;
     for (let i = 0; i < 200; i++) {
       const r = await fetch(`${url}/library/tagger`, { headers: auth });
-      const { tagger } = await r.json();
+      const { tagger } = taggerResponse.parse(await r.json());
       if (!tagger.running && tagger.startedAt === start.tagger.startedAt) {
         outcome = tagger.lastRun?.outcome;
         break;

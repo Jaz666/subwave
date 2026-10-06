@@ -45,7 +45,12 @@ for (const [id, title] of [['one', 'One'], ['two', 'Two'], ['duplicate', 'One'],
   db.upsertTrackMeta(id, { title, artist: 'Artist', artistId: 'artist', album: 'Album', albumId: 'album', duration: id === 'short' ? 10 : 180 });
 }
 db.upsertTrackMeta('outsider', { title: 'Other', artist: 'Artist Junior', artistId: 'other', duration: 180 });
-const show = (fields: Record<string, unknown> = {}) => showSchema({ personaIds: null, moodNames: null, themeIds: null, minTrackSeconds: null }).parse({ id: 's_artist', name: 'Artist hour', personaId: '', minTrackLengthSeconds: 30, ...fields });
+function show(fields: Record<string, unknown> = {}) {
+  const parsed = showSchema({ personaIds: null, moodNames: null, themeIds: null, minTrackSeconds: null })
+    .parse({ id: 's_artist', name: 'Artist hour', personaId: '', minTrackLengthSeconds: 30, ...fields });
+  assert.ok(parsed.id);
+  return { ...parsed, id: parsed.id, persona: null, guests: [] };
+}
 
 test('the complete untagged mirror uses exact artist ids and deduplicates audible identities', async () => {
   const source = await resolveArtistEpisodeSource('artist', show(), 'episode-one');

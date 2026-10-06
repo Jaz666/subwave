@@ -1,3 +1,4 @@
+import type { SessionContext, ProgrammeState } from '../src/broadcast/session.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -129,7 +130,7 @@ for (const ending of ['cancel', 'expiry']) {
     session.start(scheduled);
     await programme.ensurePlan(scheduled, new Date(clock));
     session.attachProgramme({ ...session.getProgramme(), status: 'ok', plan, beats: { ...consumed }, introAiredAt: scheduled.at });
-    const forceRoll = async (ctx: session.SessionContext) => {
+    const forceRoll = async (ctx: SessionContext) => {
       const owner = session.getSession();
       assert.ok(owner);
       // #1801 rolls these discontinuities without the cap. Age the session
@@ -184,7 +185,7 @@ for (const transition of ['start', 'cancel', 'expiry']) {
     session.start(scheduled);
     await programme.ensurePlan(scheduled, new Date(clock));
     session.attachProgramme({ ...session.getProgramme(), status: 'ok', plan, beats: { ...consumed }, introAiredAt: scheduled.at });
-    const directRecovery = async (ctx: session.SessionContext) => {
+    const directRecovery = async (ctx: SessionContext) => {
       const stored = structuredClone(session.getSession());
       assert.ok(stored);
       // A restart after end() persisted and before start() committed is a
@@ -225,7 +226,7 @@ test('snapshot retention is bounded, drops expired occurrences and gives prepare
   t.mock.method(globalThis, 'fetch', async () => fixtureFetch());
   const ctx = await getFullContext();
   const at = Date.now();
-  const old: session.ProgrammeState = { status: 'ok', plan, beats: { ...consumed }, introAiredAt: ctx.at,
+  const old: ProgrammeState = { status: 'ok', plan, beats: { ...consumed }, introAiredAt: ctx.at,
     preparationOccurrence: { id: 'expired', endsAt: at },
     interruptedEpisodes: Array.from({ length: 24 }, (_, i) => ({ status: 'ok', plan, beats: {}, introAiredAt: null,
       preparationOccurrence: { id: `retained-${i}`, endsAt: at + 3600_000 } })),
@@ -234,7 +235,7 @@ test('snapshot retention is bounded, drops expired occurrences and gives prepare
   assert.equal(retained.length, 16);
   assert.equal(retained.some(episode => episode.preparationOccurrence?.id === 'expired'), false);
   const owner = session.start(ctx);
-  const prepared: session.ProgrammeState = { status: 'ok', plan: { ...plan, angle: 'Prepared boundary' }, beats: {}, introAiredAt: null };
+  const prepared: ProgrammeState = { status: 'ok', plan: { ...plan, angle: 'Prepared boundary' }, beats: {}, introAiredAt: null };
   owner.programme = old;
   owner.endedAt = ctx.at;
   owner.boundaryHandoff = {

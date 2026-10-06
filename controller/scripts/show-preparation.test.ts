@@ -32,7 +32,7 @@ function fixture(name: string) {
     source: async () => {
       sourceCalls++;
       if (unavailable) throw new Error('Catalogue unavailable');
-      return { kind: 'artist' as const, identity: name, artist: { id: 'artist', name: 'Artist' }, tracks: [{ id: 'one', title: 'One', artist: 'Artist' }], ids: new Set(['one']) };
+      return { kind: 'artist' as const, identity: name, artist: { id: 'artist', name: 'Artist' }, tracks: [{ id: 'one', title: 'One', artist: 'Artist', album: undefined, albumId: undefined }], ids: new Set(['one']) };
     },
   };
   return { options, counts: () => ({ calls, sourceCalls }), move: (ms: number) => { clock += ms; },
@@ -96,7 +96,6 @@ test('exhausted catalogue retries remain degraded after restart and allow an exp
   await restarted.recover();
   const status = restarted.read({ context }).status;
   assert.equal(status.kind, 'degraded', 'the editor must keep offering Retry catalogue');
-  assert.ok(status.kind !== 'unconfigured');
   assert.equal(status.subject, 'Artist');
   assert.equal(status.reason, 'Catalogue unavailable');
   f.catalogue(false);
