@@ -82,6 +82,12 @@ The boundary must be driven by confirmed playback state where possible. A
 queued URI is only handed to Liquidsoap, not proof that a listener has reached
 the corresponding on-air moment.
 
+The generation deadline still waits for the current track's complete intro
+publication and rechecks that track and the pending handoff after context
+loading. It only changes placement for an eligible pair. It cannot confirm or
+replace a final-track anchor, and its timer does not keep the controller process
+alive during shutdown.
+
 If the recorded final track remains unconfirmed six minutes after the scheduled
 boundary, the next confirmed music start may replace its identity, including an
 untracked auto-playlist fallback. Read/debug/pick paths do not relax this gate.

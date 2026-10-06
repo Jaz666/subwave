@@ -81,6 +81,36 @@ test('an unrendered final-track handoff falls back to immediate delivery after i
   } as never);
   const incoming = context({ id: 's_incoming', name: 'Cultural Currents' }, now + 60_000);
   assert.equal(session.armBoundaryHandoff(incoming, { id: 'long-final-track' }), true);
+  queue.current = {
+    track: { id: 'long-final-track', title: 'Final song', artist: 'Artist' },
+    startedAt: new Date(now).toISOString(), source: 'auto',
+  };
+
+  let generatedBeforeConfirmation = 0;
+  const confirmed = queue.current;
+  queue.current = null;
+  await queue.runHandoffGenerationFallback({
+    getContext: async () => incoming,
+    runHandoff: async () => { generatedBeforeConfirmation++; },
+  });
+  assert.equal(generatedBeforeConfirmation, 0, 'a queued anchor with no on-air track stays unconfirmed');
+  queue.current = confirmed;
+  const finalTrack = queue.current.track;
+  queue.current.track = { id: 'other', title: 'Other song', artist: 'Artist' };
+  for (const minutes of [2, 7]) {
+    const boundary = session.getSession()?.boundaryHandoff;
+    assert.ok(boundary);
+    boundary.boundaryAt = now - minutes * 60_000;
+    await queue.runHandoffGenerationFallback({
+      getContext: async () => incoming,
+      runHandoff: async () => { generatedBeforeConfirmation++; },
+    });
+    assert.equal(generatedBeforeConfirmation, 0,
+      'even an overdue timer cannot replace confirmation of the final track');
+    assert.equal(boundary.finalTrack?.id, 'long-final-track',
+      'the six-minute recovery remains owned by confirmed music starts');
+  }
+  queue.current.track = finalTrack;
 
   let generated = 0;
   await queue.runHandoffGenerationFallback({
@@ -97,6 +127,24 @@ test('an unrendered final-track handoff falls back to immediate delivery after i
   });
   assert.equal(generated, 1, 'the fallback invokes the regular handoff runner without waiting for a seam');
   assert.equal(session.pendingHandoff(), null, 'the consumed handoff cannot be generated again at a later seam');
+});
+
+test('legacy handoffs without a recorded final-track identity retain their fallback', async () => {
+  await settings.update({
+    personas: [WREN, GIGI], activePersonaId: WREN.id, shows: [], schedule: blankSchedule(),
+  } as never);
+  const now = Date.now();
+  session.start(context({ id: 's_outgoing', name: 'Outgoing' }, now));
+  await settings.update({ activePersonaId: GIGI.id } as never);
+  const incoming = context({ id: 's_incoming', name: 'Incoming' }, now + 60_000);
+  assert.equal(session.armBoundaryHandoff(incoming), true);
+  queue.current = null;
+  let generated = 0;
+  await queue.runHandoffGenerationFallback({
+    getContext: async () => incoming,
+    runHandoff: async () => { generated++; session.markHandoffAired(); },
+  });
+  assert.equal(generated, 1, 'pre-anchor session records keep their documented recovery behavior');
 });
 
 test('an ordinary scheduled roll uses its durable rolledFrom record for the fallback', async () => {
@@ -150,6 +198,31 @@ test('a failed fallback attempt does not spin at an already-expired deadline', a
   assert.equal(queue._handoffGenerationTimer, null,
     'the failed attempt is not immediately re-armed from a deadline already in the past');
   assert.ok(session.pendingHandoff(), 'a later normal track/session trigger may still retry the durable handoff');
+  session.markHandoffAired();
+});
+
+test('a fallback whose context load spans another track start yields to that track', async () => {
+  await settings.update({
+    personas: [WREN, GIGI], activePersonaId: WREN.id, shows: [], schedule: blankSchedule(),
+  } as never);
+  const now = Date.now();
+  session.start(context({ id: 's_outgoing', name: 'Outgoing' }, now));
+  await settings.update({ activePersonaId: GIGI.id } as never);
+  const incoming = context({ id: 's_incoming', name: 'Incoming' }, now + 60_000);
+  await session.maybeRoll(incoming);
+  queue.current = {
+    track: { id: 'final', title: 'Final', artist: 'Artist' }, source: 'auto',
+  };
+  let generated = 0;
+  await queue.runHandoffGenerationFallback({
+    getContext: async () => {
+      queue.current = { track: { id: 'next', title: 'Next', artist: 'Artist' }, source: 'auto' };
+      return incoming;
+    },
+    runHandoff: async () => { generated++; },
+  });
+  assert.equal(generated, 0, 'the stale fallback cannot overtake the new track intro');
+  assert.ok(session.pendingHandoff(), 'the new track runner can still deliver the pair');
   session.markHandoffAired();
 });
 

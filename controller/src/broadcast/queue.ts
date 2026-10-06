@@ -539,6 +539,7 @@ class Queue {
       this._handoffGenerationTimer = null;
       void this.runHandoffGenerationFallback();
     }, Math.max(0, deadlineAt - Date.now()));
+    this._handoffGenerationTimer.unref();
   }
 
   async runHandoffGenerationFallback({
@@ -550,13 +551,24 @@ class Queue {
   } = {}) {
     const pending = session.pendingHandoff();
     if (!pending) return;
+    const item = this.current;
     try {
+      // The deadline changes placement, not playback confirmation or intro
+      // ordering. A timer must never relax an unconfirmed final-track anchor;
+      // only a new music-start event may apply the six-minute recovery policy.
+      await (item ? this._introPublications.get(item) : undefined);
+      const stillReady = () => session.pendingHandoff() === pending
+        && this.current === item
+        && (!session.boundaryHandoffAwaitsTrack()
+          || session.boundaryHandoffReadyForTrack(item?.track ?? null));
+      if (!stillReady()) return;
       // A final-track handoff retains the target boundary's context while the
       // outgoing show is live. An ordinary post-roll handoff needs live facts
       // for the show it is now introducing.
       const contextAt = 'incomingPersonaId' in pending ? session.boundaryHandoffContextAt() : null;
       const ctx = contextAt ? await getContext(contextAt) : await getContext();
-      await runHandoff(ctx);
+      if (!stillReady()) return;
+      await withTalkAir('immediate', () => runHandoff(ctx));
     } catch (err) {
       this.log('error', `Boundary handoff fallback failed: ${(err as Error).message}`);
     }
