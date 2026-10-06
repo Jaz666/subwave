@@ -436,6 +436,11 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         extendedSleeveNotes: v.djBehaviour?.extendedSleeveNotes === true,
         releaseYearMentions: v.djBehaviour?.releaseYearMentions ?? 'regular',
       },
+      sleeveNotes: {
+        providers: {
+          genius: { enabled: v.sleeveNotes?.providers?.genius?.enabled !== false },
+        },
+      },
       weather: {
         lat: String(v.weather?.lat ?? ''),
         lng: String(v.weather?.lng ?? ''),

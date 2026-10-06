@@ -34,12 +34,12 @@ test('extended sleeve notes refuse non-boolean patches', async () => {
 });
 
 test('Genius provider configuration is independent and survives a cold load', async () => {
-  assert.equal(settings.get().sleeveNotes.providers.genius.enabled, false);
+  assert.equal(settings.get().sleeveNotes.providers.genius.enabled, true);
   await settings.update({ djBehaviour: { extendedSleeveNotes: false } } as never);
-  await settings.update({ sleeveNotes: { providers: { genius: { enabled: true } } } } as never);
+  await settings.update({ sleeveNotes: { providers: { genius: { enabled: false } } } } as never);
   setCache(null);
   await settings.load();
-  assert.equal(settings.get().sleeveNotes.providers.genius.enabled, true);
+  assert.equal(settings.get().sleeveNotes.providers.genius.enabled, false);
   assert.equal(settings.get().djBehaviour.extendedSleeveNotes, false);
 });
 

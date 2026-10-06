@@ -58,6 +58,7 @@ import * as sleeveNotesDb from './sleeve-notes/db.js';
 import { startMusicBrainzMatchWorker } from './sleeve-notes/musicbrainz-worker.js';
 import { startWikipediaArtistWorker } from './sleeve-notes/wikipedia-worker.js';
 import { startResearchWorker } from './sleeve-notes/research-worker.js';
+import { startGeniusResearchWorker } from './sleeve-notes/genius-worker.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadSetupConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
@@ -312,6 +313,7 @@ app.listen(config.server.port, async () => {
   startMusicBrainzMatchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   startWikipediaArtistWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   startResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
+  startGeniusResearchWorker({ isQuiet: () => !queue.playbackCriticalBusy() });
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));

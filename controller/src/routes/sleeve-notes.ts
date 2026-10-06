@@ -3,7 +3,7 @@
 import express from 'express';
 import * as settings from '../settings.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
+import { researchStoreCoverage, researchStoreReadout, researchStoreSummary } from '../sleeve-notes/research-repository.js';
 
 export const router = express.Router();
 
@@ -12,29 +12,30 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   const value = settings.get();
   const enabled = value.djBehaviour.extendedSleeveNotes === true;
   const providerEnabled = value.sleeveNotes.providers.genius.enabled === true;
-  const providerConfigured = providerEnabled && !!process.env.GENIUS_ACCESS_TOKEN;
+  const providerConfigured = !!process.env.GENIUS_ACCESS_TOKEN;
+  const collectionRunning = enabled && providerEnabled && providerConfigured;
+  const collectionBlockedReason = !enabled ? 'disabled'
+    : !providerEnabled ? 'provider-disabled'
+      : !providerConfigured ? 'provider-unconfigured' : null;
   res.json({
     enabled,
     provider: 'genius',
     providerEnabled,
     providerConfigured,
-    collectionRunning: false,
-    collectionBlockedReason: enabled ? 'replacement-stage-1-only' : 'disabled',
-    coverage: {},
-    // The replacement path is live only as a local Stage-1 admission queue.
-    // A quiet-time MusicBrainz worker is introduced separately, so this makes
-    // the temporary state explicit rather than suggesting that Genius runs.
+    collectionRunning,
+    collectionBlockedReason,
+    coverage: enabled ? researchStoreCoverage() : {},
     replacement: enabled ? {
       admissionActive: true,
-      researchWorkerActive: true,
+      researchWorkerActive: collectionRunning,
+      geniusLyricsFetched: false,
       ...researchStoreSummary(),
     } : null,
-    onAirExposure: false,
+    onAirExposure: enabled,
   });
 });
 
-// This is intentionally a temporary admin inspection surface, not an API for
-// DJ consumers. It is inert unless collection is already running.
+// This is an admin inspection surface, not an API for DJ consumers.
 router.get('/sleeve-notes/readout', requireAdmin, async (_req, res) => {
   await settings.load();
   if (settings.get().djBehaviour.extendedSleeveNotes !== true) {

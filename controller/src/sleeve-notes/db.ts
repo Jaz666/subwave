@@ -318,6 +318,33 @@ export function migrate(d: Database.Database): void {
     `);
     d.pragma('user_version = 5');
   }
+  if (version < 6) {
+    // Link-time selection records what the writer was actually supplied so
+    // later links can avoid repeating the same claim, topic, entity, or
+    // relationship. This is deliberately separate from the retired v1 uses
+    // table, whose foreign key targets the experimental claims table.
+    d.exec(`
+      CREATE TABLE sleeve_claim_uses (
+        id TEXT PRIMARY KEY,
+        claim_id TEXT NOT NULL REFERENCES sleeve_claims(id),
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('artist', 'recording', 'release')),
+        entity_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        relationship_key TEXT,
+        local_track_id TEXT,
+        consumer TEXT NOT NULL DEFAULT 'generateLink',
+        supplied_at TEXT NOT NULL,
+        final_text TEXT,
+        aired_at TEXT
+      );
+      CREATE INDEX idx_sleeve_claim_uses_claim ON sleeve_claim_uses(claim_id, supplied_at DESC);
+      CREATE INDEX idx_sleeve_claim_uses_topic ON sleeve_claim_uses(entity_type, entity_id, topic, supplied_at DESC);
+      CREATE INDEX idx_sleeve_claim_uses_entity ON sleeve_claim_uses(entity_type, entity_id, supplied_at DESC);
+      CREATE INDEX idx_sleeve_claim_uses_relationship ON sleeve_claim_uses(relationship_key, supplied_at DESC);
+    `);
+    d.pragma('user_version = 6');
+  }
 }
 
 export function schemaVersion(): number {

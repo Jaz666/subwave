@@ -36,7 +36,7 @@ test('researcher output respects enabled categories, topic diversity and bounds'
     category: 'artist-stories', topic: 'ORIGIN', wording: 'They began in Liverpool in 1980.',
     evidence: 'The Example Band formed in Liverpool in 1980.',
   }, {
-    category: 'milestones', topic: 'debut', wording: 'Their debut album arrived in 1982.',
+    category: 'milestones', topic: 'debut', wording: "The Example Band's debut album arrived in 1982.",
     evidence: 'Their debut album arrived in 1982.',
   }]);
   assert.deepEqual(result.accepted.map((candidate) => [candidate.category, candidate.topic]), [

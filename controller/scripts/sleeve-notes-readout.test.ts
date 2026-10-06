@@ -22,6 +22,7 @@ test('the research readout exposes claims with their evidence rather than raw pr
   const readout = researchStoreReadoutInDatabase(db);
   assert.deepEqual(readout.artists, [{ name: 'Example Band', musicbrainzId: 'mb-artist', sources: 1, claims: 1 }]);
   assert.deepEqual(readout.claims, [{ artist: 'Example Band', category: 'artist-stories', topic: 'origin',
-    wording: 'Example Band formed in Liverpool.', evidence: 'Example Band formed in Liverpool.', sourceUrl: 'https://example.test/wiki' }]);
+    recording: null, wording: 'Example Band formed in Liverpool.', evidence: 'Example Band formed in Liverpool.',
+    sourceUrl: 'https://example.test/wiki', provider: 'wikipedia' }]);
   db.close();
 });

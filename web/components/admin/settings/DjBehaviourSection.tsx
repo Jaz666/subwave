@@ -26,6 +26,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
       djTalkOnlyBetweenTracks: form.djTalkOnlyBetweenTracks,
       pauseTalkMinSeconds: Number(form.pauseTalkMinSeconds),
       djBehaviour: form.djBehaviour,
+      sleeveNotes: form.sleeveNotes,
     });
   };
 
@@ -165,6 +166,25 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
             onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNotes: v === 'on' } }))}
           />
         </div>
+        <div className="field mt-4">
+          <Label>Genius metadata and connections</Label>
+          <Seg
+            value={form.sleeveNotes.providers.genius.enabled ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Do not make Genius requests' },
+              { id: 'on', label: 'On', title: 'Collect Genius credits and cover/sample relationships when the station-wide switch is on' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              sleeveNotes: { providers: { genius: { enabled: v === 'on' } } },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Genius collection stores track identity, writer/producer credits, and cover or sample links.
+            It never fetches or retains lyrics. Requests are limited to three per minute and 4,320 per day,
+            and background work yields to playback-critical tasks.
+          </p>
+        </div>
         <p className="text-[13px] leading-[1.55] text-muted">
           Default Sleeve Notes remain local Verified Facts. Extended Sleeve Notes adds optional
           provider-backed context and does not alter links until its later on-air projection phase.
@@ -178,7 +198,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes']}
       />
     </>
   );

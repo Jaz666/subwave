@@ -348,6 +348,10 @@ export interface DjBehaviourForm {
   releaseYearMentions: 'regular' | 'occasional' | 'rare';
 }
 
+export interface SleeveNotesForm {
+  providers: { genius: { enabled: boolean } };
+}
+
 export interface FormState {
   crossfadeDuration: string;
   ducking: DuckingForm;
@@ -371,6 +375,7 @@ export interface FormState {
   /** Station-wide minimum length before a show may use pause-and-talk. */
   pauseTalkMinSeconds: string;
   djBehaviour: DjBehaviourForm;
+  sleeveNotes: SleeveNotesForm;
   weather: WeatherCfg;
   tts: TtsForm;
   llm: LlmForm;

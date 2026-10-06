@@ -13,10 +13,22 @@ export const SLEEVE_NOTE_CATEGORIES = [
 
 export type SleeveNoteCategory = typeof SLEEVE_NOTE_CATEGORIES[number];
 
+/** Per Wikipedia artist dossier; quality may leave any number of slots empty. */
+export const MAX_CANDIDATES_PER_ARTIST_RESEARCH = 8;
+
+export const SLEEVE_NOTE_CATEGORY_GUIDANCE: Record<SleeveNoteCategory, string> = {
+  'artist-stories': 'origin, creative development, scenes, career turns, distinctive collaborations, or legacy',
+  'track-stories': 'the creation, recording, or cultural story of a particular song or recording',
+  'musical-connections': 'specific covers, samples, interpolations, or other clear links between artists and recordings',
+  milestones: 'a genuinely notable career achievement; skip routine release, chart, and award listings',
+  credits: 'a named writer, producer, featured performer, or other contributor and their specific role',
+};
+
 export interface ResearchDocument {
   id: string;
   entityId: string;
   provider: string;
+  subjectName?: string | null;
   sourceUrl: string;
   revisionId: string | null;
   text: string;
@@ -43,7 +55,7 @@ export interface Researcher {
 
 export interface ValidatedResearch {
   accepted: ResearchCandidate[];
-  rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'duplicate' }>;
+  rejected: Array<{ candidate: ResearchCandidate; reason: 'category' | 'shape' | 'unsupported' | 'duplicate' | 'quality' }>;
 }
 
 function normal(value: string): string {
@@ -56,6 +68,27 @@ function validText(value: unknown, min: number, max: number): value is string {
 
 function isCategory(value: string): value is SleeveNoteCategory {
   return (SLEEVE_NOTE_CATEGORIES as readonly string[]).includes(value);
+}
+
+function isStandaloneWording(value: string): boolean {
+  const text = normal(value);
+  if (!/[.!?][\"'”’)]*$/.test(text) || /[,;:]$/.test(text)) return false;
+  // A candidate is stored independently from its source paragraph, so its
+  // opening must not rely on a pronoun or connective whose antecedent is lost.
+  return !/^(?:he|she|they|it|this|that|these|those|his|her|their|its|while|although|and|but|which|who|where|when)\b/i.test(text);
+}
+
+function isSpecificTopic(topic: string, subjectName?: string | null): boolean {
+  const value = normal(topic).toLocaleLowerCase();
+  if (subjectName && value === normal(subjectName).toLocaleLowerCase()) return false;
+  const genericTopics = new Set([
+    'artist', 'band', 'group', 'biography', 'career', 'formation', 'history',
+    'early years', 'music', 'influences', 'collaboration', 'milestone', 'background',
+  ]);
+  if (genericTopics.has(value)) return false;
+  if (/^(?:the )?(?:artist|band|group)(?:['’]s)? (?:early years|formation|career|biography|history|background)$/.test(value)) return false;
+  if (/^.+['’]s (?:early years|formation|career|biography|history|background)$/.test(value)) return false;
+  return true;
 }
 
 /**
@@ -72,7 +105,7 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
   const source = normal(job.document.text);
   const enabled = new Set(job.categories);
   const seen = new Set<string>();
-  const max = Math.max(0, Math.min(job.maxCandidates, 12));
+  const max = Math.max(0, Math.min(job.maxCandidates, MAX_CANDIDATES_PER_ARTIST_RESEARCH));
 
   for (const candidate of candidates) {
     if (accepted.length >= max) break;
@@ -91,6 +124,10 @@ export function validateResearchCandidates(job: ResearchJob, candidates: readonl
     const key = `${candidate.category}\u0000${normal(candidate.topic).toLowerCase()}`;
     if (seen.has(key)) {
       rejected.push({ candidate, reason: 'duplicate' });
+      continue;
+    }
+    if (!isStandaloneWording(candidate.wording) || !isSpecificTopic(candidate.topic, job.document.subjectName)) {
+      rejected.push({ candidate, reason: 'quality' });
       continue;
     }
     seen.add(key);
