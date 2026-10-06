@@ -210,7 +210,9 @@ router.post('/sleeve-notes/wikipedia-prompt-preview', requireAdmin, async (req, 
   const source = latestSourceDocumentForResearch(entityType, entityId, 'wikipedia');
   if (!source) return res.status(404).json({ error: `No cached Wikipedia article is available for this ${entityType === 'artist' ? 'artist' : 'album'}` });
   const profileHash = wikipediaCalibrationProfileHash(prompt);
-  const chunks = planWikipediaChunks(source.content, adaptiveWikipediaChunkCharacters(profileHash));
+  const chunks = planWikipediaChunks(source.content, adaptiveWikipediaChunkCharacters(
+    profileHash, entityType === 'artist' ? 'artist' : 'release',
+  ));
   const chunk = chunks[0];
   if (!chunk) return res.status(422).json({ error: 'The cached article has no extractable text' });
   const job = {
@@ -280,7 +282,8 @@ router.get('/sleeve-notes/readout', requireAdmin, async (_req, res) => {
     ...researchStoreReadout(),
     workQueue: [...queueCounts.values()],
     workQueueItems,
-    wikipediaChunkCharacterTarget: adaptiveWikipediaChunkCharacters(),
+    wikipediaArtistChunkCharacterTarget: adaptiveWikipediaChunkCharacters(undefined, 'artist'),
+    wikipediaAlbumChunkCharacterTarget: adaptiveWikipediaChunkCharacters(undefined, 'release'),
     wikipediaExtractAverageLatencyMs,
     wikipediaExtractCallCount: wikipediaCalls.length,
   });

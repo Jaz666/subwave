@@ -29,7 +29,10 @@ const FIRST_ENCOUNTER_CHECK_HEADROOM_MS = 35_000;
 const FIRST_ENCOUNTER_TWO_CHECKS_MS = 15_000;
 const ARTICLE_INDEX_TIMEOUT_MS = 75_000;
 const WIKIPEDIA_CHUNK_TIMEOUT_MS = 45_000;
-const WIKIPEDIA_CHUNK_P75_TARGET_MS = 30_000;
+const WIKIPEDIA_CHUNK_AVERAGE_TARGET_MS = 30_000;
+const WIKIPEDIA_CALIBRATION_SAMPLE_COUNT = 100;
+const MIN_WIKIPEDIA_CALIBRATION_SAMPLES = 8;
+const WIKIPEDIA_CHUNK_RESIZE_UP_FACTOR = 1.5;
 // Default ceiling; the temporary Config control may raise this during station testing.
 const INITIAL_WIKIPEDIA_CHUNK_CHARACTERS = 16_000;
 
@@ -193,26 +196,55 @@ function wikipediaScanHash(profileHash: string, claimLimit: number): string {
   return createHash('sha256').update(`${profileHash}:${claimLimit}`).digest('hex');
 }
 
-export function adaptiveWikipediaChunkCharacters(profileHash = wikipediaCalibrationProfileHash()): number {
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+export function adaptiveWikipediaChunkCharacters(
+  profileHash = wikipediaCalibrationProfileHash(), subjectType: 'artist' | 'release' = 'artist',
+): number {
   const rows = open().prepare(`SELECT input_characters AS inputCharacters, elapsed_ms AS elapsedMs
-    FROM sleeve_wikipedia_chunk_attempts WHERE outcome IN ('success', 'deadline')
-      AND input_characters > 0 AND profile_hash = ? ORDER BY created_at DESC LIMIT 40`)
-    .all(profileHash) as Array<{ inputCharacters: number; elapsedMs: number }>;
+    FROM sleeve_wikipedia_chunk_attempts attempt
+    JOIN sleeve_research_jobs job ON job.id = attempt.job_id
+    WHERE attempt.outcome IN ('success', 'deadline')
+      AND attempt.input_characters > 0 AND attempt.profile_hash = ? AND job.subject_type = ?
+    ORDER BY attempt.created_at DESC LIMIT ?`)
+    .all(profileHash, subjectType, WIKIPEDIA_CALIBRATION_SAMPLE_COUNT) as Array<{
+      inputCharacters: number; elapsedMs: number;
+    }>;
   const configuredCeiling = settings.get().sleeveNotes.wikipedia.chunkCharacterCeiling;
-  if (!rows.length) return Math.max(MIN_WIKIPEDIA_CHUNK_CHARACTERS,
-    Math.min(MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS, configuredCeiling, INITIAL_WIKIPEDIA_CHUNK_CHARACTERS));
-  const elapsedPerCharacter = rows.map((row) => row.elapsedMs / row.inputCharacters).sort((a, b) => a - b);
-  // A p95-per-character target collapsed to the 4k floor on this station:
-  // structurally short chunks carry fixed per-call overhead, which inflates
-  // their per-character ratio. Aim for a typical
-  // call instead, while retaining the 45s abort and deadline-driven shrink.
-  const p75 = elapsedPerCharacter[Math.ceil(elapsedPerCharacter.length * 0.75) - 1];
+  const bounded = (target: number) => Math.max(MIN_WIKIPEDIA_CHUNK_CHARACTERS,
+    Math.min(MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS, configuredCeiling, Math.round(target)));
+  if (rows.length < MIN_WIKIPEDIA_CALIBRATION_SAMPLES) return bounded(INITIAL_WIKIPEDIA_CHUNK_CHARACTERS);
+
+  // Fit elapsed time = fixed per-call overhead + cost per input character.
+  // The median of pairwise slopes (Theil–Sen) is resilient to occasional slow
+  // calls, while the median intercept prevents short album/article calls from
+  // looking artificially expensive when their fixed setup time is divided by
+  // a small character count. Artist and album samples are calibrated separately.
+  const slopes: number[] = [];
+  for (let left = 0; left < rows.length; left++) {
+    for (let right = left + 1; right < rows.length; right++) {
+      const characterDelta = rows[left].inputCharacters - rows[right].inputCharacters;
+      if (characterDelta !== 0) {
+        slopes.push((rows[left].elapsedMs - rows[right].elapsedMs) / characterDelta);
+      }
+    }
+  }
+  const millisecondsPerCharacter = median(slopes);
+  if (!Number.isFinite(millisecondsPerCharacter) || millisecondsPerCharacter <= 0) {
+    return bounded(INITIAL_WIKIPEDIA_CHUNK_CHARACTERS);
+  }
+  const fixedOverheadMs = Math.max(0, median(rows.map((row) =>
+    row.elapsedMs - millisecondsPerCharacter * row.inputCharacters)));
   const deadlineShare = rows.filter((row) => row.elapsedMs >= WIKIPEDIA_CHUNK_TIMEOUT_MS).length / rows.length;
-  const timeoutHeadroom = deadlineShare >= 0.2 ? 0.85 : 1;
-  const target = Math.round(WIKIPEDIA_CHUNK_P75_TARGET_MS
-    / Math.max(Number.EPSILON, p75) * timeoutHeadroom);
-  return Math.max(MIN_WIKIPEDIA_CHUNK_CHARACTERS,
-    Math.min(MAX_WIKIPEDIA_CHUNK_CEILING_CHARACTERS, configuredCeiling, target));
+  const timeoutHeadroom = deadlineShare >= 0.1 ? 0.85 : 1;
+  const target = (WIKIPEDIA_CHUNK_AVERAGE_TARGET_MS - fixedOverheadMs)
+    / millisecondsPerCharacter * timeoutHeadroom;
+  return bounded(target);
 }
 
 /** Mark every cached artist and album source for the next-play refresh action. */
@@ -537,8 +569,13 @@ export class ResearchWorker {
       } | undefined;
     const profileHash = wikipediaCalibrationProfileHash();
     const promptHash = wikipediaScanHash(profileHash, configuredClaimLimit);
-    const recommendedChunkCharacters = adaptiveWikipediaChunkCharacters(profileHash);
+    const recommendedChunkCharacters = adaptiveWikipediaChunkCharacters(profileHash, job.subjectType);
+    // Keep an in-flight scan stable across small calibration movements. A
+    // material upward recalibration may replan it once so a stale low target
+    // does not pin the article at an unnecessarily small size indefinitely;
+    // downward changes still take effect immediately after a slow call.
     const chunkCharacters = scan
+      && recommendedChunkCharacters < scan.chunkCharacters * WIKIPEDIA_CHUNK_RESIZE_UP_FACTOR
       ? Math.min(scan.chunkCharacters, recommendedChunkCharacters)
       : recommendedChunkCharacters;
     const chunks = planWikipediaChunks(source.content, chunkCharacters);
@@ -685,7 +722,7 @@ export class ResearchWorker {
             profileHash, attemptOutcome, failedAt);
         if (attemptOutcome === 'deadline' && chunkCharacters > MIN_WIKIPEDIA_CHUNK_CHARACTERS) {
           const smallerChunkCharacters = Math.max(MIN_WIKIPEDIA_CHUNK_CHARACTERS,
-            Math.min(Math.floor(chunkCharacters * 0.75), adaptiveWikipediaChunkCharacters()));
+            Math.min(Math.floor(chunkCharacters * 0.75), adaptiveWikipediaChunkCharacters(profileHash, job.subjectType)));
           const smallerChunks = planWikipediaChunks(source.content, smallerChunkCharacters);
           db.prepare(`INSERT INTO sleeve_wikipedia_scan_history
             (job_id, source_document_id, chunk_index, section_path, input_hash, raw_response,

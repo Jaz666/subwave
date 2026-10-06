@@ -37,7 +37,8 @@ type NotesReadout = {
   encounters: number;
   pendingMatches: number;
   retainedClaims: number;
-  wikipediaChunkCharacterTarget?: number;
+  wikipediaArtistChunkCharacterTarget?: number;
+  wikipediaAlbumChunkCharacterTarget?: number;
   wikipediaExtractAverageLatencyMs?: number | null;
   wikipediaExtractCallCount?: number;
   airtimeClaims: number;
@@ -545,9 +546,12 @@ function ActiveOverview({ data }: { data: NotesReadout }) {
           <CompactMetric label="Claims for DJs" value={data.retainedClaims} detail="Ready for future links" />
           {data.workQueue && <CompactMetric label="Research queue" value={activeJobs}
             detail={`${readyJobs} ready · ${waitingJobs} waiting · ${runningJobs} running`} />}
-          {data.wikipediaChunkCharacterTarget != null && <CompactMetric label="Wiki text per chunk"
-            value={`${data.wikipediaChunkCharacterTarget.toLocaleString('en-GB')} chars`}
-            detail="Current adaptive target" />}
+          {data.wikipediaArtistChunkCharacterTarget != null && <CompactMetric label="Artist Wiki chunk"
+            value={`${data.wikipediaArtistChunkCharacterTarget.toLocaleString('en-GB')} chars`}
+            detail="Target for new scans" />}
+          {data.wikipediaAlbumChunkCharacterTarget != null && <CompactMetric label="Album Wiki chunk"
+            value={`${data.wikipediaAlbumChunkCharacterTarget.toLocaleString('en-GB')} chars`}
+            detail="Target for new scans" />}
           {data.wikipediaExtractAverageLatencyMs != null && <CompactMetric label="Wiki extract average"
             value={`${(data.wikipediaExtractAverageLatencyMs / 1000).toFixed(1)}s`}
             detail={`${(data.wikipediaExtractCallCount ?? 0).toLocaleString('en-GB')} calls · same window as Stats`} />}
