@@ -657,6 +657,12 @@ export async function load() {
         DJ_RECAP_CHARS_BOUNDS,
       ),
     },
+    sleeveNotes: {
+      providers: {
+        genius: { enabled: typeof stored.sleeveNotes?.providers?.genius?.enabled === 'boolean'
+          ? stored.sleeveNotes.providers.genius.enabled : DEFAULTS.sleeveNotes.providers.genius.enabled },
+      },
+    },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
     // hand-edited settings.json is this path's input.
@@ -1698,6 +1704,14 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     }
     for (const key of ['recapLimit', 'recapMinutes', 'recapChars'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
+    }
+  }
+  if ('sleeveNotes' in patch) {
+    const sleeveNotes = parseSettingsPatchKey<{ providers?: { genius?: { enabled?: boolean } } }>(
+      'sleeveNotes', patch.sleeveNotes,
+    );
+    if (sleeveNotes.providers?.genius?.enabled !== undefined) {
+      next.sleeveNotes.providers.genius.enabled = sleeveNotes.providers.genius.enabled;
     }
   }
   if ('handover' in patch) {

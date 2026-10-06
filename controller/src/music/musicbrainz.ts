@@ -49,16 +49,79 @@ function norm(s: unknown): string {
 // The slice of an MB recording the resolver reads; loose because it's
 // third-party JSON.
 export interface MbRecording {
+  id?: string;
   score?: number;
   title?: string;
   'first-release-date'?: string;
   'artist-credit'?: Array<{ name?: string; artist?: { name?: string } }>;
 }
 
+export interface CanonicalMusicBrainzRelease {
+  id: string;
+  releaseGroupId: string | null;
+  title: string;
+  date: string | null;
+  country: string | null;
+  status: string | null;
+  primaryType: string | null;
+  artistCredit: string | null;
+  isCompilation: boolean;
+}
+
+export interface CanonicalMusicBrainzRecording {
+  id: string;
+  title: string;
+  artist: { id: string; name: string } | null;
+  releases: CanonicalMusicBrainzRelease[];
+}
+
 function creditNames(r: MbRecording): string[] {
   return (r['artist-credit'] ?? [])
     .flatMap((c) => [c?.name, c?.artist?.name])
     .filter((n): n is string => typeof n === 'string' && !!n);
+}
+
+function artistCreditText(credit: unknown): string | null {
+  if (!Array.isArray(credit)) return null;
+  const names = credit.map((item) => (item as { name?: unknown; artist?: { name?: unknown } })?.name
+    ?? (item as { artist?: { name?: unknown } })?.artist?.name)
+    .filter((name): name is string => typeof name === 'string' && !!name);
+  return names.length ? names.join(', ') : null;
+}
+
+/** Projects only the recording/release fields the Sleeve Notes store owns. */
+export function projectCanonicalRecording(payload: unknown): CanonicalMusicBrainzRecording | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const value = payload as Record<string, unknown>;
+  const id = typeof value.id === 'string' ? value.id : null;
+  const title = typeof value.title === 'string' ? value.title : null;
+  if (!id || !title) return null;
+  const artistRow = Array.isArray(value['artist-credit']) ? value['artist-credit'][0] as Record<string, unknown> | undefined : undefined;
+  const artistValue = artistRow?.artist as Record<string, unknown> | undefined;
+  const artistId = typeof artistValue?.id === 'string' ? artistValue.id : null;
+  const artistName = typeof artistRow?.name === 'string' ? artistRow.name : typeof artistValue?.name === 'string' ? artistValue.name : null;
+  const releases: CanonicalMusicBrainzRelease[] = [];
+  for (const item of Array.isArray(value.releases) ? value.releases : []) {
+    if (!item || typeof item !== 'object') continue;
+    const release = item as Record<string, unknown>;
+    const releaseId = typeof release.id === 'string' ? release.id : null;
+    const releaseTitle = typeof release.title === 'string' ? release.title : null;
+    if (!releaseId || !releaseTitle) continue;
+    const group = release['release-group'] as Record<string, unknown> | undefined;
+    const secondary = Array.isArray(group?.['secondary-types']) ? group?.['secondary-types'] : [];
+    releases.push({
+      id: releaseId,
+      releaseGroupId: typeof group?.id === 'string' ? group.id : null,
+      title: releaseTitle,
+      date: typeof release.date === 'string' && release.date ? release.date : null,
+      country: typeof release.country === 'string' && release.country ? release.country : null,
+      status: typeof release.status === 'string' && release.status ? release.status : null,
+      primaryType: typeof group?.['primary-type'] === 'string' ? group['primary-type'] : null,
+      artistCredit: artistCreditText(release['artist-credit']),
+      isCompilation: secondary.some((type) => type === 'Compilation'),
+    });
+  }
+  return { id, title, artist: artistId && artistName ? { id: artistId, name: artistName } : null, releases };
 }
 
 // Earliest plausible original year across the recordings that genuinely match
@@ -133,6 +196,52 @@ async function searchRecordings(query: string): Promise<MbRecording[]> {
   if (!res.ok) return [];
   const body = (await res.json()) as { recordings?: MbRecording[] };
   return Array.isArray(body.recordings) ? body.recordings : [];
+}
+
+async function recordingDetail(id: string): Promise<CanonicalMusicBrainzRecording | null> {
+  const url = `${MB_API}/recording/${encodeURIComponent(id)}?inc=artists+releases+release-groups&fmt=json`;
+  const res = await fetchWithTimeout(url, {
+    timeoutMs: TIMEOUT_MS,
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!res.ok) return null;
+  return projectCanonicalRecording(await res.json());
+}
+
+function exactRecordingId(recordings: MbRecording[], title: string, artist: string): string | null {
+  const wantedTitle = norm(title);
+  const wantedArtist = norm(artist);
+  for (const recording of recordings) {
+    if (!recording.id || (recording.score ?? 0) < MIN_SCORE) continue;
+    if (norm(recording.title) !== wantedTitle) continue;
+    const names = creditNames(recording).map(norm);
+    if (!wantedArtist || names.some((name) => name === wantedArtist)) return recording.id;
+  }
+  return null;
+}
+
+/**
+ * Resolve an encountered local file to an exact MusicBrainz recording, then
+ * retrieve its release appearances. An existing recording MBID avoids search;
+ * a title/artist fallback accepts only an exact high-score candidate.
+ */
+export async function lookupCanonicalRecording(track: {
+  title?: string | null;
+  artist?: string | null;
+  mbid?: string | null;
+}): Promise<CanonicalMusicBrainzRecording | null> {
+  const mbid = track.mbid?.trim() ?? '';
+  const title = track.title?.trim() ?? '';
+  const artist = track.artist?.trim() ?? '';
+  try {
+    if (mbid) return await throttled(() => recordingDetail(mbid));
+    if (!title || !artist) return null;
+    const candidates = await throttled(() => searchRecordings(`recording:${phrase(title)} AND artist:${phrase(artist)}`));
+    const id = exactRecordingId(candidates, title, artist);
+    return id ? await throttled(() => recordingDetail(id)) : null;
+  } catch {
+    return null;
+  }
 }
 
 // Escape a value for use inside a quoted Lucene phrase.
