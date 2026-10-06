@@ -87,6 +87,16 @@ router.get('/settings', requireAdmin, async (req, res) => {
         // profile switch or backup restore can seed an off-step value (#1576).
         handover: { offsetMinutes: handoverOffsetMinutes() },
         djBehaviour: s.djBehaviour,
+        sleeveNotes: {
+          ...s.sleeveNotes,
+          providers: {
+            ...s.sleeveNotes.providers,
+            genius: {
+              ...s.sleeveNotes.providers.genius,
+              accessToken: s.sleeveNotes.providers.genius.accessToken ? 'set' : '',
+            },
+          },
+        },
         maxTrackSeconds: s.maxTrackSeconds,
         maxTrackLengthMode: s.maxTrackLengthMode,
         // Crossfade-relative floor, shared with the admin/show UI so client

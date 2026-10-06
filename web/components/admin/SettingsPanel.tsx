@@ -393,10 +393,23 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
         previewNextShow: v.djBehaviour?.previewNextShow !== false,
         sameHostAcknowledgement: v.djBehaviour?.sameHostAcknowledgement === true,
         extendedSleeveNotes: v.djBehaviour?.extendedSleeveNotes === true,
+        sleeveNotesMaintenanceWhenEmpty: v.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === true,
         releaseYearMentions: v.djBehaviour?.releaseYearMentions ?? 'regular',
+        extendedSleeveNoteUseFrequency: v.djBehaviour?.extendedSleeveNoteUseFrequency ?? 'occasional',
         recapLimit: String(v.djBehaviour?.recapLimit ?? 10),
         recapMinutes: String(v.djBehaviour?.recapMinutes ?? 120),
         recapChars: String(v.djBehaviour?.recapChars ?? 140),
+      },
+      sleeveNotes: {
+        wikipedia: {
+          extractPrompt: v.sleeveNotes?.wikipedia?.extractPrompt ?? '',
+          artistClaimLimit: v.sleeveNotes?.wikipedia?.artistClaimLimit ?? 20,
+          albumClaimLimit: v.sleeveNotes?.wikipedia?.albumClaimLimit ?? 5,
+          chunkCharacterCeiling: v.sleeveNotes?.wikipedia?.chunkCharacterCeiling ?? 20_000,
+        },
+        providers: {
+          genius: { enabled: v.sleeveNotes?.providers?.genius?.enabled !== false, accessToken: v.sleeveNotes?.providers?.genius?.accessToken ?? '' },
+        },
       },
       weather: {
         lat: String(v.weather?.lat ?? ''),

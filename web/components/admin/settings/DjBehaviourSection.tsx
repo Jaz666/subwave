@@ -48,6 +48,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         recapMinutes: Number(form.djBehaviour.recapMinutes),
         recapChars: Number(form.djBehaviour.recapChars),
       },
+      sleeveNotes: form.sleeveNotes,
     });
   };
 
@@ -261,12 +262,71 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Card title="Extended Sleeve Notes" sub="coming soon">
+      <Card title="Extended Sleeve Notes" sub={form.djBehaviour.extendedSleeveNotes ? 'enabled' : 'off'}>
+        <div className="field">
+          <Label>Station-wide extended collection</Label>
+          <Seg
+            value={form.djBehaviour.extendedSleeveNotes ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Make no provider calls or background jobs' },
+              { id: 'on', label: 'On', title: 'Allow Extended Sleeve Notes collection when a provider is configured' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNotes: v === 'on' } }))}
+          />
+        </div>
+        <div className="field mt-4">
+          <Label>Offer an Extended Sleeve Note</Label>
+          <Seg
+            value={form.djBehaviour.extendedSleeveNoteUseFrequency}
+            options={[
+              { id: 'regular', label: 'Regular', title: 'Offer an eligible note on most links' },
+              { id: 'occasional', label: 'Occasional', title: 'Offer an eligible note on some links' },
+              { id: 'rare', label: 'Rare', title: 'Offer an eligible note infrequently' },
+            ]}
+            onChange={v => setForm(f => ({ ...f, djBehaviour: { ...f.djBehaviour, extendedSleeveNoteUseFrequency: v as typeof f.djBehaviour.extendedSleeveNoteUseFrequency } }))}
+          />
+        </div>
+        <div className="field mt-5">
+          <Label>Genius metadata collection</Label>
+          <Seg
+            value={form.sleeveNotes.providers.genius.enabled ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Do not queue Genius recording research' },
+              { id: 'on', label: 'On', title: 'Collect Genius recording credits and musical connections when configured' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              sleeveNotes: {
+                ...f.sleeveNotes,
+                providers: { ...f.sleeveNotes.providers, genius: { ...f.sleeveNotes.providers.genius, enabled: v === 'on' } },
+              },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            Genius requests collect recording credits and musical connections only. Lyrics are not fetched or retained.
+          </p>
+        </div>
+        <div className="field mt-5">
+          <Label>Research while the station is empty</Label>
+          <Seg
+            value={form.djBehaviour.sleeveNotesMaintenanceWhenEmpty ? 'on' : 'off'}
+            options={[
+              { id: 'off', label: 'Off', title: 'Pause Sleeve Notes LLM research with the DJ when nobody is listening' },
+              { id: 'on', label: 'On', title: 'Let Sleeve Notes backfill only while Icecast confirms no listeners' },
+            ]}
+            onChange={v => setForm(f => ({
+              ...f,
+              djBehaviour: { ...f.djBehaviour, sleeveNotesMaintenanceWhenEmpty: v === 'on' },
+            }))}
+          />
+          <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+            This affects only non-airing Sleeve Notes research. It never resumes DJ speech or
+            picks, still yields to Agent work, and only runs when Icecast confirms zero listeners.
+          </p>
+        </div>
         <p className="text-[13px] leading-[1.55] text-muted">
-          Soon, the DJ will be able to add optional, source-backed editorial notes—such as
-          release credits or wider artist context—with provider provenance. Album, trusted
-          release year and station-play history already come from today&apos;s Verified Facts
-          packet; this future layer will stay opt-in and separate from show steering.
+          Regular Sleeve Notes remain part of every link. When available, one Extended Sleeve Note
+          may be supplied separately as an optional story spark; it can be omitted by the DJ.
         </p>
       </Card>
 
@@ -276,7 +336,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         onSave={save}
         saveLabel="Save DJ behaviour"
         errors={fieldErrors}
-        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour']}
+        ownedKeys={['djTalkOnlyBetweenTracks', 'pauseTalkMinSeconds', 'djBehaviour', 'sleeveNotes']}
       />
     </>
   );
