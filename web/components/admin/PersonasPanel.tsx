@@ -214,7 +214,7 @@ export default function PersonasPanel() {
     appendPersonaField({
       id: newId, name: 'New persona', tagline: '',
       frequency: 'moderate', scriptLength: 'concise', djMode: false, linkStyle: 'natural',
-      humour: DIAL_NEUTRAL, localColour: DIAL_NEUTRAL, warmth: DIAL_NEUTRAL, soul: '',
+      humour: DIAL_NEUTRAL, localColour: DIAL_NEUTRAL, warmth: DIAL_NEUTRAL, soul: '', musicLean: '',
       language: '',
       voiceStyle: '',
       avatar: '',
@@ -459,6 +459,7 @@ export default function PersonasPanel() {
             localColour: p.localColour,
             warmth: p.warmth,
             soul: p.soul.trim(),
+            musicLean: p.musicLean.trim(),
             language: p.language.trim(),
             voiceStyle: p.voiceStyle?.trim() || '',
             avatar: p.avatar || '',
