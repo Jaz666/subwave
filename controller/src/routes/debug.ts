@@ -44,6 +44,7 @@ import { pickerAgent } from '../broadcast/dj-agent/agents.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick } from '../music/dj-pick.js';
 import { icecastDebugSnapshot, type IcecastSource, type IcecastStats } from './debug-icecast.js';
+import { activeJourneyWaypoint } from '../broadcast/dj-agent/runs.js';
 
 export const router = express.Router();
 
@@ -63,7 +64,7 @@ function discoveryBenchDisabled(res: express.Response): boolean {
 }
 
 async function discoveryBench() {
-  const { scope } = await livePickerScope(queue);
+  const { scope } = await livePickerScope(queue, { audioWaypoint: activeJourneyWaypoint() });
   const { tools } = buildPickerTools(scope);
   return { scope, tools };
 }
@@ -114,7 +115,7 @@ router.post('/debug/discovery/tool/:tool', requireAdmin, async (req, res) => {
 router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
   if (discoveryBenchDisabled(res)) return;
   try {
-    const { scope, activeShow, playlistTracks } = await livePickerScope(queue);
+    const { scope, activeShow, playlistTracks } = await livePickerScope(queue, { audioWaypoint: activeJourneyWaypoint() });
     const current = queue.current?.track ?? null;
     const agentStarted = performance.now();
     const agent = await pickerAgent.run({ messages: session.windowMessages(), scope });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { useAdminMutation } from '../../../lib/admin-query';
 import { Card, Btn } from '../ui';
@@ -11,7 +11,7 @@ import { oneLine } from './format';
 import { CallSection, FilterChip, JsonBlock } from './bits';
 import { debugKeys } from './queries';
 
-export function SubsonicCalls({ subsonic }: { subsonic: DebugSubsonic | undefined }) {
+export function SubsonicCalls({ subsonic, pauseControl }: { subsonic: DebugSubsonic | undefined; pauseControl?: ReactNode }) {
   const { adminFetch } = useAdminAuth();
   const [filter, setFilter] = useState('all');
   const resetMutation = useAdminMutation<void, void>({
@@ -50,9 +50,12 @@ export function SubsonicCalls({ subsonic }: { subsonic: DebugSubsonic | undefine
       title="Subsonic API calls"
       sub={`${calls.length} recent · ${totalCalls} total`}
       right={
-        <Btn sm onClick={reset} disabled={resetMutation.isPending}>
-          {resetMutation.isPending ? 'Resetting…' : 'Reset'}
-        </Btn>
+        <div className="flex items-center gap-2">
+          {pauseControl}
+          <Btn sm onClick={reset} disabled={resetMutation.isPending}>
+            {resetMutation.isPending ? 'Resetting…' : 'Reset'}
+          </Btn>
+        </div>
       }
     >
       <div className="grid gap-4">
@@ -119,4 +122,3 @@ export function SubsonicCalls({ subsonic }: { subsonic: DebugSubsonic | undefine
     </Card>
   );
 }
-
