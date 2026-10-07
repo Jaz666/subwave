@@ -15,6 +15,8 @@ const {
   NO_AGENTIC_LEANINGS_INFLUENCE,
 } = await import('../src/broadcast/dj-agent/schemas.js');
 const {
+  agenticDiscoverySelectionReason,
+  agenticSelectionReason,
   agenticLeaningsPhrases,
   agenticLeaningsSources,
   agenticLeaningsSelectionReason,
@@ -25,7 +27,7 @@ const {
   validateAgenticLeaningsReplacement,
   verifiedAgenticReason,
 } = await import('../src/broadcast/dj-agent/leanings-review.js');
-const { agenticDiscoverySelectionReason, agenticSelectionReason, shortlistReasonForLeanings } = await import('../src/music/dj-pick.js');
+const { shortlistReasonForLeanings } = await import('../src/music/dj-pick.js');
 
 const leaningsOptions = ['warm voices', 'strong melodies'];
 const schema = agenticLeaningsReviewSchema(['alternative', 'preliminary'], leaningsOptions, 'preliminary');

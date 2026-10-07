@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
+import { agenticSelectionReason } from '../src/broadcast/dj-agent/leanings-review.js';
 import { pickerScope } from '../src/llm/tools.js';
 import { buildPickerContext } from '../src/llm/internal/tools/picker/scope.js';
 import { cacheSourcePool } from '../src/llm/internal/tools/picker/source-pool-cache.js';
-import { shortlistCandidateForPick, shortlistClauseSelectionReason, shortlistLeaningsSource, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSelectionReason } from '../src/music/dj-pick.js';
+import { shortlistCandidateForPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings } from '../src/music/dj-pick.js';
 
 test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
   const trace = replayFixtureTrace({
@@ -184,25 +185,25 @@ test('Shortlist sends a compact selection-only candidate payload', () => {
     'candidate JSON is compact rather than indentation-heavy');
 });
 
-test('shortlist presentation never attaches one track\'s note to another track', () => {
+test('Agentic presentation never attaches one track\'s note to another track', () => {
   const selected = { id: 'sam', title: 'How Do You Sleep?', artist: 'Sam Smith' };
   assert.equal(
-    shortlistSelectionReason(selected, 'Porcupine Tree — Of the New Day keeps the atmosphere moving.'),
-    'Selected "How Do You Sleep? by Sam Smith" from the eligible shortlist.',
+    agenticSelectionReason(selected, 'Porcupine Tree — Of the New Day keeps the atmosphere moving.'),
+    '“How Do You Sleep?” by Sam Smith offers a strong musical fit with the current flow.',
   );
   assert.equal(
-    shortlistSelectionReason(selected, 'Sam Smith — How Do You Sleep? keeps the atmosphere moving.'),
+    agenticSelectionReason(selected, 'Sam Smith — How Do You Sleep? keeps the atmosphere moving.'),
     'Sam Smith — How Do You Sleep? keeps the atmosphere moving.',
   );
   assert.equal(
-    shortlistSelectionReason(
+    agenticSelectionReason(
       { id: 'gabriel', title: 'Digging in the Dirt', artist: 'Peter Gabriel' },
       'Peter Gabriel fits well with the current flow, and',
     ),
     '“Digging in the Dirt” by Peter Gabriel — fits well with the current flow.',
   );
   assert.equal(
-    shortlistSelectionReason(
+    agenticSelectionReason(
       { id: 'qualls', title: 'Black Qualls', artist: 'Thundercat feat. Steve Lacy, Steve Arrington & Childish Gambino' },
       "Thundercat featuring Steve Lacy, Steve Arrington & Childish Gambino with Black Qualls fits the current low-energy vibe.",
     ),
@@ -220,13 +221,6 @@ test('Shortlist reasons use verified identity and reject model backstage languag
     shortlistClauseSelectionReason(song, 'I chose this candidate from the shortlist for the queue'),
     '“1999” by Prince — its musical character fits the surrounding sequence naturally.',
   );
-  const context = {
-    host: 'Favour patient dub.',
-    guest: { musicalLeanings: 'Warm voices and strong melodies.' },
-  };
-  assert.equal(shortlistLeaningsSource(context, 'patient dub'), 'host');
-  assert.equal(shortlistLeaningsSource(context, 'Warm voices'), 'guest');
-  assert.equal(shortlistLeaningsSource(context, 'invented taste'), null);
 });
 
 test('Shortlist keeps natural claimed Leanings reasons and removes unclaimed ones', () => {

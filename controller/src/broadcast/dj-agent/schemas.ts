@@ -307,18 +307,12 @@ export function resolveEditorialLeanings(showAt: Date | null = null): EditorialL
   return { host, guest, promptValue: lines.join('\n') || null };
 }
 
-export function editorialLeaningsForPick(showAt: Date | null = null): string {
-  const context = resolveEditorialLeanings(showAt);
-  return pickerMusicLeanings(context.host, context.guest);
-}
-
 export function pickSystem(
   showAt: Date | null = null,
   playlistResolved = true,
   nativeShortlist = false,
   editorialLeanings: EditorialLeaningsContext | null = null,
   personaOverride: any = null,
-  candidateSelection = false,
 ) {
   const persona = personaOverride ?? session.onAirPersona();
   // In DJ mode, lean on the live session history: a working DJ runs threads
@@ -348,7 +342,7 @@ export function pickSystem(
   // discovery instruction. Keep it in the agentic picker too, so changing
   // picker implementation does not change the station's musical identity.
   const leanings = editorialLeanings ?? resolveEditorialLeanings(showAt);
-  const editorialLeaningsPrompt = nativeShortlist || candidateSelection ? '' : pickerMusicLeanings(leanings.host, leanings.guest);
+  const editorialLeaningsPrompt = nativeShortlist ? '' : pickerMusicLeanings(leanings.host, leanings.guest);
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of
@@ -377,11 +371,9 @@ export function pickSystem(
   const rounds = dj.promptDiscoverySteps();
   const findingCandidates = nativeShortlist
     ? 'The controller has already built a Track Shortlist under the station guards. Choose exactly one supplied id; do not request or invent candidates.'
-    : candidateSelection
-      ? 'The controller has supplied a preliminary choice and eligible alternatives. Review only those tracks; do not request or invent candidates.'
-      : rounds > 1
-        ? instruction('picker', 'finding-candidates-multi', { rounds })
-        : instruction('picker', 'finding-candidates');
+    : rounds > 1
+      ? instruction('picker', 'finding-candidates-multi', { rounds })
+      : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}
 
 ${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}

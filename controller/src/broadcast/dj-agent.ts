@@ -37,12 +37,12 @@ import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToI
 import { advanceRun, runActive } from './dj-agent/runs.js';
 import { prepareEpisodeContext, showPreparation } from './show-preparation.js';
 import { agenticLeaningsReviewPrompt, agenticLeaningsReviewSchema, agenticLeaningsReviewSystem, NO_AGENTIC_LEANINGS_INFLUENCE, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, type EditorialLeaningsContext } from './dj-agent/schemas.js';
-import { agenticLeaningsSelectionReason, agenticLeaningsSources, agenticTrackRef, compactAgenticReviewCandidate, eligibleAgenticLeanings, resolveAgenticLeaningsUsage, selectAgenticReviewCandidates, validateAgenticLeaningsReplacement, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
+import { agenticDiscoverySelectionReason, agenticSelectionReason, agenticLeaningsSelectionReason, agenticLeaningsSources, agenticTrackRef, compactAgenticReviewCandidate, eligibleAgenticLeanings, resolveAgenticLeaningsUsage, selectAgenticReviewCandidates, validateAgenticLeaningsReplacement, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { agenticDiscoverySelectionReason, agenticSelectionReason, djPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, type ShortlistPickResolution, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { djPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, type ShortlistPickResolution, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';

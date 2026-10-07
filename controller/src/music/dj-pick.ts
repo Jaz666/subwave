@@ -2,21 +2,15 @@
 //
 // Discovery is deliberately absent here: candidates and factual provenance are
 // supplied by music/shortlist.ts. The model chooses only from their ids and
-// writes the listener-facing link/transition in the existing pick shape.
+// supplies a musical reason and transition. Link generation happens separately.
 
 import { z } from 'zod';
 import { djObject, modelTolerant } from '../llm/sdk.js';
 import { pickSchemaBase, pickSystem, transitionChoiceNudge } from '../broadcast/dj-agent/schemas.js';
 import type { AgenticLeaningsOption, AgenticLeaningsReviewRejection, AgenticTrackRef } from '../broadcast/dj-agent/leanings-review.js';
-import { agenticLeaningsPhrases } from '../broadcast/dj-agent/leanings-review.js';
 import type { ShortlistCandidate, ShortlistSourceRun } from './shortlist.js';
 
-export type ShortlistPick = {
-  id: string;
-  selectionReason: string;
-  say: string | null;
-  transition: 'normal' | 'blend' | 'sweep' | 'washout' | 'dissolve' | 'chop' | 'loop' | null;
-};
+export type ShortlistPick = z.infer<ReturnType<typeof shortlistPickSchema>> & { selectionReason: string };
 
 export type ShortlistPickResolution = {
   preliminary?: AgenticTrackRef;
@@ -73,64 +67,6 @@ function comparable(value: unknown): string {
     .trim();
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function trimDanglingEnding(value: string): string {
-  return value
-    .replace(/\s*[,;:]\s*(?:and|or|but)?\s*$/i, '')
-    .replace(/\s+(?:and|or|but)\s*$/i, '')
-    .trim();
-}
-
-// A model-written sentence is useful only when it identifies the very track
-// that reached the queue. Corrective guards can replace the initial choice, so
-// do this once at the final queue boundary rather than trusting a reason from a
-// previous selection. A safe generic line is preferable to explaining Sam
-// Smith with a Porcupine Tree note.
-function selectionReasonForTrack(track: any, reason: unknown, source: 'shortlist' | 'agentic'): string {
-  const trackTitle = typeof track?.title === 'string' ? track.title.trim() : '';
-  const trackArtist = typeof track?.artist === 'string' ? track.artist.trim() : '';
-  const title = comparable(trackTitle);
-  const artist = comparable(trackArtist);
-  const note = comparable(reason);
-  if (note && (!title || note.includes(title)) && (!artist || note.includes(artist))) {
-    return String(reason).trim();
-  }
-
-  // Small local models sometimes stop after naming the artist. Keep only a
-  // clearly generic, artist-led fragment, trim a dangling conjunction, then
-  // anchor it to the verified final title. This preserves useful variation
-  // without allowing a corrected pick to inherit another track's explanation.
-  const raw = typeof reason === 'string' ? trimDanglingEnding(reason.replace(/\s+/g, ' ')) : '';
-  if (raw && trackTitle && trackArtist && artist && !note.includes(title)) {
-    const remainder = raw.replace(new RegExp(`^${escapeRegExp(trackArtist)}\\s*[-—,:]?\\s*`, 'i'), '').trim();
-    if (/^(?:fits|works|brings|keeps|matches|follows|continues|adds|carries|suits|makes|offers)\b/i.test(remainder)) {
-      return `“${trackTitle}” by ${trackArtist} — ${/[.!?]$/.test(remainder) ? remainder : `${remainder}.`}`;
-    }
-  }
-
-  const identity = [trackTitle, trackArtist].filter(Boolean).join(' by ');
-  if (source === 'agentic') {
-    const creditedTrack = trackTitle && trackArtist
-      ? `“${trackTitle}” by ${trackArtist}`
-      : trackTitle
-        ? `“${trackTitle}”`
-        : trackArtist
-          ? `A track by ${trackArtist}`
-          : '';
-    return creditedTrack
-      ? `${creditedTrack} offers a strong musical fit with the current flow.`
-      : 'Selected for its strong musical fit with the current flow.';
-  }
-  return identity ? `Selected "${identity}" from the eligible shortlist.` : 'Selected from the eligible shortlist.';
-}
-
-export function shortlistSelectionReason(track: any, reason: unknown): string {
-  return selectionReasonForTrack(track, reason, 'shortlist');
-}
-
 const BACKSTAGE_LANGUAGE = /\b(?:shortlist|candidate|baseline|challenger|preliminary (?:pick|choice)|controller|metadata|flowCloseness|leaningsMatches|musical leanings?|preferences?|tastes?|DJ)\b/i;
 const FIRST_PERSON_LANGUAGE = /\b(?:I|me|my|mine|we|us|our|ours)\b/i;
 
@@ -157,20 +93,6 @@ export function shortlistClauseSelectionReason(track: any, reason: unknown): str
   return `${identity} — ${clause[0].toLocaleLowerCase('en-GB')}${clause.slice(1)}.`;
 }
 
-export function shortlistLeaningsSource(
-  context: { host?: string | null; guest?: { musicalLeanings?: string | null } | null },
-  basis: string,
-): 'host' | 'guest' | null {
-  const normalise = (value: string) => value.normalize('NFKD').toLocaleLowerCase('en-GB').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  if (agenticLeaningsPhrases({ host: context.host, guest: null }).some((option) => normalise(option) === normalise(basis))) return 'host';
-  if (agenticLeaningsPhrases({ host: null, guest: context.guest }).some((option) => normalise(option) === normalise(basis))) return 'guest';
-  return null;
-}
-
-export function agenticSelectionReason(track: any, reason: unknown): string {
-  return selectionReasonForTrack(track, reason, 'agentic');
-}
-
 const UNUSABLE_SELECTION_REASON = '[selection note unavailable]';
 const QUEUE_LANGUAGE = /\b(?:next\s+up|up\s+next|coming\s+up|we(?:'|’)re\s+playing|we\s+have)\b/i;
 const LEANINGS_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:['’]s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’]s\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
@@ -178,7 +100,7 @@ const LEANINGS_REFERENCE = /\b(?:musical\s+leanings?|broad\s+alternative\s+taste
 // Native source passes are controller-run rather than model tool calls. Attach
 // their compact outcome record to the editorial call so the Debug feed retains
 // the familiar pick-start / pick-result reasoning trail.
-export function shortlistDebugTools(sourceRuns: ShortlistSourceRun[]) {
+function shortlistDebugTools(sourceRuns: ShortlistSourceRun[]) {
   return sourceRuns.map(({ source, args, status, returned, accepted, elapsedMs, error }) => ({
     name: source,
     args,
@@ -189,29 +111,12 @@ export function shortlistDebugTools(sourceRuns: ShortlistSourceRun[]) {
 // A verified note can still be too thin to help an operator understand a
 // choice. Keep a controller-written, track-specific floor without spending a
 // second model call.
-export function usableSelectionReason(reason: unknown, song: { artist?: unknown; title?: unknown }): string {
+function usableSelectionReason(reason: unknown, song: { artist?: unknown; title?: unknown }): string {
   const note = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
   if (note.length >= 24 && !QUEUE_LANGUAGE.test(note) && note !== UNUSABLE_SELECTION_REASON) return note;
   const artist = typeof song.artist === 'string' && song.artist.trim() ? song.artist.trim() : 'This artist';
   const title = typeof song.title === 'string' && song.title.trim() ? song.title.trim() : 'this track';
   return `${artist} — ${title}: selected for its fit with the current musical flow.`;
-}
-
-// Discovery reasons are known to belong to the id returned by that same
-// discovery call, but small models often describe only the musical quality.
-// Preserve a safe generic explanation by anchoring it to the verified track.
-// A reason that appears to name some other artist/track still goes through the
-// strict verifier and falls back rather than inheriting mismatched copy.
-export function agenticDiscoverySelectionReason(track: any, reason: unknown): string {
-  const raw = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
-  const looksLikeNamedIdentity = /[“”"]|\b[\p{Lu}][\p{L}’'-]+(?:\s+[\p{Lu}][\p{L}’'-]+)+\b/u.test(raw);
-  if (raw.length >= 24 && !QUEUE_LANGUAGE.test(raw) && !looksLikeNamedIdentity) {
-    const title = typeof track?.title === 'string' ? track.title.trim() : '';
-    const artist = typeof track?.artist === 'string' ? track.artist.trim() : '';
-    const creditedTrack = title && artist ? `“${title}” by ${artist}` : title ? `“${title}”` : artist ? `A track by ${artist}` : '';
-    if (creditedTrack) return `${creditedTrack} — ${/[.!?]$/.test(raw) ? raw : `${raw}.`}`;
-  }
-  return agenticSelectionReason(track, reason);
 }
 
 // Leanings are private selection context, not boilerplate for every Booth
@@ -288,14 +193,14 @@ export async function djPick({
   // The call ring receives this nested object by reference. Populate it once
   // the chosen id is known so Debug pairs the raw model response with the
   // controller-resolved track and safe Booth reason.
-  const selection = await djObject({
+  const selection: z.infer<ReturnType<typeof shortlistPickSchema>> = await djObject({
     system: pickSystem(showAt, playlistResolved, true, { host: null, guest: null, promptValue: null }),
     prompt: shortlistPickPrompt(candidates, context),
     schema: shortlistPickSchema(ids),
     temperature: 0.5,
     kind: 'djShortlistPick',
     telemetry: { toolCalls, steps: toolCalls.length + 1, shortlistResolution },
-  }) as ShortlistPick & { musicalReason?: string };
+  });
   const track = candidates.find((candidate) => candidate.id === selection.id);
   const selectionReason = shortlistClauseSelectionReason(track, selection.musicalReason);
   return { ...selection, selectionReason };
