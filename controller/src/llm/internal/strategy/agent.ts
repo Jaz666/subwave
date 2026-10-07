@@ -25,6 +25,7 @@ interface AgentGenerateResult {
   finishReason?: unknown;
   usage?: TokenUsage;
   totalUsage?: TokenUsage;
+  contextPeakInput?: number;
   steps?: StepLike[];
   staticToolCalls?: ToolCallLike[];
   response?: { messages?: ModelMessage[] };
@@ -34,8 +35,13 @@ interface AgentLike {
 }
 
 function peakSingleRequestInput(result: AgentGenerateResult): number {
+  if (result.contextPeakInput != null) return result.contextPeakInput;
   const steps = result.steps || [];
-  if (steps.length) return Math.max(0, ...steps.map(step => usageOf(step).input));
+  if (steps.length) {
+    let peak = 0;
+    for (const step of steps) peak = Math.max(peak, usageOf(step).input);
+    return peak;
+  }
   // objectViaToolCall and a few provider adapters do not expose a steps array;
   // they are single model requests, so their ordinary usage is the safe value.
   return usageOf(result).input;
@@ -48,6 +54,7 @@ function createAgentAttempt() {
   const steps: StepLike[] = [];
   let responseMessages: ModelMessage[] = [];
   const totalUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  let contextPeakInput = 0;
   const callbacks = {
     onStepEnd: event => {
       steps.push(event);
@@ -55,6 +62,7 @@ function createAgentAttempt() {
     },
     onLanguageModelCallEnd: event => {
       const usage = usageOf({ usage: event.usage });
+      contextPeakInput = Math.max(contextPeakInput, usage.input);
       totalUsage.inputTokens += usage.input;
       totalUsage.outputTokens += usage.output;
       totalUsage.totalTokens += usage.total;
@@ -68,6 +76,7 @@ function createAgentAttempt() {
         text,
         finishReason: err.finishReason,
         totalUsage,
+        contextPeakInput,
         steps: [...steps, { toolCalls: [] }],
         staticToolCalls: [],
         response: { messages: [...responseMessages, { role: 'assistant', content: text }] },

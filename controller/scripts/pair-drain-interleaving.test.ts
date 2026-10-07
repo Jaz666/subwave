@@ -170,6 +170,7 @@ test('the event prompt names the captured anchor without claiming current adjace
   assert.ok(observed);
   assert.match(observed.eventPrompt ?? '', /Pick next after "Heads We're Dancing"/);
   assert.doesNotMatch(observed.eventPrompt ?? '', /Now playing "Heads We're Dancing"|immediately preceding|twice in a row/);
+  assert.match(observed.eventPrompt ?? '', /\[id: held\]/, 'similarity discovery needs the captured anchor ID');
 });
 
 test('the interleaved Bill Evans request currently makes the candidate a soft spacing repeat', () => {

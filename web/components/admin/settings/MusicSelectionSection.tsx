@@ -20,7 +20,6 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
         artistVarietyWindow: Math.max(0, parseInt(form.llm.artistVarietyWindow, 10) || 0),
         discoverySteps: form.llm.discoverySteps,
         agentTimeoutMs: form.llm.agentTimeoutMs,
-        pickerAgent: form.llm.trackSelection === 'agentic',
       },
       picker: {
         albumHours: Number(form.picker.albumHours),

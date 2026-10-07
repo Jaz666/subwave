@@ -883,7 +883,7 @@ export default function StatsPanel() {
 
           <Card
             title="LLM context windows"
-            sub={`reported input tokens · last ${llm.window} calls since controller start`}
+            sub="reported input tokens · since controller start"
             right={llm.contextWindows?.agenticPicker.suggestedTokens ? (
               <Pill tone="accent">
                 Agentic recommends {fmtTokens(llm.contextWindows.agenticPicker.suggestedTokens)}

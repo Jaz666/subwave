@@ -55,7 +55,7 @@ writeSkill('own-material', 'export const requiresData = false;\nexport default a
 const { requiresGrounding, unusableDataReason, standDownReason, declaredBool } =
   await import('../src/skills/abstain-policy.js');
 const { agenticTick, forcedSchema, forcedSystem, runCapability } = await import('../src/skills/_agent.js');
-const { normalizeSegmentToolResult } = await import('../src/llm/segment-tools.js');
+const { normalizeSegmentToolResult, buildSegmentTools } = await import('../src/llm/segment-tools.js');
 const { queue } = await import('../src/broadcast/queue.js');
 const webSearch = (await import('../src/skills/builtins/web-search/tool.mjs')).default;
 const nowPlayingDig = (await import('../src/skills/builtins/now-playing-dig/tool.mjs')).default;
@@ -139,6 +139,20 @@ test('an older artist web-search with only unrelated snippets is unavailable', (
   assert.deepEqual(data, {
     artist: 'Cue', answer: '', sources: ['Queueing etiquette: the latest advice'], available: false,
   });
+});
+
+test('the segment wrapper preserves usable custom queries unrelated to the artist', async () => {
+  const sources = ['Sway: a ballroom standard recorded by many artists'];
+  const tools = buildSegmentTools({}, {}, [{
+    kind: 'web-search', toolName: 'search', toolInputs: { query: 'what to search for' },
+    toolFn: async (_ctx, _state, _services, _config, input) => webSearch({}, {}, {
+      nowPlaying: () => ({ artist: 'Cue' }),
+      searchWeb: async () => ({ answer: '', results: [{ title: 'Sway', content: 'a ballroom standard recorded by many artists' }] }),
+    }, {}, input),
+  }]);
+  const data = await tools.search.execute({ query: 'history of Sway' });
+  assert.deepEqual(data.sources, sources);
+  assert.equal(unusableDataReason(data), null);
 });
 
 test('now-playing dig drops unrelated generic-title results before Direct can see them', async () => {

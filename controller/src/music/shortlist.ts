@@ -99,7 +99,18 @@ export function planShortlistSources(
   for (const source of diversity) add('diversity', source);
 
   const calls: ShortlistSourceCall[] = [];
-  const familyOrder: ShortlistSourceCall['family'][] = ['context', 'continuity', 'diversity'];
+  const ownsDirection = !!(context.scope.episodeSource || context.scope.playlistLock || context.scope.audioWaypoint?.length);
+  const offset = stableOffset(context.currentTrackId);
+  const families: ShortlistSourceCall['family'][] = ['context', 'continuity', 'diversity'];
+  const familyOrder = ownsDirection ? families : rotated(families.filter(family => lanes[family].length), offset);
+  if (!ownsDirection) {
+    lanes.context = rotated(lanes.context, Math.floor(offset / families.length));
+    lanes.continuity = rotated(lanes.continuity, Math.floor(offset / families.length));
+    if (context.explore && familyOrder.includes('diversity')) {
+      familyOrder.splice(familyOrder.indexOf('diversity'), 1);
+      familyOrder.unshift('diversity');
+    }
+  }
   const cycle = () => ({
     context: [...lanes.context],
     continuity: [...lanes.continuity],

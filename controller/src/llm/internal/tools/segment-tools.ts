@@ -10,7 +10,8 @@ import { buildStationServices } from './station-services.js';
 // Repair known no-evidence shapes here, so an upgrade never has to replace an
 // operator-owned skill file just to recover the Direct runtime's stand-down
 // contract.
-export function normalizeSegmentToolResult(cap: { kind?: unknown } | null | undefined, data: any): any {
+export function normalizeSegmentToolResult(cap: { kind?: unknown } | null | undefined, data: any, input: { query?: unknown } = {}): any {
+  if (cap?.kind === 'web-search' && typeof input.query === 'string' && input.query.trim()) return data;
   if (String(cap?.kind || '') === 'news'
       && data?.available === undefined
       && Array.isArray(data?.headlines)
@@ -76,7 +77,7 @@ export function buildSegmentTools(
         // degraded shape too — a tool that threw is exactly the case the
         // grounding check exists for. A throwing observer must not turn a
         // usable tool result into a tool error.
-        data = normalizeSegmentToolResult(cap, data);
+        data = normalizeSegmentToolResult(cap, data, input || {});
         try { onResult?.(cap.kind, data); } catch { /* observation is never fatal */ }
         return data;
       },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { agenticPickerContextWindow, contextWindowByKind, shortlistContextWindow } from '../src/llm/context-window.js';
+import { agenticPickerContextWindow, contextWindowByKind, shortlistContextWindow, ContextMeasurements } from '../src/llm/context-window.js';
 
 test('suggests a server context window from the peak successful shortlist picker prompt', () => {
   const result = shortlistContextWindow([
@@ -48,4 +48,17 @@ test('uses the largest Agentic Picker model step rather than its tool-loop total
     responseReserveTokens: 1_024,
     message: 'Based on the largest individual model step from a successful Agentic Picker run since this controller started.',
   });
+});
+
+test('context measurements keep peaks and averages after the debug ring would rotate', () => {
+  const measurements = new ContextMeasurements();
+  measurements.record({ kind: 'djShortlistPick', ok: true, usage: { input: 30_000 } });
+  for (let i = 0; i < 120; i++) measurements.record({ kind: 'djLink', ok: true, usage: { input: 1000 } });
+  assert.equal(measurements.snapshot().shortlist.suggestedTokens, 38_912);
+  measurements.record({ kind: 'djShortlistPick', ok: true, usage: { input: 1000 } });
+  const snapshot = measurements.snapshot();
+  assert.equal(snapshot.shortlist.peakInputTokens, 30_000);
+  assert.equal(snapshot.shortlist.samples, 2);
+  assert.equal(snapshot.byKind.find(row => row.kind === 'djShortlistPick')?.averageInputTokens, 15_500);
+  assert.equal(new ContextMeasurements().snapshot().shortlist.samples, 0);
 });

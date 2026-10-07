@@ -40,3 +40,26 @@ test('new and older Agentic Tools installs retain the Agentic default', async ()
   assert.equal((await coldLoad({})).trackSelection, 'agentic');
   assert.equal((await coldLoad({ pickerAgent: true })).trackSelection, 'agentic');
 });
+
+test('saving modern music selection preserves independently configured runtimes', async () => {
+  await coldLoad({ trackSelection: 'shortlist', requestMatching: 'agentic', segmentRuntime: 'agentic' });
+  await settings.update({ llm: { trackSelection: 'shortlist', pickerAgent: false, shortlistPasses: 4 } });
+  assert.equal(settings.get().llm.segmentRuntime, 'agentic');
+  assert.equal(settings.get().llm.requestMatching, 'agentic');
+  setCache(null);
+  await settings.load();
+  assert.equal(settings.get().llm.segmentRuntime, 'agentic');
+  assert.equal(settings.get().llm.shortlistPasses, 4);
+});
+
+test('legacy picker toggles select the supported route and survive cold load', async () => {
+  await coldLoad({});
+  for (const enabled of [false, true]) {
+    await settings.update({ llm: { pickerAgent: enabled } });
+    assert.equal(settings.get().llm.trackSelection, enabled ? 'agentic' : 'shortlist');
+    setCache(null);
+    await settings.load();
+    assert.equal(settings.get().llm.pickerAgent, enabled);
+    assert.equal(settings.get().llm.trackSelection, enabled ? 'agentic' : 'shortlist');
+  }
+});

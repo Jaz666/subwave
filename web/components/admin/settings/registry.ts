@@ -35,6 +35,13 @@ export interface SectionSpec {
   formKeys: readonly string[];
 }
 
+export const LLM_PROVIDER_FORM_KEYS = [
+  'llm.provider', 'llm.model', 'llm.ollamaUrl', 'llm.numCtx', 'llm.repeatPenalty',
+  'llm.providerBaseUrls', 'llm.headers', 'llm.compatibleMode', 'llm.reasoning',
+  'llm.toolChoice', 'llm.pauseWhenEmpty', 'llm.dailyTokenCap', 'llm.budgetSoftPct',
+  'llm.exemptRequests', 'llm.maxOutputTokens', 'llm.geminiSafety', 'llm.fallback',
+] as const;
+
 // `satisfies`, never a `readonly SectionSpec[]` annotation: the annotation
 // widens every `id` back to `string` and takes `SectionId` — and with it every
 // typo guard on SETTINGS_INDEX, ADVANCED_CARDS and `activeSection` — down with
@@ -54,7 +61,7 @@ export const SECTIONS = [
   {
     id: 'selection', group: 'the station', label: 'Music selection',
     hint: 'agentic · shortlist · requests', icon: ListMusic,
-    formKeys: ['llm.trackSelection', 'llm.shortlistPasses', 'llm.guestMusicalLeanings', 'llm.requestMatching', 'llm.noRepeatWindow', 'llm.artistVarietyWindow', 'llm.discoverySteps', 'llm.agentTimeoutMs', 'picker'],
+    formKeys: ['llm.trackSelection', 'llm.shortlistPasses', 'llm.guestMusicalLeanings', 'llm.requestMatching', 'llm.requestWebResolve', 'llm.noRepeatWindow', 'llm.artistVarietyWindow', 'llm.discoverySteps', 'llm.agentTimeoutMs', 'picker'],
   },
   {
     id: 'theme', group: 'the station', label: 'Skin & Themes',
@@ -78,7 +85,7 @@ export const SECTIONS = [
   {
     id: 'llm', group: 'the dj', label: 'LLM provider',
     hint: 'model routing', icon: Cpu,
-    formKeys: ['llm'],
+    formKeys: LLM_PROVIDER_FORM_KEYS,
   },
   {
     id: 'tts', group: 'the dj', label: 'TTS voice',

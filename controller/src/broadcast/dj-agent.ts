@@ -1343,7 +1343,8 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         + (pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '')
         + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
         + '. Pick the track to play next.';
-    const promptSuffix = `${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
+    const anchorIdClause = explicitPickAnchor && pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '';
+    const promptSuffix = `${anchorIdClause}${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
       meta: promptSuffix ? { promptSuffix } : {},

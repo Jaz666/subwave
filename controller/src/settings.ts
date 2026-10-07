@@ -2062,8 +2062,9 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     // Route the primary inline key into keys[provider] AFTER the provider is
     // resolved, so it's stored under the identity it belongs to (issue #657).
     applyInlineKey(next.llm, next.llm.provider, l.apiKey);
-    if (l.pickerAgent !== undefined) {
+    if (l.pickerAgent !== undefined && l.trackSelection === undefined) {
       next.llm.pickerAgent = !!l.pickerAgent;
+      next.llm.trackSelection = next.llm.pickerAgent ? 'agentic' : 'shortlist';
       // Preserve the legacy single-toggle behaviour for API callers and older
       // admin builds that do not yet send the three independent choices.
       if (l.pickerAgent === false && l.requestMatching === undefined) next.llm.requestMatching = 'direct';

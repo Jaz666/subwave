@@ -68,8 +68,8 @@ test('balances context, continuity and diversity lanes without inventing intent-
     'tracksByMood', 'songsByGenre', 'tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs',
     'deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs',
   ]));
-  assert.deepEqual(balanced.map((call) => call.family), ['context', 'continuity', 'diversity']);
-  assert.equal(balanced[2].source, 'deepCuts');
+  assert.deepEqual(new Set(balanced.map((call) => call.family)), new Set(['context', 'continuity', 'diversity']));
+  assert.equal(balanced[0].source, 'deepCuts', 'an exploration nudge gets a pass even on narrow shortlists');
   assert.ok(!balanced.some((call) => ['searchLibrary', 'identifyRequestedTrack'].includes(call.source)));
 });
 
@@ -77,11 +77,35 @@ test('native builder plans from source-owned availability before execution', asy
   // A no-index scope still keeps its usable mood source and an available
   // exploration source, without logging unavailable similarity probes.
   const result = await buildShortlist({
-    scope: pickerScope(), currentTrackId: 'seed', discoveryPasses: 1,
+    scope: pickerScope(), currentTrackId: null, discoveryPasses: 1,
     moods: ['calm'], energies: ['low'],
   });
   assert.ok(result.sourceRuns.length > 0);
   assert.ok(result.sourceRuns.every((run) => run.source === 'tracksByMood'));
+});
+
+test('narrow shortlists rotate all discovery families and continuity sources across seeds', () => {
+  const available = new Set([
+    'tracksByMood', 'songsByGenre', 'tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs',
+    'deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs',
+  ]);
+  const families = new Set<string>();
+  const continuity = new Set<string>();
+  const narrowContinuity = new Set<string>();
+  for (const currentTrackId of Array.from({ length: 30 }, (_, index) => `seed-${index}`)) {
+    const context = { scope: pickerScope(), currentTrackId, moods: ['calm'], energies: ['low'], genres: ['ambient'] };
+    const narrow = planShortlistSources({ ...context, discoveryPasses: 1 }, available);
+    assert.equal(narrow.length, 1);
+    families.add(narrow[0].family);
+    if (narrow[0].family === 'continuity') narrowContinuity.add(narrow[0].source);
+    const balanced = planShortlistSources({ ...context, discoveryPasses: 3 }, available);
+    assert.equal(new Set(balanced.map(call => call.family)).size, 3);
+    for (const call of balanced) if (call.family === 'continuity') continuity.add(call.source);
+    assert.deepEqual(planShortlistSources({ ...context, discoveryPasses: 3 }, available), balanced);
+  }
+  assert.deepEqual(families, new Set(['context', 'continuity', 'diversity']));
+  assert.deepEqual(continuity, new Set(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs']));
+  assert.deepEqual(narrowContinuity, new Set(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs']));
 });
 
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {

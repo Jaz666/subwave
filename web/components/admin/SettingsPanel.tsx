@@ -2,7 +2,7 @@
 
 import type { ChangeEvent } from 'react';
 import { settingsForm } from './settings/form-state';
-import { atPath, samePath, sameForm, countLeafDiffs, dirtyPaths, ownsErrorPath, mergePatchErrors } from './settings/form-diff';
+import { atPath, samePath, sameForm, countLeafDiffs, dirtyPaths, restorePaths, ownsErrorPath, mergePatchErrors } from './settings/form-diff';
 import { archivesSavePayload, dangerSavePayload } from './settings/save-payload';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -52,6 +52,7 @@ import { ThemeSection } from './settings/ThemeSection';
 import { ScrobbleSection } from './settings/ScrobbleSection';
 import { LikesSection } from './settings/LikesSection';
 import { NavidromeSection } from './settings/NavidromeSection';
+import { MusicSelectionSection } from './settings/MusicSelectionSection';
 import {
   useSettingsMutation,
   useSettingsQuery,
@@ -346,12 +347,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   /** Roll this section's fields back to the last saved baseline, nothing else. */
   const discardSection = () => {
     if (!form || !baseline || !activeSpec) return;
-    const next = JSON.parse(JSON.stringify(form)) as Record<string, unknown>;
-    const from = baseline as unknown as Record<string, unknown>;
-    for (const key of activeSpec.formKeys) {
-      if (key in from) next[key] = JSON.parse(JSON.stringify(from[key] ?? null));
-    }
-    setForm(next as unknown as FormState);
+    setForm(restorePaths(form, baseline, activeSpec.formKeys));
     // The errors belonged to values that no longer exist — same ownership rule
     // the save path uses, so an unrelated section's message survives.
     setFieldErrors(prev => {
@@ -495,6 +491,12 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
             setForm(prev => (prev ? updater(prev) : prev));
           return (
           <>
+            {activeSection === 'selection' && (
+              <MusicSelectionSection
+                data={data} form={form} setForm={updateForm} busy={busy}
+                saveSettings={saveSettings} fieldErrors={fieldErrors}
+              />
+            )}
             {activeSection === 'tts' && data.tts && (
               <TtsSection
                 data={data} form={form} setForm={updateForm} busy={busy}
