@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { djObject, modelTolerant } from '../llm/sdk.js';
 import { pickSchemaBase, pickSystem, transitionChoiceNudge } from '../broadcast/dj-agent/schemas.js';
-import type { AgenticLeaningsReviewRejection, AgenticTrackRef } from '../broadcast/dj-agent/leanings-review.js';
+import type { AgenticLeaningsOption, AgenticLeaningsReviewRejection, AgenticTrackRef } from '../broadcast/dj-agent/leanings-review.js';
 import { agenticLeaningsPhrases } from '../broadcast/dj-agent/leanings-review.js';
 import type { ShortlistCandidate, ShortlistSourceRun } from './shortlist.js';
 
@@ -30,6 +30,7 @@ export type ShortlistPickResolution = {
     reviewedSelectedId?: string | null;
     candidateIds?: string[];
     leaningsOptions?: string[];
+    leaningsSources?: AgenticLeaningsOption[];
     proposedReplacementId?: string | null;
     rejectionReason?: AgenticLeaningsReviewRejection | null;
   };
@@ -53,6 +54,7 @@ export type ShortlistSelectionContext = {
   } | null;
   journeyActive?: boolean;
   link?: string;
+  episodeEditorial?: string;
   // Present (including an empty array) only when transition effects are active.
   // The model otherwise has no view of its recent requests and tends to settle
   // into a washout/normal monoculture even though the queue can play six effects.
@@ -259,8 +261,11 @@ export function shortlistPickPrompt(candidates: ShortlistCandidate[], context: S
   const transitionInstruction = Array.isArray(context.recentTransitions)
     ? ` Set transition for this moment using the TRANSITION EFFECTS guidance.${transitionChoiceNudge(context.recentTransitions)}`
     : '';
+  const episodeInstruction = context.episodeEditorial?.trim()
+    ? ' The active episode editorial brief is included in context; follow it within the supplied candidates.'
+    : '';
   return JSON.stringify({ context, shortlist: candidates.map(shortlistCandidateForPick) })
-    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow only.${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
+    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
 }
 
 export async function djPick({

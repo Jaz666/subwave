@@ -55,13 +55,14 @@ import {
 } from './dj-agent/breaker.js';
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
+import { prepareEpisodeContext, showPreparation } from './show-preparation.js';
 import { agenticLeaningsReviewPrompt, agenticLeaningsReviewSchema, agenticLeaningsReviewSystem, NO_AGENTIC_LEANINGS_INFLUENCE, pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, type EditorialLeaningsContext } from './dj-agent/schemas.js';
-import { agenticLeaningsPhrases, agenticLeaningsSelectionReason, agenticTrackRef, compactAgenticReviewCandidate, resolveAgenticLeaningsUsage, selectAgenticReviewCandidates, validateAgenticLeaningsReplacement, type AgenticPickResolution } from './dj-agent/leanings-review.js';
+import { agenticLeaningsSelectionReason, agenticLeaningsSources, agenticTrackRef, compactAgenticReviewCandidate, eligibleAgenticLeanings, resolveAgenticLeaningsUsage, selectAgenticReviewCandidates, validateAgenticLeaningsReplacement, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist, replayFixtureTrace } from '../music/shortlist.js';
-import { agenticDiscoverySelectionReason, agenticSelectionReason, djPick, shortlistClauseSelectionReason, shortlistLeaningsSource, shortlistPickPrompt, shortlistPickSchema, usableSelectionReason, shortlistReasonForLeanings, type ShortlistPickResolution, type ShortlistSelectionContext } from '../music/dj-pick.js';
+import { agenticDiscoverySelectionReason, agenticSelectionReason, djPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, type ShortlistPickResolution, type ShortlistSelectionContext } from '../music/dj-pick.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
@@ -183,7 +184,9 @@ async function repickRequestFromSeen({ seen, badId, requester, text, persona }:
 // Build the exact discovery scope used by a live next-track pick. Diagnostics
 // call this too, so a tool run sees the same recency, show and playlist policy
 // as the DJ rather than a convenient-but-different approximation.
-export async function livePickerScope(queue: any, { audioWaypoint = null, showAt = null }: { audioWaypoint?: number[] | null; showAt?: Date | null } = {}) {
+export async function livePickerScope(queue: any, { audioWaypoint = null, showAt = null, context = null }: { audioWaypoint?: number[] | null; showAt?: Date | null; context?: any } = {}) {
+  const preparedContext = context ? await prepareEpisodeContext(context) : null;
+  const episodeSource = preparedContext ? showPreparation.read({ context: preparedContext }).music : null;
   await library.load();
   const stats = library.stats();
   // Sized off the MIRROR, not `stats.total` (TAGGED tracks only) — see the same
@@ -276,6 +279,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     {
       show: activeShow,
       playlistTracks,
+      episodeTracks: episodeSource?.tracks,
       excludedIds,
       resolvedGenres: genreLock ?? [],
       minTrackSec,
@@ -296,6 +300,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
   // to the discovery tools without being unpacked on the way (see PickerRunArgs
   // in dj-agent/agents.ts for why that matters).
   const scope = pickerScope({
+    episodeSource,
     recentIds,
     recentKeys,
     hardRecentIds,
@@ -322,7 +327,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     excludedIds,
   });
 
-  return { scope, playlistTracks, activeShow };
+  return { scope, playlistTracks, activeShow, episodeSource, context: preparedContext };
 }
 
 // `ctx` / `rankTarget` are carried only for the artist-guard's pool rescue
@@ -331,7 +336,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
 // from exactly the pool a failed agent run would have produced.
 async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, editorialLeanings, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext; explore?: boolean }): Promise<boolean> {
   const pickStarted = performance.now();
-  const { scope, playlistTracks, activeShow } = await livePickerScope(queue, { audioWaypoint, showAt });
+  const { scope, playlistTracks, activeShow, episodeSource, context: pickContext } = await livePickerScope(queue, { audioWaypoint, showAt, context: ctx });
   const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
   const anchorAnalysis = pickAnchor ? library.bpmKeyFor(pickAnchor) : null;
   const anchorRecord = pickAnchor?.id ? library.get(pickAnchor.id) : null;
@@ -352,6 +357,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     } : null,
     journeyActive: !!audioWaypoint?.length,
     link: wantLink ? 'A separate safe link may air for this pick.' : 'No link airs for this pick.',
+    ...(pickContext?.episodeEditorial ? { episodeEditorial: pickContext.episodeEditorial } : {}),
     ...(recentTransitions ? { recentTransitions } : {}),
   };
   let steps: number;
@@ -415,6 +421,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       usedMusicalLeanings: false,
     };
     const run = await pickerAgent.run({
+      editorial: pickContext?.episodeEditorial ?? ctx?.episodeEditorial ?? '',
       messages: session.windowMessages(),
       scope,
       showAt,
@@ -511,11 +518,14 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     shortlistPickResolution.preliminary = agenticTrackRef(song);
     shortlistPickResolution.leaningsReview = { outcome: 'not-run', replacementId: null };
     if (editorialLeanings.promptValue && extras.seen.size > 1) {
-      const hostLeaningsOptions = agenticLeaningsPhrases({ host: editorialLeanings.host, guest: null });
-      const guestLeaningsOptions = agenticLeaningsPhrases({ host: null, guest: editorialLeanings.guest });
-      const leaningsOptions = [...new Set([...hostLeaningsOptions, ...guestLeaningsOptions])];
-      const reviewCandidates = selectAgenticReviewCandidates(song, [...extras.seen.values()], leaningsOptions);
       const reviewDjName = session.onAirPersona()?.name ?? null;
+      const allLeaningsSources = agenticLeaningsSources(editorialLeanings, reviewDjName);
+      const eligibleLeanings = eligibleAgenticLeanings(song, [...extras.seen.values()], allLeaningsSources);
+      const leaningsSources = eligibleLeanings;
+      const leaningsOptions = eligibleLeanings.map(({ phrase }) => phrase);
+      const hostLeaningsOptions = eligibleLeanings.filter(({ source }) => source === 'host').map(({ phrase }) => phrase);
+      const guestLeaningsOptions = eligibleLeanings.filter(({ source }) => source === 'guest').map(({ phrase }) => phrase);
+      const reviewCandidates = selectAgenticReviewCandidates(song, [...extras.seen.values()], leaningsOptions);
       if (reviewCandidates.length >= 2 && leaningsOptions.length > 0) try {
         const compactCandidates = reviewCandidates.map((candidate) => compactAgenticReviewCandidate(candidate, leaningsOptions, song));
         const compactCandidatesById = new Map(compactCandidates.map((candidate) => [String(candidate.id), candidate]));
@@ -525,6 +535,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             baseline: compactCandidates[0],
             challengers: compactCandidates.slice(1),
             leaningsOptions,
+            leaningsSources,
             context: { ...shortlistContext, djName: reviewDjName, hostLeaningsOptions, guestLeaningsOptions },
           }),
           schema: agenticLeaningsReviewSchema(reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions, shortlistPreliminaryId),
@@ -543,7 +554,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             proposedReplacementId: String(review.selectedId), rejectionReason: 'unknown-candidate',
             leaningsBasis: review.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : review.leaningsBasis,
             baselineId: shortlistPreliminaryId, reviewedSelectedId: review.selectedId,
-            candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions,
+            candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions, leaningsSources,
           };
           queue.log('shortlist', 'Musical Leanings review rejected (unknown candidate) — using the initial Shortlist pick');
         } else if (replacement) {
@@ -557,11 +568,18 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             flowCloseness: compactCandidatesById.get(String(replacement.id))?.flowCloseness,
           });
           if (validation.valid) {
-            const leaningsSource = shortlistLeaningsSource(editorialLeanings, validation.basis);
+            const owner = eligibleLeanings.find(({ phrase }) => phrase === validation.basis);
+            const leaningsSource = owner?.source ?? null;
             object = {
               ...object,
               id: replacement.id,
-              reason: agenticLeaningsSelectionReason({ replacement, djName: reviewDjName, basis: validation.basis, musicalReason: review.musicalReason }),
+              reason: agenticLeaningsSelectionReason({
+                replacement,
+                djName: reviewDjName,
+                leaningsOwnerName: owner?.ownerName ?? (owner?.source === 'guest' ? 'The guest' : reviewDjName),
+                basis: validation.basis,
+                musicalReason: review.musicalReason,
+              }),
               transition: review.transition,
             };
             song = replacement;
@@ -569,7 +587,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
               outcome: 'replaced', replacementId: String(replacement.id), track: agenticTrackRef(replacement),
               leaningsBasis: validation.basis, leaningsSource,
               baselineId: shortlistPreliminaryId, reviewedSelectedId: review.selectedId,
-              candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions,
+              candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions, leaningsSources,
             };
           } else {
             shortlistPickResolution.leaningsReview = {
@@ -577,7 +595,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
               rejectionReason: validation.reason, track: agenticTrackRef(replacement),
               leaningsBasis: review.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : review.leaningsBasis,
               baselineId: shortlistPreliminaryId, reviewedSelectedId: review.selectedId,
-              candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions,
+              candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions, leaningsSources,
             };
             queue.log('shortlist', `Musical Leanings review rejected (${validation.reason}) — using the initial Shortlist pick`);
           }
@@ -586,7 +604,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             outcome: 'kept', replacementId: null, baselineId: shortlistPreliminaryId,
             reviewedSelectedId: review.selectedId,
             leaningsBasis: review.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : review.leaningsBasis,
-            candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions,
+            candidateIds: reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions, leaningsSources,
           };
         }
       } catch (error) {
@@ -607,18 +625,28 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     agentPickResolution.preliminary = agenticTrackRef(song);
     agentPickResolution.leaningsReview = { outcome: 'not-run', replacementId: null };
     if (editorialLeanings.promptValue && extras.seen.size > 1) {
-      const leaningsOptions = agenticLeaningsPhrases(editorialLeanings);
-      const reviewCandidates = selectAgenticReviewCandidates(song, [...extras.seen.values()], leaningsOptions);
       const reviewDjName = session.onAirPersona()?.name ?? null;
+      const allLeaningsSources = agenticLeaningsSources(editorialLeanings, reviewDjName);
+      const eligibleLeanings = eligibleAgenticLeanings(song, [...extras.seen.values()], allLeaningsSources);
+      const leaningsSources = eligibleLeanings;
+      const leaningsOptions = eligibleLeanings.map(({ phrase }) => phrase);
+      const reviewCandidates = selectAgenticReviewCandidates(song, [...extras.seen.values()], leaningsOptions);
       if (reviewCandidates.length >= 2 && leaningsOptions.length > 0) try {
         const compactCandidates = reviewCandidates.map((candidate) => compactAgenticReviewCandidate(candidate, leaningsOptions, song));
         const compactCandidatesById = new Map(compactCandidates.map((candidate) => [String(candidate.id), candidate]));
+        const common = {
+          baselineId: preliminaryId,
+          candidateIds: reviewCandidates.map((candidate) => String(candidate.id)),
+          leaningsOptions,
+          leaningsSources,
+        };
         const review: any = await djObject({
           system: agenticLeaningsReviewSystem(),
           prompt: agenticLeaningsReviewPrompt({
             baseline: compactCandidates[0],
             challengers: compactCandidates.slice(1),
             leaningsOptions,
+            leaningsSources,
             context: { ...shortlistContext, djName: reviewDjName },
           }),
           schema: agenticLeaningsReviewSchema(reviewCandidates.map((candidate) => String(candidate.id)), leaningsOptions, preliminaryId),
@@ -639,10 +667,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             proposedReplacementId: String(review.selectedId),
             rejectionReason: 'unknown-candidate',
             leaningsBasis: review.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : review.leaningsBasis,
-            baselineId: preliminaryId,
             reviewedSelectedId: review.selectedId,
-            candidateIds: reviewCandidates.map((candidate) => String(candidate.id)),
-            leaningsOptions,
+            ...common,
           };
           queue.log('picker', 'Agentic Leanings review rejected (unknown-candidate) — using preliminary pick');
         } else if (replacement) {
@@ -657,16 +683,18 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
             flowCloseness: compactCandidatesById.get(String(replacement.id))?.flowCloseness,
           });
           if (validation.valid) {
-            const rawSelectionReason = usableSelectionReason(
+            const owner = eligibleLeanings.find(({ phrase }) => phrase === validation.basis);
+            const selectionReason = verifiedAgenticReason(
               agenticSelectionReason(replacement, agenticLeaningsSelectionReason({
                 replacement,
                 djName: reviewDjName,
+                leaningsOwnerName: owner?.ownerName ?? (owner?.source === 'guest' ? 'The guest' : reviewDjName),
                 basis: validation.basis,
                 musicalReason: review.musicalReason,
               })),
+              true,
               replacement,
             );
-            const selectionReason = shortlistReasonForLeanings(rawSelectionReason, true, replacement);
             object = {
               ...object,
               id: replacement.id,
@@ -679,10 +707,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
               replacementId: String(replacement.id),
               track: agenticTrackRef(replacement),
               leaningsBasis: validation.basis,
-              baselineId: preliminaryId,
+              leaningsSource: owner?.source,
               reviewedSelectedId: review.selectedId,
-              candidateIds: reviewCandidates.map((candidate) => String(candidate.id)),
-              leaningsOptions,
+              ...common,
             };
           } else {
             agentPickResolution.leaningsReview = {
@@ -692,10 +719,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
               rejectionReason: validation.reason,
               track: agenticTrackRef(replacement),
               leaningsBasis: review.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : review.leaningsBasis,
-              baselineId: preliminaryId,
               reviewedSelectedId: review.selectedId,
-              candidateIds: reviewCandidates.map((candidate) => String(candidate.id)),
-              leaningsOptions,
+              ...common,
             };
             queue.log('picker', `Agentic Leanings review rejected (${validation.reason}) — using preliminary pick`);
           }
@@ -703,11 +728,9 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
           agentPickResolution.leaningsReview = {
             outcome: 'kept',
             replacementId: null,
-            baselineId: preliminaryId,
             reviewedSelectedId: review.selectedId,
             leaningsBasis: review.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : review.leaningsBasis,
-            candidateIds: reviewCandidates.map((candidate) => String(candidate.id)),
-            leaningsOptions,
+            ...common,
           };
         }
       } catch (error) {
@@ -754,7 +777,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
   // Read once: the album guard below steps around the same neighbours, and two
   // reads of a live queue across two awaits could disagree.
   const neighbourRoots = queue.neighbourArtistRoots(varietyWindow);
-  const guarded = await runArtistGuard<any>({
+  const guarded: Awaited<ReturnType<typeof runArtistGuard<any>>> = episodeSource ? { kind: 'kept' } : await runArtistGuard<any>({
     song, object, pickAnchor,
     seen: extras.seen,
     // Every queue read stays here; the policy module is handed values only.
@@ -803,6 +826,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
         proposedReplacementId: agentPickResolution.leaningsReview?.proposedReplacementId ?? null,
         rejectionReason: agentPickResolution.leaningsReview?.rejectionReason ?? null,
         leaningsBasis: agentPickResolution.leaningsReview?.leaningsBasis ?? null,
+        leaningsSource: agentPickResolution.leaningsReview?.leaningsSource ?? null,
         finalId: null,
         reviewOutcome: agentPickResolution.leaningsReview?.outcome ?? 'not-run',
         guardOutcome: agentPickResolution.guardOutcome,
@@ -896,7 +920,6 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // Agentic Leanings are a controller-verified final-selection cue, not a
     // model-reported diagnostic. A natural DJ-taste reference may survive only
     // when the review replacement is still the final track after both guards.
-    const rawSelectionReason = usableSelectionReason(agenticSelectionReason(song, object.reason), song);
     const replacementId = agentPickResolution.leaningsReview?.replacementId ?? null;
     const leaningsReplacementSurvivedGuards = resolveAgenticLeaningsUsage({
       hasLeanings: !!editorialLeanings.promptValue,
@@ -907,7 +930,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       // survived the guards. The definitive badge still waits for enqueue.
       queued: true,
     });
-    object.reason = shortlistReasonForLeanings(rawSelectionReason, leaningsReplacementSurvivedGuards, song);
+    object.reason = verifiedAgenticReason(agenticSelectionReason(song, object.reason), leaningsReplacementSurvivedGuards, song);
     agentPickResolution.final = agenticTrackRef(song);
     agentPickResolution.reason = object.reason ?? null;
   }
@@ -1007,6 +1030,8 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       usedMusicalLeanings: shortlistPickResolution.usedMusicalLeanings,
       leaningsBasis: shortlistPickResolution.leaningsReview?.leaningsBasis ?? null,
       leaningsSource: shortlistPickResolution.leaningsReview?.leaningsSource ?? null,
+      leaningsSources: shortlistPickResolution.leaningsReview?.leaningsSources ?? [],
+      leaningsOptions: shortlistPickResolution.leaningsReview?.leaningsOptions ?? [],
       reviewOutcome: shortlistPickResolution.leaningsReview?.outcome ?? 'not-run',
       guardOutcome: shortlistPickResolution.guardOutcome,
       queued: shortlistPickResolution.queued,
@@ -1034,7 +1059,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
     // airs or enters the session, and Debug should not retain preference copy
     // beside a false verified flag.
     if (!agentPickResolution.usedMusicalLeanings) {
-      object.reason = shortlistReasonForLeanings(object.reason, false, song);
+      object.reason = verifiedAgenticReason(agenticSelectionReason(song, object.reason), false, song);
       agentPickResolution.reason = object.reason;
     }
     logEvent('pick.leaningsReview', {
@@ -1046,6 +1071,7 @@ async function pickViaAgent(queue, ctx, { wantLink, audioWaypoint = null, pickAn
       proposedReplacementId: agentPickResolution.leaningsReview?.proposedReplacementId ?? null,
       rejectionReason: agentPickResolution.leaningsReview?.rejectionReason ?? null,
       leaningsBasis: agentPickResolution.leaningsReview?.leaningsBasis ?? null,
+      leaningsSource: agentPickResolution.leaningsReview?.leaningsSource ?? null,
       finalId: String(song.id),
       reviewOutcome: agentPickResolution.leaningsReview?.outcome ?? 'not-run',
       guardOutcome: agentPickResolution.guardOutcome,
@@ -1706,9 +1732,12 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
   // speech facts belong to the scheduled boundary. Unknown legacy/malformed
   // boundaries fail silent for every temporal field rather than leaking the
   // look-ahead clock into either half of the handoff.
-  const promptContext = isBoundaryHandoff
-    ? boundarySpeechContext(ctx, pending.boundaryAt)
-    : ctx;
+  const speechContext = isBoundaryHandoff ? boundarySpeechContext(ctx, pending.boundaryAt) : ctx;
+  const incomingEditorial = showPreparation.read({ context: ctx }).editorial;
+  const promptContext = incomingEditorial
+    ? { ...speechContext, episodeEditorial: incomingEditorial }
+    : speechContext;
+  const outgoingEditorial = pending.episodeEditorial || '';
 
   await withTrace({ kind: 'handoff', from: personaOut.name, to: personaIn.name }, async () => {
     // A boundary handoff is generated while the outgoing session is deliberately
@@ -1728,7 +1757,7 @@ export async function runPersonaHandoff(queue: any, ctx: any, deps: HandoffDeps 
       try {
         signoffText = await generateSignoff({
           personaOut, personaIn, showOut, showIn,
-          context: promptContext, recap: outgoingRecap, recentOpeners: outgoingOpeners,
+          context: { ...promptContext, episodeEditorial: outgoingEditorial }, recap: outgoingRecap, recentOpeners: outgoingOpeners,
         });
       } catch (err: any) {
         queue.log('error', `Handoff sign-off failed: ${err.message}`);

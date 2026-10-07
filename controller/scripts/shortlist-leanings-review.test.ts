@@ -14,11 +14,13 @@ const picker = agentSource.slice(pickStart, pickEnd);
 assert.ok(pickStart >= 0 && pickEnd > pickStart);
 const baselineAt = picker.indexOf('shortlistPickResolution.preliminary =');
 const reviewAt = picker.indexOf("kind: 'djShortlistLeaningsReview'");
-const guardsAt = picker.indexOf('const guarded = await runArtistGuard');
+const guardsAt = picker.indexOf('await runArtistGuard');
 const enqueueAt = picker.indexOf('const queued = await enqueuePick');
 const settleAt = picker.indexOf('shortlistPickResolution.usedMusicalLeanings = resolveAgenticLeaningsUsage');
 assert.ok(baselineAt >= 0 && baselineAt < reviewAt, 'Shortlist establishes a Leanings-blind baseline before review');
-assert.ok(reviewAt < guardsAt, 'the reviewed choice must still pass the artist and album guards');
+assert.ok(reviewAt < guardsAt, 'the reviewed choice reaches the artist guard before enqueue');
+assert.match(picker, /episodeSource \? \{ kind: 'kept' \} : await runArtistGuard/,
+  'episode-source tracks skip artist repeat rescue while other paths retain the guard');
 assert.ok(enqueueAt < settleAt, 'Shortlist provenance settles only after enqueue');
 assert.match(picker, /telemetry: \{ shortlistResolution: shortlistPickResolution \}/,
   'initial, review and corrective calls share the controller resolution object');

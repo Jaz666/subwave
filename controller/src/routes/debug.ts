@@ -1,7 +1,7 @@
 // Admin-gated GET /debug — everything-at-a-glance for the debug UI.
 import express from 'express';
 import { readPlaybackFailures } from '../observability/playback-failures.js';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { config } from '../config.js';
 import * as dj from '../llm/dj.js';
@@ -44,6 +44,8 @@ import { pickerAgent } from '../broadcast/dj-agent/agents.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick } from '../music/dj-pick.js';
 import { icecastDebugSnapshot, type IcecastSource, type IcecastStats } from './debug-icecast.js';
+import { createSessionArchiveReader } from '../util/session-archives.js';
+import { sessionArchivePageQuery } from '../schemas/session-archives.js';
 
 export const router = express.Router();
 
@@ -63,7 +65,7 @@ function discoveryBenchDisabled(res: express.Response): boolean {
 }
 
 async function discoveryBench() {
-  const { scope } = await livePickerScope(queue);
+  const { scope } = await livePickerScope(queue, { context: await getFullContext() });
   const { tools } = buildPickerTools(scope);
   return { scope, tools };
 }
@@ -114,7 +116,7 @@ router.post('/debug/discovery/tool/:tool', requireAdmin, async (req, res) => {
 router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
   if (discoveryBenchDisabled(res)) return;
   try {
-    const { scope, activeShow, playlistTracks } = await livePickerScope(queue);
+    const { scope, activeShow, playlistTracks } = await livePickerScope(queue, { context: await getFullContext() });
     const current = queue.current?.track ?? null;
     const agentStarted = performance.now();
     const agent = await pickerAgent.run({ messages: session.windowMessages(), scope });
@@ -421,27 +423,14 @@ async function buildDebugSnapshot(req: express.Request): Promise<any> {
 }
 
 // Archived sessions in state/sessions/, newest first; the live one is in /debug.
+const readSessionArchives = createSessionArchiveReader(config.session.dir);
 router.get('/sessions', requireAdmin, async (req, res) => {
+  const page = sessionArchivePageQuery.safeParse(req.query);
+  if (!page.success) return res.status(400).json({ error: 'invalid session pagination' });
   try {
-    let names: string[] = [];
-    try {
-      names = (await readdir(config.session.dir)).filter((n: string) => n.endsWith('.json'));
-    } catch { names = []; }
-    const entries: any[] = await Promise.all(names.map(async (name: string) => {
-      try {
-        const s = JSON.parse(await readFile(`${config.session.dir}/${name}`, 'utf8'));
-        return {
-          id: s.id, kind: s.kind, key: s.key,
-          startedAt: s.startedAt, endedAt: s.endedAt,
-          show: s.show?.name || null,
-          persona: s.persona?.name || null,
-          turns: Array.isArray(s.messages) ? s.messages.length : 0,
-        };
-      } catch { return null; }
-    }));
-    res.json({
-      sessions: entries.filter(Boolean).sort((a: any, b: any) => (b.startedAt || '').localeCompare(a.startedAt || '')),
-    });
+    const sessions = await readSessionArchives();
+    const { limit, offset } = page.data;
+    res.json({ sessions: sessions.slice(offset, limit === undefined ? undefined : offset + limit) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

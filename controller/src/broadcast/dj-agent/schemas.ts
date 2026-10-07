@@ -12,6 +12,7 @@ import { modelTolerant } from '../../llm/sdk.js';
 import { autoVoiceAllowed } from '../voice-policy.js';
 import { SEED_NOT_A_PICK_CLAUSE } from '../../util/pick-seed.js';
 import { instruction } from '../../llm/dj.js';
+import { agenticReasonMentionsLeanings, type AgenticLeaningsOption } from './leanings-review.js';
 
 // Plain .nullable() fields, deliberately — GLM's malformed spellings of
 // "nothing" (the string "null", an omitted key, a double-JSON-encoded object)
@@ -96,6 +97,7 @@ export type AgenticLeaningsReviewContext = {
   // Agentic callers omit these fields, leaving its locked prompt unchanged.
   hostLeaningsOptions?: string[];
   guestLeaningsOptions?: string[];
+  leaningsSources?: AgenticLeaningsOption[];
 };
 
 // The full effect vocabulary and suitability rules already live in the system
@@ -137,11 +139,13 @@ export function agenticLeaningsReviewPrompt({
   baseline,
   challengers,
   leaningsOptions,
+  leaningsSources = [],
   context = {},
 }: {
   baseline: Record<string, unknown>;
   challengers: Array<Record<string, unknown>>;
   leaningsOptions: string[];
+  leaningsSources?: AgenticLeaningsOption[];
   context?: AgenticLeaningsReviewContext;
 }): string {
   return JSON.stringify({
@@ -149,7 +153,9 @@ export function agenticLeaningsReviewPrompt({
     baseline,
     challengers,
     leaningsOptions,
+    leaningsSources,
   }, null, 2)
+    + '\n\nleaningsSources identifies the owner of each preference. Host preferences are primary; guest preferences are secondary. Only leaningsOptions are eligible: the controller excludes guest evidence whenever a viable host-supported choice exists.'
     + '\n\nUse this decision order: (1) scan every challenger for flowCloseness="close" plus a non-empty leaningsMatches; if present, choose the strongest such challenger and copy its matching phrase into leaningsBasis. (2) Otherwise consider a flowCloseness="possible" match only when its musical continuation is genuinely comparable. (3) Only when neither exists, keep the baseline and write leaningsBasis=NO_LEANINGS_INFLUENCE. Do not independently rerank tracks that have no supported match.'
     + '\n\nflowCloseness is a Leanings-blind controller comparison using energy, mood, tempo, key and genre. A candidate’s leaningsMatches contains exact active-profile phrases supported by its genre/mood tags. The controller independently verifies both fields, so copy ids and phrases exactly.'
     + '\n\nAlways write musicalReason for selectedId as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Write like a music lover: describe an audible texture, melody, rhythm, production choice or songwriting quality. Do not repeat the DJ, artist or title. Do not mention preferences, Leanings, baseline, challenger, preliminary choice, current flow, queue position, BPM, key, energy levels or mood tags. Avoid stock evaluator wording such as "complements the current flow". The controller adds the verified names and exact evidence. Set transition for selectedId.'
@@ -265,6 +271,25 @@ export function pickerMusicLeanings(
   return hostLine + guestLine;
 }
 
+export function resolvedMusicalLeaningsFlag(context: EditorialLeaningsContext | null, modelFlag: unknown, tieBreak: unknown): boolean {
+  return !!context?.promptValue && modelFlag === true && typeof tieBreak === 'string' && tieBreak.trim().length > 2;
+}
+
+export function agentReasonForLeanings(reason: unknown, usedMusicalLeanings: boolean, tieBreak: unknown = null): string {
+  const compact = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
+  if (usedMusicalLeanings) {
+    const evidence = typeof tieBreak === 'string' ? tieBreak.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
+    return evidence ? `Leanings: ${evidence}` : 'flow fit after the current track';
+  }
+  if (!agenticReasonMentionsLeanings(compact)) return compact;
+  return 'flow fit after the current track';
+}
+
+export function musicalLeaningsPickReminder(context: EditorialLeaningsContext): string {
+  if (!context.promptValue) return '';
+  return ' Musical Leanings are supplied for this pick as a soft tie-breaker. Always return both diagnostic fields: default "usedMusicalLeanings" to false and "leaningsTieBreak" to null. Set true and give a short leaningsTieBreak trait ONLY when two or more eligible tracks already fit the flow and Leanings genuinely settle that close choice—not merely because this track is compatible. The trait must describe the chosen discovered track AND directly match the supplied Musical Leanings; generic flow facts such as energy, pace, key, or club feel are not Leanings evidence. Otherwise use false and null. They may affect the choice, never listener-facing output, and never override show rules, rotation, safety, or musical flow.';
+}
+
 export function resolveEditorialLeanings(showAt: Date | null = null): EditorialLeaningsContext {
   const persona = session.onAirPersona();
   // #1678 owns this shared policy. Keeping guest sampling there makes the
@@ -292,8 +317,10 @@ export function pickSystem(
   playlistResolved = true,
   nativeShortlist = false,
   editorialLeanings: EditorialLeaningsContext | null = null,
+  personaOverride: any = null,
+  candidateSelection = false,
 ) {
-  const persona = session.onAirPersona();
+  const persona = personaOverride ?? session.onAirPersona();
   // In DJ mode, lean on the live session history: a working DJ runs threads
   // and calls back to a track or a remark from earlier in the shift. This pairs
   // with the cross-hour memory in broadcast/session.ts, which now keeps that
@@ -321,7 +348,7 @@ export function pickSystem(
   // discovery instruction. Keep it in the agentic picker too, so changing
   // picker implementation does not change the station's musical identity.
   const leanings = editorialLeanings ?? resolveEditorialLeanings(showAt);
-  const editorialLeaningsPrompt = nativeShortlist ? '' : pickerMusicLeanings(leanings.host, leanings.guest);
+  const editorialLeaningsPrompt = nativeShortlist || candidateSelection ? '' : pickerMusicLeanings(leanings.host, leanings.guest);
   // Playlist anchor: a separate steer from genre/era. Strict → every pick MUST
   // come from the pinned playlist (the tools already enforce this in code, but
   // saying so keeps the agent reaching for showPlaylistTracks instead of
@@ -349,10 +376,12 @@ export function pickSystem(
   // over-promising is the more expensive way to be wrong.
   const rounds = dj.promptDiscoverySteps();
   const findingCandidates = nativeShortlist
-      ? 'The controller has already built a Track Shortlist under the station guards. Choose exactly one supplied id; do not request or invent candidates.'
-    : rounds > 1
-      ? instruction('picker', 'finding-candidates-multi', { rounds })
-      : instruction('picker', 'finding-candidates');
+    ? 'The controller has already built a Track Shortlist under the station guards. Choose exactly one supplied id; do not request or invent candidates.'
+    : candidateSelection
+      ? 'The controller has supplied a preliminary choice and eligible alternatives. Review only those tracks; do not request or invent candidates.'
+      : rounds > 1
+        ? instruction('picker', 'finding-candidates-multi', { rounds })
+        : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}
 
 ${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}

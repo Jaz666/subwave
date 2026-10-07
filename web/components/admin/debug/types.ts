@@ -113,6 +113,7 @@ interface LlmCall {
       reviewedSelectedId?: string | null;
       candidateIds?: string[];
       leaningsOptions?: string[];
+      leaningsSources?: Array<{ phrase: string; source: 'host' | 'guest'; ownerName: string | null }>;
       proposedReplacementId?: string | null;
       rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
     };
@@ -123,6 +124,12 @@ interface LlmCall {
     usedMusicalLeanings?: boolean;
     rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | 'queue-collision' | 'pool-rescue' | null;
   };
+  response?: string;
+  /** What the model said INSTEAD of the expected structured output on a failed call.
+   * From the controller's failureDiagnostics(); absent on success (see `response`). */
+  responseText?: string;
+  steps?: number;
+  /** Controller-verified Agentic diagnostic, settled after guards + enqueue. */
   agentPickResolution?: {
     preliminary?: { id?: string; title?: string | null; artist?: string | null };
     leaningsReview?: {
@@ -134,6 +141,8 @@ interface LlmCall {
       reviewedSelectedId?: string | null;
       candidateIds?: string[];
       leaningsOptions?: string[];
+      leaningsSources?: Array<{ phrase: string; source: 'host' | 'guest'; ownerName: string | null }>;
+      leaningsSource?: 'host' | 'guest';
       proposedReplacementId?: string | null;
       rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
     };
@@ -143,11 +152,6 @@ interface LlmCall {
     queued?: boolean;
     usedMusicalLeanings?: boolean;
   };
-  response?: string;
-  /** What the model said INSTEAD of the expected structured output on a failed call.
-   * From the controller's failureDiagnostics(); absent on success (see `response`). */
-  responseText?: string;
-  steps?: number;
 }
 
 export interface DebugLlm {

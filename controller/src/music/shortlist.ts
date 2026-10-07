@@ -70,6 +70,7 @@ export function planShortlistSources(
   const energy = context.energies?.find((value): value is 'low' | 'medium' | 'high' => ENERGY_VALUES.has(value)) ?? null;
   const genre = firstString(context.genres) ?? firstString(context.scope.genreLock);
 
+  if (context.scope.episodeSource) add('context', 'episodeArtistTracks');
   if (context.scope.audioWaypoint?.length) add('context', 'tracksTowardJourney');
   if (context.scope.playlistTracks?.length) add('context', 'showPlaylistTracks');
   if (mood) add('context', 'tracksByMood', { mood, energy });
