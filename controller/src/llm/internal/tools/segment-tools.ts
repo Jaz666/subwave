@@ -5,35 +5,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { buildStationServices } from './station-services.js';
-
-// Stations seeded before a built-in tool changes retain their original tool.mjs.
-// Repair known no-evidence shapes here, so an upgrade never has to replace an
-// operator-owned skill file just to recover the Direct runtime's stand-down
-// contract.
-export function normalizeSegmentToolResult(cap: { kind?: unknown } | null | undefined, data: any, input: { query?: unknown } = {}): any {
-  if (cap?.kind === 'web-search' && typeof input.query === 'string' && input.query.trim()) return data;
-  if (String(cap?.kind || '') === 'news'
-      && data?.available === undefined
-      && Array.isArray(data?.headlines)
-      && data.headlines.length === 0) {
-    return { ...data, available: false };
-  }
-  // Older now-playing-dig and web-search tools accepted any search snippets as
-  // usable even when none named the current artist. At 09:55 BST this produced
-  // an empty answer plus unrelated results for “Missed the Boat”, then invited
-  // the Direct model to air “I'm not aware of any facts”. A title alone is not
-  // a safe relevance test — generic titles match unrelated pages — but the
-  // exact artist must appear in at least one retained snippet.
-  if ((String(cap?.kind || '') === 'now-playing-dig' || String(cap?.kind || '') === 'web-search')
-      && data?.available === undefined
-      && !String(data?.answer || '').trim()
-      && typeof data?.artist === 'string'
-      && Array.isArray(data?.sources)
-      && !data.sources.some((source: unknown) => String(source).toLocaleLowerCase().includes(data.artist.toLocaleLowerCase()))) {
-    return { ...data, available: false };
-  }
-  return data;
-}
+import { repairLegacySkillData } from '../../../skills/abstain-policy.js';
 
 // `onResult(kind, data)` reports what each tool handed back, including the
 // `{ error }` degradation. The forced segment path needs it because the AGENT
@@ -77,7 +49,7 @@ export function buildSegmentTools(
         // degraded shape too — a tool that threw is exactly the case the
         // grounding check exists for. A throwing observer must not turn a
         // usable tool result into a tool error.
-        data = normalizeSegmentToolResult(cap, data, input || {});
+        data = repairLegacySkillData(cap, data, input || {});
         try { onResult?.(cap.kind, data); } catch { /* observation is never fatal */ }
         return data;
       },
@@ -99,7 +71,7 @@ export async function fetchSegmentData(cap: any, ctx: any, state: any): Promise<
   const services = buildStationServices();
   try {
     const p = Promise.resolve(cap.toolFn(ctx, state, services, cap.config, {}));
-    return normalizeSegmentToolResult(cap, await withTimeout(p, 8000));
+    return repairLegacySkillData(cap, await withTimeout(p, 8000));
   } catch (err: any) {
     return { error: err?.message || String(err) };
   }

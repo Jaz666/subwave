@@ -1,6 +1,6 @@
 // Return persona lines; queue.announceExchange owns TTS and playback.
-// settings.llm.pickerAgent selects model tool calls or code-side data gathering.
-// Pool mode fetches and checks grounding before its single structured model call.
+// settings.llm.segmentRuntime selects model tool calls or code-side data gathering.
+// Direct mode fetches and checks grounding before its single structured model call.
 
 import { djAgent, djObject } from '../llm/sdk.js';
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';

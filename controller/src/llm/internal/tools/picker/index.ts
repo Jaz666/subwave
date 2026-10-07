@@ -2,7 +2,7 @@
 // Tools return slim tracks and accumulate full tracks in seen for final id resolution.
 // Pass constraints as PickerScope (see scope.ts). Filter recent tracks, not artists:
 // artist filtering depleted niche similarity pools. Artist variety is enforced at
-// pickViaAgent's final choice (#1124).
+// pickViaSelectionRoute's final choice (#1124).
 
 import type { ToolSet } from 'ai';
 import { buildPickerContext, pickerScope, type PickerScope } from './scope.js';

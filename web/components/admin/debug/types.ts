@@ -140,7 +140,7 @@ interface LlmCall {
       candidateIds?: string[];
       leaningsOptions?: string[];
       leaningsSources?: Array<{ phrase: string; source: 'host' | 'guest'; ownerName: string | null }>;
-      leaningsSource?: 'host' | 'guest';
+      leaningsSource?: 'host' | 'guest' | null;
       proposedReplacementId?: string | null;
       rejectionReason?: 'unknown-candidate' | 'missing-leanings-basis' | 'basis-not-in-leanings' | 'basis-not-supported-by-candidate' | 'not-flow-tie' | 'weak-musical-reason' | null;
     };

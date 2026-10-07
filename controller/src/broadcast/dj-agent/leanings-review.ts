@@ -7,6 +7,11 @@
 
 import { bpmCompat, keyCompat } from '../../music/mix.js';
 
+// What modelTolerant writes when a review or Shortlist pick returns an
+// unusable musicalReason. It must never reach the Booth as if it were prose,
+// so every reason builder treats it as absent.
+export const MUSICAL_REASON_UNAVAILABLE = '[musical reason unavailable]';
+
 export type AgenticTrackRef = {
   id: string;
   title: string | null;
@@ -23,7 +28,11 @@ export type AgenticLeaningsReviewRejection =
   | 'not-flow-tie'
   | 'weak-musical-reason';
 
-export type AgenticPickResolution = {
+// One settled record of a pick for Debug and the event log, shared by both
+// selection routes so a field added for one cannot silently go missing from
+// the other. It rides the LLM call records by reference and is filled in only
+// after the guards and enqueue.
+export type PickResolution = {
   preliminary?: AgenticTrackRef;
   leaningsReview?: {
     outcome: AgenticLeaningsReviewOutcome;
@@ -35,7 +44,7 @@ export type AgenticPickResolution = {
     candidateIds?: string[];
     leaningsOptions?: string[];
     leaningsSources?: AgenticLeaningsOption[];
-    leaningsSource?: 'host' | 'guest';
+    leaningsSource?: 'host' | 'guest' | null;
     proposedReplacementId?: string | null;
     rejectionReason?: AgenticLeaningsReviewRejection | null;
   };
@@ -44,7 +53,10 @@ export type AgenticPickResolution = {
   reason?: string | null;
   queued?: boolean;
   usedMusicalLeanings?: boolean;
+  rejectionReason?: AgenticLeaningsReviewRejection | 'queue-collision' | 'pool-rescue' | null;
 };
+
+export type AgenticPickResolution = PickResolution;
 
 export function agenticTrackRef(song: { id: unknown; title?: unknown; artist?: unknown }): AgenticTrackRef {
   return {
@@ -446,7 +458,7 @@ export function agenticLeaningsSelectionReason({
     .replace(/\s{2,}/g, ' ')
     .replace(/[,:;\s]+$/, '')
     .trim();
-  if (!detail || detail === '[musical reason unavailable]' || detail.length < 16) {
+  if (!detail || detail === MUSICAL_REASON_UNAVAILABLE || detail.length < 16) {
     detail = 'its musical character brings a natural change of colour to the sequence';
   }
   if (detail) detail = detail[0].toLocaleLowerCase('en-GB') + detail.slice(1);

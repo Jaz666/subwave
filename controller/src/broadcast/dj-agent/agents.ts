@@ -9,7 +9,7 @@ import { agenticDiscoverySchema, pickSystem, requestSchema, requestSystem } from
 import { agentDeadline } from './breaker.js';
 import type { Persona } from '../queue/types.js';
 
-// What pickViaAgent hands the picker each run. `scope` is the whole constraint
+// What pickViaSelectionRoute hands the picker each run. `scope` is the whole constraint
 // set as ONE value, passed through to the discovery tools untouched. Do not
 // unpack it into per-field keys: a lock named in one list and forgotten in
 // another silently stops being enforced on the agent path while the pool

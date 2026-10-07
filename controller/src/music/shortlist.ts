@@ -1,11 +1,10 @@
-// Native shortlist execution.
-//
-// This first seam deliberately accepts an explicit source plan. It lets us
-// replay recorded vanilla picker calls through the exact existing source
-// registry before we introduce a native source-planning policy of our own.
-// Nothing here calls an LLM, chooses a track, or writes queue state.
+// Track Shortlist discovery: a deterministic source plan run against the same
+// picker-tool registry the Agentic route uses, so every candidate passes the
+// identical show, recency and policy guards. Nothing here calls an LLM, chooses
+// a track, or writes queue state.
 
 import { buildPickerTools, type PickerScope } from '../llm/tools.js';
+import { SHORTLIST_PASSES_BOUNDS } from '../schemas/settings.js';
 
 export type ShortlistSourceCall = {
   source: string;
@@ -26,6 +25,12 @@ export type ShortlistPlanningContext = {
   // Mirrors the existing ε-greedy deep-cut nudge. Callers decide the random
   // draw once, outside this deterministic planner.
   explore?: boolean;
+  // Where the family and source rotation starts. The live pick passes a fresh
+  // draw so a station does not run the same plan every time one anchor (or a
+  // cold start with no anchor) comes round; absent, the rotation is keyed on
+  // the anchor id, which keeps a given input reproducible for tests and the
+  // Discovery Bench.
+  rotationSeed?: number;
 };
 
 const ENERGY_VALUES = new Set(['low', 'medium', 'high']);
@@ -54,7 +59,13 @@ export function planShortlistSources(
   context: ShortlistPlanningContext,
   availableSources: ReadonlySet<string>,
 ): ShortlistSourceCall[] {
-  const budget = Math.max(1, Math.min(5, Math.floor(context.discoveryPasses) || 1));
+  const budget = Math.max(
+    SHORTLIST_PASSES_BOUNDS.min,
+    Math.min(SHORTLIST_PASSES_BOUNDS.max, Math.floor(context.discoveryPasses) || SHORTLIST_PASSES_BOUNDS.min),
+  );
+  const offset = Number.isFinite(context.rotationSeed)
+    ? Math.abs(Math.floor(context.rotationSeed as number)) >>> 0
+    : stableOffset(context.currentTrackId);
   const lanes: Record<ShortlistSourceCall['family'], ShortlistSourceCall[]> = {
     context: [], continuity: [], diversity: [],
   };
@@ -89,7 +100,7 @@ export function planShortlistSources(
     ? []
     : rotated(
       ['deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs'],
-      stableOffset(context.currentTrackId),
+      offset,
     )
   ).filter((source) => availableSources.has(source));
   if (context.explore && diversity.includes('deepCuts')) {
@@ -100,7 +111,6 @@ export function planShortlistSources(
 
   const calls: ShortlistSourceCall[] = [];
   const ownsDirection = !!(context.scope.episodeSource || context.scope.playlistLock || context.scope.audioWaypoint?.length);
-  const offset = stableOffset(context.currentTrackId);
   const families: ShortlistSourceCall['family'][] = ['context', 'continuity', 'diversity'];
   const familyOrder = ownsDirection ? families : rotated(families.filter(family => lanes[family].length), offset);
   if (!ownsDirection) {
@@ -143,7 +153,11 @@ export type ShortlistSourceRun = ShortlistSourceCall & {
   error?: string;
 };
 
-export type ShortlistCandidate = any & { shortlistSources: string[] };
+// The picker registry's own slim projection of a track: the same object a
+// tool returned to the Agentic model and a corrective re-pick reads from `seen`.
+export type PickerCandidate = Record<string, any> & { id: string };
+// A Shortlist candidate is that projection plus the source that surfaced it.
+export type ShortlistCandidate = PickerCandidate & { shortlistSources: string[] };
 
 export type ShortlistResult = {
   candidates: ShortlistCandidate[];
@@ -151,83 +165,6 @@ export type ShortlistResult = {
   uniqueCandidates: number;
   elapsedMs: number;
 };
-
-type ReplayToolCall = {
-  name?: string;
-  args: unknown;
-  result: unknown;
-  round?: number;
-};
-
-function resultTrackIds(result: unknown): string[] {
-  const tracks = Array.isArray(result)
-    ? result
-    : result && typeof result === 'object' && Array.isArray((result as { tracks?: unknown }).tracks)
-      ? (result as { tracks: unknown[] }).tracks
-      : [];
-  return tracks
-    .map((track: any) => track?.id)
-    .filter((id): id is string => typeof id === 'string');
-}
-
-// The durable replay record deliberately contains only data required to rerun
-// discovery: resolved guards, source calls, and stable candidate ids. It keeps
-// prompts, model responses, credentials, and unrelated session history out of
-// the fixture stream.
-export function replayFixtureTrace({
-  currentTrack,
-  show,
-  scope,
-  toolCalls,
-}: {
-  currentTrack: any;
-  show: any;
-  scope: PickerScope;
-  toolCalls: ReplayToolCall[];
-}) {
-  return {
-    version: 1,
-    currentTrack: currentTrack ? {
-      id: currentTrack.id ?? null,
-      title: currentTrack.title ?? null,
-      artist: currentTrack.artist ?? null,
-      album: currentTrack.album ?? null,
-    } : null,
-    show: show ? {
-      id: show.id ?? null,
-      name: show.name ?? null,
-      genres: show.genres ?? [],
-      moods: show.moods ?? [],
-      energies: show.energies ?? [],
-      eras: show.eras ?? [],
-      filtersStrict: !!show.filtersStrict,
-      playlistStrict: !!show.playlistStrict,
-    } : null,
-    scope: {
-      recentIds: [...scope.recentIds].sort(),
-      recentKeys: [...scope.recentKeys].sort(),
-      hardRecentIds: [...scope.hardRecentIds].sort(),
-      hardRecentKeys: [...scope.hardRecentKeys].sort(),
-      genreLock: scope.genreLock,
-      eraLock: scope.eraLock,
-      moodLock: scope.moodLock,
-      energyLock: scope.energyLock,
-      vocalLock: scope.vocalLock,
-      playlistLock: scope.playlistLock ? [...scope.playlistLock].sort() : null,
-      playlistTrackIds: scope.playlistTracks?.map((track: any) => track?.id).filter(Boolean) ?? null,
-      excludedIds: scope.excludedIds ? [...scope.excludedIds].sort() : null,
-      audioWaypoint: scope.audioWaypoint,
-    },
-    sourceCalls: toolCalls
-      .filter((call) => typeof call.name === 'string')
-      .map((call) => ({
-        source: call.name,
-        args: call.args && typeof call.args === 'object' ? call.args : {},
-        round: call.round ?? 1,
-        candidateIds: resultTrackIds(call.result),
-      })),
-  };
-}
 
 type PickerTool = {
   inputSchema?: { safeParse?: (value: unknown) => { success: boolean; data?: unknown; error?: { issues?: Array<{ message?: string }> } } };
@@ -254,7 +191,10 @@ function resultError(result: unknown): string | undefined {
 // Execute an explicit source plan against a freshly-built picker registry.
 // `seen` is the existing registry's authoritative, already-filtered and
 // de-duplicated candidate accumulator; the size delta is therefore the exact
-// number this source contributed to a vanilla agent run.
+// number this source contributed to a vanilla agent run. It is also why a
+// candidate carries exactly ONE source: a later source that returns an
+// already-seen track has it filtered out before this code can see it, so
+// provenance is "the source that first surfaced it", never a full list.
 export async function executeShortlistPlan(
   tools: PickerToolSet,
   seen: Map<string, any>,
@@ -323,14 +263,6 @@ export async function executeShortlistPlan(
     uniqueCandidates: candidates.length,
     elapsedMs: Math.round(performance.now() - started),
   };
-}
-
-// Replay entry point. Keeping it separate from executeShortlistPlan makes
-// recorded vanilla runs transport-neutral and lets planner changes be measured
-// without duplicating source execution semantics.
-export async function replayShortlistPlan(scope: PickerScope, plan: ShortlistSourceCall[]): Promise<ShortlistResult> {
-  const { tools, seen } = buildPickerTools(scope);
-  return executeShortlistPlan(tools as PickerToolSet, seen, plan);
 }
 
 // Native entry point: build the same source-owned registry the agent used,

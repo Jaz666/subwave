@@ -1,4 +1,10 @@
 // Context measurements retain counts, sums and peaks without retaining prompts.
+//
+// Ollama's num_ctx is ONE setting for every call the station makes, so a
+// recommendation sized from the picker alone could talk an operator into a
+// window that silently truncates a segment or request prompt. Each route's
+// figure therefore covers its own picker calls plus every call kind that is not
+// the OTHER route's picker: whatever runs beside that route must fit too.
 
 const SHORTLIST_PICK_KINDS = new Set(['djShortlistPick', 'djShortlistRepick', 'djShortlistLeaningsReview']);
 const AGENTIC_PICK_KINDS = new Set(['djAgentPick']);
@@ -43,21 +49,35 @@ type ContextGroup = {
 function contextWindowRecommendation(
   groups: Iterable<ContextGroup>,
   kinds: ReadonlySet<string>,
+  otherRouteKinds: ReadonlySet<string>,
   waitingMessage: string,
   successMessage: string,
 ) {
+  // `samples` counts this route's own picker calls: without them there is no
+  // evidence for the route at all. The peak also takes every shared kind.
   let samples = 0;
+  let pickerPeakInputTokens = 0;
   let peakInputTokens = 0;
+  let peakKind: string | null = null;
   for (const group of groups) {
-    if (!kinds.has(group.kind)) continue;
-    samples += group.samples;
-    peakInputTokens = Math.max(peakInputTokens, group.peakInputTokens ?? 0);
+    if (otherRouteKinds.has(group.kind)) continue;
+    const own = kinds.has(group.kind);
+    if (own) {
+      samples += group.samples;
+      pickerPeakInputTokens = Math.max(pickerPeakInputTokens, group.peakInputTokens ?? 0);
+    }
+    if ((group.peakInputTokens ?? 0) > peakInputTokens) {
+      peakInputTokens = group.peakInputTokens ?? 0;
+      peakKind = group.kind;
+    }
   }
 
   if (!samples) {
     return {
       samples: 0,
       peakInputTokens: null,
+      pickerPeakInputTokens: null,
+      peakKind: null,
       suggestedTokens: null,
       message: waitingMessage,
     };
@@ -68,6 +88,8 @@ function contextWindowRecommendation(
   return {
     samples,
     peakInputTokens,
+    pickerPeakInputTokens,
+    peakKind,
     suggestedTokens: Math.max(
       CONTEXT_WINDOW_MIN,
       Math.ceil(requiredTokens / CONTEXT_WINDOW_STEP) * CONTEXT_WINDOW_STEP,
@@ -127,8 +149,9 @@ export class ContextMeasurements {
     return contextWindowRecommendation(
       this.groups.values(),
       SHORTLIST_PICK_KINDS,
+      AGENTIC_PICK_KINDS,
       'Waiting for successful shortlist picker calls that report input-token usage.',
-      'Based on the largest successful final-picker prompt since this controller started.',
+      'Based on the largest successful prompt since this controller started, across the shortlist picker and every other LLM function that shares this context window.',
     );
   }
 
@@ -136,8 +159,9 @@ export class ContextMeasurements {
     return contextWindowRecommendation(
       this.groups.values(),
       AGENTIC_PICK_KINDS,
+      SHORTLIST_PICK_KINDS,
       'Waiting for successful Agentic Picker calls with per-step input-token usage.',
-      'Based on the largest individual model step from a successful Agentic Picker run since this controller started.',
+      'Based on the largest successful prompt since this controller started, across Agentic Picker steps and every other LLM function that shares this context window.',
     );
   }
 }

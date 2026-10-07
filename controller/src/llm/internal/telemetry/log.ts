@@ -5,7 +5,7 @@ import { statSync, renameSync } from 'node:fs';
 import { STATE_DIR } from '../../../config.js';
 import { logEvent, cap } from '../../../observability/events.js';
 import { addDailyUsage } from './budget.js';
-import { ContextMeasurements } from '../../context-window.js';
+import { ContextMeasurements } from './context-window.js';
 
 const MAX_CALLS = 120;
 export const recentCalls: any[] = [];

@@ -5,9 +5,13 @@ import { Label } from '../../ui/label';
 import { Input } from '../../ui/input';
 import { Card, Seg } from '../ui';
 import { SectionHeader, SaveBar, type SectionProps } from './shared';
-import { PICKER_MIN_TRACK_LENGTH_BOUNDS } from '@/lib/schemas.generated';
+import { PICKER_MIN_TRACK_LENGTH_BOUNDS, SHORTLIST_PASSES_BOUNDS, settingsAgentRoutes } from '@/lib/schemas.generated';
 
 export function MusicSelectionSection({ data, form, setForm, busy, saveSettings, fieldErrors }: SectionProps) {
+  // The deadline governs every agent run, not only Agentic Tools picks: a
+  // Shortlist station with agent-assisted requests or agentic segments still
+  // needs to see and set it.
+  const agentRoutes = settingsAgentRoutes(form.llm);
   const save = async () => {
     await saveSettings({
       llm: {
@@ -21,9 +25,13 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
         discoverySteps: form.llm.discoverySteps,
         agentTimeoutMs: form.llm.agentTimeoutMs,
       },
+      // Its own top-level key, not part of `llm`: the album cooldown and the
+      // length floor are read by the pool picker too, so they are picking
+      // config rather than LLM config. Blank or junk input saves as 0 (off),
+      // as it did before this card moved here.
       picker: {
-        albumHours: Number(form.picker.albumHours),
-        minTrackLengthSeconds: Number(form.picker.minTrackLengthSeconds),
+        albumHours: Math.max(0, parseFloat(form.picker.albumHours) || 0),
+        minTrackLengthSeconds: Math.max(0, parseInt(form.picker.minTrackLengthSeconds, 10) || 0),
       },
     });
   };
@@ -57,20 +65,12 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
           </p>
         </div>
         {form.llm.trackSelection === 'agentic' ? (
-          <>
-            <div className="field mt-5">
-              <Label>Agent deadline (seconds)</Label>
-              <Input type="number" min={5} max={300} step={5} value={Math.round(form.llm.agentTimeoutMs / 1000)}
-                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, agentTimeoutMs: Number(e.target.value) * 1000 } }))} className="max-w-[200px]" />
-              <p className="mt-2 text-[13px] leading-[1.55] text-muted">How long an Agentic pick may run before the station uses its safe fallback. 5–300 seconds.</p>
-            </div>
-            <div className="field mt-5">
-              <Label>Discovery rounds per pick</Label>
-              <Input type="number" min={0} max={5} step={1} value={form.llm.discoverySteps}
-                onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, discoverySteps: Number(e.target.value) } }))} className="max-w-[200px]" />
-              <p className="mt-2 text-[13px] leading-[1.55] text-muted">How many library searches the agent may make before choosing. Zero follows the provider default.</p>
-            </div>
-          </>
+          <div className="field mt-5">
+            <Label>Discovery rounds per pick</Label>
+            <Input type="number" min={0} max={5} step={1} value={form.llm.discoverySteps}
+              onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, discoverySteps: Number(e.target.value) } }))} className="max-w-[200px]" />
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">How many library searches the agent may make before choosing. Zero follows the provider default.</p>
+          </div>
         ) : (
           <div className="field mt-5">
             <Label>Track Shortlist passes</Label>
@@ -87,7 +87,7 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
               strict playlists and sonic journeys stay focused on their own direction. <strong>Three
               passes is a good starting point.</strong> Use fewer for quicker, narrower shortlists or
               more for extra variety. This does not add LLM calls&mdash;the model still chooses once
-              from the finished shortlist. 1&ndash;5.
+              from the finished shortlist. {SHORTLIST_PASSES_BOUNDS.min}&ndash;{SHORTLIST_PASSES_BOUNDS.max}.
             </p>
           </div>
         )}
@@ -132,9 +132,30 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
         </div>
       </Card>
 
+      {agentRoutes.any && (
+        <Card title="Agent deadline" sub={`${Math.round(form.llm.agentTimeoutMs / 1000)}s`}>
+          <div className="field">
+            <Label>Agent deadline (seconds)</Label>
+            <Input type="number" min={5} max={300} step={5} value={Math.round(form.llm.agentTimeoutMs / 1000)}
+              onChange={e => setForm(f => ({ ...f, llm: { ...f.llm, agentTimeoutMs: Number(e.target.value) * 1000 } }))} className="max-w-[200px]" />
+            <p className="mt-2 text-[13px] leading-[1.55] text-muted">
+              How long one agent run may take before the station uses its safe fallback. It covers
+              every route set to use an agent:{' '}
+              {[
+                agentRoutes.picks && 'Agentic Tools picks',
+                agentRoutes.requests && 'agent-assisted request matching',
+                agentRoutes.segments && 'agentic Segments & Skills',
+              ].filter(Boolean).join(', ')}.
+              Slow reasoning models often need 20&ndash;40s; lower it for snappier fallbacks on a
+              fast model. 5&ndash;300 seconds.
+            </p>
+          </div>
+        </Card>
+      )}
+
       <Card title="Selection policy" sub="shared rules">
         <div className="field mt-4"><Label>No-repeat window (tracks)</Label><Input type="number" min={0} max={1000} step={10} value={form.llm.noRepeatWindow} onChange={(e: ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, llm: { ...f.llm, noRepeatWindow: e.target.value } }))} placeholder="250" className="max-w-[200px]" /><div className="field-hint">The last N <strong>distinct</strong> tracks can never be re-picked: a hard guard on both selection paths, on top of the time-based window. It scales down on a small library so it never blocks everything. <strong>0 = off</strong>. Listener requests stay exempt. 0&ndash;1000.</div></div>
-        <div className="field mt-4"><Label>Artist spacing (slots)</Label><Input type="number" min={0} max={25} step={1} value={form.llm.artistVarietyWindow} onChange={(e: ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, llm: { ...f.llm, artistVarietyWindow: e.target.value } }))} placeholder="5" className="max-w-[200px]" /><div className="field-hint">How many slots the DJ waits before returning to an artist. A pick inside the window is re-taken from the run&apos;s other eligible tracks, and quietly stands only if nothing fresher turned up. <strong>0 = off</strong>, though an artist can never follow itself. 0&ndash;25.</div></div>
+        <div className="field mt-4"><Label>Artist spacing (slots)</Label><Input type="number" min={0} max={25} step={1} value={form.llm.artistVarietyWindow} onChange={(e: ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, llm: { ...f.llm, artistVarietyWindow: e.target.value } }))} placeholder="5" className="max-w-[200px]" /><div className="field-hint">Best-effort artist spacing across queued, on-air and recent tracks. Both routes try another eligible candidate; the pool fallback prefers artists outside this window, including when its model call fails. Spacing can relax when eligible choices are limited or a re-pick fails, and the picker logs why. <strong>0 = off</strong>. Both routes still try to avoid repeating the pick-anchor artist. Listener requests are exempt. Emergency playlist playback has no live spacing check. 0&ndash;25.</div></div>
         <div className="field mt-4"><Label>Album cooldown (hours)</Label><Input type="number" min={0} max={72} step={0.5} value={form.picker.albumHours} onChange={(e: ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, picker: { ...f.picker, albumHours: e.target.value } }))} placeholder="0" className="max-w-[200px]" /><div className="field-hint">How long a <strong>record</strong> rests after one of its tracks airs. It yields rather than starving selection, and compilations and various-artists albums are exempt. <strong>0 = off</strong> (the default). 0&ndash;72.</div></div>
         <div className="field mt-4"><Label>Minimum track length (seconds)</Label><Input type="number" min={0} max={PICKER_MIN_TRACK_LENGTH_BOUNDS.max} step={1} value={form.picker.minTrackLengthSeconds} onChange={(e: ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, picker: { ...f.picker, minTrackLengthSeconds: e.target.value } }))} placeholder="0" className="max-w-[200px]" /><div className="field-hint">The shortest a track can be to get picked, on both selection paths and the offline fallback playlist. A show can set its own; listener requests are always exempt. <strong>0 = off</strong> (the default). A non-zero value must be at least {data?.values?.minTrackSeconds ?? 30}s.</div></div>
       </Card>

@@ -11,7 +11,7 @@ process.env.STATE_DIR = mkdtempSync(join(tmpdir(), 'subwave-musical-leanings-'))
 
 const settings = await import('../src/settings.js');
 await settings.load();
-const { PICK_SCHEMA, agentReasonForLeanings, agenticDiscoverySchema, agenticLeaningsReviewPrompt, agenticLeaningsReviewSchema, musicalLeaningsPickReminder, NO_AGENTIC_LEANINGS_INFLUENCE, pickSystem, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
+const { PICK_SCHEMA, agentReasonForLeanings, agenticDiscoverySchema, agenticLeaningsReviewPrompt, agenticLeaningsReviewSchema, musicalLeaningsPickReminder, NO_AGENTIC_LEANINGS_INFLUENCE, pickSystem, pickerMusicLeanings, resolveEditorialLeanings, resolvedMusicalLeaningsFlag } = await import('../src/broadcast/dj-agent/schemas.js');
 const { agenticLeaningsPhrases, agenticLeaningsSources } = await import('../src/broadcast/dj-agent/leanings-review.js');
 
 const persona = { ...settings.get().personas[0], musicLean: 'Favour patient dub, deep electronic cuts, and melodic post-punk.' };
@@ -25,12 +25,13 @@ assert.equal(
 const prompt = pickSystem();
 assert.match(prompt, /Musical Leanings — Favour patient dub, deep electronic cuts, and melodic post-punk\./);
 assert.match(prompt, /soft editorial preference when choosing between eligible tracks/i);
+assert.match(prompt, /may guide an otherwise sound selection/i);
 assert.match(prompt, /never overrides show rules, rotation, safety, or the musical flow/i);
 const discovery = agenticDiscoverySchema();
 assert.equal(discovery.safeParse({ id: 'candidate', reason: 'fresh texture', transition: null }).success, true);
 assert.equal(discovery.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: false, leaningsTieBreak: null, transition: null }).success, true, 'diagnostic extras are tolerated but not required by Agentic discovery');
 assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, leaningsTieBreak: 'warm vocal and melody', transition: null }).success, true);
-assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, false);
+assert.equal(PICK_SCHEMA.safeParse({ id: 'candidate', reason: 'fresh texture', usedMusicalLeanings: true, transition: null }).success, false, 'the tie-break evidence must be explicit');
 assert.match(PICK_SCHEMA.shape.reason.description ?? '', /Default to actual flow/i);
 assert.match(PICK_SCHEMA.shape.usedMusicalLeanings.description ?? '', /Default false/i);
 const editorialLeanings = resolveEditorialLeanings();
@@ -43,7 +44,14 @@ assert.deepEqual(agenticLeaningsSources(editorialLeanings, 'Mara Vex'), [
 ]);
 assert.equal(resolvedMusicalLeaningsFlag(editorialLeanings, true, 'patient dub'), true);
 assert.equal(resolvedMusicalLeaningsFlag(editorialLeanings, true, null), false);
-assert.match(musicalLeaningsPickReminder(editorialLeanings), /soft tie-breaker/);
+const reminder = musicalLeaningsPickReminder(editorialLeanings);
+assert.match(reminder, /soft tie-breaker/i);
+assert.match(reminder, /two or more eligible tracks/i);
+assert.match(reminder, /leaningsTieBreak/i);
+assert.match(reminder, /directly match the supplied Musical Leanings/i);
+assert.match(reminder, /club feel are not Leanings evidence/i);
+assert.equal(resolvedMusicalLeaningsFlag(editorialLeanings, false, 'warm vocal and melody'), false);
+assert.equal(resolvedMusicalLeaningsFlag(editorialLeanings, undefined, 'warm vocal and melody'), false);
 assert.equal(agentReasonForLeanings('Mara Vex chose a track reflecting her taste for patient dub.', false), 'flow fit after the current track');
 assert.equal(agentReasonForLeanings('a warm vocal and melodic hook', true, 'warm vocal and melodic hook'), 'Leanings: warm vocal and melodic hook');
 const reviewSchema = agenticLeaningsReviewSchema(['alternative', 'candidate'], leaningsOptions, 'candidate');
@@ -92,5 +100,9 @@ assert.equal(
   null,
   'guest influence stays occasional and secondary',
 );
+const guestPrompt = pickerMusicLeanings('Favour patient dub.', guest);
+assert.match(guestPrompt, /Musical Leanings — Favour patient dub\./);
+assert.match(guestPrompt, /Guest Musical Leanings — Carrie Marshall: Favour great guitar work and unexpected rock records\./);
+assert.match(guestPrompt, /weaker than the host/i);
 
 console.log('musical leanings: Agentic replacement review verified');

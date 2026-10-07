@@ -1,35 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildShortlist, executeShortlistPlan, planShortlistSources, replayFixtureTrace } from '../src/music/shortlist.js';
+import { buildShortlist, executeShortlistPlan, planShortlistSources } from '../src/music/shortlist.js';
 import { agenticSelectionReason } from '../src/broadcast/dj-agent/leanings-review.js';
 import { pickerScope } from '../src/llm/tools.js';
 import { buildPickerContext } from '../src/llm/internal/tools/picker/scope.js';
 import { cacheSourcePool } from '../src/llm/internal/tools/picker/source-pool-cache.js';
-import { shortlistCandidateForPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings } from '../src/music/dj-pick.js';
-
-test('makes a redacted, replayable trace with source arguments and candidate ids', () => {
-  const trace = replayFixtureTrace({
-    currentTrack: { id: 'current', title: 'Current Song', artist: 'Current Artist', album: 'Album' },
-    show: { id: 'show-1', name: 'Night Shift', genres: ['ambient'], filtersStrict: true },
-    scope: pickerScope({
-      recentIds: new Set(['recent-b', 'recent-a']),
-      playlistTracks: [{ id: 'playlist-track', title: 'Never logged' }],
-      audioWaypoint: [0.1, 0.2],
-    }),
-    toolCalls: [{
-      name: 'tracksLikeThis', args: { songId: 'current' }, round: 2,
-      result: { tracks: [{ id: 'candidate-a', title: 'Only the id survives' }] },
-    }],
-  });
-
-  assert.deepEqual(trace.sourceCalls, [{
-    source: 'tracksLikeThis', args: { songId: 'current' }, round: 2, candidateIds: ['candidate-a'],
-  }]);
-  assert.deepEqual(trace.scope.recentIds, ['recent-a', 'recent-b']);
-  assert.deepEqual(trace.scope.playlistTrackIds, ['playlist-track']);
-  assert.equal(trace.currentTrack?.title, 'Current Song');
-  assert.equal('title' in trace.sourceCalls[0], false);
-});
+import { shortlistCandidateForPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings } from '../src/broadcast/dj-agent/shortlist-pick.js';
 
 test('balances context, continuity and diversity lanes without inventing intent-driven sources', () => {
   const journey = planShortlistSources({
@@ -107,6 +83,24 @@ test('narrow shortlists rotate all discovery families and continuity sources acr
   assert.deepEqual(families, new Set(['context', 'continuity', 'diversity']));
   assert.deepEqual(continuity, new Set(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs']));
   assert.deepEqual(narrowContinuity, new Set(['tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs']));
+});
+
+test('a per-pick rotation seed varies the plan for one anchor and stays reproducible', () => {
+  const available = new Set([
+    'tracksByMood', 'songsByGenre', 'tracksThatSoundLikeThis', 'tracksLikeThis', 'similarSongs',
+    'deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs',
+  ]);
+  for (const currentTrackId of ['same-anchor', null]) {
+    const context = { scope: pickerScope(), currentTrackId, moods: ['calm'], genres: ['ambient'], discoveryPasses: 1 };
+    const firstSources = new Set(
+      Array.from({ length: 24 }, (_, seed) => planShortlistSources({ ...context, rotationSeed: seed }, available)[0].source),
+    );
+    assert.ok(firstSources.size > 1, `seeds must vary the plan for ${currentTrackId ?? 'a cold start'}`);
+    assert.deepEqual(
+      planShortlistSources({ ...context, rotationSeed: 7 }, available),
+      planShortlistSources({ ...context, rotationSeed: 7 }, available),
+    );
+  }
 });
 
 test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
@@ -223,11 +217,22 @@ test('Shortlist reasons use verified identity and reject model backstage languag
   );
 });
 
+test('an unusable model reason never reaches the Booth as its placeholder', () => {
+  const song = { artist: 'Massive Attack', title: 'Teardrop' };
+  // A reason past the schema's 180-char ceiling is replaced by the fallback
+  // placeholder during parsing; it must read as "no reason", not as prose.
+  const parsed = shortlistPickSchema(['teardrop']).parse({ id: 'teardrop', musicalReason: 'x'.repeat(200), transition: null });
+  const reason = shortlistClauseSelectionReason(song, parsed.musicalReason);
+  assert.doesNotMatch(reason, /unavailable|\[/);
+  assert.equal(reason, '“Teardrop” by Massive Attack — its musical character fits the surrounding sequence naturally.');
+  assert.doesNotMatch(shortlistReasonForLeanings(reason.replace('its musical', '[musical reason unavailable] its'), true, song), /unavailable/);
+});
+
 test('Shortlist keeps natural claimed Leanings reasons and removes unclaimed ones', () => {
   const song = { artist: 'Prince', title: '1999' };
   assert.equal(
     shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', false, song),
-    'Prince — 1999: selected for its fit with the current musical flow.',
+    '“1999” by Prince — its musical character fits the surrounding sequence naturally.',
   );
   assert.equal(
     shortlistReasonForLeanings('Prince - 1999 fits because the DJ has a broad alternative taste.', true, song),
@@ -235,7 +240,7 @@ test('Shortlist keeps natural claimed Leanings reasons and removes unclaimed one
   );
   assert.equal(
     shortlistReasonForLeanings('Blood Orange - Charcoal Baby matches Carol’s preference for atmospheric tracks.', false, { artist: 'Blood Orange', title: 'Charcoal Baby' }),
-    'Blood Orange — Charcoal Baby: selected for its fit with the current musical flow.',
+    '“Charcoal Baby” by Blood Orange — its musical character fits the surrounding sequence naturally.',
   );
 });
 

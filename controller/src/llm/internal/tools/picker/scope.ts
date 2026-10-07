@@ -1,4 +1,4 @@
-// Pass one PickerScope from pickViaAgent to every tool. Field-by-field handoffs
+// Pass one PickerScope from pickViaSelectionRoute to every tool. Field-by-field handoffs
 // previously dropped vocalLock silently (#1300 FR 13); add constraints to this shape.
 
 import * as library from '../../../../music/library.js';
@@ -145,7 +145,7 @@ export function buildPickerContext(scope: PickerScope): PickerContext {
     // with no match contributes nothing and emptyResult steers the model
     // elsewhere. Dead-air is guarded at wider scopes: a run with zero candidates
     // falls to the pool picker, and behind that the auto.m3u coast. The locks are
-    // pre-resolved and coverage-gated in pickViaAgent, so an un-analysed library
+    // pre-resolved and coverage-gated in pickViaSelectionRoute, so an un-analysed library
     // can't starve every tool for the whole show.
     //
     // Ordering is a freshness-biased shuffle (music/airing.ts): a KNN tool's
@@ -202,7 +202,7 @@ export function buildPickerContext(scope: PickerScope): PickerContext {
     rule: `Never invent a song id — only ids returned by a tool are valid picks. ${SEED_NOT_A_PICK_CLAUSE}`,
   });
 
-  // Index counts snapshotted once at tool-build time; pickViaAgent awaits
+  // Index counts snapshotted once at tool-build time; pickViaSelectionRoute awaits
   // library.load() first, so stats() never returns its empty-sentinel zeros
   // here. Tools whose backing index is empty are conditionally registered —
   // offering a dead tool spends the discovery call on a guaranteed-empty result.

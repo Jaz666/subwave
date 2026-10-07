@@ -12,6 +12,7 @@ import {
   BACKUP_KEEP_BOUNDS,
   BACKUP_KEEP_DEFAULT,
   BEDS_THRESHOLD_SEC_BOUNDS,
+  SHORTLIST_PASSES_DEFAULT,
   CROSSFADE_DURATION_BOUNDS,
   DUCK_DEPTH_BOUNDS,
   HANDOVER_OFFSET_BOUNDS,
@@ -96,11 +97,9 @@ export const DEFAULTS = {
     // whole connection, so /now-playing publishes it as stream.bufferSeconds and
     // players subtract it to line titles up with the audio in someone's ears (#1114).
     bufferSeconds: 22,
-    // ICY (out-of-band) titles on the Ogg mounts. ON by default: most clients
-    // read the in-band Ogg comment once at connect and then freeze on that title
-    // (#1052). foobar2000 is the exception — it parses chained-Ogg tags correctly
-    // and the ICY channel breaks its Ogg-FLAC metadata — hence a toggle.
-    // MP3/AAC always use ICY and are unaffected.
+    // Legacy ICY (out-of-band) title compatibility for the Opus mount. FLAC
+    // always uses native chained Ogg tags; MP3/AAC behavior is unaffected. Keep
+    // this key and its default for stored-settings and Opus compatibility.
     oggIcyMetadata: true,
     // Idle pause (broadcast/stream-idle.ts): after idleAfterMinutes with zero
     // listeners the mounts keep serving silence but the music chain stops being
@@ -465,7 +464,7 @@ export const DEFAULTS = {
     trackSelection: 'agentic',
     // Native discovery passes. Kept separate from agent discoverySteps: the
     // latter is a tool-loop budget, while this is a controller source budget.
-    shortlistPasses: 3,
+    shortlistPasses: SHORTLIST_PASSES_DEFAULT,
     // Guest preferences are a deliberately optional, secondary programming
     // input. Keep them off for upgrades and new stations: a blank host field
     // must mean no Musical Leanings are sent to either picker.

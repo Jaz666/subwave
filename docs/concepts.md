@@ -64,7 +64,7 @@ Three things it does **not** do:
 
 ## Track Shortlist vs Agentic Tools
 
-**Where:** Admin → Settings → DJ Behaviour → **Track selection**.
+**Where:** Admin → Settings → Music selection → **How the DJ finds its next track**.
 
 Both end at the same place — one track id, handed to the queue — and both run
 inside a session and get logged. They apply the same show constraints, recency
