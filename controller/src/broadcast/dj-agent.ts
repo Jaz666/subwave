@@ -63,6 +63,24 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 // Track event — a track started; pick the next one and maybe air a link.
 // ---------------------------------------------------------------------------
 
+// A corrective re-pick's answer held to its own candidate set: an exact id
+// passes, a near-miss is repaired as the first answer's would be (#939), and
+// anything else is no salvage at all. Both re-picks type the id as a plain
+// string, so this is where membership is decided.
+export function resolveRepickId<T extends { id?: unknown }>(
+  outcome: T | null | undefined,
+  seen: Map<string, unknown>,
+  agent: 'repick' | 'request-repick',
+): (T & { id: string }) | null {
+  if (!outcome) return null;
+  if (typeof outcome.id !== 'string') return null;
+  if (seen.has(outcome.id)) return outcome as T & { id: string };
+  const fixed = nearestId(outcome.id, seen.keys());
+  if (!fixed) return null;
+  logEvent('pick.repaired', { agent, from: outcome.id, to: fixed });
+  return { ...outcome, id: fixed };
+}
+
 // Stage-2 salvage for an agent run whose final id no tool surfaced (see the
 // cascade in pickViaSelectionRoute): one djObject call over the run's OWN accumulated
 // candidates (`seen`). The id is a plain string checked against that set
@@ -123,13 +141,8 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       kind: telemetryKind,
       ...(shortlistRepick && shortlistResolution ? { telemetry: { shortlistResolution } } : {}),
     });
-    if (!seen.has(outcome?.id)) {
-      const fixed = typeof outcome?.id === 'string' ? nearestId(outcome.id, seen.keys()) : null;
-      if (!fixed) return null;
-      logEvent('pick.repaired', { agent: 'repick', from: outcome.id, to: fixed });
-      outcome = { ...outcome, id: fixed };
-    }
-    if (!shortlistRepick) return outcome;
+    outcome = resolveRepickId(outcome, seen, 'repick');
+    if (!outcome || !shortlistRepick) return outcome;
 
     const track = seen.get(outcome.id);
     const selectionReason = shortlistClauseSelectionReason(track, outcome.musicalReason);
@@ -147,26 +160,28 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
 // one — the idInSessionWindow diagnostic on the pick.rejected event is what
 // turns that hunch into a number.
 //
-// One djObject call constrained to the run's own candidates (z.enum — a
-// decode-time grammar on local models, a Zod reject elsewhere) salvages the run
-// instead of discarding it to the caller's stateless matcher cascade, which
-// still runs when this misses too. Reuses requestSystem()/requestSchema()'s own
-// wording and the same autoVoiceAllowed() gate for `intro`, so a re-picked
-// request is consistent with a first-try one. Never throws.
+// One djObject call over the run's own candidates salvages the run instead of
+// discarding it to the caller's stateless matcher cascade, which still runs
+// when this misses too. The id is a plain string checked against `seen`
+// afterwards, with the same near-miss repair as the first answer — an enum
+// never reached the decoder on the forced-tool providers and only turned a 2–3
+// character slip into a lost salvage (#939). Reuses requestSystem()/
+// requestSchema()'s own wording and the same autoVoiceAllowed() gate for
+// `intro`, so a re-picked request is consistent with a first-try one. Returns
+// a result whose id is in `seen`, or null. Never throws.
 async function repickRequestFromSeen({ seen, badId, requester, text, persona }:
   { seen: Map<string, any>; badId: string | null; requester: string; text: string; persona?: Persona | null }) {
-  const ids = [...seen.keys()];
-  if (ids.length === 0) return null;
+  if (seen.size === 0) return null;
   const wantIntro = autoVoiceAllowed();
   const schema = modelTolerant(z.object({
-    id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
+    id: z.string().describe('the exact id of one candidate'),
     ack: z.string().describe('short on-air acknowledgement of the listener, in character — max 20 words; no "thank you for listening" or self-intros'),
     ...(wantIntro ? {
       intro: z.string().describe(`a natural DJ intro for the track in the DJ voice; weave in what the listener asked for without reading the request back verbatim. It airs over the track's opening seconds, so write it in the present tense — never "next" or "coming up". ${dj.lengthPhrase('intro', persona)}`),
     } : {}),
   }));
   try {
-    return await djObject({
+    const outcome: any = await djObject({
       system: requestSystem(persona),
       prompt: JSON.stringify({ candidates: [...seen.values()] }, null, 2)
         + `\n\n${isNamedRequester(requester) ? `Listener "${requester}" asked` : 'An unnamed listener asked'}: "${text}". The id you returned (${badId ?? 'none'}) matches none of the candidates above. Choose the best candidate id from the list for this request, and write "ack"${wantIntro ? ' and "intro"' : ''} to match.`,
@@ -174,6 +189,7 @@ async function repickRequestFromSeen({ seen, badId, requester, text, persona }:
       temperature: 0.3,
       kind: 'djAgentRequestRepick',
     });
+    return resolveRepickId(outcome, seen, 'request-repick');
   } catch {
     return null;
   }
