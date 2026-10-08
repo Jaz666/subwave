@@ -31,6 +31,11 @@ import identifyRequestedTrack from './tools/identify-requested-track.js';
 import songsByEra from './tools/songs-by-era.js';
 import sonicSimilarTracks from './tools/sonic-similar-tracks.js';
 
+import frequentAlbums from './tools/frequent-albums.js';
+import moodPlaylistTracks from './tools/mood-playlist-tracks.js';
+import similarArtistTracks from './tools/similar-artist-tracks.js';
+import moodWildcard from './tools/mood-wildcard.js';
+
 // Registration order — this is the order the model sees the tools in, so keep
 // it stable rather than alphabetising: it matches the historical object literal.
 export const PICKER_TOOLS: readonly PickerToolModule[] = [
@@ -56,6 +61,10 @@ export const PICKER_TOOLS: readonly PickerToolModule[] = [
   identifyRequestedTrack,
   songsByEra,
   sonicSimilarTracks,
+  frequentAlbums,
+  moodPlaylistTracks,
+  similarArtistTracks,
+  moodWildcard,
 ];
 
 export { pickerScope };

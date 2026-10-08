@@ -4,6 +4,7 @@ import type { ArtistEpisodeSource } from './episode-source.js';
 // sources, one LLM call to pick one. Fallback for the session DJ agent.
 
 import * as subsonic from './subsonic.js';
+import { clearPickerSourceCache } from '../llm/tools.js';
 import { shortlistOffers } from './shortlist-offers.js';
 import * as library from './library.js';
 import * as dj from '../llm/dj.js';
@@ -102,6 +103,7 @@ async function memo(key, ttl, fn) {
 export function clearPoolCache() {
   cacheGeneration++;
   cache.clear();
+  clearPickerSourceCache();
   offered.clear();
   shortlistOffers.clear();
 }

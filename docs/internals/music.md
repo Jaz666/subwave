@@ -112,6 +112,31 @@ Server sonic discovery is registered only when `PickerScope.sonicSimilarity`
 is true, resolved by the existing cached extension probe in `livePickerScope`.
 Both tools use the existing collector and source blocklist chokepoints.
 
+The remaining pool sources also use this registry: `frequentAlbums` (scrobble
+history), `moodPlaylistTracks` (curated names), `similarArtistTracks` (artist graph
+then top songs), and `moodWildcard` (three tracks from another covered mood).
+Mood playlists are unavailable whenever a show pins playlists, including a stale
+unresolved anchor (`hasPlaylistAnchor`). Wildcards enter only the autonomous plan
+without configured show moods; all resulting tracks still obey strict locks.
+Frequent albums and wildcards use the diversity lane; artist neighbours use
+continuity, and mood playlists use context. Family and source rotation remain
+independent so a one-pass station can eventually reach every eligible source.
+
+Recently-added sampling now shuffles twelve albums and three tracks per album,
+including later track positions. Frequent sampling uses the same wide pool and
+rotates offsets 0/12/24, retrying zero on an empty later page. Expensive server
+sources cache raw pools for 30 minutes (empty results for five); every invocation
+recollects under the current scope/seen set. Empty album/catalogue sources are
+hidden until their retry TTL expires. Unknown standard server sources remain
+available until probed; missing artist-graph data returns an explicit empty-result
+note. The cache is bounded to 128 entries and shares pool invalidation, including
+protection against old in-flight responses after a server change.
+
+Energy inside `tracksByMood` is a soft preference: eligible matches lead, then
+other tracks in that same mood fill remaining slots. Recency, artist caps,
+exclusions and duration limits still apply across both groups. An explicit strict
+show energy lock remains hard and cannot be relaxed by this preference.
+
 After the planned passes, fewer than four merged, artist-balanced candidates
 may trigger at most two unused top-up sources: `starredSongs`, then `randomSongs`.
 These calls use the same scope and never relax locks, exclusions or duration
@@ -134,8 +159,11 @@ temperature/unit/mood/daylight and festival name/description/mood from the
 prepared selection snapshot; it never copies persona Leanings or private
 location. Live and bench calls use the same helper. The compact candidate view
 includes `duration_sec` and the first discovery `source`; other controller
-fields stay private. Strict-filter relaxation, recently-added sampling and
-similarity-score presentation remain unchanged.
+fields stay private. Similarity evidence is a labelled cosine score carrying
+its actual `audio` or `text` index and reference. Cross-index seed rescue labels
+the index that answered, never the requested one. Query and journey scores name
+their own reference; neither cosine is BPM/key transition compatibility. Missing,
+non-finite or out-of-range scores are omitted, while zero remains evidence.
 Pinned by `scripts/shortlist-candidate-pool-parity.test.ts` and the runner tests.
 
 **Model-failure recovery** matches the pool's own move. When `djPick` fails,
@@ -150,7 +178,16 @@ reports `health.modelFailed` and `runTrackEvent` counts a breaker failure, never
 a `breakerSuccess`, so three in a row still open the breaker. The spoken link is
 still attempted, as the pool's is, because a model that cannot hold a structured
 pick can often still write free text. Pinned by
-`scripts/shortlist-model-fallback.test.ts`.
+`scripts/shortlist-model-fallback.test.ts`. A failed corrective Shortlist re-pick
+(or an unusable corrective ID) likewise takes the first track from that call's
+already-guarded subset, preserving fit order and artist/album exclusions. It
+marks the same breaker failure, carries a neutral reason and no transition, and
+prevents subsequent model-shaped corrections. Empty subsets retain the existing
+starvation/recovery policy. Agentic and request corrective calls keep their
+existing failure handling. Pinned by `scripts/shortlist-corrective-fallback.test.ts`.
+The additional discovery/energy/similarity guards are pinned by
+`scripts/shortlist-remaining-discovery.test.ts` and
+`scripts/picker-soft-energy-similarity.test.ts`.
 
 ## Prepared artist episodes
 

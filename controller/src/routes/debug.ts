@@ -128,6 +128,7 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
     const shortlist = await buildShortlist({
       scope,
       currentTrackId: current?.id ?? null,
+      currentArtist: current?.artist ?? null,
       discoveryPasses: settings.get().llm?.shortlistPasses ?? SHORTLIST_PASSES_DEFAULT,
       moods: activeShow?.moods,
       energies: activeShow?.energies,

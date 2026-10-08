@@ -94,10 +94,18 @@ export function resolveRepickId<T extends { id?: unknown }>(
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
-async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', selectionContext = {}, shortlistResolution = null }: { seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; selectionContext?: ShortlistSelectionContext; shortlistResolution?: ShortlistPickResolution | null }) {
+async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', selectionContext = {}, shortlistResolution = null, health }: { health?: { modelFailed: boolean }; seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; selectionContext?: ShortlistSelectionContext; shortlistResolution?: ShortlistPickResolution | null }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const shortlistRepick = telemetryKind === 'djShortlistRepick';
+  // The corrective call's eligible subset retains shortlist fit order. Never
+  // reopen discovery or return the rejected artist/album when the model fails.
+  const fallback = () => {
+    if (!shortlistRepick) return null;
+    if (health) health.modelFailed = true;
+    logEvent('pick.shortlistRepickFallback', { candidates: seen.size, id: ids[0] });
+    return controllerShortlistPick(seen.get(ids[0]));
+  };
   const schema = shortlistRepick
     ? shortlistPickSchema(ids)
     : modelTolerant(pickSchemaBase().omit({ usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
@@ -142,13 +150,14 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       ...(shortlistRepick && shortlistResolution ? { telemetry: { shortlistResolution } } : {}),
     });
     outcome = resolveRepickId(outcome, seen, 'repick');
-    if (!outcome || !shortlistRepick) return outcome;
+    if (!outcome) return fallback();
+    if (!shortlistRepick) return outcome;
 
     const track = seen.get(outcome.id);
     const selectionReason = shortlistClauseSelectionReason(track, outcome.musicalReason);
     return { ...outcome, selectionReason, reason: selectionReason };
   } catch {
-    return null;
+    return fallback();
   }
 }
 
@@ -344,6 +353,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     maxTrackSec,
     playlistLock,
     playlistTracks,
+    hasPlaylistAnchor: !!activeShow?.playlistIds?.length,
     excludedIds,
     listenerFavourites: favourites.length ? favourites : null,
   });
@@ -446,6 +456,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     const shortlist = await buildShortlist({
       scope,
       currentTrackId: pickAnchor?.id ?? null,
+      currentArtist: pickAnchor?.artist ?? null,
       discoveryPasses: settings.get().llm?.shortlistPasses ?? SHORTLIST_PASSES_DEFAULT,
       moods: activeShow?.moods,
       energies: activeShow?.energies,
@@ -560,6 +571,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
       selectionContext,
       shortlistResolution: shortlistPickResolution,
+      health,
     });
     if (repicked) {
       logEvent('pick.repicked', { agent: 'pick', from: object?.id ?? null, to: repicked.id, candidates: extras.seen.size });
@@ -702,6 +714,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
       selectionContext,
       shortlistResolution: shortlistPickResolution,
+      health,
     });
   };
   // Read once: the album guard below steps around the same neighbours, and two

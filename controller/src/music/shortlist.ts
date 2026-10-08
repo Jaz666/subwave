@@ -21,6 +21,7 @@ export type ShortlistPlanningContext = {
   scope: PickerScope;
   // The current track remains a discovery seed, never a shortlist candidate.
   currentTrackId: string | null;
+  currentArtist?: string | null;
   discoveryPasses: number;
   // Resolved from the show snapshot by the eventual controller call site. The
   // scope carries strict locks; these soft values are only source arguments.
@@ -102,6 +103,9 @@ export function planShortlistSources(
   for (const mood of moods) {
     for (const energy of energies.length ? energies : [null]) add('context', 'tracksByMood', { mood, energy });
   }
+  if (!context.scope.hasPlaylistAnchor && !context.scope.playlistTracks?.length && !context.scope.playlistLock) {
+    for (const mood of moods) add('context', 'moodPlaylistTracks', { mood });
+  }
   if (!moods.length) for (const energy of energies) add('context', 'tracksByEnergy', { energy });
   for (const genre of genres) add('context', 'songsByGenre', { genre });
   for (const era of context.eras ?? context.scope.eraLock ?? []) {
@@ -119,20 +123,23 @@ export function planShortlistSources(
     add('continuity', 'sonicSimilarTracks', { songId: context.currentTrackId });
   }
 
+  if (context.currentArtist) add('continuity', 'similarArtistTracks', { artist: context.currentArtist });
+
   // Strict playlists and sonic journeys own the direction, so they do not
   // spend a pass on an unfocused diversity source.
   const diversity = (context.scope.playlistLock || context.scope.audioWaypoint?.length
     ? []
     : rotated(
-      ['deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs'],
-      offset,
+      ['deepCuts', 'starredSongs', 'recentlyAdded', 'randomSongs', 'frequentAlbums',
+        ...(!strings(context.moods).length && !context.scope.moodLock?.length && moods.length && !ownsDirection ? ['moodWildcard'] : [])],
+      Math.floor(offset / 3),
     )
   ).filter((source) => availableSources.has(source));
   if (context.explore && diversity.includes('deepCuts')) {
     diversity.splice(diversity.indexOf('deepCuts'), 1);
     diversity.unshift('deepCuts');
   }
-  for (const source of diversity) add('diversity', source);
+  for (const source of diversity) add('diversity', source, source === 'moodWildcard' ? { excludeMoods: moods } : {});
 
   const calls: ShortlistSourceCall[] = [];
   const families: ShortlistSourceCall['family'][] = ['context', 'continuity', 'diversity'];
