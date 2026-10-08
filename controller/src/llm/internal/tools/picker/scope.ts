@@ -13,6 +13,9 @@ import { slim } from './slim.js';
 import { intersectEpisodeSource, type ArtistEpisodeSource } from '../../../../music/episode-source.js';
 
 export interface PickerScope {
+  // Resolved once through the cached OpenSubsonic extension probe. False on
+  // requests and unsupported servers, so no discovery pass hits a dead tool.
+  sonicSimilarity: boolean;
   episodeSource: ArtistEpisodeSource | null;
   recentIds: Set<string>;
   // lowercased "title|artist" — backfilled entries lack ids
@@ -71,6 +74,7 @@ export interface PickerScope {
 // Every field defaults to "no constraint". Spread over a partial so there is
 // exactly one place a new field's default lives.
 const NO_SCOPE: PickerScope = {
+  sonicSimilarity: false,
   episodeSource: null,
   recentIds: new Set(),
   recentKeys: new Set(),

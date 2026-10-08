@@ -15,6 +15,7 @@ export type ShortlistPick = z.infer<ReturnType<typeof shortlistPickSchema>> & { 
 export type ShortlistPickResolution = PickResolution;
 
 export type ShortlistSelectionContext = {
+  situation?: Record<string, unknown>;
   currentTrack?: {
     id?: string | null;
     title?: string | null;
@@ -142,22 +143,44 @@ export function shortlistPickSchema(ids: string[]) {
 
 // Keep the model's view limited to facts that can affect musical flow,
 // show/context fit, transition craft or rotation variety. Full candidates stay
-// in controller memory for guards, enqueue and provenance; source names remain
-// in Debug telemetry and the Booth hint rather than being repeated per track.
+// in controller memory for guards and enqueue. Duration and the first discovery
+// source also help the model judge the offered tracks; internal data stays out.
 export function shortlistCandidateForPick(candidate: PickerCandidate): Record<string, unknown> {
   const {
     id, title, artist, album, year, genre, moods, energy, instrumental,
-    bpm, key, pace, sections, unaired, play_count, last_played_days_ago,
+    bpm, key, pace, sections, unaired, duration_sec, play_count, last_played_days_ago,
     artist_play_count, artist_last_played_days_ago,
   } = candidate;
   return Object.fromEntries(Object.entries({
     id, title, artist, album, year, genre, moods, energy, instrumental,
-    bpm, key, pace, sections, unaired, play_count, last_played_days_ago,
+    bpm, key, pace, sections, unaired, duration_sec, play_count, last_played_days_ago,
     artist_play_count, artist_last_played_days_ago,
+    source: candidate.shortlistSources?.[0],
   }).filter(([, value]) => value !== undefined && value !== null));
 }
 
+// Whitelist factual context from the prepared, look-ahead snapshot. Never copy
+// the active show's persona into discovery or the Leanings-blind first choice.
+export function shortlistSituation(context: any): Pick<ShortlistSelectionContext, 'situation'> {
+  const situation: Record<string, unknown> = {};
+  const fields: Record<string, string[]> = {
+    time: ['period', 'mood', 'vibe'],
+    weather: ['condition', 'temp', 'tempUnit', 'mood', 'isDay'],
+    festival: ['name', 'description', 'mood'],
+  };
+  for (const [key, keys] of Object.entries(fields)) {
+    const value = context?.[key];
+    const selected = Object.fromEntries(keys.filter(field => value?.[field] != null).map(field => [field, value[field]]));
+    if (Object.keys(selected).length) situation[key] = selected;
+  }
+  if (context?.dominantMood) situation.dominantMood = context.dominantMood;
+  return Object.keys(situation).length ? { situation } : {};
+}
+
 export function shortlistPickPrompt(candidates: PickerCandidate[], context: ShortlistSelectionContext = {}): string {
+  const situationInstruction = context.situation
+    ? ' Use situation as a soft steer for the time, weather and festival mood; the active show and supplied candidates remain authoritative.'
+    : '';
   const transitionInstruction = Array.isArray(context.recentTransitions)
     ? ` Set transition for this moment using the TRANSITION EFFECTS guidance.${transitionChoiceNudge(context.recentTransitions)}`
     : '';
@@ -176,7 +199,7 @@ export function shortlistPickPrompt(candidates: PickerCandidate[], context: Shor
     ? ' A DJ-mode mix run is active: keep the energy moving toward mixRun, favouring a tempo near its bpm (or half or double) and a key beside it on the Camelot wheel.'
     : '';
   return JSON.stringify({ context, shortlist: candidates.map(shortlistCandidateForPick) })
-    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${recentPlaysInstruction}${mixRunInstruction}${favouritesInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
+    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${situationInstruction}${recentPlaysInstruction}${mixRunInstruction}${favouritesInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
 }
 
 export async function djPick({

@@ -4,6 +4,7 @@ import type { ArtistEpisodeSource } from './episode-source.js';
 // sources, one LLM call to pick one. Fallback for the session DJ agent.
 
 import * as subsonic from './subsonic.js';
+import { shortlistOffers } from './shortlist-offers.js';
 import * as library from './library.js';
 import * as dj from '../llm/dj.js';
 import { nearestId } from '../llm/sdk.js';
@@ -102,6 +103,7 @@ export function clearPoolCache() {
   cacheGeneration++;
   cache.clear();
   offered.clear();
+  shortlistOffers.clear();
 }
 
 // Offered-but-not-picked memory: a capped ranking penalty decaying with the

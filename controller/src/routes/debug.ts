@@ -43,7 +43,7 @@ import { livePickerScope, shortlistSignals } from '../broadcast/dj-agent.js';
 import { nearestId } from '../llm/sdk.js';
 import { pickerAgent } from '../broadcast/dj-agent/agents.js';
 import { buildShortlist } from '../music/shortlist.js';
-import { djPick } from '../broadcast/dj-agent/shortlist-pick.js';
+import { djPick, shortlistSituation } from '../broadcast/dj-agent/shortlist-pick.js';
 import { SHORTLIST_PASSES_DEFAULT } from '../schemas/settings.js';
 import { icecastDebugSnapshot, type IcecastSource, type IcecastStats } from './debug-icecast.js';
 import { createSessionArchiveReader } from '../util/session-archives.js';
@@ -119,7 +119,7 @@ router.post('/debug/discovery/tool/:tool', requireAdmin, async (req, res) => {
 router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
   if (discoveryBenchDisabled(res)) return;
   try {
-    const { scope, activeShow, playlistTracks } = await livePickerScope(queue, { context: await getFullContext() });
+    const { scope, activeShow, playlistTracks, context: pickContext } = await livePickerScope(queue, { context: await getFullContext() });
     const current = queue.current?.track ?? null;
     const agentStarted = performance.now();
     const agent = await pickerAgent.run({ messages: session.windowMessages(), scope });
@@ -132,6 +132,8 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
       moods: activeShow?.moods,
       energies: activeShow?.energies,
       genres: activeShow?.genres ?? scope.genreLock,
+      eras: activeShow?.eras,
+      dominantMood: pickContext?.dominantMood,
       transitionTarget: current ? library.bpmKeyFor(current) : null,
     });
     const shortlistSelection = shortlist.candidates.length
@@ -142,6 +144,7 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
           currentTrack: current ? { id: current.id ?? null, title: current.title ?? null, artist: current.artist ?? null, album: current.album ?? null } : null,
           link: 'No link airs for this diagnostic pick.',
           ...shortlistSignals(queue, scope),
+          ...shortlistSituation(pickContext),
         },
       })
       : null;

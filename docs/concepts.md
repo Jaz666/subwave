@@ -78,6 +78,22 @@ It combines suitable library signals, removes duplicates, applies the shared
 policy and sends the survivors to the model as a list. The model makes **one
 structured call**: pick one of these.
 
+Configured passes rotate across the show's moods, energy bands, genres and
+eras. Without a show mood, discovery uses the station's current mood. A soft
+playlist anchor receives a pass; prepared episodes and sonic journeys retain
+their priority. Server sonic neighbours are available when the music server
+advertises support.
+
+If the planned passes leave fewer than four candidates after balancing, the
+controller can try up to two additional sources: starred tracks, then random
+tracks. It skips a source already used this pick and stops when the list is
+large enough. These top-ups retain the same filters and restrictions.
+
+The completed list caps each artist at three tracks, except for strict
+playlists and prepared artist episodes. Tracks recently offered but not chosen
+receive a soft ranking penalty. The selection model also sees track duration,
+the source that first found it, and factual time, weather and festival context.
+
 - One LLM round-trip per track.
 - Works on a small local model — there is no tool loop to get lost in.
 - Bounded latency, bounded tokens.
@@ -85,7 +101,7 @@ structured call**: pick one of these.
 
 ### Agentic Tools (the default)
 
-The model drives. It gets a toolbox of roughly eighteen discovery tools —
+The model drives. It gets a toolbox of discovery tools —
 similar songs, tracks like this one, search by sound, search by lyrics, by
 mood, by energy, by genre, deep cuts, recently added, top songs by artist,
 tracks toward a journey — and searches the library itself over the session's

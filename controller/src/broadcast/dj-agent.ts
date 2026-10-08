@@ -43,7 +43,8 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
-import { djPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, type ShortlistPickResolution, type ShortlistSelectionContext } from './dj-agent/shortlist-pick.js';
+import { djPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSituation, type ShortlistPickResolution, type ShortlistSelectionContext } from './dj-agent/shortlist-pick.js';
+import { shortlistOffers } from '../music/shortlist-offers.js';
 import { SHORTLIST_PASSES_DEFAULT } from '../schemas/settings.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
@@ -302,6 +303,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
   // to the discovery tools without being unpacked on the way (see PickerRunArgs
   // in dj-agent/agents.ts for why that matters).
   const scope = pickerScope({
+    sonicSimilarity: await subsonic.supportsSonicSimilarity(),
     episodeSource,
     recentIds,
     recentKeys,
@@ -395,6 +397,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     // Agentic prompts are left exactly as they were: that route reads these
     // from its session window and pick event.
     ...(useShortlist ? shortlistSignals(queue, scope, rankTarget) : {}),
+    ...(useShortlist ? shortlistSituation(ctx) : {}),
   };
   let steps: number;
   let toolCalls: any[];
@@ -419,6 +422,8 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       moods: activeShow?.moods,
       energies: activeShow?.energies,
       genres: activeShow?.genres ?? scope.genreLock,
+      eras: activeShow?.eras,
+      dominantMood: ctx?.dominantMood,
       explore,
       // A fresh draw per pick, like `explore`, so one anchor does not always
       // produce the same plan.
@@ -444,6 +449,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       });
       throw Object.assign(new Error(failure.message), { pickFailure: failure });
     }
+    shortlistOffers.record(shortlist.candidates.map(candidate => candidate.id));
     const selection = await djPick({
       candidates: shortlist.candidates,
       showAt,
@@ -944,6 +950,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     }
   }
   if (queued === -1) return false;
+  shortlistOffers.chosen(song.id);
   session.appendTurn({
     role: 'dj', kind: 'pick',
     text: object.reason || `Selected "${song.title}".`,
@@ -1090,6 +1097,9 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
   // collapsed to recents). Skip the session turn and let auto.m3u backstop the
   // slot — the next track-start re-triggers runTrackEvent for a fresh pick.
   if (queued === -1) return 'collision';
+  // A pool rescue can choose a track the Shortlist previously offered too.
+  // Clear the penalty only once that final track actually reaches the queue.
+  if (result.song.id) shortlistOffers.chosen(result.song.id);
   // The reason text is concise on a successful pool pick and useful context for
   // the next turn — but on a failed pool LLM (picker.js returns the sentinel
   // 'fallback (LLM pick failed)'), recording it as the DJ's session turn primes
