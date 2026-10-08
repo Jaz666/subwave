@@ -20,7 +20,7 @@ import { ModelCombobox } from '../llm/ModelCombobox';
 import { LLM_ENV_VARS, llmProviderLabel } from '../llm/providerMeta';
 import { Advanced } from './section-chrome';
 import {
-  SectionHeader, SaveBar, KeyStatus, KeyTestResult, KEY_HINTS,
+  SectionHeader, SaveBar, KeyStatus, KeyTestResult, KEY_HINTS, NowBanner,
   headerMap,
   type SectionProps, type LlmHeaderRow,
 } from './shared';
@@ -424,19 +424,11 @@ export function LlmSection({ data, form, setForm, busy, saveSettings, adminFetch
 
       <Card title="Provider" sub="active routing">
         <div className="grid gap-[18px]">
-          <div className="flex items-start gap-2.5 border border-[var(--accent)] bg-[var(--ink-softer)] p-3">
-            <span className="mt-1 size-1.5 flex-none rounded-full bg-vermilion" />
-            <div className="grid min-w-0 gap-0.5">
-              <span className="text-[11px] font-bold tracking-[0.12em] text-vermilion uppercase">
-                Routing now · {llmProviderLabel(activeProvider)}
-              </span>
-              <span className="text-[14px] leading-[1.5] text-muted">
-                {activeModel
-                  ? <>Model <code>{activeModel}</code>, every LLM call goes here. {llmDirty ? 'Your edits below aren’t live until you Save.' : 'This is the saved, running config.'}</>
-                  : <>No model is set for this provider yet.</>}
-              </span>
-            </div>
-          </div>
+          <NowBanner label={<>Routing now · {llmProviderLabel(activeProvider)}</>}>
+            {activeModel
+              ? <>Model <code>{activeModel}</code>, every LLM call goes here. {llmDirty ? 'Your edits below aren’t live until you Save.' : 'This is the saved, running config.'}</>
+              : <>No model is set for this provider yet.</>}
+          </NowBanner>
 
           <div className="field">
             <div className="flex items-center gap-2">

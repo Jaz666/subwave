@@ -49,8 +49,7 @@ import { SearchSection } from './settings/SearchSection';
 import { LibrarySection } from './settings/LibrarySection';
 import { StationSection } from './settings/StationSection';
 import { ThemeSection } from './settings/ThemeSection';
-import { ScrobbleSection } from './settings/ScrobbleSection';
-import { LikesSection } from './settings/LikesSection';
+import { ListenersSection } from './settings/ListenersSection';
 import { NavidromeSection } from './settings/NavidromeSection';
 import { MusicSelectionSection } from './settings/MusicSelectionSection';
 import {
@@ -166,11 +165,14 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   // only the query changes.
   const searchParams = useSearchParams();
   useEffect(() => {
-    const s = searchParams.get('section');
-    if (s === 'jingles' || s === 'sfx' || s === 'beds') {
-      router.replace(`/admin/imaging?tab=${s}`);
+    const requested = searchParams.get('section');
+    if (requested === 'jingles' || requested === 'sfx' || requested === 'beds') {
+      router.replace(`/admin/imaging?tab=${requested}`);
       return;
     }
+    // Retired tab ids, so an old bookmark or doc link still lands somewhere.
+    const RENAMED: Record<string, SectionId> = { danger: 'broadcast', likes: 'listeners', scrobble: 'listeners' };
+    const s = requested && RENAMED[requested] ? RENAMED[requested] : requested;
     if (s === 'brain' && !djBrainEnabled) {
       setActiveSection('station');
       return;
@@ -303,7 +305,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
   };
 
   /**
-   * Archives and the danger zone used to carry a Save button per card — one for
+   * Archives and Broadcast & mixer used to carry a Save button per card — one for
    * the bitrate, one for the retention window, one for each stream mount. Each
    * now folds into the section's one save.
    *
@@ -317,7 +319,7 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
     if (form) saveBlock(archivesSavePayload(form));
   };
 
-  const saveDanger = () => {
+  const saveBroadcast = () => {
     if (form) saveBlock(dangerSavePayload(form));
   };
 
@@ -548,16 +550,10 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                 adminFetch={adminFetch}
               />
             )}
-            {activeSection === 'scrobble' && (
-              <ScrobbleSection
+            {activeSection === 'listeners' && (
+              <ListenersSection
                 data={data} form={form} setForm={updateForm} busy={busy}
                 saveSettings={saveSettings} fieldErrors={fieldErrors} adminFetch={adminFetch} refresh={refresh}
-              />
-            )}
-            {activeSection === 'likes' && (
-              <LikesSection
-                data={data} form={form} setForm={updateForm} busy={busy}
-                saveSettings={saveSettings} fieldErrors={fieldErrors}
               />
             )}
           </>
@@ -671,12 +667,12 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
           </>
         )}
         {activeSection === 'backup' && <BackupPanel />}
-        {activeSection === 'danger' && (
+        {activeSection === 'broadcast' && (
           <>
             <SectionHeader
-              eyebrow="danger zone"
-              title="Crossfade, stream control, and mixer restart."
-              sub="Crossfade is grouped here because it needs a mixer restart to apply. Stream stop and mixer restart both affect every current listener."
+              eyebrow="broadcast & mixer"
+              title="How the station sounds on every stream."
+              sub="Crossfade, ducking, transitions, levelling and the stream mounts. Most are read by the mixer at startup, so the save bar warns before a change that needs a restart. Stopping the stream and restarting the mixer affect every current listener and ask before they run."
               metrics={[
                 {
                   n: data?.streamOnAir == null ? '—' : data.streamOnAir ? 'on air' : 'off air',
@@ -1673,8 +1669,8 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
             <SaveBar
               note="Crossfade, the encoder settings and the listener buffer only reach the stream after a mixer restart. Idle pause, loudness, dead-air trim and the track-length cap apply live."
               busy={busy}
-              onSave={saveDanger}
-              saveLabel="Save danger zone"
+              onSave={saveBroadcast}
+              saveLabel="Save broadcast & mixer"
               errors={fieldErrors}
               ownedKeys={['crossfadeDuration', 'ducking', 'maxTrackSeconds', 'maxTrackLengthMode', 'fadeAtShowEnd', 'silenceTrim', 'transitions', 'audio', 'loudness', 'stream']}
             />
