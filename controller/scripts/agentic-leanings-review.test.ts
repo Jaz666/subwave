@@ -118,7 +118,7 @@ assert.deepEqual(reviewedForward, ['baseline', 'close-a', 'close-b']);
 assert.deepEqual(reviewedReverse, reviewedForward, 'challenger selection is invariant to discovery insertion order');
 const profileMatchPool = [
   ...candidatePool,
-  { id: 'profile-match', energy: 'high', moods: ['workout'], genre: 'Synth-Pop', bpm: 90, key: '2B', instrumental: false },
+  { id: 'profile-match', energy: 'medium', moods: ['reflective'], genre: 'Synth-Pop', bpm: 90, key: '2B', instrumental: false },
   { id: 'ordinary-third', energy: 'medium', moods: ['reflective'], genre: 'Rock', bpm: 123, key: '8A', instrumental: false },
 ];
 assert.ok(
@@ -380,7 +380,7 @@ assert.match(pickSource, /verifiedAgenticReason\(agenticSelectionReason\(replace
   'an Agentic replacement is worded by the Agentic verifier');
 // The shared pass (pinned on behaviour in leanings-pass.test.ts) is where the
 // compact review set, the review-only system prompt and source ownership live.
-assert.match(passSource, /selectAgenticReviewCandidates\(song, candidates, leaningsOptions\)/,
+assert.match(passSource, /selectAgenticReviewCandidates\(reviewBaseline, candidates, leaningsOptions\)/,
   'the review receives a small deterministic set around the real Leanings-blind baseline');
 assert.match(passSource, /system: agenticLeaningsReviewSystem\(\)/,
   'the review avoids the full on-air persona system prompt');

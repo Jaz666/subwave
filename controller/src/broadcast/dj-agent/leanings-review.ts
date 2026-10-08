@@ -241,6 +241,8 @@ function ordinarySimilarity(baseline: any, candidate: any): number {
     + (baseline?.instrumental === candidate?.instrumental && baseline?.instrumental != null ? 0.25 : 0);
 }
 
+const MIN_REVIEW_FLOW_SCORE = 2.5;
+
 const METADATA_GENERIC_WORDS = new Set(['music', 'track', 'tracks', 'record', 'records', 'material', 'sounds']);
 
 function exactLeaningsMetadataMatches(candidate: any, leaningsOptions: string[]): string[] {
@@ -268,7 +270,7 @@ export function eligibleAgenticLeanings(baseline: any, candidates: any[], source
   const host = sources.filter(({ source }) => source === 'host');
   const hostPhrases = host.map(({ phrase }) => phrase);
   const hostSupported = [baseline, ...candidates].some((candidate) =>
-    (String(candidate?.id) === String(baseline?.id) || ordinarySimilarity(baseline, candidate) >= 2.5)
+    (String(candidate?.id) === String(baseline?.id) || ordinarySimilarity(baseline, candidate) >= MIN_REVIEW_FLOW_SCORE)
     && exactLeaningsMetadataMatches(candidate, hostPhrases).length > 0);
   return hostSupported ? host : sources;
 }
@@ -292,7 +294,10 @@ export function selectAgenticReviewCandidates(baseline: any, candidates: any[], 
   const selected = ordinaryRanked.slice(0, Math.min(3, Math.max(1, limit - 1)));
   const selectedIds = new Set(selected.map(({ candidate }) => String(candidate.id)));
   const evidenceRanked = ranked
-    .filter(({ candidate, leaningsScore }) => leaningsScore > 0 && !selectedIds.has(String(candidate.id)))
+    // A stronger preference on a weak-flow track must not crowd out an
+    // otherwise viable tie-break. Use the same floor as the review/validator.
+    .filter(({ candidate, ordinaryScore, leaningsScore }) => ordinaryScore >= MIN_REVIEW_FLOW_SCORE
+      && leaningsScore > 0 && !selectedIds.has(String(candidate.id)))
     .sort((left, right) => right.leaningsScore - left.leaningsScore || right.ordinaryScore - left.ordinaryScore || String(left.candidate.id).localeCompare(String(right.candidate.id)));
   for (const item of evidenceRanked) {
     if (selected.length >= limit - 1) break;
@@ -319,7 +324,7 @@ export function compactAgenticReviewCandidate(track: any, leaningsOptions: strin
   const flowCloseness = baseline?.id && String(track?.id) === String(baseline.id)
     ? 'baseline'
     : similarity != null
-      ? similarity >= 4 ? 'close' : similarity >= 2.5 ? 'possible' : 'weak'
+      ? similarity >= 4 ? 'close' : similarity >= MIN_REVIEW_FLOW_SCORE ? 'possible' : 'weak'
       : undefined;
   return Object.fromEntries(Object.entries({
     id: track?.id,

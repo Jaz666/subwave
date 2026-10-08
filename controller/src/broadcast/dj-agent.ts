@@ -633,6 +633,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     object,
     seen: extras.seen,
     editorialLeanings,
+    lastfmTagsFor: (id) => library.get(id)?.lastfmTags,
     djName: session.onAirPersona()?.name ?? null,
     context: selectionContext,
     resolution: pickResolution,

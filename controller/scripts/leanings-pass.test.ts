@@ -217,3 +217,75 @@ for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as con
     assert.equal(resolution.leaningsReview?.outcome, 'kept');
   });
 }
+
+// Evening station reproductions: evidence stays private to the review, and
+// weak-flow matches cannot crowd viable preferences out of the reserved slots.
+for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as const) {
+  const preferences = { host: 'Favour techno and synth-pop.', guest: null, promptValue: 'Host: Favour techno and synth-pop.' };
+  const base = { ...baseline, genre: 'Electronic' };
+  const trance = { ...plain, genre: 'Trance' };
+
+  test(`${kind}: stored tags support review without changing discovery candidates`, async () => {
+    const candidates = new Map([base, trance].map(track => [track.id, track]));
+    const before = structuredClone([...candidates.values()]);
+    const lookups: string[] = [];
+    const { result, resolution, prompts } = await run(
+      { selectedId: trance.id, leaningsBasis: 'techno', musicalReason: goodReason, transition: 'blend' }, kind,
+      {
+        song: base, seen: candidates, editorialLeanings: preferences,
+        lastfmTagsFor: (id: string) => { lookups.push(id); return id === trance.id ? ['trance', 'techno'] : null; },
+      },
+    );
+    assert.equal(result.song, trance, 'guards receive the original candidate');
+    assert.equal(resolution.leaningsReview?.outcome, 'replaced');
+    assert.deepEqual([...candidates.values()], before);
+    assert.ok(lookups.includes(base.id) && lookups.includes(trance.id));
+    const payload = JSON.parse(prompts[0].split('\n\n')[0]);
+    assert.deepEqual(payload.challengers[0].leaningsAdvantages, ['techno']);
+    assert.equal(payload.challengers[0].lastfm_tags, undefined, 'raw tags do not inflate the model prompt');
+  });
+
+  test(`${kind}: stored baseline tags prevent a false preference advantage`, async () => {
+    const { result, resolution, prompts } = await run(null, kind, {
+      song: base, seen: new Map([base, trance].map(track => [track.id, track])), editorialLeanings: preferences,
+      lastfmTagsFor: () => ['techno'],
+    });
+    assert.equal(prompts.length, 0);
+    assert.equal(result.song, base);
+    assert.equal(resolution.leaningsReview?.outcome, 'not-run');
+  });
+
+  test(`${kind}: shared stored tags are rejected when another advantage opens review`, async () => {
+    const challenger = { ...trance, lastfm_tags: ['synth-pop'] };
+    const { result, resolution, prompts } = await run(
+      { selectedId: challenger.id, leaningsBasis: 'techno', musicalReason: goodReason, transition: 'blend' }, kind,
+      {
+        song: base, seen: new Map([base, challenger].map(track => [track.id, track])), editorialLeanings: preferences,
+        lastfmTagsFor: () => ['techno'],
+      },
+    );
+    assert.equal(prompts.length, 1);
+    assert.equal(result.song, base);
+    assert.equal(resolution.leaningsReview?.rejectionReason, 'basis-already-supported-by-baseline');
+    const payload = JSON.parse(prompts[0].split('\n\n')[0]);
+    assert.deepEqual(payload.challengers[0].leaningsAdvantages, ['synth-pop']);
+  });
+
+  test(`${kind}: viable evidence reaches review ahead of stronger weak-flow matches`, async () => {
+    const ordinary = [1, 2, 3].map(n => ({ ...base, id: `ordinary-${n}`, artist: `Ordinary ${n}` }));
+    const weak = [1, 2].map(n => ({ ...base, id: `weak-${n}`, genre: 'Techno, Synth-Pop', energy: 'low', moods: ['calm'], bpm: 50, key: '3B', instrumental: true }));
+    const viable = { ...base, id: 'viable', genre: 'Techno', bpm: 105, key: '3B' };
+    const { result, resolution, prompts } = await run(
+      { selectedId: viable.id, leaningsBasis: 'techno', musicalReason: goodReason, transition: 'normal' }, kind,
+      { song: base, seen: new Map([base, ...ordinary, ...weak, viable].map(track => [track.id, track])), editorialLeanings: preferences },
+    );
+    assert.equal(prompts.length, 1);
+    assert.equal(result.song, viable);
+    assert.equal(resolution.leaningsReview?.outcome, 'replaced');
+    const payload = JSON.parse(prompts[0].split('\n\n')[0]);
+    const evidence = payload.challengers.find((candidate: { id: string }) => candidate.id === viable.id);
+    assert.ok(evidence);
+    assert.ok(['close', 'possible'].includes(evidence.flowCloseness));
+    assert.deepEqual(evidence.leaningsAdvantages, ['techno']);
+  });
+}

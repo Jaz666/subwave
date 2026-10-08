@@ -19,7 +19,13 @@ only when a metadata-supported preference absent from the baseline genuinely
 settles a close or convincingly comparable possible-flow choice. Shared matches
 (such as rock on both tracks) are compatibility, not a Leanings advantage.
 The compact review exposes `leaningsAdvantages`, reserves evidence slots for
-distinguishing preferences, and skips the model when no viable advantage exists.
+distinguishing preferences among close/possible-flow candidates, and skips the
+model when no viable advantage exists. Weak-flow matches cannot occupy the
+reserved evidence slots ahead of a viable challenger. Both routes join stored
+Last.fm tags into private review copies of the baseline and candidates, after
+initial selection; discovery payloads and the picker’s candidate map stay
+unchanged. Including the baseline prevents shared tags earning false credit.
+The tags are existing library evidence, not a new Last.fm fetch.
 The final validator independently rejects a basis already supported by the
 baseline, even if the model proposes a swap. Short genres such as jazz,
 rock and soul are valid phrases. Parse each persona independently, including
