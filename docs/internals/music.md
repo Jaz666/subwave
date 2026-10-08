@@ -128,9 +128,23 @@ temperature/unit/mood/daylight and festival name/description/mood from the
 prepared selection snapshot; it never copies persona Leanings or private
 location. Live and bench calls use the same helper. The compact candidate view
 includes `duration_sec` and the first discovery `source`; other controller
-fields stay private. Model-failure recovery, strict-filter relaxation,
-recently-added sampling and similarity-score presentation remain unchanged.
+fields stay private. Strict-filter relaxation, recently-added sampling and
+similarity-score presentation remain unchanged.
 Pinned by `scripts/shortlist-candidate-pool-parity.test.ts` and the runner tests.
+
+**Model-failure recovery** matches the pool's own move. When `djPick` fails,
+`djObject` has already spent both of its attempts, so the route queues the top
+of its own fit-ordered list rather than handing the slot to the pool, which
+would spend two more attempts on the model that just failed. Nothing
+model-shaped runs after that: the Leanings review is skipped, and the artist
+and album guards still choose WHICH candidates are eligible but take the first
+of them instead of asking for a re-pick (`guardRepick`). The pick carries the
+neutral Booth clause and no transition gesture. It is not a success: the route
+reports `health.modelFailed` and `runTrackEvent` counts a breaker failure, never
+a `breakerSuccess`, so three in a row still open the breaker. The spoken link is
+still attempted, as the pool's is, because a model that cannot hold a structured
+pick can often still write free text. Pinned by
+`scripts/shortlist-model-fallback.test.ts`.
 
 ## Prepared artist episodes
 
