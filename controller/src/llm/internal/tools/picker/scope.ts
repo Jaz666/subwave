@@ -53,6 +53,12 @@ export interface PickerScope {
   // Ids from the show's excluded playlists, dropped from every tool's results so
   // the agent never sees a blocklisted track. null = no exclusions.
   excludedIds: Set<string> | null;
+  // Tracks listeners liked recently (likes.djFavourites — the likes.influenceDj
+  // opt-in, windowed and capped by likes.windowDays/maxTracks); registers the
+  // listenerFavourites tool. A preference source, never a lock: the tracks still
+  // pass every lock and recency guard in collect(). null on the request path,
+  // where the listener's own ask is the only steer.
+  listenerFavourites: Array<{ track: any; count: number }> | null;
   // The active sonic journey's waypoint vector. When present the
   // tracksTowardJourney tool is registered closing over it, so the agent sees
   // only the tracks near it.
@@ -80,6 +86,7 @@ const NO_SCOPE: PickerScope = {
   playlistLock: null,
   playlistTracks: null,
   excludedIds: null,
+  listenerFavourites: null,
   audioWaypoint: null,
   resolveReferences: false,
 };

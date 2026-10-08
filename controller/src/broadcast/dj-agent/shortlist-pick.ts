@@ -31,6 +31,16 @@ export type ShortlistSelectionContext = {
   // The model otherwise has no view of its recent requests and tends to settle
   // into a washout/normal monoculture even though the queue can play six effects.
   recentTransitions?: string[];
+  // What has already aired, newest first, with moods and energy
+  // (picker.summariseRecent). The Agentic route reads the set's arc from its
+  // session history; a one-shot Shortlist call has nowhere else to see it.
+  recentPlays?: Array<{ title?: string; artist?: string; moods?: string[]; energy?: string }>;
+  // The likes.djFavourites list the Agentic pick event names. Absent when likes
+  // do not influence the DJ, so an opted-out station's prompt is unchanged.
+  listenerFavourites?: Array<{ title: string; artist?: string; likes: number }>;
+  // Present only during a DJ-mode run: the tempo and key it is steering toward.
+  // The pool ranks against the same target; the shortlist is ordered by it.
+  mixRun?: { bpm: number | null; key: string | null };
 };
 
 function comparable(value: unknown): string {
@@ -116,9 +126,16 @@ export function shortlistReasonForLeanings(
 
 export function shortlistPickSchema(ids: string[]) {
   if (!ids.length) throw new Error('cannot select from an empty Track Shortlist');
-  const idEnum = z.enum(ids as [string, ...string[]]).describe('the exact id of one track in the supplied Track Shortlist');
+  // A plain string, NOT z.enum(ids), for the pool picker's reason (#939): the
+  // forced-tool object strategy (ollama, openai-compatible, locca) does not
+  // grammar-constrain tool arguments, so an enum never reaches the decoder and
+  // only turns a small model's 2–3 character id slip into a Zod reject inside
+  // djObject — before pickViaSelectionRoute's near-miss repair can run, and as a
+  // failure on the breaker every route shares. Membership is checked at the
+  // call site: exact match, then nearestId, then a corrective re-pick.
+  const id = z.string().describe('the exact id of one track in the supplied Track Shortlist');
   return modelTolerant(pickSchemaBase().omit({ reason: true, usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
-    id: idEnum,
+    id,
     musicalReason: z.string().trim().min(16).max(180).describe('one natural, specific musical clause about the selected track, beginning with "its" or "it". Do not name the artist, title, DJ, shortlist, candidates, queue, metadata or Musical Leanings; the controller adds verified identity.'),
   }), { objectFallbacks: { musicalReason: MUSICAL_REASON_UNAVAILABLE } });
 }
@@ -147,8 +164,19 @@ export function shortlistPickPrompt(candidates: PickerCandidate[], context: Shor
   const episodeInstruction = context.episodeEditorial?.trim()
     ? ' The active episode editorial brief is included in context; follow it within the supplied candidates.'
     : '';
+  // Each signal is described only when it is present, so a station without it
+  // keeps the prompt it had.
+  const recentPlaysInstruction = context.recentPlays?.length
+    ? ' recentPlays holds tracks that have already aired, newest first; let the arc of the set decide whether this pick holds its mood and energy or turns them. currentTrack is the expected predecessor and may not be on air yet.'
+    : '';
+  const favouritesInstruction = context.listenerFavourites?.length
+    ? ' listenerFavourites are the tracks listeners have liked most on this station recently: when one in the shortlist fits the moment, treat it as a strong preference, but keep variety and never loop the same favourites back to back.'
+    : '';
+  const mixRunInstruction = context.mixRun
+    ? ' A DJ-mode mix run is active: keep the energy moving toward mixRun, favouring a tempo near its bpm (or half or double) and a key beside it on the Camelot wheel.'
+    : '';
   return JSON.stringify({ context, shortlist: candidates.map(shortlistCandidateForPick) })
-    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
+    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${recentPlaysInstruction}${mixRunInstruction}${favouritesInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
 }
 
 export async function djPick({

@@ -16,6 +16,7 @@ const SOURCE_LABELS: Record<string, string> = {
   deepCuts: 'deep-cut discovery',
   recentlyAdded: 'recent additions',
   starredSongs: 'station favourites',
+  listenerFavourites: 'listener favourites',
   randomSongs: 'a library wildcard',
   showPlaylistTracks: 'the show’s music selection',
   tracksTowardJourney: 'the station’s sonic journey',

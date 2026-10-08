@@ -26,7 +26,7 @@ import { djCallsAllowed } from './listeners.js';
 import { autoVoiceAllowed } from './voice-policy.js';
 import { speakClockAllowed } from './clock-policy.js';
 import { pickerAgent, requestAgent } from './dj-agent/agents.js';
-import { pickerScope } from '../llm/tools.js';
+import { pickerScope, type PickerScope } from '../llm/tools.js';
 import {
   HANDOFF_MAX_AGE_MS,
   breakerFailure,
@@ -64,11 +64,13 @@ export { pickerAgent, requestAgent } from './dj-agent/agents.js';
 
 // Stage-2 salvage for an agent run whose final id no tool surfaced (see the
 // cascade in pickViaSelectionRoute): one djObject call over the run's OWN accumulated
-// candidates (`seen`), with the id constrained to that exact set — z.enum
-// becomes a decode-time grammar on local models and a Zod reject elsewhere,
-// the same closing move pickNextTrack already uses. Returns a full pick object
-// (id/reason/transition) or null; never throws, so a salvage failure falls
-// through to the caller's pick.rejected path unchanged.
+// candidates (`seen`). The id is a plain string checked against that set
+// afterwards, with the same near-miss repair as the first call — the closing
+// move pickNextTrack already uses. An enum here never reached the decoder on
+// the forced-tool providers and only turned a 2–3 character slip into a lost
+// salvage (#939). Returns a full pick object (id/reason/transition) whose id is
+// in `seen`, or null; never throws, so a salvage failure falls through to the
+// caller's pick.rejected path unchanged.
 // `reason`, when given, replaces the default "you returned a bad id" framing —
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
@@ -80,7 +82,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
   const schema = shortlistRepick
     ? shortlistPickSchema(ids)
     : modelTolerant(pickSchemaBase().omit({ usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
-      id: z.enum(ids as [string, ...string[]]).describe('the exact id of one candidate'),
+      id: z.string().describe('the exact id of one candidate'),
     }));
   const why = reason
     ?? `You explored the library and then answered with ${badId ? `the id "${badId}", which matches none of the tracks your tools returned` : 'no usable track id'}. Only ids from the candidates above are real. Choose the best next track from them.`;
@@ -88,7 +90,7 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
     // djObject records this nested object by reference. Fill it after the
     // structured reply is known so Debug can show the controller-resolved
     // selection beside the raw model response (which may name another track).
-    const outcome: any = await djObject({
+    let outcome: any = await djObject({
       // Same show snapshot as the failed run (showAt) and the same playlist-
       // resolved gate — a tool-less salvage call must NOT reinstate "call
       // showPlaylistTracks first / every pick MUST come from the playlist" when
@@ -96,10 +98,11 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       // different show than the run whose candidates we're re-picking from.
       // Two knowing mismatches with the real pick call: pickSystem's discovery
       // paragraph talks tools this tool-less call doesn't have (the "only ids
-      // from the candidates" framing below overrides it), and the listener
-      // favourites clause is absent (it rides the pick EVENT turn, not this
-      // system prompt) — acceptable because `seen` was discovered under the
-      // favourites-aware run this salvages.
+      // from the candidates" framing below overrides it), and the Agentic
+      // re-pick has no listener favourites clause (it rides the pick EVENT
+      // turn, not this system prompt) — acceptable because `seen` was
+      // discovered under the favourites-aware run this salvages. The Shortlist
+      // re-pick reads them from selectionContext, like its first call.
       // Corrective re-picks are always Leanings-blind. A previous review can
       // count only when its exact replacement survives these guards.
       system: shortlistRepick
@@ -119,6 +122,12 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
       kind: telemetryKind,
       ...(shortlistRepick && shortlistResolution ? { telemetry: { shortlistResolution } } : {}),
     });
+    if (!seen.has(outcome?.id)) {
+      const fixed = typeof outcome?.id === 'string' ? nearestId(outcome.id, seen.keys()) : null;
+      if (!fixed) return null;
+      logEvent('pick.repaired', { agent: 'repick', from: outcome.id, to: fixed });
+      outcome = { ...outcome, id: fixed };
+    }
     if (!shortlistRepick) return outcome;
 
     const track = seen.get(outcome.id);
@@ -284,6 +293,11 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     queue.log('picker', `show "${activeShow.name}" pins ${activeShow.playlistIds.length} playlist(s) but none resolved to tracks — anchor ignored${activeShow.playlistStrict ? ' (STRICT toggle has no effect)' : ''}. Stale playlist id (deleted/recreated in Navidrome?) or a Navidrome error; re-select the playlists in the show editor.`);
   }
 
+  // Listener favourites (#991): the same opt-in list the Agentic pick event
+  // names, resolved once so the tool, the Shortlist plan and its selection
+  // context all read one snapshot.
+  const favourites = likes.djFavourites(settings.get()?.likes);
+
   // One scope value carries every constraint this pick runs under, and travels
   // to the discovery tools without being unpacked on the way (see PickerRunArgs
   // in dj-agent/agents.ts for why that matters).
@@ -313,15 +327,42 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     playlistLock,
     playlistTracks,
     excludedIds,
+    listenerFavourites: favourites.length ? favourites : null,
   });
 
   return { scope, playlistTracks, activeShow, episodeSource, context: preparedContext };
 }
 
-// `ctx` / `rankTarget` are carried only for the artist-guard's pool rescue
-// (#1187) — the agent's own run needs neither. They're the same values
-// runTrackEvent hands the ordinary pool fallback, so a rescued pick is built
-// from exactly the pool a failed agent run would have produced.
+// What a Track Shortlist call needs that the Agentic route reads from its
+// session window and pick event: the set's arc (the pool prompt's recentPlays),
+// the listener favourites that event names, and a DJ-mode run's target (the
+// pool ranks on the same rankTarget). Shared with the Discovery Bench, so a
+// comparison sees what a live Shortlist pick sees. Each key is absent when
+// empty, so a station without the signal keeps the prompt it had.
+export function shortlistSignals(
+  queue: any,
+  scope: PickerScope,
+  rankTarget: { bpm: number | null; key: string | null } | null = null,
+): Pick<ShortlistSelectionContext, 'recentPlays' | 'listenerFavourites' | 'mixRun'> {
+  const recentPlays = Array.isArray(queue?.history) ? picker.summariseRecent(queue) : [];
+  const favourites = scope.listenerFavourites ?? [];
+  return {
+    ...(recentPlays.length ? { recentPlays } : {}),
+    ...(favourites.length ? {
+      listenerFavourites: favourites.map(({ track, count }) => ({
+        title: String(track?.title ?? 'unknown'),
+        ...(track?.artist ? { artist: String(track.artist) } : {}),
+        likes: count,
+      })),
+    } : {}),
+    ...(rankTarget ? { mixRun: { bpm: rankTarget.bpm, key: rankTarget.key } } : {}),
+  };
+}
+
+// `ctx` / `rankTarget` are the same values runTrackEvent hands the ordinary
+// pool fallback, so the artist guard's pool rescue (#1187) builds a pick from
+// exactly the pool a failed run would have produced. The Agentic run needs
+// neither; the Shortlist also orders by `rankTarget` and names it as `mixRun`.
 async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, editorialLeanings, explore = false }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext; explore?: boolean }): Promise<boolean> {
   const pickStarted = performance.now();
   const { scope, playlistTracks, activeShow, episodeSource, context: pickContext } = await livePickerScope(queue, { audioWaypoint, showAt, context: ctx });
@@ -351,6 +392,9 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     link: wantLink ? 'A separate safe link may air for this pick.' : 'No link airs for this pick.',
     ...(ctx?.episodeEditorial ? { episodeEditorial: ctx.episodeEditorial } : {}),
     ...(recentTransitions ? { recentTransitions } : {}),
+    // Agentic prompts are left exactly as they were: that route reads these
+    // from its session window and pick event.
+    ...(useShortlist ? shortlistSignals(queue, scope, rankTarget) : {}),
   };
   let steps: number;
   let toolCalls: any[];
@@ -379,6 +423,9 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       // A fresh draw per pick, like `explore`, so one anchor does not always
       // produce the same plan.
       rotationSeed: Math.floor(Math.random() * 0x100000000),
+      // Same target the pool's soft re-rank uses: the run's, else the
+      // predecessor's own measured tempo and ending key.
+      transitionTarget: rankTarget ?? anchorAnalysis,
     });
     steps = shortlist.sourceRuns.length;
     toolCalls = shortlist.sourceRuns;
@@ -429,8 +476,10 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
   }
   let song = object?.id ? extras.seen.get(object.id) : null;
 
-  // The agent returned an id that isn't in the candidate set it was shown.
-  // Two-stage salvage before giving up on the run (both observed live):
+  // The model returned an id that isn't in the candidate set it was shown.
+  // Both routes type that id as a plain string (#939), so it reaches here
+  // rather than dying in djObject's schema check. Two-stage salvage before
+  // giving up on the run (both observed live):
   //   1. Near-miss repair — the model transcribed a REAL id imperfectly
   //      (glm-5.1 dropped the final character of a 22-char nanoid; small
   //      local models corrupt 2-3 chars at a time, #939). nearestId only
@@ -438,9 +487,9 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
   //      so this can't misfire onto a different track. Free — no model call.
   //   2. Corrective re-pick — the model fabricated an id outright (gpt-5-mini
   //      after an empty tool result) while its `seen` map held real
-  //      candidates. One djObject call constrained to those ids (grammar-
-  //      enforced on local models, Zod-checked everywhere) beats paying the
-  //      pool fallback + a breaker increment for a run that DID explore.
+  //      candidates. One djObject call over those candidates, repaired the
+  //      same way, beats paying the pool fallback + a breaker increment for a
+  //      run that DID explore.
   if (!song && object?.id && extras.seen.size) {
     const fixed = nearestId(object.id, extras.seen.keys());
     if (fixed) {
@@ -448,6 +497,12 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       queue.log('picker', `agent id "${object.id}" repaired to near-miss match "${fixed}"`);
       object = { ...object, id: fixed };
       song = extras.seen.get(fixed);
+      // A Shortlist reason names the track it was built for, which djPick
+      // could not resolve from the unrepaired id.
+      if (useShortlist) {
+        const selectionReason = shortlistClauseSelectionReason(song, object.musicalReason);
+        object = { ...object, selectionReason, reason: selectionReason };
+      }
     }
   }
   if (!song && extras.seen.size) {

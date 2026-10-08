@@ -22,6 +22,7 @@ import searchBySound from './tools/search-by-sound.js';
 import deepCuts from './tools/deep-cuts.js';
 import recentlyAdded from './tools/recently-added.js';
 import starredSongs from './tools/starred-songs.js';
+import listenerFavourites from './tools/listener-favourites.js';
 import randomSongs from './tools/random-songs.js';
 import showPlaylistTracks from './tools/show-playlist-tracks.js';
 import episodeArtistTracks from './tools/episode-artist-tracks.js';
@@ -45,6 +46,7 @@ export const PICKER_TOOLS: readonly PickerToolModule[] = [
   deepCuts,
   recentlyAdded,
   starredSongs,
+  listenerFavourites,
   randomSongs,
   showPlaylistTracks,
   episodeArtistTracks,

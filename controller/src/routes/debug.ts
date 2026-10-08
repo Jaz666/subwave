@@ -39,7 +39,8 @@ import { publicOrigin } from './public.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { BadStatePathError, listStateDir } from '../util/state-tree.js';
 import { buildPickerTools, PICKER_TOOLS } from '../llm/tools.js';
-import { livePickerScope } from '../broadcast/dj-agent.js';
+import { livePickerScope, shortlistSignals } from '../broadcast/dj-agent.js';
+import { nearestId } from '../llm/sdk.js';
 import { pickerAgent } from '../broadcast/dj-agent/agents.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick } from '../broadcast/dj-agent/shortlist-pick.js';
@@ -131,6 +132,7 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
       moods: activeShow?.moods,
       energies: activeShow?.energies,
       genres: activeShow?.genres ?? scope.genreLock,
+      transitionTarget: current ? library.bpmKeyFor(current) : null,
     });
     const shortlistSelection = shortlist.candidates.length
       ? await djPick({
@@ -139,8 +141,15 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
         context: {
           currentTrack: current ? { id: current.id ?? null, title: current.title ?? null, artist: current.artist ?? null, album: current.album ?? null } : null,
           link: 'No link airs for this diagnostic pick.',
+          ...shortlistSignals(queue, scope),
         },
       })
+      : null;
+    // The live route repairs a near-miss id before judging the pick (#939).
+    const shortlistSelectedId = shortlistSelection
+      ? (shortlist.candidates.some((track) => track.id === shortlistSelection.id)
+        ? shortlistSelection.id
+        : nearestId(shortlistSelection.id, shortlist.candidates.map((track) => track.id)))
       : null;
     const compact = (track: any) => track?.id
       ? { id: track.id, title: String(track.title || ''), artist: String(track.artist || '') }
@@ -156,7 +165,7 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
       shortlist: {
         passes: settings.get().llm?.shortlistPasses ?? SHORTLIST_PASSES_DEFAULT,
         elapsedMs: Math.round(performance.now() - shortlistStarted),
-        selected: compact(shortlistSelection && shortlist.candidates.find((track) => track.id === shortlistSelection.id)),
+        selected: compact(shortlistSelectedId && shortlist.candidates.find((track) => track.id === shortlistSelectedId)),
         sources: shortlist.sourceRuns.map((run, index) => ({ pass: index + 1, family: run.family, source: run.source, returned: run.returned, accepted: run.accepted })),
       },
     });

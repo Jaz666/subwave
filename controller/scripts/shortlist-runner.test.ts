@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildShortlist, executeShortlistPlan, planShortlistSources } from '../src/music/shortlist.js';
+import { buildShortlist, executeShortlistPlan, orderByTransitionFit, planShortlistSources } from '../src/music/shortlist.js';
 import { agenticSelectionReason } from '../src/broadcast/dj-agent/leanings-review.js';
 import { pickerScope } from '../src/llm/tools.js';
 import { buildPickerContext } from '../src/llm/internal/tools/picker/scope.js';
@@ -103,15 +103,19 @@ test('a per-pick rotation seed varies the plan for one anchor and stays reproduc
   }
 });
 
-test('DJ shortlist selection accepts only supplied ids and keeps provenance out of its reason', () => {
+test('DJ shortlist selection leaves id membership to the call site and keeps provenance out of its reason', () => {
   const schema = shortlistPickSchema(['candidate-a', 'candidate-b']);
   const parsed = schema.parse({
     id: 'candidate-a', musicalReason: 'its warmer texture opens the arrangement without breaking the sequence', usedMusicalLeanings: true, say: null, transition: null,
   });
   assert.equal('usedMusicalLeanings' in parsed, false, 'the model cannot self-report Leanings provenance');
-  assert.equal(schema.safeParse({
-    id: 'invented', musicalReason: 'its warmer texture opens the arrangement without breaking the sequence', say: null, transition: null,
-  }).success, false);
+  // #939: a schema-level enum turned a small model's id slip into a hard
+  // reject before the near-miss repair could run. The id must parse so
+  // pickViaSelectionRoute can repair or re-pick it.
+  assert.equal(schema.parse({
+    id: 'candidate-ax', musicalReason: 'its warmer texture opens the arrangement without breaking the sequence', say: null, transition: null,
+  }).id, 'candidate-ax');
+  assert.throws(() => shortlistPickSchema([]), /empty Track Shortlist/);
   const prompt = shortlistPickPrompt([{ id: 'candidate-a', title: 'One', shortlistSources: ['tracksByMood'] }]);
   assert.match(prompt, /candidate-a/);
   assert.match(prompt, /Track Shortlist/);
@@ -349,4 +353,77 @@ test('records invalid input and source errors without abandoning later sources',
     ['invalid', 'query required'],
     ['error', 'library offline'],
   ]);
+});
+
+test('listener favourites join the context lane unless the show owns the direction', () => {
+  const available = new Set(['tracksByMood', 'listenerFavourites', 'tracksLikeThis', 'deepCuts']);
+  const general = { scope: pickerScope(), currentTrackId: 'seed', moods: ['calm'], discoveryPasses: 5 };
+  let planned = 0;
+  for (let rotationSeed = 0; rotationSeed < 12; rotationSeed++) {
+    for (const call of planShortlistSources({ ...general, rotationSeed }, available)) {
+      if (call.source !== 'listenerFavourites') continue;
+      planned++;
+      assert.equal(call.family, 'context');
+      assert.deepEqual(call.args, {});
+    }
+  }
+  assert.ok(planned > 0, 'an opted-in station draws its favourites');
+  // The tool is only registered when likes influence the DJ and something is
+  // liked, so an unavailable source is never planned.
+  assert.ok(!planShortlistSources(general, new Set(['tracksByMood'])).some((call) => call.source === 'listenerFavourites'));
+  for (const scope of [
+    pickerScope({ playlistTracks: [{ id: 'in-show' }], playlistLock: new Set(['in-show']) }),
+    pickerScope({ audioWaypoint: [0.1] }),
+  ]) {
+    const plan = planShortlistSources(
+      { ...general, scope, rotationSeed: 1 },
+      new Set([...available, 'showPlaylistTracks', 'tracksTowardJourney']),
+    );
+    assert.ok(!plan.some((call) => call.source === 'listenerFavourites'),
+      'a strict playlist or journey does not spend a pass on a station-wide lean');
+  }
+});
+
+test('the shortlist is ordered by transition fit, stably, and untouched without a target', () => {
+  const analysis: Record<string, { bpm: number | null; key: string | null; keyStart?: string | null }> = {
+    clash: { bpm: 90, key: '3B' },
+    unknown: { bpm: null, key: null },
+    locked: { bpm: 124, key: '8A' },
+    close: { bpm: 121, key: '9A' },
+  };
+  const candidates = ['clash', 'unknown', 'locked', 'close'].map((id) => ({ id }));
+  const of = (candidate: { id: string }) => analysis[candidate.id];
+  assert.deepEqual(
+    orderByTransitionFit(candidates, { bpm: 124, key: '8A' }, of).map((candidate) => candidate.id),
+    ['locked', 'close', 'clash', 'unknown'],
+    'locked tempo and key lead, an adjacent key follows, and the unscored keep their plan order',
+  );
+  assert.deepEqual(
+    orderByTransitionFit(candidates, { bpm: null, key: '3B', keyEnd: '8A' }, of).map((candidate) => candidate.id),
+    ['locked', 'close', 'clash', 'unknown'],
+    'the seam meets the target at its ending key, not its dominant one',
+  );
+  assert.equal(orderByTransitionFit(candidates, null, of), candidates);
+  assert.equal(orderByTransitionFit(candidates, { bpm: null, key: null }, of), candidates,
+    'an unanalysed predecessor leaves the plan order alone');
+});
+
+test('the Shortlist prompt describes each selection signal only when it is present', () => {
+  const bare = shortlistPickPrompt([{ id: 'a', title: 'One' }], {});
+  for (const pattern of [/recentPlays/, /listenerFavourites/, /mix run/]) assert.doesNotMatch(bare, pattern);
+
+  const context = {
+    recentPlays: [{ title: 'Before', artist: 'Act', moods: ['calm'], energy: 'low' }],
+    listenerFavourites: [{ title: 'Loved', artist: 'Crowd', likes: 3 }],
+    mixRun: { bpm: 124, key: '8A' },
+  };
+  const prompt = shortlistPickPrompt([{ id: 'a', title: 'One' }], context);
+  const payload = JSON.parse(prompt.slice(0, prompt.indexOf('\n\nChoose one id'))) as { context: typeof context };
+  assert.deepEqual(payload.context, context);
+  assert.match(prompt, /recentPlays holds tracks that have already aired, newest first/);
+  assert.match(prompt, /currentTrack is the expected predecessor and may not be on air yet/);
+  assert.match(prompt, /listenerFavourites are the tracks listeners have liked most/);
+  assert.match(prompt, /never loop the same favourites back to back/);
+  assert.match(prompt, /DJ-mode mix run is active/);
+  assert.match(prompt, /ordinary musical flow only/i, 'the preliminary pick stays Leanings-blind');
 });

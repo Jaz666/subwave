@@ -5,6 +5,8 @@
 
 import { buildPickerTools, type PickerScope } from '../llm/tools.js';
 import { SHORTLIST_PASSES_BOUNDS } from '../schemas/settings.js';
+import * as library from './library.js';
+import { mixCompat, type Analysis } from './mix.js';
 
 export type ShortlistSourceCall = {
   source: string;
@@ -31,6 +33,10 @@ export type ShortlistPlanningContext = {
   // the anchor id, which keeps a given input reproducible for tests and the
   // Discovery Bench.
   rotationSeed?: number;
+  // What the next track should meet: a DJ-mode run's tempo/key target, else
+  // the expected predecessor's measured analysis. Orders the finished
+  // shortlist (orderByTransitionFit); absent, the plan's order stands.
+  transitionTarget?: Analysis | null;
 };
 
 const ENERGY_VALUES = new Set(['low', 'medium', 'high']);
@@ -80,6 +86,7 @@ export function planShortlistSources(
   const mood = firstString(context.moods);
   const energy = context.energies?.find((value): value is 'low' | 'medium' | 'high' => ENERGY_VALUES.has(value)) ?? null;
   const genre = firstString(context.genres) ?? firstString(context.scope.genreLock);
+  const ownsDirection = !!(context.scope.episodeSource || context.scope.playlistLock || context.scope.audioWaypoint?.length);
 
   if (context.scope.episodeSource) add('context', 'episodeArtistTracks');
   if (context.scope.audioWaypoint?.length) add('context', 'tracksTowardJourney');
@@ -87,6 +94,10 @@ export function planShortlistSources(
   if (mood) add('context', 'tracksByMood', { mood, energy });
   else if (energy) add('context', 'tracksByEnergy', { energy });
   if (genre) add('context', 'songsByGenre', { genre });
+  // The audience is context too, but a station-wide lean. Where an episode,
+  // journey or strict playlist owns the direction, a favourites pass either
+  // comes back intersected to nothing or pulls against that direction.
+  if (!ownsDirection) add('context', 'listenerFavourites');
 
   if (context.currentTrackId) {
     add('continuity', 'tracksThatSoundLikeThis', { songId: context.currentTrackId });
@@ -110,7 +121,6 @@ export function planShortlistSources(
   for (const source of diversity) add('diversity', source);
 
   const calls: ShortlistSourceCall[] = [];
-  const ownsDirection = !!(context.scope.episodeSource || context.scope.playlistLock || context.scope.audioWaypoint?.length);
   const families: ShortlistSourceCall['family'][] = ['context', 'continuity', 'diversity'];
   const familyOrder = ownsDirection ? families : rotated(families.filter(family => lanes[family].length), offset);
   if (!ownsDirection) {
@@ -271,5 +281,27 @@ export async function executeShortlistPlan(
 export async function buildShortlist(context: ShortlistPlanningContext): Promise<ShortlistResult> {
   const { tools, seen } = buildPickerTools(context.scope);
   const plan = planShortlistSources(context, new Set(Object.keys(tools)));
-  return executeShortlistPlan(tools as PickerToolSet, seen, plan);
+  const result = await executeShortlistPlan(tools as PickerToolSet, seen, plan);
+  if (!context.transitionTarget) return result;
+  return {
+    ...result,
+    candidates: orderByTransitionFit(result.candidates, context.transitionTarget, (candidate) => library.bpmKeyFor(candidate)),
+  };
+}
+
+// Soft order, never a filter: the candidates that meet the target cleanly lead
+// the list the model reads — the pool's softRankByCompat does the same job
+// before its cap. Scored with mix.mixCompat, the station's one tempo + key fit
+// (the target's ending key against the candidate's opening key). Stable, so
+// ties keep the plan's order, and an unanalysed target changes nothing.
+export function orderByTransitionFit<T>(
+  candidates: T[],
+  target: Analysis | null | undefined,
+  analysisOf: (candidate: T) => Analysis,
+): T[] {
+  if (!target || (target.bpm == null && target.key == null && target.keyEnd == null)) return candidates;
+  return candidates
+    .map((candidate, index) => ({ candidate, index, fit: mixCompat(target, analysisOf(candidate)) }))
+    .sort((a, b) => b.fit - a.fit || a.index - b.index)
+    .map(({ candidate }) => candidate);
 }
