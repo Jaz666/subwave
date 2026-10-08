@@ -104,8 +104,17 @@ export async function runLeaningsReview({
     leaningsOptions,
     leaningsSources,
   };
+  const compactCandidates = reviewCandidates.map((candidate) => compactAgenticReviewCandidate(candidate, leaningsOptions, song));
+  const baselineSupportedLeanings = (compactCandidates[0].leaningsMatches ?? []) as string[];
+  // No distinguishing preference among viable challengers means there is no
+  // tie for Leanings to settle. Keep the original pick without a model call.
+  if (!compactCandidates.slice(1).some(candidate =>
+    (candidate.flowCloseness === 'close' || candidate.flowCloseness === 'possible')
+    && Array.isArray(candidate.leaningsAdvantages) && candidate.leaningsAdvantages.length > 0)) {
+    resolution.leaningsReview = { outcome: 'not-run', replacementId: null, ...common };
+    return { song, object, reviewed: false };
+  }
   try {
-    const compactCandidates = reviewCandidates.map((candidate) => compactAgenticReviewCandidate(candidate, leaningsOptions, song));
     const compactById = new Map(compactCandidates.map((candidate) => [String(candidate.id), candidate]));
     const answer: any = await review({
       system: agenticLeaningsReviewSystem(),
@@ -150,6 +159,7 @@ export async function runLeaningsReview({
       musicalLeanings: editorialLeanings.promptValue,
       allowedLeanings: leaningsOptions,
       supportedLeanings: Array.isArray(compactReplacement?.leaningsMatches) ? compactReplacement.leaningsMatches as string[] : [],
+      baselineSupportedLeanings,
       flowCloseness: compactReplacement?.flowCloseness,
     });
     if (!validation.valid) {

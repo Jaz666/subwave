@@ -25,6 +25,7 @@ export type AgenticLeaningsReviewRejection =
   | 'missing-leanings-basis'
   | 'basis-not-in-leanings'
   | 'basis-not-supported-by-candidate'
+  | 'basis-already-supported-by-baseline'
   | 'not-flow-tie'
   | 'weak-musical-reason';
 
@@ -275,12 +276,16 @@ export function eligibleAgenticLeanings(baseline: any, candidates: any[], source
 export function selectAgenticReviewCandidates(baseline: any, candidates: any[], leaningsOptions: string[] = [], limit = 6): any[] {
   if (!baseline?.id) return [];
   const baselineId = String(baseline.id);
+  // Reserve evidence slots for preferences that distinguish a challenger.
+  // Repeated broad genre matches must not crowd out a genuine tie-break.
+  const baselineMatches = new Set(exactLeaningsMetadataMatches(baseline, leaningsOptions).map(comparable));
+  const distinguishingOptions = leaningsOptions.filter(option => !baselineMatches.has(comparable(option)));
   const ranked = candidates
     .filter((candidate) => candidate?.id && String(candidate.id) !== baselineId)
     .map((candidate) => ({
       candidate,
       ordinaryScore: ordinarySimilarity(baseline, candidate),
-      leaningsScore: exactLeaningsMetadataScore(candidate, leaningsOptions),
+      leaningsScore: exactLeaningsMetadataScore(candidate, distinguishingOptions),
     }));
   const ordinaryRanked = [...ranked]
     .sort((left, right) => right.ordinaryScore - left.ordinaryScore || String(left.candidate.id).localeCompare(String(right.candidate.id)));
@@ -306,6 +311,10 @@ export function selectAgenticReviewCandidates(baseline: any, candidates: any[], 
 
 export function compactAgenticReviewCandidate(track: any, leaningsOptions: string[] = [], baseline: any = null): Record<string, unknown> {
   const leaningsMatches = exactLeaningsMetadataMatches(track, leaningsOptions);
+  const baselineMatches = new Set(exactLeaningsMetadataMatches(baseline, leaningsOptions).map(comparable));
+  const leaningsAdvantages = baseline?.id && String(track?.id) !== String(baseline.id)
+    ? leaningsMatches.filter(option => !baselineMatches.has(comparable(option)))
+    : [];
   const similarity = baseline?.id ? ordinarySimilarity(baseline, track) : null;
   const flowCloseness = baseline?.id && String(track?.id) === String(baseline.id)
     ? 'baseline'
@@ -327,6 +336,7 @@ export function compactAgenticReviewCandidate(track: any, leaningsOptions: strin
     play_count: track?.play_count,
     last_played_days_ago: track?.last_played_days_ago,
     leaningsMatches: leaningsMatches.length ? leaningsMatches : undefined,
+    leaningsAdvantages: leaningsAdvantages.length ? leaningsAdvantages : undefined,
     flowCloseness,
   }).filter(([, value]) => value !== undefined && value !== null));
 }
@@ -337,6 +347,7 @@ export function validateAgenticLeaningsReplacement({
   musicalLeanings,
   allowedLeanings,
   supportedLeanings,
+  baselineSupportedLeanings,
   flowCloseness,
 }: {
   musicalReason: unknown;
@@ -344,6 +355,7 @@ export function validateAgenticLeaningsReplacement({
   musicalLeanings: unknown;
   allowedLeanings: string[];
   supportedLeanings: string[];
+  baselineSupportedLeanings: string[];
   flowCloseness: unknown;
 }): { valid: true; basis: string } | { valid: false; reason: AgenticLeaningsReviewRejection } {
   const rawBasis = typeof leaningsBasis === 'string' ? leaningsBasis.trim().replace(/\s+/g, ' ') : '';
@@ -357,6 +369,11 @@ export function validateAgenticLeaningsReplacement({
   }
   if (!supportedLeanings.some((option) => comparable(option) === basis)) {
     return { valid: false, reason: 'basis-not-supported-by-candidate' };
+  }
+  // A shared match proves compatibility, not that a preference changed the
+  // choice. Enforce this independently of the model's prompt and answer.
+  if (baselineSupportedLeanings.some((option) => comparable(option) === basis)) {
+    return { valid: false, reason: 'basis-already-supported-by-baseline' };
   }
   if (flowCloseness !== 'close' && flowCloseness !== 'possible') {
     return { valid: false, reason: 'not-flow-tie' };

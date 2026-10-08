@@ -14,8 +14,14 @@ dead-air trim, festivals, listener request hardening, likes, and the blocklist
 rules.
 
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
-preferences. A separate review can replace the discovered baseline only with a
-metadata-supported close or possible flow match. Short genres such as jazz,
+preferences. A separate review keeps the discovered baseline by default. It can replace it
+only when a metadata-supported preference absent from the baseline genuinely
+settles a close or convincingly comparable possible-flow choice. Shared matches
+(such as rock on both tracks) are compatibility, not a Leanings advantage.
+The compact review exposes `leaningsAdvantages`, reserves evidence slots for
+distinguishing preferences, and skips the model when no viable advantage exists.
+The final validator independently rejects a basis already supported by the
+baseline, even if the model proposes a swap. Short genres such as jazz,
 rock and soul are valid phrases. Parse each persona independently, including
 noun-phrase fallback, then merge with the host owning duplicate phrases.
 `dj-agent/leanings-review.ts` owns extraction, source priority, evidence

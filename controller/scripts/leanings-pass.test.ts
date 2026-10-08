@@ -140,3 +140,80 @@ test('no Leanings, or nothing to compare, means no model call at all', async () 
   assert.equal(alone.prompts.length, 0);
   assert.equal(alone.result.reviewed, false);
 });
+
+// Live lunchtime reproduction: the reviewer swapped rock for rock on every
+// turn, although the initial pick already supported the claimed preference.
+for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as const) {
+  const rock = { ...baseline, genre: 'Hard Rock' };
+  const peer = { ...plain, genre: 'Alternative Rock' };
+  const punk = { ...synth, genre: 'Rock, Punk' };
+  const preferences = { host: 'Favour rock and punk.', guest: null, promptValue: 'Host: Favour rock and punk.' };
+
+  test(`${kind}: an equally supported rock challenger keeps the baseline without a model call`, async () => {
+    const { result, resolution, prompts } = await run(
+      { selectedId: peer.id, leaningsBasis: 'rock', musicalReason: goodReason, transition: 'blend' },
+      kind,
+      { song: rock, seen: new Map([rock, peer].map(track => [track.id, track])), editorialLeanings: preferences },
+    );
+    assert.equal(prompts.length, 0);
+    assert.equal(result.song, rock);
+    assert.equal(result.object.reason, 'baseline reason');
+    assert.equal(result.object.transition, 'normal');
+    assert.equal(result.reviewed, false);
+    assert.equal(resolution.leaningsReview?.outcome, 'not-run');
+    assert.equal(resolution.leaningsReview?.replacementId, null);
+  });
+
+  test(`${kind}: a distinguishing punk preference can still settle a close rock choice`, async () => {
+    const { result, resolution, prompts } = await run(
+      { selectedId: punk.id, leaningsBasis: 'punk', musicalReason: goodReason, transition: 'blend' },
+      kind,
+      { song: rock, seen: new Map([rock, peer, punk].map(track => [track.id, track])), editorialLeanings: preferences },
+    );
+    assert.equal(result.song, punk);
+    assert.equal(resolution.leaningsReview?.outcome, 'replaced');
+    assert.equal(resolution.leaningsReview?.leaningsBasis, 'punk');
+    const payload = JSON.parse(prompts[0].split('\n\n')[0]);
+    assert.deepEqual(payload.baseline.leaningsMatches, ['rock']);
+    const challenger = payload.challengers.find((candidate: { id: string }) => candidate.id === punk.id);
+    assert.deepEqual(challenger.leaningsMatches, ['rock', 'punk']);
+    assert.deepEqual(challenger.leaningsAdvantages, ['punk']);
+  });
+
+  test(`${kind}: the controller rejects a model swap based on an already shared preference`, async () => {
+    const { result, resolution, prompts } = await run(
+      { selectedId: peer.id, leaningsBasis: 'ROCK', musicalReason: goodReason, transition: 'blend' },
+      kind,
+      { song: rock, seen: new Map([rock, peer, punk].map(track => [track.id, track])), editorialLeanings: preferences },
+    );
+    assert.equal(prompts.length, 1, 'a genuine punk advantage makes a review worthwhile');
+    assert.equal(result.song, rock, 'the answer cannot use a shared rock match to replace the baseline');
+    assert.equal(result.object.reason, 'baseline reason');
+    assert.equal(result.object.transition, 'normal');
+    assert.equal(resolution.leaningsReview?.outcome, 'invalid');
+    assert.equal(resolution.leaningsReview?.rejectionReason, 'basis-already-supported-by-baseline');
+  });
+
+  test(`${kind}: a distant preference match cannot start a review or displace the baseline`, async () => {
+    const distant = { ...punk, energy: 'high', moods: ['workout'], bpm: 75, key: '2B' };
+    const { result, prompts } = await run(
+      { selectedId: distant.id, leaningsBasis: 'punk', musicalReason: goodReason, transition: 'blend' },
+      kind,
+      { song: rock, seen: new Map([rock, distant].map(track => [track.id, track])), editorialLeanings: preferences },
+    );
+    assert.equal(prompts.length, 0);
+    assert.equal(result.song, rock);
+  });
+
+  test(`${kind}: a supported advantage never obliges the reviewer to swap`, async () => {
+    const { result, resolution, prompts } = await run(
+      { selectedId: rock.id, leaningsBasis: NO_AGENTIC_LEANINGS_INFLUENCE, musicalReason: goodReason, transition: 'blend' },
+      kind,
+      { song: rock, seen: new Map([rock, punk].map(track => [track.id, track])), editorialLeanings: preferences },
+    );
+    assert.equal(prompts.length, 1);
+    assert.equal(result.song, rock);
+    assert.equal(result.object.transition, 'normal');
+    assert.equal(resolution.leaningsReview?.outcome, 'kept');
+  });
+}
