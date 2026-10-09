@@ -43,7 +43,7 @@ import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.j
 import * as likes from './likes.js';
 import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
-import { djPick, shortlistClauseSelectionReason, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSituation, type ShortlistPickResolution, type ShortlistSelectionContext } from './dj-agent/shortlist-pick.js';
+import { djPick, shortlistClauseSelectionReason, shortlistConversation, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSituation, type ShortlistPickResolution, type ShortlistSelectionContext } from './dj-agent/shortlist-pick.js';
 import { shortlistOffers } from '../music/shortlist-offers.js';
 import { SHORTLIST_PASSES_DEFAULT } from '../schemas/settings.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
@@ -436,6 +436,8 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     // from its session window and pick event.
     ...(useShortlist ? shortlistSignals(queue, scope, rankTarget) : {}),
     ...(useShortlist ? shortlistSituation(ctx) : {}),
+    ...(useShortlist && explore ? { explore: true } : {}),
+    ...(useShortlist ? shortlistConversation(session.promptMemory()) : {}),
   };
   let steps: number;
   let toolCalls: any[];

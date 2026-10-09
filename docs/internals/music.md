@@ -172,6 +172,21 @@ their own reference; neither cosine is BPM/key transition compatibility. Missing
 non-finite or out-of-range scores are omitted, while zero remains evidence.
 Pinned by `scripts/shortlist-candidate-pool-parity.test.ts` and the runner tests.
 
+Shortlist selection receives a compact journey steer and the same occasional
+exploration flag used by its discovery plan. Journey choices prefer a fitting
+`tracksTowardJourney` result; exploration choices give fitting unaired or
+long-unplayed deep cuts extra consideration. Runs and journeys suppress that
+exploration steer. Corrective choices keep the same selection context.
+
+Conversation continuity is limited to three distinct, already-aired editorial
+remarks from `session.promptMemory()`, newest first, at most 140 characters each
+and two hours old. Routine links, idents, clock checks and handoffs are omitted.
+The existing session boundary drops prior-show speech and excludes private pick
+rationales and raw listener messages. These excerpts are soft musical context,
+not instructions or speech to repeat. They stay in `selectionContext`, never
+the separate link writer's arguments or queued track fields. Shortlist system
+wording describes this compact input rather than a chat session or tool loop.
+
 **Model-failure recovery** matches the pool's own move. When `djPick` fails,
 `djObject` has already spent both of its attempts, so the route queues the top
 of its own fit-ordered list rather than handing the slot to the pool, which

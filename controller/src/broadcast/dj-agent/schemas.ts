@@ -338,7 +338,7 @@ export function pickSystem(
   // with the cross-hour memory in broadcast/session.ts, which now keeps that
   // history alive across daypart turnovers.
   const djModeLine = persona?.djMode
-    ? `\n\n${instruction('picker', 'dj-mode')}`
+    ? `\n\n${instruction('picker', nativeShortlist ? 'shortlist-dj-mode' : 'dj-mode')}`
     : '';
   // The show topic must live in the system prompt, not only in the session-
   // opening message: the session window (~40 turns) scrolls past the opener
@@ -370,7 +370,9 @@ export function pickSystem(
   // the showPlaylistTracks tool is NOT registered — telling the model to call
   // a tool that doesn't exist burns steps and invites fabrication.
   const playlistLean = activeShow?.playlistIds?.length && playlistResolved
-    ? `\n\n${instruction('picker', activeShow.playlistStrict ? 'playlist-strict' : 'playlist-soft')}`
+    ? `\n\n${instruction('picker', nativeShortlist
+      ? (activeShow.playlistStrict ? 'shortlist-playlist-strict' : 'shortlist-playlist-soft')
+      : (activeShow.playlistStrict ? 'playlist-strict' : 'playlist-soft'))}`
     : '';
   // Listener favourites (#991) deliberately do NOT render here: the list
   // changes as likes land, and re-rendering it inside the system prompt broke
@@ -394,11 +396,11 @@ export function pickSystem(
       : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}
 
-${instruction('picker', 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}
+${instruction('picker', nativeShortlist ? 'shortlist-frame' : 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}
 
 ${dj.PICKER_CRITERIA}
 
-${instruction('picker', 'listener-requests', { listenerText: LISTENER_TEXT_CLAUSE })}${dj.REQUESTER_NAME_CLAUSE}
+${instruction('picker', nativeShortlist ? 'shortlist-listener-text' : 'listener-requests', { listenerText: LISTENER_TEXT_CLAUSE })}${dj.REQUESTER_NAME_CLAUSE}
 
 ${findingCandidates}${dj.effectsGuidance()}${editorialLeaningsPrompt}`;
 }
