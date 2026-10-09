@@ -21,7 +21,9 @@ const { pickSystem } = await import('../src/broadcast/dj-agent/schemas.js');
 const { shortlistSourceHint } = await import('../src/music/shortlist-presentation.js');
 const { PICKER_TOOLS, clearPickerSourceCache } = await import('../src/llm/tools.js');
 
-const songs = Array.from({ length: 6 }, (_, i) => ({ id: `guidance-${i}`, title: `Track ${i}`, artist: `Artist ${i}`, album: `Album ${i}`, duration: 240 }));
+const songs = Array.from({ length: 6 }, (_, i) => ({ id: `guidance-${i}`, title: `Track ${i}`, artist: `Artist ${i}`, album: `Album ${i}`, duration: 240,
+  ...(i === 0 ? { introMs: 12_000 } : {}),
+}));
 const realFetch = globalThis.fetch;
 const realRandom = Math.random;
 const pickInputs: any[] = [];
@@ -118,9 +120,13 @@ test('Shortlist system describes compact input while Agentic retains its session
   const shortlist = pickSystem(null, true, true, { host: null, guest: null, promptValue: null }, { name: 'DJ', djMode: true } as any);
   assert.match(shortlist, /compact context/);
   assert.match(shortlist, /supplied conversation cues/);
+  assert.match(shortlist, /intro_ms is measured intro length in milliseconds; an absent value is unknown/);
+  assert.match(shortlist, /When a link is planned, consider intro space as a soft preference between otherwise fitting tracks/);
+  assert.match(shortlist, /Musical flow comes first; speech fitting is handled separately/);
   assert.doesNotMatch(shortlist, /messages above are the live session|Listener requests appear in the session above/);
   const agentic = pickSystem(null, true, false, { host: null, guest: null, promptValue: null });
   assert.match(agentic, /messages above are the live session/);
+  assert.doesNotMatch(agentic, /intro_ms is measured intro length in milliseconds/);
 });
 
 test('every discovery tool has a readable source label; request resolution is excluded', () => {
@@ -155,14 +161,20 @@ async function livePick(corrective: boolean) {
   assert.equal(pickInputs.length, corrective ? 2 : 1);
   for (const body of pickInputs) {
     const prompt = body.messages.find((message: any) => message.role === 'user').content;
-    const context = JSON.parse(prompt.split('\n')[0]).context;
+    const { context, shortlist } = JSON.parse(prompt.split('\n')[0]);
     assert.equal(context.explore, true);
+    assert.equal(shortlist.find((track: any) => track.id === songs[0].id).intro_ms, 12_000,
+      'measured intro length reaches both initial and corrective model requests');
+    assert.equal('intro_ms' in shortlist.find((track: any) => track.id === songs[1].id), false);
+    assert.match(context.link, /A separate safe link may air/);
+    const system = body.messages.find((message: any) => message.role === 'system').content;
+    assert.match(system, /When a link is planned, consider intro space as a soft preference/);
     assert.deepEqual(context.conversation, ['SELECTION_ONLY_COASTAL_THREAD']);
   }
   assert.equal(linkInputs.length, 1, 'separate link generation still runs');
   const linkInput = JSON.stringify(linkInputs[0]);
   assert.match(linkInput, /EXISTING_LINK_RECAP/);
-  assert.doesNotMatch(linkInput, /SELECTION_ONLY_COASTAL_THREAD|exploration pick|coastal thread through|"conversation"/);
+  assert.doesNotMatch(linkInput, /SELECTION_ONLY_COASTAL_THREAD|exploration pick|coastal thread through|"conversation"|consider intro space as a soft preference/);
   assert.doesNotMatch(JSON.stringify(q.upcoming[0].track), /SELECTION_ONLY_COASTAL_THREAD|conversation/);
 }
 

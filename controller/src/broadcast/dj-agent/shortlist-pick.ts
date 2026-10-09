@@ -148,17 +148,20 @@ export function shortlistPickSchema(ids: string[]) {
 
 // Keep the model's view limited to facts that can affect musical flow,
 // show/context fit, transition craft or rotation variety. Full candidates stay
-// in controller memory for guards and enqueue. Duration and the first discovery
-// source also help the model judge the offered tracks; internal data stays out.
+// in controller memory for guards and enqueue. Duration, measured intro length
+// and the first discovery source help judge the tracks; internal data stays out.
 export function shortlistCandidateForPick(candidate: PickerCandidate): Record<string, unknown> {
   const {
     id, title, artist, album, year, genre, moods, energy, instrumental,
-    bpm, key, pace, sections, similarity, unaired, duration_sec, play_count, last_played_days_ago,
+    bpm, key, pace, sections, similarity, unaired, duration_sec, intro_ms, play_count, last_played_days_ago,
     artist_play_count, artist_last_played_days_ago,
   } = candidate;
+  // Zero is a measured immediate start; absent/invalid measurements are unknown.
+  const introMs = typeof intro_ms === 'number' && Number.isFinite(intro_ms) && intro_ms >= 0 ? intro_ms : undefined;
   return Object.fromEntries(Object.entries({
     id, title, artist, album, year, genre, moods, energy, instrumental,
     bpm, key, pace, sections, similarity, unaired, duration_sec, play_count, last_played_days_ago,
+    intro_ms: introMs,
     artist_play_count, artist_last_played_days_ago,
     source: candidate.shortlistSources?.[0],
   }).filter(([, value]) => value !== undefined && value !== null));

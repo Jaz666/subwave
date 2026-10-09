@@ -164,8 +164,13 @@ clearing choices.
 temperature/unit/mood/daylight and festival name/description/mood from the
 prepared selection snapshot; it never copies persona Leanings or private
 location. Live and bench calls use the same helper. The compact candidate view
-includes `duration_sec` and the first discovery `source`; other controller
-fields stay private. Similarity evidence is a labelled cosine score carrying
+includes `duration_sec`, known measured `intro_ms` and the first discovery
+`source`; other controller fields stay private. Intro length is in milliseconds:
+zero is a measured immediate start, while absent or invalid measurements are
+omitted. When a link is planned, intro space is a soft preference between fitting
+tracks; musical flow comes first. Initial and corrective choices receive it.
+The separate link writer and shared speech-budget checks still determine what
+can actually air. Similarity evidence is a labelled cosine score carrying
 its actual `audio` or `text` index and reference. Cross-index seed rescue labels
 the index that answered, never the requested one. Query and journey scores name
 their own reference; neither cosine is BPM/key transition compatibility. Missing,
