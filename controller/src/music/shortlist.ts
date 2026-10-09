@@ -10,6 +10,7 @@ import { mixCompat, type Analysis } from './mix.js';
 import { filterPickerCandidates } from './recency.js';
 import { type YearRange, hasEraBound } from './show-filter.js';
 import { shortlistOffers, type CandidateOffers } from './shortlist-offers.js';
+import { shortlistSearchCalls, type ShortlistSearch } from './shortlist-search.js';
 
 export type ShortlistSourceCall = {
   source: string;
@@ -33,6 +34,8 @@ export type ShortlistPlanningContext = {
   // Mirrors the existing ε-greedy deep-cut nudge. Callers decide the random
   // draw once, outside this deterministic planner.
   explore?: boolean;
+  // Prepared query data only. The controller chooses executable sources.
+  searches?: readonly ShortlistSearch[];
   // Where the family and source rotation starts. The live pick passes a fresh
   // draw so a station does not run the same plan every time one anchor (or a
   // cold start with no anchor) comes round; absent, the rotation is keyed on
@@ -64,8 +67,8 @@ function rotated<T>(values: T[], offset: number): T[] {
 }
 
 // Build a bounded mix of musical context, local continuity and catalogue
-// diversity. Search and request-only tools need listener intent, so they do not
-// belong in this generic plan. All candidates still pass through the shared
+// diversity. Targeted searches need prepared editorial intent; request-only
+// tools never belong in this plan. All candidates pass through the shared
 // picker registry and its show, recency and policy guards.
 export function planShortlistSources(
   context: ShortlistPlanningContext,
@@ -98,6 +101,8 @@ export function planShortlistSources(
   if (context.scope.episodeSource) add('context', 'episodeArtistTracks');
   if (context.scope.audioWaypoint?.length) add('context', 'tracksTowardJourney');
   if (context.scope.playlistTracks?.length) add('context', 'showPlaylistTracks');
+  const targeted: ShortlistSourceCall[] = shortlistSearchCalls(context.searches ?? [], availableSources);
+  lanes.context.push(...targeted);
   // Every allowed value participates in rotation; a bounded pick need not
   // query every value, but the first chip must not own discovery indefinitely.
   for (const mood of moods) {
@@ -157,6 +162,14 @@ export function planShortlistSources(
   if (!ownsDirection && context.scope.playlistTracks?.length) {
     const playlistIndex = lanes.context.findIndex(call => call.source === 'showPlaylistTracks');
     if (playlistIndex >= 0) calls.push(...lanes.context.splice(playlistIndex, 1));
+  }
+  // Reserve at most one existing pass for the show's targeted intent when
+  // there is room for another source. A one-pass station rotates it normally;
+  // episodes, strict playlists and journeys retain their precedence.
+  if (!ownsDirection && budget >= 2 && targeted.length && calls.length < budget) {
+    const target = rotated(targeted, Math.floor(offset / 3))[0];
+    calls.push(target);
+    lanes.context = lanes.context.filter(call => !targeted.includes(call));
   }
   const cycle = () => ({
     context: [...lanes.context],

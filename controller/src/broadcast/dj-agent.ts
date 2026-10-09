@@ -36,6 +36,7 @@ import {
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
 import { prepareEpisodeContext, showPreparation } from './show-preparation.js';
+import { shortlistSearchPreparation } from './shortlist-search-preparation.js';
 import { pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, transitionChoiceNudge, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { agenticDiscoverySelectionReason, agenticSelectionReason, agenticTrackRef, resolveAgenticLeaningsUsage, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
 import { runLeaningsReview } from './dj-agent/leanings-pass.js';
@@ -455,6 +456,14 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     };
     // This route builds and executes the controller's source plan directly.
     // It deliberately never instantiates the tool-loop agent or a tool schema.
+    const occurrence = activeShow ? showPreparation.occurrence({
+      context: showAt ? { ...ctx, at: showAt.toISOString() } : ctx,
+    }) : null;
+    const searches = occurrence && !episodeSource && budget.optionalSegmentsAllowed()
+      ? await shortlistSearchPreparation.ensure({
+        occurrenceId: occurrence.id, expiresAt: occurrence.endsAt,
+        topic: activeShow?.topic ?? '', editorial: ctx?.episodeEditorial,
+      }) : [];
     const shortlist = await buildShortlist({
       scope,
       currentTrackId: pickAnchor?.id ?? null,
@@ -466,6 +475,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       eras: activeShow?.eras,
       dominantMood: ctx?.dominantMood,
       explore,
+      searches,
       // A fresh draw per pick, like `explore`, so one anchor does not always
       // produce the same plan.
       rotationSeed: Math.floor(Math.random() * 0x100000000),

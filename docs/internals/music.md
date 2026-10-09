@@ -187,6 +187,36 @@ not instructions or speech to repeat. They stay in `selectionContext`, never
 the separate link writer's arguments or queued track fields. Shortlist system
 wording describes this compact input rather than a chat session or tool loop.
 
+**Targeted search preparation** is optional and separate from discovery and
+selection. For an active show with a nonblank topic or prepared editorial brief,
+`broadcast/shortlist-search-preparation.ts` makes one tool-free text call for up
+to three structured search intents. Ordinary mood/genre briefs can return none.
+No persona Leanings, listener text, track IDs or executable tools enter that
+call. The input is capped to 2,000 characters per brief field; each query is at
+most 120 characters. Output is JSON data validated by `shortlist-search.ts`.
+
+Prepared queries, including successful empty results, persist in
+`state/shortlist-search-preparations.json` under the scheduled/takeover occurrence
+and brief content. Concurrent callers share preparation; later picks and
+restarts reuse it. Changed briefs and new airings prepare separately. Failure
+keeps ordinary discovery, with a five-minute retry delay and at most two
+preparation attempts per input. Expired results are discarded; the store keeps
+at most 64 records. A failed state write retains the in-memory result and logs
+the persistence error. Prepared artist catalogues skip this extra call, and
+token-budget soft/hard modes do not start it.
+
+The controller maps validated intent to `searchLibrary`, `topSongsByArtist`,
+`recentByArtist`, `searchByLyrics` or `searchBySound`, using the existing registry
+availability gates, collector and station locks. No model executes those tools.
+Multi-pass ordinary discovery reserves at most one configured pass for a
+rotating targeted query and keeps other sources in the remaining passes;
+one-pass discovery rotates searches normally. Episodes, journeys and strict
+playlists keep their priority, and soft playlists keep their reserved pass.
+An unavailable search is omitted; empty/error results use the existing bounded
+recovery sources. No extra discovery passes, tool loops or picking-model calls
+are introduced. Search briefs never become speech context. Regression checks
+capture actual HTTP/model calls and verify cache recovery and policy filtering.
+
 **Model-failure recovery** matches the pool's own move. When `djPick` fails,
 `djObject` has already spent both of its attempts, so the route queues the top
 of its own fit-ordered list rather than handing the slot to the pool, which
