@@ -181,6 +181,7 @@ export default function PlayerScreen() {
     llmTokens,
     state,
     session,
+    leadMs,
     elapsed,
     progress,
     trackStartedAt,
@@ -234,7 +235,7 @@ export default function PlayerScreen() {
   const coverColors = useCoverColors(coverSrc);
 
   // Cast has no local RNTP media session; update OS metadata only for local playback.
-  useNowPlayingInfo({ api, tunedIn: localPlayer.tunedIn, nowPlaying, boothFeed, activeShow });
+  useNowPlayingInfo({ api, tunedIn: localPlayer.tunedIn, nowPlaying, boothFeed, leadMs, activeShow });
 
   useLiveActivity({
     api,
@@ -242,6 +243,7 @@ export default function PlayerScreen() {
     nowPlaying,
     activeShow,
     boothFeed,
+    leadMs,
     trackStartedAt,
     station: stationName || 'SUB/WAVE',
     accent: colors.accent,
