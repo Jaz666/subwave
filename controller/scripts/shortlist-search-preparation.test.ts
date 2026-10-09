@@ -49,6 +49,11 @@ test('evidence cannot fabricate a theme or turn biography and generic discovery 
   assert.deepEqual(groundShortlistSearches([
     { kind: 'theme', query: 'songs about everyday life', evidence: 'Songs about coming home' },
   ], [brief.topic]), []);
+  // Live Carrie preparation copied the old prompt example and attached a
+  // real, unrelated excerpt. A genuine quote alone must not validate a theme.
+  assert.deepEqual(groundShortlistSearches([
+    { kind: 'theme', query: 'songs about coming home', evidence: 'She has a knack for making old favourites feel fresh' },
+  ], ['She has a knack for making old favourites feel fresh and introducing newer artists and the legends that inspired them.'], ['Carrie Marshall']), []);
   assert.deepEqual(groundShortlistSearches([
     { kind: 'artist', query: 'Bob Dylan', evidence: 'Play songs by Bob Dylan' },
   ], ['Play songs by Bob Dylan'], ['Bob']), [{ kind: 'artist', query: 'Bob Dylan' }],
