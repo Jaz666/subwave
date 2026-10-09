@@ -1195,6 +1195,28 @@ async function pickViaPool(queue, ctx, { wantLink, pickAnchor, showAt = null }: 
   return 'queued';
 }
 
+// The per-pick effects nudge on the event turn. Compact on purpose: the full
+// per-effect coaching is effectsGuidance() in the system prompt — this only
+// keeps the vocabulary and the deliberate-choice reminder fresh in the newest
+// turn. Re-describing all seven effects here tripled the coaching per pick
+// (system + event + schema description). It names only the gestures the
+// operator has left on (#1565): the system prompt already calls the rest
+// switched off, and a nudge still offering them contradicted it. With every
+// switch off the clause goes, exactly like DJ mode off. With all six on it is
+// the historical text byte for byte.
+export function effectEventClause(historyNote = ''): string {
+  if (!settings.effectsActive()) return '';
+  const on = new Set<TransitionEffect>(settings.enabledEffects());
+  if (on.size === 0) return '';
+  const names = (kinds: TransitionEffect[]) => kinds.filter(k => on.has(k)).map(k => `"${k}"`).join('/');
+  const roles = ([
+    [names(['washout', 'loop']), 'end your pick'],
+    [names(['sweep', 'dissolve', 'chop']), 'resolve a clash'],
+    [names(['blend']), 'only for an exceptionally locked pair'],
+  ] as const).filter(([kinds]) => kinds).map(([kinds, role]) => `${kinds} ${role}`);
+  return ` Set "transition" by what THIS moment needs, per the TRANSITION EFFECTS guidance — ${[...roles, '"normal" otherwise'].join(', ')}. Vary your craft: never the same transition three picks running, and if your last pick used an effect, lean "normal" now unless the moment clearly calls again.${historyNote}`;
+}
+
 // Called by the queue watcher when an autonomous track starts and the queue is
 // empty. Posts the event to the session, then picks the next track (and an
 // optional between-track link) via the agent, falling back to the pool.
@@ -1270,14 +1292,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     const historyNote = recentT.length
       ? ` Your recent transition choices, oldest first: ${recentT.join(', ')} — the station strips a third repeat, so vary deliberately.`
       : '';
-    // Compact on purpose: the full per-effect coaching is effectsGuidance()
-    // in the system prompt — this nudge only keeps the vocabulary and the
-    // deliberate-choice reminder fresh in the newest turn. Re-describing all
-    // seven effects here tripled the coaching per pick (system + event +
-    // schema description).
-    const effectClause = settings.effectsActive()
-      ? ` Set "transition" by what THIS moment needs, per the TRANSITION EFFECTS guidance — "washout"/"loop" end your pick, "sweep"/"dissolve"/"chop" resolve a clash, "blend" only for an exceptionally locked pair, "normal" otherwise. Vary your craft: never the same transition three picks running, and if your last pick used an effect, lean "normal" now unless the moment clearly calls again.${historyNote}`
-      : '';
+    const effectClause = effectEventClause(historyNote);
     // The turn is split in two: `text` is the factual event the booth log shows
     // the operator, `meta.promptSuffix` carries the model-facing coaching
     // clauses. windowMessages() re-joins them, so the model sees one message and
@@ -1432,6 +1447,11 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     const last = messages[messages.length - 1];
     if (last && last.role === 'user') last.content += '\n' + tail;
     else messages.push({ role: 'user', content: tail });
+    // The echo guards' horizon is this run's whole window, not only THIS
+    // request: other listeners' request lines are in `messages` verbatim, and a
+    // line that reads one of them out is the same failure. Captured with the
+    // window so a request posted mid-run can't widen it past what was seen.
+    const echoTexts = [text, ...session.windowRequestTexts()];
 
     // A request runs with recency only — no show locks. An explicit listener
     // ask wins over the show's strict filters, which is why the scope stops
@@ -1461,7 +1481,7 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     // session turn later `windowMessages()` calls condition on, so an unguarded
     // echo poisons future generations even though it never reaches tts.speak.
     if (object?.kind === 'chat' && !object?.id && typeof object?.ack === 'string' && object.ack.trim()) {
-      const screened = screenAck(object.ack, text, 'Heard you loud and clear.');
+      const screened = screenAck(object.ack, echoTexts, 'Heard you loud and clear.');
       if (screened.guard) queue.log('request-guard', `agent chat ack echoed request text — replaced`);
       session.appendTurn({ role: 'dj', kind: 'request', text: screened.ack, meta: { requester, toolCalls } });
       return { ack: screened.ack, track: null, introScript: null, guard: screened.guard };
@@ -1534,7 +1554,7 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     // Echo guard (A2): a script that reads the request back is regenerated
     // with the request text withheld — it can't echo what it never saw.
     const rawIntro = autoVoiceAllowed() && typeof object.intro === 'string' ? object.intro.trim() : '';
-    const guarded = await guardIntro(rawIntro || null, text, () => dj.generateIntro({
+    const guarded = await guardIntro(rawIntro || null, echoTexts, () => dj.generateIntro({
       track: trackFields(song), context: null, requestedBy: requester,
       persona: requestSpeech.persona,
     }));
@@ -1546,7 +1566,7 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
     // is never falsy and a downstream `||` is unreachable. Threading it in here
     // means the listener gets the named line in both cases the fallback covers
     // — the model wrote nothing, and the model echoed their own text back.
-    const screened = screenAck(object.ack, text, isNamedRequester(requester)
+    const screened = screenAck(object.ack, echoTexts, isNamedRequester(requester)
       ? `Coming up for you, ${requester}.`
       : 'Coming up for you.');
     if (screened.guard) queue.log('request-guard', `agent ack echoed request text — replaced`);
