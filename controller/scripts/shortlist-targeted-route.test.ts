@@ -1,7 +1,7 @@
 // Real preparation -> controller search -> selection -> separate link writer.
 // All HTTP is synthetic; assert the model has no executable discovery tools.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { before, after } from 'node:test';
@@ -28,6 +28,7 @@ const prohibited = [
   { id: 'recent', title: 'Recent', artist: 'Recent', genre: 'Rock', duration: 240 },
 ];
 let preparations = 0;
+let preparedAnswer = '{"searches":[{"kind":"library","query":"Portishead","evidence":"Explore Portishead tracks"}]}';
 const preparationInputs: any[] = [];
 const selectionInputs: any[] = [];
 const linkInputs: any[] = [];
@@ -61,7 +62,7 @@ before(async () => {
     const user = body.messages.find((message: any) => message.role === 'user')?.content;
     if (!body.tools?.length && String(user).startsWith('{"topic"')) {
       preparations++; preparationInputs.push(body);
-      return completion('{"searches":[{"kind":"library","query":"Portishead"}]}');
+      return completion(preparedAnswer);
     }
     if (body.tools?.length) {
       selectionInputs.push(body);
@@ -117,7 +118,7 @@ test('one tool-free preparation supplies controller searches across picks withou
   assert.equal(linkInputs.length, 2);
   for (const body of linkInputs) {
     assert.match(JSON.stringify(body), /EXISTING_SPEECH_RECAP/);
-    assert.doesNotMatch(JSON.stringify(body), /Turn the supplied show brief|"searches"|PRIVATE_PICKING_REASON|RAW_PRIVATE_LISTENER/);
+    assert.doesNotMatch(JSON.stringify(body), /Extract explicit music search requests|"searches"|PRIVATE_PICKING_REASON|RAW_PRIVATE_LISTENER/);
   }
 });
 
@@ -130,4 +131,27 @@ test('real targeted discovery preserves strict locks, recency, exclusions and du
   assert.ok(result.sourceRuns.some(run => run.source === 'searchLibrary'));
   assert.ok(result.candidates.length > 0);
   assert.ok(result.candidates.every(track => !['wrong-genre', 'too-short', 'recent', songs[0].id].includes(track.id)));
+});
+
+test('a generic presenter biography keeps ordinary discovery even if preparation invents searches', async () => {
+  show.topic = readFileSync(new URL('./fixtures/shortlist-search/chris-show-brief.md', import.meta.url), 'utf8');
+  await settings.update({ shows: [show] });
+  preparedAnswer = JSON.stringify({ searches: [
+    { kind: 'theme', query: 'songs about everyday life', evidence: "The working day has settled in, the kettle's probably been on once already" },
+    { kind: 'artist', query: 'Chris Sittins', evidence: 'Chris Sittins is here to keep you company with two hours of great music and good conversation.' },
+    { kind: 'library', query: 'overlooked album track', evidence: "the next he'll quietly champion an overlooked album track" },
+  ] });
+  const before = preparations;
+  const queryStart = queries.length;
+  const pickStart = selectionInputs.length;
+  await pick(); await pick();
+  assert.equal(preparations, before + 1, 'empty grounded results are reused for the airing');
+  assert.ok(queries.slice(queryStart).every(query => !/Chris|everyday life|overlooked/i.test(query)));
+  for (const body of selectionInputs.slice(pickStart)) {
+    const user = body.messages.find((message: any) => message.role === 'user').content;
+    const offered = JSON.parse(user.split('\n')[0]).shortlist;
+    assert.ok(offered.length > 0, 'ordinary discovery still supplies selectable tracks');
+    assert.ok(offered.every((track: any) => track.source !== 'searchLibrary'));
+  }
+  assert.doesNotMatch(JSON.stringify(linkInputs.slice(-2)), /Extract explicit music search requests|"evidence"|PRIVATE_PICKING_REASON|RAW_PRIVATE_LISTENER/);
 });

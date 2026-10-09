@@ -190,15 +190,25 @@ wording describes this compact input rather than a chat session or tool loop.
 **Targeted search preparation** is optional and separate from discovery and
 selection. For an active show with a nonblank topic or prepared editorial brief,
 `broadcast/shortlist-search-preparation.ts` makes one tool-free text call for up
-to three structured search intents. Ordinary mood/genre briefs can return none.
-No persona Leanings, listener text, track IDs or executable tools enter that
-call. The input is capped to 2,000 characters per brief field; each query is at
-most 120 characters. Output is JSON data validated by `shortlist-search.ts`.
+to three structured search intents. Zero is the default for generic presenter
+biographies and atmosphere; these must not become invented lyrical themes or
+literal library queries. No persona Leanings, listener text, track IDs or
+executable tools enter that call. Presenter names are supplied only to exclude
+hosts from artist searches. The input is capped to 2,000 characters per brief
+field; each query is at most 120 characters. Each proposed search supplies a
+supporting quote of at most 160 characters. `shortlist-search.ts` checks that it
+occurs in the brief, contains the query's subject words and has cues appropriate
+to that kind of music search. Requests to avoid music are excluded even when a
+quote omits the sentence's prohibition. Unsupported proposals are omitted,
+and an empty grounded result is cached normally. This conservative check may omit ambiguous
+or paraphrased requests; ordinary discovery continues in those cases.
 
 Prepared queries, including successful empty results, persist in
 `state/shortlist-search-preparations.json` under the scheduled/takeover occurrence
 and brief content. Concurrent callers share preparation; later picks and
-restarts reuse it. Changed briefs and new airings prepare separately. Failure
+restarts reuse it. Version 1 cached queries are discarded on upgrade because
+they were not checked for grounding. Changed briefs and new airings prepare
+separately. Failure
 keeps ordinary discovery, with a five-minute retry delay and at most two
 preparation attempts per input. Expired results are discarded; the store keeps
 at most 64 records. A failed state write retains the in-memory result and logs

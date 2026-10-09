@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { djText, extractJson, stripThinking } from '../llm/sdk.js';
 import { instruction } from '../llm/internal/prompts/instructions.js';
-import { shortlistSearchSchema, type ShortlistSearch } from '../music/shortlist-search.js';
+import { groundShortlistSearches, preparedShortlistSearchSchema, shortlistSearchSchema, type ShortlistSearch } from '../music/shortlist-search.js';
 import { createSerialFileWriter } from '../util/atomic-file.js';
 import { logEvent } from '../observability/events.js';
 
@@ -17,6 +17,7 @@ export type ShortlistSearchBrief = {
   expiresAt: number;
   topic: string;
   editorial?: string;
+  presenterNames?: readonly string[];
 };
 
 const recordSchema = z.object({
@@ -25,11 +26,14 @@ const recordSchema = z.object({
   searches: shortlistSearchSchema.shape.searches,
   attempts: z.number().int().min(1).max(2), retryAt: z.number().finite(),
 });
-const storeSchema = z.object({ version: z.literal(1), records: z.array(recordSchema).max(64) });
+const PREPARATION_VERSION = 2;
+const storeSchema = z.object({ version: z.literal(PREPARATION_VERSION), records: z.array(recordSchema).max(64) });
 type SearchRecord = z.infer<typeof recordSchema>;
 
 export function shortlistSearchPrompt(brief: ShortlistSearchBrief): string {
-  return JSON.stringify({ topic: brief.topic.trim().slice(0, 2000), editorial: brief.editorial?.trim().slice(0, 2000) || '' });
+  return JSON.stringify({ topic: brief.topic.trim().slice(0, 2000), editorial: brief.editorial?.trim().slice(0, 2000) || '',
+    presenters: (brief.presenterNames ?? []).slice(0, 4).map(name => name.slice(0, 80)),
+  });
 }
 
 export function createShortlistSearchPreparation({ file, generate, now = Date.now }: {
@@ -46,7 +50,10 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
   });
   const recover = () => recovered ??= (async () => {
     try {
-      const store = storeSchema.parse(JSON.parse(await readFile(file, 'utf8')));
+      const raw = JSON.parse(await readFile(file, 'utf8'));
+      // Version 1 accepted ungrounded searches. Never reuse those after upgrade.
+      if (raw?.version === 1) return;
+      const store = storeSchema.parse(raw);
       for (const record of store.records) if (record.expiresAt > now()) records.set(record.key, record);
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) report(error, 'recovery');
@@ -59,7 +66,7 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
     while (records.size > 64) records.delete(records.keys().next().value!);
     try {
       await mkdir(dirname(file), { recursive: true });
-      await write(JSON.stringify({ version: 1, records: [...records.values()] }));
+      await write(JSON.stringify({ version: PREPARATION_VERSION, records: [...records.values()] }));
     } catch (error) { report(error, 'save'); } // Retain the in-memory result even if disk is unavailable.
   }
   async function prepare(key: string, brief: ShortlistSearchBrief, prompt: string): Promise<ShortlistSearch[]> {
@@ -70,12 +77,12 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
       && (previous.attempts >= 2 || previous.retryAt > now())) return [];
     try {
       const raw = await generate(prompt);
-      const { searches } = shortlistSearchSchema.parse(JSON.parse(extractJson(stripThinking(raw))));
+      const { searches } = preparedShortlistSearchSchema.parse(JSON.parse(extractJson(stripThinking(raw))));
       if (brief.expiresAt <= now()) return [];
-      const distinct = searches.filter((search, index) => searches.findIndex(other =>
-        other.kind === search.kind && other.query.toLowerCase() === search.query.toLowerCase()) === index);
+      const input = JSON.parse(prompt);
+      const distinct = groundShortlistSearches(searches, [input.topic, input.editorial], input.presenters);
       await save({ key, expiresAt: brief.expiresAt, status: 'ready', searches: distinct, attempts: 1, retryAt: 0 });
-      logEvent('shortlist.searchPreparation', { stage: 'ready', occurrenceId: brief.occurrenceId, searches: distinct });
+      logEvent('shortlist.searchPreparation', { stage: 'ready', occurrenceId: brief.occurrenceId, searches: distinct, rejected: searches.length - distinct.length });
       return distinct;
     } catch (error) {
       report(error, 'generate');
@@ -87,7 +94,7 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
   function ensure(brief: ShortlistSearchBrief): Promise<ShortlistSearch[]> {
     if (!brief.occurrenceId || !Number.isFinite(brief.expiresAt) || brief.expiresAt <= now() || !(brief.topic.trim() || brief.editorial?.trim())) return Promise.resolve([]);
     const prompt = shortlistSearchPrompt(brief);
-    const key = createHash('sha256').update(JSON.stringify([1, brief.occurrenceId, brief.expiresAt, prompt])).digest('hex');
+    const key = createHash('sha256').update(JSON.stringify([PREPARATION_VERSION, brief.occurrenceId, brief.expiresAt, prompt])).digest('hex');
     const running = pending.get(key);
     if (running) return running;
     const operation = prepare(key, brief, prompt).finally(() => pending.delete(key));
@@ -101,6 +108,6 @@ export const shortlistSearchPreparation = createShortlistSearchPreparation({
   file: `${config.stateDir}/shortlist-search-preparations.json`,
   generate: prompt => djText({
     system: instruction('picker', 'shortlist-search-preparation'), prompt,
-    temperature: 0.1, maxOutputTokens: 384, kind: 'djShortlistSearchPreparation',
+    temperature: 0.1, maxOutputTokens: 512, kind: 'djShortlistSearchPreparation',
   }),
 });

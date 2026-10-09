@@ -463,6 +463,8 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       ? await shortlistSearchPreparation.ensure({
         occurrenceId: occurrence.id, expiresAt: occurrence.endsAt,
         topic: activeShow?.topic ?? '', editorial: ctx?.episodeEditorial,
+        presenterNames: [activeShow?.persona?.name, ...(activeShow?.guests ?? []).map(guest => guest.name)]
+          .filter((name): name is string => typeof name === 'string' && !!name),
       }) : [];
     const shortlist = await buildShortlist({
       scope,
