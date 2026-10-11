@@ -24,6 +24,7 @@ export type ShortlistSelectionContext = {
     album?: string | null;
     bpm?: number | null;
     key?: string | null;
+    energy?: string | null;
     pace?: number | null;
   } | null;
   journeyActive?: boolean;
@@ -215,7 +216,10 @@ export function shortlistPickPrompt(candidates: PickerCandidate[], context: Shor
   // Each signal is described only when it is present, so a station without it
   // keeps the prompt it had.
   const recentPlaysInstruction = context.recentPlays?.length
-    ? ' recentPlays holds tracks that have already aired, newest first; let the arc of the set decide whether this pick holds its mood and energy or turns them. currentTrack is the expected predecessor and may not be on air yet.'
+    ? ' recentPlays holds tracks that have already aired, newest first; let the arc of the set decide whether this pick holds its mood and energy or turns them.'
+    : '';
+  const predecessorInstruction = context.currentTrack
+    ? ' currentTrack is the expected predecessor and may not be on air yet; it is context, not a candidate. Use only supplied tempo, key and energy as soft flow cues; missing measurements are unknown.'
     : '';
   const favouritesInstruction = context.listenerFavourites?.length
     ? ' listenerFavourites are the tracks listeners have liked most on this station recently: when one in the shortlist fits the moment, treat it as a strong preference, but keep variety and never loop the same favourites back to back.'
@@ -236,7 +240,7 @@ export function shortlistPickPrompt(candidates: PickerCandidate[], context: Shor
     ? ' similarity is a cosine score against its named reference: audio measures sonic resemblance, text measures metadata/lyric resemblance. Compare scores only within the same kind and reference. Neither is BPM/key compatibility or evidence of a good transition; use the measured tempo/key and set context for that.'
     : '';
   return JSON.stringify({ context, shortlist: candidates.map(shortlistCandidateForPick) })
-    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${situationInstruction}${recentPlaysInstruction}${mixRunInstruction}${journeyInstruction}${explorationInstruction}${conversationInstruction}${favouritesInstruction}${similarityInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
+    + `\n\nChoose one id from this Track Shortlist using ordinary musical flow${episodeInstruction ? ' and the active episode brief' : ' only'}.${episodeInstruction}${situationInstruction}${recentPlaysInstruction}${predecessorInstruction}${mixRunInstruction}${journeyInstruction}${explorationInstruction}${conversationInstruction}${favouritesInstruction}${similarityInstruction}${transitionInstruction} Write musicalReason as one natural, specific musical clause of roughly 12–28 words, beginning with "its" or "it". Do not repeat the artist or title. Do not mention the DJ, Musical Leanings, shortlist, candidates, sources, controller, metadata, queue position, BPM, key, energy level or mood tags. The controller adds verified identity and handles any separate Musical Leanings review.`;
 }
 
 export async function djPick({

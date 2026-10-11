@@ -395,6 +395,7 @@ export function pickSystem(
       ? instruction('picker', 'finding-candidates-multi', { rounds })
       : instruction('picker', 'finding-candidates');
   return `${settings.agentPersonaPreamble(persona)}
+${dj.onAirLocationGrounding()}
 
 ${instruction('picker', nativeShortlist ? 'shortlist-frame' : 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}
 
@@ -419,6 +420,7 @@ export function requestSystem(persona = session.onAirPersona()) {
     ? `${instruction('request', 'current-track-with-intro')}${dj.AIR_TIME_CLAUSE}`
     : instruction('request', 'current-track-no-intro');
   return `${settings.agentPersonaPreamble(persona)}
+${dj.onAirLocationGrounding()}
 
 ${frame}${settings.agentLanguageReminder(persona, wantIntro ? 'the "ack" and "intro" lines' : 'the "ack" line')}
 

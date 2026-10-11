@@ -42,7 +42,7 @@ import { agenticDiscoverySelectionReason, agenticSelectionReason, agenticTrackRe
 import { runLeaningsReview } from './dj-agent/leanings-pass.js';
 import { guardIntro, screenAck, isNamedRequester } from '../util/request-guard.js';
 import * as likes from './likes.js';
-import { classifyPickFailure, type PickFailure } from '../util/pick-seed.js';
+import { classifyPickFailure, SEED_NOT_A_PICK_CLAUSE, type PickFailure } from '../util/pick-seed.js';
 import { buildShortlist } from '../music/shortlist.js';
 import { djPick, shortlistClauseSelectionReason, shortlistConversation, shortlistPickPrompt, shortlistPickSchema, shortlistReasonForLeanings, shortlistSituation, type ShortlistPickResolution, type ShortlistSelectionContext } from './dj-agent/shortlist-pick.js';
 import { shortlistOffers } from '../music/shortlist-offers.js';
@@ -50,6 +50,7 @@ import { SHORTLIST_PASSES_DEFAULT } from '../schemas/settings.js';
 import { shortlistSourceHint } from '../music/shortlist-presentation.js';
 import type { Persona } from './queue/types.js';
 import { recordShortlistPick } from '../stats.js';
+import { predecessorContext, predecessorPrompt } from './dj-agent/pick-context.js';
 
 // Re-exported so every existing `from './dj-agent.js'` import keeps working —
 // including scripts/llm-bench, which sits outside tsconfig's include and so
@@ -95,7 +96,7 @@ export function resolveRepickId<T extends { id?: unknown }>(
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
-async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', selectionContext = {}, shortlistResolution = null, health }: { health?: { modelFailed: boolean }; seen: Map<string, any>; badId: string | null; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; selectionContext?: ShortlistSelectionContext; shortlistResolution?: ShortlistPickResolution | null }) {
+async function repickFromSeen({ seen, badId, predecessor, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', selectionContext = {}, shortlistResolution = null, health }: { health?: { modelFailed: boolean }; seen: Map<string, any>; badId: string | null; predecessor?: ReturnType<typeof predecessorContext>; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; selectionContext?: ShortlistSelectionContext; shortlistResolution?: ShortlistPickResolution | null }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const shortlistRepick = telemetryKind === 'djShortlistRepick';
@@ -143,8 +144,11 @@ async function repickFromSeen({ seen, badId, showAt = null, playlistResolved = t
         ? shortlistPickPrompt([...seen.values()], selectionContext) + `\n\n${why}`
         : JSON.stringify({
           ...(Array.isArray(selectionContext.recentTransitions) ? { context: { recentTransitions: selectionContext.recentTransitions } } : {}),
+          ...(predecessor ? { predecessor } : {}),
           candidates: [...seen.values()],
-        }, null, 2) + `\n\n${why}${transitionChoiceNudge(selectionContext.recentTransitions)}`,
+        }, null, 2)
+          + (predecessor ? `\n\n${SEED_NOT_A_PICK_CLAUSE}` : '')
+          + `\n\n${why}${transitionChoiceNudge(selectionContext.recentTransitions)}`,
       schema,
       temperature: 0.5,
       kind: telemetryKind,
@@ -404,7 +408,7 @@ export function shortlistSignals(
 // `health` is written by reference: `modelFailed` means the slot was filled
 // WITHOUT the model (a Shortlist whose call failed takes its own top track), so
 // the caller counts a breaker failure even though a track was queued.
-async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, showAt = null, rankTarget = null, editorialLeanings, explore = false, health = { modelFailed: false } }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext; explore?: boolean; health?: { modelFailed: boolean } }): Promise<boolean> {
+async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, predecessor, showAt = null, rankTarget = null, editorialLeanings, explore = false, health = { modelFailed: false } }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; predecessor?: ReturnType<typeof predecessorContext>; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext; explore?: boolean; health?: { modelFailed: boolean } }): Promise<boolean> {
   const pickStarted = performance.now();
   const { scope, playlistTracks, activeShow, episodeSource, context: pickContext } = await livePickerScope(queue, { audioWaypoint, showAt, context: ctx });
   // livePickerScope prepared the episode context (#1802). Every later use in
@@ -423,10 +427,11 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       title: pickAnchor.title ?? null,
       artist: pickAnchor.artist ?? null,
       album: pickAnchor.album ?? null,
-      bpm: anchorAnalysis?.bpm ?? undefined,
+      bpm: anchorAnalysis?.bpm ?? predecessor?.bpm ?? undefined,
       // The transition leaves the predecessor at its ending, so prefer the
       // measured ending key over its dominant key when boundary analysis exists.
-      key: anchorAnalysis?.keyEnd ?? anchorAnalysis?.key ?? undefined,
+      key: anchorAnalysis?.keyEnd ?? anchorAnalysis?.key ?? predecessor?.key ?? undefined,
+      energy: predecessor?.energy ?? undefined,
       pace: pickAnchor.paceMean ?? anchorRecord?.paceMean ?? undefined,
     } : null,
     journeyActive: !!audioWaypoint?.length,
@@ -580,7 +585,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
   }
   if (!song && extras.seen.size) {
     const repicked = await repickFromSeen({
-      seen: extras.seen, badId: object?.id ?? null, showAt,
+      seen: extras.seen, badId: object?.id ?? null, predecessor, showAt,
       playlistResolved: !!playlistTracks?.length,
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
       selectionContext,
@@ -723,7 +728,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       return Promise.resolve(first ? controllerShortlistPick(first) : null);
     }
     return repickFromSeen({
-      seen: alt, badId: null, showAt,
+      seen: alt, badId: null, predecessor, showAt,
       playlistResolved: !!playlistTracks?.length,
       reason,
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
@@ -1264,6 +1269,8 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     const explicitPickAnchor = pickAnchor != null;
     pickAnchor = pickAnchor ?? queue.current?.track ?? null;
     const anchorPriorTrack = explicitPickAnchor ? (anchorPrior ?? null) : (queue.history[0]?.track ?? null);
+    await library.load();
+    const predecessor = predecessorContext(pickAnchor);
     const djMode = !!settings.getEffectivePersona()?.djMode;
     // Feature 4 + Phase 2 — advance/maybe-start a mini-run; get the tempo/key
     // re-rank target and (when the audio index supports it) a sonic-journey
@@ -1335,7 +1342,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
         + (anchorPriorTrack ? ` (after "${anchorPriorTrack.title}" by ${anchorPriorTrack.artist})` : '')
         + '. Pick the track to play next.';
     const anchorIdClause = explicitPickAnchor && pickAnchor?.id ? ` [id: ${pickAnchor.id}]` : '';
-    const promptSuffix = `${anchorIdClause}${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
+    const promptSuffix = `${predecessorPrompt(predecessor)}${anchorIdClause}${favClause}${effectClause}${runClause}${journeyClause}${exploreClause}`;
     session.appendTurn({
       role: 'event', kind: 'pick', text: eventText,
       meta: promptSuffix ? { promptSuffix } : {},
@@ -1355,7 +1362,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
       try {
         const health = { modelFailed: false };
         const queued = await pickViaSelectionRoute(queue, ctx, {
-          wantLink, audioWaypoint, pickAnchor, showAt, rankTarget, editorialLeanings, explore, health,
+          wantLink, audioWaypoint, pickAnchor, predecessor, showAt, rankTarget, editorialLeanings, explore, health,
         });
         // A Shortlist whose model call failed still fills the slot from its own
         // list, but the failure counts: the breaker exists to notice a model
