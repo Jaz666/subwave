@@ -38,7 +38,7 @@ when a control is hidden.
 - **Recommend OFF for** small/local models, structured track-picks (they don't
   benefit), and anyone watching token cost or wanting snappy transitions. Default OFF.
 
-## Track selection (settings.llm.trackSelection)
+## Track selection (Settings → Music selection → Track selection)
 - **Agentic Tools (default):** a model-led, multi-step library search. Recommend it
   for a responsive, tool-capable model and investigate agent deadline findings if its
   turns do not complete reliably.
@@ -72,7 +72,7 @@ when a control is hidden.
   review** (it's a structured call too). So when these deterministic findings fire,
   trust them over the absence of a review — they're the signal that survives.
 
-## Agent deadline (Settings → Music selection → Agent deadline; settings.llm.agentTimeoutMs, default 45s)
+## Agent deadline (Settings → Music selection → Agent deadline, default 45s)
 - Shared wall-clock budget for Agentic Tools picks, agent-assisted requests, and
   agentic Segments & Skills before they use their safe fallback. **Reasoning-heavy or
   cloud models routinely need 20–40s**, so keep the deadline generous (40–60s) for
@@ -116,9 +116,9 @@ skills and library tags as a single archive, restorable later. **Proactively sug
 taking a backup** before big changes (re-tagging, switching providers) and on a
 regular cadence — it's cheap insurance.
 
-## Daily token budget (Settings → LLM provider → Daily token budget; settings.llm.dailyTokenCap / budgetSoftPct / exemptRequests)
-- \`dailyTokenCap\` (0 = off) is a per-UTC-day token ceiling. It degrades in two tiers:
-  at \`budgetSoftPct\`% of the cap ("soft") the DJ reduces optional work and
+## Daily token budget (Settings → LLM provider → Daily token budget)
+- **Daily token cap** (0 = off) is a per-UTC-day token ceiling. It degrades in two tiers:
+  at **Soft threshold (%)** of the cap ("soft") the DJ reduces optional work and
   mutes optional segments (links, station IDs, hourly, weather/news); at the cap
   ("hard") it makes NO model call and coasts on the LLM-free auto playlist — music
   never stops. Listener requests stay exempt through the hard cap unless
@@ -130,7 +130,7 @@ regular cadence — it's cheap insurance.
 - A **soft tier of 0 or 100 disables graceful degrade** — the DJ goes from full to
   silent with no warning. Recommend ~80.
 
-## Context window (Settings → LLM provider → Provider; settings.llm.numCtx, Ollama only)
+## Context window (num_ctx) (Settings → LLM provider → Provider, Ollama only)
 - The Ollama context size. Agentic routes (Agentic Tools picks, agent-assisted
   requests, agentic Segments & Skills) send tool definitions; a small window can
   truncate them before the agent completes its turn. Keep ≥8192 (16384 default) when
@@ -143,13 +143,13 @@ regular cadence — it's cheap insurance.
   forcing a fallback. Leave at 0 unless a small-context local model needs it.
 
 ## Agent deadline vs measured latency
-- Beyond the configured **Agent deadline (seconds)**, the report compares it to the model's
+- Beyond the configured **Agent deadline**, the report compares it to the model's
   **p90 latency** (Tuning → agent deadline vs latency). If p90 crowds or exceeds the
   deadline, Agentic Tools is timing out on most tracks — the
   operator is paying for session-aware picks and not getting them. Fix: raise the
   deadline, or run a faster/smaller model (or reasoning OFF).
 
-## Broadcast stream encoders (Settings → Danger zone; Settings → Archives)
+## Broadcast stream encoders (Settings → Broadcast & mixer; Settings → Archives)
 - \`/stream.mp3\` is always on. Opus / FLAC / AAC mounts and the **hourly archive**
   are each a CONTINUOUS extra encoder = real, constant CPU. The hourly archive is
   the single biggest cost. On a small / loaded box, recommend disabling mounts the
@@ -190,12 +190,12 @@ regular cadence — it's cheap insurance.
     whole station with just an analyzer.
   - Or turn the setting off (it's costing nothing but false expectations).
 
-## Resolve described requests via web (Settings → LLM provider → Next-track picker)
+## Resolve described requests via web (Settings → Music selection → Request matching)
 - Lets the request agent resolve *described* tracks ("that song from the advert")
   via web search — so it depends on Settings → Web search being configured. If it's on
   while search isn't ready, the feature is dead; either configure search or turn it off.
 
-## Stem transitions (Settings → Danger zone → Stem transitions)
+## Stem transitions (Settings → Broadcast & mixer → Stem transitions)
 - **Stem cache budget** is the disk budget in GB. If it holds too few tracks,
   raise it to cover more of the library, then run the analysis pass to backfill.
 - **Stem cache** keeps the separated stems on disk. **Stem-blend seams** needs
