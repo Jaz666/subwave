@@ -15,17 +15,24 @@ rules.
 
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
-only when a metadata-supported preference absent from the baseline genuinely
+only when a supported preference advantage genuinely
 settles a close or convincingly comparable possible-flow choice. Shared matches
 (such as rock on both tracks) are compatibility, not a Leanings advantage.
 The compact review exposes `leaningsAdvantages`, reserves evidence slots for
-distinguishing preferences among close/possible-flow candidates, and skips the
-model when no viable advantage exists. Weak-flow matches cannot occupy the
-reserved evidence slots ahead of a viable challenger. Both routes join stored
+distinguishing preferences among close/possible-flow candidates, and runs the
+model whenever a viable challenger exists, even without a literal preference
+tag. Descriptive preferences may use a grounded editorial comparison: exact
+quoted facts from both tracks, the active preference and a genuine difference
+are checked in code. This verifies the evidence, not the subjective musical
+judgement. Comparisons and their evidence kind remain in review diagnostics.
+Weak-flow matches cannot occupy the reserved evidence slots ahead of a viable challenger. Both routes join stored
 Last.fm tags into private review copies of the baseline and candidates, after
 initial selection; discovery payloads and the picker’s candidate map stay
 unchanged. Including the baseline prevents shared tags earning false credit.
-The tags are existing library evidence, not a new Last.fm fetch.
+The private review receives up to 24 tags per track as evidence for interpretation.
+The tags are existing library evidence, not a new Last.fm fetch. Reviews now
+run more often, adding token use and latency; there remains at most one review
+call per pick.
 The final validator independently rejects a basis already supported by the
 baseline, even if the model proposes a swap. Short genres such as jazz,
 rock and soul are valid phrases. Parse each persona independently, including
