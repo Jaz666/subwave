@@ -36,7 +36,7 @@ import {
 import { dropEchoedLink, enqueuePick, generatePickLink, trackFields, trimLinkToIntro } from './dj-agent/enqueue.js';
 import { advanceRun, runActive } from './dj-agent/runs.js';
 import { prepareEpisodeContext, showPreparation } from './show-preparation.js';
-import { shortlistSearchPreparation } from './shortlist-search-preparation.js';
+import { prepareShortlistSearches } from './shortlist-search-preparation.js';
 import { pickSchemaBase, pickSystem, requestSystem, resolveEditorialLeanings, transitionChoiceNudge, type EditorialLeaningsContext } from './dj-agent/schemas.js';
 import { agenticDiscoverySelectionReason, agenticSelectionReason, agenticTrackRef, resolveAgenticLeaningsUsage, verifiedAgenticReason, type AgenticPickResolution } from './dj-agent/leanings-review.js';
 import { runLeaningsReview } from './dj-agent/leanings-pass.js';
@@ -96,18 +96,14 @@ export function resolveRepickId<T extends { id?: unknown }>(
 // the pick-anchor artist guard (#1124) reuses this same constrained re-pick
 // but for a valid pick it wants to swap off the anchor artist, so the bad-id
 // wording would be false and confuse the model.
-async function repickFromSeen({ seen, badId, predecessor, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', selectionContext = {}, shortlistResolution = null, health }: { health?: { modelFailed: boolean }; seen: Map<string, any>; badId: string | null; predecessor?: ReturnType<typeof predecessorContext>; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; selectionContext?: ShortlistSelectionContext; shortlistResolution?: ShortlistPickResolution | null }) {
+async function repickFromSeen({ seen, badId, predecessor, showAt = null, playlistResolved = true, reason = null, telemetryKind = 'djAgentRepick', selectionContext = {}, shortlistResolution = null, health, log }: { log: (kind: string, line: string) => void; health?: { modelFailed: boolean }; seen: Map<string, any>; badId: string | null; predecessor?: ReturnType<typeof predecessorContext>; showAt?: Date | null; playlistResolved?: boolean; reason?: string | null; telemetryKind?: 'djAgentRepick' | 'djShortlistRepick'; selectionContext?: ShortlistSelectionContext; shortlistResolution?: ShortlistPickResolution | null }) {
   const ids = [...seen.keys()];
   if (ids.length === 0) return null;
   const shortlistRepick = telemetryKind === 'djShortlistRepick';
   // The corrective call's eligible subset retains shortlist fit order. Never
   // reopen discovery or return the rejected artist/album when the model fails.
-  const fallback = () => {
-    if (!shortlistRepick) return null;
-    if (health) health.modelFailed = true;
-    logEvent('pick.shortlistRepickFallback', { candidates: seen.size, id: ids[0] });
-    return controllerShortlistPick(seen.get(ids[0]));
-  };
+  const fallback = (error: string) => shortlistRepick
+    ? guardedShortlistFallback(seen.values(), { health, log, stage: 'repick', error }) : null;
   const schema = shortlistRepick
     ? shortlistPickSchema(ids)
     : modelTolerant(pickSchemaBase().omit({ usedMusicalLeanings: true, leaningsTieBreak: true }).extend({
@@ -155,14 +151,14 @@ async function repickFromSeen({ seen, badId, predecessor, showAt = null, playlis
       ...(shortlistRepick && shortlistResolution ? { telemetry: { shortlistResolution } } : {}),
     });
     outcome = resolveRepickId(outcome, seen, 'repick');
-    if (!outcome) return fallback();
+    if (!outcome) return fallback('the corrective choice had no eligible ID');
     if (!shortlistRepick) return outcome;
 
     const track = seen.get(outcome.id);
     const selectionReason = shortlistClauseSelectionReason(track, outcome.musicalReason);
     return { ...outcome, selectionReason, reason: selectionReason };
-  } catch {
-    return fallback();
+  } catch (err: any) {
+    return fallback(String(err?.message || err));
   }
 }
 
@@ -359,6 +355,7 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
     playlistLock,
     playlistTracks,
     hasPlaylistAnchor: !!activeShow?.playlistIds?.length,
+    hasPinnedMoods: !!activeShow?.moods?.length,
     excludedIds,
     listenerFavourites: favourites.length ? favourites : null,
   });
@@ -366,11 +363,18 @@ export async function livePickerScope(queue: any, { audioWaypoint = null, showAt
   return { scope, playlistTracks, activeShow, episodeSource, context: preparedContext };
 }
 
-// A Shortlist pick the controller made without the model: verified identity
-// with the neutral musical clause, and no transition gesture (a plain
-// crossfade), since no model judged the seam. `musicalReason` is empty so every
-// later reason rebuild lands on the same neutral clause.
-function controllerShortlistPick(track: any) {
+// All controller choices use their already-guarded, fit-ordered subset. Every
+// stage has the same breaker attribution, neutral reason and Events/Booth log.
+function guardedShortlistFallback(candidates: Iterable<any>, { health, log, stage, error }: {
+  health?: { modelFailed: boolean }; log: (kind: string, line: string) => void;
+  stage: 'pick' | 'repick' | 'guard'; error: string;
+}) {
+  const tracks = [...candidates];
+  const track = tracks[0];
+  if (!track) return null;
+  if (health) health.modelFailed = true;
+  log('shortlist', `Track Shortlist ${stage} fallback: ${error} — taking the best-fitting eligible shortlist track without another model call`);
+  logEvent('shortlist.modelFallback', { stage, error, candidates: tracks.length, id: track.id });
   const selectionReason = shortlistClauseSelectionReason(track, '');
   return { id: String(track.id), musicalReason: '', transition: null, selectionReason, reason: selectionReason };
 }
@@ -401,27 +405,18 @@ export function shortlistSignals(
   };
 }
 
-// `ctx` / `rankTarget` are the same values runTrackEvent hands the ordinary
-// pool fallback, so the artist guard's pool rescue (#1187) builds a pick from
-// exactly the pool a failed run would have produced. The Agentic run needs
-// neither; the Shortlist also orders by `rankTarget` and names it as `mixRun`.
-// `health` is written by reference: `modelFailed` means the slot was filled
-// WITHOUT the model (a Shortlist whose call failed takes its own top track), so
-// the caller counts a breaker failure even though a track was queued.
-async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, predecessor, showAt = null, rankTarget = null, editorialLeanings, explore = false, health = { modelFailed: false } }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; predecessor?: ReturnType<typeof predecessorContext>; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext; explore?: boolean; health?: { modelFailed: boolean } }): Promise<boolean> {
-  const pickStarted = performance.now();
-  const { scope, playlistTracks, activeShow, episodeSource, context: pickContext } = await livePickerScope(queue, { audioWaypoint, showAt, context: ctx });
-  // livePickerScope prepared the episode context (#1802). Every later use in
-  // this pick, the link writer and the pool rescue included, must see that
-  // prepared copy, not the raw one this function was handed.
-  if (pickContext) ctx = pickContext;
-  const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
+// A bench compares the same selection inputs without advancing a live run.
+export function selectionContextForPick(queue: any, ctx: any, { scope, wantLink = false, audioWaypoint = null, pickAnchor = null, predecessor, rankTarget = null, explore = false, useShortlist = true }: {
+  scope: PickerScope; wantLink?: boolean; audioWaypoint?: number[] | null; pickAnchor?: any;
+  predecessor?: ReturnType<typeof predecessorContext>;
+  rankTarget?: { bpm: number | null; key: string | null } | null; explore?: boolean; useShortlist?: boolean;
+}): ShortlistSelectionContext {
   const anchorAnalysis = pickAnchor ? library.bpmKeyFor(pickAnchor) : null;
   const anchorRecord = pickAnchor?.id ? library.get(pickAnchor.id) : null;
   const recentTransitions = settings.effectsActive()
     ? (typeof queue.recentTransitionChoices === 'function' ? queue.recentTransitionChoices() : [])
     : undefined;
-  const selectionContext: ShortlistSelectionContext = {
+  return {
     currentTrack: pickAnchor ? {
       id: pickAnchor.id ?? null,
       title: pickAnchor.title ?? null,
@@ -445,6 +440,33 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     ...(useShortlist && explore ? { explore: true } : {}),
     ...(useShortlist ? shortlistConversation(session.promptMemory()) : {}),
   };
+}
+
+export function shouldExplore({ inRun, audioWaypoint, strictPlaylist }: {
+  inRun: boolean; audioWaypoint?: number[] | null; strictPlaylist?: boolean;
+}, random = Math.random): boolean {
+  return !inRun && !audioWaypoint && !strictPlaylist && random() < EXPLORE_SEED_PROBABILITY;
+}
+
+// `ctx` / `rankTarget` are the same values runTrackEvent hands the ordinary
+// pool fallback, so the artist guard's pool rescue (#1187) builds a pick from
+// exactly the pool a failed run would have produced. The Agentic run needs
+// neither; the Shortlist also orders by `rankTarget` and names it as `mixRun`.
+// `health` is written by reference: `modelFailed` means the slot was filled
+// WITHOUT the model (a Shortlist whose call failed takes its own top track), so
+// the caller counts a breaker failure even though a track was queued.
+async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = null, pickAnchor = null, predecessor, showAt = null, rankTarget = null, editorialLeanings, explore = false, health = { modelFailed: false } }: { wantLink: boolean; audioWaypoint?: number[] | null; pickAnchor?: any; predecessor?: ReturnType<typeof predecessorContext>; showAt?: Date | null; rankTarget?: { bpm: number | null; key: string | null } | null; editorialLeanings: EditorialLeaningsContext; explore?: boolean; health?: { modelFailed: boolean } }): Promise<boolean> {
+  const pickStarted = performance.now();
+  const { scope, playlistTracks, activeShow, episodeSource, context: pickContext } = await livePickerScope(queue, { audioWaypoint, showAt, context: ctx });
+  // livePickerScope prepared the episode context (#1802). Every later use in
+  // this pick, the link writer and the pool rescue included, must see that
+  // prepared copy, not the raw one this function was handed.
+  if (pickContext) ctx = pickContext;
+  const useShortlist = settings.get().llm?.trackSelection === 'shortlist';
+  const anchorAnalysis = pickAnchor ? library.bpmKeyFor(pickAnchor) : null;
+  const selectionContext = selectionContextForPick(queue, ctx, {
+    scope, wantLink, audioWaypoint, pickAnchor, predecessor, rankTarget, explore, useShortlist,
+  });
   let steps: number;
   let toolCalls: any[];
   let extras: { seen: Map<string, any> };
@@ -461,16 +483,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     };
     // This route builds and executes the controller's source plan directly.
     // It deliberately never instantiates the tool-loop agent or a tool schema.
-    const occurrence = activeShow ? showPreparation.occurrence({
-      context: showAt ? { ...ctx, at: showAt.toISOString() } : ctx,
-    }) : null;
-    const searches = occurrence && !episodeSource && budget.optionalSegmentsAllowed()
-      ? await shortlistSearchPreparation.ensure({
-        occurrenceId: occurrence.id, expiresAt: occurrence.endsAt,
-        topic: activeShow?.topic ?? '', editorial: ctx?.episodeEditorial,
-        presenterNames: [activeShow?.persona?.name, ...(activeShow?.guests ?? []).map(guest => guest.name)]
-          .filter((name): name is string => typeof name === 'string' && !!name),
-      }) : [];
+    const searches = await prepareShortlistSearches({ activeShow, context: ctx, showAt, episodeSource });
     const shortlist = await buildShortlist({
       scope,
       currentTrackId: pickAnchor?.id ?? null,
@@ -524,11 +537,9 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       // is already ordered by transition fit, so its top track is the same
       // move without paying the pool's two more attempts on the model that
       // just failed. The failure still reaches the breaker (health).
-      health.modelFailed = true;
-      const top = shortlist.candidates[0];
-      queue.log('shortlist', `Track Shortlist model pick failed: ${err?.message || err} — taking the best-fitting shortlist track without another model call`);
-      logEvent('shortlist.modelFallback', { error: String(err?.message || err), candidates: shortlist.candidates.length, id: top.id });
-      selection = controllerShortlistPick(top);
+      selection = guardedShortlistFallback(shortlist.candidates, {
+        health, log: (kind, line) => queue.log(kind, line), stage: 'pick', error: String(err?.message || err),
+      })!;
     }
     object = { ...selection, reason: selection.selectionReason };
   } else {
@@ -585,6 +596,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
   }
   if (!song && extras.seen.size) {
     const repicked = await repickFromSeen({
+      log: (kind, line) => queue.log(kind, line),
       seen: extras.seen, badId: object?.id ?? null, predecessor, showAt,
       playlistResolved: !!playlistTracks?.length,
       telemetryKind: useShortlist ? 'djShortlistRepick' : 'djAgentRepick',
@@ -724,10 +736,12 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
   // the top of the whole list.
   const guardRepick = (alt: Map<string, any>, reason: string) => {
     if (health.modelFailed) {
-      const first = alt.values().next().value;
-      return Promise.resolve(first ? controllerShortlistPick(first) : null);
+      return Promise.resolve(guardedShortlistFallback(alt.values(), {
+        health, log: (kind, line) => queue.log(kind, line), stage: 'guard', error: reason,
+      }));
     }
     return repickFromSeen({
+      log: (kind, line) => queue.log(kind, line),
       seen: alt, badId: null, predecessor, showAt,
       playlistResolved: !!playlistTracks?.length,
       reason,
@@ -1324,8 +1338,7 @@ export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickA
     // carrier of concrete candidates. Skipped mid-run/journey (they own the
     // direction) and on strict-playlist shows (deep cuts are almost surely
     // off-playlist, so the call would be spent on an emptyResult).
-    const explore = !inRun && !audioWaypoint && !ctx?.activeShow?.playlistStrict
-      && Math.random() < EXPLORE_SEED_PROBABILITY;
+    const explore = shouldExplore({ inRun, audioWaypoint, strictPlaylist: ctx?.activeShow?.playlistStrict });
     const exploreClause = explore
       ? ' Exploration nudge: include deepCuts in your discovery round this pick — surface something the station has never aired (or hasn\'t in weeks) and give it real consideration when it can fit the moment.'
       : '';

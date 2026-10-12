@@ -9,7 +9,8 @@ import { djObject, modelTolerant } from '../../llm/sdk.js';
 import { pickSchemaBase, pickSystem, transitionChoiceNudge } from './schemas.js';
 import { MUSICAL_REASON_UNAVAILABLE, type PickResolution } from './leanings-review.js';
 import type { PickerCandidate, ShortlistCandidate, ShortlistSourceRun } from '../../music/shortlist.js';
-import type { PromptMemoryEntry } from '../prompt-memory.js';
+import { promptRecapEntries, type PromptMemoryEntry } from '../prompt-memory.js';
+import * as settings from '../../settings.js';
 
 export type ShortlistPick = z.infer<ReturnType<typeof shortlistPickSchema>> & { selectionReason: string };
 
@@ -186,20 +187,11 @@ export function shortlistSituation(context: any): Pick<ShortlistSelectionContext
   return Object.keys(situation).length ? { situation } : {};
 }
 
-// Input comes from session.promptMemory(), which already enforces the current
-// show and speaker boundaries. Keep only three short editorial remarks so a
-// small picking model need not follow a full conversation or summarize it.
+// The same current-session recap policy Queue uses for speech prompts. Read
+// live settings for every pick, including corrective choices and bench runs.
 export function shortlistConversation(entries: readonly PromptMemoryEntry[], now = Date.now()): Pick<ShortlistSelectionContext, 'conversation'> {
-  const conversation: string[] = [];
-  for (const entry of entries) {
-    if (['link', 'station-id', 'hourly', 'handoff'].includes(entry.kind)) continue;
-    const at = Date.parse(entry.t);
-    if (!Number.isFinite(at) || at > now || now - at > 120 * 60_000) continue;
-    const text = typeof entry.message === 'string' ? entry.message.replace(/\s+/g, ' ').trim().slice(0, 140) : '';
-    if (!text || conversation.includes(text)) continue;
-    conversation.push(text);
-    if (conversation.length === 3) break;
-  }
+  const { recapLimit: limit, recapMinutes: withinMinutes, recapChars: maxChars } = settings.get().djBehaviour;
+  const conversation = promptRecapEntries(entries, { limit, withinMinutes, maxChars }, now).map(entry => entry.message);
   return conversation.length ? { conversation } : {};
 }
 

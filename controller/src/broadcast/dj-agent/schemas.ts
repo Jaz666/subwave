@@ -399,7 +399,7 @@ ${dj.onAirLocationGrounding()}
 
 ${instruction('picker', nativeShortlist ? 'shortlist-frame' : 'frame')}${djModeLine}${showLine}${musicLean}${playlistLean}
 
-${dj.PICKER_CRITERIA}
+${dj.PICKER_CRITERIA}${nativeShortlist ? '' : `\n\n${instruction('picker', 'similarity-evidence')}`}
 
 ${instruction('picker', nativeShortlist ? 'shortlist-listener-text' : 'listener-requests', { listenerText: LISTENER_TEXT_CLAUSE })}${dj.REQUESTER_NAME_CLAUSE}
 
@@ -426,5 +426,7 @@ ${frame}${settings.agentLanguageReminder(persona, wantIntro ? 'the "ack" and "in
 
 ${LISTENER_TEXT_CLAUSE}${dj.REQUESTER_GREETING_CLAUSE}${dj.REQUESTER_NAME_CLAUSE} ${instruction('request', 'classification')}
 
-${currentTrack}`;
+${currentTrack}
+
+${instruction('picker', 'similarity-evidence')}`;
 }

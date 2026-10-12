@@ -105,6 +105,17 @@ Failed or deferred state migration keeps automatic recovery retryable.
 
 ## Track Shortlist discovery parity
 
+**Deliberate shared-route changes on upgrade:** Agentic Tools remains the default
+selection route, but its discovery behavior is expanded by this PR. The four
+sources below are part of the shared registry supplied to Agentic picks and
+agent-assisted requests, not just Shortlist. `tracksByMood` energy is now a
+preference on every route; strict show energy locks remain hard. Agentic results
+also carry labelled cosine evidence and measured intro lengths, with explicit
+prompt guidance. These changes can alter the tracks an existing Agentic station
+finds. They do not add automatic preparation calls to that route. The operator
+manual and PR description declare these upgrades rather than claiming Agentic
+handling is unchanged.
+
 `music/shortlist.ts` plans the configured one-to-five passes across context,
 continuity and diversity. All show mood/energy combinations, genres and bounded
 era windows participate in source rotation; a pick remains bounded rather than
@@ -123,8 +134,9 @@ The remaining pool sources also use this registry: `frequentAlbums` (scrobble
 history), `moodPlaylistTracks` (curated names), `similarArtistTracks` (artist graph
 then top songs), and `moodWildcard` (three tracks from another covered mood).
 Mood playlists are unavailable whenever a show pins playlists, including a stale
-unresolved anchor (`hasPlaylistAnchor`). Wildcards enter only the autonomous plan
-without configured show moods; all resulting tracks still obey strict locks.
+unresolved anchor (`hasPlaylistAnchor`). The shared availability gate hides
+wildcards on both routes when show moods are pinned or an episode, journey or
+strict playlist owns the direction; all resulting tracks still obey strict locks.
 Frequent albums and wildcards use the diversity lane; artist neighbours use
 continuity, and mood playlists use context. Family and source rotation remain
 independent so a one-pass station can eventually reach every eligible source.
@@ -135,8 +147,13 @@ rotates offsets 0/12/24, retrying zero on an empty later page. Expensive server
 sources cache raw pools for 30 minutes (empty results for five); every invocation
 recollects under the current scope/seen set. Empty album/catalogue sources are
 hidden until their retry TTL expires. Unknown standard server sources remain
-available until probed; missing artist-graph data returns an explicit empty-result
-note. The cache is bounded to 128 entries and shares pool invalidation, including
+available until probed; an artist-graph source returning no raw songs sets a
+source-wide five-minute cooldown, so rotating seed artists cannot spend a pass
+on it every pick. This is a temporary sampling decision, not a permanent claim
+that every artist lacks neighbours; expiry or invalidation permits another
+probe. Unresolved seed names and failed server requests do not set this
+source-wide cooldown. The cache is bounded to 128 entries and shares
+pool invalidation, including
 protection against old in-flight responses after a server change.
 
 Energy inside `tracksByMood` is a soft preference: eligible matches lead, then
@@ -148,7 +165,11 @@ After the planned passes, fewer than four merged, artist-balanced candidates
 may trigger at most two unused top-up sources: `starredSongs`, then `randomSongs`.
 These calls use the same scope and never relax locks, exclusions or duration
 policy. They are additional recovery calls, not additional model attempts.
-Source-run telemetry records each actual call. The merged list caps each artist
+Source-run telemetry records each actual call. Every pass supplies the shared
+ten-second tool `abortSignal`, so registry `withToolDeadline` releases timed-out
+calls and discovery continues. Signal-aware I/O uses that same deadline; the
+new album/playlist/artist sources stop collecting after cancellation. The
+merged list caps each artist
 at three tracks, with the same strict-playlist/artist-episode exemptions as the
 collector. This happens at choice time and does not change Agentic collection.
 
@@ -168,11 +189,14 @@ location. Live and bench calls use the same helper. The compact candidate view
 includes `duration_sec`, known measured `intro_ms` and the first discovery
 `source`; other controller fields stay private. Intro length is in milliseconds:
 zero is a measured immediate start, while absent or invalid measurements are
-omitted. When a link is planned, intro space is a soft preference between fitting
+omitted. The shared `slim` projection uses `silence-trim.shiftOnsetMs`, so both
+routes see the playable timeline after any enabled leading-silence trim. When a link is planned, intro space is a soft preference between fitting
 tracks; musical flow comes first. Initial and corrective choices receive it.
 The separate link writer and shared speech-budget checks still determine what
 can actually air. Similarity evidence is a labelled cosine score carrying
-its actual `audio` or `text` index and reference. Cross-index seed rescue labels
+its actual `audio` or `text` index and a readable reference. Seed references use
+the track title/artist or a generic label; raw seed IDs remain source arguments
+and never appear as similarity reference fields. Cross-index seed rescue labels
 the index that answered, never the requested one. Query and journey scores name
 their own reference; neither cosine is BPM/key transition compatibility. Missing,
 non-finite or out-of-range scores are omitted, while zero remains evidence.
@@ -184,36 +208,44 @@ exploration flag used by its discovery plan. Journey choices prefer a fitting
 long-unplayed deep cuts extra consideration. Runs and journeys suppress that
 exploration steer. Corrective choices keep the same selection context.
 
-Conversation continuity is limited to three distinct, already-aired editorial
-remarks from `session.promptMemory()`, newest first, at most 140 characters each
-and two hours old. Routine links, idents, clock checks and handoffs are omitted.
-The existing session boundary drops prior-show speech and excludes private pick
-rationales and raw listener messages. These excerpts are soft musical context,
-not instructions or speech to repeat. They stay in `selectionContext`, never
-the separate link writer's arguments or queued track fields. Shortlist system
-wording describes this compact input rather than a chat session or tool loop.
+Conversation continuity uses the same `promptRecapEntries` selector as
+`queue.getDjRecap`. Both read the live `djBehaviour.recapLimit`, `recapMinutes`
+and `recapChars` controls (defaults 10/120/140), the shared voice-kind registry
+and per-kind dedupe rules. There is no separate Shortlist exclusion list.
+`session.promptMemory()` still owns show and speaker boundaries, and excludes
+private pick rationales and raw listener messages. The excerpts are soft
+selection context, not speech to repeat. Live picks, corrections and Discovery
+Bench comparisons use `selectionContextForPick`.
 
-**Targeted search preparation** is optional and separate from discovery and
-selection. For an active show with a nonblank topic or prepared editorial brief,
-`broadcast/shortlist-search-preparation.ts` makes one tool-free text call for up
-to three structured search intents. Zero is the default for generic presenter
-biographies and atmosphere; these must not become invented lyrical themes or
-literal library queries. No persona Leanings, listener text, track IDs or
-executable tools enter that call. Presenter names are supplied only to exclude
-hosts from artist searches. The input is capped to 2,000 characters per brief
-field; each query is at most 120 characters. Each proposed search supplies a
-supporting quote of at most 160 characters. `shortlist-search.ts` checks that it
-occurs in the brief, contains the query's subject words and has cues appropriate
-to that kind of music search. Requests to avoid music are excluded even when a
-quote omits the sentence's prohibition. Unsupported proposals are omitted,
-and an empty grounded result is cached normally. This conservative check may omit ambiguous
-or paraphrased requests; ordinary discovery continues in those cases.
+**Targeted search preparation** is explicitly opt-in through
+`llm.shortlistSearchPreparation`, off by default on new and upgraded stations,
+including Candidate Pool migrations. The Music selection UI saves and discards
+it with the other selection controls. The shared live/bench helper gates before
+any occurrence lookup or preparation, so disabled stations make no extra call.
+When enabled for an active show with a nonblank topic or prepared brief,
+`broadcast/shortlist-search-preparation.ts` uses `djObject` and its normal
+per-provider output strategy for up to three search intents, with a ten-second
+shared deadline across its internal attempts. There are no discovery tools in
+that call; a provider may use its structured-response formatting tool.
+
+The model classifies musical requests in the brief's language. General
+programming wishes, presenter biographies and exclusions are discarded. Each
+query copies a literal subject (at most 120 characters); evidence copies a full
+sentence (at most 320 characters) from an input field capped to 2,000 characters.
+`shortlist-search.ts` validates sentence quotes with `Intl.Segmenter`, checks the
+literal subject and rejects known presenter identities. It contains no English
+phrase lists for music/presenter classification. Classification itself is the
+model's responsibility; quoted words alone do not prove an interpretation.
+Unsupported, ambiguous or paraphrased subjects are omitted. No persona Leanings,
+raw listener text, track IDs or executable tools enter preparation, and its
+validated empty result is cached normally. The truncated input remains in scope
+for grounding; it is never reconstructed by parsing the outgoing prompt.
 
 Prepared queries, including successful empty results, persist in
 `state/shortlist-search-preparations.json` under the scheduled/takeover occurrence
 and brief content. Concurrent callers share preparation; later picks and
-restarts reuse it. Version 1 cached queries are discarded on upgrade because
-they were not checked for grounding. Changed briefs and new airings prepare
+restarts reuse it. Versions 1 and 2 are discarded because they used ungrounded or English-only
+evidence checks; the current store version is 3. Changed briefs and new airings prepare
 separately. Failure
 keeps ordinary discovery, with a five-minute retry delay and at most two
 preparation attempts per input. Expired results are discarded; the store keeps
@@ -225,13 +257,18 @@ The controller maps validated intent to `searchLibrary`, `topSongsByArtist`,
 `recentByArtist`, `searchByLyrics` or `searchBySound`, using the existing registry
 availability gates, collector and station locks. No model executes those tools.
 Multi-pass ordinary discovery reserves at most one configured pass for a
-rotating targeted query and keeps other sources in the remaining passes;
+rotating targeted query when at least two passes remain, keeping an ordinary
+source pass. With two passes and a soft playlist, the playlist keeps one pass
+and targeted queries rotate with ordinary sources in the other;
 one-pass discovery rotates searches normally. Episodes, journeys and strict
 playlists keep their priority, and soft playlists keep their reserved pass.
 An unavailable search is omitted; empty/error results use the existing bounded
 recovery sources. No extra discovery passes, tool loops or picking-model calls
-are introduced. Search briefs never become speech context. Regression checks
-capture actual HTTP/model calls and verify cache recovery and policy filtering.
+are introduced. Search briefs never become speech context. The Discovery Bench supplies the same opt-in prepared searches, saved recap
+policy and exploration decision as live selection; it shares the preparation
+cache and never queues a diagnostic pick. Regression checks capture real
+route/SDK calls with synthetic services, cache recovery, policy filtering and
+cancelled I/O.
 
 **Model-failure recovery** matches the pool's own move. When `djPick` fails,
 `djObject` has already spent both of its attempts, so the route queues the top
@@ -251,7 +288,9 @@ already-guarded subset, preserving fit order and artist/album exclusions. It
 marks the same breaker failure, carries a neutral reason and no transition, and
 prevents subsequent model-shaped corrections. Empty subsets retain the existing
 starvation/recovery policy. Agentic and request corrective calls keep their
-existing failure handling. Pinned by `scripts/shortlist-corrective-fallback.test.ts`.
+existing failure handling. Initial, corrective and already-failed guard choices
+all use `guardedShortlistFallback`, with one `shortlist.modelFallback` event name
+(`stage` identifies the path) and one Booth line per controller choice. Pinned by `scripts/shortlist-corrective-fallback.test.ts`.
 The additional discovery/energy/similarity guards are pinned by
 `scripts/shortlist-remaining-discovery.test.ts` and
 `scripts/picker-soft-energy-similarity.test.ts`.
