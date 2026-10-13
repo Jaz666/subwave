@@ -20,19 +20,27 @@ settles a close or convincingly comparable possible-flow choice. Shared matches
 (such as rock on both tracks) are compatibility, not a Leanings advantage.
 The compact review exposes `leaningsAdvantages`, reserves evidence slots for
 distinguishing preferences among close/possible-flow candidates, and runs the
-model whenever a viable challenger exists, even without a literal preference
-tag. Descriptive preferences may use a grounded editorial comparison: exact
-quoted facts from both tracks, the active preference and a genuine difference
-are checked in code. This verifies the evidence, not the subjective musical
-judgement. Comparisons and their evidence kind remain in review diagnostics.
+model when a viable challenger exists and either holds an exact advantage or
+some preference is open to interpretation — otherwise no answer could pass the
+validator, so the call is skipped. Descriptive preferences may use a grounded
+editorial comparison: exact quoted facts from both tracks, the active preference
+and a genuine difference are checked in code. Three rules bound it
+(`interpretableAgenticLeanings`, `EDITORIAL_LEANINGS_FIELDS`). The facts must
+describe the music — genre, moods, Last.fm tags, instrumental — never year or
+station history, which differ between almost any two tracks and so ground any
+comparison. A phrase some track in the pool matches literally is one the tags
+can carry, so a replacement claiming it needs the exact match. And while the
+host has any preference, a guest phrase needs an exact match too. This verifies
+the evidence, not the subjective musical judgement. Comparisons and their
+evidence kind remain in review diagnostics.
 Weak-flow matches cannot occupy the reserved evidence slots ahead of a viable challenger. Both routes join stored
 Last.fm tags into private review copies of the baseline and candidates, after
 initial selection; discovery payloads and the picker’s candidate map stay
 unchanged. Including the baseline prevents shared tags earning false credit.
 The private review receives up to 24 tags per track as evidence for interpretation.
-The tags are existing library evidence, not a new Last.fm fetch. Reviews now
-run more often, adding token use and latency; there remains at most one review
-call per pick.
+The tags are existing library evidence, not a new Last.fm fetch. A station
+with descriptive Leanings reviews more often, adding token use and latency;
+there remains at most one review call per pick.
 The final validator independently rejects a basis already supported by the
 baseline, even if the model proposes a swap. Short genres such as jazz,
 rock and soul are valid phrases. Parse each persona independently, including
