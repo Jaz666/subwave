@@ -8,7 +8,7 @@ const root = await mkdtemp(join(tmpdir(), 'subwave-search-preparation-'));
 process.env.STATE_DIR = root;
 const { createShortlistSearchPreparation: createPreparation, shortlistSearchPrompt } = await import('../src/broadcast/shortlist-search-preparation.js');
 // The synthetic verifier approves only the structurally grounded proposals.
-// Semantic rejection and shared-deadline behavior have dedicated cases below.
+// Semantic rejection and deadline behavior have dedicated cases below.
 function createShortlistSearchPreparation(deps: Omit<Parameters<typeof createPreparation>[0], 'verify'>
   & Partial<Pick<Parameters<typeof createPreparation>[0], 'verify'>>) {
   return createPreparation({ ...deps, verify: deps.verify ?? (async prompt => ({
@@ -290,7 +290,7 @@ test('verification fails closed on an invalid verdict and shares the preparation
   }
 });
 
-test('generation and verification share one deadline and a late verdict cannot publish searches', async () => {
+test('verification has its own deadline and a late verdict cannot publish searches', async () => {
   let generationSignal: AbortSignal | undefined;
   let verificationSignal: AbortSignal | undefined;
   let finish!: (verdict: unknown) => void;
@@ -300,12 +300,23 @@ test('generation and verification share one deadline and a late verdict cannot p
     verify: (_prompt, signal) => { verificationSignal = signal; return new Promise(resolve => { finish = resolve; }); },
   });
   assert.deepEqual(await owner.ensure(brief), []);
-  assert.equal(generationSignal, verificationSignal);
+  assert.notEqual(generationSignal, verificationSignal);
+  assert.equal(generationSignal?.aborted, false, 'a finished generation is not cancelled by the verification deadline');
   assert.equal(verificationSignal?.aborted, true);
   finish({ accepted: [0] });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(JSON.parse(await readFile(file, 'utf8')).records[0].status, 'failed');
   assert.deepEqual(await owner.ensure(brief), []);
+});
+
+test('a slow generation does not spend the verification deadline', async () => {
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const owner = createPreparation({ file: join(root, 'separate-deadlines.json'), now: () => base, timeoutMs: 200,
+    generate: async () => { await wait(120); return response; },
+    verify: async () => { await wait(120); return { accepted: [0] }; },
+  });
+  assert.deepEqual(await owner.ensure(brief), [{ kind: 'theme', query: 'coming home' }],
+    'each call fits its own deadline though together they exceed one');
 });
 
 test('empty preparation skips verification and older unverified records are discarded', async () => {

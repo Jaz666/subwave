@@ -1,5 +1,6 @@
 // Optional structured preparation and independent verification produce bounded
-// queries for a show airing, sharing one deadline and one durable result.
+// queries for a show airing, each call under its own deadline, sharing one
+// durable result.
 // Query execution stays in music/shortlist.ts; this module never picks a track,
 // sees persona Leanings/listener chat, or changes speech context.
 import { createHash } from 'node:crypto';
@@ -87,26 +88,28 @@ export function createShortlistSearchPreparation({ file, generate, verify, now =
     if (previous?.status === 'failed' && previous.expiresAt > now()
       && (previous.attempts >= 2 || previous.retryAt > now())) return [];
     try {
-      const { distinct, proposed } = await withDeadline(timeoutMs, 'Shortlist search preparation', async signal => {
-        const raw = await generate(prompt, signal);
-        signal?.throwIfAborted();
-        const { searches } = preparedShortlistSearchSchema.parse(raw);
-        const proposals = searches.flatMap((search, index) => groundShortlistSearches([search], [input.topic, input.editorial], input.presenters).length
-          ? [{ index, kind: search.kind, query: search.query, evidence: search.evidence }] : []);
-        if (!proposals.length) return { distinct: [], proposed: searches.length };
+      // Each call gets its own deadline: with one shared, a slow generation left
+      // the verification no time at all. The result is cached for the airing, so
+      // only its first pick, or a retry after a failure, waits on them.
+      const raw = await withDeadline(timeoutMs, 'Shortlist search preparation', signal => generate(prompt, signal));
+      const { searches } = preparedShortlistSearchSchema.parse(raw);
+      const proposals = searches.flatMap((search, index) => groundShortlistSearches([search], [input.topic, input.editorial], input.presenters).length
+        ? [{ index, kind: search.kind, query: search.query, evidence: search.evidence }] : []);
+      let distinct: ShortlistSearch[] = [];
+      if (proposals.length) {
         // Do not expose the proposer's intent label to the independent check.
         // It judges the quoted instruction in its original brief, rather than
         // treating a model-assigned label as evidence that music was requested.
-        const verdict = verificationSchema.parse(await verify(JSON.stringify({ brief: input, proposals }), signal));
-        signal?.throwIfAborted();
+        const verdict = verificationSchema.parse(await withDeadline(timeoutMs, 'Shortlist search verification',
+          signal => verify(JSON.stringify({ brief: input, proposals }), signal)));
         if (verdict.accepted.some(index => !proposals.some(proposal => proposal.index === index))) throw new Error('Search verification returned an unknown proposal');
         const accepted = new Set(verdict.accepted);
-        return { distinct: groundShortlistSearches(searches.filter((_search, index) => accepted.has(index)),
-          [input.topic, input.editorial], input.presenters), proposed: searches.length };
-      });
+        distinct = groundShortlistSearches(searches.filter((_search, index) => accepted.has(index)),
+          [input.topic, input.editorial], input.presenters);
+      }
       if (brief.expiresAt <= now()) return [];
       await save({ key, expiresAt: brief.expiresAt, status: 'ready', searches: distinct, attempts: 1, retryAt: 0 });
-      logEvent('shortlist.searchPreparation', { stage: 'ready', occurrenceId: brief.occurrenceId, searches: distinct, rejected: proposed - distinct.length });
+      logEvent('shortlist.searchPreparation', { stage: 'ready', occurrenceId: brief.occurrenceId, searches: distinct, rejected: searches.length - distinct.length });
       return distinct;
     } catch (error) {
       report(error, 'generate');

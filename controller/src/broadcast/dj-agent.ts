@@ -31,6 +31,7 @@ import { pickerAgent, requestAgent } from './dj-agent/agents.js';
 import { pickerScope, type PickerScope } from '../llm/tools.js';
 import {
   HANDOFF_MAX_AGE_MS,
+  agentDeadline,
   breakerFailure,
   breakerOpen,
   breakerSuccess,
@@ -692,7 +693,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
           verifiedAgenticReason(agenticSelectionReason(replacement, leaningsReason), true, replacement),
       },
     review: (request) => djObject(request),
-    reviewTimeoutMs: settings.get().llm.agentTimeoutMs,
+    reviewTimeoutMs: agentDeadline(),
     log: (line) => queue.log(useShortlist ? 'shortlist' : 'picker', line),
     logEvent,
   });

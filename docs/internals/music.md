@@ -154,11 +154,12 @@ The remaining pool sources also use this registry: `frequentAlbums` (scrobble
 history), `moodPlaylistTracks` (curated names), `similarArtistTracks` (artist graph
 then top songs), and `moodWildcard` (three tracks from another covered mood).
 Mood playlists are unavailable whenever a show pins playlists, including a stale
-unresolved anchor (`hasPlaylistAnchor`). The pool picker, discovery tools and
+unresolved anchor (`hasPlaylistAnchor`). Both rules live in
+`music/discovery-policy.ts`. The pool picker, discovery tools and
 auto.m3u coast use `allowsMoodPlaylistDiscovery`: a failed pin cannot borrow
 another show's similarly named mood playlist. Other eligible sources retain
 their existing recovery behavior. This deliberately changes stale-pin pool and
-coast discovery on upgrade. The shared availability gate hides
+coast discovery on upgrade. `allowsMoodWildcardDiscovery` hides
 wildcards on both routes when show moods are pinned or an episode, journey or
 strict playlist owns the direction; all resulting tracks still obey strict locks.
 Frequent albums and wildcards use the diversity lane; artist neighbours use
@@ -253,8 +254,10 @@ When enabled for an active show with a nonblank topic or prepared brief,
 `broadcast/shortlist-search-preparation.ts` uses `djObject` and its normal
 per-provider output strategy for up to three search intents. Structurally grounded
 proposals receive a second, independent semantic verification call against the
-original brief, without the proposer's intent labels. Both calls and all internal
-attempts share one ten-second wall-clock deadline. Empty proposals make no
+original brief, without the proposer's intent labels. Each call has its own
+ten-second wall-clock deadline covering its internal attempts, so a slow
+generation cannot leave the verification no time. The result is cached for the
+airing, so only its first pick (or a retry) waits on them. Empty proposals make no
 verification call. There are no discovery tools in either call; a provider may
 use its structured-response formatting tool. Verification failure or timeout
 keeps ordinary discovery and uses the existing preparation retry cooldown.

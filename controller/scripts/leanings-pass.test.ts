@@ -49,6 +49,7 @@ async function run(answer: unknown, kind: LeaningsRoute['kind'] = 'djAgentLeanin
     context: { link: 'No link airs for this pick.', recentTransitions: ['washout'] },
     resolution,
     route: route(kind),
+    reviewTimeoutMs: 45_000,
     review: async (request) => {
       prompts.push(request.prompt);
       assert.equal(request.kind, kind);

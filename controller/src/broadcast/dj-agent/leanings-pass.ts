@@ -77,7 +77,7 @@ export async function runLeaningsReview({
   resolution,
   route,
   review,
-  reviewTimeoutMs = 45_000,
+  reviewTimeoutMs,
   log,
   logEvent,
 }: {
@@ -92,7 +92,8 @@ export async function runLeaningsReview({
   resolution: PickResolution;
   route: LeaningsRoute;
   review: LeaningsReviewCall;
-  reviewTimeoutMs?: number;
+  // The caller's agentDeadline(): one wall clock across the call's own attempts.
+  reviewTimeoutMs: number;
   log: (line: string) => void;
   logEvent: (event: string, fields: Record<string, unknown>) => void;
 }): Promise<LeaningsPassResult> {

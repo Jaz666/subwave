@@ -1,5 +1,5 @@
 import { tool } from 'ai';
-import { allowsMoodPlaylistDiscovery } from '../../../../../music/show-playlist.js';
+import { allowsMoodPlaylistDiscovery } from '../../../../../music/discovery-policy.js';
 import { z } from 'zod';
 import * as subsonic from '../../../../../music/subsonic.js';
 import { shuffle } from '../../../../../util/shuffle.js';
