@@ -119,9 +119,11 @@ for (const scenario of ['on-air', 'recent', 'held', 'unanalysed'] as const) {
       const payload = JSON.parse(prompt.split('\n\n')[0]);
       const facts = predecessorContext(pickAnchor);
       assert.deepEqual(payload.predecessor, facts);
-      assert.deepEqual(payload.candidates.map((s: Song) => s.id), [alternative.id]);
-      assert.deepEqual(body.tools[0].function.parameters.properties.id.enum, [alternative.id],
-        'only surviving candidates are valid answers, never the seed');
+      assert.deepEqual(payload.candidates.map((s: Song) => s.id), [alternative.id],
+        'only surviving candidates are offered, never the seed');
+      // The id is a plain string (#939): resolveRepickId, not an enum, holds the
+      // answer to these candidates — see repick-id-repair.test.ts.
+      assert.equal(body.tools[0].function.parameters.properties.id.enum, undefined);
       assert.ok(body.messages[0].content.includes(PICKER_CRITERIA), 'retry keeps the main FLOW framing');
       if (facts) {
         assert.ok(prompt.includes(SEED_NOT_A_PICK_CLAUSE));

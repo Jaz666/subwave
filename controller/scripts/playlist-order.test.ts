@@ -283,10 +283,10 @@ test('runTrackEvent walks in order after the budget gate and before mini-run ste
   const budgetAt = body.indexOf('budget.picksAllowed()');
   const inOrderAt = body.indexOf('await pickInOrder(');
   const runAt = body.indexOf('advanceRun(djMode');
-  const agentAt = body.indexOf('pickViaAgent(');
+  const pickerAt = body.search(/(?:pickViaSelectionRoute|pickViaAgent)\(/);
   assert.ok(budgetAt > 0 && inOrderAt > budgetAt, 'the hard token cap still stops every pick');
   assert.ok(runAt > inOrderAt, 'in-order picks must not advance a DJ-mode run');
-  assert.ok(agentAt > inOrderAt, 'the walk runs before the agent');
+  assert.ok(pickerAt > inOrderAt, 'the walk runs before the configured model picker');
 });
 
 test('the in-order pick shares the pool path\'s link + enqueue and commits after it', () => {
