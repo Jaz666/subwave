@@ -426,3 +426,30 @@ for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as con
     assert.equal(resolution.leaningsReview?.outcome, 'not-run');
   });
 }
+
+for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as const) {
+  test(`${kind}: a hung review releases the pick, cancels generation and ignores a late answer`, async () => {
+    let finish!: (answer: unknown) => void;
+    let received: AbortSignal | undefined;
+    let calls = 0;
+    const { result, resolution, logLines, events } = await run(null, kind, {
+      reviewTimeoutMs: 25,
+      review: (request: { signal?: AbortSignal }) => {
+        calls++;
+        received = request.signal;
+        return new Promise(resolve => { finish = resolve; });
+      },
+    });
+    assert.equal(received?.aborted, true);
+    assert.equal(result.song, baseline);
+    assert.equal(result.object.reason, 'baseline reason');
+    assert.equal(result.reviewed, false);
+    assert.equal(resolution.leaningsReview?.outcome, 'failed');
+    assert.equal(events[0][0], route(kind).failureEvent);
+    assert.match(logLines[0], /failed.*using the baseline/);
+    finish({ selectedId: 'synth', leaningsBasis: 'synth-pop', musicalReason: goodReason });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(resolution.leaningsReview?.outcome, 'failed', 'late results cannot replace the settled baseline');
+    assert.equal(calls, 1, 'timeout never asks for another review');
+  });
+}

@@ -21,7 +21,7 @@ import { jingleRotateOwner, rotateJingleDue } from './jingle-rotate.js';
 import { normGenre, genreMatches, genreResolutionWarningOnce, inYearRange, preferEnergy, preferEnergyStrict, preferMood, applyStrictLocks, hasEraBound, eraSpan, type VocalMode } from '../music/show-filter.js';
 import { freshnessBiasedOrder } from '../music/airing.js';
 import { recencyWindowsForLibrary } from '../music/recency.js';
-import { resolveShowPlaylistPool, resolveExcludedPlaylistIds } from '../music/show-playlist.js';
+import { allowsMoodPlaylistDiscovery, resolveShowPlaylistPool, resolveExcludedPlaylistIds } from '../music/show-playlist.js';
 import { getFullContext } from '../context.js';
 import { queue } from './queue.js';
 import { createPoolBuilder } from './auto-pool.js';
@@ -337,7 +337,7 @@ async function refreshAutoPlaylistInner(canPublish: () => boolean): Promise<Refr
   // 2. Navidrome playlists whose name matches the mood. Skipped when the show
   // pins its own playlists (0b) — mood-substring matching would leak other
   // shows' same-mood playlists into the pool (#642).
-  if (poolMoods.length && !hasPlaylist) {
+  if (poolMoods.length && allowsMoodPlaylistDiscovery({ hasPlaylistAnchor: !!show?.playlistIds?.length, playlistTracks: playlistPool?.tracks })) {
     try {
       const playlists = await subsonic.getPlaylists();
       const matched = playlists.filter((p: any) =>

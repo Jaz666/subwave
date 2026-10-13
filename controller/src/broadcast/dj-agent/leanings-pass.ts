@@ -13,6 +13,7 @@
 // after the guards and the queue's answer, so it stays with the caller
 // (resolveAgenticLeaningsUsage after enqueue).
 
+import { withDeadline } from '../../llm/sdk.js';
 import {
   agenticLeaningsReviewPrompt,
   agenticLeaningsReviewSchema,
@@ -54,6 +55,7 @@ export type LeaningsReviewCall = (request: {
   temperature: number;
   kind: LeaningsRoute['kind'];
   telemetry: Record<string, unknown>;
+  signal?: AbortSignal;
 }) => Promise<any>;
 
 export type LeaningsPassResult = {
@@ -75,6 +77,7 @@ export async function runLeaningsReview({
   resolution,
   route,
   review,
+  reviewTimeoutMs = 45_000,
   log,
   logEvent,
 }: {
@@ -89,6 +92,7 @@ export async function runLeaningsReview({
   resolution: PickResolution;
   route: LeaningsRoute;
   review: LeaningsReviewCall;
+  reviewTimeoutMs?: number;
   log: (line: string) => void;
   logEvent: (event: string, fields: Record<string, unknown>) => void;
 }): Promise<LeaningsPassResult> {
@@ -134,7 +138,7 @@ export async function runLeaningsReview({
   }
   try {
     const compactById = new Map(compactCandidates.map((candidate) => [String(candidate.id), candidate]));
-    const answer: any = await review({
+    const answer: any = await withDeadline(reviewTimeoutMs, route.kind, async signal => review({
       system: agenticLeaningsReviewSystem(),
       prompt: agenticLeaningsReviewPrompt({
         baseline: compactCandidates[0],
@@ -153,7 +157,8 @@ export async function runLeaningsReview({
       temperature: 0,
       kind: route.kind,
       telemetry: route.telemetry,
-    });
+      signal,
+    }));
     const reviewedSelectedId = answer.selectedId;
     const claimedBasis = answer.leaningsBasis === NO_AGENTIC_LEANINGS_INFLUENCE ? null : answer.leaningsBasis;
     if (reviewedSelectedId === preliminaryId) {

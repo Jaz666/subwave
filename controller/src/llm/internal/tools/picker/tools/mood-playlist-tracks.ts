@@ -15,12 +15,12 @@ export default definePickerTool({
     inputSchema: z.object({ mood: z.string().min(1) }),
     execute: async ({ mood }, { abortSignal }: { abortSignal?: AbortSignal }) => {
       try {
-        const playlists = await cachedPickerSource('mood-playlists', () => subsonic.getPlaylists({ signal: abortSignal }));
+        const playlists = await cachedPickerSource('mood-playlists', () => subsonic.getPlaylists({ signal: abortSignal }), undefined, abortSignal);
         const matched = shuffle(playlists.filter(p => p.name?.toLowerCase().includes(mood.toLowerCase()))).slice(0, 2);
         const rows: any[] = [];
         for (const playlist of matched) {
           abortSignal?.throwIfAborted();
-          try { rows.push(...await cachedPickerSource(`mood-playlist:${playlist.id}`, () => subsonic.getPlaylist(playlist.id, { signal: abortSignal }))); } catch { /* Try the other playlist. */ }
+          try { rows.push(...await cachedPickerSource(`mood-playlist:${playlist.id}`, () => subsonic.getPlaylist(playlist.id, { signal: abortSignal }), undefined, abortSignal)); } catch { /* Try the other playlist. */ }
         }
         if (abortSignal?.aborted) return toolDeadlineResult('moodPlaylistTracks');
         const out = collect(rows);

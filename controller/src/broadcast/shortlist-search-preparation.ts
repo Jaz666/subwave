@@ -1,4 +1,5 @@
-// One optional structured call prepares bounded queries for a show airing.
+// Optional structured preparation and independent verification produce bounded
+// queries for a show airing, sharing one deadline and one durable result.
 // Query execution stays in music/shortlist.ts; this module never picks a track,
 // sees persona Leanings/listener chat, or changes speech context.
 import { createHash } from 'node:crypto';
@@ -6,7 +7,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { config } from '../config.js';
-import { djObject } from '../llm/sdk.js';
+import { djObject, withDeadline } from '../llm/sdk.js';
 import * as settings from '../settings.js';
 import * as budget from './dj-budget.js';
 import { showPreparation } from './show-preparation.js';
@@ -29,7 +30,8 @@ const recordSchema = z.object({
   searches: shortlistSearchSchema.shape.searches,
   attempts: z.number().int().min(1).max(2), retryAt: z.number().finite(),
 });
-const PREPARATION_VERSION = 3;
+const PREPARATION_VERSION = 4;
+const verificationSchema = z.object({ accepted: z.array(z.number().int().min(0).max(2)).max(3) }).strict();
 const storeSchema = z.object({ version: z.literal(PREPARATION_VERSION), records: z.array(recordSchema).max(64) });
 type SearchRecord = z.infer<typeof recordSchema>;
 
@@ -43,10 +45,12 @@ export function shortlistSearchPrompt(brief: ShortlistSearchBrief): string {
   return JSON.stringify(shortlistSearchInput(brief));
 }
 
-export function createShortlistSearchPreparation({ file, generate, now = Date.now }: {
+export function createShortlistSearchPreparation({ file, generate, verify, now = Date.now, timeoutMs = 10_000 }: {
   file: string;
-  generate: (prompt: string) => Promise<unknown>;
+  generate: (prompt: string, signal?: AbortSignal) => Promise<unknown>;
+  verify: (prompt: string, signal?: AbortSignal) => Promise<unknown>;
   now?: () => number;
+  timeoutMs?: number;
 }) {
   let recovered: Promise<void> | null = null;
   const records = new Map<string, SearchRecord>();
@@ -58,7 +62,7 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
   const recover = () => recovered ??= (async () => {
     try {
       const raw = JSON.parse(await readFile(file, 'utf8'));
-      // Earlier versions used ungrounded or English-only evidence checks.
+      // Earlier versions lacked an independent semantic check.
       if (raw?.version !== PREPARATION_VERSION) return;
       const store = storeSchema.parse(raw);
       for (const record of store.records) if (record.expiresAt > now()) records.set(record.key, record);
@@ -83,12 +87,26 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
     if (previous?.status === 'failed' && previous.expiresAt > now()
       && (previous.attempts >= 2 || previous.retryAt > now())) return [];
     try {
-      const raw = await generate(prompt);
-      const { searches } = preparedShortlistSearchSchema.parse(raw);
+      const { distinct, proposed } = await withDeadline(timeoutMs, 'Shortlist search preparation', async signal => {
+        const raw = await generate(prompt, signal);
+        signal?.throwIfAborted();
+        const { searches } = preparedShortlistSearchSchema.parse(raw);
+        const proposals = searches.flatMap((search, index) => groundShortlistSearches([search], [input.topic, input.editorial], input.presenters).length
+          ? [{ index, kind: search.kind, query: search.query, evidence: search.evidence }] : []);
+        if (!proposals.length) return { distinct: [], proposed: searches.length };
+        // Do not expose the proposer's intent label to the independent check.
+        // It judges the quoted instruction in its original brief, rather than
+        // treating a model-assigned label as evidence that music was requested.
+        const verdict = verificationSchema.parse(await verify(JSON.stringify({ brief: input, proposals }), signal));
+        signal?.throwIfAborted();
+        if (verdict.accepted.some(index => !proposals.some(proposal => proposal.index === index))) throw new Error('Search verification returned an unknown proposal');
+        const accepted = new Set(verdict.accepted);
+        return { distinct: groundShortlistSearches(searches.filter((_search, index) => accepted.has(index)),
+          [input.topic, input.editorial], input.presenters), proposed: searches.length };
+      });
       if (brief.expiresAt <= now()) return [];
-      const distinct = groundShortlistSearches(searches, [input.topic, input.editorial], input.presenters);
       await save({ key, expiresAt: brief.expiresAt, status: 'ready', searches: distinct, attempts: 1, retryAt: 0 });
-      logEvent('shortlist.searchPreparation', { stage: 'ready', occurrenceId: brief.occurrenceId, searches: distinct, rejected: searches.length - distinct.length });
+      logEvent('shortlist.searchPreparation', { stage: 'ready', occurrenceId: brief.occurrenceId, searches: distinct, rejected: proposed - distinct.length });
       return distinct;
     } catch (error) {
       report(error, 'generate');
@@ -113,12 +131,21 @@ export function createShortlistSearchPreparation({ file, generate, now = Date.no
 
 export const shortlistSearchPreparation = createShortlistSearchPreparation({
   file: `${config.stateDir}/shortlist-search-preparations.json`,
-  generate: prompt => djObject({
+  generate: (prompt, signal) => djObject({
     system: instruction('picker', 'shortlist-search-preparation'), prompt,
     schema: preparedShortlistSearchSchema,
     temperature: 0.1, maxOutputTokens: 768, kind: 'djShortlistSearchPreparation',
-    signal: AbortSignal.timeout(10_000),
+    signal,
   }),
+  verify: (prompt, signal) => {
+    if (!budget.optionalSegmentsAllowed()) throw new Error('Search verification paused by the token budget');
+    return djObject({
+      system: instruction('picker', 'shortlist-search-verification'), prompt,
+      schema: verificationSchema,
+      temperature: 0, maxOutputTokens: 128, kind: 'djShortlistSearchVerification',
+      signal,
+    });
+  },
 });
 
 // Shared by live picking and the Discovery Bench. Gate before any occurrence
