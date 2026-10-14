@@ -125,7 +125,7 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
     const { scope, activeShow, playlistTracks, episodeSource, context: pickContext } = await livePickerScope(queue, { context: await getFullContext() });
     const current = queue.current?.track ?? null;
     const agentStarted = performance.now();
-    const agent = await pickerAgent.run({ messages: session.windowMessages(), scope });
+    const agent = await pickerAgent.run({ messages: session.pickWindowMessages(), scope });
     const agentElapsedMs = Math.round(performance.now() - agentStarted);
     const shortlistStarted = performance.now();
     const explore = shouldExplore({ inRun: runActive(), audioWaypoint: scope.audioWaypoint, strictPlaylist: activeShow?.playlistStrict });
@@ -150,6 +150,7 @@ router.post('/debug/discovery/compare', requireAdmin, async (_req, res) => {
         context: selectionContextForPick(queue, pickContext, {
           scope, pickAnchor: current, predecessor: predecessorContext(current),
           audioWaypoint: scope.audioWaypoint, explore,
+          showGenres: activeShow?.genres ?? scope.genreLock,
         }),
       })
       : null;
