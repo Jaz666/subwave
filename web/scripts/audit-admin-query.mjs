@@ -19,6 +19,26 @@ const ownershipArg = process.argv.indexOf('--ownership-registry');
 // this complete registry and fails every stale entry.
 const defaultOwnershipRegistry = [
   {
+    file: 'connections/queries.ts', function: 'searchConnectionEntities',
+    reads: [{ callee: 'adminJson', method: 'GET', path: '/sleeve-notes/connections/search?q=${}&limit=12', signal: 'signal' }],
+    consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
+  },
+  {
+    file: 'connections/queries.ts', function: 'loadConnectionGraph',
+    reads: [{ callee: 'adminJson', method: 'GET', path: '/sleeve-notes/connections/graph?${}', signal: 'signal' }],
+    consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
+  },
+  {
+    file: 'connections/queries.ts', function: 'loadConnectionOverview',
+    reads: [{ callee: 'adminJson', method: 'GET', path: '/sleeve-notes/connections/overview?${}', signal: 'signal' }],
+    consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
+  },
+  {
+    file: 'connections/queries.ts', function: 'resolveCurrentConnection',
+    reads: [{ callee: 'adminJson', method: 'GET', path: '/sleeve-notes/connections/resolve/${}', signal: 'signal' }],
+    consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
+  },
+  {
     file: 'dash/queries.ts', function: 'fetchDashStatus',
     reads: [
       { callee: 'adminJson', method: 'GET', path: '/now-playing', signal: 'signal' },
@@ -115,6 +135,9 @@ const ownershipRegistry = ownershipArg === -1
 // endpoint expression). A matching marker must be immediately above the call;
 // unused entries fail so this list cannot become a filename-only exemption.
 const allowed = new Map([
+  ['NotesPanel.tsx', new Map([
+    ['wikipedia-refresh-preview', { callee: 'adminJson', method: 'GET', path: /^\/sleeve-notes\/wikipedia-refresh-preview$/ }],
+  ])],
   ['AdminShell.tsx', new Map([
     ['first-run-redirect', { callee: 'nativeFetch', method: 'GET', path: /\/onboarding\/status$/ }],
   ])],

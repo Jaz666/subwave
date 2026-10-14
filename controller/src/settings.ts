@@ -665,6 +665,8 @@ export async function load() {
         : DEFAULTS.djBehaviour.sameHostAcknowledgement,
       extendedSleeveNotes: typeof stored.djBehaviour?.extendedSleeveNotes === 'boolean'
         ? stored.djBehaviour.extendedSleeveNotes : DEFAULTS.djBehaviour.extendedSleeveNotes,
+      sleeveNotesMaintenanceWhenEmpty: typeof stored.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === 'boolean'
+        ? stored.djBehaviour.sleeveNotesMaintenanceWhenEmpty : DEFAULTS.djBehaviour.sleeveNotesMaintenanceWhenEmpty,
       releaseYearMentions: ['regular', 'occasional', 'rare'].includes(stored.djBehaviour?.releaseYearMentions)
         ? stored.djBehaviour.releaseYearMentions : DEFAULTS.djBehaviour.releaseYearMentions,
       recapLimit: parsedIntIn(
@@ -682,6 +684,26 @@ export async function load() {
         DEFAULTS.djBehaviour.recapChars,
         DJ_RECAP_CHARS_BOUNDS,
       ),
+    },
+    sleeveNotes: {
+      wikipedia: {
+        extractPrompt: typeof stored.sleeveNotes?.wikipedia?.extractPrompt === 'string'
+          ? stored.sleeveNotes.wikipedia.extractPrompt : DEFAULTS.sleeveNotes.wikipedia.extractPrompt,
+        artistClaimLimit: Number.isInteger(stored.sleeveNotes?.wikipedia?.artistClaimLimit)
+          && stored.sleeveNotes.wikipedia.artistClaimLimit >= 1
+          && stored.sleeveNotes.wikipedia.artistClaimLimit <= 20
+          ? stored.sleeveNotes.wikipedia.artistClaimLimit : DEFAULTS.sleeveNotes.wikipedia.artistClaimLimit,
+        albumClaimLimit: Number.isInteger(stored.sleeveNotes?.wikipedia?.albumClaimLimit)
+          && stored.sleeveNotes.wikipedia.albumClaimLimit >= 1
+          && stored.sleeveNotes.wikipedia.albumClaimLimit <= 20
+          ? stored.sleeveNotes.wikipedia.albumClaimLimit : DEFAULTS.sleeveNotes.wikipedia.albumClaimLimit,
+      },
+      providers: {
+        genius: { enabled: typeof stored.sleeveNotes?.providers?.genius?.enabled === 'boolean'
+          ? stored.sleeveNotes.providers.genius.enabled : DEFAULTS.sleeveNotes.providers.genius.enabled,
+        accessToken: typeof stored.sleeveNotes?.providers?.genius?.accessToken === 'string'
+          ? stored.sleeveNotes.providers.genius.accessToken : DEFAULTS.sleeveNotes.providers.genius.accessToken },
+      },
     },
     // Repaired rather than refused, like ducking above: an offset the talk
     // table's programme row cannot sample is a sign-off that never airs, and a
@@ -1720,7 +1742,7 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     }>(
       'djBehaviour', patch.djBehaviour,
     );
-    for (const key of ['showWelcome', 'previewNextShow', 'sameHostAcknowledgement', 'extendedSleeveNotes'] as const) {
+    for (const key of ['showWelcome', 'previewNextShow', 'sameHostAcknowledgement', 'extendedSleeveNotes', 'sleeveNotesMaintenanceWhenEmpty'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
     }
     if (behaviour.releaseYearMentions !== undefined) {
@@ -1728,6 +1750,30 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
     }
     for (const key of ['recapLimit', 'recapMinutes', 'recapChars'] as const) {
       if (behaviour[key] !== undefined) next.djBehaviour[key] = behaviour[key];
+    }
+  }
+  if ('sleeveNotes' in patch) {
+    const sleeveNotes = parseSettingsPatchKey<{
+      wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
+      providers?: { genius?: { enabled?: boolean; accessToken?: string } };
+    }>(
+      'sleeveNotes', patch.sleeveNotes,
+    );
+    if (sleeveNotes.wikipedia?.extractPrompt !== undefined) {
+      next.sleeveNotes.wikipedia.extractPrompt = sleeveNotes.wikipedia.extractPrompt;
+    }
+    if (sleeveNotes.wikipedia?.artistClaimLimit !== undefined) {
+      next.sleeveNotes.wikipedia.artistClaimLimit = sleeveNotes.wikipedia.artistClaimLimit;
+    }
+    if (sleeveNotes.wikipedia?.albumClaimLimit !== undefined) {
+      next.sleeveNotes.wikipedia.albumClaimLimit = sleeveNotes.wikipedia.albumClaimLimit;
+    }
+    if (sleeveNotes.providers?.genius?.enabled !== undefined) {
+      next.sleeveNotes.providers.genius.enabled = sleeveNotes.providers.genius.enabled;
+    }
+    if (sleeveNotes.providers?.genius?.accessToken !== undefined
+      && sleeveNotes.providers.genius.accessToken !== 'set') {
+      next.sleeveNotes.providers.genius.accessToken = sleeveNotes.providers.genius.accessToken;
     }
   }
   if ('handover' in patch) {

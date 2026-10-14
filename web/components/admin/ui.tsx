@@ -215,6 +215,7 @@ export interface SegOption {
 }
 
 export interface SegProps extends AriaAttributes {
+  disabled?: boolean;
   value: string;
   options: SegOption[];
   accent?: boolean;
@@ -223,10 +224,11 @@ export interface SegProps extends AriaAttributes {
 
 /* Segmented control over shadcn ToggleGroup. Clicking the active item is a
    no-op: the group always keeps a value. */
-export function Seg({ value, options, accent, onChange, ...aria }: SegProps) {
+export function Seg({ value, options, accent, onChange, disabled, ...aria }: SegProps) {
   return (
     <ToggleGroup
       {...aria}
+      disabled={disabled}
       type="single"
       value={value}
       onValueChange={(v: string) => { if (v && onChange) onChange(v); }}

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Label } from '../../ui/label';
 import { Input } from '../../ui/input';
@@ -74,6 +75,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
       llm: {
         segmentRuntime: form.llm.segmentRuntime,
       },
+      sleeveNotes: form.sleeveNotes,
     });
   };
 
@@ -187,7 +189,7 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
         </div>
       </Card>
 
-      <Advanced note="the pause-and-talk threshold, prompt memory and what's coming">
+      <Advanced note="the pause-and-talk threshold, prompt memory and extended notes">
         <Card title="Pause-and-talk" sub="the length that earns a real pause">
           <div className="field" data-invalid={pauseTalkAria.invalid || undefined}>
             <Label {...pauseTalkAria.labelProps}>Minimum segment length (seconds)</Label>
@@ -246,14 +248,10 @@ export function DjBehaviourSection({ form, setForm, busy, saveSettings, fieldErr
           </div>
         </Card>
 
-        <Card title="Extended Sleeve Notes" sub="coming soon">
-          <div className="field-hint">
-            Soon, the DJ will be able to add optional, source-backed editorial notes, such as release
-            credits or wider artist context, with provider provenance. Album, trusted release year and
-            station-play history already come from today&apos;s Verified Facts packet; this future layer
-            will stay opt-in and separate from show steering.
-          </div>
-        </Card>
+      <Card title="Extended Sleeve Notes">
+        <p className="text-[13px] text-muted">Manage source-backed stories, collection and Story Sparks in Sleeve Notes Settings.</p>
+        <Link href="/admin/notes?tab=config" className="mt-3 inline-block text-[13px] text-primary hover:underline">Open Sleeve Notes Settings →</Link>
+      </Card>
       </Advanced>
 
       <SaveBar
