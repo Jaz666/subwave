@@ -1,3 +1,4 @@
+import { prepareSleeveNotesSegment, runSleeveNotesSegment, sleeveNotesSegmentWinsSlot } from '../sleeve-notes/segment.js';
 import { preparationSkillAt, prepareEpisodeContext } from '../broadcast/show-preparation.js';
 // Segment-director agent. agenticTick() (the 5-minute scheduler.skillsTick)
 // hands a tool-loop agent a snapshot of the moment plus real-world data tools
@@ -468,17 +469,37 @@ export async function agenticTick(ctx) {
   );
   if (now.getTime() - lastSpoke < frequencyFloorMs(freq)) return;
 
-  const caps = availableCapabilities(ctx, now);
-  if (caps.length === 0) return;
-
-  // Weather alone and unchanged is provably nothing to say; skip the LLM call.
-  if (caps.length === 1 && caps[0].kind === 'weather'
-      && ctx.weather?.condition && ctx.weather.condition === segmentState.lastWeatherCondition) {
-    return;
-  }
-
   tickBusy = true;
   try {
+    const caps = availableCapabilities(ctx, now);
+    const nativeEnabled=settings.get().djBehaviour.extendedSleeveNotes && settings.get().sleeveNotes.segment.enabled;
+    const current=nativeEnabled ? await queue.getNowPlaying() : null;
+    const native=prepareSleeveNotesSegment(current?.subsonic_id ? {
+      id:current.subsonic_id,title:current.title??'',artist:current.artist??'',album:current.album??'',
+    }:null);
+    const nativeReady=native && now.getTime()-(lastUnavailable.get(native.kind)??0)>=Math.min(native.cooldownMs,15*60_000);
+    if (caps.length === 0 && !nativeReady) return;
+
+    // Weather alone and unchanged is provably nothing to say; skip the LLM call.
+    if (!nativeReady && caps.length === 1 && caps[0].kind === 'weather'
+        && ctx.weather?.condition && ctx.weather.condition === segmentState.lastWeatherCondition) {
+      return;
+    }
+
+    // Code-owned Sleeve Notes shares the ordinary optional segment pool and
+    // placement rules. The director never receives permission to research.
+    if (nativeReady && sleeveNotesSegmentWinsSlot(caps.map(cap=>cap.kind),!!ctx.weather?.condition && ctx.weather.condition!==segmentState.lastWeatherCondition)) {
+      const accepted=await runSleeveNotesSegment(native,async lines=>{
+        if (lines.length>1) return queue.announceExchange(lines,native.kind,{castNames:native.cast.map(p=>p.name)});
+        const stamp=session.captureAutomaticHostSpeech(lines[0].persona,new Date());
+        const outcome=await queue.announce(lines[0].text,native.kind,{persona:lines[0].persona,meta:lines[0].meta,hostSpeech:stamp.hostSpeech,pauseTalkEligible:true});
+        return outcome.accepted;
+      });
+      if (accepted) {lastFired.set(native.kind,Date.now());segmentState.lastAnySegment=Date.now();lastUnavailable.delete(native.kind);}
+      else lastUnavailable.set(native.kind,Date.now());
+      return;
+    }
+    if (!caps.length) return;
     // Empty catalogue when SFX are disabled — the agent is never offered effects.
     const sfxCatalog = settings.get().sfx?.enabled === false ? [] : await sfx.catalog();
 
@@ -676,6 +697,29 @@ export interface CapabilityRun {
   deferred: boolean;
   text: string | null;
   reason: string | null;
+}
+
+/** Explicit operator action, outside the automatic talk/scheduling gates. */
+export async function runSleeveNotesSegmentNow(): Promise<CapabilityRun> {
+  const current=await queue.getNowPlaying();
+  const silent=(reason:string):CapabilityRun=>({aired:false,queued:false,deferred:false,text:null,reason});
+  if (!current?.subsonic_id) return silent('no library track is currently reported on air');
+  const brief=prepareSleeveNotesSegment({id:current.subsonic_id,title:current.title??'',
+    artist:current.artist??'',album:current.album??''},true);
+  if (!brief) return silent('no usable saved stories or host DJ are available for this track');
+  let deferred=false, text:string|null=null, reason:string|null=null;
+  const accepted=await runSleeveNotesSegment(brief,async lines=>{
+    text=lines.map(line=>`${line.persona.name}: ${line.text}`).join('\n');
+    if(lines.length>1) return queue.announceExchange(lines,brief.kind,{castNames:brief.cast.map(persona=>persona.name)});
+    const delivery=await queue.announce(lines[0].text,brief.kind,{persona:lines[0].persona,
+      meta:lines[0].meta,pauseTalkEligible:true});
+    deferred=delivery.deferred;
+    return delivery.accepted;
+  },undefined,why=>{reason=why;});
+  if (!accepted) return silent(reason??'nothing usable to speak from');
+  lastFired.set(brief.kind,Date.now());segmentState.lastAnySegment=Date.now();lastUnavailable.delete(brief.kind);
+  // Accepted speech has a broadcast path; actual air confirmation stays in the ledger.
+  return {aired:false,queued:true,deferred,text,reason:null};
 }
 
 // Forced capability core shared by POST /dj/skill, per-skill crons and the

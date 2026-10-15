@@ -1,3 +1,5 @@
+import { isDeferredLlmCall } from './llm/internal/core/deferred.js';
+
 // Usage-stats aggregation — feeds the admin /stats surface.
 //
 // Two in-memory ring buffers back the Stats page:
@@ -101,7 +103,9 @@ export function estimateCost(modelLabel, usage) {
 // Roll the LLM call ring (llm/log.js recentCalls) into success/latency/token
 // /cost totals plus per-kind and per-model breakdowns. `calls` is newest-first.
 export function summarizeLlm(calls) {
-  const ok = calls.filter(c => c.ok);
+  const completed = calls.filter(c => !isDeferredLlmCall(c));
+  const deferred = calls.length - completed.length;
+  const ok = completed.filter(c => c.ok);
   const tokens = { input: 0, output: 0, total: 0 };
   let cost = 0;
   let allPriced = true;
@@ -124,14 +128,17 @@ export function summarizeLlm(calls) {
   for (const c of calls) {
     const k = c.kind || 'unknown';
     let g = kinds.get(k);
-    if (!g) { g = { kind: k, count: 0, ok: 0, ms: [], tokens: 0 }; kinds.set(k, g); }
+    if (!g) { g = { kind: k, count: 0, ok: 0, deferred: 0, ms: [], tokens: 0 }; kinds.set(k, g); }
     g.count++;
-    if (c.ok) g.ok++;
-    if (typeof c.ms === 'number') g.ms.push(c.ms);
+    if (isDeferredLlmCall(c)) g.deferred++;
+    else {
+      if (c.ok) g.ok++;
+      if (typeof c.ms === 'number') g.ms.push(c.ms);
+    }
     if (c.usage?.total) g.tokens += c.usage.total;
   }
   const byKind = [...kinds.values()]
-    .map(g => ({ kind: g.kind, count: g.count, ok: g.ok, avgMs: Math.round(avg(g.ms)), tokens: g.tokens }))
+    .map(g => ({ kind: g.kind, count: g.count, ok: g.ok, deferred: g.deferred, avgMs: Math.round(avg(g.ms)), tokens: g.tokens }))
     .sort((a, b) => b.count - a.count);
 
   const models = new Map();
@@ -162,9 +169,10 @@ export function summarizeLlm(calls) {
     window: 120,
     count: calls.length,
     ok: ok.length,
-    failed: calls.length - ok.length,
-    successRate: calls.length ? ok.length / calls.length : null,
-    latency: latencyStats(calls.map(c => c.ms).filter(n => typeof n === 'number')),
+    deferred,
+    failed: completed.length - ok.length,
+    successRate: completed.length ? ok.length / completed.length : null,
+    latency: latencyStats(completed.map(c => c.ms).filter(n => typeof n === 'number')),
     tokens: anyTokens ? tokens : null,
     cost: anyTokens ? { usd: cost, complete: allPriced } : null,
     byKind,

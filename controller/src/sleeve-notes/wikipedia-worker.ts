@@ -12,7 +12,7 @@ const BACKFILL_INTERVAL_MS = 60_000;
 export class WikipediaWorker {
   private running = false;
   private lastBackfillAt = 0;
-  constructor(private readonly quietGate: QuietGate) {}
+  constructor(private readonly quietGate: QuietGate, private readonly sources: Pick<typeof wikipedia, 'fetchWikipediaArtistDocument' | 'fetchWikipediaReleaseGroupDocument'> = wikipedia) {}
 
   async runOnce(): Promise<boolean> {
     if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
@@ -48,7 +48,7 @@ export class WikipediaWorker {
       const requestId = repository.startProviderRequest({ provider: 'wikipedia', capability: ARTIST_CAPABILITY });
       let document: wikipedia.WikipediaArtistDocument | null;
       try {
-        document = await wikipedia.fetchWikipediaArtistDocument(artist.musicBrainzId);
+        document = await this.sources.fetchWikipediaArtistDocument(artist.musicBrainzId);
       } catch (error) {
         this.retryProviderRequest(job, requestId, error);
         return true;
@@ -69,6 +69,7 @@ export class WikipediaWorker {
           capability: 'extract-wikipedia', priority: 300,
           originLocalTrackId: job.originLocalTrackId,
         });
+        repository.forwardOperatorResearchRequest(job,'researcher','extract-wikipedia');
         repository.finishResearchJob(job.id, 'complete');
         console.log(`[sleeve-notes] Wikipedia biography retained: ${artist.name} (revision ${document.revisionId})`);
       }
@@ -86,7 +87,7 @@ export class WikipediaWorker {
       const requestId = repository.startProviderRequest({ provider: 'wikipedia', capability: RELEASE_GROUP_CAPABILITY });
       let document: wikipedia.WikipediaArticleDocument | null;
       try {
-        document = await wikipedia.fetchWikipediaReleaseGroupDocument(releaseGroupId);
+        document = await this.sources.fetchWikipediaReleaseGroupDocument(releaseGroupId);
       } catch (error) {
         this.retryProviderRequest(job, requestId, error);
         return true;
@@ -99,6 +100,7 @@ export class WikipediaWorker {
           capability: 'album-biography', priority: 340,
           originLocalTrackId: job.originLocalTrackId,
         });
+        repository.forwardOperatorResearchRequest(job,'genius','album-biography');
         console.log(`[sleeve-notes] Wikipedia album article unavailable; queued Genius fallback for release group ${releaseGroupId}`);
       } else {
         repository.finishProviderRequest(requestId, 'ready');
@@ -112,6 +114,7 @@ export class WikipediaWorker {
           capability: RELEASE_GROUP_EXTRACTION, priority: 350,
           originLocalTrackId: job.originLocalTrackId,
         });
+        repository.forwardOperatorResearchRequest(job,'researcher',RELEASE_GROUP_EXTRACTION);
         repository.finishResearchJob(job.id, 'complete');
         console.log(`[sleeve-notes] Wikipedia album article retained: ${document.title} (release group ${releaseGroupId}, revision ${document.revisionId})`);
       }

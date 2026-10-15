@@ -12,6 +12,8 @@ export interface SleeveNotesEncounter {
   musicbrainzRecordingId?: string | null;
   autopilot?: boolean;
   listenerPresent?: boolean;
+  encounteredAt?: string;
+  host?: {id:string;name:string} | null;
 }
 
 export function admitSleeveNotesEncounter(input: SleeveNotesEncounter, source: 'queue' | 'played', priority = 0,
@@ -33,5 +35,7 @@ export function admitSleeveNotesEncounter(input: SleeveNotesEncounter, source: '
     priority,
     autopilot,
     listenerPresent: input.listenerPresent,
+    encounteredAt: input.encounteredAt,
+    host: input.host,
   });
 }

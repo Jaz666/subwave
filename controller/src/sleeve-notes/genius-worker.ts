@@ -84,6 +84,7 @@ export class GeniusResearchWorker {
             capability: 'extract-genius-album', priority: 325,
             originLocalTrackId: job.originLocalTrackId,
           });
+          repository.forwardOperatorResearchRequest(job,'researcher','extract-genius-album');
           console.log(`[sleeve-notes] Genius album biography retained: ${biography.artist} — ${biography.title}`);
         } else {
           console.log(`[sleeve-notes] Genius album biography skipped: ${albumSource.artist} — ${albumSource.title} (${lookup.reason})`);

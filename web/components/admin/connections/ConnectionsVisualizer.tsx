@@ -8,16 +8,20 @@ import type { NowPlayingResponse } from '../../../lib/types';
 import { adminJson, type AdminFetch, useAdminMutation, useAdminQuery } from '../../../lib/admin-query';
 import { Card, Eyebrow, Pill } from '../ui';
 import ConnectionsGraph from './ConnectionsGraph';
+import { currentArtistOnOverview } from './current-artist';
+import { COVERAGE_LABELS, withBrainCoverage } from './coverage';
 import { ALL_EDGE_TYPES, toggleConnectionGroup } from './filters';
 import { useBrainKeySetting } from './key-preferences';
 import {
   connectionKeys,
+  loadBrainCoverage,
   loadConnectionGraph,
   loadConnectionOverview,
   resolveCurrentConnection,
   searchConnectionEntities,
 } from './queries';
 import type {
+  BrainCoverage,
   ConnectionEntityType,
   ConnectionGraphData,
   ConnectionNode,
@@ -65,6 +69,7 @@ export default function ConnectionsVisualizer({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
+  const [targetingArtist, setTargetingArtist] = useState(false);
   const [browseLimit, setBrowseLimit] = useState(40);
   const selectionScope = useRef<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
@@ -101,6 +106,25 @@ export default function ConnectionsVisualizer({
     staleTime: 30_000,
   });
   const map = overview ? artistOverview : graph;
+  const coverage = useAdminQuery({
+    key: [...connectionKeys.coverage(), readOnly], adminFetch, enabled: hydrated,
+    request: (fetcher, signal) => loadBrainCoverage(fetcher, signal),
+    staleTime: 10_000, refetchInterval: readOnly ? false : 15_000,
+  });
+  const coveredMap = useMemo(() => withBrainCoverage(map.data, coverage.data?.artists), [map.data, coverage.data]);
+  const queueResearch = useAdminMutation<{ queued: boolean; state: 'queued' | 'researching' }, { entityType: 'artist' | 'library-artist' | 'release' | 'release-group' | 'library-album'; entityId: string }>({
+    adminFetch,
+    request: (vars, fetcher) => adminJson(fetcher, '/sleeve-notes/connections/research', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vars),
+    }),
+    onDone: async (_data, _vars, client) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: connectionKeys.coverage() }),
+        client.invalidateQueries({ queryKey: ['sleeve-notes', 'readout'] }),
+        client.invalidateQueries({ queryKey: ['sleeve-notes', 'status'] }),
+      ]);
+    },
+  });
   const populate = useAdminMutation<{ artists: number }, void>({
     adminFetch,
     request: (_vars, fetcher) => adminJson(fetcher, '/sleeve-notes/connections/populate', { method: 'POST' }),
@@ -115,6 +139,8 @@ export default function ConnectionsVisualizer({
     refetchInterval: 5_000,
   });
   const localTrackId = nowPlaying.data?.nowPlaying?.subsonic_id ?? '';
+  const currentTrackRef = useRef(localTrackId);
+  currentTrackRef.current = localTrackId;
   const current = useAdminQuery({
     key: connectionKeys.current(localTrackId), adminFetch,
     enabled: hydrated && !!localTrackId,
@@ -176,15 +202,43 @@ export default function ConnectionsVisualizer({
     choose(current.data.entityType, current.data.entityId);
   }
 
-  function openCurrentArtist() {
-    if (!localTrackId) { setCurrentMessage('There is no identified track on air right now.'); return; }
-    if (current.data?.localArtistId) { choose('library-artist', current.data.localArtistId); return; }
-    const nodeId = current.data?.artistNodeId;
-    if (!nodeId?.startsWith('artist:')) {
-      setCurrentMessage(current.isLoading ? 'Finding the current artist…' : 'The current track’s artist has not been matched yet.');
+  async function openCurrentArtist() {
+    const artistName = nowPlaying.data?.nowPlaying?.artist;
+    if (!artistName && !current.data?.artistNodeId && !current.data?.localArtistId) {
+      setCurrentMessage(nowPlaying.isLoading ? 'Finding the current artist…' : 'There is no identified artist on air right now.');
       return;
     }
-    choose('artist', nodeId.slice('artist:'.length));
+    setTargetingArtist(true);
+    setCurrentMessage('');
+    try {
+      let node = currentArtistOnOverview(artistOverview.data, current.data, artistName);
+      if (!node) {
+        const refreshed = await artistOverview.refetch({ throwOnError: true });
+        node = currentArtistOnOverview(refreshed.data, current.data, artistName);
+      }
+      if (currentTrackRef.current !== localTrackId) {
+        setCurrentMessage('The track changed while the map loaded. Target the current artist again.');
+        return;
+      }
+      if (!node) {
+        setCurrentMessage('The current artist could not be identified unambiguously on the artist map. Try refreshing the library artists.');
+        return;
+      }
+      if (node.researched === false) setIncludeUnresearchedArtists(true);
+      if (!node.local) setIncludeExternal(true);
+      setDraft(''); setQuery('');
+      if (overview) {
+        pendingReturn.current = null;
+        parentLayers.current = [];
+        selectionScope.current = 'artists';
+        setSelectedNodeId(node.id);
+        setSelectedEdgeId(null);
+        setZoomToSelection(true);
+        setFocusRequest(request => request + 1);
+      } else clearFocus(node);
+    } catch (error) {
+      setCurrentMessage(error instanceof Error ? error.message : 'The artist map could not be loaded. Try again.');
+    } finally { setTargetingArtist(false); }
   }
 
   function openNode(node: ConnectionNode) {
@@ -198,18 +252,18 @@ export default function ConnectionsVisualizer({
   }
 
   const visibleGraph = useMemo<ConnectionGraphData | null>(() => {
-    if (!map.data) return null;
-    const edges = map.data.edges.filter((edge) => edgeTypes.includes(edge.type));
+    if (!coveredMap) return null;
+    const edges = coveredMap.edges.filter((edge) => edgeTypes.includes(edge.type));
     const linked = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
-    const nodes = map.data.nodes.filter((node) => {
+    const nodes = coveredMap.nodes.filter((node) => {
       if (!includeUnresearchedArtists && node.kind === 'artist' && node.local && node.researched === false) return false;
-      return node.id === map.data?.focusId
+      return node.id === coveredMap?.focusId
         || ((includeExternal || node.local || node.kind === 'contributor')
           && (node.local || linked.has(node.id)));
     });
     const ids = new Set(nodes.map((node) => node.id));
-    return { ...map.data, nodes, edges: edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)) };
-  }, [map.data, includeExternal, includeUnresearchedArtists, edgeTypes]);
+    return { ...coveredMap, nodes, edges: edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)) };
+  }, [coveredMap, includeExternal, includeUnresearchedArtists, edgeTypes]);
 
   useEffect(() => {
     if (!visibleGraph) return;
@@ -247,6 +301,22 @@ export default function ConnectionsVisualizer({
   const canLayerDown = !!selectedNode && selectedNode.id !== map.data?.focusId && selectedNode.expandable
     && ((selectedNode.kind === 'artist' && !!selectedNode.localArtistId)
       || ENTITY_TYPES.has(selectedNode.entityType as ConnectionEntityType));
+
+  const albumTarget=selectedNode?.kind==='release' && ['release','release-group','library-album'].includes(selectedNode.entityType)
+    ? {entityType:selectedNode.entityType as 'release'|'release-group'|'library-album',entityId:selectedNode.entityId}:null;
+  const researchTarget = albumTarget ?? (selectedNode?.kind === 'artist' && (selectedNode.entityType === 'artist' || selectedNode.localArtistId || selectedNode.entityType === 'library-artist')
+    ? { entityType: selectedNode.entityType === 'artist' ? 'artist' as const : 'library-artist' as const,
+      entityId: selectedNode.entityType === 'artist' ? selectedNode.entityId : selectedNode.localArtistId ?? selectedNode.entityId } : null);
+  const albumCoverage=useAdminQuery<{active:boolean;coverage:BrainCoverage & {error?:string|null}}>({
+    key:[...connectionKeys.coverage(),'album',albumTarget?.entityType,albumTarget?.entityId,readOnly],adminFetch,
+    enabled:hydrated && !!albumTarget,
+    request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/connections/album-coverage?${new URLSearchParams({entityType:albumTarget!.entityType,entityId:albumTarget!.entityId})}`,undefined,signal),
+    staleTime:10_000,refetchInterval:readOnly?false:15_000,
+  });
+  const selectedResearch=albumTarget?albumCoverage:coverage;
+  const sameResearchTarget = !!researchTarget && queueResearch.variables?.entityType === researchTarget.entityType
+    && queueResearch.variables?.entityId === researchTarget.entityId;
+  const selectedCoverage = albumTarget?albumCoverage.data?.coverage:selectedNode?.coverage;
 
   function layerUp() {
     const parent = parentLayers.current.pop();
@@ -305,9 +375,9 @@ export default function ConnectionsVisualizer({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={openCurrentArtist} disabled={!!localTrackId && current.isLoading}
+          <button type="button" onClick={() => void openCurrentArtist()} disabled={targetingArtist || nowPlaying.isLoading}
             className="inline-flex grow items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30 disabled:opacity-50">
-            <LocateFixed className="size-4" aria-hidden="true" /> Target current artist
+            <LocateFixed className="size-4" aria-hidden="true" /> {targetingArtist ? 'Finding current artist…' : 'Target current artist'}
           </button>
           <button type="button" onClick={openCurrentTrack} disabled={!!localTrackId && current.isLoading}
             className="inline-flex grow items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30 disabled:opacity-50">
@@ -334,6 +404,7 @@ export default function ConnectionsVisualizer({
         </div>
         {readOnly && <p className="mt-3 text-xs text-muted">Browsing saved connections. Library layers are available if previously opened; enable Sleeve Notes in Settings to load new layers.</p>}
         {overview && populate.data && <p role="status" className="mt-3 text-xs text-muted">{populate.data.artists.toLocaleString()} library artists populated. Double-click an artist to load its albums.</p>}
+        {coverage.error && <p role="status" className="mt-3 text-xs text-muted">Research coverage could not be refreshed. <button type="button" onClick={() => void coverage.refetch()} className="text-primary hover:underline">Retry coverage</button></p>}
         {overview && populate.error && <p role="alert" className="mt-3 text-xs text-muted">{populate.error.message}</p>}
       </Card>
 
@@ -347,13 +418,13 @@ export default function ConnectionsVisualizer({
       ) : visibleGraph ? (
         <div className={`grid min-w-0 items-start gap-5 ${selectedNode || selectedEdge ? '2xl:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
           <Card title={overview ? 'Artist constellation' : focusType === 'library-artist' || focusType === 'artist' ? 'Artist albums' : focusType === 'library-album' ? 'Album tracks' : 'Musical neighbourhood'} sub={`${visibleGraph.nodes.length.toLocaleString()} entities${overview ? ` · ${libraryArtistCount.toLocaleString()} library artists` : ''} · ${visibleGraph.edges.length.toLocaleString()} connections`}>
-            {overview && <p className="mb-3 text-xs text-muted">Dim artists have yet to be encountered by Sleeve Notes. Double-click an artist to open its albums.</p>}
+            {overview && <p className="mb-3 text-xs text-muted">Artist rings show research coverage. Select an artist to add research to the queue; double-click to open their albums.</p>}
             {map.error && <p role="status" className="mb-3 text-xs text-muted">The map could not refresh. Showing the last loaded connections.</p>}
             {map.data && (
               <>
                 {map.data.nodes.length === 0 ? <p className="py-16 text-center text-[13px] text-muted">{visibleGraph.active ? 'Artists appear here as the library scan and Sleeve Notes research gather your musical connections.' : 'No saved map yet. Enable Sleeve Notes in Settings to gather connections.'}</p> :
                   <ConnectionsGraph
-                    data={map.data} visibleData={visibleGraph} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
+                    data={coveredMap ?? map.data} visibleData={visibleGraph} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
                     focusRequest={focusRequest} zoomToSelection={zoomToSelection}
                     canLayerUp={!overview} canLayerDown={canLayerDown}
                     onLayerUp={layerUp} onLayerDown={() => { if (canLayerDown && selectedNode) openNode(selectedNode); }}
@@ -362,7 +433,7 @@ export default function ConnectionsVisualizer({
                     onToggleUnresearchedArtists={() => setIncludeUnresearchedArtists((value) => !value)}
                     onToggleGroup={(types) => setEdgeTypes((current) => toggleConnectionGroup(current, types))}
                     onToggleExternal={() => setIncludeExternal((value) => !value)}
-                    overview={overview} currentNodeId={overview ? current.data?.artistNodeId : current.data?.nodeId}
+                    overview={overview} currentNodeId={overview ? currentArtistOnOverview(coveredMap, current.data, nowPlaying.data?.nowPlaying?.artist)?.id : current.data?.nodeId}
                     onSelectNode={selectNode}
                     onClearSelection={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
                     onSelectEdge={(edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
@@ -373,7 +444,7 @@ export default function ConnectionsVisualizer({
                     {visibleGraph.nodes.slice(0, browseLimit).map((node) => <button key={node.id} type="button"
                       onClick={() => selectNode(node)} onDoubleClick={() => openNode(node)}
                       className="rounded-md border border-border/60 px-3 py-2 text-left text-[13px] hover:bg-muted/20">
-                      <span className="block truncate font-medium">{node.title}</span><span className="text-xs text-muted">{node.kind === 'contributor' ? 'Shared credit' : node.local ? 'In library' : 'External reference'}{node.trackCount ? ` · ${node.trackCount} tracks` : ''}</span>
+                      <span className="block truncate font-medium">{node.title}</span><span className="text-xs text-muted">{node.kind === 'contributor' ? 'Shared credit' : node.local ? 'In library' : 'External reference'}{node.trackCount ? ` · ${node.trackCount} tracks` : ''}{node.coverage ? ` · ${COVERAGE_LABELS[node.coverage.state]}` : ''}</span>
                     </button>)}
                   </div>
                   {visibleGraph.nodes.length > browseLimit && <button type="button" onClick={() => setBrowseLimit((count) => count + 40)} className="mt-3 text-xs text-primary">Show more</button>}
@@ -412,6 +483,27 @@ export default function ConnectionsVisualizer({
                 <div><h3 className="text-lg font-semibold">{selectedNode.title}</h3>{selectedNode.subtitle && <p className="text-[13px] text-muted">{selectedNode.subtitle}</p>}</div>
                 <div className="flex flex-wrap gap-2"><Pill tone={selectedNode.local ? 'solid' : 'default'}>{selectedNode.kind === 'contributor' ? 'Shared credit' : selectedNode.local ? 'In library' : 'External'}</Pill><Pill tone="ink">{entityLabel(selectedNode)}</Pill></div>
                 {selectedNode.trackCount !== undefined && <p className="text-xs text-muted">{selectedNode.trackCount} local tracks · {selectedNode.connectionCount ?? 0} connections</p>}
+                {researchTarget && <div className="space-y-2 border-t border-border/60 pt-3">
+                  <Eyebrow>Research coverage</Eyebrow>
+                  {selectedCoverage ? <>
+                    <p className="text-[13px] font-medium">{COVERAGE_LABELS[selectedCoverage.state]}</p>
+                    {selectedCoverage.lastResearchedAt && <p className="text-xs text-muted">Last completed research: {new Date(selectedCoverage.lastResearchedAt).toLocaleString()}</p>}
+                    <p className="text-xs leading-5 text-muted">{selectedCoverage.usableStories} usable {selectedCoverage.usableStories === 1 ? 'story' : 'stories'} {albumTarget?'saved for this album':'across this artist, their albums and tracks'}. The DJ still checks track relevance and recent use.</p>
+                  </> : <p className="text-xs text-muted">{selectedResearch.error ? 'Coverage could not be loaded.' : selectedResearch.isLoading ? 'Checking coverage…' : 'No coverage is saved yet.'}</p>}
+                  {readOnly || selectedResearch.data?.active === false ? <p className="text-xs text-muted">Enable Sleeve Notes to add research to the queue.</p> : <>
+                    <button type="button" disabled={queueResearch.isPending || !selectedCoverage?.canQueue || selectedResearch.isFetching}
+                      onClick={() => queueResearch.mutate(researchTarget)}
+                      className="rounded-md border border-border px-3 py-2 text-xs font-medium text-primary hover:bg-muted/20 disabled:cursor-default disabled:opacity-50">
+                      {sameResearchTarget && queueResearch.isPending ? 'Adding to queue…' : selectedCoverage?.state === 'researching' ? 'Researching'
+                        : selectedCoverage?.state === 'queued' ? 'Queued' : selectedCoverage?.hasResearchHistory ? 'Research again' : 'Add to research queue'}
+                    </button>
+                    <p className="text-xs leading-5 text-muted">Research runs when broadcast activity allows. Existing stories stay available.</p>
+                    {selectedCoverage && !selectedCoverage.canQueue && !['queued', 'researching'].includes(selectedCoverage.state) && <p className="text-xs text-muted">A confirmed {albumTarget?'album':'artist'} identity is needed. Select it from your library to resolve it.</p>}
+                  </>}
+                  {albumCoverage.data?.coverage.error && albumTarget && <p className="text-xs text-muted">{albumCoverage.data.coverage.error}</p>}
+                  {sameResearchTarget && queueResearch.error && <p role="alert" className="text-xs text-muted">{queueResearch.error.message}</p>}
+                  {sameResearchTarget && queueResearch.isSuccess && <p role="status" className="text-xs text-muted">{queueResearch.data.queued ? 'Added to the research queue.' : 'This research is already in progress.'}</p>}
+                </div>}
                 {selectedNode.entityType === 'library-artist' && <p className="text-xs leading-5 text-muted">Albums and tracks come from your library. Musical connections appear as Sleeve Notes encounters and researches the music.</p>}
                 {selectedNode.expandable && ENTITY_TYPES.has(selectedNode.entityType as ConnectionEntityType) && (
                   <button type="button" onClick={() => openNode(selectedNode)} className="block text-[13px] font-medium text-primary hover:underline">{selectedNode.kind === 'artist' ? 'Open albums' : selectedNode.entityType === 'library-album' ? 'Open tracks' : 'Open this neighbourhood'}</button>

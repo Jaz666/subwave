@@ -40,7 +40,7 @@ import { Suggestion, Suggestions } from '../ai-elements/suggestion';
 import { Message, MessageContent } from '../ai-elements/message';
 import type { ChatStatus } from 'ai';
 import { ScrollArea, ScrollBar } from '../ui/scroll-area';
-import { RefreshCw, X } from 'lucide-react';
+import { BookOpen, RefreshCw, X } from 'lucide-react';
 import StationHeader, { type HealthMetrics } from './StationHeader';
 import { cn } from '../../lib/cn';
 import { RequestsCard } from './dash/RequestsCard';
@@ -179,7 +179,13 @@ export default function DashPanel() {
     adminFetch,
     toastOnError: false,
     request: ({ path, body }, fetcher) => runDashAction(fetcher, path, body),
-    onDone: (_data, _vars, client) => client.invalidateQueries({ queryKey: dashKeys.status() }),
+    onDone: async (_data, { path }, client) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: dashKeys.status() }),
+        ...(path === '/sleeve-notes/segment/run'
+          ? [client.invalidateQueries({ queryKey: ['sleeve-notes'] })] : []),
+      ]);
+    },
   });
 
   const act = async (
@@ -191,7 +197,10 @@ export default function DashPanel() {
     setBusy(key);
     try {
       const j = await actionMutation.mutateAsync({ path, body });
-      notify.ok(j.spoken ? `on air: “${j.spoken}”` : `${label} done`);
+      if (path === '/sleeve-notes/segment/run') {
+        if (j.queued) notify.ok(j.deferred ? 'Sleeve Notes segment queued for the next break.' : 'Sleeve Notes segment submitted to broadcast.');
+        else notify.info(`Sleeve Notes stayed silent — ${j.reason || 'nothing usable to speak from'}`);
+      } else notify.ok(j.spoken ? `on air: “${j.spoken}”` : `${label} done`);
       return j;
     } catch (e) {
       notify.err(`${label}: ${errorMessage(e)}`);
@@ -645,8 +654,8 @@ export default function DashPanel() {
             </PromptInput>
           </Card>
 
-          <Card title="DJ segments" sub="fire on demand">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Card title="DJ segments" sub="fire on demand" bodyClass="loose">
+            <div className="grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(90px,1fr))] gap-2">
               {[...SEGMENTS, ...((status?.activeShow?.guests?.length ?? 0) > 0 ? [BANTER_SEGMENT] : [])].map(s => {
                 const k = `seg:${s.type}`;
                 return (
@@ -660,6 +669,15 @@ export default function DashPanel() {
                   />
                 );
               })}
+              <SegmentButton
+                label="Sleeve Notes"
+                icon={BookOpen}
+                busyHere={busy === 'seg:sleeve-notes'}
+                busyLabel="working"
+                anyBusy={!!busy || !status?.nowPlaying?.subsonic_id}
+                title="Run Sleeve Notes for the on-air track, bypassing automatic enablement, DJ assignments and cooldowns."
+                onFire={() => act('seg:sleeve-notes', '/sleeve-notes/segment/run', null, 'Sleeve Notes')}
+              />
             </div>
           </Card>
 

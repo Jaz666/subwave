@@ -1,3 +1,4 @@
+import { sleeveNotesSegmentSchema, type SleeveNotesSegmentConfig } from './schemas/settings.js';
 // Durable settings — overrides for values that have static defaults in code.
 // Stored at <stateDir>/settings.json. Some apply live (weather location,
 // DJ personas, shows); others require a Liquidsoap restart (jingle frequency,
@@ -686,6 +687,10 @@ export async function load() {
       ),
     },
     sleeveNotes: {
+      segment: (() => {
+        const result = sleeveNotesSegmentSchema.safeParse({ ...DEFAULTS.sleeveNotes.segment, ...stored.sleeveNotes?.segment });
+        return result.success ? result.data : { ...DEFAULTS.sleeveNotes.segment };
+      })(),
       wikipedia: {
         extractPrompt: typeof stored.sleeveNotes?.wikipedia?.extractPrompt === 'string'
           ? stored.sleeveNotes.wikipedia.extractPrompt : DEFAULTS.sleeveNotes.wikipedia.extractPrompt,
@@ -1754,11 +1759,13 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
   }
   if ('sleeveNotes' in patch) {
     const sleeveNotes = parseSettingsPatchKey<{
+      segment?: Partial<SleeveNotesSegmentConfig>;
       wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
       providers?: { genius?: { enabled?: boolean; accessToken?: string } };
     }>(
       'sleeveNotes', patch.sleeveNotes,
     );
+    if (sleeveNotes.segment) next.sleeveNotes.segment = { ...next.sleeveNotes.segment, ...sleeveNotes.segment };
     if (sleeveNotes.wikipedia?.extractPrompt !== undefined) {
       next.sleeveNotes.wikipedia.extractPrompt = sleeveNotes.wikipedia.extractPrompt;
     }

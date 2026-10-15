@@ -1,8 +1,14 @@
 // Phase 1 status surface. It deliberately does not open the Sleeve Notes
 // database. Explicit cached browsing while disabled uses a read-only handle.
 import express from 'express';
+import { brainAlbumCoverageInDatabase, queueBrainAlbumInDatabase, queueBrainLibraryAlbumInDatabase, type BrainAlbumType } from '../sleeve-notes/brain-album-research.js';
+import { liveNotesSummary } from '../sleeve-notes/live-summary.js';
+import { addLegacySegmentConversations } from '../sleeve-notes/legacy-segment-transcripts.js';
+import { brainCoverageInDatabase, queueBrainArtistInDatabase, queueBrainLibrarySeedInDatabase } from '../sleeve-notes/brain-coverage.js';
 import { randomUUID } from 'node:crypto';
 import { seriesCheckSchema } from '../schemas/sleeve-notes-series.js';
+import { sparkFeedbackSchema } from '../schemas/sleeve-notes-feedback.js';
+import { heardOnAir, saveSparkFeedback } from '../sleeve-notes/heard-on-air.js';
 import { lookupMusicBrainzSeries, type MusicBrainzSeriesSnapshot } from '../music/musicbrainz.js';
 import { seriesCatalogInDatabase, parseSeriesId, seedSuppliedSeries, updateSeriesInDatabase } from '../sleeve-notes/series-catalog-store.js';
 import * as settings from '../settings.js';
@@ -14,7 +20,7 @@ import { geniusAccessToken } from '../sleeve-notes/genius-token.js';
 import { libraryConnectionsForRecording } from '../sleeve-notes/library-connections.js';
 import { researchConnectionsOverviewInDatabase } from '../sleeve-notes/connections-overview.js';
 import { cachedConnectionsOverview } from '../sleeve-notes/connection-compute.js';
-import { brainLibraryGraph, cachedBrainLibraryGraph, localBrainArtistId, populateBrainArtists, searchBrainArtists } from '../sleeve-notes/brain-library.js';
+import { brainLibraryResearchSeed, brainLibraryAlbumResearchSeed, brainLibraryGraph, cachedBrainLibraryGraph, localBrainArtistId, populateBrainArtists, searchBrainArtists } from '../sleeve-notes/brain-library.js';
 import { withCachedRead, open as openSleeveNotesDb } from '../sleeve-notes/db.js';
 import {
   adaptiveWikipediaChunkCharacters, requestWikipediaRefresh, researchQueueDetails,
@@ -23,7 +29,7 @@ import {
 import { LlmResearcher } from '../sleeve-notes/llm-researcher.js';
 import { wikipediaNoteCategories } from '../sleeve-notes/researcher.js';
 import { allocateWikipediaClaims, planWikipediaChunks } from '../sleeve-notes/wikipedia-extract.js';
-import { listModeration, moderateCandidate, moderateExistingClaim, moderationSource } from '../sleeve-notes/moderation.js';
+import { listModeration, moderateCandidate, moderateExistingClaim, moderationSource, sendClaimToReview } from '../sleeve-notes/moderation.js';
 import {
   rebuildWikipediaClaims,
   rebuildWikipediaClaimsForArtist,
@@ -44,6 +50,25 @@ import {
 } from '../sleeve-notes/research-repository.js';
 
 export const router = express.Router();
+
+router.get('/sleeve-notes/heard-on-air', requireAdmin, async (req, res) => {
+  await settings.load();
+  const offset = Math.max(0, Math.min(100_000, Number.parseInt(String(req.query.offset), 10) || 0));
+  const enabled = settings.get().djBehaviour.extendedSleeveNotes === true;
+  const read = () => ({ ...heardOnAir(20, offset), readOnly: !enabled });
+  return res.json(await addLegacySegmentConversations(enabled ? read() : withCachedRead(read)));
+});
+
+router.post('/sleeve-notes/heard-on-air/:id/feedback', requireAdmin, async (req, res) => {
+  await settings.load();
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) return res.status(409).json({ error: 'Enable Sleeve Notes before saving feedback' });
+  const parsed = sparkFeedbackSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid feedback',
+    fieldErrors: Object.fromEntries(parsed.error.issues.map(issue => [issue.path.join('.'), issue.message])) });
+  const result = saveSparkFeedback(String(req.params.id), parsed.data);
+  if (!result) return res.status(404).json({ error: 'No confirmed aired story was found' });
+  return res.json({ ok: true, ...result });
+});
 
 // Preview metadata is held briefly server-side; Add never trusts client-supplied names/types.
 const checkedSeries = new Map<string, { snapshot: MusicBrainzSeriesSnapshot; checkedAt: number }>();
@@ -180,6 +205,16 @@ router.post('/sleeve-notes/moderation/:id/:action', requireAdmin, async (req, re
   }
 });
 
+router.post('/sleeve-notes/claims/:id/review', requireAdmin, async (req, res) => {
+  await settings.load();
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) return res.status(409).json({ error: 'Extended Sleeve Notes is disabled' });
+  try {
+    return res.json(sendClaimToReview(String(req.params.id)));
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Could not send story to Review' });
+  }
+});
+
 router.post('/sleeve-notes/claims/:id/:action', requireAdmin, async (req, res) => {
   const action = String(req.params.action);
   if (action !== 'approved' && action !== 'deleted') return res.status(400).json({ error: 'Unsupported decision' });
@@ -191,6 +226,23 @@ router.post('/sleeve-notes/claims/:id/:action', requireAdmin, async (req, res) =
   } catch (error) {
     return res.status(400).json({ error: error instanceof Error ? error.message : 'Could not update claim' });
   }
+});
+
+router.post('/sleeve-notes/segment/run', requireAdmin, async (_req,res)=>{
+  try {
+    await settings.load();
+    const {runSleeveNotesSegmentNow}=await import('../skills/_agent.js');
+    const run=await runSleeveNotesSegmentNow();
+    return res.json({ok:true,queued:run.queued,deferred:run.deferred,spoken:run.text,reason:run.reason});
+  } catch (error) {
+    return res.status(500).json({error:error instanceof Error?error.message:'Could not run Sleeve Notes segment'});
+  }
+});
+
+router.get('/sleeve-notes/live-summary', requireAdmin, async (_req, res) => {
+  const { queue } = await import('../broadcast/queue.js');
+  const nowPlaying = await queue.getNowPlaying();
+  return res.json(withCachedRead(() => liveNotesSummary(nowPlaying, queue.current, queue.upcoming[0] ?? null)));
 });
 
 router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
@@ -506,6 +558,48 @@ router.get('/sleeve-notes/connections/library/:recordingId', requireAdmin, async
   const id = String(req.params.recordingId ?? '').trim();
   if (!id || id.length > 300) return res.status(400).json({ error: 'A recording id is required' });
   return res.json({ active: true, connections: libraryConnectionsForRecording(id) });
+});
+
+router.get('/sleeve-notes/connections/coverage', requireAdmin, async (_req, res) => {
+  await settings.load();
+  const active = settings.get().djBehaviour.extendedSleeveNotes === true;
+  const read = () => ({ active, artists: brainCoverageInDatabase(openSleeveNotesDb()) });
+  return res.json(active ? read() : withCachedRead(read));
+});
+
+router.get('/sleeve-notes/connections/album-coverage', requireAdmin, async (req,res) => {
+  const type=String(req.query.entityType??''),id=String(req.query.entityId??'').trim();
+  if(!['release','release-group','library-album'].includes(type)||!id||id.length>300)return res.status(400).json({error:'Choose an album from Station Brain'});
+  await settings.load(); const active=settings.get().djBehaviour.extendedSleeveNotes===true;
+  const read=()=>({active,coverage:brainAlbumCoverageInDatabase(openSleeveNotesDb(),type as BrainAlbumType,id)});
+  return res.json(active?read():withCachedRead(read));
+});
+
+router.post('/sleeve-notes/connections/research', requireAdmin, async (req, res) => {
+  await settings.load();
+  if (settings.get().djBehaviour.extendedSleeveNotes !== true) return res.status(409).json({ error: 'Enable Sleeve Notes before adding research to the queue' });
+  const type = req.body?.entityType;
+  const id = typeof req.body?.entityId === 'string' ? req.body.entityId.trim() : '';
+  if (!['artist', 'library-artist', 'release', 'release-group', 'library-album'].includes(type) || !id || id.length > 300) return res.status(400).json({ error: 'Choose an artist or album from Station Brain' });
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(new Error('The library lookup timed out. Try again.')), 15_000);
+  const disconnect = () => { if (!res.writableEnded) abort.abort(); };
+  res.once('close', disconnect);
+  try {
+    const db = openSleeveNotesDb();
+    if (type === 'artist' && !db.prepare('SELECT 1 FROM sleeve_artists WHERE id = ?').get(id)) return res.status(404).json({ error: 'This artist is no longer in Sleeve Notes' });
+    if (type === 'library-artist' && !db.prepare('SELECT 1 FROM sleeve_connection_library_artists WHERE local_artist_id = ?').get(id)) return res.status(404).json({ error: 'This artist is no longer in the library index' });
+    const seed = type === 'library-artist' ? await brainLibraryResearchSeed(id, abort.signal) : null;
+    const albumSeed=type==='library-album'?await brainLibraryAlbumResearchSeed(id,abort.signal):null;
+    abort.signal.throwIfAborted();
+    if (settings.get().djBehaviour.extendedSleeveNotes !== true) return res.status(409).json({ error: 'Sleeve Notes was disabled before this research could be queued' });
+    const result = albumSeed?queueBrainLibraryAlbumInDatabase(db,albumSeed):['release','release-group'].includes(type)
+      ?queueBrainAlbumInDatabase(db,type,id):seed?queueBrainLibrarySeedInDatabase(db,seed):queueBrainArtistInDatabase(db,id);
+    return res.json({ active: true, ...result });
+  } catch (error) {
+    if (res.destroyed) return;
+    return res.status(422).json({ error: error instanceof Error ? error.message : 'Could not add this artist or album to the research queue' });
+  } finally { clearTimeout(timeout); res.off('close', disconnect); }
 });
 
 router.get('/sleeve-notes/connections/overview', requireAdmin, async (req, res) => {

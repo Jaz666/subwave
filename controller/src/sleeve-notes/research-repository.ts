@@ -23,6 +23,8 @@ export interface LocalEncounterInput {
   priority: number;
   autopilot?: boolean;
   listenerPresent?: boolean;
+  encounteredAt?: string;
+  host?: {id:string;name:string} | null;
 }
 
 export const AUTOPILOT_RESEARCH_QUEUE_CAP = 10;
@@ -73,7 +75,7 @@ export function admitLocalEncounter(input: LocalEncounterInput): void {
 }
 
 export function admitLocalEncounterInDatabase(db: Database.Database, input: LocalEncounterInput): void {
-  const now = new Date().toISOString();
+  const now = input.encounteredAt ?? new Date().toISOString();
   const priority = Math.max(0, Math.trunc(input.priority));
   const transaction = db.transaction(() => {
     const alreadyKnown = !!db.prepare('SELECT 1 FROM sleeve_local_attachments WHERE local_track_id = ?')
@@ -93,8 +95,10 @@ export function admitLocalEncounterInDatabase(db: Database.Database, input: Loca
       updated_at = excluded.updated_at`)
       .run(input.localTrackId, input.title, input.artist, input.releaseTitle,
         input.musicbrainzRecordingId, now, now, now);
-    db.prepare(`INSERT INTO sleeve_encounters (id, local_track_id, source, encountered_at)
-      VALUES (?, ?, ?, ?)`).run(randomUUID(), input.localTrackId, input.source, now);
+    db.prepare(`INSERT INTO sleeve_encounters (id, local_track_id, source, encountered_at, host_id, host_name)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(randomUUID(), input.localTrackId, input.source, now,
+        input.source === 'played' ? input.host?.id ?? null : null,
+        input.source === 'played' ? input.host?.name ?? null : null);
     db.prepare(`INSERT INTO sleeve_research_jobs (
       id, provider, subject_type, subject_id, capability, state, priority,
       attempts, run_after, created_at, updated_at
@@ -1049,7 +1053,7 @@ export function markResearchJobRunning(id: string): void {
 export function finishResearchJob(id: string, state: 'complete' | 'failed'): void {
   const now = new Date().toISOString();
   open().prepare(`UPDATE sleeve_research_jobs
-    SET state = ?, updated_at = ?, completed_at = CASE WHEN ? = 'complete' THEN ? ELSE NULL END
+    SET state = ?, operator_requested = 0, updated_at = ?, completed_at = CASE WHEN ? = 'complete' THEN ? ELSE NULL END
     WHERE id = ?`).run(state, now, state, now, id);
 }
 
@@ -1470,6 +1474,21 @@ function enqueueResearchJobInDatabase(db: Database.Database, input: {
 
 export function enqueueResearchJob(input: Omit<Parameters<typeof enqueueResearchJobInDatabase>[1], 'now'>): void {
   enqueueResearchJobInDatabase(open(), { ...input, now: new Date().toISOString() });
+}
+
+/** Preserve explicit operator intent across source lookup and extraction stages. */
+export function forwardOperatorResearchRequest(job: PendingResearchJob, provider: string, capability: string): void {
+  const db=open();
+  if(!(db.prepare('SELECT operator_requested AS requested FROM sleeve_research_jobs WHERE id=?').get(job.id) as {requested:number}|undefined)?.requested)return;
+  // An explicit repeat can revisit a completed fallback; active work keeps its retry window.
+  db.prepare(`UPDATE sleeve_research_jobs SET operator_requested=1, priority=MAX(priority,?),
+    run_after=CASE WHEN state IN ('complete','failed','cancelled') THEN NULL ELSE run_after END,
+    completed_at=CASE WHEN state IN ('complete','failed','cancelled') THEN NULL ELSE completed_at END,
+    attempts=CASE WHEN state IN ('complete','failed','cancelled') THEN 0 ELSE attempts END,
+    state=CASE WHEN state IN ('complete','failed','cancelled') THEN 'queued' ELSE state END
+    WHERE provider=? AND subject_type=? AND subject_id=? AND capability=?`)
+    .run(job.priority,provider,job.subjectType,job.subjectId,capability);
+  db.prepare('UPDATE sleeve_research_jobs SET operator_requested=0 WHERE id=?').run(job.id);
 }
 
 /** The originating play, or an encountered track for jobs created before provenance existed. */

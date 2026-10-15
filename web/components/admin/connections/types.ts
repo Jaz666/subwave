@@ -1,3 +1,11 @@
+export interface BrainCoverage {
+  state: 'ready' | 'empty' | 'unexplored' | 'queued' | 'researching' | 'incomplete';
+  usableStories: number;
+  lastResearchedAt: string | null;
+  canQueue: boolean;
+  hasResearchHistory: boolean;
+}
+
 export type ConnectionEntityType = 'artist' | 'recording' | 'release' | 'release-group' | 'series' | 'library-artist' | 'library-album';
 export type ConnectionNodeKind = 'recording' | 'artist' | 'release' | 'series' | 'external-recording' | 'contributor';
 export type ConnectionEdgeType = 'samples' | 'sampled-in' | 'cover-of' | 'covered-by'
@@ -16,6 +24,7 @@ export interface ConnectionNode {
   localTrackId?: string | null;
   localArtistId?: string | null;
   researched?: boolean;
+  coverage?: BrainCoverage;
   trackCount?: number;
   connectionCount?: number;
   verifiedConnectionCount?: number;

@@ -2,6 +2,9 @@
 // wiring yet: the caller must supply the station's playback-critical quiet
 // gate, so a future scheduler cannot accidentally turn it into a foreground
 // collector.
+import { finishBrainAlbumMatchesInDatabase } from './brain-album-research.js';
+import { queueBrainArtistInDatabase } from './brain-coverage.js';
+import { open } from './db.js';
 import * as musicbrainz from '../music/musicbrainz.js';
 import * as settings from '../settings.js';
 import * as repository from './research-repository.js';
@@ -46,6 +49,7 @@ export class MusicBrainzMatchWorker {
           title: attachment.title, artist: attachment.artist, mbid: attachment.musicbrainzRecordingId,
         });
         if (!result) {
+          finishBrainAlbumMatchesInDatabase(open(), attachment.localTrackId, false);
           repository.finishProviderRequest(requestId, 'no-match');
           repository.finishResearchJob(job.id, 'failed');
           console.log(`[sleeve-notes] MusicBrainz no confident match: ${attachment.artist ? `${attachment.artist} — ` : ''}${attachment.title}`);
@@ -54,6 +58,20 @@ export class MusicBrainzMatchWorker {
           repository.finishProviderRequest(requestId, 'ready');
           repository.retainCanonicalMusicBrainzMatch(attachment.localTrackId, result,
             (gatedListenerCount() ?? 0) > 0);
+          const db = open();
+          finishBrainAlbumMatchesInDatabase(db, attachment.localTrackId, true);
+          const requested = db.prepare('SELECT operator_requested AS requested FROM sleeve_research_jobs WHERE id = ?').get(job.id) as { requested: number } | undefined;
+          if (requested?.requested) {
+            const artist = db.prepare(`SELECT recording.artist_id AS id FROM sleeve_local_attachments local
+              JOIN sleeve_recordings recording ON recording.id = local.recording_id WHERE local.local_track_id = ?`).get(attachment.localTrackId) as { id: string | null } | undefined;
+            if (!artist?.id) {
+              repository.finishResearchJob(job.id, 'failed');
+              console.warn('[sleeve-notes] Operator research could not resolve a confirmed artist identity for this library track.');
+              return true;
+            }
+            queueBrainArtistInDatabase(db, artist.id);
+            db.prepare('UPDATE sleeve_research_jobs SET operator_requested = 0 WHERE id = ?').run(job.id);
+          }
           repository.finishResearchJob(job.id, 'complete');
           console.log(`[sleeve-notes] MusicBrainz matched: ${result.artist?.name ?? 'Unknown artist'} — ${result.title}`);
         }

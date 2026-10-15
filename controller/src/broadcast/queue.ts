@@ -1,3 +1,4 @@
+import { recordSleeveNotesSegmentAir, releaseSleeveNotesSegment } from '../sleeve-notes/segment-ledger.js';
 import { prepareEpisodeContext } from './show-preparation.js';
 // Queue class and public singleton; helper implementations live in queue/.
 
@@ -158,11 +159,15 @@ import { notifyQueued, notifySpoken } from './voice-events.js';
 // Sleeve Notes work. The new admission path records an encounter and one
 // durable MusicBrainz match task; it never contacts a provider here.
 function admitSleeveNotesLater(track: { id?: string | null; title?: string | null; artist?: string | null; album?: string | null }, source: 'queue' | 'played', priority = 0): void {
+  // Capture at the confirmed track event, before the deferred write or a roster change.
+  const encounteredAt = new Date().toISOString();
+  const host = source === 'played' ? settings.getOnAirRoster().host : null;
+  const playbackHost = host ? {id:host.id,name:host.name} : null;
   setTimeout(() => {
     try {
       admitSleeveNotesEncounter({
         localTrackId: track.id, title: track.title, artist: track.artist,
-        releaseTitle: track.album,
+        releaseTitle: track.album, encounteredAt, host: playbackHost,
       }, source, priority);
     } catch {}
   }, 0).unref();
@@ -2518,6 +2523,9 @@ class Queue {
   }: SegmentDesc): Promise<boolean> {
     const airedAt = await handoff.aired;
     try {
+      if (kind === 'sleeve-notes') {
+        try { recordSleeveNotesSegmentAir(meta, normalizeForDisplay(text), airedAt); } catch {}
+      }
       if (kind === 'link' && sleeveClaimUseId && airedAt != null) {
         try { recordExtendedSleeveNoteAired(sleeveClaimUseId, airedAt); } catch {}
       }
@@ -2572,12 +2580,12 @@ class Queue {
   // makes the two-voice persona handoff play cleanly). Each line is booth-
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
-  async announceExchange(lines: { persona: Persona; text: string }[], kind = 'banter', { castNames = [] }: { castNames?: readonly string[] } = {}) {
+  async announceExchange(lines: { persona: Persona; text: string; meta?: TurnMeta }[], kind = 'banter', { castNames = [] }: { castNames?: readonly string[] } = {}) {
     if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
       this.log('scheduler', `Dropped ${kind} exchange — the show handoff has already claimed this boundary`);
       return false;
     }
-    const rendered: { persona: Persona; text: string; wavPath: string }[] = [];
+    const rendered: { persona: Persona; text: string; wavPath: string; meta?: TurnMeta }[] = [];
     // The whole cast, not just the line's own speaker: a model that prefixes a
     // label picks any name on the call sheet, including the one it is replying to.
     const knownNames = [...castNames, ...lines.map(l => l.persona?.name).filter(Boolean) as string[]];
@@ -2604,7 +2612,7 @@ class Queue {
           text: l.text,
           wavPath: l.wavPath,
           persona: l.persona,
-          meta: {},
+          meta: l.meta ?? {},
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
         })),
         { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null },
@@ -2618,6 +2626,7 @@ class Queue {
       try {
         const seg: SegmentDesc = {
           ...exchangeSegment(l, kind),
+          meta: { ...exchangeSegment(l,kind).meta, ...l.meta },
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
         };
         const handoff = await this._airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
@@ -2625,6 +2634,7 @@ class Queue {
         });
         this.onSpoken(handoff, seg);
       } catch (err) {
+        if (kind==='sleeve-notes') releaseSleeveNotesSegment(l.meta ?? {});
         this.log('error', `Exchange line failed to air: ${(err as Error).message}`);
       }
     }
@@ -2777,7 +2787,11 @@ class Queue {
       this.log('scheduler', `Pause-and-talk ${p.kind} falling back to ducked boundary speech — ${item.requestedBy ? 'listener request' : 'stem blend'} owns this seam`);
       return false;
     }
-    const clips = p.clips.filter(c => existsSync(c.wavPath));
+    const clips = p.clips.filter(c => {
+      const exists=existsSync(c.wavPath);
+      if (!exists && p.kind==='sleeve-notes') releaseSleeveNotesSegment(c.meta);
+      return exists;
+    });
     if (!clips.length) {
       this.dropPendingVoice('its pause-and-talk clip was reaped before the boundary');
       return false;
@@ -2874,7 +2888,10 @@ class Queue {
       return;
     }
     this._pendingVoice = null;
-    for (const clip of p.clips) releaseSleeveNoteUse(clip.sleeveClaimUseId);
+    for (const clip of p.clips) {
+      releaseSleeveNoteUse(clip.sleeveClaimUseId);
+      if (p.kind==='sleeve-notes') releaseSleeveNotesSegment(clip.meta);
+    }
     if (p.kind === 'handoff') {
       if (this._handoffBoundaryTimer) clearTimeout(this._handoffBoundaryTimer);
       this._handoffBoundaryTimer = null;
@@ -3051,7 +3068,11 @@ class Queue {
     // nothing left to air. A partially reaped exchange airs what survives
     // rather than nothing — the alternative is silence on a boundary the
     // planner already spent a slot on.
-    const clips = p.clips.filter(c => existsSync(c.wavPath));
+    const clips = p.clips.filter(c => {
+      const exists=existsSync(c.wavPath);
+      if (!exists && p.kind==='sleeve-notes') releaseSleeveNotesSegment(c.meta);
+      return exists;
+    });
     if (!clips.length) {
       if (p.kind === 'handoff') session.markHandoffAired();
       p.onCompleted?.(false);
@@ -3070,6 +3091,7 @@ class Queue {
         const seg: SegmentDesc = p.exchange
           ? {
               ...exchangeSegment(clip, p.kind),
+              meta: { ...exchangeSegment(clip,p.kind).meta, ...clip.meta },
               channel: 'intro',
               settlesHandoff: clip.settlesHandoff,
               track: this.current?.track ?? null,
@@ -4548,7 +4570,11 @@ class Queue {
       : BED_MARKER_FRESH_MS;
     if (!Number.isFinite(startedMs) || markerAgeMs < 0 || markerAgeMs > markerWindowMs) return;
     p.pauseReleasing = true;
-    const clips = p.clips.filter(c => existsSync(c.wavPath));
+    const clips = p.clips.filter(c => {
+      const exists=existsSync(c.wavPath);
+      if (!exists && p.kind==='sleeve-notes') releaseSleeveNotesSegment(c.meta);
+      return exists;
+    });
     if (!clips.length) {
       this._pendingVoice = null;
       p.onCompleted?.(false);

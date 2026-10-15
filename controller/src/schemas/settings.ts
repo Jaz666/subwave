@@ -929,7 +929,26 @@ export const djBehaviourPatchSchema = settingsBlockOf({
   ),
 });
 
+
+export const sleeveNotesSegmentSchema = z.object({
+  enabled: z.boolean({ error:'sleeveNotes.segment.enabled must be a boolean' }),
+  cooldownMinutes: z.number({error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'})
+    .int({error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'})
+    .min(5,{error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'})
+    .max(1440,{error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'}),
+  cohosts: z.boolean({error:'sleeveNotes.segment.cohosts must be a boolean'}),
+  // null means all host DJs; an empty list deliberately allows none.
+  personaIds: z.array(z.string({error:'sleeveNotes.segment.personaIds must contain DJ IDs'}).trim()
+    .min(1,{error:'sleeveNotes.segment.personaIds must contain DJ IDs'})
+    .max(200,{error:'sleeveNotes.segment.personaIds must contain DJ IDs'}),{error:'sleeveNotes.segment.personaIds must be a list of DJ IDs or null'})
+    .max(100,{error:'sleeveNotes.segment.personaIds must contain at most 100 DJs'}).nullable(),
+});
+export type SleeveNotesSegmentConfig = z.infer<typeof sleeveNotesSegmentSchema>;
+
+export const DEFAULT_SLEEVE_NOTES_SEGMENT: SleeveNotesSegmentConfig = { enabled:false,cooldownMinutes:60,cohosts:true,personaIds:null };
+
 export const sleeveNotesPatchSchema = settingsBlockOf({
+  segment: sleeveNotesSegmentSchema.partial(),
   wikipedia: settingsBlockOf({
     extractPrompt: settingsTrimmedString(
       8000,

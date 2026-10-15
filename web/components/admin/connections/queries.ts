@@ -1,5 +1,6 @@
 import { adminJson, type AdminFetch } from '../../../lib/admin-query';
 import type {
+  BrainCoverage,
   ConnectionEdgeType,
   ConnectionEntityType,
   ConnectionGraphData,
@@ -7,6 +8,7 @@ import type {
 } from './types';
 
 export const connectionKeys = {
+  coverage: () => ['sleeve-notes', 'connections', 'coverage'] as const,
   all: () => ['sleeve-notes', 'connections'] as const,
   search: (query: string) => [...connectionKeys.all(), 'search', query] as const,
   graph: (entityType: string, entityId: string, edges: readonly string[]) =>
@@ -59,4 +61,8 @@ export function loadConnectionOverview(
 ): Promise<ConnectionGraphData> {
   const params = new URLSearchParams({ edges: edgeTypes.join(',') });
   return adminJson(adminFetch, `/sleeve-notes/connections/overview?${params.toString()}`, undefined, signal);
+}
+
+export function loadBrainCoverage(adminFetch: AdminFetch, signal?: AbortSignal): Promise<{ active: boolean; artists: Record<string, BrainCoverage> }> {
+  return adminJson(adminFetch, '/sleeve-notes/connections/coverage', undefined, signal);
 }

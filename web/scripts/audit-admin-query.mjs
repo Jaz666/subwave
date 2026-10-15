@@ -34,6 +34,11 @@ const defaultOwnershipRegistry = [
     consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
   },
   {
+    file: 'connections/queries.ts', function: 'loadBrainCoverage',
+    reads: [{ callee: 'adminJson', method: 'GET', path: '/sleeve-notes/connections/coverage', signal: 'signal' }],
+    consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
+  },
+  {
     file: 'connections/queries.ts', function: 'resolveCurrentConnection',
     reads: [{ callee: 'adminJson', method: 'GET', path: '/sleeve-notes/connections/resolve/${}', signal: 'signal' }],
     consumers: [{ file: 'connections/ConnectionsVisualizer.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],

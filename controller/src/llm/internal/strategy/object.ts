@@ -99,7 +99,10 @@ export async function djObject({
               // failover/retry classifiers read messages — a reply mentioning
               // "Forbidden" or a "quota" must not read as a provider rejection.
               // Raw output rides along for diagnosis, as before.
-              const err: any = new Error('object recovery reply was not valid JSON for the schema', { cause: parseErr });
+              const message = parseErr instanceof SyntaxError
+                ? 'object recovery reply was not valid JSON'
+                : 'object recovery reply was valid JSON but did not match the required schema';
+              const err: any = new Error(message, { cause: parseErr });
               err.text = result.text || '';
               err.finishReason = result.finishReason;
               throw err;

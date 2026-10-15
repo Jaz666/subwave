@@ -419,6 +419,7 @@ export interface JingleEntry {
 
 export interface SettingsData {
   values?: {
+    personas?: Array<{id:string;name:string}>;
     jingleRatio?: number;
     /** Who counts the tracks between jingles (#1619). Absent on an older
      *  controller, which is the same thing as 'mixer'. The union comes from the
@@ -474,6 +475,7 @@ export interface SettingsData {
     pauseTalkMinSeconds?: number;
     djBehaviour?: DjBehaviourValues;
     sleeveNotes?: {
+      segment?: import('../../../lib/schemas.generated').SleeveNotesSegmentConfig;
       wikipedia?: { extractPrompt?: string; artistClaimLimit?: number; albumClaimLimit?: number };
       providers?: { genius?: { enabled?: boolean; accessToken?: string } };
     };

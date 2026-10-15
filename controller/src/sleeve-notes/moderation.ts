@@ -88,6 +88,46 @@ export function retainRejectedCandidates(input: {
   }).immediate();
 }
 
+/** Explicit operator withdrawal works before a story has ever aired. */
+export function sendClaimToReview(id: string): { id: string } {
+  const db = open();
+  return db.transaction(() => {
+    const claim = db.prepare('SELECT * FROM sleeve_claims WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!claim) throw new Error('Claim not found');
+    if (claim.operator_state === 'deleted') throw new Error('This story has already been deleted');
+    const existing = db.prepare("SELECT id FROM sleeve_moderation_candidates WHERE claim_id = ? AND status = 'pending'")
+      .get(id) as { id: string } | undefined;
+    const now = new Date().toISOString();
+    const candidate: ResearchCandidate = { category: claim.category as ResearchCandidate['category'],
+      topic: String(claim.topic), wording: String(claim.wording), shortWording: String(claim.short_wording), evidence: String(claim.evidence) };
+    const fingerprint = candidateFingerprint(candidate);
+    if (!existing) {
+      db.prepare(`INSERT INTO sleeve_moderation_candidates (id, source_document_id, fingerprint, entity_type, entity_id,
+        category, topic, wording, short_wording, evidence, original_json, rejection_reason, reason_detail,
+        rejection_origin, bin_entered_at, claim_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'operator-review', 'Sent to Review by the operator. Check the wording and source context before restoring.',
+          'operator-review', ?, ?, ?, ?)
+        ON CONFLICT(source_document_id, fingerprint) DO UPDATE SET status = 'pending',
+          rejection_reason = 'operator-review', reason_detail = excluded.reason_detail, rejection_origin = 'operator-review',
+          claim_id = excluded.claim_id, bin_entered_at = excluded.bin_entered_at, updated_at = excluded.updated_at,
+          reviewed_at = NULL, reviewed_by = NULL`)
+        .run(randomUUID(), claim.source_document_id, fingerprint, claim.entity_type, claim.entity_id,
+          candidate.category, candidate.topic, candidate.wording, candidate.shortWording ?? '', candidate.evidence,
+          JSON.stringify(candidate), now, id, now, now);
+    } else {
+      // Protect an existing automatic review item from expiry without creating a duplicate.
+      db.prepare("UPDATE sleeve_moderation_candidates SET rejection_origin = 'operator-review', updated_at = ? WHERE id = ?")
+        .run(now, existing.id);
+    }
+    db.prepare('UPDATE sleeve_claims SET enabled = 0, feedback_hold = 1, updated_at = ? WHERE id = ?').run(now, id);
+    if (!existing) db.prepare(`INSERT INTO sleeve_claim_history (id, claim_id, action, actor, before_json, after_json, created_at)
+      VALUES (?, ?, 'sent-to-review', ?, ?, NULL, ?)`).run(randomUUID(), id, actor,
+        JSON.stringify({ ...candidate, enabled: claim.enabled, operatorState: claim.operator_state }), now);
+    const item = db.prepare("SELECT id FROM sleeve_moderation_candidates WHERE claim_id = ? AND status = 'pending'").get(id) as { id: string };
+    return item;
+  }).immediate();
+}
+
 /** Remove expired, untouched Recycle Bin items while keeping a non-prose suppression key. */
 export function expireRecycleBin(now = new Date()): number {
   const db = open();
@@ -95,7 +135,8 @@ export function expireRecycleBin(now = new Date()): number {
   const expiredAt = now.toISOString();
   return db.transaction(() => {
     const rows = db.prepare(`SELECT id, claim_id AS claimId, entity_type AS entityType, entity_id AS entityId, fingerprint
-      FROM sleeve_moderation_candidates WHERE status = 'pending' AND bin_entered_at < ?`)
+      FROM sleeve_moderation_candidates WHERE status = 'pending' AND bin_entered_at < ?
+        AND rejection_origin NOT IN ('operator-feedback', 'operator-review')`)
       .all(cutoff) as Array<{ id: string; claimId: string | null; entityType: string; entityId: string; fingerprint: string }>;
     const suppress = db.prepare(`INSERT OR IGNORE INTO sleeve_expired_candidate_fingerprints
       (entity_type, entity_id, fingerprint, expired_at) VALUES (?, ?, ?, ?)`);
@@ -331,7 +372,7 @@ export function moderateCandidate(id: string, action: Decision, edit: Editable |
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'approved', ?, ?)
         ON CONFLICT(entity_type, entity_id, category, topic, source_document_id) DO UPDATE SET
           wording = excluded.wording, short_wording = excluded.short_wording,
-          evidence = excluded.evidence, enabled = 1, operator_state = 'approved', updated_at = excluded.updated_at`)
+          evidence = excluded.evidence, enabled = 1, feedback_hold = 0, operator_state = 'approved', updated_at = excluded.updated_at`)
         .run(claimId, row.entity_type, row.entity_id, accepted.category, accepted.topic,
           accepted.wording, accepted.shortWording ?? '', row.source_document_id, accepted.evidence, now, now);
       db.prepare(`DELETE FROM sleeve_dj_quality_rejections WHERE claim_id = ?`).run(claimId);
@@ -339,6 +380,11 @@ export function moderateCandidate(id: string, action: Decision, edit: Editable |
       db.prepare(`INSERT OR IGNORE INTO sleeve_claim_suppressions
         (entity_type, entity_id, category, topic, created_at) VALUES (?, ?, ?, ?, ?)`)
         .run(row.entity_type, row.entity_id, row.category, row.topic, now);
+      if (row.claim_id) {
+        claimId = String(row.claim_id);
+        db.prepare("UPDATE sleeve_claims SET enabled = 0, operator_state = 'deleted', updated_at = ? WHERE id = ?")
+          .run(now, claimId);
+      }
     }
     db.prepare(`UPDATE sleeve_moderation_candidates SET status = ?, claim_id = ?,
       category = ?, topic = ?, wording = ?, short_wording = ?, evidence = ?,
@@ -392,7 +438,7 @@ export function moderateExistingClaim(id: string, action: Decision, edit: Editab
       .get(claim.entity_type, claim.entity_id, accepted.category, accepted.topic, claim.source_document_id, id);
     if (conflict) throw new Error('Another claim already has this topic');
     db.prepare(`UPDATE sleeve_claims SET category = ?, topic = ?, wording = ?, short_wording = ?,
-      evidence = ?, enabled = 1, operator_state = 'approved', updated_at = ? WHERE id = ?`)
+      evidence = ?, enabled = 1, feedback_hold = 0, operator_state = 'approved', updated_at = ? WHERE id = ?`)
       .run(accepted.category, accepted.topic, accepted.wording, accepted.shortWording ?? '',
         accepted.evidence, now, id);
     db.prepare(`DELETE FROM sleeve_dj_quality_rejections WHERE claim_id = ?`).run(id);

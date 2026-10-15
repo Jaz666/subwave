@@ -87,6 +87,8 @@ export interface DebugSession {
 }
 
 interface LlmCall {
+  outcome?: 'deferred';
+  deferredReason?: 'research-budget' | 'broadcast-priority';
   ok?: boolean;
   kind?: string;
   model?: string;

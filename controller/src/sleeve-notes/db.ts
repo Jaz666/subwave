@@ -1088,6 +1088,119 @@ export function migrate(d: Database.Database): void {
       ALTER TABLE sleeve_musicbrainz_series ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;`);
     d.pragma('user_version = 45');
   }
+  if (version < 46) {
+    if (!(d.prepare('PRAGMA table_info(sleeve_claims)').all() as Array<{ name: string }>).some(column => column.name === 'feedback_hold')) {
+      d.exec('ALTER TABLE sleeve_claims ADD COLUMN feedback_hold INTEGER NOT NULL DEFAULT 0;');
+    }
+    const useColumns = new Set((d.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map(column => column.name));
+    for (const column of ['track_artist', 'track_title', 'claim_wording_at_offer']) {
+      if (!useColumns.has(column)) d.exec(`ALTER TABLE sleeve_claim_uses ADD COLUMN ${column} TEXT;`);
+    }
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_spark_feedback (
+      use_id TEXT PRIMARY KEY REFERENCES sleeve_claim_uses(id) ON DELETE CASCADE,
+      story TEXT CHECK (story IN ('good', 'routine', 'unclear', 'incorrect', 'wrong-subject')),
+      delivery TEXT CHECK (delivery IN ('worked', 'forced', 'wrong-subject')),
+      note TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      CHECK (story IS NOT NULL OR delivery IS NOT NULL)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sleeve_claim_uses_air ON sleeve_claim_uses(aired_at DESC, id DESC) WHERE aired_at IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS sleeve_feedback_hold
+      BEFORE UPDATE ON sleeve_claims
+      WHEN NEW.enabled = 1 AND NEW.feedback_hold = 1
+      BEGIN SELECT RAISE(IGNORE); END;`);
+    d.pragma('user_version = 46');
+  }
+
+  if (version < 47) {
+    const jobColumns = new Set((d.prepare('PRAGMA table_info(sleeve_research_jobs)').all() as Array<{ name: string }>).map(column => column.name));
+    if (!jobColumns.has('operator_requested')) d.exec('ALTER TABLE sleeve_research_jobs ADD COLUMN operator_requested INTEGER NOT NULL DEFAULT 0;');
+    d.pragma('user_version = 47');
+  }
+
+  if (version < 48) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_operator_research (
+      id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+      area TEXT NOT NULL, note TEXT NOT NULL, source_url TEXT NOT NULL, subject_label TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'queued', phase TEXT NOT NULL DEFAULT 'discovery',
+      candidates_json TEXT NOT NULL DEFAULT '[]', source_index INTEGER NOT NULL DEFAULT 0,
+      current_source_id TEXT, extracted_json TEXT, attempts INTEGER NOT NULL DEFAULT 0, run_after TEXT,
+      search_calls INTEGER NOT NULL DEFAULT 0, pages_read INTEGER NOT NULL DEFAULT 0,
+      llm_calls INTEGER NOT NULL DEFAULT 0, reported_tokens INTEGER NOT NULL DEFAULT 0,
+      stories_added INTEGER NOT NULL DEFAULT 0, review_items INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sleeve_operator_research_active ON sleeve_operator_research(fingerprint)
+      WHERE state IN ('queued', 'running', 'deferred');
+    CREATE TABLE IF NOT EXISTS sleeve_operator_research_sources (
+      request_id TEXT NOT NULL REFERENCES sleeve_operator_research(id) ON DELETE CASCADE,
+      url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, detail TEXT,
+      source_document_id TEXT, retrieved_at TEXT,
+      PRIMARY KEY(request_id, url)
+    );`);
+    d.pragma('user_version = 48');
+  }
+
+  if (version < 49) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_brain_album_requests (
+      local_album_id TEXT PRIMARY KEY, local_track_id TEXT NOT NULL, title TEXT NOT NULL,
+      release_group_id TEXT, state TEXT NOT NULL, last_error TEXT, requested_at TEXT NOT NULL
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_brain_album_track ON sleeve_brain_album_requests(local_track_id,state);`);
+    d.pragma('user_version = 49');
+  }
+
+  if (version < 50) {
+    // Repair manual album requests whose match created an automatic job before
+    // the explicit handoff. Completed requests and unrelated automatic jobs stay put.
+    d.exec(`UPDATE sleeve_research_jobs SET operator_requested=1,priority=MAX(priority,500)
+      WHERE subject_type='release' AND state IN ('queued','retry-at','running')
+        AND provider IN ('wikipedia','researcher','genius')
+        AND capability IN ('release-group-biography','extract-wikipedia-release-group','album-biography','extract-genius-album')
+        AND subject_id IN (
+          SELECT request.release_group_id FROM sleeve_brain_album_requests request
+          WHERE request.state='resolved' AND request.release_group_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM sleeve_research_jobs completed
+              WHERE completed.provider='researcher' AND completed.subject_type='release'
+                AND completed.subject_id=request.release_group_id AND completed.state='complete'
+                AND COALESCE(completed.completed_at,completed.updated_at)>=request.requested_at)
+        )`);
+    d.pragma('user_version = 50');
+  }
+
+  if (version < 51) {
+    // Keep historical sources/airings, but retire the removed web-research path.
+    d.exec(`UPDATE sleeve_operator_research SET state='cancelled',
+        last_error='Operator-led web research has been removed',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE state IN ('queued','running','deferred');
+      UPDATE sleeve_claims SET enabled=0 WHERE source_document_id IN (
+        SELECT id FROM sleeve_source_documents WHERE provider='web-operator');
+      UPDATE sleeve_moderation_candidates SET status='deleted',
+        reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),reviewed_by='feature-retirement',
+        updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE status='pending' AND source_document_id IN (
+        SELECT id FROM sleeve_source_documents WHERE provider='web-operator');`);
+    d.pragma('user_version = 51');
+  }
+
+  if (version < 52) {
+    // Playback attribution is a snapshot, never reconstructed from today's roster.
+    const columns = new Set((d.prepare('PRAGMA table_info(sleeve_encounters)').all() as Array<{name:string}>).map(column=>column.name));
+    for (const column of ['host_id','host_name']) {
+      if (!columns.has(column)) d.exec(`ALTER TABLE sleeve_encounters ADD COLUMN ${column} TEXT;`);
+    }
+    d.pragma('user_version = 52');
+  }
+
+  if (version < 53) {
+    const columns = new Set((d.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{name:string}>).map(column=>column.name));
+    if (!columns.has('segment_id')) d.exec('ALTER TABLE sleeve_claim_uses ADD COLUMN segment_id TEXT;');
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_segment_lines (
+      segment_id TEXT NOT NULL, line_index INTEGER NOT NULL CHECK(line_index BETWEEN 0 AND 11),
+      line_count INTEGER NOT NULL CHECK(line_count BETWEEN 1 AND 12),
+      speaker_id TEXT NOT NULL, speaker_name TEXT NOT NULL, text TEXT NOT NULL, aired_at TEXT NOT NULL,
+      PRIMARY KEY(segment_id,line_index)
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_claim_uses_segment ON sleeve_claim_uses(segment_id) WHERE segment_id IS NOT NULL;`);
+    d.pragma('user_version = 53');
+  }
 
 }
 

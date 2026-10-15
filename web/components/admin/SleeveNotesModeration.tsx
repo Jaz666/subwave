@@ -33,15 +33,17 @@ type Draft = Pick<Item, 'category' | 'topic' | 'wording' | 'shortWording' | 'evi
 const categories = ['artist-stories', 'release-stories', 'track-stories',
   'musical-connections', 'milestones', 'credits', 'recognition'];
 const reasons = ['category', 'shape', 'incomplete', 'short-shape', 'unsupported',
-  'short-unsupported', 'semantic-review', 'bare-milestone', 'editorial', 'dj-quality', 'topic', 'duplicate', 'limit'];
+  'short-unsupported', 'semantic-review', 'bare-milestone', 'editorial', 'operator-review', 'operator-feedback', 'dj-quality', 'topic', 'duplicate', 'limit'];
 const reasonLabels: Record<string, string> = {
+  'operator-review': 'Sent by operator',
   category: 'Category needs checking', shape: 'Format needs checking', incomplete: 'Missing context',
   'short-shape': 'Legacy format check', 'short-unsupported': 'Legacy detail check',
   unsupported: 'Evidence needs checking', 'semantic-review': 'Source needs checking',
-  'bare-milestone': 'Thin release fact', editorial: 'Too thin for airtime', 'dj-quality': 'DJ quality concern',
+  'bare-milestone': 'Thin release fact', editorial: 'Too thin for airtime', 'operator-feedback': 'Operator story concern', 'dj-quality': 'DJ quality concern',
   topic: 'Topic needs checking', duplicate: 'Duplicate fact', limit: 'Research limit reached',
 };
 const reasonDetails: Record<string, string> = {
+  'operator-review': 'The operator withdrew this saved fact for review. Correct and approve it, or delete it to keep it off air.',
   category: 'The proposed category did not fit the fact or this source.',
   shape: 'One of the proposed fields did not fit the required format or length.',
   incomplete: 'The story may need clearer names or context.',
@@ -51,6 +53,7 @@ const reasonDetails: Record<string, string> = {
   'semantic-review': 'The model review did not confirm every detail. Check the source yourself.',
   'bare-milestone': 'A routine release fact was judged too thin for a story.',
   editorial: 'The proposal was judged too thin for airtime.',
+  'operator-feedback': 'An operator identified a specific problem in a story heard on air. It remains withdrawn until reviewed.',
   'dj-quality': 'Three aired DJ links explicitly rejected this spark for its own quality.',
   topic: 'The topic needs a clearer, more specific label.',
   duplicate: 'Another proposal from this research batch expressed the same fact.',
@@ -127,7 +130,7 @@ export default function SleeveNotesModeration({ adminFetch, hydrated }: {
           placeholder="Search story, artist or album…" className="rounded-md border border-border bg-transparent px-3 py-2 text-[13px]" />
         <select aria-label="Filter review by source" value={provider} onChange={(event) => changeFilter(() => setProvider(event.target.value))}
           className="rounded-md border border-border bg-card px-2 py-2 text-[13px]">
-          <option value="">All sources</option><option value="wikipedia">Wikipedia</option><option value="genius">Genius</option>
+          <option value="">All sources</option><option value="wikipedia">Wikipedia</option><option value="genius">Genius</option><option value="musicbrainz">MusicBrainz</option><option value="musicbrainz-series">MusicBrainz Series</option>
         </select>
         <select aria-label="Filter review by reason" value={reason} onChange={(event) => changeFilter(() => setReason(event.target.value))}
           className="rounded-md border border-border bg-card px-2 py-2 text-[13px]">
@@ -154,7 +157,7 @@ export default function SleeveNotesModeration({ adminFetch, hydrated }: {
             <span className="text-xs text-muted">{selected.provider} · {selected.attribution}</span></div>
           {selected.rejectionReason && <p className="text-xs text-muted">{selected.reasonDetail || reasonDetails[selected.rejectionReason] || 'Review the proposed fact against its source.'}</p>}
           {selected.status === 'pending' && selected.binEnteredAt && <p className="text-xs text-muted">
-            Withheld since {new Date(selected.binEnteredAt).toLocaleDateString('en-GB')} · expires {new Date(Date.parse(selected.binEnteredAt) + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')}
+            Withheld since {new Date(selected.binEnteredAt).toLocaleDateString('en-GB')}{['operator-review', 'operator-feedback'].includes(selected.rejectionOrigin) ? ' · held until you review it' : ` · expires ${new Date(Date.parse(selected.binEnteredAt) + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')}`}
             {selected.djRejectionCount > 0 ? ` · ${selected.djRejectionCount} DJ quality rejections` : ''}
           </p>}
           <p className="text-xs text-muted">Deleting removes this story from DJ use. Pending DJ-rejected stories expire after 30 days. Approve confirms that you checked every fact against the saved source. You can correct an automated rejection; the supporting passage must remain an exact excerpt.</p>

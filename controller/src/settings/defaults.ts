@@ -1,3 +1,4 @@
+import { DEFAULT_SLEEVE_NOTES_SEGMENT } from '../schemas/settings.js';
 // Shipped defaults, the numeric bounds update() checks patches against, and the
 // pure helpers that read them. Part of the settings/ split — see ../settings.ts.
 
@@ -269,6 +270,7 @@ export const DEFAULTS = {
   // Notes switch. A provider may be configured but inert while the master
   // setting is off, or the master may be on while no provider is enabled.
   sleeveNotes: {
+    segment: { ...DEFAULT_SLEEVE_NOTES_SEGMENT },
     wikipedia: { extractPrompt: '', artistClaimLimit: 20, albumClaimLimit: 5 },
     providers: { genius: { enabled: true, accessToken: '' } },
   },

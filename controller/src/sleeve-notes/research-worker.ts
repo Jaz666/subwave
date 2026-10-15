@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import * as settings from '../settings.js';
 import { activePickerAverageInputTokens } from '../llm/internal/telemetry/context-window.js';
-import { recentCalls } from '../llm/log.js';
+import { recentCalls, ResearchDeferredError } from '../llm/log.js';
 import { activeModelLabel } from '../llm/provider.js';
 import { LlmResearcher } from './llm-researcher.js';
 import { activeWikipediaExtractPrompt } from './wikipedia-prompt.js';
@@ -465,7 +465,7 @@ export function researchQueueDetails(now = new Date(), allowIdleRescans = false)
   const jobs = db.prepare(`SELECT job.id, job.provider, job.subject_type AS subjectType,
       job.subject_id AS subjectId, job.capability, job.priority, job.attempts,
       job.origin_local_track_id AS originLocalTrackId,
-      job.run_after AS runAfter, job.state,
+      job.run_after AS runAfter, job.state, job.operator_requested AS operatorRequested,
       job.wikipedia_refresh_mode AS wikipediaRefreshMode,
       COALESCE(wiki.next_chunk, 0) AS wikiNextChunk,
       COALESCE(progress.next_section, 0) AS researchNextSection,
@@ -495,7 +495,7 @@ export function researchQueueDetails(now = new Date(), allowIdleRescans = false)
     WHERE job.state IN ('queued', 'retry-at', 'running', 'failed') OR rescan.job_id IS NOT NULL`)
     .all() as Array<repository.PendingResearchJob & {
       subjectTitle: string; subjectArtist: string | null; state: string;
-      runAfter: string | null; wikiNextChunk: number; researchNextSection: number; playsConsumed: number;
+      operatorRequested: number; runAfter: string | null; wikiNextChunk: number; researchNextSection: number; playsConsumed: number;
       rescanAfterEncounters: number | null; wikipediaRefreshMode: WikipediaRefreshMode | null;
     }>;
   return jobs.map((job) => {
@@ -503,7 +503,7 @@ export function researchQueueDetails(now = new Date(), allowIdleRescans = false)
     if (job.state === 'running') phase = 'running';
     else if (job.state === 'failed') phase = 'unavailable';
     else if (job.rescanAfterEncounters != null) {
-      phase = playedEncounterCount(job) > job.rescanAfterEncounters || allowIdleRescans ? 'ready' : 'next-play';
+      phase = playedEncounterCount(job) > job.rescanAfterEncounters || allowIdleRescans || job.operatorRequested ? 'ready' : 'next-play';
     } else if (job.provider === 'researcher' && ['extract-wikipedia', 'extract-wikipedia-release-group',
       'extract-genius-album'].includes(job.capability)) {
       const firstAlbumWiki = (job.capability === 'extract-wikipedia'
@@ -511,7 +511,7 @@ export function researchQueueDetails(now = new Date(), allowIdleRescans = false)
         && job.wikiNextChunk === 0 && !job.wikipediaRefreshMode && playedEncounterCount(job) < 1;
       const firstGeniusAlbum = job.capability === 'extract-genius-album'
         && job.playsConsumed === 0 && playedEncounterCount(job) < 1;
-      phase = firstAlbumWiki || firstGeniusAlbum ? 'first-play'
+      phase = (firstAlbumWiki || firstGeniusAlbum) && !job.operatorRequested ? 'first-play'
         : job.runAfter && Date.parse(job.runAfter) > now.getTime() ? 'time-delay' : 'ready';
     } else {
       phase = job.runAfter && Date.parse(job.runAfter) > now.getTime() ? 'time-delay' : 'ready';
@@ -531,6 +531,7 @@ function nextPlayDrivenResearchJob(allowIdleRescans: boolean): repository.Pendin
       subject_id AS subjectId, capability, priority, attempts,
       origin_local_track_id AS originLocalTrackId,
       job.wikipedia_refresh_mode AS wikipediaRefreshMode,
+      job.operator_requested AS operatorRequested,
       rescan.encounter_count_at_request AS rescanAfterEncounters,
       rescan.refresh_mode AS refreshMode
     FROM sleeve_research_jobs job
@@ -549,6 +550,7 @@ function nextPlayDrivenResearchJob(allowIdleRescans: boolean): repository.Pendin
       COALESCE(wiki.updated_at, progress.updated_at, job.created_at) ASC,
       job.priority DESC, job.created_at ASC`)
     .all(new Date().toISOString()) as Array<repository.PendingResearchJob & {
+      operatorRequested: number;
       rescanAfterEncounters: number | null; refreshMode: WikipediaRefreshMode | null;
       wikipediaRefreshMode: WikipediaRefreshMode | null;
     }>;
@@ -558,7 +560,7 @@ function nextPlayDrivenResearchJob(allowIdleRescans: boolean): repository.Pendin
     if (wikiJob) {
       if (job.rescanAfterEncounters != null) {
         const newEncounter = playedEncounterCount(job) > job.rescanAfterEncounters;
-        if (!newEncounter && !allowIdleRescans) continue;
+        if (!newEncounter && !allowIdleRescans && !job.operatorRequested) continue;
         const db = open();
         const now = new Date().toISOString();
         db.transaction(() => {
@@ -577,9 +579,12 @@ function nextPlayDrivenResearchJob(allowIdleRescans: boolean): repository.Pendin
       }
       const scan = open().prepare(`SELECT next_chunk AS nextChunk FROM sleeve_wikipedia_scan_progress
         WHERE job_id = ?`).get(job.id) as { nextChunk: number } | undefined;
-      // One encounter unlocks the scan; all later chunks resume quietly.
+      // Keep explicit intent until completion so a failed first chunk or a
+      // smaller-chunk restart can retry without requiring a playback encounter.
+      // One encounter unlocks automatic scans; later chunks resume quietly.
       if (job.subjectType === 'release' && !scan?.nextChunk
         && playedEncounterCount(job) < 1
+        && !job.operatorRequested
         && !job.wikipediaRefreshMode
         && !(job.rescanAfterEncounters != null && allowIdleRescans)) continue;
       return job;
@@ -588,7 +593,7 @@ function nextPlayDrivenResearchJob(allowIdleRescans: boolean): repository.Pendin
       FROM sleeve_research_progress WHERE job_id = ?`).get(job.id) as { playsConsumed: number } | undefined)?.playsConsumed ?? 0;
     // A first album encounter unlocks every section; later chunks never wait
     // for the album or artist to be played again.
-    if (consumed === 0 && playedEncounterCount(job) < 1) continue;
+    if (consumed === 0 && playedEncounterCount(job) < 1 && !job.operatorRequested) continue;
     return job;
   }
   return null;
@@ -771,13 +776,14 @@ export class ResearchWorker {
     const controller = new AbortController();
     let abortReason: '45-second chunk deadline' | 'station left quiet state' | null = null;
     const timeout = setTimeout(() => {
+      if (controller.signal.aborted) return;
       abortReason = '45-second chunk deadline';
-      controller.abort(new Error(abortReason));
+      controller.abort(new ResearchDeferredError('research-budget'));
     }, WIKIPEDIA_CHUNK_TIMEOUT_MS);
     const quietMonitor = setInterval(() => {
       if (!controller.signal.aborted && !this.quietGate.isQuiet()) {
         abortReason = 'station left quiet state';
-        controller.abort(new Error(abortReason));
+        controller.abort(new ResearchDeferredError('broadcast-priority'));
       }
     }, 500);
     const startedAt = Date.now();
@@ -892,7 +898,7 @@ export class ResearchWorker {
             });
           }
           db.prepare('DELETE FROM sleeve_research_progress WHERE job_id = ?').run(job.id);
-          db.prepare(`UPDATE sleeve_research_jobs SET state = 'complete', run_after = NULL, wikipedia_refresh_mode = NULL,
+          db.prepare(`UPDATE sleeve_research_jobs SET state = 'complete', run_after = NULL, wikipedia_refresh_mode = NULL, operator_requested = 0,
             updated_at = ?, completed_at = ? WHERE id = ?`).run(now, now, job.id);
           if (refreshJob.refreshMode === 'replace') {
             db.prepare(`UPDATE sleeve_research_jobs SET wikipedia_refreshed_at = ? WHERE id = ?`)
@@ -1010,9 +1016,13 @@ export class ResearchWorker {
           airtimeContext: repository.airtimeContextForResearchJob(queued) ?? undefined,
         };
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), ARTICLE_INDEX_TIMEOUT_MS);
+        const timeout = setTimeout(() => {
+          if (!controller.signal.aborted) controller.abort(new ResearchDeferredError('research-budget'));
+        }, ARTICLE_INDEX_TIMEOUT_MS);
         const quietMonitor = playDriven ? setInterval(() => {
-          if (!this.quietGate.isQuiet()) controller.abort();
+          if (!controller.signal.aborted && !this.quietGate.isQuiet()) {
+            controller.abort(new ResearchDeferredError('broadcast-priority'));
+          }
         }, 1_000) : null;
         try {
           let usedThisEncounter = false;

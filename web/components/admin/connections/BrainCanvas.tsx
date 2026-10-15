@@ -9,6 +9,7 @@ import { LEGEND_GROUPS } from './filters';
 import { reconcileBrainNetwork, type BrainNetwork } from './brain-network';
 import { useBrainKeySetting } from './key-preferences';
 import BrainPanel from './BrainPanel';
+import { COVERAGE_COLORS, COVERAGE_LABELS } from './coverage';
 
 export interface BrainCanvasProps {
   data: ConnectionGraphData;
@@ -40,6 +41,7 @@ type BrainLink = LinkObject<ConnectionNode, LinkData>;
 type LayoutMode = 'force' | 'grouped' | 'focus';
 type Density = 'compact' | 'spread';
 const NIGHT = '#120e16';
+const LABEL_POPULATION_MIN_ZOOM = 0.55;
 const COLORS = { artist: '#ff8155', recording: '#64d8ca', release: '#eecb81', contributor: '#b698ee', series: '#8da8ee', 'external-recording': '#738399' };
 function linkColor(type: ConnectionEdge['type']): string {
   if (type === 'samples' || type === 'sampled-in') return '#ff8155';
@@ -244,10 +246,16 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
     ctx.strokeStyle = color; ctx.lineWidth = 1.3 / scale;
     ctx.fillStyle = node.local || node.kind === 'contributor' ? color : NIGHT;
     ctx.fill(); ctx.stroke();
+    if (node.coverage && scale > LABEL_POPULATION_MIN_ZOOM) {
+      ctx.strokeStyle = COVERAGE_COLORS[node.coverage.state];
+      ctx.lineWidth = 2.8 / scale;
+      ctx.beginPath(); ctx.arc(x, y, r + 2.5 / scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = color;
+    }
     if (isCurrent) { ctx.beginPath(); ctx.arc(x, y, r + 3 / scale, 0, Math.PI * 2); ctx.stroke(); }
     const important = isCurrent || node.id === selectedNode || node.id === data.focusId
       || edge?.source === node.id || edge?.target === node.id;
-    if (important || (!dimmed && (scale > 1.35 || (labelled.has(node.id) && scale > 0.55)))
+    if (important || (!dimmed && (scale > 1.35 || (labelled.has(node.id) && scale > LABEL_POPULATION_MIN_ZOOM)))
       || (neighbours.has(node.id) && scale > 0.8)) {
       const label = node.title.length > 32 ? `${node.title.slice(0, 30)}…` : node.title;
       ctx.font = `${active ? 600 : 400} ${11 / scale}px sans-serif`;
@@ -393,7 +401,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
         autoPauseRedraw={largeMap || reducedMotion || !visibleNodes.has(currentNodeId ?? '')}
         nodeVisibility={(node) => visibleNodes.has(node.id)}
         linkVisibility={(link) => visibleEdges.has(link.id)}
-        nodeLabel={(node) => tooltip(`${node.title}${node.subtitle ? ` · ${node.subtitle}` : ''}${node.trackCount ? ` · ${node.trackCount} local tracks` : ''}`)}
+        nodeLabel={(node) => tooltip(`${node.title}${node.subtitle ? ` · ${node.subtitle}` : ''}${node.trackCount ? ` · ${node.trackCount} local tracks` : ''}${node.coverage ? ` · ${COVERAGE_LABELS[node.coverage.state]} · ${node.coverage.usableStories} usable stories` : ''}`)}
         nodeCanvasObject={drawNode}
         onRenderFramePre={(ctx) => {
           labelBoxes.current = [];
@@ -468,14 +476,22 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
         </div>
       </BrainPanel>
       <BrainPanel label="Key" className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] rounded-md border border-white/10 bg-[#211b29]/90 px-3 py-2 text-[10px] text-[#baabba]">
-        {followPathways && pathways.orderedEdges.length > 0 && <label className="mb-2 flex max-w-72 min-w-48 flex-col gap-1 border-b border-white/15 pb-2">
+        {followPathways && pathways.orderedEdges.length > 0 && <div className="mb-2 flex max-w-72 min-w-48 flex-col gap-1 border-b border-white/15 pb-2">
           <span className="flex items-center justify-between gap-4"><span>Neural links highlighted</span>
             <output className="text-[#e8d9e6] tabular-nums">{highlightedPathways.edges.size} / {pathways.orderedEdges.length}</output></span>
-          <input type="range" min={1} max={pathways.orderedEdges.length} value={Math.min(pathLimit, pathways.orderedEdges.length)}
-            aria-label="Maximum neural links highlighted from this artist"
-            onChange={(event) => setPathLimit(Number(event.target.value))}
-            className="h-4 w-full cursor-pointer accent-[#ff8155]" />
-        </label>}
+          <div className="flex items-center gap-2">
+            <button type="button" aria-label="Highlight one fewer neural link" disabled={Math.min(pathLimit, pathways.orderedEdges.length) <= 1}
+              onClick={() => setPathLimit(Math.max(1, Math.min(pathLimit, pathways.orderedEdges.length) - 1))}
+              className="flex size-8 shrink-0 items-center justify-center rounded hover:bg-white/10 disabled:opacity-40"><Minus className="size-4" aria-hidden="true" /></button>
+            <input type="range" min={1} max={pathways.orderedEdges.length} step={1} value={Math.min(pathLimit, pathways.orderedEdges.length)}
+              aria-label="Maximum neural links highlighted from this artist"
+              onChange={(event) => setPathLimit(Number(event.target.value))}
+              className="h-4 min-w-0 flex-1 cursor-pointer accent-[#ff8155]" />
+            <button type="button" aria-label="Highlight one more neural link" disabled={pathLimit >= pathways.orderedEdges.length}
+              onClick={() => setPathLimit(Math.min(pathways.orderedEdges.length, pathLimit + 1))}
+              className="flex size-8 shrink-0 items-center justify-center rounded hover:bg-white/10 disabled:opacity-40"><Plus className="size-4" aria-hidden="true" /></button>
+          </div>
+        </div>}
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {LEGEND_GROUPS.filter((group) => !overview || group.overview).map((group) => {
             const shown = group.types.some((type) => edgeTypes.includes(type));
@@ -493,6 +509,12 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
             title={`${includeUnresearchedArtists ? 'Hide' : 'Show'} library artists not encountered by Sleeve Notes`}
             className={`rounded px-1 py-1 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 ${includeUnresearchedArtists ? '' : 'line-through opacity-50'}`}>○ Library artists not encountered</button>}
         </div>
+        {data.nodes.some(node => node.coverage) && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/15 pt-2" aria-label="Artist research coverage key">
+          <span className="w-full">Artist rings · research coverage</span>
+          {(['ready', 'empty', 'unexplored', 'queued', 'incomplete'] as const).map(state => <span key={state} className="flex items-center gap-1">
+            <span aria-hidden="true" className={state === 'ready' ? 'text-[#64d8ca]' : state === 'empty' ? 'text-[#eecb81]' : state === 'queued' ? 'text-[#8da8ee]' : state === 'incomplete' ? 'text-[#ee8a8a]' : 'text-[#8490a4]'}>○</span>{state === 'queued' ? 'Queued / researching' : COVERAGE_LABELS[state]}
+          </span>)}
+        </div>}
         <p className="mt-1">{overview ? 'Click to highlight pathways · click empty space to clear · ' : ''}Double-click a node to open · click the key to filter · drag to explore · pinch or scroll to zoom</p>
       </BrainPanel>
     </div>

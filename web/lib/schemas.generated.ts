@@ -3227,7 +3227,26 @@ export const djBehaviourPatchSchema = settingsBlockOf({
   ),
 });
 
+
+export const sleeveNotesSegmentSchema = z.object({
+  enabled: z.boolean({ error:'sleeveNotes.segment.enabled must be a boolean' }),
+  cooldownMinutes: z.number({error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'})
+    .int({error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'})
+    .min(5,{error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'})
+    .max(1440,{error:'sleeveNotes.segment.cooldownMinutes must be a whole number between 5 and 1440'}),
+  cohosts: z.boolean({error:'sleeveNotes.segment.cohosts must be a boolean'}),
+  // null means all host DJs; an empty list deliberately allows none.
+  personaIds: z.array(z.string({error:'sleeveNotes.segment.personaIds must contain DJ IDs'}).trim()
+    .min(1,{error:'sleeveNotes.segment.personaIds must contain DJ IDs'})
+    .max(200,{error:'sleeveNotes.segment.personaIds must contain DJ IDs'}),{error:'sleeveNotes.segment.personaIds must be a list of DJ IDs or null'})
+    .max(100,{error:'sleeveNotes.segment.personaIds must contain at most 100 DJs'}).nullable(),
+});
+export type SleeveNotesSegmentConfig = z.infer<typeof sleeveNotesSegmentSchema>;
+
+export const DEFAULT_SLEEVE_NOTES_SEGMENT: SleeveNotesSegmentConfig = { enabled:false,cooldownMinutes:60,cohosts:true,personaIds:null };
+
 export const sleeveNotesPatchSchema = settingsBlockOf({
+  segment: sleeveNotesSegmentSchema.partial(),
   wikipedia: settingsBlockOf({
     extractPrompt: settingsTrimmedString(
       8000,
@@ -4901,6 +4920,18 @@ export function skillFieldsFrom(kind: string, parsed: SkillFileParsed) {
     brief: parsed.brief,
   };
 }
+
+// ─── from controller/src/schemas/sleeve-notes-feedback.ts ────────────────
+
+export const sparkFeedbackSchema = z.object({
+  story: z.union([z.enum(['good', 'routine', 'unclear', 'incorrect', 'wrong-subject']), z.literal('').transform(() => null)]).nullable(),
+  delivery: z.union([z.enum(['worked', 'forced', 'wrong-subject']), z.literal('').transform(() => null)]).nullable(),
+  note: z.string().trim().max(500),
+}).refine(value => value.story !== null || value.delivery !== null, {
+  message: 'Choose story or delivery feedback', path: ['story'],
+}).refine(value => !['unclear', 'incorrect', 'wrong-subject'].includes(value.story ?? '') || value.note.length >= 20, {
+  message: 'Describe the specific problem in at least 20 characters for Review', path: ['note'],
+});
 
 // ─── from controller/src/schemas/sleeve-notes-series.ts ──────────────────
 

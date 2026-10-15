@@ -162,3 +162,48 @@ export async function brainLibraryGraph(
     ON CONFLICT(entity_type, entity_id) DO UPDATE SET graph_json = excluded.graph_json`).run(type, id, JSON.stringify(snapshot));
   return graph;
 }
+
+/** One verified library track seeds identity matching; this never queues music. */
+export async function brainLibraryResearchSeed(id: string, signal?: AbortSignal): Promise<import('./brain-coverage.js').BrainLibrarySeed> {
+  const indexed = open().prepare('SELECT name FROM sleeve_connection_library_artists WHERE local_artist_id = ?').get(id) as { name: string } | undefined;
+  if (!indexed) throw new Error('This artist is no longer in the saved library index. Refresh the artist map.');
+  const artist = artistSchema.parse(await subsonic.getArtist(id, { signal }));
+  if (artist.id !== id || connectionNameKey(artist.name) !== connectionNameKey(indexed.name)) throw new Error('The library artist identity changed. Refresh the artist map.');
+  for (const album of artist.album.slice(0, 3)) {
+    signal?.throwIfAborted();
+    const result = await subsonic.getAlbumWithSongs(album.id, { requireComplete: true, signal });
+    signal?.throwIfAborted();
+    if (!result || result.album.id !== album.id) continue;
+    for (const song of result.songs) {
+      if (typeof song.id !== 'string' || !song.id.trim() || typeof song.title !== 'string' || !song.title.trim()) continue;
+      if (typeof song.artist !== 'string' || connectionNameKey(song.artist) !== connectionNameKey(artist.name)) continue;
+      if (song.artistId && song.artistId !== id) continue;
+      return { id: song.id, title: song.title, artist: song.artist, album: album.name,
+        mbid: typeof song.musicBrainzId === 'string' && z.uuid().safeParse(song.musicBrainzId).success ? song.musicBrainzId : null };
+    }
+  }
+  throw new Error('No track with a matching artist credit was found in this artist’s first three albums. Queue a track through Sleeve Notes after playing it.');
+}
+
+/** Resolve a selected library album using its own returned tracks, not an artist's first album. */
+export async function brainLibraryAlbumResearchSeed(id: string, signal?: AbortSignal): Promise<import('./brain-album-research.js').BrainAlbumSeed> {
+  const rows=open().prepare(`SELECT DISTINCT json_extract(node.value,'$.title') AS title FROM sleeve_brain_layers layer,
+    json_each(layer.graph_json,'$.nodes') node WHERE json_extract(node.value,'$.entityType')='library-album'
+      AND json_extract(node.value,'$.entityId')=?`).all(id) as Array<{title:string}>;
+  if(!rows.length)throw new Error('Open this album on Station Brain before requesting research.');
+  const result=await subsonic.getAlbumWithSongs(id,{requireComplete:true,signal});
+  signal?.throwIfAborted();
+  if(!result||result.album.id!==id||!rows.some(row=>connectionNameKey(row.title)===connectionNameKey(result.album.name)))throw new Error('The library album identity changed. Reopen its layer and try again.');
+  const { brainAlbumGroupForTrackInDatabase }=await import('./brain-album-research.js');
+  let fallback:import('./brain-album-research.js').BrainAlbumSeed|undefined;
+  for(const song of result.songs.slice(0,20)){
+    signal?.throwIfAborted();
+    if(!song.id?.trim()||!song.title?.trim()||!song.artist?.trim()||(song.albumId&&song.albumId!==id))continue;
+    const seed={albumId:id,title:result.album.name,track:{id:song.id,title:song.title,artist:song.artist,album:result.album.name,
+      mbid:typeof song.musicBrainzId==='string'&&z.uuid().safeParse(song.musicBrainzId).success?song.musicBrainzId:null}};
+    if(brainAlbumGroupForTrackInDatabase(open(),seed))return seed;
+    fallback??=seed;
+  }
+  if(!fallback)throw new Error('No usable track was found in the first twenty tracks of this album.');
+  return fallback;
+}

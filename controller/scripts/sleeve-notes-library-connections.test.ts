@@ -117,9 +117,13 @@ test('upgrade restores saved extraction rank and leaves original claims and word
   const db = new Database(':memory:');
   // The v38 tables consumed by the additive migrations. Include a legacy
   // string item as well as diagnostics so old cache formats cannot abort boot.
-  db.exec(`CREATE TABLE sleeve_musicbrainz_series (series_mbid TEXT PRIMARY KEY);
-    CREATE TABLE sleeve_claim_uses (id TEXT PRIMARY KEY);
+  db.exec(`CREATE TABLE sleeve_encounters (id TEXT PRIMARY KEY);
+    CREATE TABLE sleeve_musicbrainz_series (series_mbid TEXT PRIMARY KEY);
+    CREATE TABLE sleeve_claim_uses (id TEXT PRIMARY KEY, aired_at TEXT);
+    CREATE TABLE sleeve_research_jobs (id TEXT PRIMARY KEY,provider TEXT,subject_type TEXT,subject_id TEXT,
+      capability TEXT,state TEXT,priority INTEGER,completed_at TEXT,updated_at TEXT);
     CREATE TABLE sleeve_claims (id TEXT PRIMARY KEY, source_document_id TEXT, wording TEXT, enabled INTEGER);
+    CREATE TABLE sleeve_moderation_candidates (id TEXT PRIMARY KEY,source_document_id TEXT,status TEXT,reviewed_at TEXT,reviewed_by TEXT,updated_at TEXT);
     CREATE TABLE sleeve_source_documents (id TEXT PRIMARY KEY, provider TEXT);
     CREATE TABLE sleeve_wikipedia_scan_chunks (source_document_id TEXT, items_json TEXT, created_at TEXT, chunk_index INTEGER);
     INSERT INTO sleeve_source_documents VALUES ('source', 'wikipedia');
@@ -130,10 +134,10 @@ test('upgrade restores saved extraction rank and leaves original claims and word
   migrate(db);
   assert.deepEqual(db.prepare('SELECT * FROM sleeve_claims').get(), {
     id: 'claim', source_document_id: 'source', wording: 'Ranked fact.', enabled: 1,
-    extraction_rank: 2, extraction_section: 3,
+    extraction_rank: 2, extraction_section: 3, feedback_hold: 0,
   });
   migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }), 45);
+  assert.equal(db.pragma('user_version', { simple: true }), 53);
   db.close();
 });
 

@@ -41,6 +41,7 @@ interface ByKindRow {
   kind: string;
   count: number;
   ok: number;
+  deferred?: number;
   avgMs?: number;
   tokens?: number;
 }
@@ -96,6 +97,7 @@ interface LlmStats {
   window: number;
   count: number;
   ok: number;
+  deferred?: number;
   failed: number;
   successRate?: number;
   latency: LatencyStats;
@@ -143,6 +145,7 @@ interface ByPathRow {
   path: string;
   count: number;
   ok: number;
+  deferred?: number;
 }
 
 interface ByPickSourceRow {
@@ -946,7 +949,7 @@ export default function StatsPanel() {
               <div className="grid gap-0">
                 <MetricStrip>
                   <StatCell label="Calls" value={fmtInt(llm.count)}
-                    sub={`${llm.ok} ok · ${llm.failed} failed`} />
+                    sub={`${llm.ok} ok · ${llm.failed} failed${llm.deferred ? ` · ${llm.deferred} deferred` : ''}`} />
                   <StatCell label="Success rate" value={fmtPct(llm.successRate)}
                     danger={llm.successRate != null && llm.successRate < 0.9} />
                   <StatCell label="Avg latency" value={fmtMs(llm.latency.avg)}
@@ -972,7 +975,9 @@ export default function StatsPanel() {
                         { key: 'count', label: 'Calls', align: 'right',
                           render: r => <span className="mono-num">{r.count}</span> },
                         { key: 'ok', label: 'OK', align: 'right',
-                          render: r => <span className="mono-num">{r.ok}/{r.count}</span> },
+                          render: r => <span className="mono-num">{r.count === (r.deferred || 0) ? '—' : `${r.ok}/${r.count - (r.deferred || 0)}`}</span> },
+                        { key: 'deferred', label: 'Deferred', align: 'right',
+                          render: r => <span className="mono-num">{r.deferred || 0}</span> },
                         { key: 'avgMs', label: 'Avg', align: 'right',
                           render: r => <span className="mono-num">{fmtMs(r.avgMs)}</span> },
                         { key: 'tokens', label: 'Tokens', align: 'right',

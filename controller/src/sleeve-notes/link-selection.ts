@@ -138,7 +138,7 @@ function isRecent(iso: string, nowMs: number, cooldownMs: number): boolean {
   return Number.isFinite(at) && at > nowMs - cooldownMs;
 }
 
-function isNovel(candidate: SleeveNoteSelectionCandidate, uses: readonly SleeveNoteRecentUse[], nowMs: number): boolean {
+function isNovel(candidate: SleeveNoteSelectionCandidate, uses: readonly SleeveNoteRecentUse[], nowMs: number, segment = false): boolean {
   for (const use of uses) {
     const reservationActive = !use.airedAt && !use.releasedAt
       && isRecent(use.suppliedAt, nowMs, PENDING_RESERVATION_MS);
@@ -153,7 +153,7 @@ function isNovel(candidate: SleeveNoteSelectionCandidate, uses: readonly SleeveN
     if (use.claimId === candidate.claimId && cooldownActive(EXACT_CLAIM_COOLDOWN_MS)) return false;
     if (use.entityType === candidate.entityType && use.entityId === candidate.entityId) {
       if (use.topic === candidate.topic && cooldownActive(TOPIC_COOLDOWN_MS)) return false;
-      if (cooldownActive(ENTITY_COOLDOWN_MS[candidate.entityType])) return false;
+      if (!segment && cooldownActive(ENTITY_COOLDOWN_MS[candidate.entityType])) return false;
     }
     if (candidate.relationshipKey && use.relationshipKey === candidate.relationshipKey
       && cooldownActive(RELATIONSHIP_COOLDOWN_MS)) return false;
@@ -207,6 +207,30 @@ function recentUsesForCandidates(
       recentCutoff, ...relevantParams) as SleeveNoteRecentUse[];
 }
 
+function eligibleCandidates(candidates: readonly SleeveNoteSelectionCandidate[], uses: readonly SleeveNoteRecentUse[], nowMs: number, segment = false): SleeveNoteSelectionCandidate[] {
+  return candidates.filter(candidate => isNovel(candidate, uses, nowMs, segment)
+    && (candidate.connection?.type !== 'covered_by'
+      || (candidate.connection.matchState === 'matched' && candidate.connection.tracks.length > 0)));
+}
+
+/** Shared relevance, source, scope and novelty checks for long-form segments. */
+export function eligibleSleeveNotesForSegmentInDatabase(db: Database.Database, localTrackId: string, artist: unknown, nowMs = Date.now(), manual = false): SleeveNoteSelectionCandidate[] {
+  const candidates = loadExtendedSleeveNoteCandidatesInDatabase(db, localTrackId, artist);
+  // Long-form discussion may develop new topics after a short artist link.
+  // Exact facts, topics, relationships and reservations still retain their guards.
+  const uses = recentUsesForCandidates(db, candidates, nowMs);
+  // Operator runs may revisit aired stories, but cannot spend an active reservation.
+  return eligibleCandidates(candidates, manual ? uses.filter(use=>!use.airedAt && !use.releasedAt) : uses, nowMs, true);
+}
+
+/** Count the same local candidate pool without choosing a winner or spending a turn. */
+export function countExtendedSleeveNoteCandidatesInDatabase(db: Database.Database, localTrackId: string, artist: unknown, nowMs = Date.now()): { matchingCount: number; availableCount: number } {
+  const candidates = loadExtendedSleeveNoteCandidatesInDatabase(db, localTrackId, artist);
+  if (!candidates.length) return { matchingCount: 0, availableCount: 0 };
+  const uses = recentUsesForCandidates(db, candidates, nowMs);
+  return { matchingCount: candidates.length, availableCount: eligibleCandidates(candidates, uses, nowMs).length };
+}
+
 /** Prefer stories and connections; use credits when no stronger spark is eligible. */
 export function selectMostSpecificEligibleClaim(
   candidates: readonly SleeveNoteSelectionCandidate[],
@@ -232,11 +256,7 @@ export function selectMostSpecificEligibleClaim(
     if (use.detectionStatus === 'detected' || (!use.airedAt && !use.contextPassReason)) continue;
     lastPassed.set(use.claimId, Math.max(lastPassed.get(use.claimId) ?? 0, Date.parse(use.suppliedAt) || 0));
   }
-  return [...candidates]
-    .filter((candidate) => isNovel(candidate, uses, nowMs)
-      // A cover by an unfamiliar target adds little radio value. Preserve it
-      // in the Graph, and make it eligible when the target joins the library.
-      && (candidate.connection?.type !== 'covered_by' || localConnection(candidate)))
+  return eligibleCandidates(candidates, uses, nowMs)
     .sort((a, b) => (ENTITY_PRIORITY[a.entityType] - ENTITY_PRIORITY[b.entityType])
       || editorialPriority(a) - editorialPriority(b)
       || (lastPassed.get(a.claimId) ?? 0) - (lastPassed.get(b.claimId) ?? 0)
@@ -425,6 +445,7 @@ export function selectExtendedSleeveNote(current: { id?: unknown; artist?: unkno
 export function recordExtendedSleeveNoteSupplied(
   note: ExtendedSleeveNote,
   finalText: string,
+  consumer: 'generateLink' | 'sleeveNotesSegment' = 'generateLink',
 ): string {
   const id = randomUUID();
   const db = open();
@@ -434,13 +455,16 @@ export function recordExtendedSleeveNoteSupplied(
     } | undefined;
   const signal = detectClaimSignal(finalText, note.wording,
     [attachment?.artist, attachment?.title, attachment?.album]);
+  const claim = db.prepare('SELECT wording FROM sleeve_claims WHERE id = ?').get(note.claimId) as { wording: string } | undefined;
   db.prepare(`INSERT INTO sleeve_claim_uses (
     id, claim_id, entity_type, entity_id, category, topic, relationship_key,
-    local_track_id, consumer, supplied_at, final_text, offered_wording, detection_status, generated_signal
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generateLink', ?, ?, ?, ?, ?)`)
+    local_track_id, consumer, supplied_at, final_text, offered_wording, detection_status, generated_signal,
+    track_artist, track_title, claim_wording_at_offer
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, note.claimId, note.entityType, note.entityId, note.category, note.topic,
-      note.relationshipKey, note.localTrackId, new Date().toISOString(), finalText,
-      note.wording, signal.status, JSON.stringify(signal));
+      note.relationshipKey, note.localTrackId, consumer, new Date().toISOString(), finalText,
+      note.wording, signal.status, JSON.stringify(signal), attachment?.artist ?? null, attachment?.title ?? null,
+      claim?.wording ?? note.fullWording);
   return id;
 }
 
