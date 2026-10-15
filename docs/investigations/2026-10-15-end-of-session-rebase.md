@@ -38,3 +38,11 @@ SUBWAVE_BUILD_VERSION=1.23.0 docker compose up -d --build controller web broadca
 ```
 
 The station's existing `.env` continues to select its Discord overlay. No checkout change is needed before the rebuild.
+
+## Follow-up: Docker font-loader failure
+
+The owner's Docker web build failed in Next 16.4's Google font loader at its unchecked URL extension match (`/\.(woff|woff2|eot|ttf|otf)$/`). The trace means at least one returned font URL did not match that assumption. A fresh probe on the development host returned ordinary WOFF2 URLs for all 14 configured families, so the exact failing Docker response was not recovered; a successful host build does not establish that the remote CSS response will be identical in Docker.
+
+The interface now uses `next/font/local` with checked-in WOFF2 assets for the same 14 families. Twenty font files total about 1.2 MB, preserve full character coverage, and retain the configured static weights, variable font ranges and theme CSS variable names. Original TrueType files and licenses are pinned to Google Fonts commit `1d0e46c7933245c8180fe83e47917961c913bbdb`. Each family includes its original OFL license; `web/app/fonts/sources.json` records source and bundled hashes. FontTools 4.60.1 performed format conversion only, outside the project. Installation and builds need no font downloads or additional conversion dependency.
+
+Validation: all 187 web tests passed, including new font decoding/glyph/hash, licensing/provenance and layout/asset contract checks. Full web lint/type checking passed. A production build succeeded with Google Fonts HTTP(S)/fetch requests explicitly rejected by an isolated Node preload guard; no Next font fetch mocks or loader patches were used. The production browser loaded all 14 real font families, including accented text, and the dashboard controls/responsive layout checks passed. Docker operations remain with the owner. Only web needs rebuilding for this follow-up.
