@@ -314,6 +314,19 @@ function slimTrack(r: db.EnergyPoolRecord) {
   };
 }
 
+// Ids only, for callers that sample a bucket rather than read it: no row
+// mapping, no JSON parsing. Not blocklist-filtered — check what you keep.
+export function idsByEnergy(energy: string | null | undefined): string[] {
+  if (!energy || !loaded) return [];
+  if (energy !== 'low' && energy !== 'medium' && energy !== 'high') return [];
+  return db.idsByEnergy(energy);
+}
+
+export function isBlockedId(id: string): boolean {
+  const t = loaded ? db.getTrack(id) : null;
+  return !!t && blocklist.isBlocked(slimTrack(t));
+}
+
 export function songsByEnergy(energy: string | null | undefined): any[] {
   if (!energy || !loaded) return [];
   if (energy !== 'low' && energy !== 'medium' && energy !== 'high') return [];
@@ -533,6 +546,15 @@ export function deepCuts(days: number = DEEP_CUT_DAYS, k = 60): any[] {
   }
 }
 
+// What a live pick needs from the library counts, long-cached (#1723). Use
+// this on the pick path; stats() is the dashboard's full aggregate.
+export function pickStats(): db.PickStats {
+  if (!loaded) {
+    return { total: 0, mirrorTotal: 0, distinctArtists: 0, withEmbedding: 0, withAudioEmbedding: 0, hasMoodCoverage: false, hasEnergyCoverage: false, byMood: {} };
+  }
+  return db.pickStats();
+}
+
 export function stats() {
   if (!loaded) {
     return { total: 0, mirrorTotal: 0, distinctArtists: 0, byMood: {}, byEnergy: {}, byGenre: {}, updatedAt: null, embeddingMeta: null };
@@ -593,7 +615,7 @@ export async function consolidateScenes(
 export function labelOnlyShare(): number | null {
   if (!loaded) return null;
   try {
-    const embedded = db.stats().withEmbedding ?? 0;
+    const embedded = db.pickStats().withEmbedding;
     if (!embedded) return null;
     return db.labelOnlyVectorCount() / embedded;
   } catch {
