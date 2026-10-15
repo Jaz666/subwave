@@ -618,8 +618,10 @@ test('an eligible primary skips SDK refusal retries while other attempts retain 
     withPermanentNotRetryable(again);
     assert.equal(again.isRetryable, true, 'EAI_AGAIN keeps the SDK retries');
   });
+});
+
 const { ResearchDeferredError, recentHealthCalls } = await import('../src/llm/internal/core/deferred.js');
-const { GenerationCancelledError, ProviderRequestTimeoutError } = await import('../src/llm/internal/core/generation.js');
+const { GenerationCancelledError } = await import('../src/llm/internal/core/generation.js');
 const { summarizeLlm } = await import('../src/stats.js');
 const { dailyTokensUsed } = await import('../src/llm/internal/telemetry/budget.js');
 
