@@ -178,23 +178,35 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
             />
             <div className="field-hint space-y-2">
               <p>
-                <strong>Direct</strong> matches named songs and artists, tracks from named albums,
-                genres and simple moods — for example, &ldquo;play something by Queen&rdquo; or
-                &ldquo;something calm&rdquo;.
-                Works with models that do not support tools.
+                Direct handles named music, genres and simple moods without model tools.
+                Agent-assisted explores more detailed requests with a tool-capable model.
               </p>
-              <p>
-                It cannot reliably identify songs from remembered lyrics, films or current trends,
-                refer back to earlier conversations, or follow exclusions and complex conditions
-                such as &ldquo;anything except Queen&rdquo; or &ldquo;instrumental tracks from the
-                1990s&rdquo;. Language requests depend on your library&apos;s tags or metadata.
-              </p>
-              <p>
-                <strong>Agent-assisted</strong> can explore more detailed requests, but needs a
-                tool-capable model and may take longer. Identifying described songs via the web also
-                needs &ldquo;Resolve described requests via web&rdquo; enabled and a configured
-                web-search provider.
-              </p>
+              <details className="group">
+                <summary className="w-fit cursor-pointer text-ink underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2">
+                  <span className="group-open:hidden">Read more</span>
+                  <span className="hidden group-open:inline">Read less</span>
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <p>
+                    <strong>Direct</strong> matches named songs and artists, tracks from named albums,
+                    genres and simple moods — for example, &ldquo;play something by Queen&rdquo; or
+                    &ldquo;something calm&rdquo;.
+                    Works with models that do not support tools.
+                  </p>
+                  <p>
+                    It cannot reliably identify songs from remembered lyrics, films or current trends,
+                    refer back to earlier conversations, or follow exclusions and complex conditions
+                    such as &ldquo;anything except Queen&rdquo; or &ldquo;instrumental tracks from the
+                    1990s&rdquo;. Language requests depend on your library&apos;s tags or metadata.
+                  </p>
+                  <p>
+                    <strong>Agent-assisted</strong> can explore more detailed requests, but needs a
+                    tool-capable model and may take longer. Identifying described songs via the web also
+                    needs &ldquo;Resolve described requests via web&rdquo; enabled and a configured
+                    web-search provider.
+                  </p>
+                </div>
+              </details>
             </div>
           </div>
           {form.llm.requestMatching === 'agentic' && (
