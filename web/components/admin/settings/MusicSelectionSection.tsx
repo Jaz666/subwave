@@ -171,15 +171,30 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
             <Seg
               value={form.llm.requestMatching}
               options={[
-                { id: 'direct', label: 'Direct', title: 'Fast, tool-free matching for straightforward requests' },
+                { id: 'direct', label: 'Direct', title: 'Named songs and artists, tracks from albums, genres and simple moods; works without model tools' },
                 { id: 'agentic', label: 'Agent-assisted', title: 'Uses music-search tools for detailed or compound requests' },
               ]}
               onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, requestMatching: v as 'agentic' | 'direct' } }))}
             />
-            <div className="field-hint">
-              Direct matching covers most artist, title, genre and simple-mood requests in one call.
-              Agent-assisted matching can untangle detailed or compound requests, but needs a
-              tool-capable model and takes longer.
+            <div className="field-hint space-y-2">
+              <p>
+                <strong>Direct</strong> matches named songs and artists, tracks from named albums,
+                genres and simple moods — for example, &ldquo;play something by Queen&rdquo; or
+                &ldquo;something calm&rdquo;.
+                Works with models that do not support tools.
+              </p>
+              <p>
+                It cannot reliably identify songs from remembered lyrics, films or current trends,
+                refer back to earlier conversations, or follow exclusions and complex conditions
+                such as &ldquo;anything except Queen&rdquo; or &ldquo;instrumental tracks from the
+                1990s&rdquo;. Language requests depend on your library&apos;s tags or metadata.
+              </p>
+              <p>
+                <strong>Agent-assisted</strong> can explore more detailed requests, but needs a
+                tool-capable model and may take longer. Identifying described songs via the web also
+                needs &ldquo;Resolve described requests via web&rdquo; enabled and a configured
+                web-search provider.
+              </p>
             </div>
           </div>
           {form.llm.requestMatching === 'agentic' && (
