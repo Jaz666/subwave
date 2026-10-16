@@ -182,6 +182,7 @@ export interface RequestTrack {
 export interface RequestResult {
   success: boolean;
   pending?: boolean;
+  outcome?: 'matched' | 'substituted' | 'cooldown' | 'already-queued' | 'chat' | 'no-match' | 'error';
   ack?: string;
   track?: RequestTrack;
   queuePosition?: number;
