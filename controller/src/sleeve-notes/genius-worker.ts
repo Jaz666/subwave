@@ -1,3 +1,4 @@
+import { runResearchDatabaseWork } from './db.js';
 import * as settings from '../settings.js';
 import { GeniusProvider, GeniusRequestError } from './genius.js';
 import { geniusAccessToken } from './genius-token.js';
@@ -37,6 +38,9 @@ export class GeniusResearchWorker {
   constructor(private readonly quietGate: QuietGate) {}
 
   async runOnce(): Promise<boolean> {
+    return runResearchDatabaseWork(()=>this.runOnceInner());
+  }
+  private async runOnceInner(): Promise<boolean> {
     const token = geniusAccessToken();
     if (this.running || Date.now() < this.notBefore || !this.isEnabled() || !token || !this.quietGate.isQuiet()) return false;
     if (!this.pilotQueued) {
@@ -118,7 +122,7 @@ export class GeniusResearchWorker {
   }
 
   private isEnabled(): boolean {
-    return settings.get().djBehaviour.extendedSleeveNotes === true
+    return settings.get().djBehaviour.extendedSleeveNotes === true && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true
       && settings.get().sleeveNotes.providers.genius.enabled === true;
   }
 

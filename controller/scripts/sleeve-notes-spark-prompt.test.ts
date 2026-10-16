@@ -11,7 +11,7 @@ const store = await import('../src/settings/store.js');
 const { open, close } = await import('../src/sleeve-notes/db.js');
 const { primaryLeg } = await import('../src/llm/internal/provider/legs.js');
 const { generateLink, linkPrompt } = await import('../src/llm/internal/prompts/scripts.js');
-const { inspectExtendedSleeveNote } = await import('../src/sleeve-notes/link-selection.js');
+const { inspectExtendedSleeveNote,recordExtendedSleeveNoteTtsRequest } = await import('../src/sleeve-notes/link-selection.js');
 const { connectionDirectionGuidance } = await import('../src/sleeve-notes/library-connections.js');
 test.after(() => { close(); rmSync(root, { recursive: true, force: true }); });
 
@@ -83,6 +83,20 @@ test('production link generation honors Spark suppression and a short vocal runw
   assert.ok(silent.released_at);
   assert.equal(silent.dj_context_pass_reason, reply.reason);
   assert.equal(prompts.length, 6);
+
+  release();
+  const french='Ils ont enregistré cet album dans une grange aménagée.';
+  reply={speech:french,sparkDecision:'use',reason:'A supported recording story'};
+  const before=prompts.length;
+  assert.equal(await generateLink({...args,persona:{...args.persona,language:'French'}}),french);
+  assert.equal(prompts.length,before+1,'translated speech also uses one generation without review');
+  const translated=db.prepare('SELECT id FROM sleeve_claim_uses WHERE final_text=?').get(french) as {id:string};
+  recordExtendedSleeveNoteTtsRequest(translated.id,french);
+  release();
+  db.prepare("UPDATE sleeve_claims SET wording='Band formed in Cardiff in 1993.',evidence='Band formed in Cardiff in 1993.' WHERE id='claim'").run();
+  reply={speech:'Band formed in Cardiff in 1994.',sparkDecision:'use',reason:'A story'};
+  assert.equal(await generateLink(args),reply.speech,'wording is governed by station prompts, not a factual veto');
+
 
 });
 

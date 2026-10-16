@@ -1,3 +1,4 @@
+import { runResearchDatabaseWork } from './db.js';
 // Quiet-time Stage 2 matching. This intentionally has no timer or server
 // wiring yet: the caller must supply the station's playback-critical quiet
 // gate, so a future scheduler cannot accidentally turn it into a foreground
@@ -29,7 +30,10 @@ export class MusicBrainzMatchWorker {
   ) {}
 
   async runOnce(): Promise<boolean> {
-    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
+    return runResearchDatabaseWork(()=>this.runOnceInner());
+  }
+  private async runOnceInner(): Promise<boolean> {
+    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
     const job = repository.nextPendingResearchJob('musicbrainz', { subjectType: 'local-track', capability: 'match' })
       ?? repository.nextPendingResearchJob('musicbrainz', { subjectType: 'release', capability: 'release-context' });
     if (!job) return false;

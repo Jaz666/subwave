@@ -28,7 +28,7 @@ export function liveNotesSummary(nowPlaying: Track | null, current: LiveNotesIte
       entityType: string; entityId: string; sourceUrl: string;
     } | undefined : undefined;
     let factDetected = false;
-    try { const signal = JSON.parse(spark?.speechSignal ?? 'null'); factDetected = signal?.version === 1 && signal?.status === 'detected'; } catch { /* Older rows may have no usable speech signal. */ }
+    try { const signal = JSON.parse(spark?.speechSignal ?? 'null'); factDetected = [1,2].includes(signal?.version) && signal?.status === 'detected'; } catch { /* Older rows may have no usable speech signal. */ }
     return { track: { id, title: track.title ?? '', artist: track.artist ?? '', album: track.album ?? '' },
       availability: !spark && id ? countExtendedSleeveNoteCandidatesInDatabase(db, id, track.artist) : null,
       djLine: spark?.spokenText || item?.introScript || null,

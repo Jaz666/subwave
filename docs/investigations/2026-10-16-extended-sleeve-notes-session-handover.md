@@ -43,7 +43,7 @@ If controller/broadcast already completed and only the font follow-up remains, o
 - Review is selective, avoiding an overwhelming queue of routine rejected claims. Operators can send problematic stored facts to Review.
 - Heard on Air feedback records separate story and delivery judgements. It supports evaluation and review; **automatic model/pipeline tuning is not implemented**. The shelf is currently an operator/admin surface, not a public listener page.
 - A native Sleeve Notes segment is implemented. Treat it as an informal exchange inside an established show, without programme/guest introductions, greetings or sign-offs. The user accepts broad musical commentary from model knowledge, such as stylistic blending/innovation. Specific biography, credits, recording events, dates, quotes and awards still need supplied evidence; earlier-play references require real confirmed plays.
-- Programme (Produced Episode) scheduling remains an explicit future decision. Automatic Sleeve Notes uses the ordinary optional segment pool; do not automatically wire it into produced episodes or replace banter without discussing the policy.
+- Programme (Produced Episode) policy was agreed on 16 October: eligible automatic Banter opportunities try Sleeve Notes first and fall back to ordinary Banter when unsuitable. This includes Produced Episodes, while retaining the existing Sleeve Notes segment switches, host selection, cooldown and material requirements. The planned programme feature remains unchanged. Automatic Sleeve Notes also remains available through the ordinary optional segment pool outside Produced Episodes; manual Banter remains an explicit Banter request.
 
 ## Current feature surfaces
 
@@ -73,7 +73,23 @@ Research DB schema is **53**. Claim uses can carry a segment ID; `sleeve_segment
 
 For older segments, conservative read-only recovery uses confirmed speech in the current session or relevant archives, requiring exact ledger anchors and unambiguous grouping. It never substitutes model output for an airing or writes reconstructed evidence. Existing Beck history recovered all seven confirmed turns. Ordinary links and unrecoverable old entries keep their original excerpt.
 
-## Font build fix — latest code change
+## 16 October follow-up — Sleeve Notes before automatic Banter
+
+The owner agreed that automatic Banter should first offer its existing slot to Sleeve Notes, including during Produced Episodes, then fall back to ordinary Banter when unsuitable. This is implemented locally through the existing segment preparation/publication path and shared backoff/timing state. Existing automatic enablement, host/co-host settings, story minimums, source/reservation checks and ledger cooldowns remain in force. Accepted boundary-deferred speech consumes the slot. Manual Banter remains Banter, and the programme's planned feature beat is unchanged. Sleeve Notes is now a fixed voice kind so its confirmed speech counts for recap and standalone quiet gaps without depending on skill registration.
+
+Validation: all **4,467 controller tests passed**, with no failures/skips; controller lint/type checking passed with existing warnings. The new integration regression exercises a Produced Episode, successful replacement, thin/absent material, disabled switches/host selection, shared cooldown/backoff, silent/unsupported/error responses, rendering refusal and reservation release, boundary placement, manual Banter and the standalone quiet-gap clock. Model and delivery responses are simulated with isolated state; no live editorial quality claim is made.
+
+These follow-up changes are uncommitted in the local checkout at the end of this task, and have not been pushed or deployed. The owner needs to rebuild **controller** to deploy this change; no web or broadcast source changed in this follow-up. No Docker commands or live settings/research/queue changes were performed.
+
+## 16 October follow-up — high-priority appraisal fixes
+
+All five high-priority items are implemented locally: research database backup/restore; non-destructive claim rebuilds; shared hard-cap research gating with durable deferral; stronger local contradiction/direction checks plus whole-segment speech assessment; and multilingual assessment/airing attribution. Read [the implementation note](2026-10-16-sleeve-notes-high-priority-fixes.md) before follow-up work: it records restore concurrency behavior, budget policy, assessment provenance, latency/token cost and factual-verification limits. Medium/low priorities remain unstarted.
+
+Final validation: **4,488 controller tests passed**, no failures/skips; **187 web tests passed**; controller and web lint/type checks passed (existing controller warnings); admin-query audit and all nine self-tests passed; whitespace checks passed. Model/delivery behavior was simulated in isolated state; no live provider/editorial-quality or deployment claim is made.
+
+These changes and the earlier Banter replacement remain **uncommitted, not pushed and not deployed**. This combined follow-up now requires the owner to rebuild **controller and web**; no broadcast source changed. Database schema remains **53**. No Docker commands, live settings/research/queue mutations or service operations were performed.
+
+## Font build fix — previous code change
 
 The owner's Docker web build hit Next 16.4's Google loader at an unchecked font URL extension match. The failing remote response was not captured; the host subsequently received ordinary WOFF2 URLs, so the exact Docker URL was not reproduced.
 
@@ -95,6 +111,8 @@ Live custom-prompt and segment quality has primarily been evaluated against the 
 
 Read root `CLAUDE.md` and the relevant package instructions before edits. Current detailed handovers:
 
+- [High-priority implementation — backup/restore, claim history, research budget and speech assessment](2026-10-16-sleeve-notes-high-priority-fixes.md). Local changes are uncommitted and undeployed; this follow-up needs controller and web rebuilt.
+- [Agreed appraisal priorities — high/medium before merge; low as possible post-merge follow-ups](2026-10-16-sleeve-notes-appraisal-priorities.md). High-priority work was subsequently authorised and implemented locally; medium and low items remain unstarted. See the implementation note for validation status and limits.
 - [Rebase, integration and font follow-up](2026-10-15-end-of-session-rebase.md).
 - [Native segment prompt, validation, context and conversations](2026-10-15-sleeve-notes-segment.md).
 - [Heard on Air and feedback](2026-10-14-heard-on-air-and-feedback.md).
@@ -115,4 +133,24 @@ node --test web/scripts/audit-admin-query.test.mjs
 npm --prefix web run build
 ```
 
-The user ended development and requested housekeeping/handover. No additional feature is queued for automatic implementation. Start by confirming the current Git state and deployment status, then follow the user's next request. Future choices include evaluating conversations on air, deciding produced-episode policy, and deciding how feedback should eventually tune research/delivery. Keep track discovery deferred and operator web research retired.
+The user ended development and requested housekeeping/handover. The subsequent 16 October session implemented the agreed Sleeve Notes-first automatic Banter policy (see `docs/internals/broadcast.md`). Start by confirming the current Git state and deployment status, then follow the user's next request. Future choices include evaluating conversations on air and deciding how feedback should eventually tune research/delivery. Keep track discovery deferred and operator web research retired.
+
+## Latest owner decision: remove speech verification
+
+Stored Sparks are trusted. Generated wording is the operator's responsibility through system prompts and Station House Rules. The second `verifySleeveNotesSpeech` call and local factual-wording publication vetoes have been removed for native segments and ordinary Spark links, in every language. Eligibility, cast/output validation, settings/roster rechecks, reservations, cooldowns, generation deadlines and confirmed-air recording remain. Local wording signals are bookkeeping only and may not detect translated or freely paraphrased usage. Historical assessment signals remain readable. See the revised [implementation record](2026-10-16-sleeve-notes-high-priority-fixes.md). Controller rebuild required; owner deploys.
+
+## Medium priorities implemented locally
+
+Conversation grouping and native-conversation pagination, collection-wide paged story search with a Recent filter, subject-preserving Station Brain dossier/return links, and an independent background collection pause are implemented. See [medium-priority implementation and focused validation](2026-10-16-sleeve-notes-medium-priority-fixes.md). New setting: `djBehaviour.sleeveNotesCollectionPaused`, default false; the generated web schema was regenerated. Both controller and web require owner rebuilds. No live station data or services were changed. Low-priority work remains deferred.
+
+## TTS measurement groundwork
+
+Added recent generation and speaking-rate measurements to Stats → Voice / TTS usage, with engine/presenter breakdowns. Successful render records include full spoken-script word count and measured WAV/MP3 audio length; recent rates use total words divided by total time across up to 20 successful renders within the existing 120-call ring. Failed/unmeasured/legacy records do not create invented speaking-rate samples; fallback generation time includes the preceding failed attempts. Counts exclude control tags and use the actual primary/rescue text. No adaptive word targets, duration caps or placement changes were implemented. Measurements reset on restart; controller and web require owner rebuilds. Ten focused measurement/duration regression tests pass; lint/type checking and admin-query checks were run. No live station changes or provider calls were made.
+
+## Adaptive word targets implemented
+
+Immediate Sleeve Notes and Banter now budget total spoken words using recent TTS rates and the current effective track clock, reserving crossfade, writing time, per-contribution overhead and an eight-second buffer. Scripts are checked after writing and complete rendered exchanges are checked before publication against the same play of the track. Automatic Banter fallback is also budgeted. Unknown clocks and next-track deferred speech retain existing placement and lengths. See [calculation, limits and validation](2026-10-16-adaptive-speech-budgets.md). Thirty-eight focused tests pass. Changes remain local/uncommitted and require an owner controller rebuild; no live station changes were made.
+
+## PR publication checkpoint
+
+The owner authorized committing and pushing the accumulated follow-ups to PR #5 (`Jaz666/subwave`, head `feat/extended-sleeve-notes`, base `develop`) without another full-suite run. The local checkout branch remains `test-station/sleeve-notes-clean-20261014`; publication uses an explicit refspec to the existing PR head. The PR description records final trusted-Spark policy, automatic Banter replacement, durability and budget fixes, medium-priority UI improvements, TTS measurements and adaptive immediate-discussion timing. Earlier “local/uncommitted” notes describe their original implementation checkpoints; use the PR head and current git status for publication state. No deployment is authorized by this publication request.

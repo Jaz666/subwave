@@ -1,3 +1,4 @@
+import { researchAllowed } from '../broadcast/dj-budget.js';
 // Phase 1 status surface. It deliberately does not open the Sleeve Notes
 // database. Explicit cached browsing while disabled uses a read-only handle.
 import express from 'express';
@@ -40,6 +41,7 @@ import {
   researchStoreCoverage,
   researchStoreExplore,
   researchStoreReadout,
+  searchResearchStoriesInDatabase,
   reconcileConfiguredSeries,
   researchStoreSummary,
   latestSourceDocumentForResearch,
@@ -55,7 +57,7 @@ router.get('/sleeve-notes/heard-on-air', requireAdmin, async (req, res) => {
   await settings.load();
   const offset = Math.max(0, Math.min(100_000, Number.parseInt(String(req.query.offset), 10) || 0));
   const enabled = settings.get().djBehaviour.extendedSleeveNotes === true;
-  const read = () => ({ ...heardOnAir(20, offset), readOnly: !enabled });
+  const read = () => ({ ...heardOnAir(20, offset, true), readOnly: !enabled });
   return res.json(await addLegacySegmentConversations(enabled ? read() : withCachedRead(read)));
 });
 
@@ -255,7 +257,8 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   const environmentToken = process.env.GENIUS_ACCESS_TOKEN;
   const providerConfigured = !!geniusAccessToken();
   const providerTokenSource = savedToken ? 'settings' : environmentToken ? 'environment' : 'missing';
-  const collectionRunning = enabled && providerEnabled && providerConfigured;
+  const collectionPaused = value.djBehaviour.sleeveNotesCollectionPaused === true;
+  const collectionRunning = enabled && !collectionPaused && researchAllowed();
   res.json({
     enabled,
     wikipediaPrompt: activeWikipediaExtractPrompt(customPrompt),
@@ -266,7 +269,8 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
     providerConfigured,
     providerTokenSource,
     collectionRunning,
-    collectionBlockedReason: !enabled ? 'disabled' : !providerEnabled ? 'provider-disabled' : !providerConfigured ? 'provider-unconfigured' : null,
+    collectionPaused,
+    collectionBlockedReason: !enabled ? 'disabled' : collectionPaused ? 'operator-paused' : !researchAllowed() ? 'token-budget' : null,
     coverage: enabled ? researchStoreCoverage() : {},
     // Temporary development readout for the live MusicBrainz → Wikipedia → LLM
     // path. It remains read-only and deliberately does not expose notes on air.
@@ -429,6 +433,8 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
   }
   return res.json({
     active: true,
+    researchPausedByBudget: !researchAllowed(),
+    collectionPaused: settings.get().djBehaviour.sleeveNotesCollectionPaused === true,
     readAt: Date.now(),
     ...researchStoreReadout(),
     workQueue: [...queueCounts.values()],
@@ -442,6 +448,16 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
 
 // Paged, level-specific reads for the artist → album → track explorer. Keep
 // the bounded recent readout above for Overview and Research.
+router.get('/sleeve-notes/stories', requireAdmin, async (req,res) => {
+  await settings.load();
+  const number=(value:unknown,fallback:number)=>typeof value==='string'&&Number.isFinite(Number(value))?Math.trunc(Number(value)):fallback;
+  const input={search:typeof req.query.search==='string'?req.query.search.slice(0,120):'',
+    category:typeof req.query.category==='string'?req.query.category.slice(0,100):'',recent:req.query.recent==='1',
+    limit:Math.max(1,Math.min(100,number(req.query.limit,30))),offset:Math.max(0,number(req.query.offset,0))};
+  const read=()=>searchResearchStoriesInDatabase(openSleeveNotesDb(),input);
+  return res.json(settings.get().djBehaviour.extendedSleeveNotes===true?read():withCachedRead(read));
+});
+
 router.get('/sleeve-notes/explore', requireAdmin, async (req, res) => {
   await settings.load();
   const validLevels: ResearchExploreLevel[] = ['artists', 'albums', 'tracks'];

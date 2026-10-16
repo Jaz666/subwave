@@ -13,16 +13,22 @@ type AiredUse=Record<string,unknown>&{id:string;segmentId:string|null;spokenText
 const ELIGIBLE = `u.aired_at IS NOT NULL AND u.tts_rendered_at IS NOT NULL
   AND u.tts_text IS NOT NULL AND u.detection_status = 'detected'
   AND CASE WHEN json_valid(u.speech_signal) THEN
-    json_extract(u.speech_signal, '$.version') = 1 AND json_extract(u.speech_signal, '$.status') = 'detected'
+    json_extract(u.speech_signal, '$.version') IN (1, 2) AND json_extract(u.speech_signal, '$.status') = 'detected'
     ELSE 0 END`;
 
-export function heardOnAir(limit = 20, offset = 0) {
+export function heardOnAir(limit = 20, offset = 0, groupConversations = false) {
   const db = open();
   const columns = new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map(row => row.name));
-  const empty = { items: [], total: 0, limit, offset, feedbackTotals: { story: [], delivery: [] } };
+  const empty = { items: [], total: 0, conversationTotal: 0, limit, offset, feedbackTotals: { story: [], delivery: [] } };
   if (!columns.has('speech_signal') || !columns.has('tts_rendered_at')) return empty;
   const hasFeedback = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sleeve_spark_feedback'").get();
   const total = (db.prepare(`SELECT COUNT(*) AS n FROM sleeve_claim_uses u WHERE ${ELIGIBLE}`).get() as { n: number }).n;
+  const groupKey=columns.has('segment_id') ? "COALESCE('segment:' || u.segment_id, 'use:' || u.id)" : "'use:' || u.id";
+  const conversationTotal=(db.prepare(`SELECT COUNT(DISTINCT ${groupKey}) AS n FROM sleeve_claim_uses u WHERE ${ELIGIBLE}`).get() as {n:number}).n;
+  const page=groupConversations
+    ? `AND ${groupKey} IN (SELECT ${groupKey} FROM sleeve_claim_uses u WHERE ${ELIGIBLE}
+        GROUP BY ${groupKey} ORDER BY MAX(u.aired_at) DESC, MAX(u.id) DESC LIMIT ? OFFSET ?)`
+    : '';
   const items = db.prepare(`SELECT u.id, u.consumer, ${columns.has('segment_id')?'u.segment_id':'NULL'} AS segmentId, u.claim_id AS claimId, u.local_track_id AS localTrackId,
     u.entity_type AS entityType, u.entity_id AS entityId, u.aired_at AS airedAt,
     ${columns.has('track_artist') ? 'COALESCE(u.track_artist, a.artist)' : 'a.artist'} AS artist,
@@ -35,7 +41,7 @@ export function heardOnAir(limit = 20, offset = 0) {
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     LEFT JOIN sleeve_local_attachments a ON a.local_track_id = u.local_track_id
     ${hasFeedback ? 'LEFT JOIN sleeve_spark_feedback f ON f.use_id = u.id' : ''}
-    WHERE ${ELIGIBLE} ORDER BY u.aired_at DESC, u.id DESC LIMIT ? OFFSET ?`).all(limit, offset) as AiredUse[];
+    WHERE ${ELIGIBLE} ${page} ORDER BY u.aired_at DESC, u.id DESC ${groupConversations?'':'LIMIT ? OFFSET ?'}`).all(limit, offset) as AiredUse[];
   const hasLines=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get();
   const transcripts=new Map<string,unknown>();
   for(const item of items) {
@@ -53,7 +59,7 @@ export function heardOnAir(limit = 20, offset = 0) {
   const counts = (field: 'story' | 'delivery') => hasFeedback ? db.prepare(`SELECT f.${field} AS value, COUNT(*) AS count
     FROM sleeve_spark_feedback f JOIN sleeve_claim_uses u ON u.id = f.use_id
     WHERE ${ELIGIBLE} AND f.${field} IS NOT NULL GROUP BY f.${field}`).all() : [];
-  return { items, total, limit, offset, feedbackTotals: { story: counts('story'), delivery: counts('delivery') } };
+  return { items, total, conversationTotal, limit, offset, feedbackTotals: { story: counts('story'), delivery: counts('delivery') } };
 }
 
 export function saveSparkFeedback(useId: string, value: Feedback) {

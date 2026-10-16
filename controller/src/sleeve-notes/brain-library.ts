@@ -44,7 +44,7 @@ export function populateBrainArtists(): Promise<{ artists: number }> {
 export function startBrainArtistPopulation(): void {
   let retryAfter = 0;
   const run = async () => {
-    if (settings.get().djBehaviour.extendedSleeveNotes !== true || Date.now() < retryAfter) return;
+    if (settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || Date.now() < retryAfter) return;
     const saved = open().prepare('SELECT completed_at AS at FROM sleeve_connection_artist_population WHERE id = 1')
       .get() as { at: string } | undefined;
     if (saved && Date.now() - Date.parse(saved.at) < 24 * 60 * 60_000) return;

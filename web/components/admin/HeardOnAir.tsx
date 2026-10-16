@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import {groupAiredStories} from './sleeve-notes-view';
 import { useState } from 'react';
 import { z } from 'zod';
 import { Card, Btn } from './ui';
@@ -11,14 +12,14 @@ import { sparkFeedbackSchema } from '../../lib/schemas.generated';
 
 type Feedback = z.infer<typeof sparkFeedbackSchema>;
 type AiredStory = {
-  id: string; consumer?: string; claimId: string; localTrackId: string | null; entityType: string; entityId: string;
+  id: string; segmentId?: string|null; consumer?: string; claimId: string; localTrackId: string | null; entityType: string; entityId: string;
   airedAt: string; artist: string | null; title: string | null; offeredWording: string;
   spokenText: string; currentWording: string; wordingAtOffer: string; enabled: number; operatorState: string; sourceUrl: string; attribution: string; provider: string;
   story: Feedback['story']; delivery: Feedback['delivery']; note: string | null; feedbackAt: string | null;
   conversation?: {id:string;expectedLines:number|null;complete:boolean|null;
     lines:Array<{lineIndex:number;speakerId:string;speakerName:string;text:string;airedAt:string}>} | null;
 };
-type Shelf = { items: AiredStory[]; total: number; limit: number; offset: number; readOnly: boolean;
+type Shelf = { items: AiredStory[]; total: number; conversationTotal?: number; limit: number; offset: number; readOnly: boolean;
   feedbackTotals: { story: Array<{ value: string; count: number }>; delivery: Array<{ value: string; count: number }> } };
 const STORY_LABELS: Record<string, string> = {
   good: 'Good story', routine: 'Too routine', unclear: 'Unclear wording', incorrect: 'Factually wrong', 'wrong-subject': 'Wrong story scope',
@@ -32,6 +33,7 @@ export default function HeardOnAir({ adminFetch }: { adminFetch: AdminFetch }) {
     request: (fetcher, signal) => adminJson(fetcher, `/sleeve-notes/heard-on-air?offset=${offset}`, undefined, signal),
     staleTime: 10_000, refetchInterval: 30_000,
   });
+  const groups=groupAiredStories(shelf.data?.items??[]);
   return <div className="space-y-4">
     <Card title="Heard on air" sub="Stories used in confirmed DJ links and Sleeve Notes segments">
       <p className="text-[13px] text-muted">Revisit the story, the words spoken and their source. Rate the story and delivery separately so a good fact does not lose out because of an awkward link.</p>
@@ -42,10 +44,14 @@ export default function HeardOnAir({ adminFetch }: { adminFetch: AdminFetch }) {
       {shelf.data && <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
         <span>{shelf.data.total} aired {shelf.data.total === 1 ? 'story' : 'stories'}</span>
         <Btn sm onClick={() => setOffset(Math.max(0, offset - 20))} disabled={offset === 0}>Previous</Btn>
-        <Btn sm onClick={() => setOffset(offset + 20)} disabled={offset + 20 >= shelf.data.total}>Next</Btn>
+        <Btn sm onClick={() => setOffset(offset + 20)} disabled={offset + 20 >= (shelf.data.conversationTotal??shelf.data.total)}>Next</Btn>
       </div>}
     </Card>
-    {shelf.data?.items.map(item => <AiredStoryCard key={item.id} item={item} readOnly={shelf.data.readOnly} adminFetch={adminFetch} />)}
+    {[...groups.entries()].map(([id,items]) => <Card key={id} title={`${items[0]!.artist || 'Unknown artist'} · ${items[0]!.title || 'Saved track'}`} sub={new Date(items[0]!.airedAt).toLocaleString()}>
+      <p className="text-[13px] font-medium">{items[0]!.consumer === 'sleeveNotesSegment' ? 'Sleeve Notes segment' : 'The DJ link'}</p>
+      <SpokenConversation item={items[0]!} />
+      <div className="mt-4 space-y-4">{items.map(item=><AiredStoryCard key={item.id} item={item} readOnly={shelf.data!.readOnly} adminFetch={adminFetch} />)}</div>
+    </Card>)}
     {shelf.data && (shelf.data.feedbackTotals.story.length > 0 || shelf.data.feedbackTotals.delivery.length > 0) && <Card title="Feedback so far">
       <div className="grid gap-3 sm:grid-cols-2">{(['story', 'delivery'] as const).map(kind => <div key={kind}>
         <p className="text-sm font-medium">{kind === 'story' ? 'Story quality' : 'DJ delivery'}</p>
@@ -56,19 +62,21 @@ export default function HeardOnAir({ adminFetch }: { adminFetch: AdminFetch }) {
   </div>;
 }
 
-function AiredStoryCard({ item, readOnly, adminFetch }: { item: AiredStory; readOnly: boolean; adminFetch: AdminFetch }) {
-  const [editing, setEditing] = useState(false);
-  return <Card title={`${item.artist || 'Unknown artist'} · ${item.title || 'Saved track'}`} sub={new Date(item.airedAt).toLocaleString()}>
-    <p className="text-[13px] font-medium">{item.consumer === 'sleeveNotesSegment' ? 'Sleeve Notes segment' : 'The DJ link'}</p>
-    {item.conversation ? <div className="mt-2 space-y-3 border-l-2 border-primary/40 pl-3">
+function SpokenConversation({item}:{item:AiredStory}) {
+  return <>{item.conversation ? <div className="mt-2 space-y-3 border-l-2 border-primary/40 pl-3">
       {item.conversation.lines.map(line=><div key={line.lineIndex}>
         <p className="text-xs font-semibold">{line.speakerName}</p>
         <p className="mt-1 text-[13px] leading-relaxed break-words whitespace-pre-wrap">{line.text}</p>
       </div>)}
       {item.conversation.complete===false && <p className="text-xs text-muted">{item.conversation.lines.length} of {item.conversation.expectedLines} contributions confirmed on air.</p>}
-    </div> : <blockquote className="mt-2 border-l-2 border-primary/40 pl-3 text-[13px] leading-relaxed whitespace-pre-wrap">{item.spokenText}</blockquote>}
-    <details className="mt-4 text-[13px]"><summary className="cursor-pointer font-medium">Offered story and source</summary>
-      <p className="mt-2">{item.offeredWording}</p>
+    </div> : <blockquote className="mt-2 border-l-2 border-primary/40 pl-3 text-[13px] leading-relaxed whitespace-pre-wrap">{item.spokenText}</blockquote>}</>;
+}
+
+function AiredStoryCard({ item, readOnly, adminFetch }: { item: AiredStory; readOnly: boolean; adminFetch: AdminFetch }) {
+  const [editing, setEditing] = useState(false);
+  return <section className="border-t border-border pt-3">
+    <p className="text-[13px]">{item.offeredWording}</p>
+    <details className="mt-2 text-[13px]"><summary className="cursor-pointer font-medium">Source and saved story</summary>
       {item.currentWording !== (item.wordingAtOffer ?? item.offeredWording) && <p className="mt-2 text-muted">The saved story has since changed: {item.currentWording}</p>}
       <div className="mt-2 flex flex-wrap gap-3 text-primary">
         <a href={item.sourceUrl} target="_blank" rel="noreferrer">{item.attribution || item.provider} ↗</a>
@@ -82,7 +90,7 @@ function AiredStoryCard({ item, readOnly, adminFetch }: { item: AiredStory; read
     </div>
     {item.note && !editing && <p className="mt-2 text-xs whitespace-pre-wrap text-muted">{item.note}</p>}
     {editing && !readOnly && <FeedbackForm item={item} adminFetch={adminFetch} onDone={() => setEditing(false)} />}
-  </Card>;
+  </section>;
 }
 
 function FeedbackForm({ item, adminFetch, onDone }: { item: AiredStory; adminFetch: AdminFetch; onDone: () => void }) {

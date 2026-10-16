@@ -57,7 +57,7 @@ test('Wikipedia claim rebuild retains cached sources and non-Wikipedia claims', 
   assert.deepEqual(rebuildWikipediaClaimsInDatabase(db, new Date('2026-09-16T10:00:00.000Z')), {
     claimsRemoved: 1, jobsQueued: 1,
   });
-  assert.deepEqual(db.prepare(`SELECT id FROM sleeve_claims ORDER BY id`).all(), [{ id: 'other-claim' }]);
+  assert.deepEqual(db.prepare(`SELECT id FROM sleeve_claims WHERE enabled=1 ORDER BY id`).all(), [{ id: 'other-claim' }]);
   assert.deepEqual(db.prepare(`SELECT state, attempts, run_after AS runAfter FROM sleeve_research_jobs WHERE id='wiki-job'`).all(), [
     { state: 'queued', attempts: 0, runAfter: null },
   ]);
@@ -81,10 +81,26 @@ test('artist-scoped Wikipedia claim rebuild leaves other artists untouched', () 
   assert.deepEqual(rebuildWikipediaClaimsForArtistInDatabase(db, 'artist', new Date('2026-09-17T16:30:00.000Z')), {
     claimsRemoved: 1, jobsQueued: 1,
   });
-  assert.deepEqual(db.prepare(`SELECT id FROM sleeve_claims ORDER BY id`).all(), [
+  assert.deepEqual(db.prepare(`SELECT id FROM sleeve_claims WHERE enabled=1 ORDER BY id`).all(), [
     { id: 'other-claim' }, { id: 'other-wiki-claim' },
   ]);
   assert.deepEqual(rebuildWikipediaClaimsForArtistInDatabase(db, 'missing'),
     { claimsRemoved: 0, jobsQueued: 0 });
   db.close();
 });
+
+for (const rebuild of [rebuildWikipediaClaimsInDatabase, (db:Database.Database)=>rebuildWikipediaClaimsForArtistInDatabase(db,'artist')]) {
+ test('Wikipedia rebuild retains referenced claims, feedback and operator corrections',()=>{
+  const db=seededDatabase();const at='2026-10-16T10:00:00Z';
+  db.prepare(`INSERT INTO sleeve_claim_uses(id,claim_id,entity_type,entity_id,category,topic,supplied_at,aired_at,offered_wording,claim_wording_at_offer)
+   VALUES ('aired','wiki-claim','artist','artist','artist-stories','origin',?,?,'Original story','Original story')`).run(at,at);
+  db.prepare(`INSERT INTO sleeve_spark_feedback(use_id,story,delivery,note,actor,created_at,updated_at) VALUES ('aired','good','worked','Keep it','operator',?,?)`).run(at,at);
+  db.prepare(`UPDATE sleeve_claims SET operator_state='approved',wording='Operator wording' WHERE id='other-claim'`).run();
+  assert.doesNotThrow(()=>rebuild(db));
+  assert.deepEqual(db.prepare("SELECT id,enabled FROM sleeve_claims WHERE id='wiki-claim'").get(),{id:'wiki-claim',enabled:0});
+  assert.equal((db.prepare("SELECT offered_wording FROM sleeve_claim_uses WHERE id='aired'").get() as {offered_wording:string}).offered_wording,'Original story');
+  assert.equal((db.prepare("SELECT note FROM sleeve_spark_feedback WHERE use_id='aired'").get() as {note:string}).note,'Keep it');
+  assert.equal((db.prepare("SELECT wording FROM sleeve_claims WHERE id='other-claim'").get() as {wording:string}).wording,'Operator wording');
+  assert.deepEqual(db.pragma('foreign_key_check'),[]);db.close();
+ });
+}

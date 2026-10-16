@@ -1,3 +1,4 @@
+import {fitsSpeechDeadline,type SpeechDeadline} from './speech-budget.js';
 import { recordSleeveNotesSegmentAir, releaseSleeveNotesSegment } from '../sleeve-notes/segment-ledger.js';
 import { prepareEpisodeContext } from './show-preparation.js';
 // Queue class and public singleton; helper implementations live in queue/.
@@ -2384,8 +2385,8 @@ class Queue {
   async announce(
     text,
     kind = 'announcement',
-    { persona = null, meta = {}, pauseTalkEligible = false, sfx: selectedSfx = null, hostSpeech = null, sleeveClaimUseId = null }:
-      { persona?: Persona | null; meta?: TurnMeta; pauseTalkEligible?: boolean; sfx?: string | null; hostSpeech?: HostSpeechStamp | null; sleeveClaimUseId?: string | null } = {},
+    { persona = null, meta = {}, pauseTalkEligible = false, sfx: selectedSfx = null, hostSpeech = null, sleeveClaimUseId = null, speechDeadline = null }:
+      { persona?: Persona | null; meta?: TurnMeta; pauseTalkEligible?: boolean; sfx?: string | null; hostSpeech?: HostSpeechStamp | null; sleeveClaimUseId?: string | null; speechDeadline?:SpeechDeadline|null } = {},
   ): Promise<AnnounceOutcome> {
     // Single-voice paths leak the label too — a styled POST /dj/say came back as
     // "Iris : Bonsoir…" with one persona and one voice (#1707).
@@ -2452,6 +2453,11 @@ class Queue {
         }
         if (accepted && placement === 'pause-talk') void this.drainToLiquidsoap();
         return { accepted, deferred: true, completed };
+      }
+      if(speechDeadline&&!fitsSpeechDeadline(speechDeadline,this.current,speechDurationMs(wavPath,safeText))) {
+        this.log('scheduler',`Dropped ${kind} — rendered speech no longer fits this track`);
+        releaseSleeveNoteUse(sleeveClaimUseId);
+        return {accepted:false,deferred:false,completed:Promise.resolve(false)};
       }
       // No bed here by construction — announce() speaks without queueing a
       // track, so there is nothing for maybePushBed to have bedded.
@@ -2580,7 +2586,7 @@ class Queue {
   // makes the two-voice persona handoff play cleanly). Each line is booth-
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
-  async announceExchange(lines: { persona: Persona; text: string; meta?: TurnMeta }[], kind = 'banter', { castNames = [] }: { castNames?: readonly string[] } = {}) {
+  async announceExchange(lines: { persona: Persona; text: string; meta?: TurnMeta }[], kind = 'banter', { castNames = [], speechDeadline = null }: { castNames?: readonly string[];speechDeadline?:SpeechDeadline|null } = {}) {
     if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
       this.log('scheduler', `Dropped ${kind} exchange — the show handoff has already claimed this boundary`);
       return false;
@@ -2617,6 +2623,10 @@ class Queue {
         })),
         { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null },
       );
+    }
+    if(speechDeadline&&!fitsSpeechDeadline(speechDeadline,this.current,rendered.reduce((sum,line)=>sum+speechDurationMs(line.wavPath,line.text),0))) {
+      this.log('scheduler',`Dropped ${kind} exchange — rendered speech no longer fits this track`);
+      return false;
     }
     for (const [index, l] of rendered.entries()) {
       if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {

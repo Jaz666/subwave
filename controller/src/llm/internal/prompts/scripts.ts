@@ -493,11 +493,11 @@ export async function generateLink(args: any) {
   }
   if (extendedSleeveNote) {
     try {
-      const useId = recordExtendedSleeveNoteSupplied(extendedSleeveNote, script);
+      const assessment=detectClaimSignal(script,extendedSleeveNote.wording,[args.current?.artist,args.current?.title,args.current?.album]);
+      const useId = recordExtendedSleeveNoteSupplied(extendedSleeveNote, script, 'generateLink');
       // A private verdict never overrides concrete evidence that the writer
       // actually expressed the fact, or bins a fact it just used.
-      const expressed = detectClaimSignal(script, extendedSleeveNote.wording,
-        [args.current?.artist, args.current?.title, args.current?.album]).status === 'detected';
+      const expressed = !!script.trim() && assessment.status === 'detected';
       if (!expressed && decision === 'pass') {
         markExtendedSleeveNoteContextPass(useId, reason || 'The DJ passed on the Spark for this link.');
       } else if (!expressed && decision === 'quality-concern') {

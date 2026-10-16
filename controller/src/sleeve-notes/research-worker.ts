@@ -1,5 +1,7 @@
+import { runResearchDatabaseWork } from './db.js';
 import { createHash } from 'node:crypto';
 import * as settings from '../settings.js';
+import { researchAllowed } from '../broadcast/dj-budget.js';
 import { activePickerAverageInputTokens } from '../llm/internal/telemetry/context-window.js';
 import { recentCalls, ResearchDeferredError } from '../llm/log.js';
 import { activeModelLabel } from '../llm/provider.js';
@@ -783,7 +785,7 @@ export class ResearchWorker {
     const quietMonitor = setInterval(() => {
       if (!controller.signal.aborted && !this.quietGate.isQuiet()) {
         abortReason = 'station left quiet state';
-        controller.abort(new ResearchDeferredError('broadcast-priority'));
+        controller.abort(new ResearchDeferredError(researchAllowed() ? 'broadcast-priority' : 'station-token-cap'));
       }
     }, 500);
     const startedAt = Date.now();
@@ -934,7 +936,8 @@ export class ResearchWorker {
       const message = error instanceof Error ? error.message : String(error);
       const failedAt = new Date().toISOString();
       const elapsedMs = Date.now() - startedAt;
-      const attemptOutcome = abortReason === '45-second chunk deadline' ? 'deadline'
+      const attemptOutcome = error instanceof ResearchDeferredError && error.reason === 'station-token-cap' ? 'quiet'
+        : abortReason === '45-second chunk deadline' ? 'deadline'
         : abortReason === 'station left quiet state' ? 'quiet' : 'error';
       db.transaction(() => {
         db.prepare(`INSERT INTO sleeve_wikipedia_chunk_attempts
@@ -973,7 +976,10 @@ export class ResearchWorker {
   }
 
   async runOnce(): Promise<boolean> {
-    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
+    return runResearchDatabaseWork(()=>this.runOnceInner());
+  }
+  private async runOnceInner(): Promise<boolean> {
+    if (this.running || !researchAllowed() || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
     const allowIdleRescans = this.quietGate.isEmptyMaintenanceAllowed?.() === true;
     alignResearchPacing(this.researchPairIntervalMs());
     const queued = nextPlayDrivenResearchJob(allowIdleRescans);
@@ -1021,7 +1027,7 @@ export class ResearchWorker {
         }, ARTICLE_INDEX_TIMEOUT_MS);
         const quietMonitor = playDriven ? setInterval(() => {
           if (!controller.signal.aborted && !this.quietGate.isQuiet()) {
-            controller.abort(new ResearchDeferredError('broadcast-priority'));
+            controller.abort(new ResearchDeferredError(researchAllowed() ? 'broadcast-priority' : 'station-token-cap'));
           }
         }, 1_000) : null;
         try {
@@ -1157,6 +1163,12 @@ export class ResearchWorker {
           if (quietMonitor) clearInterval(quietMonitor);
         }
       } catch (err: unknown) {
+        if (err instanceof ResearchDeferredError && err.reason === 'station-token-cap') {
+          deferResearchSection(queued.id,source.id,progress,nextPairAt);
+          repository.retryResearchJob(queued.id);
+          console.log('[sleeve-notes] Research paused by station token budget; job retained');
+          return true;
+        }
         if (playDriven) {
           progress.playsConsumed = Math.max(progress.playsConsumed,
             playedEncounterCount(queued));

@@ -70,6 +70,7 @@ import { startGeniusResearchWorker } from './sleeve-notes/genius-worker.js';
 import { startConnectionLibraryWorker } from './sleeve-notes/connection-library-worker.js';
 import { stopConnectionCompute } from './sleeve-notes/connection-compute.js';
 import { startBrainArtistPopulation } from './sleeve-notes/brain-library.js';
+import { researchAllowed } from './broadcast/dj-budget.js';
 import { researchRunAllowed } from './sleeve-notes/research-policy.js';
 import { interactiveAgentWorkActive } from './llm/agent.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
@@ -362,6 +363,7 @@ app.listen(config.server.port, async (err?: Error) => {
   // backlog stable until a listener returns.
   const sleeveNotesQuietGate = {
     isQuiet: () => researchRunAllowed({
+      researchBudgetAllowed: researchAllowed() && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true,
       playbackCriticalBusy: queue.playbackCriticalBusy(),
       agentWorkActive: interactiveAgentWorkActive(),
       djCallsAllowed: djCallsAllowed(),

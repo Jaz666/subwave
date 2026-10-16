@@ -22,6 +22,7 @@ import { resolvePersonaVoiceSlot } from './persona-engine.js';
 import { stripThinking } from '../llm/sdk.js';
 import * as settings from '../settings.js';
 import { recordTts } from '../stats.js';
+import {ttsMeasurements} from './tts-measurements.js';
 import { energyForDaypart } from '../context.js';
 import { recordExtendedSleeveNoteTtsRequest, recordExtendedSleeveNoteTtsRendered } from '../sleeve-notes/link-selection.js';
 
@@ -498,7 +499,8 @@ export async function speak(
     if (result) recordSparkSpeech(primaryText, primary, true);
     recordTts({
       ...callBase, engine: primary, fellBack: primaryFellBack,
-      ok: true, ms: Date.now() - started, t: new Date().toISOString(),
+      ms: Date.now() - started, ...ttsMeasurements(result,primaryText),
+      ok: true, t: new Date().toISOString(),
     });
     return result;
   } catch (err) {
@@ -529,7 +531,8 @@ export async function speak(
         if (result) recordSparkSpeech(rescueText, fallback, true);
         recordTts({
           ...callBase, engine: fallback, fellBack: true,
-          ok: true, ms: Date.now() - started, t: new Date().toISOString(),
+          ms: Date.now() - started, ...ttsMeasurements(result,rescueText),
+          ok: true, t: new Date().toISOString(),
         });
         return result;
       } catch (err2) {

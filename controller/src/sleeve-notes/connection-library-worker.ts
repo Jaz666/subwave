@@ -1,3 +1,4 @@
+import { runResearchDatabaseWork } from './db.js';
 // Bounded recurring catalogue reconciliation. New tracks can resolve old
 // connections without queuing biography research or querying Genius again.
 import { randomUUID } from 'node:crypto';
@@ -27,7 +28,7 @@ export class ConnectionLibraryWorker {
     private readonly quietGate: QuietGate,
     private readonly catalogue: Catalogue = subsonic,
     private readonly database: () => Database.Database = open,
-    private readonly enabled = () => settings.get().djBehaviour.extendedSleeveNotes === true,
+    private readonly enabled = () => settings.get().djBehaviour.extendedSleeveNotes === true && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true,
   ) {}
 
   private async reconcileIfChanged(db: Database.Database, nowMs: number): Promise<void> {
@@ -39,6 +40,9 @@ export class ConnectionLibraryWorker {
   }
 
   async runOnce(nowMs = Date.now()): Promise<boolean> {
+    return runResearchDatabaseWork(()=>this.runOnceInner(nowMs));
+  }
+  private async runOnceInner(nowMs:number): Promise<boolean> {
     if (this.running || !this.enabled() || !this.quietGate.isQuiet()) return false;
     this.running = true;
     let db: Database.Database | null = null;

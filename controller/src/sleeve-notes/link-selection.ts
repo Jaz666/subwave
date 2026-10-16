@@ -1,7 +1,8 @@
 // Local, bounded Sleeve Notes selection for the ordinary DJ link prompt.
 // This module never calls a provider; an unavailable or unmatched store is a
 // clean miss and leaves the regular Verified Facts packet untouched.
-import { detectClaimSignal } from './claim-signal.js';
+import { detectClaimSignal, claimDetailContradiction, type ClaimSignal } from './claim-signal.js';
+import { normalizeForDisplay, normalizeForSpeech } from '../audio/speech-text.js';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import * as settings from '../settings.js';
@@ -471,16 +472,29 @@ export function recordExtendedSleeveNoteSupplied(
 /** Record the normalized text handed to a speech engine for this selected spark. */
 export function recordExtendedSleeveNoteTtsRequest(useId: string, text: string, engine: string | null = null): void {
   const db = open();
-  const offered = db.prepare(`SELECT spark.offered_wording AS wording,
+  const offered = db.prepare(`SELECT spark.offered_wording AS wording, spark.final_text AS finalText, spark.generated_signal AS generatedSignal,
       attachment.artist AS trackArtist, attachment.title AS trackTitle, attachment.release_title AS album
     FROM sleeve_claim_uses spark
     LEFT JOIN sleeve_local_attachments attachment ON attachment.local_track_id = spark.local_track_id
     WHERE spark.id = ?`).get(useId) as {
-      wording: string; trackArtist: string | null; trackTitle: string | null; album: string | null;
+      wording: string; finalText:string; generatedSignal:string|null; trackArtist: string | null; trackTitle: string | null; album: string | null;
     } | undefined;
   if (!offered) return;
-  const signal = detectClaimSignal(text, offered.wording,
+  let signal = detectClaimSignal(text, offered.wording,
     [offered.trackArtist, offered.trackTitle, offered.album]);
+  // The model assessment applies only to the same words, never a later rewrite.
+  // Display normalisation removes routing/markup differences without translating
+  // or substituting facts. A changed contribution needs its own assessment.
+  try {
+    const assessed=JSON.parse(offered.generatedSignal??'null') as ClaimSignal|null;
+    if(assessed?.method==='speech-review-v1' && assessed.status==='detected') {
+      const spokenKey=(value:string)=>normalizeForDisplay(value).replace(/\[[^\]]*\]/gu,'').replace(/\s+/gu,' ').trim();
+      const expected=normalizeForSpeech(offered.finalText,settings.get().tts?.corrections,assessed.language,engine??'');
+      const sameWords=spokenKey(text)===spokenKey(offered.finalText)||spokenKey(text)===spokenKey(expected);
+      const contradiction=claimDetailContradiction(text,offered.wording,[offered.trackArtist,offered.trackTitle,offered.album]);
+      if(sameWords&&!contradiction?.includes('number or date'))signal=assessed;
+    }
+  } catch { /* An absent or malformed assessment falls back to the local check. */ }
   db.prepare(`UPDATE sleeve_claim_uses
     SET tts_text = ?, tts_requested_at = COALESCE(tts_requested_at, ?), detection_status = ?,
       speech_signal = ?, tts_engine = ?, tts_rendered_at = NULL

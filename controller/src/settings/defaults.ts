@@ -257,6 +257,7 @@ export const DEFAULTS = {
     extendedSleeveNotes: false,
     // Research-only maintenance exception for an Icecast-confirmed empty
     // station. DJ LLM work remains governed by llm.pauseWhenEmpty.
+    sleeveNotesCollectionPaused: false,
     sleeveNotesMaintenanceWhenEmpty: false,
     releaseYearMentions: 'regular',
     // Compact anti-repeat material carried into every DJ script prompt. These

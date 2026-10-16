@@ -1,3 +1,4 @@
+import { runResearchDatabaseWork } from './db.js';
 import * as settings from '../settings.js';
 import * as repository from './research-repository.js';
 import * as wikipedia from './wikipedia.js';
@@ -15,7 +16,10 @@ export class WikipediaWorker {
   constructor(private readonly quietGate: QuietGate, private readonly sources: Pick<typeof wikipedia, 'fetchWikipediaArtistDocument' | 'fetchWikipediaReleaseGroupDocument'> = wikipedia) {}
 
   async runOnce(): Promise<boolean> {
-    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
+    return runResearchDatabaseWork(()=>this.runOnceInner());
+  }
+  private async runOnceInner(): Promise<boolean> {
+    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
 
     const now = Date.now();
     if (now - this.lastBackfillAt >= BACKFILL_INTERVAL_MS) {

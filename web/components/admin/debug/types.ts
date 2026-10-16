@@ -47,6 +47,8 @@ interface DebugTtsSpoken {
 /** One entry from the controller's TTS call ring (stats.ts ttsCalls): every speak()
  * outcome since boot, newest first, including silent engine fallbacks. */
 export interface TtsCall {
+  words?:number|null;
+  audioMs?:number|null;
   ok?: boolean;
   kind?: string;
   engine?: string;

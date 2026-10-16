@@ -17,10 +17,10 @@ export const shortlistPicks: any[] = [];
 
 // Recorded by audio/tts.js on every speak(): one entry per spoken segment,
 // success or failure, including whether the engine fell back to a local one.
-// Shape: { kind, engine, requested, fellBack, ok, ms, chars, text, persona, error?, t }
+// Shape: { kind, engine, requested, fellBack, ok, ms, chars, text, persona, words?, audioMs?, error?, t }
 // The raw ring is also exposed on /debug (tts.recentCalls) for the admin
-// debug panel's per-call TTS log; summarizeTts() below only reads the
-// original aggregate fields.
+// debug panel's per-call TTS log; summarizeTts() also rolls the measured
+// word counts and audio lengths into recent throughput and speaking rates.
 export function recordTts(call: any) {
   ttsCalls.unshift(call);
   if (ttsCalls.length > MAX_TTS_CALLS) ttsCalls.length = MAX_TTS_CALLS;
@@ -201,9 +201,40 @@ function groupCalls(calls, keyFn, keyName) {
 
 // Roll the TTS call ring into success/latency/fallback totals plus per-engine
 // and per-kind breakdowns. `calls` is newest-first.
+interface TtsRateSample {
+  ok?:boolean;ms?:number;words?:number|null;audioMs?:number|null;engine?:string;persona?:string|null;
+}
+const TTS_RATE_WINDOW=20;
+
+/** Recent throughput is total words / total seconds, not a mean of per-call ratios.
+ * Calls are newest first. Generation time includes processing and fallback waits;
+ * speaking time is measured audio only, without broadcast lead-in or duck tail. */
+export function summarizeTtsRates(calls:readonly TtsRateSample[]) {
+  const samples=calls.filter((call):call is TtsRateSample&{words:number;ms:number}=>
+    call.ok===true && typeof call.words==='number' && Number.isFinite(call.words) && call.words>0
+      && typeof call.ms==='number' && Number.isFinite(call.ms) && call.ms>0).slice(0,TTS_RATE_WINDOW);
+  const measured=samples.filter((call):call is typeof call&{audioMs:number}=>
+    typeof call.audioMs==='number' && Number.isFinite(call.audioMs) && call.audioMs>0);
+  const words=samples.reduce((sum,call)=>sum+call.words,0);
+  const generationMs=samples.reduce((sum,call)=>sum+call.ms,0);
+  const spokenWords=measured.reduce((sum,call)=>sum+call.words,0);
+  const audioMs=measured.reduce((sum,call)=>sum+call.audioMs,0);
+  return {window:TTS_RATE_WINDOW,samples:samples.length,audioSamples:measured.length,
+    words,generationMs,spokenWords,audioMs,
+    generationWordsPerSecond:generationMs?words*1000/generationMs:null,
+    spokenWordsPerSecond:audioMs?spokenWords*1000/audioMs:null};
+}
+
 export function summarizeTts(calls) {
   const ok = calls.filter(c => c.ok);
   const fellBack = calls.filter(c => c.fellBack);
+  const voices=new Map<string,{engine:string;persona:string|null;calls:TtsRateSample[]}>();
+  for(const call of calls) {
+    const engine=call.engine||'unknown',persona=call.persona||null;
+    const key=JSON.stringify([engine,persona]);
+    const row: {engine:string;persona:string|null;calls:TtsRateSample[]}=voices.get(key)??{engine,persona,calls:[]};
+    row.calls.push(call);voices.set(key,row);
+  }
   return {
     window: 120,
     count: calls.length,
@@ -213,6 +244,9 @@ export function summarizeTts(calls) {
     fallbackRate: calls.length ? fellBack.length / calls.length : null,
     latency: latencyStats(calls.map(c => c.ms).filter(n => typeof n === 'number')),
     chars: calls.reduce((a, c) => a + (c.chars || 0), 0),
+    recentPace:summarizeTtsRates(calls),
+    paceByVoice:[...voices.values()].map(({engine,persona,calls:voiceCalls})=>({engine,persona,...summarizeTtsRates(voiceCalls)}))
+      .filter(row=>row.samples>0).sort((a,b)=>b.samples-a.samples),
     byEngine: groupCalls(calls, c => c.engine, 'engine'),
     byKind: groupCalls(calls, c => c.kind, 'kind'),
   };

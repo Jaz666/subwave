@@ -24,3 +24,8 @@ test('empty-station maintenance still yields to playback and Agent work', () => 
   assert.equal(researchRunAllowed({ ...maintenance, playbackCriticalBusy: true }), false);
   assert.equal(researchRunAllowed({ ...maintenance, agentWorkActive: true }), false);
 });
+
+test('the station token cap blocks both ordinary and empty-station maintenance research',()=>{
+ assert.equal(researchRunAllowed({...activeStation,researchBudgetAllowed:false}),false);
+ assert.equal(researchRunAllowed({...activeStation,djCallsAllowed:false,listenerCount:0,maintenanceWhenEmpty:true,researchBudgetAllowed:false}),false);
+});

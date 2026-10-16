@@ -1,4 +1,5 @@
-import { prepareSleeveNotesSegment, runSleeveNotesSegment, sleeveNotesSegmentWinsSlot } from '../sleeve-notes/segment.js';
+import {captureSpeechBudget} from '../broadcast/speech-timing.js';
+import { prepareSleeveNotesSegment, runSleeveNotesSegment, sleeveNotesSegmentWinsSlot, type SleeveNotesSegmentBrief } from '../sleeve-notes/segment.js';
 import { preparationSkillAt, prepareEpisodeContext } from '../broadcast/show-preparation.js';
 // Segment-director agent. agenticTick() (the 5-minute scheduler.skillsTick)
 // hands a tool-loop agent a snapshot of the moment plus real-world data tools
@@ -443,6 +444,46 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   return { seg: { kind: cap.kind, text, sfx: out?.sfx ?? null }, exchange: null, reason: out?.reason };
 }
 
+function automaticSleeveNotesReady(brief: SleeveNotesSegmentBrief | null): brief is SleeveNotesSegmentBrief {
+  return !!brief && Date.now() - (lastUnavailable.get(brief.kind) ?? 0) >= Math.min(brief.cooldownMs, 15 * 60_000);
+}
+
+// Shared by the optional director and automatic banter slots, including produced
+// episodes. Preparation keeps the same settings, material and ledger cooldowns;
+// accepted boundary-deferred speech counts as a replacement immediately.
+export async function runAutomaticSleeveNotesSegment(brief: SleeveNotesSegmentBrief | null = null): Promise<boolean> {
+  if (!brief) {
+    const s = settings.get();
+    if (!s.djBehaviour.extendedSleeveNotes || !s.sleeveNotes.segment.enabled) return false;
+    const current = await queue.getNowPlaying();
+    brief = prepareSleeveNotesSegment(current?.subsonic_id ? {
+      id: current.subsonic_id, title: current.title ?? '', artist: current.artist ?? '', album: current.album ?? '',
+    } : null);
+  }
+  if (!automaticSleeveNotesReady(brief)) return false;
+  brief={...brief,speechBudget:captureSpeechBudget(brief.cast,brief.cast.length>1?140:100)??undefined};
+  let timingDecline=false;
+  try {
+    const accepted = await runSleeveNotesSegment(brief, async lines => {
+      if (lines.length > 1) return queue.announceExchange(lines, brief.kind, { castNames: brief.cast.map(p => p.name), speechDeadline:brief.speechBudget });
+      const stamp = session.captureAutomaticHostSpeech(lines[0].persona, new Date());
+      const outcome = await queue.announce(lines[0].text, brief.kind, {
+        persona: lines[0].persona, meta: lines[0].meta, hostSpeech: stamp.hostSpeech, pauseTalkEligible: true,speechDeadline:brief.speechBudget,
+      });
+      return outcome.accepted;
+    },undefined,reason=>{timingDecline=/track time/.test(reason);queue.log('scheduler',`Sleeve Notes stood down — ${reason}`);});
+    if (accepted) {
+      lastFired.set(brief.kind, Date.now());
+      segmentState.lastAnySegment = Date.now();
+      lastUnavailable.delete(brief.kind);
+    } else if(!timingDecline) lastUnavailable.set(brief.kind, Date.now());
+    return accepted;
+  } catch (error) {
+    lastUnavailable.set(brief.kind, Date.now());
+    throw error;
+  }
+}
+
 // Called by the scheduler's 5-minute cron. Picks at most one segment to air,
 // or stays silent. Never throws — failures are logged and the tick ends.
 export async function agenticTick(ctx) {
@@ -465,7 +506,7 @@ export async function agenticTick(ctx) {
   // outright under a 15-minute floor.
   const lastSpoke = Math.max(
     segmentState.lastAnySegment,
-    queue.getLastVoiceAt(['station-id', 'hourly-check', 'handoff', 'banter']),
+    queue.getLastVoiceAt(['station-id', 'hourly-check', 'handoff', 'banter', 'sleeve-notes']),
   );
   if (now.getTime() - lastSpoke < frequencyFloorMs(freq)) return;
 
@@ -477,7 +518,7 @@ export async function agenticTick(ctx) {
     const native=prepareSleeveNotesSegment(current?.subsonic_id ? {
       id:current.subsonic_id,title:current.title??'',artist:current.artist??'',album:current.album??'',
     }:null);
-    const nativeReady=native && now.getTime()-(lastUnavailable.get(native.kind)??0)>=Math.min(native.cooldownMs,15*60_000);
+    const nativeReady=automaticSleeveNotesReady(native);
     if (caps.length === 0 && !nativeReady) return;
 
     // Weather alone and unchanged is provably nothing to say; skip the LLM call.
@@ -489,14 +530,7 @@ export async function agenticTick(ctx) {
     // Code-owned Sleeve Notes shares the ordinary optional segment pool and
     // placement rules. The director never receives permission to research.
     if (nativeReady && sleeveNotesSegmentWinsSlot(caps.map(cap=>cap.kind),!!ctx.weather?.condition && ctx.weather.condition!==segmentState.lastWeatherCondition)) {
-      const accepted=await runSleeveNotesSegment(native,async lines=>{
-        if (lines.length>1) return queue.announceExchange(lines,native.kind,{castNames:native.cast.map(p=>p.name)});
-        const stamp=session.captureAutomaticHostSpeech(lines[0].persona,new Date());
-        const outcome=await queue.announce(lines[0].text,native.kind,{persona:lines[0].persona,meta:lines[0].meta,hostSpeech:stamp.hostSpeech,pauseTalkEligible:true});
-        return outcome.accepted;
-      });
-      if (accepted) {lastFired.set(native.kind,Date.now());segmentState.lastAnySegment=Date.now();lastUnavailable.delete(native.kind);}
-      else lastUnavailable.set(native.kind,Date.now());
+      await runAutomaticSleeveNotesSegment(native);
       return;
     }
     if (!caps.length) return;
@@ -707,12 +741,13 @@ export async function runSleeveNotesSegmentNow(): Promise<CapabilityRun> {
   const brief=prepareSleeveNotesSegment({id:current.subsonic_id,title:current.title??'',
     artist:current.artist??'',album:current.album??''},true);
   if (!brief) return silent('no usable saved stories or host DJ are available for this track');
+  brief.speechBudget=captureSpeechBudget(brief.cast,brief.notes.length===1?40:brief.cast.length>1?140:100)??undefined;
   let deferred=false, text:string|null=null, reason:string|null=null;
   const accepted=await runSleeveNotesSegment(brief,async lines=>{
     text=lines.map(line=>`${line.persona.name}: ${line.text}`).join('\n');
-    if(lines.length>1) return queue.announceExchange(lines,brief.kind,{castNames:brief.cast.map(persona=>persona.name)});
+    if(lines.length>1) return queue.announceExchange(lines,brief.kind,{castNames:brief.cast.map(persona=>persona.name),speechDeadline:brief.speechBudget});
     const delivery=await queue.announce(lines[0].text,brief.kind,{persona:lines[0].persona,
-      meta:lines[0].meta,pauseTalkEligible:true});
+      meta:lines[0].meta,pauseTalkEligible:true,speechDeadline:brief.speechBudget});
     deferred=delivery.deferred;
     return delivery.accepted;
   },undefined,why=>{reason=why;});

@@ -5,6 +5,7 @@ export interface ResearchRunPolicyInput {
   pauseWhenEmpty: boolean;
   maintenanceWhenEmpty: boolean;
   listenerCount: number | null;
+  researchBudgetAllowed?: boolean;
 }
 
 /**
@@ -14,7 +15,7 @@ export interface ResearchRunPolicyInput {
  * on the normal fail-open DJ path and never activate the maintenance exception.
  */
 export function researchRunAllowed(input: ResearchRunPolicyInput): boolean {
-  if (input.playbackCriticalBusy || input.agentWorkActive) return false;
+  if (input.researchBudgetAllowed === false || input.playbackCriticalBusy || input.agentWorkActive) return false;
   if (input.djCallsAllowed) return true;
   return input.pauseWhenEmpty && input.maintenanceWhenEmpty && input.listenerCount === 0;
 }

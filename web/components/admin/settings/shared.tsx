@@ -344,6 +344,7 @@ export interface DjBehaviourForm {
   previewNextShow: boolean;
   sameHostAcknowledgement: boolean;
   extendedSleeveNotes: boolean;
+  sleeveNotesCollectionPaused: boolean;
   sleeveNotesMaintenanceWhenEmpty: boolean;
   releaseYearMentions: 'regular' | 'occasional' | 'rare';
   recapLimit: string;
@@ -364,6 +365,7 @@ export interface DjBehaviourValues {
   previewNextShow?: boolean;
   sameHostAcknowledgement?: boolean;
   extendedSleeveNotes?: boolean;
+  sleeveNotesCollectionPaused?: boolean;
   sleeveNotesMaintenanceWhenEmpty?: boolean;
   releaseYearMentions?: 'regular' | 'occasional' | 'rare';
   recapLimit?: number;

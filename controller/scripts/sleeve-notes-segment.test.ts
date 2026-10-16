@@ -10,7 +10,8 @@ process.env.ADMIN_USER='operator';process.env.ADMIN_PASS='secret';
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
 const {migrate,open,close}=await import('../src/sleeve-notes/db.js');
-const {prepareSleeveNotesSegmentInDatabase,runSleeveNotesSegment,sleeveNotesSegmentOutputSchema,sleeveNotesSegmentPrompt,sleeveNotesSegmentWinsSlot}=await import('../src/sleeve-notes/segment.js');
+const {prepareSleeveNotesSegmentInDatabase,runSleeveNotesSegment:runSegment,sleeveNotesSegmentOutputSchema,sleeveNotesSegmentPrompt,sleeveNotesSegmentWinsSlot}=await import('../src/sleeve-notes/segment.js');
+const runSleeveNotesSegment=runSegment;
 const {confirmedDayConnections,stationDayStart}=await import('../src/sleeve-notes/segment-connections.js');
 const {setStationTimezone}=await import('../src/time.js');
 const {admitLocalEncounterInDatabase}=await import('../src/sleeve-notes/research-repository.js');
@@ -305,12 +306,13 @@ test('publication failure releases reservations; confirmed air alone populates t
  assert.equal(heardOnAir().total,1);
 });
 
-test('a model pass or generic filler creates no reservations and performs no publication',async()=>{
+test('a model pass creates no reservations; accepted wording is not editorially vetoed',async()=>{
  const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();const brief=prepare(db)!;
  let published=false;
  assert.equal(await runSleeveNotesSegment(brief,async()=>{published=true;return true;},async()=>({air:false,reason:'Not enough to say.',lines:[]})),false);
- assert.equal(await runSleeveNotesSegment(brief,async()=>{published=true;return true;},async()=>({air:true,reason:'Filler',lines:[{speaker:host.id,text:'There is plenty to enjoy as we continue with more music.'}]})),false);
- assert.equal(published,false);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as {n:number}).n,0);
+ assert.equal(await runSleeveNotesSegment(brief,async()=>{published=true;return true;},async()=>({air:true,reason:'Filler',lines:[{speaker:host.id,text:'There is plenty to enjoy as we continue with more music.'}]})),true);
+ assert.equal(published,true);assert.ok((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as {n:number}).n>0);
+ db.prepare('DELETE FROM sleeve_claim_uses').run();
 });
 
 test('a failed live-edge confirmation releases reservations without recording an airing',async()=>{
@@ -458,7 +460,7 @@ test('Run Now route is admin-only, reads the live track, bypasses switches and r
  } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));store.setCache(saved);}
 });
 
-test('a short solo observation combines two valid host blocks and refuses an unrelated opening',async()=>{
+test('a short solo observation combines valid host blocks without a wording veto',async()=>{
  const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
  db.prepare("UPDATE sleeve_claims SET enabled=0 WHERE id='claim1'").run();
  try {
@@ -474,11 +476,9 @@ test('a short solo observation combines two valid host blocks and refuses an unr
  assert.equal(await runSleeveNotesSegment(brief,async published=>{publishedCount=published.length;publishedText=published[0].text;return true;},
   async()=>({reason:'Recording detail.',air:true,lines})),true);
  assert.equal(publishedCount,1);assert.equal(publishedText,lines.map(line=>line.text).join('\n\n'));
- db.prepare('DELETE FROM sleeve_claim_uses').run();let reason='';
- assert.equal(await runSleeveNotesSegment(brief,async()=>{throw new Error('Unrelated opener must not air');},async()=>({reason:'Recording detail.',air:true,
-  lines:[{speaker:host.id,text:'[Tone: friendly] Remember when Alex played this earlier today?'},lines[0]]}),why=>{reason=why;}),false);
- assert.match(reason,/did not open with the supplied fact/);
- assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as {n:number}).n,0);
+ db.prepare('DELETE FROM sleeve_claim_uses').run();
+ assert.equal(await runSleeveNotesSegment(brief,async()=>true,async()=>({reason:'Recording detail.',air:true,
+  lines:[{speaker:host.id,text:'[Tone: friendly] A curious story for you.'},lines[0]]})),true);
  } finally {db.prepare("UPDATE sleeve_claims SET enabled=1 WHERE id='claim1'").run();}
 });
 
@@ -541,6 +541,118 @@ test('malformed tone-and-dialogue output recovers through the shared SDK with ta
  assert.equal(calls,2);assert.deepEqual(spoken,valid.lines.map(line=>line.text));
  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM sleeve_claim_uses WHERE consumer='sleeveNotesSegment' AND aired_at IS NOT NULL").get() as {n:number}).n,0);
  } finally {store.setCache(saved);}
+});
+
+test('automatic banter prefers Sleeve Notes in a produced episode and falls back without changing manual banter', async t => {
+ const {weekFor}=await import('./test-utils/fixtures.js');
+ const {queue}=await import('../src/broadcast/queue.js');
+ const {withTalkAir,currentTalkAir}=await import('../src/broadcast/talk-air.js');
+ const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
+ const saved=settings.get();
+ const show={id:'notes-banter',name:'Produced Show',topic:'Recording stories',personaId:host.id,guestPersonaIds:[guest.id],programme:true,banter:true};
+ store.setCache({...saved,personas:[host,guest],shows:[show],schedule:weekFor(show.id),scheduleOverride:null,
+  djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:true},sleeveNotes:{...saved.sleeveNotes,segment:config},
+  llm:{...saved.llm,provider:'openai',model:'notes-banter-test',fallback:{...saved.llm.fallback,enabled:false}}});
+ let clock=Date.now()+24*60*60_000;
+ t.mock.method(Date,'now',()=>clock);
+ let playing=true, mode='supported', rejectDelivery=false;
+ t.mock.method(queue,'getNowPlaying',async()=>playing?{subsonic_id:'local',title:'Song',artist:'Band',album:'Album'}:null);
+ t.mock.method(globalThis,'fetch',async()=>{throw new Error('Unexpected live provider request');});
+ const {runBanter,refreshAutoPlaylist}=await import('../src/broadcast/scheduler.js');
+ const {primaryLeg}=await import('../src/llm/internal/provider/legs.js');const leg=primaryLeg();
+ const calls:string[]=[], delivered:string[]=[];
+ for(const model of new Set([leg.model,leg.noThinkModel]))t.mock.method(model,'doGenerate',async(options:{prompt:unknown;tools?:Array<{name:string}>})=>{
+  const banter=JSON.stringify(options.prompt).includes('You write short on-air exchanges');
+  calls.push(banter?'banter':'sleeve-notes');
+  if(!banter && mode==='error')throw new SyntaxError('Invalid segment response');
+  const lines=[{speaker:host.id,text:first},{speaker:guest.id,text:second},{speaker:host.id,text:'That gives it a different feel.'}];
+  const output=banter?{lines}:mode==='silent'?{air:false,reason:'Nothing worth adding.',lines:[]}:
+   mode==='unsupported'?{air:true,reason:'An aside.',lines:lines.map(l=>({...l,text:'There is plenty to enjoy in the music.'}))}:
+   {air:true,reason:'Recording stories.',lines};
+  const emit=options.tools?.some(tool=>tool.name==='emit');
+  return {content:emit?[{type:'tool-call',toolCallId:'banter-test',toolName:'emit',input:JSON.stringify(output)}]:[{type:'text',text:JSON.stringify(output)}],
+   finishReason:{unified:emit?'tool-calls':'stop',raw:emit?'tool_calls':'stop'},
+   usage:{inputTokens:{total:100,noCache:100,cacheRead:0,cacheWrite:0},outputTokens:{total:50,text:50,reasoning:0}},warnings:[]};
+ });
+ const exchange=t.mock.method(queue,'announceExchange',async(lines,kind)=>{
+  delivered.push(kind!);
+  if(kind==='sleeve-notes') {
+   assert.equal(currentTalkAir(),'next-track');
+   assert.deepEqual(lines.map(l=>l.persona.id),[host.id,guest.id,host.id]);
+   assert.ok(lines.every(l=>l.meta?.sleeveNotesSegment));
+   return !rejectDelivery;
+  }
+  return true;
+ });
+ const run=()=>withTalkAir('next-track',()=>runBanter({automatic:true}));
+ const reset=()=>{clock+=65*60_000;db.prepare('DELETE FROM sleeve_claim_uses').run();calls.length=0;delivered.length=0;};
+ try {
+  await run();assert.deepEqual(calls,['sleeve-notes']);assert.deepEqual(delivered,['sleeve-notes']);
+  assert.equal(heardOnAir().total,0,'queued speech is not heard speech');
+  // Reservation writers use new Date(), whereas this test advances Date.now()
+  // to exercise the shared retry window without sleeping.
+  db.prepare('UPDATE sleeve_claim_uses SET supplied_at=?').run(new Date(clock).toISOString());
+  calls.length=0;delivered.length=0;
+  await run();assert.deepEqual(calls,['banter']);assert.deepEqual(delivered,['banter'],'shared ledger cooldown sends the next slot to banter');
+  reset();mode='unsupported';await run();assert.deepEqual(calls,['sleeve-notes']);assert.deepEqual(delivered,['sleeve-notes'],'wording is not vetoed');
+  for(const outcome of ['silent','error']) {
+   reset();mode=outcome;await run();
+   assert.ok(calls.includes('sleeve-notes'));assert.equal(calls.at(-1),'banter');assert.deepEqual(delivered,['banter']);
+   calls.length=0;await run();assert.deepEqual(calls,['banter'],'unavailable material backs off across slots');
+  }
+  reset();mode='supported';rejectDelivery=true;await run();
+  assert.deepEqual(delivered,['sleeve-notes','banter']);
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM sleeve_claim_uses WHERE released_at IS NULL").get() as {n:number}).n,0);
+  rejectDelivery=false;
+  reset();playing=false;await run();assert.deepEqual(calls,['banter']);playing=true;
+  reset();db.prepare("UPDATE sleeve_claims SET enabled=0 WHERE id='claim1'").run();
+  await run();assert.deepEqual(calls,['banter']);db.prepare("UPDATE sleeve_claims SET enabled=1 WHERE id='claim1'").run();
+  const active=settings.get();
+  for(const patch of [
+   {...active,djBehaviour:{...active.djBehaviour,extendedSleeveNotes:false}},
+   {...active,sleeveNotes:{...active.sleeveNotes,segment:{...config,enabled:false}}},
+   {...active,sleeveNotes:{...active.sleeveNotes,segment:{...config,personaIds:[]}}},
+  ]) {reset();store.setCache(patch);await run();assert.deepEqual(calls,['banter']);}
+  store.setCache(active);reset();await runBanter();assert.deepEqual(calls,['banter'],'manual Banter remains an explicit Banter request');
+  assert.ok(exchange.mock.callCount()>0);
+  const logs=queue.djLog;
+  try {queue.djLog=[];queue.log('sleeve-notes','Confirmed exchange');assert.equal(queue.getLastTalkBreakAt(),Date.parse(queue.djLog[0].t));}
+  finally {queue.djLog=logs;}
+ } finally {store.setCache(saved);await refreshAutoPlaylist();}
+});
+
+test('a translated segment publishes with one generation and retains confirmed-air records',async()=>{
+ const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
+ const brief=prepareSleeveNotesSegmentInDatabase(db,track,config,{...host,language:'French'},[],Date.now(),true)!;
+ const text='Ils ont enregistré leur album dans une grange aménagée.';
+ let calls=0;let delivered:Parameters<Parameters<typeof runSegment>[1]>[0]=[];
+ assert.equal(await runSegment(brief,async lines=>{delivered=lines;return true;},async()=>{
+  calls++;return {air:true,reason:'Recording story',lines:[{speaker:host.id,text}]};
+ }),true);
+ assert.equal(calls,1);assert.ok(delivered[0].meta.sleeveNotesSegmentUseIds.length);
+ assert.equal(heardOnAir().total,0);
+ recordSleeveNotesSegmentAir(delivered[0].meta,text,Date.now());
+ const use=db.prepare('SELECT aired_at,final_text FROM sleeve_claim_uses WHERE id=?').get(delivered[0].meta.sleeveNotesSegmentUseIds[0]) as {aired_at:string|null;final_text:string};
+ assert.ok(use.aired_at);assert.equal(use.final_text,text);
+});
+
+test('timing targets enter the prompt and slow writing stands down before reservations',async t=>{
+ const {planSpeechBudget}=await import('../src/broadcast/speech-budget.js');
+ const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
+ const brief=prepareSleeveNotesSegmentInDatabase(db,track,config,host,[],Date.now(),true)!;
+ let clock=Date.now();const start=clock;t.mock.method(Date,'now',()=>clock);
+ brief.speechBudget=planSpeechBudget({nowMs:start,remainingSeconds:60,crossfadeSeconds:0,writingSeconds:5,
+  generationWps:3.12,spokenWps:3.49,castSize:1,maxWords:100,trackId:'local',startedAt:'start'});
+ assert.match(sleeveNotesSegmentPrompt(brief).system,/74 spoken words TOTAL/);
+ let calls=0,published=false;
+ assert.equal(await runSegment(brief,async()=>{published=true;return true;},async()=>{
+  calls++;clock+=48_000;return {air:true,reason:'Recording story',lines:[{speaker:host.id,text:first}]};
+ }),false);
+ assert.equal(calls,1);assert.equal(published,false);
+ assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as {n:number}).n,0);
+ brief.speechBudget.maxWords=0;
+ assert.equal(await runSegment(brief,async()=>true,async()=>{calls++;}),false);
+ assert.equal(calls,1,'a known insufficient window never calls the writer');
 });
 
 test.after(()=>{close();rmSync(root,{recursive:true,force:true});});

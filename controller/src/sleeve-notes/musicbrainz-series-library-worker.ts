@@ -1,3 +1,4 @@
+import { runResearchDatabaseWork } from './db.js';
 // Quiet-time, resumable Navidrome sweep for all cached MusicBrainz Series.
 // Exact recording and release-group MBIDs attach claims without making the DJ
 // wait for provider calls or bulk-enqueueing unrelated biography research.
@@ -22,7 +23,10 @@ export class MusicBrainzSeriesLibraryWorker {
   constructor(private readonly quietGate: QuietGate) {}
 
   async runOnce(): Promise<boolean> {
-    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
+    return runResearchDatabaseWork(()=>this.runOnceInner());
+  }
+  private async runOnceInner(): Promise<boolean> {
+    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
     if (!repository.hasCachedSeriesMembers()) return false;
     const offset = repository.dueSeriesLibraryScanOffset();
     if (offset == null) return false;

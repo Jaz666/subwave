@@ -1,3 +1,4 @@
+import { runResearchDatabaseWork } from './db.js';
 // Slow, quiet-time refresh of the curated MusicBrainz Series allowlist. The
 // shared MusicBrainz client applies the same global request spacing as identity
 // matching, and this worker adds at most one list request per minute.
@@ -20,7 +21,10 @@ export class MusicBrainzSeriesWorker {
   ) {}
 
   async runOnce(): Promise<boolean> {
-    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || !this.quietGate.isQuiet()) return false;
+    return runResearchDatabaseWork(()=>this.runOnceInner());
+  }
+  private async runOnceInner(): Promise<boolean> {
+    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
     const series = repository.reserveDueMusicBrainzSeries();
     if (!series) return false;
     this.running = true;

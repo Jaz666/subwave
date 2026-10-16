@@ -1,10 +1,11 @@
 // Explicit caller interruptions are scheduling outcomes, not provider failures.
 // Only the research worker creates these reasons; ordinary aborts stay failures.
-export type ResearchDeferralReason = 'research-budget' | 'broadcast-priority';
+export type ResearchDeferralReason = 'research-budget' | 'broadcast-priority' | 'station-token-cap';
 
 export class ResearchDeferredError extends Error {
   constructor(readonly reason: ResearchDeferralReason) {
-    super(reason === 'research-budget' ? 'Research time budget reached' : 'Research yielded to broadcast work');
+    super(reason === 'station-token-cap' ? 'Research paused by station token budget'
+      : reason === 'research-budget' ? 'Research time budget reached' : 'Research yielded to broadcast work');
     this.name = 'ResearchDeferredError';
   }
 }

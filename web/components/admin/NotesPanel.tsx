@@ -29,6 +29,7 @@ type NotesStatus = {
   providerConfigured: boolean;
   providerTokenSource?: 'settings' | 'environment' | 'missing';
   collectionRunning: boolean;
+  collectionPaused?: boolean;
   collectionBlockedReason: string | null;
   wikipediaPrompt?: string;
   wikipediaDefaultPrompt?: string;
@@ -37,6 +38,7 @@ type NotesStatus = {
 };
 
 type NotesReadout = {
+  researchPausedByBudget?: boolean;
   active: boolean;
   readAt?: number;
   localAttachments: number;
@@ -285,9 +287,10 @@ export default function NotesPanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get('tab');
+  const fromBrain=searchParams.get('from')==='brain';
   const aliases: Record<string, NotesTab> = { research: 'stories', explore: 'stories', sources: 'overview', settings: 'config', review: 'moderation', brain: 'connections' };
   const tab: NotesTab = rawTab && TABS.some((item) => item.id === rawTab) ? rawTab as NotesTab : aliases[rawTab ?? ''] ?? 'overview';
-  const [storiesMode, setStoriesMode] = useState(rawTab === 'explore' ? 'browse' : 'recent');
+  const [storiesMode, setStoriesMode] = useState(rawTab === 'explore' ? 'browse' : 'all');
   const storyType = searchParams.get('storyType');
   const storyId = searchParams.get('storyId');
   const story = useAdminQuery<EntityDossier>({
@@ -303,7 +306,7 @@ export default function NotesPanel() {
     staleTime: 10_000, refetchInterval: 30_000,
   });
   const enabled = status.data?.enabled === true;
-  const needsReadout = tab === 'overview' || tab === 'stories';
+  const needsReadout = tab === 'overview';
   const readout = useAdminQuery<NotesReadout>({
     key: ['sleeve-notes', 'readout', enabled], adminFetch, enabled: hydrated && !!status.data && needsReadout,
     request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/readout', undefined, signal),
@@ -314,26 +317,26 @@ export default function NotesPanel() {
   });
   const settingsSave = useSettingsMutation<SettingsData>({ adminFetch });
   const data = readout.data;
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('q')??'');
+  const [storyOffset,setStoryOffset]=useState(0);
   const [category, setCategory] = useState('all');
+  const storyQuery=searchParams.get('q')??'';
+  useEffect(()=>{setSearch(storyQuery);setStoryOffset(0);if(fromBrain){setStoriesMode('all');setCategory('all');}},[storyQuery,fromBrain]);
   const [tokenDraft, setTokenDraft] = useState('');
   const [wikiPromptDraft, setWikiPromptDraft] = useState('');
   const [configMessage, setConfigMessage] = useState('');
   const [wikiRefreshBusy, setWikiRefreshBusy] = useState(false);
   const [wikiRefreshMessage, setWikiRefreshMessage] = useState('');
-  const categories = useMemo(
-    () => [...new Set((data?.claims ?? []).map((claim) => claim.category))].sort(),
-    [data?.claims],
-  );
-  const visibleClaims = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return (data?.claims ?? []).filter((claim) => {
-      if (category !== 'all' && claim.category !== category) return false;
-      if (!query) return true;
-      return [claim.artist, claim.recording, claim.category, claim.topic, claim.wording]
-        .some((value) => value?.toLowerCase().includes(query));
-    });
-  }, [category, data?.claims, search]);
+  const collection=useAdminQuery<{claims:NotesReadout['claims'];total:number;categories:string[]}>({
+    key:['sleeve-notes','stories',search,category,storiesMode,storyOffset],adminFetch,
+    enabled:hydrated&&tab==='stories'&&!storyId&&storiesMode!=='browse',
+    request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/stories?${new URLSearchParams({search,category:category==='all'?'':category,recent:storiesMode==='recent'?'1':'0',offset:String(storyOffset)})}`,undefined,signal),
+    staleTime:10_000,
+  });
+  const backParams=new URLSearchParams(searchParams.toString());
+  backParams.delete('storyType');backParams.delete('storyId');backParams.delete('storyName');
+  backParams.delete('from');backParams.set('tab',fromBrain?'connections':'stories');
+  const storyBack=`${pathname??'/admin/notes'}?${backParams}`;
 
   function selectTab(next: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -462,29 +465,35 @@ export default function NotesPanel() {
       )}
       {hydrated && needsReadout && readout.isLoading && <p className="text-[13px] text-muted">Loading collection data…</p>}
 
-      {tab === 'stories' && storyId && <Card title={story.data?.title ?? 'Saved story context'}>
-        <Link href="/admin/notes?tab=stories" className="text-xs text-primary">Back to Stories</Link>
+      {tab === 'stories' && storyId && <Card title={story.data?.title ?? searchParams.get('storyName') ?? 'Saved story context'}>
+        <Link href={storyBack} className="text-xs text-primary">{fromBrain?'Back to Station Brain':'Back to Stories'}</Link>
         {story.error && <p role="alert" className="mt-3 text-[13px]">{story.error instanceof Error ? story.error.message : 'Could not load saved stories'}</p>}
         {story.isLoading && <p role="status" className="mt-3 text-[13px]">Loading saved facts…</p>}
         <div className="mt-3 space-y-3">{story.data?.claims.map((claim) => <ClaimCard key={claim.id} claim={claim} adminFetch={adminFetch} readOnly={!enabled} />)}</div>
       </Card>}
-      {tab === 'stories' && <Seg value={storiesMode} options={[{ id: 'recent', label: 'Recent facts' }, { id: 'browse', label: 'Browse library' }]} onChange={setStoriesMode} />}
-      {hydrated && data && tab === 'stories' && storiesMode === 'recent' && (
+      {tab === 'stories' && !storyId && <Seg value={storiesMode} options={[{id:'all',label:'All saved facts'},{ id: 'recent', label: 'Recent facts' }, { id: 'browse', label: 'Browse library' }]} onChange={value=>{setStoriesMode(value);setStoryOffset(0);}} />}
+      {tab==='stories'&&!storyId&&fromBrain&&<Link href={storyBack} className="text-xs text-primary">Back to Station Brain</Link>}
+      {tab==='stories'&&collection.error&&<p role="alert">Could not load saved facts. Please try again.</p>}
+      {tab==='stories'&&collection.isLoading&&storiesMode!=='browse'&&!storyId&&<p role="status">Loading saved facts…</p>}
+      {hydrated && collection.data && tab === 'stories' && !storyId && storiesMode !== 'browse' && (
         <ResearchView
           adminFetch={adminFetch}
           readOnly={!enabled}
-          data={data}
+          total={collection.data.total}
+          recent={storiesMode==='recent'}
           search={search}
-          onSearch={setSearch}
+          onSearch={value=>{setSearch(value);setStoryOffset(0);}}
           category={category}
-          onCategory={setCategory}
-          categories={categories}
-          claims={visibleClaims}
+          onCategory={value=>{setCategory(value);setStoryOffset(0);}}
+          categories={collection.data.categories}
+          claims={collection.data.claims}
+          offset={storyOffset}
+          onOffset={setStoryOffset}
         />
       )}
       {hydrated && tab === 'moderation' && <SleeveNotesModeration adminFetch={adminFetch} hydrated={hydrated} />}
       {hydrated && tab === 'heard' && <HeardOnAir adminFetch={adminFetch} />}
-      {hydrated && tab === 'stories' && storiesMode === 'browse' && <ExploreView adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
+      {hydrated && tab === 'stories' && !storyId && storiesMode === 'browse' && <ExploreView adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
       {hydrated && tab === 'connections' && <ConnectionsVisualizer adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
 
     </div>
@@ -516,8 +525,8 @@ function OverviewView({
   }
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-      <div><p className="text-sm font-medium">{enabled ? 'Research enabled' : 'Research paused'}</p>
-        <p className="mt-1 text-xs text-muted">{enabled ? 'Research runs when broadcast activity allows.' : 'Saved stories remain available to browse.'}</p></div>
+      <div><p className="text-sm font-medium">{enabled && !status.collectionPaused && !readout?.researchPausedByBudget ? 'Research enabled' : 'Research paused'}</p>
+        <p className="mt-1 text-xs text-muted">{enabled && status.collectionPaused ? 'Collection is paused. Saved Sparks remain available to the DJ.' : enabled && readout?.researchPausedByBudget ? 'Paused by the station token budget. Saved jobs will resume when allowance is available.' : enabled ? 'Research runs when broadcast activity allows.' : 'Saved stories remain available to browse.'}</p></div>
       <div className="flex flex-wrap gap-5 text-sm">
         <Link href="/admin/notes?tab=stories">{readout?.airtimeClaims ?? '—'} usable stories</Link>
         <Link href="/admin/notes?tab=moderation">{readout?.recycleBinPending ?? '—'} awaiting Review</Link>
@@ -699,9 +708,9 @@ function ActiveOverview({ data, status, openActivity }: { data: NotesReadout; st
 }
 
 function ResearchView({
-  data, search, onSearch, category, onCategory, categories, claims, adminFetch, readOnly,
+  total, recent, offset, onOffset, search, onSearch, category, onCategory, categories, claims, adminFetch, readOnly,
 }: {
-  data: NotesReadout;
+  total:number; recent:boolean; offset:number; onOffset:(value:number)=>void;
   search: string;
   onSearch: (value: string) => void;
   category: string;
@@ -713,12 +722,12 @@ function ResearchView({
 }) {
   return (
     <div className="space-y-5">
-      <Card title="Recent saved facts" sub={`Search covers these ${data.claims.length} recent facts (up to 80). Use Browse library to search the full collection by artist, album or track.`}>
+      <Card title={recent?'Recent saved facts':'All saved facts'} sub={recent?'Search the latest 80 saved facts.':'Search stories, artists, albums and tracks across your saved collection.'}>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 flex-1">
-            <span className="sr-only">Search recent facts</span>
+            <span className="sr-only">Search saved facts</span>
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-            <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search these recent facts…" className="w-full rounded-md border border-border bg-transparent py-2 pr-3 pl-9 text-[13px] outline-none focus:border-primary" />
+            <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder={recent?'Search recent facts…':'Search all saved facts…'} className="w-full rounded-md border border-border bg-transparent py-2 pr-3 pl-9 text-[13px] outline-none focus:border-primary" />
           </label>
           <label className="flex items-center gap-2 text-xs text-muted">
             <span>Category</span>
@@ -730,8 +739,12 @@ function ResearchView({
         </div>
         <div className="max-h-[34rem] space-y-3 overflow-y-auto pr-2">
           {claims.length
-            ? claims.map((claim, index) => <ClaimCard key={`${claim.provider}-${claim.topic}-${index}`} claim={claim} adminFetch={adminFetch} readOnly={readOnly} />)
-            : <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-[13px] text-muted">{data.claims.length ? 'No facts match those filters.' : 'No facts saved yet. Play music with Sleeve Notes enabled to build your collection.'}</p>}
+            ? claims.map((claim, index) => <ClaimCard key={claim.id??`${claim.provider}-${claim.topic}-${index}`} claim={claim} adminFetch={adminFetch} readOnly={readOnly} />)
+            : <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-[13px] text-muted">{search||category!=='all'?'No facts match those filters.':'No facts saved yet. Play music with Sleeve Notes enabled to build your collection.'}</p>}
+        </div>
+        <div className="mt-4 flex items-center gap-3 text-xs"><span>{total} matching facts</span>
+          <button type="button" disabled={!offset} onClick={()=>onOffset(Math.max(0,offset-30))}>Previous</button>
+          <button type="button" disabled={offset+30>=total} onClick={()=>onOffset(offset+30)}>Next</button>
         </div>
       </Card>
     </div>
@@ -940,7 +953,7 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
             {dossier.error && <p className="text-[13px] text-muted">{dossier.error instanceof Error ? dossier.error.message : 'Saved stories are temporarily unavailable.'}</p>}
             {dossier.data && <div className="max-h-[38rem] space-y-3 overflow-y-auto pr-2">
               {dossier.data.claims.length
-                ? dossier.data.claims.map((claim, index) => <ClaimCard key={`${claim.provider}-${claim.topic}-${index}`} claim={claim} adminFetch={adminFetch} readOnly={readOnly} />)
+                ? dossier.data.claims.map((claim, index) => <ClaimCard key={claim.id??`${claim.provider}-${claim.topic}-${index}`} claim={claim} adminFetch={adminFetch} readOnly={readOnly} />)
                 : <p className="text-[13px] text-muted">No saved facts are attached to this artist, album or track.</p>}
             </div>}
           </Card>
@@ -1037,6 +1050,10 @@ function ConfigView({
         <Seg value={values?.djBehaviour?.extendedSleeveNotes ? 'on' : 'off'} disabled={busy || loading || !!settingsError} options={[{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }]} onChange={(value) => onSave({ djBehaviour: { extendedSleeveNotes: value === 'on' } }, `Sleeve Notes ${value === 'on' ? 'enabled' : 'paused'}.`)} />
         <p className="mt-3 text-[13px] text-muted">Enable to gather facts from played music and offer Story Sparks to the DJ. Turning off pauses collection and offers; your saved stories stay available.</p>
         {settingsError && <p role="alert" className="mt-2 text-[13px]">{settingsError}</p>}
+      </Card>
+      <Card title="Background collection" sub="Keep saved Sparks on air while research is paused">
+        <Seg value={values?.djBehaviour?.sleeveNotesCollectionPaused?'paused':'running'} disabled={busy||loading||!!settingsError} options={[{id:'running',label:'Collect stories'},{id:'paused',label:'Pause collection'}]} onChange={value=>onSave({djBehaviour:{sleeveNotesCollectionPaused:value==='paused'}},value==='paused'?'Collection paused. Saved Sparks remain available.':'Collection resumed.')} />
+        <p className="mt-3 text-[13px] text-muted">Pauses background matching, source collection and extraction. Saved jobs are kept for resumption. On-air links and segments retain access to cached Sparks while Sleeve Notes is enabled.</p>
       </Card>
       <SleeveNotesSegmentSettings key={JSON.stringify(values?.sleeveNotes?.segment)} config={values?.sleeveNotes?.segment} personas={values?.personas??[]} busy={busy||loading||!!settingsError} onSave={segment=>onSave({sleeveNotes:{segment}},'Sleeve Notes segment settings saved.')} />
             <Card title="Genius connections (optional)" sub={savedInSettings ? 'saved in Settings' : status?.providerConfigured ? 'using a server environment token' : 'not configured'}>

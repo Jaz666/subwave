@@ -1070,6 +1070,7 @@ export function recoverInterruptedResearchJobsInDatabase(db: Database.Database, 
 }
 
 export interface WikipediaClaimRebuild {
+  /** Legacy response name: removed from automatic offers, never deleted from history. */
   claimsRemoved: number;
   jobsQueued: number;
 }
@@ -1140,7 +1141,7 @@ export function requeueCachedWikipediaResearch(now = new Date()): WikipediaResea
 }
 
 /**
- * Discard only claims derived from cached Wikipedia prose and replay their
+ * Retire automatic claims derived from cached Wikipedia prose and replay their
  * extraction jobs. No identity or provider work is repeated: a safer evidence
  * validator can therefore rebuild the editorial layer without hammering APIs.
  */
@@ -1151,11 +1152,11 @@ export function rebuildWikipediaClaims(): WikipediaClaimRebuild {
 export function rebuildWikipediaClaimsInDatabase(db: Database.Database, now = new Date()): WikipediaClaimRebuild {
   const timestamp = now.toISOString();
   const transaction = db.transaction(() => {
-    const claimsRemoved = db.prepare(`DELETE FROM sleeve_claims
-      WHERE operator_state = 'auto' AND source_document_id IN (
+    const claimsRemoved = db.prepare(`UPDATE sleeve_claims SET enabled=0, updated_at=?
+      WHERE enabled=1 AND operator_state = 'auto' AND source_document_id IN (
         SELECT id FROM sleeve_source_documents
         WHERE provider = 'wikipedia' AND entity_type = 'artist'
-      )`).run().changes;
+      )`).run(timestamp).changes;
     db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
       id, provider, subject_type, subject_id, capability, state, priority,
       attempts, run_after, created_at, updated_at
@@ -1180,7 +1181,7 @@ export function rebuildWikipediaClaimsInDatabase(db: Database.Database, now = ne
 
 /**
  * Replay only one artist's cached Wikipedia research. The research job is
- * artist-scoped, so every cached Wikipedia claim for that artist is replaced
+ * artist-scoped, so every automatic cached Wikipedia claim for that artist is retired
  * together; provider identity and source retrieval remain untouched.
  */
 export function rebuildWikipediaClaimsForArtist(artistId: string): WikipediaClaimRebuild {
@@ -1195,11 +1196,11 @@ export function rebuildWikipediaClaimsForArtistInDatabase(
     const sourceExists = db.prepare(`SELECT 1 FROM sleeve_source_documents
       WHERE provider = 'wikipedia' AND entity_type = 'artist' AND entity_id = ? LIMIT 1`).get(artistId);
     if (!sourceExists) return { claimsRemoved: 0, jobsQueued: 0 };
-    const claimsRemoved = db.prepare(`DELETE FROM sleeve_claims
-      WHERE operator_state = 'auto' AND entity_type = 'artist' AND entity_id = ? AND source_document_id IN (
+    const claimsRemoved = db.prepare(`UPDATE sleeve_claims SET enabled=0, updated_at=?
+      WHERE enabled=1 AND operator_state = 'auto' AND entity_type = 'artist' AND entity_id = ? AND source_document_id IN (
         SELECT id FROM sleeve_source_documents
         WHERE provider = 'wikipedia' AND entity_type = 'artist' AND entity_id = ?
-      )`).run(artistId, artistId).changes;
+      )`).run(timestamp, artistId, artistId).changes;
     db.prepare(`INSERT OR IGNORE INTO sleeve_research_jobs (
       id, provider, subject_type, subject_id, capability, state, priority,
       attempts, run_after, created_at, updated_at
@@ -1828,6 +1829,45 @@ export function researchStoreSummaryInDatabase(db: Database.Database): ResearchS
   };
 }
 
+/** Paged search over the retained collection, rather than a recent readout slice. */
+export function searchResearchStoriesInDatabase(db:Database.Database,input:{search?:string;category?:string;recent?:boolean;limit?:number;offset?:number}={}) {
+  const limit=Math.max(1,Math.min(200,Math.trunc(input.limit??30)));
+  const offset=Math.max(0,Math.trunc(input.offset??0));
+  const term=(input.search??'').trim().slice(0,120);
+  const category=input.category??'';
+  const base=`SELECT COALESCE(a.name, ra.name, album_artist.name) AS artist,
+    COALESCE(r.title, local_release.title, (SELECT rg_release.title FROM sleeve_releases rg_release
+      WHERE c.entity_type = 'release-group'
+        AND rg_release.musicbrainz_release_group_id = c.entity_id
+      ORDER BY rg_release.title LIMIT 1),
+      CASE WHEN s.provider = 'musicbrainz-series' AND json_valid(s.content)
+        THEN json_extract(s.content, '$.memberTitle') END) AS recording,
+    c.id, c.entity_type AS entityType, c.entity_id AS entityId, c.category, c.topic, c.wording, c.short_wording AS shortWording, c.evidence,
+    s.source_url AS sourceUrl, s.provider FROM sleeve_claims c
+    LEFT JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
+    LEFT JOIN sleeve_recordings r ON c.entity_type = 'recording' AND c.entity_id = r.id
+    LEFT JOIN sleeve_releases local_release ON c.entity_type = 'release' AND c.entity_id = local_release.id
+    LEFT JOIN sleeve_artists ra ON ra.id = r.artist_id
+    LEFT JOIN sleeve_artists album_artist ON album_artist.id = (
+      SELECT ar.artist_id FROM sleeve_recording_releases rr
+      JOIN sleeve_recordings ar ON ar.id=rr.recording_id
+      JOIN sleeve_releases rel ON rel.id=rr.release_id
+      WHERE (c.entity_type='release' AND rel.id=c.entity_id)
+        OR (c.entity_type='release-group' AND rel.musicbrainz_release_group_id=c.entity_id)
+      ORDER BY rr.release_id,rr.recording_id LIMIT 1)
+    JOIN sleeve_source_documents s ON s.id = c.source_document_id
+    WHERE c.enabled = 1`;
+  const where=`(? = '' OR instr(lower(COALESCE(artist,'') || ' ' || COALESCE(recording,'') || ' ' || category || ' ' || topic || ' ' || wording),lower(?)) > 0)
+    AND (? = '' OR category = ?)`;
+  // Recent is a named filter over the latest 80 facts, not the search default.
+  const rows=`SELECT * FROM (${base} ORDER BY c.updated_at DESC,c.id DESC ${input.recent?'LIMIT 80':''})`;
+  const args=[term,term,category,category];
+  const total=(db.prepare(`SELECT COUNT(*) AS n FROM (${rows}) WHERE ${where}`).get(...args) as {n:number}).n;
+  const claims=db.prepare(`${rows} WHERE ${where} LIMIT ? OFFSET ?`).all(...args,limit,offset) as ResearchStoreReadout['claims'];
+  const categories=(db.prepare('SELECT DISTINCT category FROM sleeve_claims WHERE enabled=1 ORDER BY category').all() as Array<{category:string}>).map(row=>row.category);
+  return {claims,total,limit,offset,categories};
+}
+
 export function researchStoreReadout(limit = 80): ResearchStoreReadout {
   return researchStoreReadoutInDatabase(open(), limit);
 }
@@ -1841,21 +1881,7 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
     LEFT JOIN sleeve_source_documents s ON s.entity_type = 'artist' AND s.entity_id = a.id
     LEFT JOIN sleeve_claims c ON c.entity_type = 'artist' AND c.entity_id = a.id AND c.enabled = 1
     GROUP BY a.id ORDER BY claims DESC, sources DESC, a.name LIMIT ?`).all(capped) as ResearchStoreReadout['artists'];
-  const claims = db.prepare(`SELECT COALESCE(a.name, ra.name) AS artist,
-    COALESCE(r.title, local_release.title, (SELECT rg_release.title FROM sleeve_releases rg_release
-      WHERE c.entity_type = 'release-group'
-        AND rg_release.musicbrainz_release_group_id = c.entity_id
-      ORDER BY rg_release.title LIMIT 1),
-      CASE WHEN s.provider = 'musicbrainz-series' AND json_valid(s.content)
-        THEN json_extract(s.content, '$.memberTitle') END) AS recording,
-    c.id, c.entity_type AS entityType, c.entity_id AS entityId, c.category, c.topic, c.wording, c.short_wording AS shortWording, c.evidence,
-    s.source_url AS sourceUrl, s.provider FROM sleeve_claims c
-    LEFT JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
-    LEFT JOIN sleeve_recordings r ON c.entity_type = 'recording' AND c.entity_id = r.id
-    LEFT JOIN sleeve_releases local_release ON c.entity_type = 'release' AND c.entity_id = local_release.id
-    LEFT JOIN sleeve_artists ra ON ra.id = r.artist_id
-    JOIN sleeve_source_documents s ON s.id = c.source_document_id
-    WHERE c.enabled = 1 ORDER BY c.updated_at DESC LIMIT ?`).all(capped) as ResearchStoreReadout['claims'];
+  const claims = searchResearchStoriesInDatabase(db, {limit:capped}).claims;
   const signalColumns = new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map((row) => row.name));
   const signalColumn = (name: string) => signalColumns.has(name) ? `spark.${name}` : 'NULL';
   const recentSparks = db.prepare(`SELECT spark.id, claim.entity_type AS entityType, claim.entity_id AS entityId, source.source_url AS sourceUrl, attachment.title AS trackTitle,

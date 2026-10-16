@@ -29,6 +29,11 @@ export function stopConnectionCompute(): void {
   pending.clear();
 }
 
+/** Restored revisions may equal old values while their actual facts differ. */
+export function clearConnectionComputeCache():void {
+  stopConnectionCompute();cache.clear();inFlight.clear();
+}
+
 function compute<T>(path: string, kind: 'overview' | 'matches', edges?: readonly ConnectionEdgeType[]): Promise<T> {
   clearIdleTimer();
   if (!child) {

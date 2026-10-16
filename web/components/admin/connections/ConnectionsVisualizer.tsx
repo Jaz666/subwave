@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import {storiesHref} from '../sleeve-notes-view';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ExternalLink, LocateFixed, RefreshCw, Search, X } from 'lucide-react';
@@ -249,6 +250,9 @@ export default function ConnectionsVisualizer({
 
   function selectNode(node: ConnectionNode) {
     setSelectedNodeId(node.id); setSelectedEdgeId(null);
+    const params=new URLSearchParams(searchParams.toString());
+    params.set('brainSelected',node.id);
+    router.replace(`${pathname??'/admin/notes'}?${params}`,{scroll:false});
   }
 
   const visibleGraph = useMemo<ConnectionGraphData | null>(() => {
@@ -283,7 +287,8 @@ export default function ConnectionsVisualizer({
     }
     if (selectionScope.current !== scope) {
       selectionScope.current = scope;
-      setSelectedNodeId(visibleGraph.focusId || null);
+      const retained=searchParams.get('brainSelected');
+      setSelectedNodeId(visibleGraph.nodes.some(node=>node.id===retained)?retained:visibleGraph.focusId||null);
       setSelectedEdgeId(null);
       return;
     }
@@ -291,7 +296,7 @@ export default function ConnectionsVisualizer({
     if (selectedEdgeId && visibleGraph.edges.some((edge) => edge.id === selectedEdgeId)) return;
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
-  }, [selectedNodeId, selectedEdgeId, visibleGraph, overview, focusType, focusId]);
+  }, [selectedNodeId, selectedEdgeId, visibleGraph, overview, focusType, focusId, searchParams]);
 
   const selectedNode = visibleGraph?.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const libraryArtistCount = useMemo(() => new Set(map.data?.nodes.map((node) => node.localArtistId)
@@ -508,7 +513,7 @@ export default function ConnectionsVisualizer({
                 {selectedNode.expandable && ENTITY_TYPES.has(selectedNode.entityType as ConnectionEntityType) && (
                   <button type="button" onClick={() => openNode(selectedNode)} className="block text-[13px] font-medium text-primary hover:underline">{selectedNode.kind === 'artist' ? 'Open albums' : selectedNode.entityType === 'library-album' ? 'Open tracks' : 'Open this neighbourhood'}</button>
                 )}
-                {selectedNode.local && selectedNode.entityType !== 'series' && <Link href="/admin/notes?tab=explore" className="block text-[13px] font-medium text-primary hover:underline">Browse Sleeve Notes dossiers</Link>}
+                {selectedNode.local && selectedNode.entityType !== 'series' && <Link href={storiesHref(selectedNode,searchParams.toString())} className="block text-[13px] font-medium text-primary hover:underline">Open saved stories for {selectedNode.title}</Link>}
                 {selectedNode.sourceUrl && <a href={selectedNode.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open source <ExternalLink className="size-3" /></a>}
               </div>
             ) : <p className="text-[13px] text-muted">Select a node or relationship to inspect it.</p>}

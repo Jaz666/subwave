@@ -57,7 +57,7 @@ test('sample and cover signals retain direction, including passive speech', () =
 
 test('diagnostics retain the algorithm, reason and matching sentence', () => {
   const signal = detectClaimSignal('Now the music. They formed in Cardiff.', 'They formed in Cardiff in 1993.');
-  assert.equal(signal.version, 1);
+  assert.equal(signal.version, 2);
   assert.equal(signal.clause, 'They formed in Cardiff.');
   assert.deepEqual(signal.matchedTerms, ['cardiff']);
   assert.match(signal.reason, /formation/);
@@ -94,4 +94,37 @@ test('the same contributor name cannot substitute a writing credit for productio
   assert.equal(detected('The song was written by Eno.', 'The song is credited to Eno for producer.'), false);
   assert.equal(detected('The song was produced by Eno.', 'The song is credited to Eno for writer.'), false);
   assert.equal(detected('The song was produced by Eno.', 'The song is credited to Eno for producer.'), true);
+});
+
+test('overlapping dates and places cannot hide a contradictory factual detail',()=>{
+ const claim='Example Band formed in Cardiff in 1993.';
+ for(const speech of ['They formed in Cardiff in 1994.','They formed in London in 1993.',
+  'They formed in Cardiff in nineteen ninety-four.','Another Band formed in Cardiff in 1993.']) {
+  assert.equal(detected(speech,claim,['Example Band']),false,speech);
+ }
+ assert.equal(detected('They formed in Cardiff.',claim,['Example Band']),true);
+ assert.equal(detected('They formed in 1993.',claim,['Example Band']),true);
+});
+
+test('non-English predicates can express the same anchored fact without an English relation word',()=>{
+ const claim='Example Band formed in Cardiff in 1993.';
+ for(const speech of ['Ils se sont formés à Cardiff en 1993.','Sie wurden 1993 in Cardiff gegründet.',
+  'Se formó en Cardiff en 1993.','Eles se formaram em Cardiff em 1993.']) {
+  assert.equal(detected(speech,claim,['Example Band']),true,speech);
+ }
+ assert.equal(detected('Ils se sont formés à Londres en 1993.',claim,['Example Band']),false);
+ assert.equal(detected('Ils ne se sont pas formés à Cardiff en 1993.',claim,['Example Band']),false);
+ assert.equal(detected('Sie wurden nicht 1993 in Cardiff gegründet.',claim,['Example Band']),false);
+});
+
+test('explicit influence, writing and production relationships retain their subject direction',()=>{
+ for(const [claim,reversed,passive] of [
+  ['Alpha influenced Beta.','Beta influenced Alpha.','Beta was influenced by Alpha.'],
+  ['Eno produced Album.','Album produced Eno.','Album was produced by Eno.'],
+  ['Eno wrote Song.','Song wrote Eno.','Song was written by Eno.'],
+ ]) {
+  assert.equal(detected(claim,claim),true);
+  assert.equal(detected(reversed,claim),false);
+  assert.equal(detected(passive,claim),true);
+ }
 });
