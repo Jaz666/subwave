@@ -1,5 +1,7 @@
 # Extended Sleeve Notes / Station Brain — handover for 13 October 2026
 
+> For the current checkout, deployment status and fresh-chat starting point, read [the 16 October session handover](2026-10-16-extended-sleeve-notes-session-handover.md). This note records earlier work.
+
 This note captures the current checkout and recent GitHub housekeeping so a new chat can continue without replaying the long conversation.
 
 ## Current GitHub state

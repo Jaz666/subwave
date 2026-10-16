@@ -1,5 +1,7 @@
 # End-of-session upstream rebase — 15 October 2026
 
+> For the current checkout, deployment status and fresh-chat starting point, read [the 16 October session handover](2026-10-16-extended-sleeve-notes-session-handover.md). This note records earlier work.
+
 ## Checkouts and recovery
 
 - Station checkout: `/home/jaz666/Docker/subwave`.
