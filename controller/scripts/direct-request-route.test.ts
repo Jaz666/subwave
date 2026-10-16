@@ -5,6 +5,7 @@ import test, { after, beforeEach, type TestContext } from 'node:test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import type { RequestSong } from '../src/music/request-match.js';
 import { createTempDir } from './test-utils/temp-dir.js';
 
 process.env.STATE_DIR = createTempDir(join(tmpdir(), 'subwave-direct-route-'));
@@ -27,13 +28,14 @@ await new Promise(resolve => server.once('listening', resolve));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 const realFetch = globalThis.fetch;
 after(() => server.close());
-const exact = { id: 'queen-song', title: 'Bohemian Rhapsody', artist: 'Queen', album: 'A Night at the Opera', duration: 300 };
-const filler = { id: 'filler-song', title: 'Fatigue', artist: 'The Gathering', duration: 200 };
+const exact = { id: 'queen-song', title: 'Bohemian Rhapsody', artist: 'Queen', album: 'A Night at the Opera', duration: 300, genre: 'Rock', language: 'English', moods: ['energetic'] };
+const filler = { id: 'filler-song', title: 'Fatigue', artist: 'The Gathering', genre: 'Rock', duration: 200 };
 let ip = 0;
 let modelOutput: Record<string, unknown>;
 let modelError = false;
 let introError = false;
 let searchEmpty = false;
+let catalogueSongs: RequestSong[];
 let bodies: any[] = [];
 let agentCalls = 0;
 
@@ -56,6 +58,7 @@ beforeEach(async context => {
   modelError = false;
   introError = false;
   searchEmpty = false;
+  catalogueSongs = [filler, exact];
   agentCalls = 0;
   modelOutput = { kind: 'track', title: exact.title, artist: 'Queen', search_terms: [exact.title, 'Queen'], genre: 'Rock', scope: 'song' };
   t.mock.method(requestAgent, 'run', async () => { agentCalls++; throw Error('Direct must never invoke the request agent'); });
@@ -76,7 +79,7 @@ beforeEach(async context => {
     if (url.origin === base) return realFetch(input, init);
     if (url.hostname !== 'direct-library.invalid') throw Error('synthetic offline dependency');
     const endpoint = url.pathname.split('/').at(-1);
-    const data = endpoint === 'search3' ? { searchResult3: { song: searchEmpty ? [] : [filler, exact] } }
+    const data = endpoint === 'search3' ? { searchResult3: { song: searchEmpty ? [] : catalogueSongs } }
       : endpoint === 'getStarred2' ? { starred2: { song: [filler] } }
         : endpoint === 'getSimilarSongs2' ? { similarSongs2: { song: [filler] } }
         : endpoint === 'getGenres' ? { genres: { genre: [{ value: 'Rock', songCount: 2 }] } }
@@ -101,7 +104,7 @@ async function submit(text = 'Queen, Bohemian Rhapsody') {
   throw Error('request did not settle');
 }
 
-test('Direct queues Queen despite an inferred Rock genre, with one tool-free model call', async () => {
+test('Direct searches the named recording before genre candidates, with one tool-free model call', async () => {
   const result = await submit();
   assert.equal(result.outcome, 'matched');
   assert.equal(result.track.title, exact.title);
@@ -186,6 +189,68 @@ test('chat responses do not queue a track', async () => {
   assert.equal(queue.upcoming.length, 0);
 });
 
+test('a named song in an unavailable language does not queue the wrong language', async () => {
+  modelOutput = { title: exact.title, artist: 'Queen', language: 'French' };
+  const result = await submit('Play Bohemian Rhapsody by Queen in French');
+  assert.equal(result.status, 'failed');
+  assert.equal(result.outcome, 'no-match');
+  assert.equal(queue.upcoming.length, 0);
+});
+
+test('an unmet mood is acknowledged as a compromise rather than an exact match', async () => {
+  modelOutput = { artist: 'Queen', mood: 'calm', search_terms: ['Queen'] };
+  const result = await submit('Play something calm by Queen');
+  assert.equal(result.outcome, 'substituted');
+  assert.equal(result.track.artist, 'Queen');
+  assert.match(result.ack, /verify the requested mood/);
+  assert.equal(queue.upcoming.length, 1);
+});
+
+test('an artist mood description is not restored as a literal song title', async () => {
+  catalogueSongs.push({ ...exact, id: 'calm', title: 'Calm Example', moods: ['calm'] });
+  modelOutput = { artist: 'Queen', mood: 'calm', search_terms: ['Queen'] };
+  const result = await submit('Play something calm by Queen');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, 'calm');
+});
+
+test('failed interpretation cannot discard an artist mood description', async () => {
+  modelError = true;
+  const result = await submit('Play something calm by Queen');
+  assert.equal(result.outcome, 'unsupported');
+  assert.equal(queue.upcoming.length, 0);
+});
+
+test('failed interpretation cannot relax a trailing language condition into an artist match', async () => {
+  modelError = true;
+  const result = await submit('Play Bohemian Rhapsody by Queen in French');
+  assert.equal(result.outcome, 'no-match');
+  assert.equal(queue.upcoming.length, 0);
+});
+
+test('a model cannot silently discard a common exclusion', async () => {
+  modelOutput = { artist: 'Queen' };
+  const result = await submit('Play anything except Queen');
+  assert.equal(result.status, 'failed');
+  assert.equal(result.outcome, 'unsupported');
+  assert.match(result.message, /conditions/);
+  assert.equal(queue.upcoming.length, 0);
+});
+
+test('model-detected unsupported conditions survive an otherwise empty plan', async () => {
+  modelOutput = { unsupported: ['earlier conversation'] };
+  const result = await submit('Play the one we discussed earlier');
+  assert.equal(result.outcome, 'unsupported');
+  assert.equal(queue.upcoming.length, 0);
+});
+
+test('the exclusion backstop still works when interpretation fails', async () => {
+  modelError = true;
+  const result = await submit('Play anything except Queen');
+  assert.equal(result.outcome, 'unsupported');
+  assert.equal(queue.upcoming.length, 0);
+});
+
 test('more like this excludes its seed and reaches the similarity fallback', async () => {
   queue.current = { track: exact } as never;
   const result = await submit('more like this');
@@ -217,4 +282,5 @@ test('small-model omissions default descriptive fields without losing identity',
   assert.equal(parsed.scope, 'song');
   assert.deepEqual(parsed.search_terms, []);
   assert.equal(parsed.ack, '');
+  assert.deepEqual(parsed.unsupported, []);
 });

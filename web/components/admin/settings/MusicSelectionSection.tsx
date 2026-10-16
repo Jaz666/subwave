@@ -198,6 +198,9 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
                     refer back to earlier conversations, or follow exclusions and complex conditions
                     such as &ldquo;anything except Queen&rdquo; or &ldquo;instrumental tracks from the
                     1990s&rdquo;. Language requests depend on your library&apos;s tags or metadata.
+                    Recognised unsupported conditions are declined; unverified mood preferences are
+                    reported as compromises. Explicit genre and language requirements are never
+                    relaxed to queue an alternative.
                   </p>
                   <p>
                     <strong>Agent-assisted</strong> can explore more detailed requests, but needs a

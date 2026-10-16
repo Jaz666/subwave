@@ -13,6 +13,9 @@ export interface RequestMatch {
   search_terms?: string[];
   intent?: string;
   ack?: string;
+  unsupported?: string[];
+  // Controller-owned marker; never part of the model's interpretation schema.
+  literal?: boolean;
 }
 
 export interface RequestSong {
@@ -44,8 +47,23 @@ export interface RequestCatalog {
 export interface RequestSelection {
   track: RequestSong | null;
   source: string;
-  outcome: 'matched' | 'substituted' | 'cooldown' | 'already-queued' | 'no-match';
+  outcome: 'matched' | 'substituted' | 'cooldown' | 'already-queued' | 'no-match' | 'unsupported';
   errors: string[];
+  unmetPreferences?: string[];
+}
+
+// Backstop for common conditions a small model can silently omit. Quoted
+// names are data: "Everything but the Girl" is not an exclusion instruction.
+// This is deliberately bounded, not a second natural-language interpreter.
+export function directRequestUnsupported(text: string, match: RequestMatch = {}): string[] {
+  const prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, ' <name> ');
+  const reasons = new Set((match.unsupported || []).filter(reason => reason.trim()));
+  if (/\b(?:anything|something|music|songs?|tracks?)\s+(?:except|excluding|but(?: not)?)\b|\b(?:but not|but no|excluding|except(?: for)?|other than)\s+\S|\b(?:do not|don't|don’t)\s+play\b/i.test(prose)) reasons.add('exclusions');
+  if (/\b(?:19|20)\d0s\b|\b(?:from|during|in)\s+(?:the\s+)?(?:19|20)\d{2}\b/i.test(prose)) reasons.add('era');
+  if (/\b(?:instrumental|acoustic|live)\s+(?:only|music|songs?|tracks?|versions?)\b|\b(?:only|strictly)\s+(?:instrumental|acoustic|live)\b|\bwithout\s+(?:vocals|singing|lyrics)\b/i.test(prose)) reasons.add('recording condition');
+  if (/\b(?:song|track|one)\s+(?:from|in)\s+(?:that|the|a)\s+(?:new\s+)?(?:film|movie|show|advert|commercial)\b|\b(?:song|track|one)\s+(?:with|containing|that has)\s+(?:the\s+)?(?:lyrics|words|line)\b/i.test(prose)) reasons.add('external identification');
+  if (/\b(?:one|song|track|music)\s+(?:we|you|I)\s+(?:discussed|mentioned|requested|talked about)\s+(?:earlier|before|yesterday|last)\b/i.test(prose)) reasons.add('earlier conversation');
+  return [...reasons];
 }
 
 export function requestName(value: unknown): string {
@@ -68,6 +86,9 @@ export function requestArtistMatches(want: unknown, song: RequestSong): boolean 
 export function requestedTitle(match: RequestMatch): string | null {
   if (match.title?.trim()) return match.title.trim();
   if (match.album) return null;
+  // A modern reply explicitly saying "no title" must not turn a stray vibe
+  // search term into a named recording. Legacy replies can still omit title.
+  if (match.title === null && (match.mood || match.genre || match.language)) return null;
   // Compatibility with pre-field model replies and the model-free parser.
   const attributes = [match.artist, match.genre, match.language, match.mood].map(requestName);
   return match.search_terms?.find(term => requestName(term) && !attributes.includes(requestName(term)))?.trim() || null;
@@ -86,6 +107,9 @@ export function modelFreeRequest(text: string): RequestMatch {
     .replace(/^\s*(?:please\s+)?(?:play|put on|queue|request)\s+/i, '').replace(/\s+please[.!?]*$/i, '').trim();
   const unquote = (s: string) => s.replace(/^["'“‘]|["'”’][.!?]*$/g, '').trim();
   const by = cleaned.match(/^(.+?)\s+by\s+(.+?)[.!?]*$/i);
+  const describedArtist = cleaned.match(/^(?:some|anything|something|music|a song|a track)\s+.+?\s+by\s+(.+?)[.!?]*$/i);
+  if (describedArtist) return { kind: 'track', artist: unquote(describedArtist[1]), title: null,
+    unsupported: ['description needs interpretation'], search_terms: [], ack: '' };
   const artistOnly = cleaned.match(/^(?:some|anything by|something by|music by)\s+(.+?)[.!?]*$/i);
   if (artistOnly) return { kind: 'track', artist: unquote(artistOnly[1]), title: null, album: null, search_terms: [], scope: 'song', ack: '' };
   const comma = !by && cleaned.match(/^([^,]+),\s*(.+)$/);
@@ -118,26 +142,30 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
 }): Promise<RequestSelection> {
   const { catalog, recentIds, queuedIds, currentId, excludeIds = new Set<string>() } = deps;
   const errors: string[] = [];
+  if (match.unsupported?.some(reason => reason.trim())) return { track: null, source: 'unsupported', outcome: 'unsupported', errors };
   const safe = async <T>(source: string, run: () => Promise<T>, fallback: T): Promise<T> => {
     try { return await run(); } catch (err) { errors.push(`${source}: ${err instanceof Error ? err.message : String(err)}`); return fallback; }
   };
   const title = requestedTitle(match);
-  const moodPool = match.mood && !title ? await safe('mood tracks', () => deps.moodSongs(match.mood!), []) : [];
+  const moodPool = match.mood ? await safe('mood tracks', () => deps.moodSongs(match.mood!), []) : [];
   const moodIds = new Set(moodPool.map(song => song.id));
+  const moodMatches = (song: RequestSong) => !match.mood || moodIds.has(song.id)
+    || Boolean(song.moods?.some(m => requestName(m) === requestName(match.mood)));
   let resolvedArtistName = match.artist;
   const identity = (song: RequestSong) => (!title || requestTitleMatches(title, song.title))
     && requestArtistMatches(resolvedArtistName, song) && (!match.album || requestName(song.album) === requestName(match.album));
   const tags = (song: RequestSong) => [song.genre, ...(song.genres || []).map(g => typeof g === 'string' ? g : g.name)].map(requestName).filter(Boolean);
   let genre: string | null = null;
   let languageGenre: string | null = null;
-  // Named recordings outrank inferred attributes. Broad requests combine them.
-  if (!title && match.genre) genre = await safe('genre resolution', () => catalog.resolveGenreName(match.genre!), null);
-  if (!title && match.language) languageGenre = await safe('language resolution', () => catalog.resolveGenreName(match.language!), null);
+  // The interpretation contract only supplies explicitly requested attributes.
+  // These requirements also apply to named songs and every alternative.
+  if (match.genre) genre = await safe('genre resolution', () => catalog.resolveGenreName(match.genre!), null);
+  if (match.language) languageGenre = await safe('language resolution', () => catalog.resolveGenreName(match.language!), null);
   const constraints = (song: RequestSong, source: string) => {
     const genres = tags(song);
-    if (match.genre && !title && !(genre && source === `genre:${genre}`)
+    if (match.genre && !(genre && source === `genre:${genre}`)
       && !genres.some(g => g === requestName(genre || match.genre) || g.split(' ').includes(requestName(match.genre)))) return false;
-    if (match.language && !title) {
+    if (match.language) {
       const languages = [song.language, ...(song.languages || []), ...genres].map(requestName);
       if (!(languageGenre && source === `language-genre:${languageGenre}`) && !languages.includes(requestName(match.language))) return false;
     }
@@ -147,15 +175,18 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const unique = (songs: RequestSong[]) => [...new Map(songs.filter(s => s?.id && !excludeIds.has(s.id)).map(s => [s.id, s])).values()];
   const choose = (songs: RequestSong[]) => {
     const list = unique(songs);
-    const moodHits = match.mood ? list.filter(s => moodIds.has(s.id) || s.moods?.some(m => requestName(m) === requestName(match.mood))) : [];
+    const moodHits = match.mood ? list.filter(moodMatches) : [];
     const pool = moodHits.length ? moodHits : list;
     return pool[Math.min(pool.length - 1, Math.floor((deps.random || Math.random)() * pool.length))] || null;
   };
   let held: { track: RequestSong; source: string } | null = null;
   const select = (songs: RequestSong[], source: string, exact = true): RequestSelection | null => {
-    const pool = unique(songs).filter(s => !exact || (identity(s) && constraints(s, source)));
+    const pool = unique(songs).filter(s => constraints(s, source) && (!exact || identity(s)));
     const track = choose(pool.filter(eligible));
-    if (track) return { track, source, outcome: exact ? 'matched' : 'substituted', errors };
+    if (track) {
+      const unmetPreferences = moodMatches(track) ? [] : ['mood'];
+      return { track, source, outcome: exact && !unmetPreferences.length ? 'matched' : 'substituted', errors, unmetPreferences };
+    }
     // Preserve the requested identity for an honest refusal, never replace an
     // exact recording merely because it is queued or on cooldown.
     if (exact && pool.length && !held) held = { track: pool[0], source };
@@ -195,7 +226,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
       if (result) return result;
     }
     const artist = await safe('artist resolution', () => catalog.resolveArtist(match.artist!), null);
-    if (artist) {
+    if (artist && (!match.literal || requestArtistMatches(match.artist, { id: artist.id, artist: artist.name }))) {
       resolvedArtistName = artist.name || match.artist;
       const full = await safe('artist albums', () => catalog.getArtist(artist.id), null);
       let albums = full?.album || [];
@@ -273,7 +304,10 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     const constrainedRefusal = refusal();
     if (constrainedRefusal) return constrainedRefusal;
   }
-  // Existing never-drop behaviour remains visible as an explicit substitution.
+  // A failed interpreter cannot safely relax text it may have misread as a
+  // name (e.g. "Queen in French"). Only verified literal identities can queue.
+  if (match.literal) return { track: null, source: 'literal-no-match', outcome: 'no-match', errors };
+  // Interpreted requests can offer alternatives within their hard constraints.
   const artistAlternative = select(artistAlternatives, 'artist-alternative', false);
   if (artistAlternative) return artistAlternative;
   const fallback = select([...searched, ...await safe('fallback tracks', deps.fallbackSongs, [])], 'fallback', false);

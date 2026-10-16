@@ -27,7 +27,7 @@ import {
 } from '../middleware/ratelimit.js';
 import { validatePublicBody } from '../middleware/validate.js';
 import { listenerRequestSchema } from '../schemas/request.js';
-import { modelFreeRequest, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
+import { directRequestUnsupported, modelFreeRequest, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
 import { requestWaitClause } from '../broadcast/queue/pure.js';
 
 export const router = express.Router();
@@ -117,6 +117,8 @@ function recordOutcome(entry) {
       album: entry.album ?? null,
       lookupErrors: entry.lookupErrors ?? [],
       interpretationFallback: entry.interpretationFallback ?? false,
+      unsupported: entry.unsupported ?? [],
+      unmetPreferences: entry.unmetPreferences ?? [],
       track: entry.pick
         ? { title: entry.pick.title, artist: entry.pick.artist, id: entry.pick.id }
         : (entry.track || null),
@@ -174,7 +176,7 @@ function withWaitNotice(ack: string | null | undefined, trackId: string | null |
 // A bounded literal parser for hard-budget or failed interpretation calls.
 // The resolver still verifies its title/artist against the actual catalogue.
 function modelFreeMatch(text: string): Awaited<ReturnType<typeof dj.matchRequest>> {
-  return modelFreeRequest(text) as Awaited<ReturnType<typeof dj.matchRequest>>;
+  return { ...modelFreeRequest(text), literal: true } as Awaited<ReturnType<typeof dj.matchRequest>>;
 }
 
 // Requests accepted but not yet resolved. Their track is not in the upcoming
@@ -373,7 +375,7 @@ async function resolveRequest(entry) {
         // recover an unambiguous literal form whose artist agrees with it.
         matched = { ...matched, title: literal.title };
       }
-      if (matched.kind !== 'chat' && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)) {
+      if (matched.kind !== 'chat' && !matched.unsupported?.length && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)) {
         entry.interpretationFallback = true;
         matched = modelFreeMatch(text);
       }
@@ -381,6 +383,14 @@ async function resolveRequest(entry) {
       entry.interpretationFallback = true;
       queue.log('error', `request interpretation failed: ${err.message} — trying library search`);
     }
+  }
+  const unsupported = directRequestUnsupported(text, matched);
+  if (unsupported.length) {
+    entry.path = 'cascade';
+    entry.pickSource = 'unsupported';
+    entry.outcome = 'unsupported';
+    entry.unsupported = unsupported;
+    return failed(`I couldn't reliably check all the conditions in that request. Try naming a song, artist, album, genre or simple mood.`);
   }
   queue.log('intent', `"${text}" → ${matched.intent || '(no intent)'}`, {
     mood: matched.mood,
@@ -447,10 +457,13 @@ async function resolveRequest(entry) {
   const pickSource = selection.source;
   entry.outcome = selection.outcome;
   entry.lookupErrors = selection.errors;
+  entry.unmetPreferences = selection.unmetPreferences || [];
   for (const error of selection.errors) queue.log('error', `request lookup ${error}`);
   if (!pick) {
     entry.pickSource = pickSource;
-    return failed(sorryNoMatch(requester));
+    return failed(matched.language || matched.genre
+      ? 'Could not verify a track meeting the requested language or genre requirements. Try simplifying the request.'
+      : sorryNoMatch(requester));
   }
   if (selection.outcome === 'substituted' && matched.artist && !requestArtistMatches(matched.artist, pick)) {
     entry.artistMiss = matched.artist;
@@ -467,8 +480,10 @@ async function resolveRequest(entry) {
   queue.log('request', `resolved via ${pickSource} (${selection.outcome}): ${pick.title} — ${pick.artist}`);
   // Fixed copy makes the final result authoritative and never repeats raw
   // listener/model-derived names. The response's track carries library identity.
-  const ack = selection.outcome === 'substituted'
-    ? `Couldn't match that request exactly — here's an alternative from the library.`
+  const ack = selection.unmetPreferences?.includes('mood')
+    ? `Couldn't verify the requested mood — here's an alternative from the library.`
+    : selection.outcome === 'substituted'
+      ? `Couldn't match that request exactly — here's an alternative from the library.`
     : 'Found a match — your track is on the way.';
 
   // 3. DJ intro. On a miss, flag it (and pass the cleaned name, when one

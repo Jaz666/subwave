@@ -160,7 +160,7 @@ export default function RequestDrawer({
         return;
       }
       if (data?.status === 'failed') {
-        setResult({ success: false, message: data.message || 'No match — try different words.' });
+        setResult({ success: false, outcome: data.outcome, message: data.message || 'No match — try different words.' });
         return;
       }
       if (data?.status === 'unknown') {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  modelFreeRequest, requestArtistMatches, requestReleaseRank, requestTitleMatches,
+  directRequestUnsupported, modelFreeRequest, requestArtistMatches, requestReleaseRank, requestTitleMatches,
   resolveDirectRequest, type RequestCatalog, type RequestMatch, type RequestSong,
 } from '../src/music/request-match.js';
 
@@ -9,6 +9,100 @@ const exact: RequestSong = { id: 'exact', title: 'Bohemian Rhapsody', artist: 'Q
 const other: RequestSong = { id: 'other', title: 'Another Song', artist: 'Queen', album: 'Other Album', genre: 'Jazz' };
 const filler: RequestSong = { id: 'filler', title: 'Fatigue', artist: 'The Gathering', genre: 'Rock' };
 const songRequest: RequestMatch = { title: exact.title, artist: 'Queen', search_terms: [exact.title!, 'Queen'], scope: 'song' };
+
+test('unsupported plans stop before any catalogue or preference lookup', async () => {
+  const f = fixture({ searchPage: async () => { throw Error('must not search'); } });
+  f.deps.moodSongs = async () => { throw Error('must not load moods'); };
+  const r = await resolveDirectRequest({ ...songRequest, mood: 'calm', unsupported: ['exclusions'] }, f.deps);
+  assert.equal(r.outcome, 'unsupported');
+  assert.equal(r.track, null);
+  assert.deepEqual(r.errors, []);
+  assert.equal(f.fallbackCalls(), 0);
+});
+
+test('common exclusion and era wording survives a model omission', () => {
+  for (const text of ['play anything except Queen', 'play something by Queen but not live', 'music other than Queen', 'play instrumental music from the 1990s']) {
+    assert.ok(directRequestUnsupported(text).length, text);
+  }
+  assert.deepEqual(directRequestUnsupported('play something by Queen', { unsupported: ['previous conversation'] }), ['previous conversation']);
+});
+
+test('names and quoted titles are not mistaken for unsupported conditions', () => {
+  for (const text of ['play something by No Doubt', 'play Don’t Stop Me Now by Queen', 'play Only You by Yazoo', 'play "Anything Except Queen"', 'play “Live Music” by Example', 'play something by Everything but the Girl', 'play "1990s" by Example']) {
+    assert.deepEqual(directRequestUnsupported(text), [], text);
+  }
+});
+
+test('a named title selects only the recording satisfying its language requirement', async () => {
+  const french = { ...exact, id: 'french', language: 'French' };
+  const f = fixture({ searchPage: async () => ({ songs: [{ ...exact, language: 'English' }, french], rawCount: 2 }) });
+  const result = await resolveDirectRequest({ ...songRequest, language: 'French' }, f.deps);
+  assert.equal(result.track?.id, french.id);
+  assert.equal(result.outcome, 'matched');
+});
+
+for (const requirement of [{ language: 'French' }, { genre: 'Classical' }]) {
+  test(`unsatisfied named-song requirements also exclude incompatible alternatives: ${JSON.stringify(requirement)}`, async () => {
+    const f = fixture();
+    const result = await resolveDirectRequest({ ...songRequest, ...requirement }, f.deps);
+    assert.equal(result.track, null);
+    assert.equal(result.outcome, 'no-match');
+  });
+}
+
+test('unknown language metadata cannot satisfy an explicit language requirement', async () => {
+  const f = fixture();
+  assert.equal((await resolveDirectRequest({ ...songRequest, language: 'English' }, f.deps)).track, null);
+});
+
+test('a language-compatible alternative is still identified as a substitution', async () => {
+  const french = { ...other, language: 'French' };
+  const f = fixture({ getAlbum: async () => [french] });
+  const result = await resolveDirectRequest({ ...songRequest, language: 'French' }, f.deps);
+  assert.equal(result.track?.id, other.id);
+  assert.equal(result.outcome, 'substituted');
+});
+
+test('literal recovery cannot reinterpret unparsed artist conditions through fuzzy resolution', async () => {
+  const f = fixture();
+  const result = await resolveDirectRequest({ ...songRequest, artist: 'Queen in French', literal: true }, f.deps);
+  assert.equal(result.track, null);
+  assert.equal(result.outcome, 'no-match');
+  assert.deepEqual(f.albums, []);
+  assert.equal(f.fallbackCalls(), 0);
+});
+
+test('literal recovery does not substitute for an unverified title', async () => {
+  const f = fixture();
+  const result = await resolveDirectRequest({ title: 'Bohemian Rhapsody in French', artist: 'Queen', literal: true }, f.deps);
+  assert.equal(result.track, null);
+  assert.equal(result.outcome, 'no-match');
+  assert.equal(f.fallbackCalls(), 0);
+});
+
+test('an unmet artist mood preference is an explicit compromise', async () => {
+  const f = fixture();
+  const result = await resolveDirectRequest({ artist: 'Queen', mood: 'calm' }, f.deps);
+  assert.equal(result.track?.artist, 'Queen');
+  assert.equal(result.outcome, 'substituted');
+  assert.deepEqual(result.unmetPreferences, ['mood']);
+});
+
+test('a named recording stays selected when its mood cannot be verified', async () => {
+  const f = fixture();
+  f.deps.moodSongs = async () => { throw Error('mood database unavailable'); };
+  const result = await resolveDirectRequest({ ...songRequest, mood: 'calm' }, f.deps);
+  assert.equal(result.track?.id, exact.id);
+  assert.equal(result.outcome, 'substituted');
+  assert.deepEqual(result.unmetPreferences, ['mood']);
+  assert.equal(result.errors.length, 1);
+});
+
+test('a verified mood remains a successful match for a named recording', async () => {
+  const f = fixture();
+  f.deps.moodSongs = async () => [exact];
+  assert.equal((await resolveDirectRequest({ ...songRequest, mood: 'calm' }, f.deps)).outcome, 'matched');
+});
 
 function fixture(overrides: Partial<RequestCatalog> = {}) {
   const searches: Array<{ query: string; songOffset: number }> = [];
@@ -29,8 +123,8 @@ function fixture(overrides: Partial<RequestCatalog> = {}) {
   return { deps, searches, albums, fallbackCalls: () => fallbackCalls };
 }
 
-for (const attributes of [{ genre: 'rock' }, { language: 'English' }, { sort: 'latest' }, { mood: 'celebratory', genre: 'rock', language: 'English' }]) {
-  test(`a named recording outranks inferred ${JSON.stringify(attributes)}`, async () => {
+for (const attributes of [{ genre: 'rock' }, { sort: 'latest' }]) {
+  test(`a named recording retains its identity with ${JSON.stringify(attributes)}`, async () => {
     const f = fixture();
     const r = await resolveDirectRequest({ ...songRequest, ...attributes }, f.deps);
     assert.equal(r.track?.id, exact.id);
@@ -186,7 +280,8 @@ test('artist, genre and language requirements are combined before a broad pick',
 test('unverified language text matches do not masquerade as a language match', async () => {
   const f = fixture({ resolveGenreName: async () => null });
   const r = await resolveDirectRequest({ language: 'French', search_terms: [] }, f.deps);
-  assert.equal(r.outcome, 'substituted');
+  assert.equal(r.outcome, 'no-match');
+  assert.equal(r.track, null);
 });
 
 test('mood preference ranks matching artist tracks without dropping the artist', async () => {
