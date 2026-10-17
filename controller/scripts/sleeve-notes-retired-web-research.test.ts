@@ -37,7 +37,7 @@ test('retirement stops pending requests and withdraws web stories and Review ite
     (id,source_document_id,fingerprint,entity_type,entity_id,category,topic,wording,evidence,original_json,rejection_reason,created_at,updated_at)
     VALUES (?,?,'fact','artist','artist','artist-stories','studio','Band recorded in a barn.','Band recorded in a barn.','{}','editorial',?,?)`).run(provider, provider, now, now);
   db.pragma('user_version=50'); migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }), 53);
+  assert.equal(db.pragma('user_version', { simple: true }), 54);
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM sleeve_operator_research WHERE state='cancelled'").get() as {n:number}).n, 3);
   assert.equal((db.prepare("SELECT state FROM sleeve_operator_research WHERE id='complete'").get() as {state:string}).state, 'complete');
   assert.deepEqual(db.prepare('SELECT id,enabled FROM sleeve_claims ORDER BY id').all(), [{id:'web-operator',enabled:0},{id:'wikipedia',enabled:1}]);

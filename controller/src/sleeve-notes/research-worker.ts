@@ -1,3 +1,4 @@
+import { nextAiringReview, runAiringReview } from './airing-review.js';
 import { runResearchDatabaseWork } from './db.js';
 import { createHash } from 'node:crypto';
 import * as settings from '../settings.js';
@@ -12,7 +13,6 @@ import {
   MAX_CANDIDATES_PER_ARTIST_RESEARCH,
   RELEASE_GROUP_NOTE_CATEGORIES,
   wikipediaNoteCategories,
-  planWikipediaResearchSections,
   screenResearchCandidates,
   usefulRepairCandidate,
   splitResearchSource,
@@ -35,7 +35,6 @@ const EMPTY_STATION_SLOW_INTERVAL_ABOVE_MS = 20_000;
 const EMPTY_STATION_INTERVAL_SAMPLE_COUNT = 16;
 const MAX_RETAINED_CLAIMS_PER_ARTICLE = MAX_CANDIDATES_PER_ARTIST_RESEARCH;
 const MAX_RECYCLE_CANDIDATES_PER_ARTICLE = 2;
-const ARTICLE_INDEX_CANDIDATES = 8;
 const FIRST_ENCOUNTER_CHECK_HEADROOM_MS = 35_000;
 const FIRST_ENCOUNTER_TWO_CHECKS_MS = 15_000;
 const ARTICLE_INDEX_TIMEOUT_MS = 75_000;
@@ -438,23 +437,6 @@ export function requestWikipediaRefresh(mode: WikipediaRefreshMode): {
 
 export type ResearchQueuePhase = 'ready' | 'first-play' | 'next-play'
   | 'time-delay' | 'running' | 'unavailable';
-
-/** Read-only queue reasons for the admin Overview. Use the same play gates as
- * the worker so a durable `queued` or `retry-at` state is not called ready. */
-export function researchQueueOverview(now = new Date()): Array<{
-  provider: string; capability: string; phase: ResearchQueuePhase; jobs: number;
-}> {
-  const counts = new Map<string, { provider: string; capability: string; phase: ResearchQueuePhase; jobs: number }>();
-  for (const item of researchQueueDetails(now)) {
-    const key = `${item.provider}\u0000${item.capability}\u0000${item.phase}`;
-    const entry = counts.get(key) ?? {
-      provider: item.provider, capability: item.capability, phase: item.phase, jobs: 0,
-    };
-    entry.jobs++;
-    counts.set(key, entry);
-  }
-  return [...counts.values()];
-}
 
 /** Individual queue rows for the admin Overview, using the same phase rules. */
 export function researchQueueDetails(now = new Date(), allowIdleRescans = false): Array<{
@@ -983,9 +965,13 @@ export class ResearchWorker {
     const allowIdleRescans = this.quietGate.isEmptyMaintenanceAllowed?.() === true;
     alignResearchPacing(this.researchPairIntervalMs());
     const queued = nextPlayDrivenResearchJob(allowIdleRescans);
-    if (!queued) return false;
+    if (!queued) {
+      const review=nextAiringReview();
+      if (!review || !this.reservePacedResearchSlot()) return false;
+      this.running=true;
+      try {return await runAiringReview(review,this.quietGate);} finally {this.running=false;}
+    }
     const geniusAlbumJob = queued.capability === 'extract-genius-album';
-    const playDriven = true;
     const albumJob = queued.subjectType === 'release';
     const entityType = albumJob ? 'release-group' : 'artist';
     const sourceProvider = geniusAlbumJob ? 'genius' : 'wikipedia';
@@ -995,8 +981,7 @@ export class ResearchWorker {
       || queued.capability === 'extract-wikipedia-release-group') {
       return this.processWikipediaChunk(queued, source);
     }
-    const sections = geniusAlbumJob ? splitResearchSource(source.content)
-      : planWikipediaResearchSections(source.content, albumJob ? 'album' : 'artist');
+    const sections = splitResearchSource(source.content);
     if (!sections.length) { repository.finishResearchJob(queued.id, 'complete'); return true; }
     const progress = researchProgress(queued.id, source.id);
     const nextPairAt = this.reservePacedResearchSlot();
@@ -1014,10 +999,8 @@ export class ResearchWorker {
           id: `${queued.id}:full`,
           document: { ...source, text: source.content },
           subjectKind: albumJob ? 'album' as const : 'artist' as const,
-          categories: geniusAlbumJob ? RELEASE_GROUP_NOTE_CATEGORIES
-            : playDriven && !albumJob ? ['artist-stories', 'milestones', 'recognition'] as const
-              : wikipediaNoteCategories(albumJob ? 'release-group' : 'artist'),
-          maxCandidates: geniusAlbumJob ? MAX_CANDIDATES_PER_ARTIST_RESEARCH : ARTICLE_INDEX_CANDIDATES,
+          categories: RELEASE_GROUP_NOTE_CATEGORIES,
+          maxCandidates: MAX_CANDIDATES_PER_ARTIST_RESEARCH,
           requireShortWording: false,
           airtimeContext: repository.airtimeContextForResearchJob(queued) ?? undefined,
         };
@@ -1025,34 +1008,23 @@ export class ResearchWorker {
         const timeout = setTimeout(() => {
           if (!controller.signal.aborted) controller.abort(new ResearchDeferredError('research-budget'));
         }, ARTICLE_INDEX_TIMEOUT_MS);
-        const quietMonitor = playDriven ? setInterval(() => {
+        const quietMonitor = setInterval(() => {
           if (!controller.signal.aborted && !this.quietGate.isQuiet()) {
             controller.abort(new ResearchDeferredError(researchAllowed() ? 'broadcast-priority' : 'station-token-cap'));
           }
-        }, 1_000) : null;
+        }, 1_000);
         try {
           let usedThisEncounter = false;
           let firstEncounterCheckSize = 1;
-          const existingPool = rankedArticleCandidates(progress.candidateSections);
-          const needsIndex = geniusAlbumJob ? progress.rankedClaimIds === null
-            : progress.nextSection < sections.length
-              && (progress.rankedClaimIds === null || progress.checkCursor >= existingPool.length);
+          const needsIndex = progress.rankedClaimIds === null;
           if (needsIndex) {
             const startedAt = Date.now();
-            const sectionJob = geniusAlbumJob ? fullJob : {
-              ...fullJob, id: `${queued.id}:section:${progress.nextSection + 1}`,
-              document: { ...fullJob.document, text: sections[progress.nextSection] },
-            };
-            const extracted = geniusAlbumJob
-              ? await this.researcher.extract(fullJob, controller.signal)
-              : this.researcher.indexArticle
-                ? await this.researcher.indexArticle(sectionJob, controller.signal)
-                : await this.researcher.extract(sectionJob, controller.signal);
-            const screened = screenResearchCandidates(sectionJob, extracted);
+            const extracted = await this.researcher.extract(fullJob, controller.signal);
+            const screened = screenResearchCandidates(fullJob, extracted);
             progress.candidateSections.push(screened.accepted);
-            progress.nextSection = geniusAlbumJob ? sections.length : progress.nextSection + 1;
+            progress.nextSection = sections.length;
             const pool = rankedArticleCandidates(progress.candidateSections);
-            progress.rankedClaimIds = geniusAlbumJob && pool.length > 1
+            progress.rankedClaimIds = pool.length > 1
               ? await this.researcher.rankForAirtime?.(fullJob, screened.accepted, controller.signal) ?? []
               : pool.map((_, index) => `C${String(index + 1).padStart(3, '0')}`);
             progress.playsConsumed++;
@@ -1062,15 +1034,12 @@ export class ResearchWorker {
             deferResearchSection(queued.id, source.id, progress, nextPairAt);
             if (screened.accepted.length &&
               (Date.now() - startedAt > FIRST_ENCOUNTER_CHECK_HEADROOM_MS || !this.quietGate.isQuiet())) return true;
-            if (!screened.accepted.length && progress.nextSection < sections.length) return true;
           }
           const pool = rankedArticleCandidates(progress.candidateSections);
           const ranked = orderArticleCandidates(pool, progress.rankedClaimIds ?? []);
           const approvedSoFar = progress.acceptedSections.reduce((count, batch) => count + batch.length, 0);
           const batch = ranked.slice(progress.checkCursor,
-            progress.checkCursor + (playDriven
-              ? usedThisEncounter ? firstEncounterCheckSize : 1
-              : MAX_RETAINED_CLAIMS_PER_ARTICLE));
+            progress.checkCursor + (usedThisEncounter ? firstEncounterCheckSize : 1));
           if (batch.length && !this.quietGate.isQuiet()) {
             deferResearchSection(queued.id, source.id, progress, nextPairAt);
             return true;
@@ -1097,14 +1066,12 @@ export class ResearchWorker {
           progress.acceptedSections.push(sectionResult.accepted);
           progress.rejected.push(...sectionResult.rejected);
           progress.checkCursor += batch.length;
-          if (playDriven && batch.length) {
-            if (!usedThisEncounter) progress.playsConsumed++;
-          }
+          if (batch.length && !usedThisEncounter) progress.playsConsumed++;
           const retainedSoFar = approvedSoFar + sectionResult.accepted.length;
           if (retainedSoFar < MAX_RETAINED_CLAIMS_PER_ARTICLE
             && (progress.checkCursor < ranked.length || progress.nextSection < sections.length)) {
             open().transaction(() => {
-              if (playDriven && sectionResult.accepted.length) repository.retainResearchClaims({
+              if (sectionResult.accepted.length) repository.retainResearchClaims({
                 entityType, entityId: source.entityId, sourceDocumentId: source.id,
                 candidates: sectionResult.accepted,
               });
@@ -1150,7 +1117,7 @@ export class ResearchWorker {
           }).immediate();
           const rejectedCount = progress.rejected.length + validated.rejected.length;
           console.log(`[sleeve-notes] Research retained ${validated.accepted.length} claim${validated.accepted.length === 1 ? '' : 's'} (${rejectedCount} rejected across ${sections.length} source sections; ${recycleCandidates.length} sent to Recycle Bin)`);
-          if (geniusAlbumJob && rejectedCount > 0) {
+          if (rejectedCount > 0) {
             const reasons = new Map<string, number>();
             for (const { reason } of [...progress.rejected, ...validated.rejected]) {
               reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
@@ -1160,7 +1127,7 @@ export class ResearchWorker {
           }
         } finally {
           clearTimeout(timeout);
-          if (quietMonitor) clearInterval(quietMonitor);
+          clearInterval(quietMonitor);
         }
       } catch (err: unknown) {
         if (err instanceof ResearchDeferredError && err.reason === 'station-token-cap') {
@@ -1169,11 +1136,8 @@ export class ResearchWorker {
           console.log('[sleeve-notes] Research paused by station token budget; job retained');
           return true;
         }
-        if (playDriven) {
-          progress.playsConsumed = Math.max(progress.playsConsumed,
-            playedEncounterCount(queued));
-          deferResearchSection(queued.id, source.id, progress, nextPairAt);
-        } else repository.finishResearchJob(queued.id, 'failed');
+        progress.playsConsumed = Math.max(progress.playsConsumed, playedEncounterCount(queued));
+        deferResearchSection(queued.id, source.id, progress, nextPairAt);
         console.warn(`[sleeve-notes] Research failed: ${err instanceof Error ? err.message : String(err)}`);
       }
       return true;

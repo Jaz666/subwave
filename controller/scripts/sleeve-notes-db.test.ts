@@ -17,7 +17,7 @@ test('Sleeve Notes migration creates its isolated durable model', () => {
   ];
   for (const table of originalTables) assert.ok(tables.includes(table), `missing table ${table}`);
   assert.ok(!tables.includes('tracks'), 'station library tables must stay outside the Sleeve Notes store');
-  assert.equal(db.pragma('user_version', { simple: true }), 53);
+  assert.equal(db.pragma('user_version', { simple: true }), 54);
   db.close();
 });
 
@@ -48,7 +48,7 @@ test('replacement migration clears populated experiment rows with foreign keys e
 
   migrate(db);
 
-  assert.equal(db.pragma('user_version', { simple: true }), 53);
+  assert.equal(db.pragma('user_version', { simple: true }), 54);
   assert.equal((db.prepare('SELECT COUNT(*) AS count FROM entities').get() as { count: number }).count, 0);
   assert.equal((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sleeve_research_jobs'").get() as { name: string }).name, 'sleeve_research_jobs');
   db.close();
@@ -85,6 +85,6 @@ test('speech diagnostics upgrade preserves historical signal and timestamps with
   assert.equal(row.tts_rendered_at, null);
   assert.equal(row.tts_engine, null);
   migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }), 53);
+  assert.equal(db.pragma('user_version', { simple: true }), 54);
   db.close();
 });

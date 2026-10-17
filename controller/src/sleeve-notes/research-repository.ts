@@ -931,13 +931,6 @@ export function retainResearchClaims(input: {
   transaction();
 }
 
-export function clearAutomaticWikipediaClaims(entityType: 'artist' | 'release-group', entityId: string): number {
-  return open().prepare(`UPDATE sleeve_claims SET enabled = 0, updated_at = ?
-    WHERE entity_type = ? AND entity_id = ? AND operator_state = 'auto'
-      AND source_document_id IN (SELECT id FROM sleeve_source_documents WHERE provider = 'wikipedia')`)
-    .run(new Date().toISOString(), entityType, entityId).changes;
-}
-
 export function replaceAutomaticWikipediaClaimsInDatabase(db: Database.Database, input: {
   entityType: 'artist' | 'release-group';
   entityId: string;
@@ -1773,9 +1766,11 @@ export function researchStoreCoverage(): ResearchStoreCoverage {
 
 export interface ResearchStoreReadout extends ResearchStoreSummary {
   artists: Array<{ name: string; musicbrainzId: string | null; sources: number; claims: number }>;
-  claims: Array<{ id: string; entityType: ResearchEntityType; entityId: string; artist: string | null; recording: string | null; category: string; topic: string; wording: string; shortWording: string; evidence: string; sourceUrl: string; provider: string }>;
+  claims: Array<{ id: string; enabled?: number; operatorState?: string; entityType: ResearchEntityType; entityId: string; artist: string | null; recording: string | null; category: string; topic: string; wording: string; shortWording: string; evidence: string; sourceUrl: string; provider: string }>;
   recentSparks: Array<{
     id: string;
+    segmentId:string|null;
+    consumer:string;
     entityType: ResearchEntityType;
     entityId: string;
     sourceUrl: string;
@@ -1824,13 +1819,15 @@ export function researchStoreSummaryInDatabase(db: Database.Database): ResearchS
     retainedClaims: count('SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1'),
     airtimeClaims: count("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1 AND category <> 'credits'"),
     creditClaims: count("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1 AND category = 'credits'"),
-    recycleBinPending: count("SELECT COUNT(*) AS count FROM sleeve_moderation_candidates WHERE status = 'pending'"),
+    recycleBinPending: count("SELECT COUNT(*) AS count FROM sleeve_moderation_candidates WHERE status = 'pending'")
+      + (db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_airing_reviews'").get()
+        ? count("SELECT COUNT(*) AS count FROM sleeve_airing_reviews WHERE state IN ('queued','running','ready')") : 0),
     researchJobs: count('SELECT COUNT(*) AS count FROM sleeve_research_jobs'),
   };
 }
 
 /** Paged search over the retained collection, rather than a recent readout slice. */
-export function searchResearchStoriesInDatabase(db:Database.Database,input:{search?:string;category?:string;recent?:boolean;limit?:number;offset?:number}={}) {
+export function searchResearchStoriesInDatabase(db:Database.Database,input:{search?:string;category?:string;recent?:boolean;withdrawn?:boolean;limit?:number;offset?:number}={}) {
   const limit=Math.max(1,Math.min(200,Math.trunc(input.limit??30)));
   const offset=Math.max(0,Math.trunc(input.offset??0));
   const term=(input.search??'').trim().slice(0,120);
@@ -1842,7 +1839,7 @@ export function searchResearchStoriesInDatabase(db:Database.Database,input:{sear
       ORDER BY rg_release.title LIMIT 1),
       CASE WHEN s.provider = 'musicbrainz-series' AND json_valid(s.content)
         THEN json_extract(s.content, '$.memberTitle') END) AS recording,
-    c.id, c.entity_type AS entityType, c.entity_id AS entityId, c.category, c.topic, c.wording, c.short_wording AS shortWording, c.evidence,
+    c.id, c.enabled,c.operator_state AS operatorState, c.entity_type AS entityType, c.entity_id AS entityId, c.category, c.topic, c.wording, c.short_wording AS shortWording, c.evidence,
     s.source_url AS sourceUrl, s.provider FROM sleeve_claims c
     LEFT JOIN sleeve_artists a ON c.entity_type = 'artist' AND c.entity_id = a.id
     LEFT JOIN sleeve_recordings r ON c.entity_type = 'recording' AND c.entity_id = r.id
@@ -1856,7 +1853,7 @@ export function searchResearchStoriesInDatabase(db:Database.Database,input:{sear
         OR (c.entity_type='release-group' AND rel.musicbrainz_release_group_id=c.entity_id)
       ORDER BY rr.release_id,rr.recording_id LIMIT 1)
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
-    WHERE c.enabled = 1`;
+    WHERE ${input.withdrawn?"c.enabled=0 AND c.operator_state<>'deleted'":'c.enabled=1'}`;
   const where=`(? = '' OR instr(lower(COALESCE(artist,'') || ' ' || COALESCE(recording,'') || ' ' || category || ' ' || topic || ' ' || wording),lower(?)) > 0)
     AND (? = '' OR category = ?)`;
   // Recent is a named filter over the latest 80 facts, not the search default.
@@ -1864,7 +1861,7 @@ export function searchResearchStoriesInDatabase(db:Database.Database,input:{sear
   const args=[term,term,category,category];
   const total=(db.prepare(`SELECT COUNT(*) AS n FROM (${rows}) WHERE ${where}`).get(...args) as {n:number}).n;
   const claims=db.prepare(`${rows} WHERE ${where} LIMIT ? OFFSET ?`).all(...args,limit,offset) as ResearchStoreReadout['claims'];
-  const categories=(db.prepare('SELECT DISTINCT category FROM sleeve_claims WHERE enabled=1 ORDER BY category').all() as Array<{category:string}>).map(row=>row.category);
+  const categories=(db.prepare(`SELECT DISTINCT category FROM sleeve_claims WHERE ${input.withdrawn?"enabled=0 AND operator_state<>'deleted'":'enabled=1'} ORDER BY category`).all() as Array<{category:string}>).map(row=>row.category);
   return {claims,total,limit,offset,categories};
 }
 
@@ -1884,7 +1881,8 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
   const claims = searchResearchStoriesInDatabase(db, {limit:capped}).claims;
   const signalColumns = new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map((row) => row.name));
   const signalColumn = (name: string) => signalColumns.has(name) ? `spark.${name}` : 'NULL';
-  const recentSparks = db.prepare(`SELECT spark.id, claim.entity_type AS entityType, claim.entity_id AS entityId, source.source_url AS sourceUrl, attachment.title AS trackTitle,
+  const recentGroup=signalColumns.has('segment_id')?"COALESCE(spark.segment_id,spark.id)":'spark.id';
+  const recentSparks = db.prepare(`SELECT spark.id, ${signalColumn('segment_id')} AS segmentId, spark.consumer, claim.entity_type AS entityType, claim.entity_id AS entityId, source.source_url AS sourceUrl, attachment.title AS trackTitle,
     attachment.artist AS trackArtist, spark.offered_wording AS offeredWording,
     spark.category, spark.topic, spark.detection_status AS detectionStatus,
     ${signalColumn('generated_signal')} AS generatedSignalJson, ${signalColumn('speech_signal')} AS speechSignalJson,
@@ -1900,8 +1898,10 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
     JOIN sleeve_claims claim ON claim.id = spark.claim_id
     JOIN sleeve_source_documents source ON source.id = claim.source_document_id
     LEFT JOIN sleeve_local_attachments attachment ON attachment.local_track_id = spark.local_track_id
-    WHERE spark.offered_wording <> ''
-    ORDER BY spark.supplied_at DESC LIMIT 10`).all() as Array<Omit<ResearchStoreReadout['recentSparks'][number], 'generatedSignal' | 'speechSignal'>
+    WHERE spark.offered_wording <> '' AND ${recentGroup} IN (
+      SELECT ${recentGroup} FROM sleeve_claim_uses spark WHERE spark.offered_wording <> ''
+      GROUP BY ${recentGroup} ORDER BY MAX(spark.supplied_at) DESC,MAX(spark.id) DESC LIMIT 10)
+    ORDER BY spark.supplied_at DESC,spark.id DESC`).all() as Array<Omit<ResearchStoreReadout['recentSparks'][number], 'generatedSignal' | 'speechSignal'>
       & { sourceProvider: string; claimEvidence: string; generatedSignalJson: string | null; speechSignalJson: string | null }>;
   const parseSignal = (raw: string | null): ClaimSignal | null => {
     try { return raw ? JSON.parse(raw) as ClaimSignal : null; } catch { return null; }

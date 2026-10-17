@@ -36,7 +36,7 @@ export function recoverLegacySegmentConversations(db:Database.Database,items:Ite
       if(times.some(time=>!Number.isFinite(time))||Math.max(...times)-Math.min(...times)>1000)return;
       for(const item of targets) {
         if(!turns.some(turn=>turn.ids.includes(String(item.id))&&turn.at===item.airedAt))continue;
-        item.conversation={id:`legacy:${[...ids].sort()[0]}`,expectedLines:null,complete:null,
+        item.conversation={id:`legacy:${[...ids].sort()[0]}`,useIds:ids,expectedLines:null,complete:null,
           lines:turns.map((turn,lineIndex)=>({lineIndex,speakerId:turn.speakerId,speakerName:turn.speakerName,text:turn.text,airedAt:turn.at}))};
       }
     };

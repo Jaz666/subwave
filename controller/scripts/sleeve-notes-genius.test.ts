@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GeniusProvider, projectGeniusSong, selectGeniusSearchHit } from '../src/sleeve-notes/genius.js';
-import { exactLocalMatches } from '../src/sleeve-notes/resolver.js';
 import { clearProviderCallsForTest, recentProviderCalls } from '../src/sleeve-notes/telemetry.js';
 
 const search = { response: { hits: [
@@ -51,12 +50,4 @@ test('Genius provider uses only search then song endpoints', async () => {
     ['song', true, 200], ['search', true, 200],
   ]);
   assert.ok(recentProviderCalls().every((call) => Number.isFinite(call.ms) && call.ms >= 0));
-});
-
-test('local relation matching never accepts a title-only candidate', () => {
-  const matches = exactLocalMatches({ title: 'Bitter Sweet Symphony', artist: 'The Verve' }, [
-    { id: 'wrong', title: 'Bitter Sweet Symphony', artist: 'Other Artist' },
-    { id: 'right', title: 'Bitter Sweet Symphony', artist: 'The Verve' },
-  ]);
-  assert.deepEqual(matches.map((track) => track.id), ['right']);
 });

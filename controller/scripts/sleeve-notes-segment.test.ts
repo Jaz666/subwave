@@ -279,7 +279,7 @@ test('play admission snapshots attribution and migration preserves legacy plays 
  assert.deepEqual(db.prepare("SELECT host_id,host_name FROM sleeve_encounters WHERE source='queue'").get(),{host_id:null,host_name:null});
  db.exec('ALTER TABLE sleeve_encounters DROP COLUMN host_id; ALTER TABLE sleeve_encounters DROP COLUMN host_name; PRAGMA user_version=51;');
  migrate(db);migrate(db);
- assert.equal(db.pragma('user_version',{simple:true}),53);
+ assert.equal(db.pragma('user_version',{simple:true}),54);
  assert.deepEqual(db.prepare("SELECT host_id,host_name,encountered_at FROM sleeve_encounters WHERE source='played'").get(),
   {host_id:null,host_name:null,encountered_at:input.encounteredAt});db.close();
 });
@@ -296,14 +296,14 @@ test('publication failure releases reservations; confirmed air alone populates t
  assert.equal(ids.length,2);assert.equal(heardOnAir().total,0);assert.equal(prepare(db),null);
  const meta={sleeveNotesSegmentUseIds:ids};
  recordSleeveNotesSegmentAir(meta,output.lines[0].text,now);
- // The shelf includes only the fact with a confirmed spoken relation signal.
- assert.equal(heardOnAir().total,1);
+ // Both aired offers belong on the shelf; wording detection is informational.
+ assert.equal(heardOnAir().total,2);
  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM sleeve_claim_uses WHERE consumer='sleeveNotesSegment' AND aired_at IS NOT NULL").get() as {n:number}).n,2);
  const {queue}=await import('../src/broadcast/queue.js');
  // Exercise the actual queue callback too, without TTS or mixer side effects.
  await queue.onSpoken({aired:Promise.resolve(now),voiceId:'segment-test',clipMs:1000},
    {kind:'sleeve-notes',channel:'say',text:output.lines[0].text,meta,persona:host});
- assert.equal(heardOnAir().total,1);
+ assert.equal(heardOnAir().total,2);
 });
 
 test('a model pass creates no reservations; accepted wording is not editorially vetoed',async()=>{

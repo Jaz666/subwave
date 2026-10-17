@@ -17,7 +17,7 @@ type TrackSummary = {
 type LiveSummary = { onAir: TrackSummary | null; nextUp: TrackSummary | null };
 type SegmentRun = { queued: boolean; deferred: boolean; reason: string | null };
 
-export default function NotesLiveSummary({ adminFetch, enabled }: { adminFetch: AdminFetch; enabled: boolean }) {
+export default function NotesLiveSummary({ adminFetch, enabled, children }: { adminFetch: AdminFetch; enabled: boolean; children?: ReactNode }) {
   const live = useAdminQuery<LiveSummary>({
     key: ['sleeve-notes', 'live-summary'], adminFetch,
     request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/live-summary', undefined, signal),
@@ -36,21 +36,22 @@ export default function NotesLiveSummary({ adminFetch, enabled }: { adminFetch: 
     title="Run a Sleeve Notes segment for the on-air track, bypassing automatic enablement, DJ assignments and cooldowns."
     className={cn('seg-pad seg-pad--slim min-h-9 sm:min-h-0', run.isPending && 'is-firing')}>
     <span className="seg-led" aria-hidden />
-    <span className="seg-label">{run.isPending ? 'Working…' : 'Run now'}</span>
+    <span className="seg-label">{run.isPending ? 'Working…' : 'Run Segment'}</span>
   </button>;
   return <div className="space-y-2">
-    <div className="grid items-start gap-4 md:grid-cols-2">
+    <div className="grid items-stretch gap-4 md:grid-cols-2 [&>.card]:min-h-[19rem]">
       <Summary title="On air" item={live.data?.onAir} loading={live.isLoading} unavailable={!!live.error} enabled={enabled} action={runButton} />
       <Summary title="Next up" item={live.data?.nextUp} loading={live.isLoading} unavailable={!!live.error} enabled={enabled} />
+      {children}
     </div>
     {live.error && <p role="status" className="text-xs text-muted">Live summaries could not be refreshed. <button type="button" className="text-primary hover:underline" onClick={() => void live.refetch()}>Retry</button></p>}
   </div>;
 }
 function Summary({ title, item, loading, unavailable, enabled, action }: { title: string; item?: TrackSummary | null; loading: boolean; unavailable: boolean; enabled: boolean; action?: ReactNode }) {
   const spark = item?.spark;
-  const status = spark?.passReason ? 'DJ passed on this Spark'
-    : spark?.qualityConcern ? 'DJ flagged this Spark'
-      : spark?.airedAt ? spark.factDetected && spark.renderedAt ? 'Story confirmed in speech' : 'Speech aired · story use not confirmed'
+  const status = spark?.airedAt ? spark.factDetected && spark.renderedAt ? 'Aired · Spark use detected' : 'Aired · Spark use not detected'
+    : spark?.passReason ? 'DJ passed on this Spark'
+      : spark?.qualityConcern ? 'DJ flagged this Spark'
         : spark?.renderedAt ? 'DJ speech prepared' : item?.djLine ? 'DJ line drafted' : 'Link not prepared yet';
   return <Card title={title} sub={unavailable && item ? 'Last received summary · refresh unavailable' : undefined} right={action}>
     {loading && !item ? <p className="text-[13px] text-muted">Reading the station…</p>
@@ -62,6 +63,8 @@ function Summary({ title, item, loading, unavailable, enabled, action }: { title
             <Eyebrow>Story Spark</Eyebrow>
             <p className="mt-1 text-[13px] leading-relaxed break-words">{spark?.wording || (item.availability ? `${item.availability.matchingCount} stored Spark${item.availability.matchingCount === 1 ? '' : 's'} match${item.availability.matchingCount === 1 ? 'es' : ''} this track.` : 'Spark availability is not known for this track.')}</p>
             {spark && <p className="mt-2 text-xs text-muted">{status}</p>}
+            {spark?.airedAt && spark.passReason && <p className="text-xs text-muted">DJ pass: {spark.passReason}</p>}
+            {spark?.airedAt && spark.qualityConcern && <p className="text-xs text-muted">DJ concern: {spark.qualityConcern}</p>}
             {!spark && item.availability && <p className="mt-2 text-xs text-muted">{!enabled ? 'Sleeve Notes is paused.'
               : item.availability.availableCount > 0 ? `${item.availability.availableCount} available for the DJ to consider.`
                 : item.availability.matchingCount > 0 ? 'All are currently on cooldown or reserved.'
@@ -73,7 +76,7 @@ function Summary({ title, item, loading, unavailable, enabled, action }: { title
           </div>
           {item.djLine ? <details className="border-t border-border/60 pt-2 text-xs"><summary className="cursor-pointer">DJ line{spark?.airedAt ? ' · aired' : ' · prepared'}</summary>
             <p className="mt-2 text-[13px] leading-relaxed break-words whitespace-pre-wrap">{item.djLine}</p></details>
-            : <p className="text-xs text-muted">No DJ line has been recorded for this play.</p>}
+            : title==='On air'?<p className="text-xs text-muted">No DJ speech recorded for this play yet.</p>:null}
         </div>}
   </Card>;
 }

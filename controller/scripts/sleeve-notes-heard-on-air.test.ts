@@ -47,25 +47,65 @@ const defaults = settings.getDefaults();
 const configure = (enabled: boolean) => store.setCache({ ...defaults, djBehaviour: { ...defaults.djBehaviour, extendedSleeveNotes: enabled } });
 configure(true);
 
-test('the shelf requires actual rendered speech evidence and confirmed air', async () => {
+test('the shelf includes confirmed rendered speech regardless of wording detection', async () => {
   const page = heardOnAir();
-  assert.equal(page.total, 1);
-  const item = page.items[0] as { id: string; spokenText: string; artist: string; title: string };
+  assert.equal(page.total, 4);
+  assert.deepEqual(new Set(page.items.map(item=>item.id)),new Set(['aired','passed','legacy','bad-json']));
+  const item = page.items.find(item=>item.id==='aired') as { id: string; spokenText: string; artist: string; title: string };
   assert.equal(item.id, 'aired'); assert.equal(item.spokenText, spoken);
   assert.equal(item.artist, 'Band'); assert.equal(item.title, 'Song');
   const response = await fetch(base); assert.equal(response.status, 200);
-  assert.equal((await response.json() as { total: number }).total, 1);
+  assert.equal((await response.json() as { total: number }).total, 4);
   assert.equal((await post('generated-only', { story: 'good', delivery: null, note: '' })).status, 404);
+});
+
+test('Spark usage hides aired greetings with unused offers while keeping all history accessible', async () => {
+  assert.deepEqual(heardOnAir(20, 0, true, {usage:'detected'}).items.map(item=>item.id), ['aired']);
+  assert.deepEqual(new Set(heardOnAir(20, 0, true, {usage:'not-detected'}).items.map(item=>item.id)), new Set(['passed','legacy','bad-json']));
+  const response = await fetch(base + '?usage=detected');
+  assert.equal(response.status, 200);
+  const page = await response.json() as {total:number;items:Array<{id:string}>};
+  assert.equal(page.total,1);assert.equal(page.items[0].id,'aired');
+  assert.equal(heardOnAir().total,4);
 });
 
 test('the shelf pages confirmed airings in newest-first order', () => {
   const later = new Date(Date.parse(now) + 1000).toISOString();
   insertUse.run('later', now, wording, 'detected', later, spoken, now, signal);
   const first = heardOnAir(1, 0); const second = heardOnAir(1, 1);
-  assert.equal(first.total, 2);
+  assert.equal(first.total, 5);
   assert.equal((first.items[0] as { id: string }).id, 'later');
-  assert.equal((second.items[0] as { id: string }).id, 'aired');
+  assert.notEqual((second.items[0] as { id: string }).id, 'later');
   db.prepare("DELETE FROM sleeve_claim_uses WHERE id = 'later'").run();
+});
+
+test('filters search the full history before paging and keep matching segments complete', async () => {
+  const old = new Date(Date.now() - 10 * 86400000).toISOString();
+  insertUse.run('old-airing', old, 'A distinctive old Spark.', 'detected', old, 'An old introduction.', old, signal);
+  insertUse.run('segment-a', now, 'Only this Spark mentions a lighthouse.', 'detected', now, 'First contribution.', now, signal);
+  insertUse.run('segment-b', now, 'A second offered Spark.', 'not-detected', now, 'Second contribution.', now, null);
+  db.prepare("UPDATE sleeve_claim_uses SET consumer='sleeveNotesSegment',segment_id='filter-segment' WHERE id IN ('segment-a','segment-b')").run();
+  db.prepare("INSERT INTO sleeve_segment_lines VALUES ('filter-segment',0,1,'guest','Guest','A guest mentions the unexpected setting.',?)").run(now);
+  try {
+    const page = heardOnAir(1, 0, true, {search: 'LIGHTHOUSE', kind: 'segment', period: '24h'});
+    assert.equal(page.conversationTotal, 1); assert.equal(page.total, 2);
+    assert.equal(heardOnAir(20, 0, true, {kind:'segment', usage:'detected'}).total, 2, 'one detected Spark retains the full segment');
+    assert.equal(heardOnAir(20, 0, true, {kind:'segment', usage:'not-detected'}).total, 0, 'a segment with detected use is not an unused exchange');
+    assert.deepEqual(new Set(page.items.map(item=>item.id)), new Set(['segment-a','segment-b']));
+    assert.equal(heardOnAir(1, 1, true, {search: 'lighthouse'}).items.length, 0);
+    assert.equal(heardOnAir(20, 0, true, {search: 'unexpected setting'}).total, 2, 'search includes guest turns without Spark attribution');
+    assert.equal(heardOnAir(20, 0, true, {search: 'distinctive old'}).total, 1);
+    assert.equal(heardOnAir(20, 0, true, {search: 'distinctive old', period: '7d'}).total, 0);
+    assert.equal(heardOnAir(20, 0, true, {search: 'distinctive old', period: '30d'}).total, 1);
+    assert.equal(heardOnAir(20, 0, true, {kind: 'link'}).total, 5);
+    assert.equal(heardOnAir(20, 0, true, {search: '%'}).total, 0, 'search treats wildcard characters literally');
+    const response = await fetch(base + '?search=LIGHTHOUSE&kind=segment&period=24h');
+    const result = await response.json() as {total:number;conversationTotal:number};
+    assert.equal(response.status, 200); assert.equal(result.total, 2); assert.equal(result.conversationTotal, 1);
+  } finally {
+    db.prepare("DELETE FROM sleeve_segment_lines WHERE segment_id='filter-segment'").run();
+    db.prepare("DELETE FROM sleeve_claim_uses WHERE id IN ('old-airing','segment-a','segment-b')").run();
+  }
 });
 
 test('feedback edits count once and delivery concerns do not alter research or Review', async () => {
@@ -89,7 +129,7 @@ test('a specific operator flag creates one durable Review hold and approval rele
   assert.equal(expireRecycleBin(), 0, 'explicit operator work does not expire unnoticed');
   retainResearchClaims({ entityType: 'artist', entityId: 'artist', sourceDocumentId: 'source', candidates: [{ category: 'artist-stories', topic: 'studio', wording, evidence: wording }] });
   assert.equal((db.prepare('SELECT enabled FROM sleeve_claims').get() as { enabled: number }).enabled, 0);
-  assert.equal(heardOnAir().total, 1, 'withdrawal does not erase the historical airing');
+  assert.equal(heardOnAir().total, 4, 'withdrawal does not erase the historical airing');
   await post('aired', { story: 'good', delivery: 'worked', note: '' });
   assert.equal((db.prepare('SELECT enabled FROM sleeve_claims').get() as { enabled: number }).enabled, 0, 'changing rating is not approval');
   const candidate = db.prepare('SELECT id FROM sleeve_moderation_candidates').get() as { id: string };
@@ -111,7 +151,7 @@ test('an adapted offer still targets the unchanged canonical claim snapshot', as
   const response = await post('aired', { story: 'unclear', delivery: null, note: 'The source attribution needs clearer wording.' });
   assert.equal(response.status, 200);
   assert.equal((await response.json() as { review: boolean }).review, true);
-  const item = heardOnAir().items[0] as { wordingAtOffer: string; offeredWording: string };
+  const item = heardOnAir().items.find(item=>item.id==='aired') as { wordingAtOffer: string; offeredWording: string };
   assert.equal(item.wordingAtOffer, wording);
   assert.equal(item.offeredWording, 'An adapted connection introduction.');
 });
@@ -122,7 +162,7 @@ test('historical feedback does not reopen a claim explicitly removed by the oper
   assert.equal(response.status, 200);
   assert.equal((await response.json() as { review: boolean }).review, false);
   assert.equal((db.prepare('SELECT status FROM sleeve_moderation_candidates').get() as { status: string }).status, 'deleted');
-  assert.equal(heardOnAir().total, 1);
+  assert.equal(heardOnAir().total, 4);
 });
 
 test('disabled reads keep history without migrating a v45 cache, and reject feedback writes', async () => {
@@ -138,7 +178,8 @@ test('disabled reads keep history without migrating a v45 cache, and reject feed
     ALTER TABLE sleeve_claim_uses DROP COLUMN track_title;
     ALTER TABLE sleeve_claim_uses DROP COLUMN claim_wording_at_offer;`);
   snapshot.pragma('user_version = 45'); snapshot.close();
-  assert.equal(withCachedRead(() => heardOnAir().total, path), 1);
+  assert.equal(withCachedRead(() => heardOnAir().total, path), 4);
+  assert.equal(withCachedRead(() => heardOnAir(20, 0, true, {search: 'converted barn', kind: 'link'}).total, path), 4);
   assert.deepEqual(withCachedRead(() => heardOnAir().feedbackTotals, path), { story: [], delivery: [] });
   const check = new Database(path, { readonly: true }); assert.equal(check.pragma('user_version', { simple: true }), 45); check.close();
 });

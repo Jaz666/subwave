@@ -8,6 +8,7 @@ export interface SectionTab {
   id: string;
   label: string;
   count?: number;
+  attention?: boolean;
   icon: LucideIcon;
 }
 
@@ -41,7 +42,6 @@ export function SectionTabs({
   return (
     <nav
       className={cn('grid border-t border-ink', COLS[tabs.length] ?? 'grid-cols-2 sm:grid-cols-4')}
-      role="tablist"
       aria-label={label}
     >
       {tabs.map((t) => {
@@ -51,9 +51,9 @@ export function SectionTabs({
           <button
             key={t.id}
             type="button"
-            role="tab"
-            aria-selected={active}
+            aria-current={active ? 'page' : undefined}
             onClick={() => onChange(t.id)}
+            title={t.attention?'Review ready for your input':undefined}
             className={cn(
               'relative flex cursor-pointer items-center justify-center gap-2 px-2 py-[17px] transition-colors sm:gap-2.5 sm:px-3 sm:py-[19px]',
               wraps
@@ -72,8 +72,8 @@ export function SectionTabs({
               {t.label}
             </span>
             {t.count != null && (
-              <span className="min-w-[14px] border border-current px-1.5 py-[2px] text-center font-mono text-[10px] leading-none font-bold">
-                {pad2(t.count)}
+              <span className={cn('min-w-[14px] border border-current px-1.5 py-[2px] text-center font-mono text-[10px] leading-none font-bold',t.attention&&(active?'bg-bg text-ink':'bg-ink text-bg'))}>
+                {pad2(t.count)}{t.attention&&<span className="sr-only"> ready for your input</span>}
               </span>
             )}
           </button>

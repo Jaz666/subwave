@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { open } from './db.js';
+import { sleeveNotesReviewSchema } from '../schemas/sleeve-notes-feedback.js';
 import { exemptFromAutomaticRecycleBin } from './recycle-policy.js';
 import {
   RELEASE_GROUP_NOTE_CATEGORIES, SLEEVE_NOTE_CATEGORIES,
@@ -26,12 +27,9 @@ function reviewedWording(edit: Editable, row: Record<string, unknown>): Research
   const categories = row.entity_type === 'release-group'
     ? RELEASE_GROUP_NOTE_CATEGORIES : SLEEVE_NOTE_CATEGORIES;
   if (!categories.includes(category as ResearchCandidate['category'])) throw new Error('Choose a supported category');
-  if (topic.length < 2 || topic.length > 100) throw new Error('Topic must be 2–100 characters');
-  if (wording.length < 8 || wording.length > 360 || !/[.!?][”"']?$/u.test(wording)) {
-    throw new Error('Full story must be a complete sentence under 360 characters');
-  }
-  if (evidence.length < 24 || evidence.length > 900
-    || !normalized(String(row.content)).includes(evidence)) {
+  const checked = sleeveNotesReviewSchema.safeParse({ category, topic, wording, shortWording, evidence });
+  if (!checked.success) throw new Error(checked.error.issues[0]!.message);
+  if (!normalized(String(row.content)).includes(evidence)) {
     throw new Error('Supporting passage must be an exact excerpt from the saved source (24–900 characters)');
   }
   if (shortWording && (shortWording.length < 4 || shortWording.length > 140
@@ -128,15 +126,40 @@ export function sendClaimToReview(id: string): { id: string } {
   }).immediate();
 }
 
+/** Availability is independent of a queued or dismissed AI finding. */
+export function setClaimAvailability(id: string, action: 'withdraw'|'restore'): void {
+  const db=open();
+  db.transaction(()=>{
+    const claim=db.prepare('SELECT * FROM sleeve_claims WHERE id=?').get(id) as Record<string,unknown>|undefined;
+    if (!claim) throw new Error('Claim not found');
+    if (claim.operator_state==='deleted') throw new Error('This story has already been deleted');
+    if (action==='restore') {
+      moderateExistingClaim(id,'approved',{category:claim.category as ResearchCandidate['category'],topic:String(claim.topic),
+        wording:String(claim.wording),evidence:String(claim.evidence),shortWording:String(claim.short_wording??'')});
+      return;
+    }
+    if (claim.enabled===0&&claim.feedback_hold===1) return;
+    const now=new Date().toISOString();
+    db.prepare('UPDATE sleeve_claims SET enabled=0,feedback_hold=1,updated_at=? WHERE id=?').run(now,id);
+    db.prepare(`INSERT INTO sleeve_claim_history(id,claim_id,action,actor,before_json,after_json,created_at)
+      VALUES (?,?,'withdrawn',?,?,NULL,?)`).run(randomUUID(),id,actor,JSON.stringify(claim),now);
+  }).immediate();
+}
+
 /** Remove expired, untouched Recycle Bin items while keeping a non-prose suppression key. */
 export function expireRecycleBin(now = new Date()): number {
   const db = open();
   const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const expiredAt = now.toISOString();
+  const flagged=db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_airing_reviews'").get()
+    ? `AND NOT EXISTS (SELECT 1 FROM sleeve_airing_reviews review WHERE json_extract(review.context_json,'$.kind')='fact'
+        AND json_extract(review.context_json,'$.sparks[0].claimId')=sleeve_moderation_candidates.claim_id)` : '';
   return db.transaction(() => {
     const rows = db.prepare(`SELECT id, claim_id AS claimId, entity_type AS entityType, entity_id AS entityId, fingerprint
       FROM sleeve_moderation_candidates WHERE status = 'pending' AND bin_entered_at < ?
-        AND rejection_origin NOT IN ('operator-feedback', 'operator-review')`)
+        AND rejection_origin NOT IN ('operator-feedback', 'operator-review')
+        AND NOT EXISTS (SELECT 1 FROM sleeve_claims held WHERE held.id=sleeve_moderation_candidates.claim_id AND held.feedback_hold=1)
+        ${flagged}`)
       .all(cutoff) as Array<{ id: string; claimId: string | null; entityType: string; entityId: string; fingerprint: string }>;
     const suppress = db.prepare(`INSERT OR IGNORE INTO sleeve_expired_candidate_fingerprints
       (entity_type, entity_id, fingerprint, expired_at) VALUES (?, ?, ?, ?)`);
@@ -212,10 +235,6 @@ export function recordLiveDjRejection(claimId: string, opportunityId: string, re
   }).immediate();
 }
 
-export function dismissedCandidate(sourceDocumentId: string, candidate: ResearchCandidate): boolean {
-  return reviewedCandidate(sourceDocumentId, candidate, 'deleted');
-}
-
 export function handledCandidate(sourceDocumentId: string, candidate: ResearchCandidate): boolean {
   return reviewedCandidate(sourceDocumentId, candidate);
 }
@@ -231,16 +250,14 @@ export function markCandidateRetained(sourceDocumentId: string, candidate: Resea
       new Date().toISOString(), sourceDocumentId, candidateFingerprint(candidate));
 }
 
-function reviewedCandidate(sourceDocumentId: string, candidate: ResearchCandidate,
-  status?: Decision): boolean {
+function reviewedCandidate(sourceDocumentId: string, candidate: ResearchCandidate): boolean {
   return !!open().prepare(`SELECT 1 FROM sleeve_moderation_candidates m
     JOIN sleeve_source_documents old_source ON old_source.id = m.source_document_id
     JOIN sleeve_source_documents current_source ON current_source.id = ?
     WHERE old_source.entity_type = current_source.entity_type
       AND old_source.entity_id = current_source.entity_id
-      AND m.fingerprint = ? AND m.status ${status ? '= ?' : "IN ('approved', 'deleted')"}`)
-    .get(...(status ? [sourceDocumentId, candidateFingerprint(candidate), status]
-      : [sourceDocumentId, candidateFingerprint(candidate)]));
+      AND m.fingerprint = ? AND m.status IN ('approved', 'deleted')`)
+    .get(sourceDocumentId, candidateFingerprint(candidate));
 }
 
 export function suppressedTopic(entityType: string, entityId: string, candidate: ResearchCandidate): boolean {
@@ -422,6 +439,11 @@ export function moderateExistingClaim(id: string, action: Decision, edit: Editab
         .run(now, id);
       db.prepare(`UPDATE sleeve_moderation_candidates SET status = 'deleted', updated_at = ?
         WHERE claim_id = ?`).run(now, id);
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_airing_reviews'").get()) {
+        db.prepare(`UPDATE sleeve_airing_reviews SET state='resolved',lease_token=NULL,guidance_approved=0,updated_at=?
+          WHERE json_extract(context_json,'$.kind')='fact' AND json_extract(context_json,'$.sparks[0].claimId')=?
+          AND state IN ('queued','running','ready')`).run(now,id);
+      }
       db.prepare(`INSERT INTO sleeve_claim_history (id, claim_id, action, actor, before_json, after_json, created_at)
         VALUES (?, ?, 'deleted', ?, ?, NULL, ?)`).run(randomUUID(), id, actor, before, now);
       return;
@@ -442,6 +464,8 @@ export function moderateExistingClaim(id: string, action: Decision, edit: Editab
       .run(accepted.category, accepted.topic, accepted.wording, accepted.shortWording ?? '',
         accepted.evidence, now, id);
     db.prepare(`DELETE FROM sleeve_dj_quality_rejections WHERE claim_id = ?`).run(id);
+    db.prepare(`UPDATE sleeve_moderation_candidates SET status='approved',reviewed_at=?,reviewed_by=?
+      WHERE claim_id=? AND status='pending'`).run(now,actor,id);
     db.prepare(`UPDATE sleeve_moderation_candidates SET category = ?, topic = ?, wording = ?,
       short_wording = ?, evidence = ?, updated_at = ? WHERE claim_id = ?`)
       .run(accepted.category, accepted.topic, accepted.wording,

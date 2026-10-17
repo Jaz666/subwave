@@ -9,6 +9,7 @@ import { stripThinking } from '../core/pure.js';
 import { storySparkPacket, sparkSpeechWordBudget, sparkLinkSchema } from './story-spark.js';
 import { detectClaimSignal } from '../../../sleeve-notes/claim-signal.js';
 import { djText } from '../strategy/text.js';
+import { approvedAiringGuidance } from '../../../sleeve-notes/airing-review.js';
 import { djSystem, lengthPhrase } from './system.js';
 import { onAirLocationGrounding } from './grounding.js';
 import { buildContextLines, decoratePrompt, pickTimePhrase, randomSeed } from './context.js';
@@ -478,7 +479,7 @@ export async function generateLink(args: any) {
     // One generation produces both speech and private disposition. No separate
     // critic/rewrite call; provider failover remains owned by djObject.
     const result = sparkLinkSchema.parse(await djObject({
-      system: djSystem(speaker) + '\n\nFor this task, any spoken-only or prose-format instruction applies to the speech field. Follow the required response shape and keep the private Spark decision and reason out of speech.',
+      system: djSystem(speaker) + approvedAiringGuidance() + '\n\nFor this task, any spoken-only or prose-format instruction applies to the speech field. Follow the required response shape and keep the private Spark decision and reason out of speech.',
       prompt, schema: sparkLinkSchema,
       temperature: 0.95, maxOutputTokens: settings.resolveMaxOutputTokens(4000), kind: 'generateLink',
     }));

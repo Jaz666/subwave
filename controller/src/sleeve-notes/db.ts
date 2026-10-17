@@ -8,7 +8,7 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 53;
+export const SCHEMA_VERSION = 54;
 
 let db: Database.Database | null = null;
 const cachedReads = new AsyncLocalStorage<Database.Database>();
@@ -84,6 +84,7 @@ export function prepareBackupRestore(path: string): void {
     candidate.prepare('SELECT use_id FROM sleeve_spark_feedback LIMIT 0').all();
     candidate.prepare('SELECT segment_id FROM sleeve_segment_lines LIMIT 0').all();
     if (candidate.pragma('foreign_key_check').length) throw new Error('Sleeve Notes database has broken references');
+    candidate.prepare("UPDATE sleeve_airing_reviews SET state='queued',lease_token=NULL WHERE state='running'").run();
     candidate.prepare("UPDATE sleeve_research_jobs SET state='queued', run_after=NULL WHERE state='running'").run();
     candidate.pragma('wal_checkpoint(TRUNCATE)');
     candidate.pragma('journal_mode = DELETE');
@@ -1266,6 +1267,17 @@ export function migrate(d: Database.Database): void {
       PRIMARY KEY(segment_id,line_index)
     ); CREATE INDEX IF NOT EXISTS idx_sleeve_claim_uses_segment ON sleeve_claim_uses(segment_id) WHERE segment_id IS NOT NULL;`);
     d.pragma('user_version = 53');
+  }
+
+  if (version < 54) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_airing_reviews (
+      id TEXT PRIMARY KEY, airing_key TEXT NOT NULL UNIQUE, use_id TEXT REFERENCES sleeve_claim_uses(id) ON DELETE SET NULL,
+      state TEXT NOT NULL CHECK(state IN ('queued','running','ready','resolved','dismissed')),
+      context_json TEXT NOT NULL, result_json TEXT, last_error TEXT, lease_token TEXT,
+      guidance_approved INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_airing_review_queue ON sleeve_airing_reviews(state,created_at);`);
+    d.pragma('user_version = 54');
   }
 
 }

@@ -21,7 +21,7 @@ test('every research generation checks the shared hard cap before transport, inc
  store.setCache({...saved,llm:{...saved.llm,dailyTokenCap:10}});addDailyUsage(10);
  let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;throw new Error('Network forbidden');});
  const researcher=new LlmResearcher();const signal=new AbortController().signal;
- for(const run of [()=>researcher.extractWikipediaSparks(job,'lead',signal),()=>researcher.extract(job,signal),()=>researcher.indexArticle(job,signal),
+ for(const run of [()=>researcher.extractWikipediaSparks(job,'lead',signal),()=>researcher.extract(job,signal),
   ()=>researcher.rankForAirtime(job,[candidate,candidate],signal),()=>researcher.reviewForAirtime(job,[candidate],signal)]) {
   await assert.rejects(run,error=>error instanceof ResearchDeferredError && error.reason==='station-token-cap');
  }

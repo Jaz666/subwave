@@ -33,7 +33,9 @@ test('disabled research is included as a WAL-safe snapshot and restores correcti
  db.prepare(`INSERT INTO sleeve_research_jobs(id,provider,subject_type,subject_id,capability,state,created_at,updated_at)
   VALUES ('job','researcher','artist','a','extract-wikipedia','queued',?,?)`).run(at,at);
  assert.ok(existsSync(notes.DB_PATH+'-wal'));
- const tables=['sleeve_source_documents','sleeve_claims','sleeve_claim_uses','sleeve_spark_feedback','sleeve_segment_lines','sleeve_research_jobs'];
+ db.prepare(`INSERT INTO sleeve_airing_reviews(id,airing_key,use_id,state,context_json,created_at,updated_at)
+  VALUES ('review','segment:segment','u','queued','{}',?,?)`).run(at,at);
+ const tables=['sleeve_airing_reviews','sleeve_source_documents','sleeve_claims','sleeve_claim_uses','sleeve_spark_feedback','sleeve_segment_lines','sleeve_research_jobs'];
  const before=tables.map(table=>db.prepare(`SELECT * FROM ${table}`).all());
  const zip=await buildBackupZip();assert.ok(zip.getEntry('sleeve-notes.db'));
  assert.ok(!zip.getEntry('sleeve-notes.db-wal'));
@@ -79,7 +81,9 @@ test('restore refuses active research before applying media and prevents new job
 
 test('restored running jobs return to the queue instead of remaining stranded',async()=>{
  notes.open().prepare("UPDATE sleeve_research_jobs SET state='running' WHERE id='job'").run();
+ notes.open().prepare("UPDATE sleeve_airing_reviews SET state='running',lease_token='interrupted' WHERE id='review'").run();
  const result=await restore(await buildBackupZip());assert.equal(result.status,200);
+ assert.deepEqual(notes.open().prepare("SELECT state,lease_token FROM sleeve_airing_reviews WHERE id='review'").get(),{state:'queued',lease_token:null});
  assert.equal((notes.open().prepare("SELECT state FROM sleeve_research_jobs WHERE id='job'").get() as {state:string}).state,'queued');
 });
 
@@ -90,7 +94,7 @@ test('exporting an older disabled cache never migrates the source database',asyn
  const unchanged=new Database(notes.DB_PATH,{readonly:true});
  assert.equal(unchanged.pragma('user_version',{simple:true}),52);
  assert.equal(unchanged.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get(),undefined);unchanged.close();
- assert.equal((await restore(zip)).status,200);assert.equal(notes.schemaVersion(),53);
+ assert.equal((await restore(zip)).status,200);assert.equal(notes.schemaVersion(),54);
 });
 
 test.after(()=>{server.closeAllConnections();server.close();notes.close();rmSync(root,{recursive:true,force:true});});

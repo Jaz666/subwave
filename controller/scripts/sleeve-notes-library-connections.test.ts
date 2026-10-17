@@ -137,7 +137,7 @@ test('upgrade restores saved extraction rank and leaves original claims and word
     extraction_rank: 2, extraction_section: 3, feedback_hold: 0,
   });
   migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }), 53);
+  assert.equal(db.pragma('user_version', { simple: true }), 54);
   db.close();
 });
 

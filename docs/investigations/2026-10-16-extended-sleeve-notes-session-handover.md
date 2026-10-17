@@ -154,3 +154,74 @@ Immediate Sleeve Notes and Banter now budget total spoken words using recent TTS
 ## PR publication checkpoint
 
 The owner authorized committing and pushing the accumulated follow-ups to PR #5 (`Jaz666/subwave`, head `feat/extended-sleeve-notes`, base `develop`) without another full-suite run. The local checkout branch remains `test-station/sleeve-notes-clean-20261014`; publication uses an explicit refspec to the existing PR head. The PR description records final trusted-Spark policy, automatic Banter replacement, durability and budget fixes, medium-priority UI improvements, TTS measurements and adaptive immediate-discussion timing. Earlier “local/uncommitted” notes describe their original implementation checkpoints; use the PR head and current git status for publication state. No deployment is authorized by this publication request.
+
+## Overview presentation rework
+
+The owner requested an Overview rework based on the supplied screenshots after browser controls remained unavailable in this chat. The current visual style and operational controls are retained. On Air/Next Up cards stretch consistently, the expected empty DJ-line message is omitted for Next Up, and use labels describe Spark matching rather than factual verification. Research activity is a compact summary with an expandable job list. Source coverage and curated lists are nested under Research details, alongside an explanation of saved-fact versus DJ-story counts.
+
+Recent DJ activity now groups by stored segment ID and shows each exchange once with deduplicated retained excerpts, offered Sparks, individual detection labels and source links. Full conversations and feedback remain in Heard on Air, linked from aired exchanges. The readout supplies segment identity; its latest-ten limit applies to groups rather than individual offers, avoiding incomplete Spark lists. No time/title heuristics merge unrelated links. Disabled-feature Overview reads explicitly request cached data.
+
+Focused validation: three controller regressions (including group completeness beyond ten offers) and two rendered-web/status regressions passed, plus controller/web lint/type checking and the admin-query audit/self-tests. No full suite or live browser inspection was performed. Changes are local and uncommitted; both controller and web require owner rebuilds. No settings, feedback or broadcast actions were triggered.
+
+
+## Flagged speech review (17 October, local implementation)
+
+Heard on Air now includes every confirmed rendered-and-aired Spark offer, including links whose wording signal did not detect Spark usage. Detection remains informational. One **Flag for review** action replaces the per-Spark rating form and queues one review for the whole link or segment. Existing historical feedback remains readable; existing manual story review tools remain available.
+
+Flags snapshot aired speech, offered Sparks, bounded source passages and station/presenter instructions current at flag time. Those instructions are not represented as the original broadcast prompt. Native segments retain all confirmed contributions; older conversations use the existing conservative archive recovery. Flagging does not withdraw a Spark.
+
+The existing research worker processes one review only when no eligible research job is ready, using the same durable two-minute/adaptive pacing, quiet gates, collection pause and station token allowance. One structured LLM request diagnoses presentation versus Spark problems, offers draft speech, and may propose reusable generation guidance or a source-supported Spark correction. Interrupted or failed calls return to the queue; stale running leases recover after two minutes. No additional scheduler or automatic publication path was introduced.
+
+Review → Flagged speech offers explicit resolve/dismiss, apply-guidance and apply-correction actions. Nothing is applied automatically. Corrections use the existing moderation/source checks and refuse to overwrite a Spark changed since flagging. The latest five approved guidance notes supplement subsequent Spark links, Sleeve Notes segments and reviews; Station House Rules are not rewritten. Approved notes can be removed from Resolved. Disabled-feature browsing remains read-only. Database schema 54 includes durable review jobs, findings and approvals; backups preserve them and restore running jobs as queued.
+
+Focused review, queue, approval, backup/restore, Heard on Air, segment publication and rendered UI checks were used, with controller/web type checking and targeted lint. No full-suite run or live browser inspection. Changes remain local and require both controller and web rebuilds by the owner; no live station data, settings or broadcasts were changed.
+
+
+### Heard on Air filters
+
+Added artist/track/speech/offered-Spark search, DJ links versus Sleeve Notes segments, and all-time/24-hour/7-day/30-day filters. Filters run over retained history before pagination, keeping every confirmed offer and the transcript of a matching native segment together. Search includes stored guest contributions without Spark attribution and treats wildcard characters literally. Changing or clearing filters resets pagination. Existing cached read-only browsing is retained. Focused controller/API and rendered UI checks cover filtering and segment completeness; no live station changes.
+
+The owner clarified that plain greetings with unused offered Sparks should be hidden by default. Heard on Air now starts with Spark usage → Use detected, with Use not detected and All aired exchanges available. Filtering applies to whole native exchanges: one detected Spark retains the full segment. This is a browsing filter only; airing records, publication policy and review eligibility are unchanged.
+
+Review headings now use the same library-track metadata fallback as Heard on Air when an airing lacks artist/title snapshots; existing queued reviews also gain this display fallback without rewriting their saved evidence. Aired speech, offered Spark and source passage are explicitly labelled, and adapted offered wording is shown rather than silently substituting the canonical claim. Focused review and rendered UI checks cover these fixes.
+
+Flagged-speech review now explicitly evaluates editorial usefulness separately from factual correctness, permits passing over routine identity facts, and avoids padding drafts with biography. Unchanged wording corrections and corrections attached to non-Spark findings are suppressed on generation, cached display and application. Dismissed reviews have an explicit Retry review action, which clears the old result and requeues the same frozen airing through the existing worker/gates using the current review prompt and approved guidance. No review or on-air action was triggered during implementation.
+
+
+## Overview quick monitoring layout (17 October)
+
+Overview now uses a single responsive two-column grid for On Air, Next Up, Recently Aired and Research Activity, with consistent minimum card heights. Recently Aired shows the last two confirmed exchanges with detected Spark use, matching Heard on Air's default filter and excluding unused-offer greetings. It reuses the confirmed-air endpoint and conservative conversation grouping, retains actual speaker turns, and omits research/source detail. Text is clamped to two lines per exchange; a measured overflow check exposes Read more/Read less and lets the card grow. Research Activity shows the first two available queue entries in existing priority order; Show more/Show less expands the remainder. Existing collection/pause and queue status remain visible.
+
+Removed Recent DJ Activity and its unused view helpers. Research Details, including source coverage and curated lists, now lives under Stories → Research details (`tab=stories&storiesView=details`); old `tab=sources` links reach that view. Facts/browse queries are disabled while viewing details; the cached research readout is loaded there instead.
+
+The top Review tab shows a contrasting count when operator input is needed: ready speech findings plus pending story reviews. Queued/running speech reviews do not raise the badge. Counts refresh with the existing status poll and Sleeve Notes query invalidation; disabled-feature status uses read-only cached counts without migrating or creating a store.
+
+Validation: focused confirmed-air/review and rendered Overview checks, controller/web type checking and targeted lint, admin-query audit, and bounded layout scan. No browser tools were available for live viewport inspection. Changes remain local and uncommitted, require owner controller/web rebuilds, and have not changed live station settings, records or broadcasts.
+
+
+## Stored-fact flags and independent withdrawal (17 October)
+
+Stories now uses **Flag for review** for saved facts, through the existing background AI review queue and the same quiet/pacing/token gates as aired exchanges. A saved-fact flag snapshots the canonical fact, source passage and flag-time house rules, without inventing an airing or speech. Fact-only results suppress speech drafts and generation-guidance proposals. Flags are deduplicated per fact version; changed wording/evidence/source/category/topic receives a fresh snapshot, and explicitly flagging a closed fact review requeues it. No schema migration or extra worker was needed: fact jobs use the existing nullable airing reference and a `kind: fact` context.
+
+**Withdraw from DJ use** is a separate action, using the existing feedback hold to prevent research retention from re-enabling the fact. Flagging alone never changes availability. Dismiss, resolve and retry do not restore withdrawn facts. **Stories → Withdrawn facts** (`tab=stories&storiesView=withdrawn`) provides search/category filtering, AI flagging, Restore unchanged and Delete fact. The unified Review page shows current fact availability and offers explicit Correct and restore, Restore unchanged and resolve, and Delete fact and resolve. Stale fact findings cannot restore/delete a later edited version. Deletion preserves the existing suppression keys and closes pending fact-only reviews; aired-exchange evidence remains retained. Restoring/correcting a fact also closes associated older pending manual items. Automatic recycle-bin expiry protects both operator-held and fact-flagged records from erasure. Existing recency/cooldown records are unchanged.
+
+Older manual review items and unretained research proposals remain accessible under a collapsed section, with an AI flag action for items linked to a saved fact. The public saved-fact review route now queues AI review without implicit withdrawal. Availability writes require admin access and an enabled feature; disabled browsing remains cached/read-only.
+
+Validation covers fact flag idempotency, absent speech, withdrawn search, explicit restore/correction, dismissal/retry preservation, research refresh protection, deletion suppression, stale findings, route permissions and rendered controls. Controller/web type checks, targeted lint, query audit and bounded layout checks were run. No full suite or live browser inspection; no live station records, settings or broadcasts changed. Controller and web rebuilds are required; changes remain local.
+
+
+## Earlier review UI retired by owner decision
+
+Removed the Earlier reviews and research proposals section and its manual editor component. Review now opens the shared AI review interface directly. The top Review badge and Overview ready count include only AI findings ready for a decision; older manual pending records no longer raise an operator notification. Historical records and existing background research/rejection handling remain intact. No legacy records were deleted or automatically restored. Controller and web rebuilds required.
+
+
+## Editable proposed Spark corrections
+
+Ready AI reviews now offer editable wording and supporting passage fields before Apply correction/Correct and restore. Local drafts survive list polling and failed saves; they are cleared after a successful review decision. Resolved or read-only reviews do not expose editing controls. The API accepts optional operator edits bound to the original proposal's claim ID, keeps the existing sentence/source checks and stale-snapshot protections, and rejects attempts to redirect a proposal to another fact. Invalid source excerpts leave the fact and ready review unchanged.
+
+Successful application records the actual saved correction in review context, while retaining the original model proposal and frozen evidence separately. Existing claim history also records the edit. No extra LLM call or schema migration is needed. Focused API and rendered UI checks, type checks, lint, query audit and layout scan passed. Rebuild the controller before the web so edited submissions reach the updated API. No live station changes were made.
+
+
+## PR refresh publication checkpoint (17 October)
+
+The owner authorized publishing the accumulated UI/audit simplifications, confirmed-air filtering, unified fact/speech AI review, explicit withdrawal/restoration, Review notifications and editable Spark corrections to PR #5 (`Jaz666/subwave`, `feat/extended-sleeve-notes` → `develop`). Publication uses the existing local test-station branch and an explicit push refspec to the PR head. The PR description is refreshed for the final operator workflow and clearly distinguishes earlier full/build/browser checkpoints from the latest focused verification. No full test suite or build is repeated for publication. Station rebuilds/deployment remain the owner's responsibility; no live station actions are part of publication.

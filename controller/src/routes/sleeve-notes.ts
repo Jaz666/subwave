@@ -22,7 +22,7 @@ import { libraryConnectionsForRecording } from '../sleeve-notes/library-connecti
 import { researchConnectionsOverviewInDatabase } from '../sleeve-notes/connections-overview.js';
 import { cachedConnectionsOverview } from '../sleeve-notes/connection-compute.js';
 import { brainLibraryResearchSeed, brainLibraryAlbumResearchSeed, brainLibraryGraph, cachedBrainLibraryGraph, localBrainArtistId, populateBrainArtists, searchBrainArtists } from '../sleeve-notes/brain-library.js';
-import { withCachedRead, open as openSleeveNotesDb } from '../sleeve-notes/db.js';
+import { runResearchDatabaseWork, withCachedRead, open as openSleeveNotesDb } from '../sleeve-notes/db.js';
 import {
   adaptiveWikipediaChunkCharacters, requestWikipediaRefresh, researchQueueDetails,
   wikipediaCalibrationProfileHash, type WikipediaRefreshMode,
@@ -30,7 +30,7 @@ import {
 import { LlmResearcher } from '../sleeve-notes/llm-researcher.js';
 import { wikipediaNoteCategories } from '../sleeve-notes/researcher.js';
 import { allocateWikipediaClaims, planWikipediaChunks } from '../sleeve-notes/wikipedia-extract.js';
-import { listModeration, moderateCandidate, moderateExistingClaim, moderationSource, sendClaimToReview } from '../sleeve-notes/moderation.js';
+import { listModeration, moderateCandidate, moderateExistingClaim, moderationSource, setClaimAvailability } from '../sleeve-notes/moderation.js';
 import {
   rebuildWikipediaClaims,
   rebuildWikipediaClaimsForArtist,
@@ -51,14 +51,54 @@ import {
   type ResearchEntityType,
 } from '../sleeve-notes/research-repository.js';
 
+import { airingReviewDecisionSchema } from '../schemas/sleeve-notes-feedback.js';
+import { airingReviewKey, flagAiredUse, listAiringReviews, decideAiringReview, reviewReadyCount, flagStoredClaim } from '../sleeve-notes/airing-review.js';
+
 export const router = express.Router();
 
 router.get('/sleeve-notes/heard-on-air', requireAdmin, async (req, res) => {
   await settings.load();
   const offset = Math.max(0, Math.min(100_000, Number.parseInt(String(req.query.offset), 10) || 0));
   const enabled = settings.get().djBehaviour.extendedSleeveNotes === true;
-  const read = () => ({ ...heardOnAir(20, offset, true), readOnly: !enabled });
-  return res.json(await addLegacySegmentConversations(enabled ? read() : withCachedRead(read)));
+  const read = () => ({ ...heardOnAir(20, offset, true, {
+    search: String(req.query.search ?? ''), kind: String(req.query.kind ?? ''), period: String(req.query.period ?? ''), usage: String(req.query.usage ?? ''),
+  }), readOnly: !enabled });
+  const shelf=await addLegacySegmentConversations(enabled ? read() : withCachedRead(read));
+  const attach=()=>{
+    const db=openSleeveNotesDb();
+    const keys=[...new Set(shelf.items.map(airingReviewKey))];
+    const reviews=keys.length && db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_airing_reviews'").get()
+      ? db.prepare(`SELECT id,state,airing_key AS key FROM sleeve_airing_reviews WHERE airing_key IN (${keys.map(()=>'?').join(',')})`).all(...keys) as Array<{id:string;state:string;key:string}> : [];
+    const byKey=new Map(reviews.map(review=>[review.key,{id:review.id,state:review.state}]));
+    return {...shelf,items:shelf.items.map(item=>({...item,review:byKey.get(airingReviewKey(item))??null}))};
+  };
+  return res.json(enabled ? attach() : withCachedRead(attach));
+});
+
+router.post('/sleeve-notes/heard-on-air/:id/flag', requireAdmin, async (req,res)=>{
+  await settings.load();
+  if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Enable Sleeve Notes before flagging speech'});
+  try {
+    let flagged: Awaited<ReturnType<typeof flagAiredUse>> | undefined;
+    const ran=await runResearchDatabaseWork(async()=>{flagged=await flagAiredUse(String(req.params.id));return true;});
+    if (!ran) return res.status(409).json({error:'Sleeve Notes restore is in progress; try again shortly'});
+    return res.json(flagged);
+  }
+  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not flag this airing'});}
+});
+router.get('/sleeve-notes/airing-reviews', requireAdmin, async (req,res)=>{
+  await settings.load();
+  const offset=Math.max(0,Math.min(100000,Number.parseInt(String(req.query.offset),10)||0));
+  const read=()=>({...listAiringReviews(String(req.query.status??'active'),offset),readOnly:!settings.get().djBehaviour.extendedSleeveNotes});
+  return res.json(settings.get().djBehaviour.extendedSleeveNotes?read():withCachedRead(read));
+});
+router.post('/sleeve-notes/airing-reviews/:id/decision', requireAdmin, async (req,res)=>{
+  await settings.load();
+  if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Enable Sleeve Notes before saving a review decision'});
+  const parsed=airingReviewDecisionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({error:parsed.error.issues[0]?.message??'Choose a review action'});
+  try {decideAiringReview(String(req.params.id),parsed.data.action,parsed.data.correction);return res.json({ok:true});}
+  catch(error){return res.status(409).json({error:error instanceof Error?error.message:'Could not save this decision'});}
 });
 
 router.post('/sleeve-notes/heard-on-air/:id/feedback', requireAdmin, async (req, res) => {
@@ -211,14 +251,20 @@ router.post('/sleeve-notes/claims/:id/review', requireAdmin, async (req, res) =>
   await settings.load();
   if (settings.get().djBehaviour.extendedSleeveNotes !== true) return res.status(409).json({ error: 'Extended Sleeve Notes is disabled' });
   try {
-    return res.json(sendClaimToReview(String(req.params.id)));
+    return res.json(flagStoredClaim(String(req.params.id)));
   } catch (error) {
     return res.status(400).json({ error: error instanceof Error ? error.message : 'Could not send story to Review' });
   }
 });
 
 router.post('/sleeve-notes/claims/:id/:action', requireAdmin, async (req, res) => {
+  await settings.load();
+  if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Extended Sleeve Notes is disabled'});
   const action = String(req.params.action);
+  if (action==='withdraw'||action==='restore') {
+    try {setClaimAvailability(String(req.params.id),action);return res.json({ok:true});}
+    catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not update fact availability'});}
+  }
   if (action !== 'approved' && action !== 'deleted') return res.status(400).json({ error: 'Unsupported decision' });
   const edit = moderationEdit(req.body);
   if (action === 'approved' && !edit) return res.status(400).json({ error: 'Complete claim fields are required' });
@@ -269,6 +315,7 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
     providerConfigured,
     providerTokenSource,
     collectionRunning,
+    reviewReady: enabled ? reviewReadyCount() : withCachedRead(reviewReadyCount),
     collectionPaused,
     collectionBlockedReason: !enabled ? 'disabled' : collectionPaused ? 'operator-paused' : !researchAllowed() ? 'token-budget' : null,
     coverage: enabled ? researchStoreCoverage() : {},
@@ -452,7 +499,7 @@ router.get('/sleeve-notes/stories', requireAdmin, async (req,res) => {
   await settings.load();
   const number=(value:unknown,fallback:number)=>typeof value==='string'&&Number.isFinite(Number(value))?Math.trunc(Number(value)):fallback;
   const input={search:typeof req.query.search==='string'?req.query.search.slice(0,120):'',
-    category:typeof req.query.category==='string'?req.query.category.slice(0,100):'',recent:req.query.recent==='1',
+    category:typeof req.query.category==='string'?req.query.category.slice(0,100):'',recent:req.query.recent==='1',withdrawn:req.query.withdrawn==='1',
     limit:Math.max(1,Math.min(100,number(req.query.limit,30))),offset:Math.max(0,number(req.query.offset,0))};
   const read=()=>searchResearchStoriesInDatabase(openSleeveNotesDb(),input);
   return res.json(settings.get().djBehaviour.extendedSleeveNotes===true?read():withCachedRead(read));

@@ -9,9 +9,11 @@ import { LEGEND_GROUPS } from './filters';
 import { reconcileBrainNetwork, type BrainNetwork } from './brain-network';
 import { useBrainKeySetting } from './key-preferences';
 import BrainPanel from './BrainPanel';
-import { COVERAGE_COLORS, COVERAGE_LABELS } from './coverage';
+import { COVERAGE_LABELS } from './coverage';
 
 export interface BrainCanvasProps {
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
   data: ConnectionGraphData;
   visibleData?: ConnectionGraphData;
   edgeTypes: readonly ConnectionEdgeType[];
@@ -40,15 +42,7 @@ type BrainNode = NodeObject<ConnectionNode>;
 type BrainLink = LinkObject<ConnectionNode, LinkData>;
 type LayoutMode = 'force' | 'grouped' | 'focus';
 type Density = 'compact' | 'spread';
-const NIGHT = '#120e16';
 const LABEL_POPULATION_MIN_ZOOM = 0.55;
-const COLORS = { artist: '#ff8155', recording: '#64d8ca', release: '#eecb81', contributor: '#b698ee', series: '#8da8ee', 'external-recording': '#738399' };
-function linkColor(type: ConnectionEdge['type']): string {
-  if (type === 'samples' || type === 'sampled-in') return '#ff8155';
-  if (type === 'cover-of' || type === 'covered-by') return '#64d8ca';
-  if (type === 'writer' || type === 'producer') return '#b698ee';
-  return '#8e96ad';
-}
 function radius(node: ConnectionNode, focus: string): number {
   if (node.id === focus) return 10;
   return 3 + Math.min(6, Math.log2(1 + (node.trackCount ?? node.connectionCount ?? 1))) * 0.75;
@@ -59,16 +53,44 @@ function tooltip(value: string): string {
 }
 
 export default function BrainCanvas({ data, visibleData = data, edgeTypes, includeExternal, includeUnresearchedArtists, onToggleUnresearchedArtists, onToggleGroup, onToggleExternal,
-  selectedNode, selectedEdge, currentNodeId, overview, focusRequest, zoomToSelection = false, onSelectNode, onSelectEdge, onOpenNode, onClearSelection, canLayerUp, canLayerDown, onLayerUp, onLayerDown }: BrainCanvasProps) {
+  fullscreen, onToggleFullscreen, selectedNode, selectedEdge, currentNodeId, overview, focusRequest, zoomToSelection = false, onSelectNode, onSelectEdge, onOpenNode, onClearSelection, canLayerUp, canLayerDown, onLayerUp, onLayerDown }: BrainCanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const graph = useRef<ForceGraphMethods<ConnectionNode, LinkData> | undefined>(undefined);
   const [size, setSize] = useState({ width: 0, height: 544 });
   const [hovered, setHovered] = useState<string | null>(null);
-  const [fullscreen, setFullscreen] = useState(false);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('force');
   const [density, setDensity] = useState<Density>('compact');
   const [pathLimit, setPathLimit] = useBrainKeySetting('pathLimit');
-  const reducedMotion = useReducedMotion();
+  const prefersReducedMotion = useReducedMotion();
+  const [lite, setLite] = useState(false);
+  const reducedMotion = prefersReducedMotion || lite;
+  const [palette, setPalette] = useState<Record<string, string>>({});
+  const ink = palette.ink || 'transparent';
+  const background = palette.bg || 'transparent';
+  const muted = palette.muted || ink;
+  useEffect(() => {
+    const update = () => {
+      if (!container.current) return;
+      const style = getComputedStyle(container.current);
+      setPalette(Object.fromEntries(['bg', 'ink', 'muted',
+        'brain-artist', 'brain-recording', 'brain-release', 'brain-contributor', 'brain-series', 'brain-external-recording',
+        ...Object.keys(COVERAGE_LABELS).map(state => `brain-coverage-${state}`),
+      ].map(name => [name, style.getPropertyValue(`--${name}`).trim()]).concat([['font', style.fontFamily]])));
+      setLite(document.documentElement.classList.contains('lite'));
+    };
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', update);
+    update();
+    return () => { observer.disconnect(); media.removeEventListener('change', update); };
+  }, []);
+  function linkColor(type: ConnectionEdge['type']): string {
+    if (type === 'samples' || type === 'sampled-in') return palette['brain-artist'] || ink;
+    if (type === 'cover-of' || type === 'covered-by') return palette['brain-recording'] || ink;
+    if (type === 'writer' || type === 'producer') return palette['brain-contributor'] || ink;
+    return muted;
+  }
   const pendingFit = useRef(true);
   const fittedScope = useRef<string | null>(null);
   const networkRef = useRef<BrainNetwork | null>(null);
@@ -229,25 +251,27 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
     const active = neighbours.has(node.id) || node.id === selectedNode || node.id === data.focusId || isCurrent
       || edge?.source === node.id || edge?.target === node.id;
     const dimmed = !!spotlight && !active;
-    const color = node.local || node.kind === 'contributor' ? COLORS[node.kind] : '#778195';
+    const color = node.local || node.kind === 'contributor' ? palette[`brain-${node.kind}`] || ink : muted;
     ctx.save();
     ctx.globalAlpha = dimmed ? 0.18 : active || node.kind === 'contributor' ? 1
       : node.local ? Math.min(1, (node.researched === false ? 0.35 : 0.65) + Math.log2(1 + (node.verifiedConnectionCount ?? 0)) * 0.08) : 0.55;
     if (isCurrent || active || (node.verifiedConnectionCount ?? 0) > 0) {
       const pulse = isCurrent && !reducedMotion && !largeMap ? 1 + Math.sin(performance.now() / 650) * 0.18 : 1;
       const glow = ctx.createRadialGradient(x, y, r, x, y, r * 4 * pulse);
-      glow.addColorStop(0, `${color}66`); glow.addColorStop(1, `${color}00`);
+      glow.addColorStop(0, color); glow.addColorStop(1, 'transparent');
+      const alpha = ctx.globalAlpha; ctx.globalAlpha *= 0.4;
       ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 4 * pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = alpha;
     }
     ctx.beginPath();
     if (node.kind === 'contributor') {
       ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
     } else ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.strokeStyle = color; ctx.lineWidth = 1.3 / scale;
-    ctx.fillStyle = node.local || node.kind === 'contributor' ? color : NIGHT;
+    ctx.fillStyle = node.local || node.kind === 'contributor' ? color : background;
     ctx.fill(); ctx.stroke();
     if (node.coverage && scale > LABEL_POPULATION_MIN_ZOOM) {
-      ctx.strokeStyle = COVERAGE_COLORS[node.coverage.state];
+      ctx.strokeStyle = palette[`brain-coverage-${node.coverage.state}`] || ink;
       ctx.lineWidth = 2.8 / scale;
       ctx.beginPath(); ctx.arc(x, y, r + 2.5 / scale, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = color;
@@ -258,7 +282,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
     if (important || (!dimmed && (scale > 1.35 || (labelled.has(node.id) && scale > LABEL_POPULATION_MIN_ZOOM)))
       || (neighbours.has(node.id) && scale > 0.8)) {
       const label = node.title.length > 32 ? `${node.title.slice(0, 30)}…` : node.title;
-      ctx.font = `${active ? 600 : 400} ${11 / scale}px sans-serif`;
+      ctx.font = `${active ? 600 : 400} ${11 / scale}px ${palette.font || 'sans-serif'}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const transform = ctx.getTransform();
       const halfWidth = ctx.measureText(label).width * transform.a / 2;
@@ -271,8 +295,8 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
       if (important || !overlaps) {
         labelBoxes.current.push(box);
         const labelX = (pixelX - transform.e) / transform.a;
-        ctx.lineWidth = 3 / scale; ctx.strokeStyle = NIGHT; ctx.strokeText(label, labelX, y + r + 4 / scale);
-        ctx.fillStyle = active ? '#fff0e9' : '#b7a8b4'; ctx.fillText(label, labelX, y + r + 4 / scale);
+        ctx.lineWidth = 3 / scale; ctx.strokeStyle = background; ctx.strokeText(label, labelX, y + r + 4 / scale);
+        ctx.fillStyle = active ? ink : muted; ctx.fillText(label, labelX, y + r + 4 / scale);
       }
     }
     ctx.restore();
@@ -379,22 +403,14 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
     applyLayout('force', true);
   }
 
-  useEffect(() => {
-    if (!fullscreen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setFullscreen(false); };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape); };
-  }, [fullscreen]);
 
   return (
-    <div ref={container} className={fullscreen ? "fixed inset-0 z-[100] h-[100dvh] w-screen overflow-hidden bg-[#120e16] p-2 sm:p-4" : "relative h-[clamp(24rem,65vh,44rem)] min-h-96 overflow-hidden rounded-md border border-white/10 bg-[#120e16]"}
+    <div ref={container} className="relative h-[clamp(24rem,65vh,44rem)] min-h-96 overflow-hidden border border-border bg-bg"
       onPointerDownCapture={() => { pendingFit.current = false; pendingReturnCenter.current = null; }}
       onWheelCapture={() => { pendingFit.current = false; pendingReturnCenter.current = null; }}
       role="group" aria-label={`Station Brain: ${visibleData.nodes.length} entities and ${visibleData.edges.length} connections. Use the browse lists below for keyboard navigation.`}>
       {size.width > 0 && <ForceGraph2D<ConnectionNode, LinkData>
-        ref={graph} width={size.width} height={size.height} graphData={network} backgroundColor={NIGHT}
+        ref={graph} width={size.width} height={size.height} graphData={network} backgroundColor={background}
         warmupTicks={largeMap ? reducedMotion ? 32 : 0 : reducedMotion ? 160 : 60}
         cooldownTicks={reducedMotion ? 0 : 120} cooldownTime={3500}
         d3AlphaDecay={0.035} d3VelocityDecay={0.35} minZoom={largeMap ? 0.025 : 0.12} maxZoom={8}
@@ -416,7 +432,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
             Math.max(radius(node, data.focusId) + 2, 8 / scale), 0, Math.PI * 2); ctx.fill();
         }}
         linkLabel={(link) => { const edge = originalEdges.get(link.id); return tooltip(edge?.evidence ?? link.label); }}
-        linkColor={(link) => `${linkColor(link.type)}${illuminated(link) ? 'dd' : spotlight ? '15' : '40'}`}
+        linkColor={(link) => `color-mix(in srgb, ${linkColor(link.type)} ${illuminated(link) ? 87 : spotlight ? 8 : 25}%, transparent)`}
         linkWidth={(link) => illuminated(link) ? 1.8 : Math.min(1.2, 0.35 + Math.log2(link.count ?? 1) * 0.15)}
         linkCurvature={0.12} linkHoverPrecision={5}
         linkDirectionalArrowLength={(link) => illuminated(link) ? 4 : 0}
@@ -445,51 +461,51 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
           else if (pendingFit.current) fit();
         }}
       />}
-      <BrainPanel label="Layout" className="absolute top-3 left-3 max-w-[calc(100%-9rem)] rounded-md border border-white/15 bg-[#211b29]/95 p-1 text-[#e8d9e6]">
+      <BrainPanel label="Layout" className="absolute top-3 left-3 max-w-[calc(100%-9rem)] border border-border bg-card p-1 text-ink">
         <div className="flex flex-wrap items-center gap-1">
         <button type="button" aria-label="Force layout" aria-pressed={layoutMode === 'force'} onClick={() => applyLayout('force')} title="Arrange by connected forces"
-          className={`flex h-8 items-center gap-1 rounded px-2 text-[11px] hover:bg-white/10 ${layoutMode === 'force' ? 'bg-white/15' : ''}`}><Network className="size-3.5" />Force</button>
+          className={`flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay ${layoutMode === 'force' ? 'bg-overlay' : ''}`}><Network className="size-3.5" />Force</button>
         <button type="button" aria-label="Group related nodes" aria-pressed={layoutMode === 'grouped'} onClick={() => applyLayout('grouped')} title="Place connected groups together"
-          className={`flex h-8 items-center gap-1 rounded px-2 text-[11px] hover:bg-white/10 ${layoutMode === 'grouped' ? 'bg-white/15' : ''}`}><LayoutGrid className="size-3.5" />Grouped</button>
+          className={`flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay ${layoutMode === 'grouped' ? 'bg-overlay' : ''}`}><LayoutGrid className="size-3.5" />Grouped</button>
         <button type="button" aria-label="Focus selected node" aria-pressed={layoutMode === 'focus'} disabled={!selectedNode} onClick={() => applyLayout('focus')} title={selectedNode ? 'Place the selected node at the centre' : 'Select a node to focus the layout'}
-          className={`flex h-8 items-center gap-1 rounded px-2 text-[11px] hover:bg-white/10 disabled:opacity-40 ${layoutMode === 'focus' ? 'bg-white/15' : ''}`}><Focus className="size-3.5" />Focus</button>
+          className={`flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay disabled:opacity-40 ${layoutMode === 'focus' ? 'bg-overlay' : ''}`}><Focus className="size-3.5" />Focus</button>
         <button type="button" aria-label="Re-layout graph" onClick={relayout} title="Release pinned nodes and arrange the graph again"
-          className="flex h-8 items-center gap-1 rounded px-2 text-[11px] hover:bg-white/10"><RotateCcw className="size-3.5" />Re-layout</button>
+          className="flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay"><RotateCcw className="size-3.5" />Re-layout</button>
         {layoutMode === 'force' && <button type="button" aria-label={density === 'compact' ? 'Spread graph' : 'Compact graph'} onClick={() => {
           const next = density === 'compact' ? 'spread' : 'compact'; setDensity(next); setForceSpacing(next); graph.current?.d3ReheatSimulation();
         }} title={density === 'compact' ? 'Increase spacing between nodes' : 'Reduce spacing between nodes'}
-          className="flex h-8 items-center gap-1 rounded px-2 text-[11px] hover:bg-white/10">{density === 'compact' ? 'Spread' : 'Compact'}</button>}
+          className="flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay">{density === 'compact' ? 'Spread' : 'Compact'}</button>}
         </div>
       </BrainPanel>
-      <BrainPanel label="Map controls" className="absolute top-3 right-3 rounded-md border border-white/15 bg-[#211b29]/95 p-1 text-[#e8d9e6]">
+      <BrainPanel label="Map controls" className="absolute top-3 right-3 border border-border bg-card p-1 text-ink">
         <div className="flex justify-center gap-1">
-          <button type="button" aria-label="Zoom in" className="flex size-8 items-center justify-center hover:bg-white/10" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) * 1.35, reducedMotion ? 0 : 250); }}><Plus className="size-4" /></button>
-          <button type="button" aria-label="Zoom out" className="flex size-8 items-center justify-center hover:bg-white/10" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) / 1.35, reducedMotion ? 0 : 250); }}><Minus className="size-4" /></button>
-          <button type="button" aria-label="Fit the whole map" className="flex size-8 items-center justify-center hover:bg-white/10" onClick={fit}><Maximize2 className="size-4" /></button>
-          <button type="button" aria-label={fullscreen ? "Close full-screen map" : "Open full-screen map"} title={fullscreen ? "Close full screen (Esc)" : "Open full screen"} className="flex size-8 items-center justify-center hover:bg-white/10" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />}</button>
+          <button type="button" aria-label="Zoom in" className="flex size-8 items-center justify-center hover:bg-overlay" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) * 1.35, reducedMotion ? 0 : 250); }}><Plus className="size-4" /></button>
+          <button type="button" aria-label="Zoom out" className="flex size-8 items-center justify-center hover:bg-overlay" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) / 1.35, reducedMotion ? 0 : 250); }}><Minus className="size-4" /></button>
+          <button type="button" aria-label="Fit the whole map" className="flex size-8 items-center justify-center hover:bg-overlay" onClick={fit}><Maximize2 className="size-4" /></button>
+          <button type="button" aria-label={fullscreen ? "Close full-screen map" : "Open full-screen map"} title={fullscreen ? "Close full screen (Esc)" : "Open full screen"} className="flex size-8 items-center justify-center hover:bg-overlay" onClick={onToggleFullscreen}>{fullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />}</button>
         </div>
-        <div className="grid grid-cols-2 gap-1 border-t border-white/15 pt-1">
+        <div className="grid grid-cols-2 gap-1 border-t border-border/60 pt-1">
           <button type="button" disabled={!canLayerUp} onClick={onLayerUp} title="Return to the parent layer"
-            className="flex h-8 items-center justify-center gap-1 rounded px-1.5 text-[10px] hover:bg-white/10 disabled:cursor-default disabled:opacity-40"><ChevronUp className="size-3" aria-hidden="true" />Layer Up</button>
+            className="flex h-8 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40"><ChevronUp className="size-3" aria-hidden="true" />Layer Up</button>
           <button type="button" disabled={!canLayerDown} onClick={onLayerDown} title={canLayerDown ? 'Open the selected node' : 'Select an artist, album or matched track to open its layer'}
-            className="flex h-8 items-center justify-center gap-1 rounded px-1.5 text-[10px] hover:bg-white/10 disabled:cursor-default disabled:opacity-40"><ChevronDown className="size-3" aria-hidden="true" />Layer Down</button>
+            className="flex h-8 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40"><ChevronDown className="size-3" aria-hidden="true" />Layer Down</button>
         </div>
       </BrainPanel>
-      <BrainPanel label="Key" className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] rounded-md border border-white/10 bg-[#211b29]/90 px-3 py-2 text-[10px] text-[#baabba]">
-        {followPathways && pathways.orderedEdges.length > 0 && <div className="mb-2 flex max-w-72 min-w-48 flex-col gap-1 border-b border-white/15 pb-2">
+      <BrainPanel label="Key" className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] border border-border bg-card px-3 py-2 text-[10px] text-ink">
+        {followPathways && pathways.orderedEdges.length > 0 && <div className="mb-2 flex max-w-72 min-w-48 flex-col gap-1 border-b border-border/60 pb-2">
           <span className="flex items-center justify-between gap-4"><span>Neural links highlighted</span>
-            <output className="text-[#e8d9e6] tabular-nums">{highlightedPathways.edges.size} / {pathways.orderedEdges.length}</output></span>
+            <output className="text-ink tabular-nums">{highlightedPathways.edges.size} / {pathways.orderedEdges.length}</output></span>
           <div className="flex items-center gap-2">
             <button type="button" aria-label="Highlight one fewer neural link" disabled={Math.min(pathLimit, pathways.orderedEdges.length) <= 1}
               onClick={() => setPathLimit(Math.max(1, Math.min(pathLimit, pathways.orderedEdges.length) - 1))}
-              className="flex size-8 shrink-0 items-center justify-center rounded hover:bg-white/10 disabled:opacity-40"><Minus className="size-4" aria-hidden="true" /></button>
+              className="flex size-8 shrink-0 items-center justify-center hover:bg-overlay disabled:opacity-40"><Minus className="size-4" aria-hidden="true" /></button>
             <input type="range" min={1} max={pathways.orderedEdges.length} step={1} value={Math.min(pathLimit, pathways.orderedEdges.length)}
               aria-label="Maximum neural links highlighted from this artist"
               onChange={(event) => setPathLimit(Number(event.target.value))}
-              className="h-4 min-w-0 flex-1 cursor-pointer accent-[#ff8155]" />
+              className="h-4 min-w-0 flex-1 cursor-pointer accent-primary" />
             <button type="button" aria-label="Highlight one more neural link" disabled={pathLimit >= pathways.orderedEdges.length}
               onClick={() => setPathLimit(Math.min(pathways.orderedEdges.length, pathLimit + 1))}
-              className="flex size-8 shrink-0 items-center justify-center rounded hover:bg-white/10 disabled:opacity-40"><Plus className="size-4" aria-hidden="true" /></button>
+              className="flex size-8 shrink-0 items-center justify-center hover:bg-overlay disabled:opacity-40"><Plus className="size-4" aria-hidden="true" /></button>
           </div>
         </div>}
         <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -498,21 +514,21 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
             return <button key={group.label} type="button" aria-pressed={shown}
               title={`${shown ? 'Hide' : 'Show'} ${group.label.toLowerCase()} connections`}
               onClick={() => onToggleGroup(group.types)}
-              className={`rounded px-1 py-1 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 ${group.className} ${shown ? '' : 'line-through opacity-50'}`}>
-              {group.symbol} {group.label}
+              className={`px-1 py-1 hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-2 ${shown ? '' : 'line-through opacity-50'}`}>
+              <span aria-hidden="true" className={group.className}>{group.symbol}</span> {group.label}
             </button>;
           })}
           <button type="button" aria-pressed={includeExternal} onClick={onToggleExternal}
             title={`${includeExternal ? 'Hide' : 'Show'} external music`}
-            className={`rounded px-1 py-1 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 ${includeExternal ? '' : 'line-through opacity-50'}`}>○ External music</button>
+            className={`px-1 py-1 hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-2 ${includeExternal ? '' : 'line-through opacity-50'}`}>○ External music</button>
           {overview && <button type="button" aria-pressed={includeUnresearchedArtists} onClick={onToggleUnresearchedArtists}
             title={`${includeUnresearchedArtists ? 'Hide' : 'Show'} library artists not encountered by Sleeve Notes`}
-            className={`rounded px-1 py-1 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 ${includeUnresearchedArtists ? '' : 'line-through opacity-50'}`}>○ Library artists not encountered</button>}
+            className={`px-1 py-1 hover:bg-overlay focus-visible:outline-2 focus-visible:outline-offset-2 ${includeUnresearchedArtists ? '' : 'line-through opacity-50'}`}>○ Library artists not encountered</button>}
         </div>
-        {data.nodes.some(node => node.coverage) && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/15 pt-2" aria-label="Artist research coverage key">
+        {data.nodes.some(node => node.coverage) && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-border/60 pt-2" aria-label="Artist research coverage key">
           <span className="w-full">Artist rings · research coverage</span>
           {(['ready', 'empty', 'unexplored', 'queued', 'incomplete'] as const).map(state => <span key={state} className="flex items-center gap-1">
-            <span aria-hidden="true" className={state === 'ready' ? 'text-[#64d8ca]' : state === 'empty' ? 'text-[#eecb81]' : state === 'queued' ? 'text-[#8da8ee]' : state === 'incomplete' ? 'text-[#ee8a8a]' : 'text-[#8490a4]'}>○</span>{state === 'queued' ? 'Queued / researching' : COVERAGE_LABELS[state]}
+            <span aria-hidden="true" className={state === 'ready' ? 'text-[var(--brain-coverage-ready)]' : state === 'empty' ? 'text-[var(--brain-coverage-empty)]' : state === 'queued' ? 'text-[var(--brain-coverage-queued)]' : state === 'incomplete' ? 'text-[var(--brain-coverage-incomplete)]' : 'text-muted'}>○</span>{state === 'queued' ? 'Queued / researching' : COVERAGE_LABELS[state]}
           </span>)}
         </div>}
         <p className="mt-1">{overview ? 'Click to highlight pathways · click empty space to clear · ' : ''}Double-click a node to open · click the key to filter · drag to explore · pinch or scroll to zoom</p>

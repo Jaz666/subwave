@@ -9,10 +9,10 @@ export const EDGE_FILTERS: Array<{ id: ConnectionEdgeType; label: string }> = [
 ];
 export const ALL_EDGE_TYPES = EDGE_FILTERS.map((filter) => filter.id);
 export const LEGEND_GROUPS: Array<{ label: string; types: ConnectionEdgeType[]; className: string; symbol: string; overview: boolean }> = [
-  { label: 'Samples', types: ['samples', 'sampled-in'], className: 'text-[#ff8155]', symbol: '●', overview: true },
-  { label: 'Covers', types: ['cover-of', 'covered-by'], className: 'text-[#64d8ca]', symbol: '●', overview: true },
-  { label: 'Writers / producers', types: ['writer', 'producer'], className: 'text-[#b698ee]', symbol: '◆', overview: true },
-  { label: 'Artists / albums / lists', types: ['performed-by', 'appears-on', 'series-membership'], className: 'text-[#8e96ad]', symbol: '●', overview: false },
+  { label: 'Samples', types: ['samples', 'sampled-in'], className: 'text-[var(--brain-artist)]', symbol: '●', overview: true },
+  { label: 'Covers', types: ['cover-of', 'covered-by'], className: 'text-[var(--brain-recording)]', symbol: '●', overview: true },
+  { label: 'Writers / producers', types: ['writer', 'producer'], className: 'text-[var(--brain-contributor)]', symbol: '◆', overview: true },
+  { label: 'Artists / albums / lists', types: ['performed-by', 'appears-on', 'series-membership'], className: 'text-muted', symbol: '●', overview: false },
 ];
 
 export function toggleConnectionGroup(current: readonly ConnectionEdgeType[], group: readonly ConnectionEdgeType[]): ConnectionEdgeType[] {

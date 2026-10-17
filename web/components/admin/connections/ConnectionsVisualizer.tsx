@@ -9,6 +9,7 @@ import type { NowPlayingResponse } from '../../../lib/types';
 import { adminJson, type AdminFetch, useAdminMutation, useAdminQuery } from '../../../lib/admin-query';
 import { Card, Eyebrow, Pill } from '../ui';
 import ConnectionsGraph from './ConnectionsGraph';
+import { EditorDialog } from '../../ui/editor-dialog';
 import { currentArtistOnOverview } from './current-artist';
 import { COVERAGE_LABELS, withBrainCoverage } from './coverage';
 import { ALL_EDGE_TYPES, toggleConnectionGroup } from './filters';
@@ -62,6 +63,7 @@ export default function ConnectionsVisualizer({
     : null;
   const focusId = searchParams.get('focusId')?.trim() || null;
   const overview = !focusType || !focusId;
+  const [fullscreen, setFullscreen] = useState(false);
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
   const [includeExternal, setIncludeExternal] = useBrainKeySetting('includeExternal');
@@ -344,76 +346,13 @@ export default function ConnectionsVisualizer({
     target: visibleGraph.nodes.find((node) => node.id === selectedEdge.target) ?? null,
   } : null;
 
-  return (
-    <div className="space-y-5">
-      <Card title="The Station Brain" sub={overview ? 'Explore the artists and musical connections in your library' : 'Follow the connections around this music'}>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="relative">
-            <label className="relative block">
-              <span className="sr-only">Search Connections</span>
-              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-              <input value={draft} onChange={(event) => setDraft(event.target.value)}
-                placeholder="Search tracks, artists, albums or lists…"
-                className="w-full rounded-md border border-border bg-transparent py-2.5 pr-9 pl-9 text-[13px] outline-none focus:border-primary" />
-              {draft && <button type="button" onClick={() => setDraft('')} aria-label="Clear search"
-                className="absolute top-1/2 right-2 -translate-y-1/2 p-1 text-muted hover:text-ink"><X className="size-4" /></button>}
-            </label>
-            {query.length >= 2 && (
-              <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-border bg-card shadow-lg">
-                {search.isLoading && <p className="px-3 py-3 text-xs text-muted">Searching…</p>}
-                {search.error && <p className="px-3 py-3 text-xs text-muted">Connections search is temporarily unavailable.</p>}
-                {search.data?.map((result) => (
-                  <button key={result.nodeId} type="button" onClick={() => choose(result.entityType, result.entityId)}
-                    className="flex w-full items-center justify-between gap-3 border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-muted/20">
-                    <span className="min-w-0"><span className="block truncate text-[13px] font-medium">{result.title}</span>
-                      <span className="block truncate text-xs text-muted">{result.subtitle || result.kind}</span></span>
-                    <Pill tone="default">{result.kind}</Pill>
-                  </button>
-                ))}
-                {catalogueResults.map((node) => <button key={node.id} type="button" onClick={() => {
-                  selectNode(node); setDraft(''); setQuery('');
-                }} className="block w-full border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-muted/20">
-                  <span className="block text-[13px] font-medium">{node.title}</span><span className="text-xs text-muted">{node.subtitle}</span>
-                </button>)}
-                {!search.isLoading && search.data?.length === 0 && catalogueResults.length === 0 && <p className="px-3 py-3 text-xs text-muted">No Connections entities match.</p>}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void openCurrentArtist()} disabled={targetingArtist || nowPlaying.isLoading}
-            className="inline-flex grow items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30 disabled:opacity-50">
-            <LocateFixed className="size-4" aria-hidden="true" /> {targetingArtist ? 'Finding current artist…' : 'Target current artist'}
-          </button>
-          <button type="button" onClick={openCurrentTrack} disabled={!!localTrackId && current.isLoading}
-            className="inline-flex grow items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30 disabled:opacity-50">
-            <LocateFixed className="size-4" aria-hidden="true" /> Target current track
-          </button>
-          </div>
-        </div>
-        {currentMessage && <p role="status" className="mt-2 text-xs text-muted">{currentMessage}</p>}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => void map.refetch()} disabled={map.isFetching}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50">
-            <RefreshCw className={`size-3 ${map.isFetching ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
-            {map.isFetching ? 'Refreshing…' : 'Refresh map'}
-          </button>
-          {overview && <button type="button" onClick={() => populate.mutate()} disabled={readOnly || populate.isPending || map.data?.active === false}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50">
-            <RefreshCw className={`size-3 ${populate.isPending ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
-            {populate.isPending ? 'Populating artists…' : 'Populate library artists'}
-          </button>}
-          {!overview && parentArtistId
-            && <button type="button" onClick={() => choose('library-artist', parentArtistId)}
-              className="text-xs font-medium text-primary hover:underline">Back to artist’s albums</button>}
-          {!overview && <button type="button" onClick={() => clearFocus()} className="ml-auto text-xs font-medium text-primary hover:underline">Back to artists</button>}
-        </div>
-        {readOnly && <p className="mt-3 text-xs text-muted">Browsing saved connections. Library layers are available if previously opened; enable Sleeve Notes in Settings to load new layers.</p>}
-        {overview && populate.data && <p role="status" className="mt-3 text-xs text-muted">{populate.data.artists.toLocaleString()} library artists populated. Double-click an artist to load its albums.</p>}
-        {coverage.error && <p role="status" className="mt-3 text-xs text-muted">Research coverage could not be refreshed. <button type="button" onClick={() => void coverage.refetch()} className="text-primary hover:underline">Retry coverage</button></p>}
-        {overview && populate.error && <p role="alert" className="mt-3 text-xs text-muted">{populate.error.message}</p>}
-      </Card>
+  function changeFullscreen(open: boolean) {
+    setFullscreen(open);
+    if (!open) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[aria-label="Open full-screen map"]')?.focus());
+  }
 
-      {map.isLoading ? (
+  const mapView = (
+    map.isLoading ? (
         <Card title="Waking the Station Brain"><p role="status" className="text-[13px] text-muted">Loading {overview ? 'your artist network' : focusType === 'library-album' ? 'the album’s tracks' : focusType === 'library-artist' || focusType === 'artist' ? 'the artist’s albums' : 'the track neighbourhood'}…</p></Card>
       ) : map.error && !map.data ? (
         <Card title="Could not load Connections">
@@ -429,7 +368,7 @@ export default function ConnectionsVisualizer({
               <>
                 {map.data.nodes.length === 0 ? <p className="py-16 text-center text-[13px] text-muted">{visibleGraph.active ? 'Artists appear here as the library scan and Sleeve Notes research gather your musical connections.' : 'No saved map yet. Enable Sleeve Notes in Settings to gather connections.'}</p> :
                   <ConnectionsGraph
-                    data={coveredMap ?? map.data} visibleData={visibleGraph} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
+                    data={coveredMap ?? map.data} visibleData={visibleGraph} fullscreen={fullscreen} onToggleFullscreen={() => changeFullscreen(!fullscreen)} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
                     focusRequest={focusRequest} zoomToSelection={zoomToSelection}
                     canLayerUp={!overview} canLayerDown={canLayerDown}
                     onLayerUp={layerUp} onLayerDown={() => { if (canLayerDown && selectedNode) openNode(selectedNode); }}
@@ -443,24 +382,24 @@ export default function ConnectionsVisualizer({
                     onClearSelection={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
                     onSelectEdge={(edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
                     onOpenNode={openNode} />}
-                <details className="mt-4 rounded-md border border-border/60 p-3">
+                <details className="mt-4 border border-border/60 p-3">
                   <summary className="cursor-pointer text-xs font-medium">Browse {overview ? 'artists and people' : 'entities'} ({visibleGraph.nodes.length})</summary>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {visibleGraph.nodes.slice(0, browseLimit).map((node) => <button key={node.id} type="button"
                       onClick={() => selectNode(node)} onDoubleClick={() => openNode(node)}
-                      className="rounded-md border border-border/60 px-3 py-2 text-left text-[13px] hover:bg-muted/20">
+                      className="border border-border/60 px-3 py-2 text-left text-[13px] hover:bg-muted/20">
                       <span className="block truncate font-medium">{node.title}</span><span className="text-xs text-muted">{node.kind === 'contributor' ? 'Shared credit' : node.local ? 'In library' : 'External reference'}{node.trackCount ? ` · ${node.trackCount} tracks` : ''}{node.coverage ? ` · ${COVERAGE_LABELS[node.coverage.state]}` : ''}</span>
                     </button>)}
                   </div>
                   {visibleGraph.nodes.length > browseLimit && <button type="button" onClick={() => setBrowseLimit((count) => count + 40)} className="mt-3 text-xs text-primary">Show more</button>}
                 </details>
-                <details className="mt-2 rounded-md border border-border/60 p-3">
+                <details className="mt-2 border border-border/60 p-3">
                   <summary className="cursor-pointer text-xs font-medium">Browse relationships ({visibleGraph.edges.length})</summary>
                   <div className="mt-3 space-y-2">{visibleGraph.edges.slice(0, browseLimit).map((edge) => {
                     const source = visibleGraph.nodes.find((node) => node.id === edge.source);
                     const target = visibleGraph.nodes.find((node) => node.id === edge.target);
                     return <button key={edge.id} type="button" onClick={() => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
-                      className="w-full rounded-md border border-border/70 p-3 text-left text-[13px] hover:bg-muted/20">
+                      className="w-full border border-border/70 p-3 text-left text-[13px] hover:bg-muted/20">
                       <span className="font-medium">{source?.title}</span> <span className="text-muted">{edge.label}</span> <span className="font-medium">{target?.title}</span>
                     </button>;
                   })}</div>
@@ -498,7 +437,7 @@ export default function ConnectionsVisualizer({
                   {readOnly || selectedResearch.data?.active === false ? <p className="text-xs text-muted">Enable Sleeve Notes to add research to the queue.</p> : <>
                     <button type="button" disabled={queueResearch.isPending || !selectedCoverage?.canQueue || selectedResearch.isFetching}
                       onClick={() => queueResearch.mutate(researchTarget)}
-                      className="rounded-md border border-border px-3 py-2 text-xs font-medium text-primary hover:bg-muted/20 disabled:cursor-default disabled:opacity-50">
+                      className="border border-border px-3 py-2 text-xs font-medium text-primary hover:bg-muted/20 disabled:cursor-default disabled:opacity-50">
                       {sameResearchTarget && queueResearch.isPending ? 'Adding to queue…' : selectedCoverage?.state === 'researching' ? 'Researching'
                         : selectedCoverage?.state === 'queued' ? 'Queued' : selectedCoverage?.hasResearchHistory ? 'Research again' : 'Add to research queue'}
                     </button>
@@ -522,7 +461,79 @@ export default function ConnectionsVisualizer({
             </div>
           </Card>}
         </div>
-      ) : null}
+      ) : null
+  );
+
+  return (
+    <div className="space-y-5">
+      <Card title="The Station Brain" sub={overview ? 'Explore the artists and musical connections in your library' : 'Follow the connections around this music'}>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="relative">
+            <label className="relative block">
+              <span className="sr-only">Search Connections</span>
+              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+              <input value={draft} onChange={(event) => setDraft(event.target.value)}
+                placeholder="Search tracks, artists, albums or lists…"
+                className="w-full border border-border bg-transparent py-2.5 pr-9 pl-9 text-[13px] outline-none focus:border-primary" />
+              {draft && <button type="button" onClick={() => setDraft('')} aria-label="Clear search"
+                className="absolute top-1/2 right-2 -translate-y-1/2 p-1 text-muted hover:text-ink"><X className="size-4" /></button>}
+            </label>
+            {query.length >= 2 && (
+              <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto border border-border bg-card">
+                {search.isLoading && <p className="px-3 py-3 text-xs text-muted">Searching…</p>}
+                {search.error && <p className="px-3 py-3 text-xs text-muted">Connections search is temporarily unavailable.</p>}
+                {search.data?.map((result) => (
+                  <button key={result.nodeId} type="button" onClick={() => choose(result.entityType, result.entityId)}
+                    className="flex w-full items-center justify-between gap-3 border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-muted/20">
+                    <span className="min-w-0"><span className="block truncate text-[13px] font-medium">{result.title}</span>
+                      <span className="block truncate text-xs text-muted">{result.subtitle || result.kind}</span></span>
+                    <Pill tone="default">{result.kind}</Pill>
+                  </button>
+                ))}
+                {catalogueResults.map((node) => <button key={node.id} type="button" onClick={() => {
+                  selectNode(node); setDraft(''); setQuery('');
+                }} className="block w-full border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-muted/20">
+                  <span className="block text-[13px] font-medium">{node.title}</span><span className="text-xs text-muted">{node.subtitle}</span>
+                </button>)}
+                {!search.isLoading && search.data?.length === 0 && catalogueResults.length === 0 && <p className="px-3 py-3 text-xs text-muted">No Connections entities match.</p>}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void openCurrentArtist()} disabled={targetingArtist || nowPlaying.isLoading}
+            className="inline-flex grow items-center justify-center gap-2 border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30 disabled:opacity-50">
+            <LocateFixed className="size-4" aria-hidden="true" /> {targetingArtist ? 'Finding current artist…' : 'Target current artist'}
+          </button>
+          <button type="button" onClick={openCurrentTrack} disabled={!!localTrackId && current.isLoading}
+            className="inline-flex grow items-center justify-center gap-2 border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30 disabled:opacity-50">
+            <LocateFixed className="size-4" aria-hidden="true" /> Target current track
+          </button>
+          </div>
+        </div>
+        {currentMessage && <p role="status" className="mt-2 text-xs text-muted">{currentMessage}</p>}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void map.refetch()} disabled={map.isFetching}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50">
+            <RefreshCw className={`size-3 ${map.isFetching ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
+            {map.isFetching ? 'Refreshing…' : 'Refresh map'}
+          </button>
+          {overview && <button type="button" onClick={() => populate.mutate()} disabled={readOnly || populate.isPending || map.data?.active === false}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50">
+            <RefreshCw className={`size-3 ${populate.isPending ? 'animate-spin motion-reduce:animate-none' : ''}`} aria-hidden="true" />
+            {populate.isPending ? 'Populating artists…' : 'Populate library artists'}
+          </button>}
+          {!overview && parentArtistId
+            && <button type="button" onClick={() => choose('library-artist', parentArtistId)}
+              className="text-xs font-medium text-primary hover:underline">Back to artist’s albums</button>}
+          {!overview && <button type="button" onClick={() => clearFocus()} className="ml-auto text-xs font-medium text-primary hover:underline">Back to artists</button>}
+        </div>
+        {readOnly && <p className="mt-3 text-xs text-muted">Browsing saved connections. Library layers are available if previously opened; enable Sleeve Notes in Settings to load new layers.</p>}
+        {overview && populate.data && <p role="status" className="mt-3 text-xs text-muted">{populate.data.artists.toLocaleString()} library artists populated. Double-click an artist to load its albums.</p>}
+        {coverage.error && <p role="status" className="mt-3 text-xs text-muted">Research coverage could not be refreshed. <button type="button" onClick={() => void coverage.refetch()} className="text-primary hover:underline">Retry coverage</button></p>}
+        {overview && populate.error && <p role="alert" className="mt-3 text-xs text-muted">{populate.error.message}</p>}
+      </Card>
+
+      {fullscreen ? <EditorDialog open onOpenChange={changeFullscreen} title="Station Brain">{mapView}</EditorDialog> : mapView}
     </div>
   );
 }

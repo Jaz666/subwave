@@ -1,7 +1,6 @@
 // An artist-scale projection of retained facts. Opening the map performs only
 // local reads; the recurring library matcher owns catalogue maintenance.
 import type Database from 'better-sqlite3';
-import { open } from './db.js';
 import { connectionNameKey } from './library-connections.js';
 import type { ConnectionEdge, ConnectionEdgeType, ConnectionGraph, ConnectionNode } from './research-repository.js';
 
@@ -27,10 +26,6 @@ function text(value: unknown): string { return typeof value === 'string' ? value
 function sourceUrl(value: unknown): string | null {
   const url = text(value);
   return /^https?:\/\//iu.test(url) ? url : null;
-}
-
-export function researchConnectionsOverview(edgeTypes?: readonly ConnectionEdgeType[]): ConnectionGraph {
-  return researchConnectionsOverviewInDatabase(open(), edgeTypes);
 }
 
 export function researchConnectionsOverviewInDatabase(

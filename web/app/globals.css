@@ -134,6 +134,19 @@
     --input: var(--ink);
     --ring: var(--accent);
     --radius: 0px;
+    /* Station Brain relationship and coverage hues; surfaces use the active theme. */
+    --brain-artist: #ff8155;
+    --brain-recording: #64d8ca;
+    --brain-release: #eecb81;
+    --brain-contributor: #b698ee;
+    --brain-series: #8da8ee;
+    --brain-external-recording: #738399;
+    --brain-coverage-ready: var(--brain-recording);
+    --brain-coverage-empty: var(--brain-release);
+    --brain-coverage-unexplored: var(--muted);
+    --brain-coverage-queued: var(--brain-series);
+    --brain-coverage-researching: var(--brain-series);
+    --brain-coverage-incomplete: #ee8a8a;
     /* hover wash — at :root so shadcn Button hover works app-wide, not just
      inside .admin-root (which re-declares it identically below). */
     --ink-soft: color-mix(in oklab, var(--ink) 6%, transparent);

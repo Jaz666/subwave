@@ -8,7 +8,7 @@ process.env.STATE_DIR=root;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
 const {open,close}=await import('../src/sleeve-notes/db.js');
-const {searchResearchStoriesInDatabase}=await import('../src/sleeve-notes/research-repository.js');
+const {searchResearchStoriesInDatabase,researchStoreReadoutInDatabase}=await import('../src/sleeve-notes/research-repository.js');
 const {heardOnAir}=await import('../src/sleeve-notes/heard-on-air.js');
 const db=open();
 const at='2026-10-16T10:00:00.000Z';
@@ -35,12 +35,15 @@ test('conversation pagination includes all its stories once and preserves indepe
  detection_status,aired_at,tts_text,tts_rendered_at,speech_signal,segment_id,consumer)
  VALUES (?,?,'artist','artist','artist-stories','topic',?,'Offered','detected',?,'Spoken',?, ?,?,'sleeveNotesSegment')`);
  const signal=JSON.stringify({version:2,status:'detected'});
- for(let i=0;i<3;i++)for(let j=0;j<2;j++)insert.run(`use-${i}-${j}`,`claim-00${j}`,at,new Date(Date.parse(at)+i*1000).toISOString(),at,signal,`segment-${i}`);
+ for(let i=0;i<3;i++)for(let j=0;j<4;j++)insert.run(`use-${i}-${j}`,`claim-00${j}`,at,new Date(Date.parse(at)+i*1000).toISOString(),at,signal,`segment-${i}`);
  const first=heardOnAir(1,0,true),next=heardOnAir(1,1,true);
- assert.equal(first.total,6);assert.equal(first.conversationTotal,3);assert.equal(first.items.length,2);
+ assert.equal(first.total,12);assert.equal(first.conversationTotal,3);assert.equal(first.items.length,4);
  assert.deepEqual(new Set(first.items.map(item=>item.segmentId)),new Set(['segment-2']));
  assert.deepEqual(new Set(next.items.map(item=>item.segmentId)),new Set(['segment-1']));
- assert.equal(new Set(first.items.map(item=>item.id)).size,2);
+ assert.equal(new Set(first.items.map(item=>item.id)).size,4);
+ const readout=researchStoreReadoutInDatabase(db);
+ assert.equal(readout.recentSparks.length,12,'recent activity must not truncate a conversation at ten individual offers');
+ assert.equal(new Set(readout.recentSparks.map(spark=>spark.segmentId)).size,3);
 });
 
 test('collection pause survives a cold load, blocks workers and leaves on-air use enabled',async()=>{

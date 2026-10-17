@@ -10,7 +10,7 @@ export default function BrainPanel({ label, className, children }: { label: stri
   return <div className={className}>
     <button type="button" aria-expanded={open} aria-controls={contentId}
       onClick={() => setOpen(value => !value)}
-      className="flex min-h-8 items-center gap-2 rounded px-2 text-[11px] hover:bg-white/10 md:hidden">
+      className="flex min-h-8 items-center gap-2 px-2 text-[11px] hover:bg-white/10 md:hidden">
       {label}{open ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
     </button>
     <div id={contentId} className={open ? 'block' : 'hidden md:block'}>{children}</div>

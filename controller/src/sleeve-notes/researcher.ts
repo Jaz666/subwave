@@ -103,7 +103,6 @@ export interface Researcher {
   extract(job: ResearchJob, signal: AbortSignal): Promise<ResearchCandidate[]>;
   extractWikipediaSparks?(job: ResearchJob, sectionPath: string, signal: AbortSignal,
     promptOverride?: string, onUsage?: (usage: { input: number; output: number }) => void): Promise<WikipediaSparkExtraction>;
-  indexArticle?(job: ResearchJob, signal: AbortSignal): Promise<ResearchCandidate[]>;
   rankForAirtime?(job: ResearchJob, candidates: readonly ResearchCandidate[], signal: AbortSignal): Promise<string[]>;
   reviewForAirtime?(job: ResearchJob, candidates: readonly ResearchCandidate[], signal: AbortSignal): Promise<ResearchReviewDecision[]>;
   repairFullCandidates?(job: ResearchJob, candidates: readonly ResearchCandidate[], signal: AbortSignal): Promise<ResearchCandidate[]>;

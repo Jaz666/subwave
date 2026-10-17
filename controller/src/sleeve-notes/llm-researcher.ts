@@ -25,7 +25,6 @@ const candidateSchema = z.object({
   evidenceIds: z.array(z.string()).min(1).max(3),
 });
 const outputSchema = z.object({ candidates: z.array(candidateSchema).max(MAX_CANDIDATES_PER_ARTIST_RESEARCH) });
-const articleIndexSchema = z.object({ candidates: z.array(candidateSchema).max(16) });
 const airtimeRankSchema = z.object({ rankedClaimIds: z.array(z.string()).max(64) });
 const airtimeReviewSchema = z.object({ decisions: z.array(z.object({
   claimId: z.string(),
@@ -154,20 +153,6 @@ export class LlmResearcher implements Researcher, ResearchOutcomeObserver {
       ...(claim.matchingTrackTitle ? [`Matching track title: ${claim.matchingTrackTitle}`] : []),
     ].join('\n')).join('\n\n');
     return { claims, rawResponse };
-  }
-
-  async indexArticle(job: ResearchJob, signal: AbortSignal): Promise<ResearchCandidate[]> {
-    const passages = evidencePassages(job.document.text);
-    const evidenceById = new Map(passages.map((passage) => [passage.id, passage.text]));
-    const categoryGuidance = job.categories.map((category) =>
-      `- ${category}: ${SLEEVE_NOTE_CATEGORY_GUIDANCE[category]}.`).join('\n');
-    const result = await researchObject({
-      kind: 'sleeveNotesRank', signal, temperature: 0.2, maxOutputTokens: 2200,
-      schema: articleIndexSchema,
-      system: `Read this bounded Wikipedia article section and identify up to ${job.maxCandidates} distinct story sparks for a radio DJ. Return them in descending order of potential airtime value within this section. This is a ranked index of possible facts, not approval for broadcast. Prefer human or musical stories, creative decisions, unexpected connections, conflicts, causes and consequences. Skip bare dates, chart numbers, reviews and personnel listings. Use only the supplied passages, never memory. For each candidate give a complete factual Full sentence ending with punctuation, a short topic, a category, and one to three contiguous evidence IDs that directly support it. Preserve attribution, qualifiers and numbers. Every proper name in Full must occur in those exact evidence passages. For an album article, write "The album" if the evidence only says "the album"; do not add an unsupported title. Short wording is optional. Return fewer candidates if the section has fewer strong leads. Categories:\n${categoryGuidance}`,
-      prompt: `Source URL: ${job.document.sourceUrl}\nSubject: ${job.document.entityName ?? job.document.entityId}\n\nSOURCE PASSAGES:\n${passages.map((passage) => `[${passage.id}] ${passage.text}`).join('\n')}`,
-    });
-    return candidatesFromResearchResult(articleIndexSchema.parse(result), evidenceById);
   }
 
   async extract(job: ResearchJob, signal: AbortSignal): Promise<ResearchCandidate[]> {

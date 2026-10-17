@@ -8,25 +8,43 @@ import type { ResearchCandidate } from './researcher.js';
 type Feedback = z.infer<typeof sparkFeedbackSchema>;
 type AiredUse=Record<string,unknown>&{id:string;segmentId:string|null;spokenText:string;
   artist:string|null;title:string|null;wordingAtOffer:string;offeredWording:string};
-// Generated text is not airing evidence. Require a successful speech render,
-// confirmed air, and the recorded factual signal in that actual speech.
-const ELIGIBLE = `u.aired_at IS NOT NULL AND u.tts_rendered_at IS NOT NULL
-  AND u.tts_text IS NOT NULL AND u.detection_status = 'detected'
-  AND CASE WHEN json_valid(u.speech_signal) THEN
-    json_extract(u.speech_signal, '$.version') IN (1, 2) AND json_extract(u.speech_signal, '$.status') = 'detected'
-    ELSE 0 END`;
+// Only actual rendered-and-aired speech belongs here. Wording detection is information, never eligibility.
+const ELIGIBLE = `u.aired_at IS NOT NULL AND u.tts_rendered_at IS NOT NULL AND u.tts_text IS NOT NULL`;
 
-export function heardOnAir(limit = 20, offset = 0, groupConversations = false) {
+export function heardOnAir(limit = 20, offset = 0, groupConversations = false, filters: {search?: string; kind?: string; period?: string; usage?: string} = {}) {
   const db = open();
   const columns = new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map(row => row.name));
   const empty = { items: [], total: 0, conversationTotal: 0, limit, offset, feedbackTotals: { story: [], delivery: [] } };
   if (!columns.has('speech_signal') || !columns.has('tts_rendered_at')) return empty;
   const hasFeedback = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sleeve_spark_feedback'").get();
-  const total = (db.prepare(`SELECT COUNT(*) AS n FROM sleeve_claim_uses u WHERE ${ELIGIBLE}`).get() as { n: number }).n;
   const groupKey=columns.has('segment_id') ? "COALESCE('segment:' || u.segment_id, 'use:' || u.id)" : "'use:' || u.id";
-  const conversationTotal=(db.prepare(`SELECT COUNT(DISTINCT ${groupKey}) AS n FROM sleeve_claim_uses u WHERE ${ELIGIBLE}`).get() as {n:number}).n;
+  const hasLines=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get();
+  const detected = "CASE WHEN json_valid(u.speech_signal) THEN COALESCE(json_extract(u.speech_signal,'$.status')='detected',0) ELSE 0 END";
+  const conditions: string[] = [], values: string[] = [];
+  if (filters.usage === 'detected' || filters.usage === 'not-detected') {
+    conditions.push(`${groupKey} ${filters.usage === 'not-detected' ? 'NOT IN' : 'IN'} (
+      SELECT ${groupKey} FROM sleeve_claim_uses u WHERE ${ELIGIBLE} AND ${detected}=1)`);
+  }
+  const search = (filters.search ?? '').trim().slice(0, 120);
+  if (search) {
+    conditions.push(`(instr(lower(COALESCE(${columns.has('track_artist') ? 'u.track_artist,' : ''} a.artist, '') || ' ' ||
+      COALESCE(${columns.has('track_title') ? 'u.track_title,' : ''} a.title, '') || ' ' || u.tts_text || ' ' || u.offered_wording), lower(?)) > 0
+      ${hasLines && columns.has('segment_id') ? `OR EXISTS (SELECT 1 FROM sleeve_segment_lines l WHERE l.segment_id=u.segment_id AND instr(lower(l.text),lower(?))>0)` : ''})`);
+    values.push(search);
+    if (hasLines && columns.has('segment_id')) values.push(search);
+  }
+  if (filters.kind === 'segment') conditions.push("u.consumer='sleeveNotesSegment'");
+  if (filters.kind === 'link') conditions.push("COALESCE(u.consumer,'')<>'sleeveNotesSegment'");
+  const hours = filters.period === '24h' ? 24 : filters.period === '7d' ? 168 : filters.period === '30d' ? 720 : 0;
+  if (hours) { conditions.push('u.aired_at >= ?'); values.push(new Date(Date.now() - hours * 3600000).toISOString()); }
+  // Match before pagination, then retain every offered Spark in a matching segment.
+  const eligible = conditions.length ? `${ELIGIBLE} AND ${groupKey} IN (
+    SELECT ${groupKey} FROM sleeve_claim_uses u LEFT JOIN sleeve_local_attachments a ON a.local_track_id=u.local_track_id
+    WHERE ${ELIGIBLE} AND ${conditions.join(' AND ')})` : ELIGIBLE;
+  const total = (db.prepare(`SELECT COUNT(*) AS n FROM sleeve_claim_uses u WHERE ${eligible}`).get(...values) as {n:number}).n;
+  const conversationTotal=(db.prepare(`SELECT COUNT(DISTINCT ${groupKey}) AS n FROM sleeve_claim_uses u WHERE ${eligible}`).get(...values) as {n:number}).n;
   const page=groupConversations
-    ? `AND ${groupKey} IN (SELECT ${groupKey} FROM sleeve_claim_uses u WHERE ${ELIGIBLE}
+    ? `AND ${groupKey} IN (SELECT ${groupKey} FROM sleeve_claim_uses u WHERE ${eligible}
         GROUP BY ${groupKey} ORDER BY MAX(u.aired_at) DESC, MAX(u.id) DESC LIMIT ? OFFSET ?)`
     : '';
   const items = db.prepare(`SELECT u.id, u.consumer, ${columns.has('segment_id')?'u.segment_id':'NULL'} AS segmentId, u.claim_id AS claimId, u.local_track_id AS localTrackId,
@@ -34,15 +52,15 @@ export function heardOnAir(limit = 20, offset = 0, groupConversations = false) {
     ${columns.has('track_artist') ? 'COALESCE(u.track_artist, a.artist)' : 'a.artist'} AS artist,
     ${columns.has('track_title') ? 'COALESCE(u.track_title, a.title)' : 'a.title'} AS title, u.offered_wording AS offeredWording,
     ${columns.has('claim_wording_at_offer') ? 'COALESCE(u.claim_wording_at_offer, u.offered_wording)' : 'u.offered_wording'} AS wordingAtOffer,
-    u.tts_text AS spokenText, c.wording AS currentWording, c.enabled, c.operator_state AS operatorState,
+    u.tts_text AS spokenText,
+    ${detected} AS sparkDetected, c.wording AS currentWording, c.enabled, c.operator_state AS operatorState,
     s.source_url AS sourceUrl, s.attribution, s.provider,
     ${hasFeedback ? 'f.story, f.delivery, f.note, f.updated_at AS feedbackAt' : 'NULL AS story, NULL AS delivery, NULL AS note, NULL AS feedbackAt'}
     FROM sleeve_claim_uses u JOIN sleeve_claims c ON c.id = u.claim_id
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     LEFT JOIN sleeve_local_attachments a ON a.local_track_id = u.local_track_id
     ${hasFeedback ? 'LEFT JOIN sleeve_spark_feedback f ON f.use_id = u.id' : ''}
-    WHERE ${ELIGIBLE} ${page} ORDER BY u.aired_at DESC, u.id DESC ${groupConversations?'':'LIMIT ? OFFSET ?'}`).all(limit, offset) as AiredUse[];
-  const hasLines=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get();
+    WHERE ${groupConversations?ELIGIBLE:eligible} ${page} ORDER BY u.aired_at DESC, u.id DESC ${groupConversations?'':'LIMIT ? OFFSET ?'}`).all(...values, limit, offset) as AiredUse[];
   const transcripts=new Map<string,unknown>();
   for(const item of items) {
     if (!hasLines || !item.segmentId) {item.conversation=null;continue;}

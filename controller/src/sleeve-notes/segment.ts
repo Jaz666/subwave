@@ -1,5 +1,6 @@
 // A code-owned segment using retained research only. It never searches or picks music.
 import { z } from 'zod';
+import { approvedAiringGuidance } from './airing-review.js';
 import {fitsSpeechBudget,speechBudgetPrompt,type SpeechBudget} from '../broadcast/speech-budget.js';
 import {spokenWordCount} from '../audio/tts-measurements.js';
 import { detectClaimSignal } from './claim-signal.js';
@@ -116,6 +117,7 @@ The main host's configured language governs the whole segment, including all gue
 ${settings.agentLanguageReminder(brief.cast[0],'every spoken text field for the host and all guests')}
 ${settings.castSpeakerIdRule()}
 ${settings.castHouseRulesBlock()}
+${approvedAiringGuidance()}
 Output fields: reason is internal, air is a boolean, and lines is the ordered list of contributions. Every contribution has exactly two fields, speaker and text. A line has this shape (format only; write your own supported words): ${example}
 For air=true, the first line must have speaker ${brief.cast[0].id} (${brief.cast[0].name}, the host). Every required participant must have at least one contribution: ${brief.cast.map(persona=>`${persona.id} (${persona.name})`).join('; ')}. That is ${brief.cast.length} distinct speaker${brief.cast.length===1?'':'s'}. A second host contribution does not replace a missing guest. Before submitting, check the speaker IDs in lines against this complete list; if a participant is absent, include their supported contribution or choose air=false with empty lines.
 Station speech rules apply only inside each text string, never to reason, air, lines or speaker IDs. If the station requires a Breeze tone tag, put that tag and the following speech together inside text on the same line. The opening double quote must come BEFORE the opening square bracket of a tone tag; the closing double quote comes AFTER the spoken words. Never put a tag or dialogue outside the text field, create separate tone/dialogue fields, or omit text. Do not add vocal tags unless station rules require them. Do not prefix text with speaker names. When air=false, lines must be empty.

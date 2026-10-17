@@ -61,7 +61,7 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
   function row(item: SeriesList) {
     const status = !item.enabled ? 'Disabled' : item.lastError ? 'Needs attention'
       : !lists.data?.enabled ? 'Collection paused' : item.fetchedAt ? 'Cached' : 'Waiting for collection';
-    return <article id={`mbseries-${item.id}`} key={item.id} className="rounded-md border border-border/70 p-3">
+    return <article id={`mbseries-${item.id}`} key={item.id} className="border border-border/70 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <a href={`https://musicbrainz.org/series/${item.id}`} target="_blank" rel="noreferrer" className="text-[13px] font-semibold hover:underline">{item.label}{item.editionYear ? ` · ${item.editionYear}` : ''} ↗</a>
@@ -92,9 +92,9 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
     {lists.error && <div role="alert" className="text-[13px]"><p>{lists.error instanceof Error ? lists.error.message : 'Could not load lists'}</p><button type="button" onClick={() => void lists.refetch()} className="mt-2 text-primary hover:underline">Retry lists</button></div>}
     <div className="space-y-3">
       {lists.data?.lists.filter((item) => item.origin === 'custom').map(row)}
-      <details className="rounded-md border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Supplied lists · {lists.data?.lists.filter((item) => item.origin === 'supplied' && item.enabled).length ?? 0} enabled</summary><div className="mt-3 space-y-3">
+      <details className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Supplied lists · {lists.data?.lists.filter((item) => item.origin === 'supplied' && item.enabled).length ?? 0} enabled</summary><div className="mt-3 space-y-3">
       {lists.data?.lists.filter((item) => item.origin === 'supplied' && item.editionGroup !== '1001-albums').map(row)}
-      {!!family.length && <details className="rounded-md border border-border p-3">
+      {!!family.length && <details className="border border-border p-3">
         <summary className="cursor-pointer text-[13px] font-medium">1001 Albums You Must Hear Before You Die · {family.filter((item) => item.enabled).length} of {family.length} editions enabled</summary>
         <div className="mt-3 flex flex-wrap gap-3 text-xs">
           <button type="button" disabled={busy} onClick={() => void change({ ids: family.map((item) => item.id), enabled: true })} className="text-primary hover:underline disabled:opacity-50">Enable all editions</button>
@@ -110,20 +110,20 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
         try { setPreview(await check.mutateAsync(input)); } catch { /* Error rendered below. */ }
       })} onChange={() => { setPreview(null); check.reset(); add.reset(); }} className="space-y-3">
         <TextField control={form.control} name="input" label="Add a MusicBrainz Series" placeholder="Paste a Series URL or MBID" description="Checking retrieves the list name, type and example members. Tracks and album release groups are supported." disabled={busy} />
-        <button type="submit" disabled={busy || !form.formState.isValid} className="rounded-md border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">{check.isPending ? 'Checking…' : 'Check list'}</button>
+        <button type="submit" disabled={busy || !form.formState.isValid} className="border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">{check.isPending ? 'Checking…' : 'Check list'}</button>
       </form>
       {preview?.existing && <div className="mt-3 text-[13px]"><p>This list is already supplied or added: {preview.existing.label}.</p><a href={`#mbseries-${preview.existing.id}`} className="mt-2 inline-block text-primary hover:underline" onClick={() => {
         let ancestor = document.getElementById(`mbseries-${preview.existing?.id}`)?.parentElement;
         while (ancestor) { if (ancestor.tagName === 'DETAILS') ancestor.setAttribute('open', ''); ancestor = ancestor.parentElement; }
       }}>Open existing list</a>{!preview.existing.enabled && <button type="button" disabled={busy} onClick={() => void change({ ids: [preview.existing!.id], enabled: true })} className="ml-3 text-primary hover:underline">Re-enable list</button>}</div>}
-      {preview?.checkId && <div className="mt-3 rounded-md border border-border p-3 text-[13px]">
+      {preview?.checkId && <div className="mt-3 border border-border p-3 text-[13px]">
         <p className="font-semibold">{preview.name}</p><p className="mt-1 text-xs text-muted">{preview.entityType === 'recording' ? 'Tracks' : 'Albums'} · {preview.members} members</p>
         <ul className="mt-2 list-disc pl-5 text-xs">{preview.sample?.map((item) => <li key={item.id}>{item.title}</li>)}</ul>
         <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={ranked} onChange={(event) => setRanked(event.target.checked)} />Use positions as rankings</label>
         <p className="mt-2 text-xs text-muted">Example wording: “{(ranked ? preview.sample?.find((item) => item.rank) : preview.sample?.[0])?.title ?? (preview.entityType === 'recording' ? 'This track' : 'This album')} {ranked && preview.sample?.some((item) => item.rank) ? `was ranked number ${preview.sample.find((item) => item.rank)?.rank} in` : 'was included in'} {preview.name}.” Positions can describe catalogue or chronological order; choose rankings only for a ranked list.</p>
         <button type="button" disabled={busy} onClick={async () => {
           try { await add.mutateAsync({ checkId: preview.checkId!, ranked }); setPreview(null); form.reset(); setMessage('List added. Collection will run in the background while Sleeve Notes is enabled.'); } catch { /* Error rendered below. */ }
-        }} className="mt-3 rounded-md bg-ink px-3 py-2 text-xs font-semibold text-bg disabled:opacity-50">Add list</button>
+        }} className="mt-3 bg-ink px-3 py-2 text-xs font-semibold text-bg disabled:opacity-50">Add list</button>
       </div>}
     </div>
     {message && <p role="status" className="mt-3 text-[13px]">{message}</p>}
