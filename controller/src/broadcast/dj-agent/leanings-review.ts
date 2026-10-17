@@ -140,7 +140,7 @@ export function plainAgenticSelectionReason(track: any): string {
 }
 
 const QUEUE_LANGUAGE = /\b(?:next\s+up|up\s+next|coming\s+up|we(?:'|’)re\s+playing|we\s+have)\b/i;
-const LEANINGS_REFERENCE = /\b(?:reflecting\b.*\btaste\s+for|(?:musical\s+)?leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:['’]s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’](?:s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
+const LEANINGS_REFERENCE = /\b(?:reflecting\b.*\b(?:taste\s+for|preference\s+to\s+steer\s+away\s+from)|(?:musical\s+)?leanings?|broad\s+alternative\s+taste|(?:dj|host)(?:['’]s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?)|(?:my|his|her|their)\s+(?:musical\s+)?(?:taste|tastes|preference|preferences)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}['’](?:s)?\s+(?:musical\s+)?(?:taste|tastes|preference|preferences|favo(?:u)?rites?))\b/i;
 
 function usableAgenticReason(reason: unknown, song: { artist?: unknown; title?: unknown }): string {
   const note = typeof reason === 'string' ? reason.replace(/\s+/g, ' ').trim() : '';
@@ -204,22 +204,39 @@ export type AgenticLeaningsOption = {
   ownerName: string | null;
 };
 
+// Keep negative direction in the option itself: existing review schemas and
+// diagnostics carry exact phrases, so polarity cannot get lost in transit.
+// ponytail: bounded English clauses; structured preferences if broader grammar is needed.
+const NEGATIVE_LEANINGS = /\b(?:avoids?|dislikes?|steers?\s+away\s+from|leans?\s+away\s+from|(?:(?:does|do)\s+not|doesn[’']t|don[’']t|never|not)\s+(?:favou?rs?|enjoys?|prefers?|loves?|likes?)|(?:(?:is|are)\s+not|isn[’']t|aren[’']t)\s+(?:keen\s+on|into)|without|no|not(?!\s+only\b))\b(?=\s)/i;
+
+function negativeLeaningsSubject(phrase: string): string | null {
+  return /^Avoids\s+(.+)$/i.exec(phrase)?.[1] ?? null;
+}
+
 function phrasesFromSource(source: string): string[] {
   const phrases: string[] = [];
-  for (const rawSentence of source.split(/[.!?;]+/)) {
-    const sentence = rawSentence.trim();
-    const trigger = LEANINGS_TRIGGER.exec(sentence);
-    if (!trigger) continue;
-    const preference = sentence.slice(trigger.index + trigger[0].length).trim();
+  // Split a mixed sentence only before another preference, not before every
+  // "and": "avoids rock and metal" keeps its negative scope for both items.
+  const clauses = source.split(/[.!?;\n]+/).flatMap(sentence => sentence.split(
+    new RegExp(`(?:,\\s*|\\s+(?:but|and)\\s+|\\s+(?=without\\b))(?=(?:(?:he|she|they)\\s+)?(?:${NEGATIVE_LEANINGS.source}|${LEANINGS_TRIGGER.source}))`, 'i')));
+  const hasPositive = clauses.some(clause => {
+    const positive = LEANINGS_TRIGGER.exec(clause);
+    const negative = NEGATIVE_LEANINGS.exec(clause);
+    return positive && (!negative || positive.index < negative.index);
+  });
+  for (const clause of clauses) {
+    // Double negation is not an instruction to avoid the subject.
+    if (/\b(?:(?:does|do)\s+not|doesn[’']t|don[’']t|never|not)\s+(?:avoids?|dislikes?)\b/i.test(clause)) continue;
+    const negative = NEGATIVE_LEANINGS.exec(clause);
+    const positive = LEANINGS_TRIGGER.exec(clause);
+    const trigger = negative && (!positive || negative.index <= positive.index) ? negative : positive;
+    if (!trigger && hasPositive) continue;
+    const prefix = trigger && trigger === negative ? 'Avoids ' : '';
+    const preference = trigger ? clause.slice(trigger.index + trigger[0].length) : clause;
     for (const rawPart of preference.split(/\s*,\s*|\s+and\s+|\s+alongside\s+|\s+across\s+/i)) {
       const phrase = cleanLeaningsPhrase(rawPart);
-      if (phrase && !phrases.some((item) => comparable(item) === comparable(phrase))) phrases.push(phrase);
-    }
-  }
-  if (phrases.length === 0) {
-    for (const rawPart of source.split(/[.!?;,]+|\s+and\s+/i)) {
-      const phrase = cleanLeaningsPhrase(rawPart);
-      if (phrase && !phrases.some((item) => comparable(item) === comparable(phrase))) phrases.push(phrase);
+      const option = phrase && `${prefix}${phrase}`;
+      if (option && option.length <= 100 && !phrases.some(item => comparable(item) === comparable(option))) phrases.push(option);
     }
   }
   return phrases;
@@ -281,6 +298,7 @@ function exactLeaningsMetadataMatches(candidate: any, leaningsOptions: string[])
   const metadata = comparable([candidate?.genre, ...stringList(candidate?.moods), ...stringList(candidate?.lastfm_tags)].filter(Boolean).join(' '));
   const metadataWords = new Set(metadata.split(' ').filter(Boolean));
   return leaningsOptions.filter((option) => {
+    if (negativeLeaningsSubject(option)) return false;
     const phrase = comparable(option);
     if (!phrase) return false;
     if (` ${metadata} `.includes(` ${phrase} `)) return true;
@@ -301,9 +319,11 @@ function exactLeaningsMetadataScore(candidate: any, leaningsOptions: string[]): 
 export function eligibleAgenticLeanings(baseline: any, candidates: any[], sources: AgenticLeaningsOption[]): AgenticLeaningsOption[] {
   const host = sources.filter(({ source }) => source === 'host');
   const hostPhrases = host.map(({ phrase }) => phrase);
+  const hostAvoided = hostPhrases.map(negativeLeaningsSubject).filter((phrase): phrase is string => !!phrase);
   const hostSupported = [baseline, ...candidates].some((candidate) =>
     (String(candidate?.id) === String(baseline?.id) || ordinarySimilarity(baseline, candidate) >= MIN_REVIEW_FLOW_SCORE)
-    && exactLeaningsMetadataMatches(candidate, hostPhrases).length > 0);
+    && (exactLeaningsMetadataMatches(candidate, hostPhrases).length > 0
+      || exactLeaningsMetadataMatches(candidate, hostAvoided).length > 0));
   return hostSupported ? host : sources;
 }
 
@@ -319,7 +339,13 @@ export function selectAgenticReviewCandidates(baseline: any, candidates: any[], 
     .map((candidate) => ({
       candidate,
       ordinaryScore: ordinarySimilarity(baseline, candidate),
-      leaningsScore: exactLeaningsMetadataScore(candidate, distinguishingOptions),
+      leaningsScore: exactLeaningsMetadataScore(candidate, distinguishingOptions)
+        + distinguishingOptions.filter(option => {
+          const subject = negativeLeaningsSubject(option);
+          return subject && exactLeaningsMetadataMatches(baseline, [subject]).length
+            && !exactLeaningsMetadataMatches(candidate, [subject]).length
+            && [candidate.genre, ...stringList(candidate.moods), ...stringList(candidate.lastfm_tags)].some(Boolean);
+        }).length,
     }));
   const ordinaryRanked = [...ranked]
     .sort((left, right) => right.ordinaryScore - left.ordinaryScore || String(left.candidate.id).localeCompare(String(right.candidate.id)));
@@ -467,10 +493,17 @@ export function validateAgenticLeaningsReplacement({
   if (!basis || !allowedBasis) {
     return { valid: false, reason: 'missing-leanings-basis' };
   }
-  if (!comparable(musicalLeanings).includes(basis)) {
+  const avoided = negativeLeaningsSubject(allowedBasis);
+  const inProfile = avoided
+    ? typeof musicalLeanings === 'string' && phrasesFromSource(musicalLeanings).some(option => comparable(option) === basis)
+    : comparable(musicalLeanings).includes(basis);
+  if (!inProfile) {
     return { valid: false, reason: 'basis-not-in-leanings' };
   }
-  const exact = supportedLeanings.some((option) => comparable(option) === basis);
+  if (avoided && exactLeaningsMetadataMatches(challenger, [avoided]).length) {
+    return { valid: false, reason: 'basis-not-supported-by-candidate' };
+  }
+  const exact = !avoided && supportedLeanings.some((option) => comparable(option) === basis);
   if (!exact) {
     const interpretable = interpretableLeanings.some((option) => comparable(option) === basis);
     if (!interpretable || !editorialEvidence) return { valid: false, reason: 'basis-not-supported-by-candidate' };
@@ -587,7 +620,10 @@ export function agenticLeaningsSelectionReason({
     detail = 'its musical character brings a natural change of colour to the sequence';
   }
   if (detail) detail = detail[0].toLocaleLowerCase('en-GB') + detail.slice(1);
-  return `${presenter} chose “${title}” by ${artist}; ${detail}, reflecting ${possessive} taste for ${basis}.`;
+  const preference = negativeLeaningsSubject(basis)
+    ? `preference to steer away from ${negativeLeaningsSubject(basis)}`
+    : `taste for ${basis}`;
+  return `${presenter} chose “${title}” by ${artist}; ${detail}, reflecting ${possessive} ${preference}.`;
 }
 
 export function resolveAgenticLeaningsUsage({

@@ -477,3 +477,32 @@ for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as con
     assert.deepEqual(failed.logLines, [`${route(kind).label} failed — using the baseline`]);
   });
 }
+
+for (const kind of ['djAgentLeaningsReview', 'djShortlistLeaningsReview'] as const) {
+  test(`${kind}: avoidance can settle a close choice, with honest private attribution`, async () => {
+    const host = 'Avoids stadium rock.';
+    const rock = { ...baseline, genre: 'stadium rock' };
+    const soul = { ...synth, genre: 'soul' };
+    const answer = {
+      selectedId: soul.id, leaningsBasis: 'Avoids stadium rock', musicalReason: goodReason, transition: 'normal',
+      editorialEvidence: {
+        baselineFacts: [{ field: 'genre', value: 'stadium rock' }],
+        challengerFacts: [{ field: 'genre', value: 'soul' }],
+        comparison: 'Avoids stadium rock: the stadium rock baseline contrasts with the soul challenger, offering a different musical direction.',
+      },
+    };
+    const overrides = { song: rock, seen: new Map([rock, soul].map(track => [track.id, track])),
+      editorialLeanings: { host, guest: null, promptValue: `Host: ${host}` } };
+    const { result, resolution, prompts } = await run(answer, kind, overrides);
+    assert.equal(result.song.id, soul.id);
+    assert.equal(resolution.leaningsReview?.outcome, 'replaced');
+    assert.equal(resolution.leaningsReview?.evidenceKind, 'editorial-comparison');
+    assert.match(result.object.reason, /Mara Vex’s preference to steer away from stadium rock/);
+    assert.doesNotMatch(result.object.reason, /taste for Avoids/);
+    assert.match(prompts[0], /Avoids stadium rock/);
+    assert.match(prompts[0], /preferences AGAINST that trait/);
+    assert.equal((await run({ ...answer, editorialEvidence: null }, kind, overrides)).result.song.id, rock.id);
+    assert.equal((await run({ ...answer, selectedId: rock.id }, kind, overrides)).result.song.id, rock.id,
+      'avoidance is a soft preference: keeping the baseline remains valid');
+  });
+}

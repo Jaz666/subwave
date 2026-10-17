@@ -52,6 +52,14 @@ noun-phrase fallback, then merge with the host owning duplicate phrases.
 `dj-agent/leanings-review.ts` owns extraction, source priority, evidence
 validation and reason filtering. A viable host match, including the baseline,
 excludes guest evidence; a guest can nudge only when no viable host match exists.
+Negative phrases such as “avoids stadium rock” and “does not favour stadium
+rock” retain their direction, including in mixed positive/negative lists.
+They never count as positive tag matches. Avoidance requires a grounded
+comparison of both tracks; missing tags alone prove nothing, and a challenger
+carrying the avoided tag cannot win on that preference. These remain soft
+preferences, never bans. Known host avoidance contrasts take priority over
+guest preferences. Private reasons say “preference to steer away from”, and
+are removed from selection/request speech context just like positive taste.
 The displayed reason credits the actual preference owner. Operator history keeps
 that reason, while `session.windowMessages()` removes preference claims before
 selection or request speech reads it, including recovered legacy pick notes.
