@@ -318,12 +318,10 @@ function exactLeaningsMetadataScore(candidate: any, leaningsOptions: string[]): 
 // them. A guest can nudge only a choice the host's supplied evidence cannot settle.
 export function eligibleAgenticLeanings(baseline: any, candidates: any[], sources: AgenticLeaningsOption[]): AgenticLeaningsOption[] {
   const host = sources.filter(({ source }) => source === 'host');
-  const hostPhrases = host.map(({ phrase }) => phrase);
-  const hostAvoided = hostPhrases.map(negativeLeaningsSubject).filter((phrase): phrase is string => !!phrase);
+  const hostPhrases = host.map(({ phrase }) => negativeLeaningsSubject(phrase) ?? phrase);
   const hostSupported = [baseline, ...candidates].some((candidate) =>
     (String(candidate?.id) === String(baseline?.id) || ordinarySimilarity(baseline, candidate) >= MIN_REVIEW_FLOW_SCORE)
-    && (exactLeaningsMetadataMatches(candidate, hostPhrases).length > 0
-      || exactLeaningsMetadataMatches(candidate, hostAvoided).length > 0));
+    && exactLeaningsMetadataMatches(candidate, hostPhrases).length > 0);
   return hostSupported ? host : sources;
 }
 
