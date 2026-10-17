@@ -4,7 +4,6 @@ import type { RequestResult } from './types';
 // controller outcomes, including older controllers without the outcome field.
 export function requestResultLabel(result: Pick<RequestResult, 'pending' | 'outcome' | 'track'>): string {
   if (result.pending) return 'On the wire';
-  if (result.outcome === 'unsupported') return 'Try a simpler request';
   if (result.outcome === 'cooldown') return 'Played recently';
   if (result.outcome === 'already-queued') return 'Already playing or queued';
   if (result.outcome === 'substituted') return 'Alternative queued';

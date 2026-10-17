@@ -13,7 +13,6 @@ test('refused requests are never labelled as newly queued', () => {
 test('chat, pending and legacy controller replies retain truthful labels', () => {
   assert.equal(requestResultLabel({ pending: true }), 'On the wire');
   assert.equal(requestResultLabel({ outcome: 'chat' }), 'Answered');
-  assert.equal(requestResultLabel({ outcome: 'unsupported' }), 'Try a simpler request');
   assert.equal(requestResultLabel({ track: { title: 'Legacy track' } }), 'Queued');
 });
 

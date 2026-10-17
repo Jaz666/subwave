@@ -53,9 +53,9 @@ function pruneRequests() {
 
 // The same catalogue/identity resolver serves the shortcut, with its seed,
 // queued tracks and recent plays excluded absolutely before similarity fallback.
-async function pickByArtistAndSort({ artistName, sort, scope, recentIds }: { artistName: string; sort: string | null; scope: string; recentIds: Set<string> }) {
-  const result = await resolveDirectRequest({ artist: artistName, sort, scope }, {
-    catalog: subsonic, recentIds, queuedIds: new Set<string>(), excludeIds: recentIds,
+async function pickMoreByArtist(artistName: string, recentIds: Set<string>) {
+  const result = await resolveDirectRequest({ artist: artistName }, {
+    catalog: subsonic, recentIds, queuedIds: new Set<string>(),
     moodSongs: async () => [], fallbackSongs: async () => [],
   });
   return result.outcome === 'matched' ? result.track : null;
@@ -251,9 +251,7 @@ async function resolveRequest(entry) {
     for (const id of queue.queuedIds()) recentIds.add(id);
     // Same artist first, then real track similarity so a one-off collab credit
     // playing now doesn't dead-end the request.
-    let pick = await pickByArtistAndSort({
-      artistName: refArtist, sort: null, scope: 'song', recentIds,
-    });
+    let pick = await pickMoreByArtist(refArtist, recentIds);
     if (!pick) {
       pick = await pickSimilarToTrack(reference, recentIds);
       if (pick) entry.pickSource = 'more-like-this:similar';

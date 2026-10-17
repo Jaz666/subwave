@@ -138,9 +138,8 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   fallbackSongs(): Promise<RequestSong[]>;
   similarSongs?(): Promise<RequestSong[]>;
   random?: () => number;
-  excludeIds?: Set<string>;
 }): Promise<RequestSelection> {
-  const { catalog, recentIds, queuedIds, currentId, excludeIds = new Set<string>() } = deps;
+  const { catalog, recentIds, queuedIds, currentId } = deps;
   const errors: string[] = [];
   if (match.unsupported?.some(reason => reason.trim())) return { track: null, source: 'unsupported', outcome: 'unsupported', errors };
   const safe = async <T>(source: string, run: () => Promise<T>, fallback: T): Promise<T> => {
@@ -171,12 +170,11 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     }
     return true;
   };
-  const eligible = (song: RequestSong) => !recentIds.has(song.id) && !queuedIds.has(song.id) && song.id !== currentId && !excludeIds.has(song.id);
-  const unique = (songs: RequestSong[]) => [...new Map(songs.filter(s => s?.id && !excludeIds.has(s.id)).map(s => [s.id, s])).values()];
+  const eligible = (song: RequestSong) => !recentIds.has(song.id) && !queuedIds.has(song.id) && song.id !== currentId;
+  const unique = (songs: RequestSong[]) => [...new Map(songs.filter(s => s?.id).map(s => [s.id, s])).values()];
   const choose = (songs: RequestSong[]) => {
-    const list = unique(songs);
-    const moodHits = match.mood ? list.filter(moodMatches) : [];
-    const pool = moodHits.length ? moodHits : list;
+    const moodHits = match.mood ? songs.filter(moodMatches) : [];
+    const pool = moodHits.length ? moodHits : songs;
     return pool[Math.min(pool.length - 1, Math.floor((deps.random || Math.random)() * pool.length))] || null;
   };
   let held: { track: RequestSong; source: string } | null = null;

@@ -10,7 +10,6 @@ test('native request labels distinguish refused, substituted and queued tracks',
   assert.equal(requestResultLabel({ track, outcome: 'substituted' }), 'Alternative queued');
   assert.equal(requestResultLabel({ track }), 'Queued');
   assert.equal(requestResultLabel({ outcome: 'chat' }), 'Answered');
-  assert.equal(requestResultLabel({ outcome: 'unsupported' }), 'Try a simpler request');
 });
 
 test('native slow requests remain pending and eventually report uncertainty', () => {
