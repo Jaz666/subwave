@@ -1,0 +1,11 @@
+# Operator-led web research removed — 15 October 2026
+
+At the owner's request, Sleeve Notes now uses its regular MusicBrainz, Wikipedia, Genius and MusicBrainz Series sources. The freeform operator request feature has been removed: request UI/history/statistics, API endpoints, scheduler integration, web-search discovery, article fetching, context/ownership prompts and contracts, private call-attribution plumbing, schemas and feature-only dependencies/tests. Shared web-search behavior is restored; existing web-search DJ Skills and the Live-Facts Backend remain independent features. The Overview shows the regular research queue.
+
+Station Brain's manual artist/album Add to research queue and Research again actions remain, including first-play bypass, source handoff, schema 50 recovery, quiet-time scheduling and provider backoff. Heard on air, DJ feedback, saved-story review, live track summaries and the other separate improvements remain.
+
+Schema 51 retires existing web research on controller upgrade: queued/running/deferred requests become cancelled, web-derived claims are disabled and their pending Review items are closed. Claim/source/request/airing records are retained for historical reference; completed requests are not rewritten. The Spark selector rejects the retired provider even if a historical claim is subsequently enabled. No old request can resume because its worker and API are gone. No live station cache or service was changed during this coding session.
+
+Validation: all 186 remaining Sleeve Notes tests pass, including three retirement regressions; 175 web tests and two existing shared web-search test files pass. Controller/web type checks, changed-file lint (existing telemetry any warnings only), whitespace and admin-query audit plus nine tests pass. Browser fixtures verified the Overview without request UI/network reads, mobile layout, and the retained Station Brain album queue action and disabled-state controls. Temporary preview server stopped and generated Next environment changes restored. Controller and web rebuilds are required.
+
+The earlier operator-web-research investigation is explicitly marked archived; it also contains historical notes about independent features that remain implemented.

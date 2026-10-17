@@ -170,6 +170,16 @@ const NAV_SECTIONS: NavSection[] = [
         ],
       },
       { href: '/admin/personas', id: 'personas', label: 'Personas', icon: Drama },
+      { href: '/admin/notes', id: 'notes', label: 'Notes', icon: BookOpen,
+        children: [
+          { href: '/admin/notes?tab=overview', id: 'notes-overview', label: 'Overview', icon: BookOpen, tab: 'overview', defaultTab: true },
+          { href: '/admin/notes?tab=stories', id: 'notes-stories', label: 'Stories', icon: BookOpen, tab: 'stories' },
+          { href: '/admin/notes?tab=heard', id: 'notes-heard', label: 'Heard on air', icon: Headphones, tab: 'heard' },
+          { href: '/admin/notes?tab=connections', id: 'notes-connections', label: 'Station Brain', icon: Boxes, tab: 'connections' },
+          { href: '/admin/notes?tab=moderation', id: 'notes-moderation', label: 'Review', icon: BookOpen, tab: 'moderation' },
+          { href: '/admin/notes?tab=config', id: 'notes-config', label: 'Settings', icon: SlidersHorizontal, tab: 'config' },
+        ],
+      },
       { href: '/admin/skills', id: 'skills', label: 'Skills', icon: Sparkles },
       {
         href: '/admin/imaging',
