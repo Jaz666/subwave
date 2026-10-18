@@ -20,7 +20,7 @@ import { isInOrderShow } from '../music/playlist-order.js';
 import { commitInOrderPick, resolveInOrderNext } from '../music/playlist-order-next.js';
 import { EXPLORE_SEED_PROBABILITY } from '../music/airing.js';
 import { ARTIST_VARIETY_WINDOW, artistGuardCause, recentArtistsClause, requestRepickCandidates, runArtistGuard } from './dj-agent/artist-guard.js';
-import { runAlbumGuard } from './dj-agent/album-guard.js';
+import { albumGuardAnchorRoot, runAlbumGuard } from './dj-agent/album-guard.js';
 import { albumKeyFor } from '../music/album-facts.js';
 import { hasEraBound, genreResolutionWarningOnce, type VocalMode } from '../music/show-filter.js';
 import type { TransitionEffect } from '../settings/vocab.js';
@@ -956,9 +956,10 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
       seen: extras.seen,
       recentAlbums: queue.recentAlbumKeys(albumHours),
       avoidArtistRoots: neighbourRoots,
-      // A successful artist re-pick must survive the softer album guard, even
-      // when its recent-artist preference is waived or the window is off.
-      avoidAnchorRoot: guarded.kind === 'repicked' ? artistRootKey(pickAnchor || {}) : '',
+      // The pick-anchor artist is never an album re-pick's destination, unless
+      // `song` (the pick the artist guard left standing) is already a repeat of
+      // it that guard conceded (album-guard.albumGuardAnchorRoot).
+      avoidAnchorRoot: albumGuardAnchorRoot(pickAnchor, song, !!episodeSource),
       // The run's `seen` values are the MODEL's projection and carry no
       // compilation flags (adding them would put them in a re-pick prompt), so
       // the key is resolved against the library — the same resolver the pool
@@ -1461,20 +1462,22 @@ export function effectEventClause(historyNote = ''): string {
 // FIFO predecessor across later awaits. The anchor flows through the event,
 // mini-run, pool re-rank and link back-announce target. `anchorPrior` supplies
 // its context. Omitted means the cycle anchors to queue.current/history.
+// Resolves 'capped' when the hard cap stood the pick down, so the queue can
+// report the coast handover (#1992); undefined on every other path.
 export async function runTrackEvent(queue, ctx, { wantLink, showAt = null, pickAnchor = null, anchorPrior = null }: {
   wantLink: boolean;
   showAt?: Date | null;
   pickAnchor?: any | null;
   anchorPrior?: any | null;
-}) {
-  return withTrace({ kind: 'track-event', wantLink }, async () => {
+}): Promise<'capped' | undefined> {
+  return withTrace({ kind: 'track-event', wantLink }, async (): Promise<'capped' | undefined> => {
     // Daily token cap. At the hard cap we make NO model call: skip the pick and
     // let Liquidsoap fall through to the LLM-free auto playlist (music keeps
     // playing). In the soft tier we still pick — the stream needs a next track —
     // but cheaply: the stateless pool picker, and no link.
     if (!budget.picksAllowed()) {
       queue.log('budget', 'daily LLM token cap reached — coasting on the auto playlist');
-      return;
+      return 'capped';
     }
     const cheap = budget.preferCheapPicker();
     // Resolve once for the complete logical selection: the prompt event, main
