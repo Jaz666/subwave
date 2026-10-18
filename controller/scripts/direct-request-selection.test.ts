@@ -33,6 +33,31 @@ test('names and quoted titles are not mistaken for unsupported conditions', () =
   }
 });
 
+test('explicit negative instructions survive an omitted model condition', () => {
+  for (const text of [
+    'Play some soul, avoid stadium rock', 'Avoid stadium rock',
+    'Play Queen but steer clear of live versions', 'Play some soul; please exclude metal',
+    'Play some soul and don’t include metal', 'Please do not include Queen',
+    'Play soul with no metal', 'Play soul with no metal by Queen',
+    'Play anything except live recordings by Queen',
+    'Play something but not live by Queen',
+    'Play “Anything But Love”, but avoid live versions',
+    'Play Anything But Love by Example, but don’t include live versions',
+  ]) assert.ok(directRequestUnsupported(text).includes('exclusions'), text);
+});
+
+test('negative-looking names and idioms remain requestable', () => {
+  for (const text of [
+    'Play Anything But Love by Example', 'Play Other Than This by Example',
+    'Play something by No Doubt', 'Play Not Waving', 'Play Skip James',
+    'Play Never Shout Never', 'Play no wave', 'Play No More Drama by Mary J. Blige',
+    'Play soul, not least Motown', 'Play Noël', 'Play Ōno',
+    'Play Shingeki no Kyojin', 'Play “Avoid Metal”',
+    'Play With No Regrets by Example',
+  ]) assert.deepEqual(directRequestUnsupported(text), [], text);
+  assert.deepEqual(directRequestUnsupported('Play Anything But Love by Example', { unsupported: ['exclusions'] }), ['exclusions']);
+});
+
 test('a named title selects only the recording satisfying its language requirement', async () => {
   const french = { ...exact, id: 'french', language: 'French' };
   const f = fixture({ searchPage: async () => ({ songs: [{ ...exact, language: 'English' }, french], rawCount: 2 }) });

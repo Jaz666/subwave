@@ -57,8 +57,18 @@ export interface RequestSelection {
 // This is deliberately bounded, not a second natural-language interpreter.
 export function directRequestUnsupported(text: string, match: RequestMatch = {}): string[] {
   const prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, ' <name> ');
+  // An explicit title-by-artist form can contain exclusion-like words. Only
+  // shield that title from the ambiguous phrase check; imperative clauses
+  // are still checked against the original prose below.
+  const exclusionProse = prose.replace(/^(\s*(?:(?:please\s+)?(?:play|queue|put on)\s+)?)([^,;.!?]+?)\s+by\s+(?=\S)/iu,
+    (whole, prefix: string, title: string) => /\b(?:except|excluding|but not|but no)\b|\S\s+with\s+no\b/iu.test(title)
+      ? whole : `${prefix}<name> by `);
   const reasons = new Set((match.unsupported || []).filter(reason => reason.trim()));
-  if (/\b(?:anything|something|music|songs?|tracks?)\s+(?:except|excluding|but(?: not)?)\b|\b(?:but not|but no|excluding|except(?: for)?|other than)\s+\S|\b(?:do not|don't|don’t)\s+play\b/i.test(prose)) reasons.add('exclusions');
+  if (/\b(?:anything|something|music|songs?|tracks?)\s+(?:except|excluding|but(?: not)?)\b|\b(?:but not|but no|excluding|except(?: for)?|other than)\s+\S|\b(?:do not|don't|don’t)\s+play\b/i.test(exclusionProse)) reasons.add('exclusions');
+  // Require an instruction/clause boundary, not bare no/not or a cue inside
+  // a name such as No Doubt, Not Waving, Skip James or Never Shout Never.
+  if (/(?:^|[,;.!?]\s*|\s+(?:but|and|please)\s+)(?:please\s+)?(?:avoid\s+|steer\s+clear\s+of\s+|(?:do\s+not|don['’]t)\s+(?:include|play)\s+|exclude\s+)(?=\S)/iu.test(prose)
+    || /(?<![\p{L}\p{N}])with\s+no\s+(?=\S)/iu.test(exclusionProse)) reasons.add('exclusions');
   if (/\b(?:19|20)\d0s\b|\b(?:from|during|in)\s+(?:the\s+)?(?:19|20)\d{2}\b/i.test(prose)) reasons.add('era');
   if (/\b(?:instrumental|acoustic|live)\s+(?:only|music|songs?|tracks?|versions?)\b|\b(?:only|strictly)\s+(?:instrumental|acoustic|live)\b|\bwithout\s+(?:vocals|singing|lyrics)\b/i.test(prose)) reasons.add('recording condition');
   if (/\b(?:song|track|one)\s+(?:from|in)\s+(?:that|the|a)\s+(?:new\s+)?(?:film|movie|show|advert|commercial)\b|\b(?:song|track|one)\s+(?:with|containing|that has)\s+(?:the\s+)?(?:lyrics|words|line)\b/i.test(prose)) reasons.add('external identification');

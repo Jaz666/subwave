@@ -237,6 +237,25 @@ test('a model cannot silently discard a common exclusion', async () => {
   assert.equal(queue.upcoming.length, 0);
 });
 
+for (const text of ['Play some soul, avoid stadium rock', 'Play soul with no metal']) {
+  test(`an omitted negative instruction cannot queue a track: ${text}`, async () => {
+    modelOutput = { artist: 'Queen' };
+    const result = await submit(text);
+    assert.equal(result.outcome, 'unsupported');
+    assert.equal(queue.upcoming.length, 0);
+  });
+}
+
+for (const title of ['Anything But Love', 'Other Than This']) {
+  test(`an exclusion-like title still reaches the queue: ${title}`, async () => {
+    catalogueSongs = [{ ...exact, title }];
+    modelOutput = { title, artist: 'Queen' };
+    const result = await submit(`Play ${title} by Queen`);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0]?.track.title, title);
+  });
+}
+
 test('model-detected unsupported conditions survive an otherwise empty plan', async () => {
   modelOutput = { unsupported: ['earlier conversation'] };
   const result = await submit('Play the one we discussed earlier');
