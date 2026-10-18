@@ -880,6 +880,7 @@ async function pickViaSelectionRoute(queue, ctx, { wantLink, audioWaypoint = nul
     seen: extras.seen,
     // Every queue read stays here; the policy module is handed values only.
     recentRoots: neighbourRoots,
+    recentDistances: queue.neighbourArtistDistances?.(varietyWindow),
     window: varietyWindow,
     repick: guardRepick,
     poolRescue: (avoidArtist, avoidAnchorArtist) => pickViaPool(
@@ -1910,6 +1911,8 @@ async function runRequestViaAgent(queue: any, { requester, text }: { requester: 
           song, object, pickAnchor: null,
           seen: extras.seen,
           recentRoots: neighbourRoots,
+          // No recentDistances, deliberately: the least-recent swap carries no
+          // ack or intro, and this answer is the listener's.
           window: varietyWindow,
           exempt: (c) => !standIn(c, extras.seen),
           repick: (alt, reason) => {
