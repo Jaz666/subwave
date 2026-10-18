@@ -138,6 +138,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   fallbackSongs(): Promise<RequestSong[]>;
   similarSongs?(): Promise<RequestSong[]>;
   random?: () => number;
+  choose?(pool: RequestSong[]): RequestSong | null;
 }): Promise<RequestSelection> {
   const { catalog, recentIds, queuedIds, currentId } = deps;
   const errors: string[] = [];
@@ -175,6 +176,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const choose = (songs: RequestSong[]) => {
     const moodHits = match.mood ? songs.filter(moodMatches) : [];
     const pool = moodHits.length ? moodHits : songs;
+    if (deps.choose) return deps.choose(pool);
     return pool[Math.min(pool.length - 1, Math.floor((deps.random || Math.random)() * pool.length))] || null;
   };
   let held: { track: RequestSong; source: string } | null = null;
@@ -296,7 +298,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
       if (result) return result;
     }
     if (deps.similarSongs) {
-      const result = select(await safe('similar tracks', deps.similarSongs, []), 'similar-to-current');
+      const result = select(await safe('similar tracks', deps.similarSongs, []), 'similar-to-current', !match.artist);
       if (result) return result;
     }
     const constrainedRefusal = refusal();

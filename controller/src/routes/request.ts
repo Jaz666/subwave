@@ -29,6 +29,8 @@ import { validatePublicBody } from '../middleware/validate.js';
 import { listenerRequestSchema } from '../schemas/request.js';
 import { directRequestUnsupported, modelFreeRequest, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
 import { requestWaitClause } from '../broadcast/queue/pure.js';
+import { matchedRequestLookups, matchedRequestStandIn } from '../util/request-claim.js';
+import { ARTIST_VARIETY_WINDOW, drawRequestCandidate } from '../broadcast/dj-agent/artist-guard.js';
 
 export const router = express.Router();
 
@@ -373,7 +375,7 @@ async function resolveRequest(entry) {
         // recover an unambiguous literal form whose artist agrees with it.
         matched = { ...matched, title: literal.title };
       }
-      if (matched.kind !== 'chat' && !matched.unsupported?.length && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)) {
+      if (matched.kind !== 'chat' && !matched.unsupported?.length && !(currentTrack?.id && /\b(?:like this|match this)\b/i.test(text)) && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)) {
         entry.interpretationFallback = true;
         matched = modelFreeMatch(text);
       }
@@ -426,9 +428,36 @@ async function resolveRequest(entry) {
   entry.language = matched.language || null;
   entry.searchTerms = matched.search_terms || null;
 
+  // Preserve upstream stand-in spacing after the resolver applies identity,
+  // hard constraints and cooldowns. Named matches remain exempt.
+  const terms = (matched.search_terms || []).filter(term => term &&
+    ![matched.mood, matched.genre, matched.language].some(value => value && value.toLowerCase() === term.toLowerCase()));
+  const named = matched.literal ? [] : [matched.artist, matched.title, ...terms];
+  const searches: Array<{ term: string; hits: any[] }> = [];
+  const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
   const cdMin = Number(settings.get().requests.repeatCooldownMin ?? 120);
   const selection = await resolveDirectRequest(matched, {
-    catalog: subsonic,
+    catalog: {
+      ...subsonic,
+      searchPage: async (term, options) => {
+        const page = await subsonic.searchPage(term, options);
+        searches.push({ term, hits: page.songs });
+        return page;
+      },
+    },
+    choose: pool => {
+      const isStandIn = matchedRequestStandIn(named, {
+        requestText: text, lookups: matchedRequestLookups(searches, text), onAir: currentTrack,
+      });
+      const drawn = drawRequestCandidate(pool, queue.neighbourArtistRoots(varietyWindow), isStandIn);
+      if (drawn.withheld) {
+        flagGuard(entry, 'artist-spaced');
+        queue.log('request-guard', `stand-in by recently-played artist "${drawn.withheld.artist}" set aside — drew "${drawn.pick?.title}" by ${drawn.pick?.artist} instead (${drawn.skipped} recent stand-in(s) passed over, spacing window ${varietyWindow} slots)`);
+      } else if (drawn.starved) {
+        queue.log('request-guard', `stand-in by recently-played artist "${drawn.pick?.artist}" allowed — every candidate in its pool was one (spacing window ${varietyWindow} slots)`);
+      }
+      return drawn.pick;
+    },
     recentIds: cdMin > 0 ? queue.recentlyPlayedIds(cdMin / 60) : new Set<string>(),
     queuedIds: queue.queuedIds(),
     currentId: queue.current?.track?.id,
@@ -448,7 +477,7 @@ async function resolveRequest(entry) {
         return moodSongs;
       }
     },
-    ...(currentTrack?.id && /\b(?:similar|like this|match this)\b/i.test(text)
+    ...(currentTrack?.id && /\b(?:similar|like|match this)\b/i.test(text)
       ? { similarSongs: () => subsonic.getSimilarSongs(currentTrack.id, { count: 20 }) } : {}),
   });
   const pick = selection.track;
