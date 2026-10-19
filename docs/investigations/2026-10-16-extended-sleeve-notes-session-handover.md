@@ -315,3 +315,13 @@ Ten focused overview checks passed, covering aggregation, external reference gro
 - Dash columns now share two desktop grid rows through CSS subgrid: Queue + Sleeve Notes alongside Manual Voice DJ, followed by Booth log alongside the remaining controls. Manual Voice DJ stretches as the queue grows; Sleeve Notes keeps its current fixed content height.
 - Below the existing 640px stacking breakpoint, each column returns to ordinary stacked layout. No JavaScript size observers or height measurements.
 - Targeted TypeScript and lint checks passed. Visual confirmation awaits the station rebuild.
+
+
+### 19 October: station and development branches refreshed from upstream
+
+- Saved all accumulated Sleeve Notes work in `c6924e19`, then merged upstream `develop` at `7cb507f5` into the station branch (`b98ffcd0`). No rebase or published-history rewrite.
+- Resolved three conflicts: preserved both Sleeve Notes and upstream latency-gauge imports on Dash, retained both broadcast documentation additions, and combined research-deferral-aware statistics with upstream successful-call latency / deadline-hit reporting.
+- Added a regression check that deferred research does not count as a failure or deadline hit, and does not alter successful latency. Focused validation: 15 controller checks, 23 web checks, both TypeScript checks, and touched Dash UI lint. The upstream route test must run through the controller test runner, which creates temporary state; a direct invocation hit a permissions error against the station settings file and was rerun correctly. No live settings were changed.
+- Local `develop` fast-forwarded to the fork’s `29bd104d`, which already includes upstream `7cb507f5` and retains the fork’s additional documentation/history.
+- Recovery refs: `backup/station-before-upstream-20261019`, `backup/station-checkpoint-before-upstream-20261019`, and `backup/develop-before-upstream-20261019`.
+- PR #5’s feature head is updated from the integrated station branch. The owner still performs deployment; upstream includes broadcast image/Liquidsoap changes, so rebuild controller, web and broadcast together. No containers or live station data were changed by this update.
