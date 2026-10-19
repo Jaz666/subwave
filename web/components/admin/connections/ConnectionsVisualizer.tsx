@@ -1,13 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import {storiesHref} from '../sleeve-notes-view';
+import NotesHelp from '../NotesHelp';
+import { Input } from '../../ui/input';
+import { formatNotesDate } from '../sleeve-notes-view';
+import {notify} from '../../../lib/notify';
+import {brainQueueChoice,storiesHref} from '../sleeve-notes-view';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ExternalLink, LocateFixed, RefreshCw, Search, X } from 'lucide-react';
 import type { NowPlayingResponse } from '../../../lib/types';
 import { adminJson, type AdminFetch, useAdminMutation, useAdminQuery } from '../../../lib/admin-query';
-import { Card, Eyebrow, Pill } from '../ui';
+import { Card, Btn, Eyebrow, Pill } from '../ui';
 import ConnectionsGraph from './ConnectionsGraph';
 import { EditorDialog } from '../../ui/editor-dialog';
 import { currentArtistOnOverview } from './current-artist';
@@ -49,10 +53,12 @@ export default function ConnectionsVisualizer({
   adminFetch,
   hydrated,
   readOnly = false,
+  timezone,
 }: {
   adminFetch: AdminFetch;
   hydrated: boolean;
   readOnly?: boolean;
+  timezone?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,7 +79,7 @@ export default function ConnectionsVisualizer({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
   const [targetingArtist, setTargetingArtist] = useState(false);
-  const [browseLimit, setBrowseLimit] = useState(40);
+  const [detailsOpen,setDetailsOpen]=useState(true);
   const selectionScope = useRef<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const [zoomToSelection, setZoomToSelection] = useState(false);
@@ -133,6 +139,16 @@ export default function ConnectionsVisualizer({
     request: (_vars, fetcher) => adminJson(fetcher, '/sleeve-notes/connections/populate', { method: 'POST' }),
     onDone: async (_data, _vars, client) => { await client.invalidateQueries({ queryKey: connectionKeys.all() }); },
   });
+  const queueTrack=useAdminMutation<{track:{id:string;title:string;artist:string|null};queuePosition:number;reason:string}, {entityType:string;entityId:string}>({
+    adminFetch,
+    request:(selection,fetcher)=>adminJson(fetcher,'/dj/queue-track',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({selection}),
+    }),
+    onDone:async(result,_vars,client)=>{
+      notify.ok(`Queued “${result.track.title}” · position ${result.queuePosition}`);
+      await client.invalidateQueries({queryKey:['sleeve-notes','live-summary']});
+    },
+  });
   const nowPlaying = useAdminQuery<NowPlayingResponse>({
     key: [...connectionKeys.all(), 'now-playing'],
     adminFetch,
@@ -174,7 +190,7 @@ export default function ConnectionsVisualizer({
     setSelectedEdgeId(null);
     setSelectedNodeId(null);
     setCurrentMessage('');
-    setBrowseLimit(40);
+    if(!fullscreen) setDetailsOpen(true);
   }
 
   function clearFocus(restoredNode?: ConnectionNode) {
@@ -189,7 +205,7 @@ export default function ConnectionsVisualizer({
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     setCurrentMessage('');
-    setBrowseLimit(40);
+    if(!fullscreen) setDetailsOpen(true);
   }
 
   function openCurrentTrack() {
@@ -251,6 +267,7 @@ export default function ConnectionsVisualizer({
   }
 
   function selectNode(node: ConnectionNode) {
+    if(!fullscreen) setDetailsOpen(true);
     setSelectedNodeId(node.id); setSelectedEdgeId(null);
     const params=new URLSearchParams(searchParams.toString());
     params.set('brainSelected',node.id);
@@ -273,7 +290,8 @@ export default function ConnectionsVisualizer({
 
   useEffect(() => {
     if (!visibleGraph) return;
-    const scope = overview ? 'artists' : visibleGraph.focusId;
+    const requestedTrack=searchParams.get('brainTrack');
+    const scope = overview ? 'artists' : `${visibleGraph.focusId}:${requestedTrack??''}`;
     const restored = pendingReturn.current;
     if (restored && restored.scope === (overview ? 'artists' : `${focusType}:${focusId}`)) {
       const node = visibleGraph.nodes.find((item) => item.id === restored.node.id)
@@ -289,8 +307,8 @@ export default function ConnectionsVisualizer({
     }
     if (selectionScope.current !== scope) {
       selectionScope.current = scope;
-      const retained=searchParams.get('brainSelected');
-      setSelectedNodeId(visibleGraph.nodes.some(node=>node.id===retained)?retained:visibleGraph.focusId||null);
+      const retained=visibleGraph.nodes.find(node=>requestedTrack&&node.localTrackId===requestedTrack)?.id??searchParams.get('brainSelected');
+      setSelectedNodeId(visibleGraph.nodes.some(node=>node.id===retained)?retained:overview?null:visibleGraph.focusId||null);
       setSelectedEdgeId(null);
       return;
     }
@@ -346,71 +364,45 @@ export default function ConnectionsVisualizer({
     target: visibleGraph.nodes.find((node) => node.id === selectedEdge.target) ?? null,
   } : null;
 
+  const queueChoice=brainQueueChoice(overview,rootNode,selectedNode);
+  const queueNode=queueChoice.node;
+  const queueTarget=queueNode
+    ? queueNode.localTrackId ? {entityType:'library-track',entityId:queueNode.localTrackId}
+      : queueNode.kind==='artist'&&queueNode.localArtistId ? {entityType:'library-artist',entityId:queueNode.localArtistId}
+        : {entityType:queueNode.entityType,entityId:queueNode.entityId} : null;
+  const queueResult=queueTrack.data;
+  const sameQueueTarget=queueTarget&&queueTrack.variables?.entityType===queueTarget.entityType&&queueTrack.variables?.entityId===queueTarget.entityId;
+  const queueButton=<Btn title="Append this operator selection to the queue. Recent plays and duplicates are allowed; never-play blocks remain in force."
+    disabled={!queueTarget||queueTrack.isPending} tone="solid" className="max-w-full text-left whitespace-normal"
+    onClick={()=>{if(queueTarget) queueTrack.mutate(queueTarget);}}>
+    {queueTrack.isPending?'Adding to queue…':queueChoice.label}
+  </Btn>;
+  const queuePanel=<section className="space-y-3 border-t border-border pt-3" aria-label="Queue from Station Brain">
+    <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Queue from Station Brain</h3>
+      <NotesHelp text="This is an operator choice, just like Library → Queue on air. Recent plays and duplicate tracks are allowed; the never-play blocklist still applies. Artist and album choices use mood and flow within that selection." /></div>
+    {queueNode?<>
+      <p className="text-[13px] font-medium break-words">{queueNode.title}</p>
+      <p className="text-xs leading-5 text-muted">{queueNode.kind==='recording'?'Add this exact recording to the end of the on-air queue.':'Choose one library track from this '+(queueNode.kind==='artist'?'artist':'album')+' for the current mood and the music it will follow.'}</p>
+    </>:<p className="text-[13px] text-muted">Select an artist on the map to choose a track for the on-air queue.</p>}
+    {!fullscreen&&queueButton}
+    {sameQueueTarget&&queueTrack.error&&<p role="alert" className="text-[13px] text-vermilion">{queueTrack.error.message}</p>}
+    {sameQueueTarget&&queueResult&&<div role="status" className="space-y-1 text-[13px]">
+      <p className="font-medium">Queued: {queueResult.track.artist||'Unknown artist'} · {queueResult.track.title}</p>
+      <p>Position {queueResult.queuePosition}</p><p className="text-xs text-muted">{queueResult.reason}</p>
+    </div>}
+  </section>;
+
   function changeFullscreen(open: boolean) {
+    if(open) setDetailsOpen(false);
     setFullscreen(open);
     if (!open) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[aria-label="Open full-screen map"]')?.focus());
   }
 
-  const mapView = (
-    map.isLoading ? (
-        <Card title="Waking the Station Brain"><p role="status" className="text-[13px] text-muted">Loading {overview ? 'your artist network' : focusType === 'library-album' ? 'the album’s tracks' : focusType === 'library-artist' || focusType === 'artist' ? 'the artist’s albums' : 'the track neighbourhood'}…</p></Card>
-      ) : map.error && !map.data ? (
-        <Card title="Could not load Connections">
-          <p className="text-[13px] text-muted">{map.error instanceof Error ? map.error.message : 'The graph is temporarily unavailable.'}</p>
-          <button type="button" onClick={() => void map.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button>
-        </Card>
-      ) : visibleGraph ? (
-        <div className={`grid min-w-0 items-start gap-5 ${selectedNode || selectedEdge ? '2xl:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
-          <Card title={overview ? 'Artist constellation' : focusType === 'library-artist' || focusType === 'artist' ? 'Artist albums' : focusType === 'library-album' ? 'Album tracks' : 'Musical neighbourhood'} sub={`${visibleGraph.nodes.length.toLocaleString()} entities${overview ? ` · ${libraryArtistCount.toLocaleString()} library artists` : ''} · ${visibleGraph.edges.length.toLocaleString()} connections`}>
-            {overview && <p className="mb-3 text-xs text-muted">Artist rings show research coverage. Select an artist to add research to the queue; double-click to open their albums.</p>}
-            {map.error && <p role="status" className="mb-3 text-xs text-muted">The map could not refresh. Showing the last loaded connections.</p>}
-            {map.data && (
-              <>
-                {map.data.nodes.length === 0 ? <p className="py-16 text-center text-[13px] text-muted">{visibleGraph.active ? 'Artists appear here as the library scan and Sleeve Notes research gather your musical connections.' : 'No saved map yet. Enable Sleeve Notes in Settings to gather connections.'}</p> :
-                  <ConnectionsGraph
-                    data={coveredMap ?? map.data} visibleData={visibleGraph} fullscreen={fullscreen} onToggleFullscreen={() => changeFullscreen(!fullscreen)} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
-                    focusRequest={focusRequest} zoomToSelection={zoomToSelection}
-                    canLayerUp={!overview} canLayerDown={canLayerDown}
-                    onLayerUp={layerUp} onLayerDown={() => { if (canLayerDown && selectedNode) openNode(selectedNode); }}
-                    edgeTypes={edgeTypes} includeExternal={includeExternal}
-                    includeUnresearchedArtists={includeUnresearchedArtists}
-                    onToggleUnresearchedArtists={() => setIncludeUnresearchedArtists((value) => !value)}
-                    onToggleGroup={(types) => setEdgeTypes((current) => toggleConnectionGroup(current, types))}
-                    onToggleExternal={() => setIncludeExternal((value) => !value)}
-                    overview={overview} currentNodeId={overview ? currentArtistOnOverview(coveredMap, current.data, nowPlaying.data?.nowPlaying?.artist)?.id : current.data?.nodeId}
-                    onSelectNode={selectNode}
-                    onClearSelection={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
-                    onSelectEdge={(edge) => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
-                    onOpenNode={openNode} />}
-                <details className="mt-4 border border-border/60 p-3">
-                  <summary className="cursor-pointer text-xs font-medium">Browse {overview ? 'artists and people' : 'entities'} ({visibleGraph.nodes.length})</summary>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {visibleGraph.nodes.slice(0, browseLimit).map((node) => <button key={node.id} type="button"
-                      onClick={() => selectNode(node)} onDoubleClick={() => openNode(node)}
-                      className="border border-border/60 px-3 py-2 text-left text-[13px] hover:bg-muted/20">
-                      <span className="block truncate font-medium">{node.title}</span><span className="text-xs text-muted">{node.kind === 'contributor' ? 'Shared credit' : node.local ? 'In library' : 'External reference'}{node.trackCount ? ` · ${node.trackCount} tracks` : ''}{node.coverage ? ` · ${COVERAGE_LABELS[node.coverage.state]}` : ''}</span>
-                    </button>)}
-                  </div>
-                  {visibleGraph.nodes.length > browseLimit && <button type="button" onClick={() => setBrowseLimit((count) => count + 40)} className="mt-3 text-xs text-primary">Show more</button>}
-                </details>
-                <details className="mt-2 border border-border/60 p-3">
-                  <summary className="cursor-pointer text-xs font-medium">Browse relationships ({visibleGraph.edges.length})</summary>
-                  <div className="mt-3 space-y-2">{visibleGraph.edges.slice(0, browseLimit).map((edge) => {
-                    const source = visibleGraph.nodes.find((node) => node.id === edge.source);
-                    const target = visibleGraph.nodes.find((node) => node.id === edge.target);
-                    return <button key={edge.id} type="button" onClick={() => { setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
-                      className="w-full border border-border/70 p-3 text-left text-[13px] hover:bg-muted/20">
-                      <span className="font-medium">{source?.title}</span> <span className="text-muted">{edge.label}</span> <span className="font-medium">{target?.title}</span>
-                    </button>;
-                  })}</div>
-                  {visibleGraph.edges.length > browseLimit && <button type="button" onClick={() => setBrowseLimit((count) => count + 40)} className="mt-3 text-xs text-primary">Show more</button>}
-                </details>
-              </>
-            )}
-            {visibleGraph.truncated && <p className="mt-3 text-xs text-muted">{overview ? 'Library artists take priority within the map’s display limit. Search to explore an artist beyond this view.' : 'This neighbourhood reached the display limit. Open a connected local node to continue exploring.'}</p>}
-          </Card>
-          {(selectedNode || selectedEdge) && <Card title={selectedEdge ? 'Relationship evidence' : selectedNode ? entityLabel(selectedNode) : 'Details'}
+  const detailsPanel = (selectedNode || selectedEdge) && (!fullscreen||detailsOpen) && <Card headingLevel={2}
+            className={fullscreen?'absolute top-3 right-3 bottom-3 z-10 w-[min(22rem,calc(100%-1.5rem))] overflow-y-auto':undefined}
+            right={fullscreen?<Btn sm onClick={()=>setDetailsOpen(false)}>Hide details</Btn>:undefined} title={selectedEdge ? 'Relationship evidence' : selectedNode ? entityLabel(selectedNode) : 'Details'}
             sub={selectedEdge ? providerName(selectedEdge.provider) : selectedNode?.local ? 'matched to this library' : 'external or unresolved'}>
+            {fullscreen&&queuePanel}
             {selectedEdge && selectedEdgeEndpoints ? (
               <div className="space-y-4">
                 <p className="text-[15px] leading-6"><strong>{selectedEdgeEndpoints.source?.title}</strong> {selectedEdge.label} <strong>{selectedEdgeEndpoints.target?.title}</strong></p>
@@ -431,7 +423,7 @@ export default function ConnectionsVisualizer({
                   <Eyebrow>Research coverage</Eyebrow>
                   {selectedCoverage ? <>
                     <p className="text-[13px] font-medium">{COVERAGE_LABELS[selectedCoverage.state]}</p>
-                    {selectedCoverage.lastResearchedAt && <p className="text-xs text-muted">Last completed research: {new Date(selectedCoverage.lastResearchedAt).toLocaleString()}</p>}
+                    {selectedCoverage.lastResearchedAt && <p className="text-xs text-muted">Last completed research: {formatNotesDate(selectedCoverage.lastResearchedAt,timezone)}</p>}
                     <p className="text-xs leading-5 text-muted">{selectedCoverage.usableStories} usable {selectedCoverage.usableStories === 1 ? 'story' : 'stories'} {albumTarget?'saved for this album':'across this artist, their albums and tracks'}. The DJ still checks track relevance and recent use.</p>
                   </> : <p className="text-xs text-muted">{selectedResearch.error ? 'Coverage could not be loaded.' : selectedResearch.isLoading ? 'Checking coverage…' : 'No coverage is saved yet.'}</p>}
                   {readOnly || selectedResearch.data?.active === false ? <p className="text-xs text-muted">Enable Sleeve Notes to add research to the queue.</p> : <>
@@ -459,22 +451,64 @@ export default function ConnectionsVisualizer({
             <div className="mt-5 border-t border-border/60 pt-4 text-xs leading-5 text-muted">
               Credit names marked “identity unresolved” are kept separate. Connections never merges people on a matching name alone.
             </div>
-          </Card>}
+          </Card>;
+
+  const mapView = (
+    map.isLoading ? (
+        <Card headingLevel={2} title="Waking the Station Brain"><p role="status" className="text-[13px] text-muted">Loading {overview ? 'your artist network' : focusType === 'library-album' ? 'the album’s tracks' : focusType === 'library-artist' || focusType === 'artist' ? 'the artist’s albums' : 'the track neighbourhood'}…</p></Card>
+      ) : map.error && !map.data ? (
+        <Card headingLevel={2} title="Could not load Connections">
+          <p className="text-[13px] text-muted">{map.error instanceof Error ? map.error.message : 'The graph is temporarily unavailable.'}</p>
+          <button type="button" onClick={() => void map.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button>
+        </Card>
+      ) : visibleGraph ? (
+        <div className={fullscreen?'relative h-full min-h-0':`grid min-w-0 items-start gap-5 ${selectedNode || selectedEdge ? '2xl:grid-cols-[minmax(0,1fr)_20rem]' : ''}`}>
+          <Card headingLevel={2} className={fullscreen?'flex h-full min-h-0 flex-col border-0':undefined}
+            bodyClass={fullscreen?'relative flex min-h-0 flex-1 flex-col !p-0':undefined}
+            right={fullscreen?<div className="flex max-w-full flex-wrap items-center gap-2">{queueButton}{(selectedNode||selectedEdge)&&<Btn sm onClick={()=>setDetailsOpen(!detailsOpen)}>{detailsOpen?'Hide details':'Show details'}</Btn>}</div>:undefined}
+            title={overview ? 'Artist constellation' : focusType === 'library-artist' || focusType === 'artist' ? 'Artist albums' : focusType === 'library-album' ? 'Album tracks' : 'Musical neighbourhood'} sub={`${visibleGraph.nodes.length.toLocaleString()} entities${overview ? ` · ${libraryArtistCount.toLocaleString()} library artists` : ''} · ${visibleGraph.edges.length.toLocaleString()} connections`}>
+            {overview && !fullscreen && <p className="mb-3 text-xs text-muted">Artist rings show research coverage. Select an artist for music queue and research options; double-click to open their albums.</p>}
+            {map.error && <p role="status" className="mb-3 text-xs text-muted">The map could not refresh. Showing the last loaded connections.</p>}
+            {map.data && (
+              <>
+                {map.data.nodes.length === 0 ? <p className="py-16 text-center text-[13px] text-muted">{visibleGraph.active ? 'Artists appear here as the library scan and Sleeve Notes research gather your musical connections.' : 'No saved map yet. Enable Sleeve Notes in Settings to gather connections.'}</p> :
+                  <ConnectionsGraph
+                    data={coveredMap ?? map.data} visibleData={visibleGraph} fullscreen={fullscreen} onToggleFullscreen={() => changeFullscreen(!fullscreen)} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
+                    focusRequest={focusRequest} zoomToSelection={zoomToSelection}
+                    canLayerUp={!overview} canLayerDown={canLayerDown}
+                    onLayerUp={layerUp} onLayerDown={() => { if (canLayerDown && selectedNode) openNode(selectedNode); }}
+                    edgeTypes={edgeTypes} includeExternal={includeExternal}
+                    includeUnresearchedArtists={includeUnresearchedArtists}
+                    onToggleUnresearchedArtists={() => setIncludeUnresearchedArtists((value) => !value)}
+                    onToggleGroup={(types) => setEdgeTypes((current) => toggleConnectionGroup(current, types))}
+                    onToggleExternal={() => setIncludeExternal((value) => !value)}
+                    overview={overview} currentNodeId={overview ? currentArtistOnOverview(coveredMap, current.data, nowPlaying.data?.nowPlaying?.artist)?.id : current.data?.nodeId}
+                    onSelectNode={selectNode}
+                    onClearSelection={() => { setSelectedNodeId(null); setSelectedEdgeId(null); }}
+                    onSelectEdge={(edge) => { if(!fullscreen) setDetailsOpen(true);setSelectedEdgeId(edge.id); setSelectedNodeId(null); }}
+                    onOpenNode={openNode} />}
+                {!fullscreen&&queuePanel}
+              </>
+            )}
+            {visibleGraph.truncated && <p className="mt-3 text-xs text-muted">{overview ? 'Library artists take priority within the map’s display limit. Search to explore an artist beyond this view.' : 'This neighbourhood reached the display limit. Open a connected local node to continue exploring.'}</p>}
+            {fullscreen&&detailsPanel}
+          </Card>
+          {!fullscreen&&detailsPanel}
         </div>
       ) : null
   );
 
   return (
     <div className="space-y-5">
-      <Card title="The Station Brain" sub={overview ? 'Explore the artists and musical connections in your library' : 'Follow the connections around this music'}>
+      <Card headingLevel={2} title="The Station Brain" right={<NotesHelp text="The map shows saved musical connections. Select an item to read its details; open it to browse albums or tracks. Focus the map and use the left or right arrow key to select an item, then Enter to open it." />} sub={overview ? 'Explore the artists and musical connections in your library' : 'Follow the connections around this music'}>
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <div className="relative">
             <label className="relative block">
               <span className="sr-only">Search Connections</span>
               <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-              <input value={draft} onChange={(event) => setDraft(event.target.value)}
+              <Input type="search" maxLength={120} value={draft} onChange={(event) => setDraft(event.target.value)}
                 placeholder="Search tracks, artists, albums or lists…"
-                className="w-full border border-border bg-transparent py-2.5 pr-9 pl-9 text-[13px] outline-none focus:border-primary" />
+                className="pr-9 pl-9" />
               {draft && <button type="button" onClick={() => setDraft('')} aria-label="Clear search"
                 className="absolute top-1/2 right-2 -translate-y-1/2 p-1 text-muted hover:text-ink"><X className="size-4" /></button>}
             </label>
@@ -533,7 +567,7 @@ export default function ConnectionsVisualizer({
         {overview && populate.error && <p role="alert" className="mt-3 text-xs text-muted">{populate.error.message}</p>}
       </Card>
 
-      {fullscreen ? <EditorDialog open onOpenChange={changeFullscreen} title="Station Brain">{mapView}</EditorDialog> : mapView}
+      {fullscreen ? <EditorDialog open onOpenChange={changeFullscreen} title="Station Brain" className="[&_.v3-scroll]:overflow-hidden [&_.v3-scroll>div]:h-full [&_.v3-scroll>div]:p-0">{mapView}</EditorDialog> : mapView}
     </div>
   );
 }

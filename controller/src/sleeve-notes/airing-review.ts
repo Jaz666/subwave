@@ -103,6 +103,24 @@ export async function flagAiredUse(id: string): Promise<{id:string;state:string}
   return db.prepare('SELECT id,state FROM sleeve_airing_reviews WHERE airing_key=?').get(key) as {id:string;state:string};
 }
 
+function storedClaimReviewKey(claim: {claimId:string;wording:string;evidence:string;category:string;topic:string;sourceId:string}): string {
+  return `claim:${claim.claimId}:${createHash('sha256').update(JSON.stringify([claim.wording,claim.evidence,claim.category,claim.topic,claim.sourceId])).digest('hex')}`;
+}
+
+export function storedClaimReviews(ids: string[]): Record<string, {id:string;state:string}> {
+  if (!ids.length || !hasReviews()) return {};
+  const db=open();
+  const claims=db.prepare(`SELECT id AS claimId,wording,evidence,category,topic,source_document_id AS sourceId
+    FROM sleeve_claims WHERE id IN (${ids.map(()=>'?').join(',')})`).all(...ids) as Array<{
+      claimId:string;wording:string;evidence:string;category:string;topic:string;sourceId:string
+    }>;
+  if (!claims.length) return {};
+  const keys=new Map(claims.map(claim=>[storedClaimReviewKey(claim),claim.claimId]));
+  const reviews=db.prepare(`SELECT id,state,airing_key AS key FROM sleeve_airing_reviews
+    WHERE airing_key IN (${[...keys].map(()=>'?').join(',')})`).all(...keys.keys()) as Array<{id:string;state:string;key:string}>;
+  return Object.fromEntries(reviews.map(review=>[keys.get(review.key)!,{id:review.id,state:review.state}]));
+}
+
 export function flagStoredClaim(id: string): {id:string;state:string} {
   const db=open();
   const claim=db.prepare(`SELECT c.id AS claimId,c.wording,c.wording AS offered,c.evidence,c.category,c.topic,
@@ -117,7 +135,7 @@ export function flagStoredClaim(id: string): {id:string;state:string} {
     (ReviewContext['sparks'][number]&{sourceId:string;operatorState:string;artist:string|null;title:string|null})|undefined;
   if (!claim) throw new Error('Saved fact or source not found');
   if (claim.operatorState==='deleted') throw new Error('This story has already been deleted');
-  const key=`claim:${id}:${createHash('sha256').update(JSON.stringify([claim.wording,claim.evidence,claim.category,claim.topic,claim.sourceId])).digest('hex')}`;
+  const key=storedClaimReviewKey(claim);
   const existing=db.prepare('SELECT id,state FROM sleeve_airing_reviews WHERE airing_key=?').get(key) as {id:string;state:string}|undefined;
   if (existing&&['queued','running','ready'].includes(existing.state)) return existing;
   const start=Math.max(0,claim.sourceText.indexOf(claim.evidence)-500);

@@ -42,7 +42,7 @@ test('MusicBrainz release appearances distinguish a compilation from canonical f
     ORDER BY priority DESC`).all(), [
     { provider: 'wikipedia', subjectType: 'artist', capability: 'biography', priority: 300 },
     { provider: 'musicbrainz', subjectType: 'release', capability: 'release-context', priority: 200 },
-    { provider: 'genius', subjectType: 'recording', capability: 'connections', priority: 100 },
+    { provider: 'genius', subjectType: 'local-track', capability: 'connections', priority: 110 },
   ]);
   const releaseJob = nextPendingResearchJobInDatabase(db, 'musicbrainz', {
     subjectType: 'release', capability: 'release-context',

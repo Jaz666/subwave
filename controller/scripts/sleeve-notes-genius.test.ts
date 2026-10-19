@@ -51,3 +51,38 @@ test('Genius provider uses only search then song endpoints', async () => {
   ]);
   assert.ok(recentProviderCalls().every((call) => Number.isFinite(call.ms) && call.ms >= 0));
 });
+
+test('known Genius song IDs skip search and send an identifiable User-Agent', async () => {
+  const calls: string[] = [];
+  const provider = new GeniusProvider('test', async (url, init) => {
+    calls.push(new URL(url).pathname);
+    assert.match(new Headers(init?.headers).get('User-Agent') ?? '', /Subwave/);
+    return Response.json({ response: { song: {
+      id: 10, title: 'The Song', url: 'https://genius.com/y', primary_artist: { name: 'The Band' },
+    } } });
+  }, async () => { throw new Error('Direct fetch should not schedule a search delay'); });
+  const entity = { kind: 'track' as const, title: 'The Song', artist: 'The Band' };
+  assert.equal((await provider.fetchSong('10', entity, new AbortController().signal))?.identity.providerId, '10');
+  assert.deepEqual(calls, ['/songs/10']);
+  await assert.rejects(provider.fetchSong('../search', entity, new AbortController().signal), /Invalid Genius song ID/);
+  assert.equal(calls.length, 1);
+});
+
+test('song detail refuses mismatched identity without searching for a replacement', async () => {
+  let calls = 0;
+  for (const song of [
+    { id: 11, title: 'The Song', artist: 'The Band' },
+    { id: 10, title: 'The Song (Live)', artist: 'The Band' },
+    { id: 10, title: 'The Song', artist: 'Another Band' },
+  ]) {
+    const provider = new GeniusProvider('test', async () => {
+      calls++;
+      return Response.json({ response: { song: {
+        ...song, primary_artist: { name: song.artist }, url: 'https://genius.com/y',
+      } } });
+    });
+    assert.equal(await provider.fetchSong('10', { kind: 'track', title: 'The Song', artist: 'The Band' },
+      new AbortController().signal), null);
+  }
+  assert.equal(calls, 3);
+});

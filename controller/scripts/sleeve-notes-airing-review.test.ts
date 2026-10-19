@@ -10,7 +10,7 @@ delete process.env.ADMIN_USER;delete process.env.ADMIN_PASS;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
 const {open,close,withCachedRead}=await import('../src/sleeve-notes/db.js');
-const {flagAiredUse,listAiringReviews,nextAiringReview,runAiringReview,decideAiringReview,approvedAiringGuidance,reviewReadyCount,flagStoredClaim}=await import('../src/sleeve-notes/airing-review.js');
+const {flagAiredUse,listAiringReviews,nextAiringReview,runAiringReview,decideAiringReview,approvedAiringGuidance,reviewReadyCount,flagStoredClaim,storedClaimReviews}=await import('../src/sleeve-notes/airing-review.js');
 const {ResearchWorker}=await import('../src/sleeve-notes/research-worker.js');
 const {primaryLeg}=await import('../src/llm/internal/provider/legs.js');
 const defaults=settings.getDefaults();
@@ -173,6 +173,7 @@ test('saved facts use the same AI queue; withdrawal survives dismissal and retry
   const {retainResearchClaims,searchResearchStoriesInDatabase}=await import('../src/sleeve-notes/research-repository.js');
   fact('fact-review');
   const flag=flagStoredClaim('fact-review');assert.deepEqual(flagStoredClaim('fact-review'),flag);
+  assert.deepEqual(storedClaimReviews(['fact-review','missing']),{'fact-review':flag});
   assert.equal((db.prepare("SELECT enabled FROM sleeve_claims WHERE id='fact-review'").get() as {enabled:number}).enabled,1);
   const context=JSON.parse(jobFor(flag.id).context);assert.equal(context.kind,'fact');assert.equal(context.airedAt,null);assert.deepEqual(context.speech,[]);
   decideAiringReview(flag.id,'withdraw-fact');
@@ -206,6 +207,7 @@ test('correct and restore is explicit, while deleting a withdrawn fact keeps rep
   assert.equal((db.prepare("SELECT enabled FROM sleeve_claims WHERE id='fact-correct'").get() as {enabled:number}).enabled,0);
   decideAiringReview(flag.id,'apply-correction');
   assert.deepEqual(db.prepare("SELECT enabled,wording FROM sleeve_claims WHERE id='fact-correct'").get(),{enabled:1,wording:corrected});
+  assert.deepEqual(storedClaimReviews(['fact-correct']),{},'an old snapshot does not label corrected wording as reviewed');
   assert.notEqual(flagStoredClaim('fact-correct').id,flag.id,'changed facts receive a fresh snapshot');
   fact('fact-delete');setClaimAvailability('fact-delete','withdraw');
   const deleted=flagStoredClaim('fact-delete');await runAiringReview(jobFor(deleted.id),{isQuiet:()=>true});
@@ -245,6 +247,7 @@ test('automatic recycle-bin expiry cannot erase a withdrawn or flagged fact',asy
 test('disabled reads do not create or migrate a cache',()=>{
   assert.deepEqual(withCachedRead(()=>listAiringReviews(),'nonexistent-airing-review-cache.db'),{items:[],total:0});
   assert.equal(withCachedRead(reviewReadyCount,'nonexistent-airing-review-cache.db'),0);
+  assert.deepEqual(withCachedRead(()=>storedClaimReviews(['missing']),'nonexistent-airing-review-cache.db'),{});
 });
 
 test.after(()=>{close();store.setCache(null);rmSync(root,{recursive:true,force:true});});

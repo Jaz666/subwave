@@ -19,3 +19,25 @@ export function storiesHref(node:Pick<ConnectionNode,'id'|'entityType'|'entityId
   }
   return `/admin/notes?${params}`;
 }
+
+
+export function formatNotesDate(value: string | null | undefined, timezone?: string): string {
+  if (!value || !Number.isFinite(new Date(value).getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(new Date(value));
+}
+
+
+/** Queue defaults follow the visible layer; a selected child narrows its scope. */
+export function brainQueueChoice(overview:boolean,root:ConnectionNode|null|undefined,selected:ConnectionNode|null) {
+  const local=(node:ConnectionNode|null|undefined)=>node?.local?node:null;
+  if (overview) return {node:selected?.kind==='artist'?local(selected):null,label:'Choose a Track and Queue'};
+  if (root?.kind==='artist') {
+    const album=selected?.kind==='release'?local(selected):null;
+    return {node:album??local(root),label:album?'Choose Album Track and Queue':'Choose Artist Track and Queue'};
+  }
+  if (root?.kind==='release') {
+    const track=selected?.kind==='recording'?local(selected):null;
+    return {node:track??local(root),label:track?'Queue This Track':'Choose Any Album Track and Queue'};
+  }
+  return {node:selected&&['artist','release','recording'].includes(selected.kind)?local(selected):null,label:'Queue This Track'};
+}

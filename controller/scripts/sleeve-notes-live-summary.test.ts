@@ -68,3 +68,12 @@ test('cached summaries remain read-only and never select or reserve another stor
   const counts = withCachedRead(() => open().prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get()); assert.deepEqual(counts,{n:4});
 });
 test.after(() => { close(); rmSync(root,{recursive:true,force:true}); });
+
+
+test('live summary retains library navigation IDs without borrowing outgoing metadata',()=>{
+ const item={...current,track:{...current.track,artistId:'artist-id',albumId:'album-id'}};
+ const summary=liveNotesSummary({subsonic_id:'track',title:'Song'},item,item);
+ assert.equal(summary.onAir?.track.artistId,'artist-id');
+ assert.equal(summary.nextUp?.track.albumId,'album-id');
+ assert.equal(liveNotesSummary({subsonic_id:'other'},item,null).onAir?.track.artistId,null);
+});

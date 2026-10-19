@@ -56,6 +56,12 @@ export function researchConnectionsOverviewInDatabase(
     const key = connectionNameKey(artist.name);
     byArtistKey.set(key, [...byArtistKey.get(key) ?? [], node]);
   }
+  const identifiedArtists = new Set(artists.filter(artist => artist.mbid).map(artist => artist.id));
+  const preferredArtists = (key: string) => {
+    const group = byArtistKey.get(key);
+    const identified = group?.filter(node => identifiedArtists.has(node.entityId));
+    return identified?.length ? identified : group;
+  };
   const catalogue = db.prepare(`SELECT artist_key AS key, MIN(artist) AS name, COUNT(*) AS trackCount
     FROM sleeve_connection_library_tracks GROUP BY artist_key ORDER BY trackCount DESC, artist_key LIMIT ?`)
     .all(ARTIST_CAP + 1) as Array<{ key: string; name: string; trackCount: number }>;
@@ -72,7 +78,7 @@ export function researchConnectionsOverviewInDatabase(
   for (const artist of catalogue.slice(0, ARTIST_CAP)) {
     // Library names are display groups, not a new provider identity. A name
     // shared by two canonical artists remains a separate library group.
-    const canonical = byArtistKey.get(artist.key);
+    const canonical = preferredArtists(artist.key);
     const local = byLocalName.get(artist.key);
     const localId = local?.length === 1 ? local[0].id : null;
     const node: ConnectionNode = canonical?.length === 1 ? canonical[0] : {
@@ -88,7 +94,7 @@ export function researchConnectionsOverviewInDatabase(
     nodes.set(node.id, node);
   }
   for (const artist of index.slice(0, ARTIST_CAP)) {
-    const canonical = byArtistKey.get(artist.key);
+    const canonical = preferredArtists(artist.key);
     const unambiguous = byLocalName.get(artist.key)?.length === 1;
     const node: ConnectionNode = unambiguous && canonical?.length === 1 ? canonical[0]
       : nodes.get(`library-artist:${artist.id}`) ?? {
@@ -102,9 +108,21 @@ export function researchConnectionsOverviewInDatabase(
     nodes.set(node.id, node);
     if (unambiguous) catalogueArtists.set(artist.key, node);
   }
+  // Provisional per-song artist rows are not distinct artist identities. Fold
+  // them into an unambiguous library display group without rewriting evidence.
+  const artistDisplayNodes = new Map<string, ConnectionNode>();
+  for (const [key, group] of byArtistKey) {
+    const library = catalogueArtists.get(key);
+    for (const node of group) {
+      const display = library && (byLocalName.get(key)?.length ?? 0) <= 1
+        && !identifiedArtists.has(node.entityId) ? library : node;
+      artistDisplayNodes.set(node.entityId, display);
+      if (display.id !== node.id) nodes.delete(node.id);
+    }
+  }
   const recordingRows = db.prepare('SELECT id, artist_id AS artistId FROM sleeve_recordings')
     .all() as Array<{ id: string; artistId: string | null }>;
-  const recordingArtists = new Map(recordingRows.map((row) => [row.id, nodes.get(`artist:${row.artistId}`)]));
+  const recordingArtists = new Map(recordingRows.map((row) => [row.id, artistDisplayNodes.get(row.artistId ?? '')]));
   const providerRecordings = new Map<string, Set<string>>();
   // Read just the identity projection rather than materialising every saved
   // provider document in the HTTP process's heap.
@@ -176,11 +194,11 @@ export function researchConnectionsOverviewInDatabase(
         ? recordingArtists.get(match.recordingId ?? '') ?? catalogueArtists.get(match.artistKey ?? '')
         : !match && known?.size === 1 ? recordingArtists.get([...known][0]) : undefined;
       if (!to) {
-        // Genius gives a target recording identity, not an artist identity.
-        // Keep external artist labels scoped to that recording until matched.
-        const id = `external-artist:genius:${providerId}`;
-        to = nodes.get(id) ?? { id, kind: 'artist', entityType: 'external-artist', entityId: providerId,
-          title: name, subtitle: `${title} · external reference`, local: false, expandable: false,
+        // This is an unverified display group, not a resolved artist/recording.
+        // Different songs naming the same external artist share one label.
+        const id = `external-artist:label:${encodeURIComponent(connectionNameKey(name))}`;
+        to = nodes.get(id) ?? { id, kind: 'artist', entityType: 'external-artist', entityId: connectionNameKey(name),
+          title: name, subtitle: 'External artist references · identity unverified', local: false, expandable: false,
           sourceUrl: sourceUrl(target?.canonicalUrl), trackCount: 0, connectionCount: 0 };
       }
       const labels: Partial<Record<ConnectionEdgeType, string>> = {

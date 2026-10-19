@@ -8,7 +8,7 @@ process.env.STATE_DIR=root;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
 const {open,close}=await import('../src/sleeve-notes/db.js');
-const {searchResearchStoriesInDatabase,researchStoreReadoutInDatabase}=await import('../src/sleeve-notes/research-repository.js');
+const {searchResearchStoriesInDatabase,researchStoreReadoutInDatabase,researchStoreSummaryInDatabase}=await import('../src/sleeve-notes/research-repository.js');
 const {heardOnAir}=await import('../src/sleeve-notes/heard-on-air.js');
 const db=open();
 const at='2026-10-16T10:00:00.000Z';
@@ -28,6 +28,25 @@ test('search finds older stories outside the recent window and pages the full co
  assert.equal(new Set([...first.claims,...next.claims].map(row=>row.id)).size,60);
  assert.equal(searchResearchStoriesInDatabase(db,{category:'credits'}).total,0);
  assert.equal(searchResearchStoriesInDatabase(db,{search:"%' OR 1=1"}).total,0);
+});
+
+test('saved knowledge counts and filters separate stories, connections and credits',()=>{
+ db.exec('SAVEPOINT knowledge_counts');
+ try {
+  db.prepare("UPDATE sleeve_claims SET category='musical-connections' WHERE id='claim-001'").run();
+  db.prepare("UPDATE sleeve_claims SET category='credits' WHERE id='claim-002'").run();
+  db.prepare("UPDATE sleeve_claims SET enabled=0 WHERE id='claim-003'").run();
+  const summary=researchStoreSummaryInDatabase(db);
+  assert.equal(summary.storyClaims,102);
+  assert.equal(summary.connectionClaims,1);
+  assert.equal(summary.creditClaims,1);
+  assert.equal(summary.retainedClaims,104);
+  const stories=searchResearchStoriesInDatabase(db,{category:'stories-only'});
+  assert.equal(stories.total,102);
+  assert.ok(stories.claims.every(row=>!['credits','musical-connections'].includes(row.category)));
+  assert.equal(searchResearchStoriesInDatabase(db,{category:'musical-connections'}).total,1);
+  assert.equal(searchResearchStoriesInDatabase(db,{category:'credits'}).total,1);
+ } finally { db.exec('ROLLBACK TO knowledge_counts; RELEASE knowledge_counts'); }
 });
 
 test('conversation pagination includes all its stories once and preserves independent feedback IDs',()=>{

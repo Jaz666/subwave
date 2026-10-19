@@ -2879,10 +2879,11 @@ class Queue {
   // ident: sign-off + greeting name the station, the outgoing show and the
   // incoming one, so an ident in front of it is three spoken segments in a row
   // saying overlapping things. The next cron fire schedules a fresh ident.
-  /** Yield research to queue drains, picks, speech rendering and handoffs. */
+  /** Yield research to active drains, picks, speech rendering and handoffs.
+   * A rendered clip waiting for a vocal-safe boundary is idle, not busy. */
   playbackCriticalBusy(): boolean {
     return this.senderBusy || this.pickerBusy || this._introRenders.busy()
-      || !!this._pendingVoice || session.handoffInProgress();
+      || session.handoffInProgress();
   }
 
   dropPendingVoice(reason: string) {

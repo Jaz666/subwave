@@ -1,7 +1,10 @@
+import {loadExtendedSleeveNoteCandidatesInDatabase} from '../sleeve-notes/link-selection.js';
+import {getPlaybackMeta} from '../music/library.js';
 import { researchAllowed } from '../broadcast/dj-budget.js';
 // Phase 1 status surface. It deliberately does not open the Sleeve Notes
 // database. Explicit cached browsing while disabled uses a read-only handle.
 import express from 'express';
+import { getStationTimezone } from '../time.js';
 import { brainAlbumCoverageInDatabase, queueBrainAlbumInDatabase, queueBrainLibraryAlbumInDatabase, type BrainAlbumType } from '../sleeve-notes/brain-album-research.js';
 import { liveNotesSummary } from '../sleeve-notes/live-summary.js';
 import { addLegacySegmentConversations } from '../sleeve-notes/legacy-segment-transcripts.js';
@@ -17,6 +20,8 @@ import { recentCalls } from '../llm/log.js';
 import { gatedListenerCount } from '../broadcast/listeners.js';
 import { activeWikipediaExtractPrompt, DEFAULT_WIKIPEDIA_EXTRACT_PROMPT } from '../sleeve-notes/wikipedia-prompt.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { geniusQueueReadout } from '../sleeve-notes/research-repository.js';
+import { geniusWorkerStatus } from '../sleeve-notes/genius-worker.js';
 import { geniusAccessToken } from '../sleeve-notes/genius-token.js';
 import { libraryConnectionsForRecording } from '../sleeve-notes/library-connections.js';
 import { researchConnectionsOverviewInDatabase } from '../sleeve-notes/connections-overview.js';
@@ -52,7 +57,7 @@ import {
 } from '../sleeve-notes/research-repository.js';
 
 import { airingReviewDecisionSchema } from '../schemas/sleeve-notes-feedback.js';
-import { airingReviewKey, flagAiredUse, listAiringReviews, decideAiringReview, reviewReadyCount, flagStoredClaim } from '../sleeve-notes/airing-review.js';
+import { airingReviewKey, flagAiredUse, listAiringReviews, decideAiringReview, reviewReadyCount, flagStoredClaim, storedClaimReviews } from '../sleeve-notes/airing-review.js';
 
 export const router = express.Router();
 
@@ -287,10 +292,36 @@ router.post('/sleeve-notes/segment/run', requireAdmin, async (_req,res)=>{
   }
 });
 
+router.get('/sleeve-notes/dash-stories', requireAdmin, async (_req,res)=>{
+  await settings.load();
+  const enabled=settings.get().djBehaviour.extendedSleeveNotes===true;
+  if(!enabled)return res.json({enabled:false,trackId:null,items:[]});
+  const {queue}=await import('../broadcast/queue.js');
+  const track=await queue.getNowPlaying();
+  const trackId=track?.subsonic_id??track?.id??null;
+  const items=trackId?withCachedRead(()=>{
+    const facts=loadExtendedSleeveNoteCandidatesInDatabase(openSleeveNotesDb(),trackId,track?.artist);
+    const reviews=storedClaimReviews(facts.map(fact=>fact.claimId));
+    return facts.map(fact=>({id:fact.claimId,category:fact.category,text:fact.wording,sourceUrl:fact.sourceUrl,
+      entityType:fact.entityType,entityId:fact.entityId,review:reviews[fact.claimId]??null}));
+  }):[];
+  const metadata=trackId?getPlaybackMeta(trackId):null;
+  const artistId=metadata?.artistId??(typeof track?.artistId==='string'?track.artistId:null)
+    ??(track?.artist?withCachedRead(()=>localBrainArtistId(track.artist)):null);
+  return res.json({enabled,trackId,artistId,items});
+});
+
 router.get('/sleeve-notes/live-summary', requireAdmin, async (_req, res) => {
   const { queue } = await import('../broadcast/queue.js');
   const nowPlaying = await queue.getNowPlaying();
-  return res.json(withCachedRead(() => liveNotesSummary(nowPlaying, queue.current, queue.upcoming[0] ?? null)));
+  const id=nowPlaying?.subsonic_id??nowPlaying?.id;
+  const metadata=id?getPlaybackMeta(id):null;
+  const playing=nowPlaying?{...nowPlaying,artistId:metadata?.artistId??nowPlaying.artistId,albumId:metadata?.albumId??nowPlaying.albumId}:null;
+  const next=queue.upcoming[0]??null;
+  const nextId=typeof next?.track.subsonic_id==='string'?next.track.subsonic_id:next?.track.id;
+  const nextMetadata=nextId?getPlaybackMeta(nextId):null;
+  const upcoming=next?{...next,track:{...next.track,artistId:nextMetadata?.artistId??(typeof next.track.artistId==='string'?next.track.artistId:null),albumId:nextMetadata?.albumId??(typeof next.track.albumId==='string'?next.track.albumId:null)}}:null;
+  return res.json(withCachedRead(() => liveNotesSummary(playing, queue.current, upcoming)));
 });
 
 router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
@@ -307,6 +338,7 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   const collectionRunning = enabled && !collectionPaused && researchAllowed();
   res.json({
     enabled,
+    timezone: getStationTimezone(),
     wikipediaPrompt: activeWikipediaExtractPrompt(customPrompt),
     wikipediaDefaultPrompt: DEFAULT_WIKIPEDIA_EXTRACT_PROMPT,
     wikipediaPromptIsCustom: !!customPrompt.trim(),
@@ -469,6 +501,17 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
   const allowIdleRescans = settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true
     && gatedListenerCount() === 0;
   const workQueueItems = researchQueueDetails(new Date(), allowIdleRescans);
+  const reviews = openSleeveNotesDb().prepare(`SELECT id,state,
+    CASE WHEN json_valid(context_json) THEN json_extract(context_json,'$.artist') END AS artist,
+    CASE WHEN json_valid(context_json) THEN json_extract(context_json,'$.title') END AS title
+    FROM sleeve_airing_reviews WHERE state IN ('queued','running') ORDER BY created_at,id`).all() as Array<{
+      id: string; state: string; artist: string | null; title: string | null;
+    }>;
+  workQueueItems.push(...reviews.map(review => ({ id: `review:${review.id}`, provider: 'researcher',
+    capability: 'review-flagged-speech', phase: review.state === 'running' ? 'running' as const : 'ready' as const,
+    subjectType: 'recording', subjectTitle: review.title ?? 'Flagged speech', subjectArtist: review.artist,
+    priority: 0, attempts: 0, runAfter: null, wikiNextChunk: 0, researchNextSection: 0 })));
+
   const queueCounts = new Map<string, { provider: string; capability: string; phase: string; jobs: number }>();
   for (const item of workQueueItems) {
     const key = `${item.provider}\u0000${item.capability}\u0000${item.phase}`;
@@ -482,6 +525,8 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
     active: true,
     researchPausedByBudget: !researchAllowed(),
     collectionPaused: settings.get().djBehaviour.sleeveNotesCollectionPaused === true,
+    geniusQueue: { ...geniusQueueReadout(), worker: geniusWorkerStatus(),
+      enabled: settings.get().sleeveNotes.providers.genius.enabled === true, configured: !!geniusAccessToken() },
     readAt: Date.now(),
     ...researchStoreReadout(),
     workQueue: [...queueCounts.values()],
@@ -501,7 +546,11 @@ router.get('/sleeve-notes/stories', requireAdmin, async (req,res) => {
   const input={search:typeof req.query.search==='string'?req.query.search.slice(0,120):'',
     category:typeof req.query.category==='string'?req.query.category.slice(0,100):'',recent:req.query.recent==='1',withdrawn:req.query.withdrawn==='1',
     limit:Math.max(1,Math.min(100,number(req.query.limit,30))),offset:Math.max(0,number(req.query.offset,0))};
-  const read=()=>searchResearchStoriesInDatabase(openSleeveNotesDb(),input);
+  const read=()=>{
+    const result=searchResearchStoriesInDatabase(openSleeveNotesDb(),input);
+    const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));
+    return {...result,claims:result.claims.map(claim=>({...claim,review:reviews[claim.id]??null}))};
+  };
   return res.json(settings.get().djBehaviour.extendedSleeveNotes===true?read():withCachedRead(read));
 });
 
@@ -552,7 +601,12 @@ router.get('/sleeve-notes/dossier/:entityType/:entityId', requireAdmin, async (r
   if (!validTypes.includes(entityType as ResearchEntityType) || !entityId || entityId.length > 200) {
     return res.status(400).json({ error: 'A supported entity type and id are required' });
   }
-  const read = () => researchEntityDossier(entityType as ResearchEntityType, entityId);
+  const read = () => {
+    const result=researchEntityDossier(entityType as ResearchEntityType, entityId);
+    if (!result) return null;
+    const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));
+    return {...result,claims:result.claims.map(claim=>({...claim,review:reviews[claim.id]??null}))};
+  };
   const dossier = settings.get().djBehaviour.extendedSleeveNotes === true ? read() : withCachedRead(read);
   if (!dossier) return res.status(404).json({ error: 'No saved stories exist for this artist, album or track' });
   return res.json({ active: settings.get().djBehaviour.extendedSleeveNotes === true, ...dossier });
@@ -663,6 +717,18 @@ router.post('/sleeve-notes/connections/research', requireAdmin, async (req, res)
     if (res.destroyed) return;
     return res.status(422).json({ error: error instanceof Error ? error.message : 'Could not add this artist or album to the research queue' });
   } finally { clearTimeout(timeout); res.off('close', disconnect); }
+});
+
+// On-demand statistics share the existing read-only background graph worker.
+router.get('/sleeve-notes/connections/discoveries', requireAdmin, async (req,res)=>{
+  await settings.load();
+  try {
+    const read=()=>cachedConnectionsOverview([], 'discoveries', req.query.refresh==='1', openSleeveNotesDb());
+    const result=settings.get().djBehaviour.extendedSleeveNotes===true?read():withCachedRead(read);
+    return res.type('json').send(await result);
+  } catch(error){
+    return res.status(503).json({error:error instanceof Error?error.message:'Could not calculate discoveries'});
+  }
 });
 
 router.get('/sleeve-notes/connections/overview', requireAdmin, async (req, res) => {

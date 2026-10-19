@@ -1,3 +1,4 @@
+import {externalDiscoveriesInDatabase} from './external-discoveries.js';
 // Read-only CPU work in a separate process. No provider calls and no writes to
 // station state: the controller owns validation and atomic index publication.
 import Database from 'better-sqlite3';
@@ -6,7 +7,7 @@ import { researchConnectionsOverviewInDatabase } from './connections-overview.js
 import type { ConnectionEdgeType } from './research-repository.js';
 
 process.on('disconnect', () => process.exit(0));
-process.on('message', (message: { id: number; path: string; kind: 'overview' | 'matches'; edges?: ConnectionEdgeType[] }) => {
+process.on('message', (message: { id: number; path: string; kind: 'overview' | 'matches' | 'discoveries'; edges?: ConnectionEdgeType[] }) => {
   let db: Database.Database | null = null;
   try {
     db = new Database(message.path, { readonly: true, fileMustExist: true });
@@ -15,7 +16,7 @@ process.on('message', (message: { id: number; path: string; kind: 'overview' | '
     db.exec('BEGIN');
     const result = message.kind === 'matches' ? buildConnectionLibraryPatch(db) : {
       revision: connectionRevision(db, 'overview'),
-      json: JSON.stringify({ active: true, ...researchConnectionsOverviewInDatabase(db, message.edges) }),
+      json: JSON.stringify(message.kind==='discoveries'?externalDiscoveriesInDatabase(db):{ active: true, ...researchConnectionsOverviewInDatabase(db, message.edges) }),
     };
     db.exec('COMMIT');
     process.send?.({ id: message.id, result });

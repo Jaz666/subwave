@@ -4,20 +4,20 @@ import Link from 'next/link';
 import {useEffect,useRef,useState} from 'react';
 import {adminJson,useAdminQuery,type AdminFetch} from '../../lib/admin-query';
 import {Card} from './ui';
-import {groupAiredStories} from './sleeve-notes-view';
+import {formatNotesDate,groupAiredStories} from './sleeve-notes-view';
 import {FlagAiring} from './HeardOnAir';
 
-type AiredItem={id:string;segmentId?:string|null;artist:string|null;title:string|null;airedAt:string;spokenText:string;review?:{id:string;state:string}|null;
+type AiredItem={id:string;consumer?:string;segmentId?:string|null;artist:string|null;title:string|null;airedAt:string;spokenText:string;review?:{id:string;state:string}|null;
   conversation?:{id:string;lines:Array<{speakerName:string;text:string}>}|null};
 
-export default function NotesRecentlyAired({adminFetch}:{adminFetch:AdminFetch}) {
+export default function NotesRecentlyAired({adminFetch,timezone}:{adminFetch:AdminFetch;timezone?:string}) {
   const shelf=useAdminQuery<{items:AiredItem[];readOnly?:boolean}>({
     key:['sleeve-notes','heard-on-air',0,'','','','detected'],adminFetch,
     request:(fetcher,signal)=>adminJson(fetcher,'/sleeve-notes/heard-on-air?offset=0&usage=detected',undefined,signal),
     staleTime:10_000,refetchInterval:15_000,
   });
   const exchanges=[...groupAiredStories(shelf.data?.items??[]).entries()].slice(0,2);
-  return <Card title="Recently aired" right={<Link href="/admin/notes?tab=heard" className="text-xs text-primary hover:underline">Heard on Air</Link>}>
+  return <Card headingLevel={2} title="Recently aired" right={<Link href="/admin/notes?tab=heard" className="text-xs text-primary hover:underline">Heard on Air</Link>}>
     {shelf.isLoading&&<p role="status" className="text-[13px] text-muted">Loading recent airings…</p>}
     {shelf.error&&<p role="alert" className="text-[13px] text-muted">Recent airings could not be refreshed. <button type="button" className="text-primary hover:underline" onClick={()=>void shelf.refetch()}>Retry</button></p>}
     {shelf.data&&!exchanges.length&&<p className="text-[13px] text-muted">No confirmed aired links or segments with detected Spark use yet.</p>}
@@ -29,7 +29,7 @@ export default function NotesRecentlyAired({adminFetch}:{adminFetch:AdminFetch})
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate text-[13px] font-semibold" title={`${item.artist??''} · ${item.title??''}`}>{item.artist||'Unknown artist'} · {item.title||'Saved track'}</h3>
-            <p className="mt-1 text-xs text-muted">{new Date(item.airedAt).toLocaleString()}</p>
+            <p className="mt-1 text-xs text-muted">{`${item.consumer==='sleeveNotesSegment'?'Sleeve Notes segment':'DJ link'} · ${formatNotesDate(item.airedAt,timezone)}`}</p>
           </div>
           <FlagAiring item={item} readOnly={shelf.data?.readOnly===true} adminFetch={adminFetch} iconOnly />
         </div>

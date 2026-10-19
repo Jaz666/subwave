@@ -302,6 +302,8 @@ export function loadExtendedSleeveNoteCandidatesInDatabase(
   const releaseId = matches?.releaseId ?? null;
   const releaseGroupId = matches?.releaseGroupId ?? null;
   const artistId = matches?.artistId ?? exactMusicBrainzArtistId(db, currentArtist);
+  const hasGeniusSeeds = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sleeve_genius_library_seeds'").get();
+  const hasGeniusLocal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sleeve_genius_local_tracks'").get();
   const rows = db.prepare(`SELECT c.id AS claimId, c.entity_type AS entityType,
       c.entity_id AS entityId, c.category, c.topic, c.wording,
       c.short_wording AS shortWording, c.evidence, c.operator_state AS operatorState,
@@ -323,6 +325,10 @@ export function loadExtendedSleeveNoteCandidatesInDatabase(
           WHERE local.local_track_id = ?
             AND lower(trim(local.title)) = lower(trim(c.matching_track_title)))))
       AND ((c.entity_type = 'recording' AND c.entity_id = ?)
+        OR (${hasGeniusLocal ? `c.entity_type = 'recording' AND s.provider = 'genius' AND EXISTS (
+          SELECT 1 FROM (SELECT local_track_id,recording_id FROM sleeve_genius_local_tracks
+            ${hasGeniusSeeds ? 'UNION ALL SELECT local_track_id,recording_id FROM sleeve_genius_library_seeds' : ''}) genius_local
+          WHERE genius_local.local_track_id = ? AND genius_local.recording_id = c.entity_id)` : '? IS NULL AND 0'})
         OR (? IS NOT NULL AND c.entity_type = 'release' AND c.entity_id = ?)
         OR (? IS NOT NULL AND c.entity_type = 'release-group' AND c.entity_id = ?
           AND s.provider <> 'musicbrainz-series')
@@ -335,7 +341,7 @@ export function loadExtendedSleeveNoteCandidatesInDatabase(
           WHERE library_claim.local_track_id = ? AND library_claim.claim_id = c.id
         )))
     ORDER BY c.updated_at DESC`)
-    .all(localTrackId, localTrackId, recordingId, releaseId, releaseId, releaseGroupId, releaseGroupId, artistId, artistId,
+    .all(localTrackId, localTrackId, recordingId, localTrackId, releaseId, releaseId, releaseGroupId, releaseGroupId, artistId, artistId,
       recordingId, localTrackId) as Array<{
       claimId: string; entityType: ExtendedSleeveNote['entityType']; entityId: string;
       category: string; topic: string; wording: string; shortWording: string; evidence: string;
@@ -344,7 +350,11 @@ export function loadExtendedSleeveNoteCandidatesInDatabase(
       airtimeScope: ExtendedSleeveNote['airtimeScope']; matchingReleaseTitle: string | null; matchingTrackTitle: string | null;
     }>;
 
-  const connections = recordingId ? libraryConnectionsInDatabase(db, recordingId) : [];
+  const connectionRecordingIds = new Set([
+    ...(recordingId ? [recordingId] : []),
+    ...rows.filter(row => row.provider === 'genius' && row.entityType === 'recording').map(row => row.entityId),
+  ]);
+  const connections = [...connectionRecordingIds].flatMap(id => libraryConnectionsInDatabase(db, id));
   const connectionsByClaim = new Map<string, LibraryConnection[]>();
   for (const connection of connections) {
     connectionsByClaim.set(connection.claimId, [...connectionsByClaim.get(connection.claimId) ?? [], connection]);

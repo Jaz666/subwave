@@ -1,7 +1,7 @@
 import { countExtendedSleeveNoteCandidatesInDatabase } from './link-selection.js';
 import { open } from './db.js';
 
-type Track = { id?: string | null; subsonic_id?: string; title?: string | null; artist?: string | null; album?: string | null };
+type Track = { id?: string | null; subsonic_id?: string; title?: string | null; artist?: string | null; album?: string | null; artistId?: string | null; albumId?: string | null };
 export type LiveNotesItem = { track: Track; sleeveClaimUseId?: string | null; introScript?: string | null; introKind?: string; startedAt?: string; queuedAt?: string };
 
 /** A read-only view of the actual queue item and its exact Spark reservation.
@@ -29,7 +29,8 @@ export function liveNotesSummary(nowPlaying: Track | null, current: LiveNotesIte
     } | undefined : undefined;
     let factDetected = false;
     try { const signal = JSON.parse(spark?.speechSignal ?? 'null'); factDetected = [1,2].includes(signal?.version) && signal?.status === 'detected'; } catch { /* Older rows may have no usable speech signal. */ }
-    return { track: { id, title: track.title ?? '', artist: track.artist ?? '', album: track.album ?? '' },
+    return { track: { id, title: track.title ?? '', artist: track.artist ?? '', album: track.album ?? '',
+      artistId: track.artistId ?? item?.track.artistId ?? null, albumId: track.albumId ?? item?.track.albumId ?? null },
       availability: !spark && id ? countExtendedSleeveNoteCandidatesInDatabase(db, id, track.artist) : null,
       djLine: spark?.spokenText || item?.introScript || null,
       spark: spark ? { wording: spark.wording, airedAt: spark.airedAt, renderedAt: spark.renderedAt,

@@ -26,7 +26,7 @@ test('Recently aired shows the last two exchanges once with full confirmed speak
   assert.match(html,/line-clamp-2/);assert.match(html,/tab=heard/);assert.doesNotMatch(html,/Offered Spark|Source passage/);
   assert.equal((html.match(/aria-pressed="false"/g)||[]).length,1);
   assert.equal((html.match(/aria-pressed="true"/g)||[]).length,1);
-  assert.match(html,/aria-label="Flag for review"/);assert.match(html,/aria-label="Flagged for review"/);
+  assert.match(html,/aria-label="Flag for review"/);assert.match(html,/aria-label="Flagged for review: Queued for review"/);
   assert.match(html,/fill="currentColor"/);
   client.clear();
 });
@@ -44,23 +44,56 @@ test('the Overview uses one responsive grid for all four boxes',()=>{
 test('a ready review count is highlighted and has an accessible explanation',()=>{
   const html=renderToStaticMarkup(<SectionTabs tabs={[{id:'review',label:'Review',icon:BookOpen,count:2,attention:true}]}
     value="overview" onChange={()=>{}} label="Sleeve Notes sections"/>);
-  assert.match(html,/Review ready for your input/);assert.match(html,/02/);assert.match(html,/ready for your input/);
+  assert.match(html,/A review is ready/);assert.match(html,/02/);assert.match(html,/ready for your input/);
   assert.match(html,/bg-ink text-bg/);
 });
 
 
-test('Research activity shows the first two queued jobs and offers expansion for the rest',()=>{
+test('Research activity separates controller and LLM queues with one visible job each',()=>{
   const jobs=['First job','Second job','Third job'].map((title,index)=>({id:String(index),subjectTitle:title,subjectArtist:'Artist',
-    phase:'ready' as const,provider:'researcher',capability:'extract-wikipedia',subjectType:'artist',priority:300-index,
+    phase:'ready' as const,provider:index===2?'wikipedia':'researcher',capability:index===2?'biography':'extract-wikipedia',subjectType:'artist',priority:300-index,
     attempts:0,runAfter:null,wikiNextChunk:0,researchNextSection:0}));
-  const data={workQueueItems:jobs,workQueue:[{phase:'ready',jobs:3}],retainedClaims:12,localAttachments:2,
-    musicBrainzSeries:[],providerSummary:[]} as unknown as ComponentProps<typeof ResearchActivity>['data'];
+  const data={workQueueItems:jobs,retainedClaims:12,localAttachments:2,musicBrainzSeries:[],providerSummary:[]} as unknown as ComponentProps<typeof ResearchActivity>['data'];
   const status={enabled:true} as ComponentProps<typeof ResearchActivity>['status'];
   const html=renderToStaticMarkup(<ResearchActivity data={data} status={status}/>);
-  assert.match(html,/First job/);assert.match(html,/Second job/);assert.doesNotMatch(html,/Third job/);
-  assert.match(html,/Show more \(1 more job\)/);assert.match(html,/aria-expanded="false"/);
-  assert.doesNotMatch(html,/Research details|Recent DJ activity/);
+  const llm=html.match(/<section aria-label="LLM Research"[\s\S]*?<\/section>/)?.[0]??'';
+  const compact=llm.split('<details')[0]??'';
+  assert.match(compact,/First job/);assert.doesNotMatch(compact,/Second job|Third job/);
+  assert.doesNotMatch(llm,/Second job/);assert.match(llm,/Show queue/);
+  assert.match(html,/Controller Research/);assert.match(html,/Third job/);
+  assert.doesNotMatch(html,/<details[^>]* open|Background collection|Oldest ready|Track lookups/);
   const details=renderToStaticMarkup(<ResearchDetailsView data={data} status={status}/>);
-  assert.match(details,/Saved facts/);assert.match(details,/Tracks encountered/);assert.match(details,/MusicBrainz curated lists/);
-  assert.doesNotMatch(details,/First job|Recently aired/);
+  assert.match(details,/Saved facts/);assert.match(details,/Tracks encountered/);
+});
+
+test('Genius overview keeps minute usage and waiting reason while daily usage lives in Research Details',()=>{
+  const queue={minuteRequests:3,minuteLimit:3,dayRequests:598,dayLimit:4320,waitReason:'allowance',retryAt:'2026-10-18T13:01:00Z',
+    pending:{encountered:1,albums:0,samples:0},ready:1,readyRequests:1,deferred:0,running:0,oldestReadyAt:null,oldestReadyAgeSeconds:null,
+    enabled:true,configured:true,worker:{running:false,quiet:true}};
+  const data={geniusQueue:queue,workQueueItems:[{id:'g',provider:'genius',capability:'connections',phase:'ready',priority:110,
+    subjectTitle:'Track',subjectArtist:'Artist'}],musicBrainzSeries:[],providerSummary:[]} as unknown as ComponentProps<typeof ResearchActivity>['data'];
+  const status={enabled:true,timezone:'Europe/London'} as ComponentProps<typeof ResearchActivity>['status'];
+  const render=()=>renderToStaticMarkup(<ResearchActivity data={data} status={status}/>);
+  let html=render();assert.match(html,/Genius: 3 \/ 3 requests this minute/);assert.match(html,/Waiting for request allowance/);
+  assert.doesNotMatch(html,/24 hours|598|Oldest ready|Sample exploration/);
+  queue.worker.quiet=false;assert.match(render(),/Yielding to broadcast work/);
+  queue.worker.quiet=true;queue.waitReason='backoff';assert.match(render(),/Backing off after an error/);
+  const details=renderToStaticMarkup(<ResearchDetailsView data={data} status={status}/>);
+  assert.match(details,/Genius requests · last 24 hours/);assert.match(details,/598/);
+  data.geniusQueue!.dayLimit=null;
+  const unlimited=renderToStaticMarkup(<ResearchDetailsView data={data} status={status}/>);
+  assert.match(unlimited,/598/);assert.doesNotMatch(unlimited,/4,320/);
+});
+
+
+test('live overview links artist, album and track using library identities',()=>{
+ const client=new QueryClient();
+ const item={track:{id:'song-id',artistId:'artist-id',albumId:'album-id',artist:'Band',title:'Song',album:'Album'},spark:null,djLine:null};
+ client.setQueryData(['sleeve-notes','live-summary'],{onAir:item,nextUp:item});
+ const html=renderToStaticMarkup(<QueryClientProvider client={client}><NotesLiveSummary adminFetch={fetcher} enabled/></QueryClientProvider>);
+ assert.equal((html.match(/title="Open artist in Station Brain"/g)??[]).length,2);
+ assert.match(html,/focusType=library-artist&amp;focusId=artist-id/);
+ assert.match(html,/focusType=library-album&amp;focusId=album-id/);
+ assert.match(html,/brainTrack=song-id/);
+ client.clear();
 });

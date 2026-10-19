@@ -405,10 +405,30 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
 
 
   return (
-    <div ref={container} className="relative h-[clamp(24rem,65vh,44rem)] min-h-96 overflow-hidden border border-border bg-bg"
+    <div ref={container} className={`relative overflow-hidden border border-border bg-bg focus-visible:outline-2 focus-visible:outline-offset-2 ${fullscreen?'h-full min-h-0 flex-1':'h-[clamp(24rem,65vh,44rem)] min-h-96'}`}
       onPointerDownCapture={() => { pendingFit.current = false; pendingReturnCenter.current = null; }}
       onWheelCapture={() => { pendingFit.current = false; pendingReturnCenter.current = null; }}
-      role="group" aria-label={`Station Brain: ${visibleData.nodes.length} entities and ${visibleData.edges.length} connections. Use the browse lists below for keyboard navigation.`}>
+      tabIndex={0}
+      onKeyDown={event=>{
+        if(event.target!==event.currentTarget) return;
+        if(event.key==='ArrowLeft'||event.key==='ArrowRight') {
+          event.preventDefault();
+          const nodes=visibleData.nodes;if(!nodes.length) return;
+          const index=nodes.findIndex(node=>node.id===selectedNode);
+          const next=index<0?(event.key==='ArrowRight'?0:nodes.length-1):(index+(event.key==='ArrowRight'?1:-1)+nodes.length)%nodes.length;
+          const node=nodes[next];if(node) onSelectNode(node);
+        } else if(event.key==='ArrowUp'||event.key==='ArrowDown') {
+          event.preventDefault();
+          const edges=visibleData.edges;if(!edges.length) return;
+          const index=edges.findIndex(edge=>edge.id===selectedEdge);
+          const next=index<0?(event.key==='ArrowDown'?0:edges.length-1):(index+(event.key==='ArrowDown'?1:-1)+edges.length)%edges.length;
+          const edge=edges[next];if(edge) onSelectEdge(edge);
+        } else if(event.key==='Enter') {
+          const node=visibleData.nodes.find(node=>node.id===selectedNode);
+          if(node?.expandable) {event.preventDefault();onOpenNode(node);}
+        }
+      }}
+      role="group" aria-label={`Station Brain: ${visibleData.nodes.length} entities and ${visibleData.edges.length} connections. Use Left and Right to select an item, Up and Down to select a relationship, and Enter to open the selected item.`}>
       {size.width > 0 && <ForceGraph2D<ConnectionNode, LinkData>
         ref={graph} width={size.width} height={size.height} graphData={network} backgroundColor={background}
         warmupTicks={largeMap ? reducedMotion ? 32 : 0 : reducedMotion ? 160 : 60}
@@ -464,31 +484,31 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
       <BrainPanel label="Layout" className="absolute top-3 left-3 max-w-[calc(100%-9rem)] border border-border bg-card p-1 text-ink">
         <div className="flex flex-wrap items-center gap-1">
         <button type="button" aria-label="Force layout" aria-pressed={layoutMode === 'force'} onClick={() => applyLayout('force')} title="Arrange by connected forces"
-          className={`flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay ${layoutMode === 'force' ? 'bg-overlay' : ''}`}><Network className="size-3.5" />Force</button>
+          className={`flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay md:min-h-8 ${layoutMode === 'force' ? 'bg-overlay' : ''}`}><Network className="size-3.5" />Force</button>
         <button type="button" aria-label="Group related nodes" aria-pressed={layoutMode === 'grouped'} onClick={() => applyLayout('grouped')} title="Place connected groups together"
-          className={`flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay ${layoutMode === 'grouped' ? 'bg-overlay' : ''}`}><LayoutGrid className="size-3.5" />Grouped</button>
+          className={`flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay md:min-h-8 ${layoutMode === 'grouped' ? 'bg-overlay' : ''}`}><LayoutGrid className="size-3.5" />Grouped</button>
         <button type="button" aria-label="Focus selected node" aria-pressed={layoutMode === 'focus'} disabled={!selectedNode} onClick={() => applyLayout('focus')} title={selectedNode ? 'Place the selected node at the centre' : 'Select a node to focus the layout'}
-          className={`flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay disabled:opacity-40 ${layoutMode === 'focus' ? 'bg-overlay' : ''}`}><Focus className="size-3.5" />Focus</button>
+          className={`flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay disabled:opacity-40 md:min-h-8 ${layoutMode === 'focus' ? 'bg-overlay' : ''}`}><Focus className="size-3.5" />Focus</button>
         <button type="button" aria-label="Re-layout graph" onClick={relayout} title="Release pinned nodes and arrange the graph again"
-          className="flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay"><RotateCcw className="size-3.5" />Re-layout</button>
+          className="flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay md:min-h-8"><RotateCcw className="size-3.5" />Re-layout</button>
         {layoutMode === 'force' && <button type="button" aria-label={density === 'compact' ? 'Spread graph' : 'Compact graph'} onClick={() => {
           const next = density === 'compact' ? 'spread' : 'compact'; setDensity(next); setForceSpacing(next); graph.current?.d3ReheatSimulation();
         }} title={density === 'compact' ? 'Increase spacing between nodes' : 'Reduce spacing between nodes'}
-          className="flex h-8 items-center gap-1 px-2 text-[11px] hover:bg-overlay">{density === 'compact' ? 'Spread' : 'Compact'}</button>}
+          className="flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay md:min-h-8">{density === 'compact' ? 'Spread' : 'Compact'}</button>}
         </div>
       </BrainPanel>
       <BrainPanel label="Map controls" className="absolute top-3 right-3 border border-border bg-card p-1 text-ink">
         <div className="flex justify-center gap-1">
-          <button type="button" aria-label="Zoom in" className="flex size-8 items-center justify-center hover:bg-overlay" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) * 1.35, reducedMotion ? 0 : 250); }}><Plus className="size-4" /></button>
-          <button type="button" aria-label="Zoom out" className="flex size-8 items-center justify-center hover:bg-overlay" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) / 1.35, reducedMotion ? 0 : 250); }}><Minus className="size-4" /></button>
-          <button type="button" aria-label="Fit the whole map" className="flex size-8 items-center justify-center hover:bg-overlay" onClick={fit}><Maximize2 className="size-4" /></button>
-          <button type="button" aria-label={fullscreen ? "Close full-screen map" : "Open full-screen map"} title={fullscreen ? "Close full screen (Esc)" : "Open full screen"} className="flex size-8 items-center justify-center hover:bg-overlay" onClick={onToggleFullscreen}>{fullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />}</button>
+          <button type="button" aria-label="Zoom in" className="flex size-11 items-center justify-center hover:bg-overlay md:size-8" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) * 1.35, reducedMotion ? 0 : 250); }}><Plus className="size-4" /></button>
+          <button type="button" aria-label="Zoom out" className="flex size-11 items-center justify-center hover:bg-overlay md:size-8" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) / 1.35, reducedMotion ? 0 : 250); }}><Minus className="size-4" /></button>
+          <button type="button" aria-label="Fit the whole map" className="flex size-11 items-center justify-center hover:bg-overlay md:size-8" onClick={fit}><Maximize2 className="size-4" /></button>
+          <button type="button" aria-label={fullscreen ? "Close full-screen map" : "Open full-screen map"} title={fullscreen ? "Close full screen (Esc)" : "Open full screen"} className="flex size-11 items-center justify-center hover:bg-overlay md:size-8" onClick={onToggleFullscreen}>{fullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />}</button>
         </div>
         <div className="grid grid-cols-2 gap-1 border-t border-border/60 pt-1">
           <button type="button" disabled={!canLayerUp} onClick={onLayerUp} title="Return to the parent layer"
-            className="flex h-8 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40"><ChevronUp className="size-3" aria-hidden="true" />Layer Up</button>
+            className="flex min-h-11 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40 md:min-h-8"><ChevronUp className="size-3" aria-hidden="true" />Layer Up</button>
           <button type="button" disabled={!canLayerDown} onClick={onLayerDown} title={canLayerDown ? 'Open the selected node' : 'Select an artist, album or matched track to open its layer'}
-            className="flex h-8 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40"><ChevronDown className="size-3" aria-hidden="true" />Layer Down</button>
+            className="flex min-h-11 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40 md:min-h-8"><ChevronDown className="size-3" aria-hidden="true" />Layer Down</button>
         </div>
       </BrainPanel>
       <BrainPanel label="Key" className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] border border-border bg-card px-3 py-2 text-[10px] text-ink">
@@ -498,14 +518,14 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
           <div className="flex items-center gap-2">
             <button type="button" aria-label="Highlight one fewer neural link" disabled={Math.min(pathLimit, pathways.orderedEdges.length) <= 1}
               onClick={() => setPathLimit(Math.max(1, Math.min(pathLimit, pathways.orderedEdges.length) - 1))}
-              className="flex size-8 shrink-0 items-center justify-center hover:bg-overlay disabled:opacity-40"><Minus className="size-4" aria-hidden="true" /></button>
+              className="flex size-11 shrink-0 items-center justify-center hover:bg-overlay disabled:opacity-40 md:size-8"><Minus className="size-4" aria-hidden="true" /></button>
             <input type="range" min={1} max={pathways.orderedEdges.length} step={1} value={Math.min(pathLimit, pathways.orderedEdges.length)}
               aria-label="Maximum neural links highlighted from this artist"
               onChange={(event) => setPathLimit(Number(event.target.value))}
               className="h-4 min-w-0 flex-1 cursor-pointer accent-primary" />
             <button type="button" aria-label="Highlight one more neural link" disabled={pathLimit >= pathways.orderedEdges.length}
               onClick={() => setPathLimit(Math.min(pathways.orderedEdges.length, pathLimit + 1))}
-              className="flex size-8 shrink-0 items-center justify-center hover:bg-overlay disabled:opacity-40"><Plus className="size-4" aria-hidden="true" /></button>
+              className="flex size-11 shrink-0 items-center justify-center hover:bg-overlay disabled:opacity-40 md:size-8"><Plus className="size-4" aria-hidden="true" /></button>
           </div>
         </div>}
         <div className="flex flex-wrap gap-x-3 gap-y-1">

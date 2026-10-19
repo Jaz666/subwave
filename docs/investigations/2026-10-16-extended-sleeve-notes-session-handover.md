@@ -225,3 +225,93 @@ Successful application records the actual saved correction in review context, wh
 ## PR refresh publication checkpoint (17 October)
 
 The owner authorized publishing the accumulated UI/audit simplifications, confirmed-air filtering, unified fact/speech AI review, explicit withdrawal/restoration, Review notifications and editable Spark corrections to PR #5 (`Jaz666/subwave`, `feat/extended-sleeve-notes` → `develop`). Publication uses the existing local test-station branch and an explicit push refspec to the PR head. The PR description is refreshed for the final operator workflow and clearly distinguishes earlier full/build/browser checkpoints from the latest focused verification. No full test suite or build is repeated for publication. Station rebuilds/deployment remain the owner's responsibility; no live station actions are part of publication.
+
+## 18 October — Station Brain operator queue actions and full-screen layout
+
+Added exact-track queueing and a mood/flow choice from a selected artist or album. Both enter the existing `/dj/queue-track` operator path, preserving its duplicate/recency exemptions, studio attribution, listener-request-slot exemption and absolute never-play blocklist. Source choices remain inside the selected identity, use shared tempo/key transition ranking against the queue tail, and make no LLM call. Canonical saved identities resolve to confirmed library sources. The artist catalogue sample is bounded to twenty albums with three reads in flight.
+
+Removed the two expanded entity/relationship browse sections in favour of layer-aware queue controls. The artist overview requires a selected artist; albums default to the artist unless an album is selected; album tracks default to the album unless a track is selected. No dropdowns are used. Arrow keys and Enter retain keyboard access to the map. The actual queued track, position and selection explanation are shown. Full-screen maps now grow to the available dialog height with a hideable details overlay inside the map body, rather than a vertically stacked artist card. Plain-English help explains the operator override rules.
+
+Thirty-seven focused controller checks passed, covering source identity, current mood, queue-tail flow, explicit operator duplicate/recency overrides, absolute blocklist refusal, canonical identities and existing operator block queue semantics. Controller/web type checks, targeted lint (no errors), web query-ownership audit and the UI detector passed. No full suite or live-browser playback test was performed; no live tracks were queued and no settings, deployment or broadcasts changed. These changes remain local alongside the preceding UI-audit and Heard on air disclosure edits. Controller and web rebuilds are required.
+
+Full-screen details are hidden on entry and remain hidden when the selected node changes. The operator opens them explicitly with Show details; queue controls remain in the map header.
+
+## 18 October — planned Genius-led Station Brain traversal
+
+Agreed plan: [Genius-led Station Brain research traversal](2026-10-18-genius-station-brain-traversal-plan.md). Decouple Genius research from MusicBrainz identity completion, traverse sample/sample-by links through confidently matched library artists (including their songs not owned locally), retain outside-library boundary evidence, and fill spare capacity with fair library seeding. Keep the current controller and shared three-requests-per-minute ceiling, prioritise broadcast work, and measure bounded processing before rollout. Connected-track picking, a separate research container, increased API frequency and the record-store wishlist remain deferred. This update documents the plan only.
+
+First traversal-plan checkpoint: added the isolated Genius processing replay and recorded its results in the linked plan. Largest stored responses retained in 12.67 ms median / 24.02 ms maximum; graph calculation remains offloaded, while an accumulated patch publication took 78.24 ms synchronously. No production behaviour changed. Next: independent Genius identities and known-ID fetch reuse, followed by bounded traversal scheduling.
+
+Genius fetch-reuse checkpoint: the worker now uses the latest stored Genius song ID to skip repeat searches, validates returned identity, and sends a Subwave User-Agent through the existing budgeted adapter. Six focused checks and controller type checking passed. These are local code changes requiring a controller rebuild; none was performed. Independent identities and traversal are still pending; the MusicBrainz gate has not yet been removed.
+
+Independent encountered-track Genius research is now implemented locally (schema 55). Encounters queue Genius work without waiting for MusicBrainz. Explicit provider-local recording associations preserve source/claim IDs and operator edits when MusicBrainz later establishes its canonical attachment; matching and selection can use the independent evidence. Existing worker gates and request budgets remain. Seventy focused checks passed, plus twelve identity/connection checks after the final selection adjustment; controller type checking and targeted lint passed. No deployment or live API requests. Sample traversal, library seeding and cross-track Genius-ID deduplication remain next.
+
+Sample traversal is now implemented locally (schema 56). The existing worker follows sample/sample-by IDs through unambiguous library artists, retains outside-library boundary evidence and uses durable twenty-relationship expansion turns. Visited IDs prevent cycles, known IDs skip search, and cached shared identities can associate with additional local copies. Encountered and album research stay ahead of the crawl. Offline expansion batches measured 0.28 ms median / 5.91 ms maximum; focused checks/type checking/lint passed. No live requests or rebuild. Fair library seeding and queue visibility remain next; see the traversal plan for details and limitations.
+
+Queue visibility is implemented locally in Overview → Research Activity: rolling Genius usage, waiting job categories, due/deferred/running totals, oldest due-job creation age, and worker/allowance/backoff status. Existing Show more retains individual job details, now with plain-English sample task names. Uses the existing thirty-second poll and shared enforcement calculation; no API calls or live state changes. Focused rendered/backend checks, type checking and lint passed. Both controller and web rebuilds required; no deployment performed.
+
+Fair library seeding is now implemented locally (schema 57). It rotates artists durably and queues one unexamined catalogue track at a time behind encountered/album/traversal work. It uses the same Genius gate/budget and creates no encounters, MusicBrainz jobs or LLM work. Existing encounters and their duplicate catalogue copies are excluded, so historical traversal enrolment remains separate. Offline selection measured 0.91 ms median / 2.68 ms maximum. Focused checks, type checking and lint passed; no live API calls or deployment. Controller rebuild activates seeding; web rebuild adds its plain-English queue task label.
+
+## Research Activity simplification
+
+Overview now separates Controller Research (source collection/connections) from LLM Research (Spark extraction/flagged-speech review). Each section shows one concise state, its queued count and the current/next job; running jobs precede ready jobs, then waiting jobs. Controller research retains only the Genius rolling-minute usage line. Overall totals, category counters, oldest-job age and duplicate explanations are removed from the compact view. Daily Genius usage moves to Stories → Research Details. Show queue lazily renders the section's jobs and exact retry times; the compact status uses a relative retry time. Readout now includes queued/running flagged-speech reviews in the LLM queue without changing scheduling or running any review.
+
+Five rendered Overview checks passed; controller/web type checks, targeted lint and whitespace checks passed. No live browser inspection or full suite. Controller and web rebuilds required; no deployment, setting changes, API calls or broadcasts performed.
+
+## Rendered speech waiting for airtime no longer starves research
+
+Live inspection found zero Genius requests in the rolling minute with 71 due jobs and no provider backoff/token pause; the shared broadcast gate was closed. A rendered station ident had repeatedly waited across tracks for a vocal-safe boundary. `queue.playbackCriticalBusy()` treated that idle pending clip as active work, blocking all Sleeve Notes workers. Removed only the pending-clip condition: active queue draining, picking, intro rendering and session handoffs still block research. Deferred speech remains queued and its normal runway/staleness/delivery rules are unchanged.
+
+Seventeen focused broadcast-gate, research-policy and handoff lifecycle checks passed. Controller type checking and targeted lint were run; no live queue/settings changes or API calls. Controller rebuild required; no deployment performed. The separate worker-wide Genius allowance wait is not changed by this fix.
+
+Evening rate assessment: the preceding hour used 177/180 Genius requests, all successful, while discovering 216 targets. Controller snapshot 0.26% CPU / 489 MiB; no inspected lock/compute-timeout errors. Prepared a six-per-minute trial with ten-second spacing and no daily cap (owner clarified both previous ceilings were self-imposed). Shared backoff and broadcast gates remain; request wait allows search/detail to finish across the ten-second spacing. Fourteen focused backend checks passed. Controller/web rebuilds required; no deployment or live limits changed. See the latest traversal-plan checkpoint for evidence and limitations.
+
+## 19 October — duplicate artist display nodes after Genius traversal
+
+The owner's mobile screenshot exposed per-song provisional artist records as repeated artist nodes (live read-only counts included 31 provisional Parliament rows and 86 for Ice Cube). Unresolved references also used target song IDs as artist display IDs, producing multiple labels for the same external name.
+
+The overview projection now prefers a unique identified artist over same-name provisional rows and folds provisional rows into an unambiguous library display group. Recording edges resolve through that display mapping, retaining and aggregating their original evidence. Unresolved external references group by normalised artist label and are explicitly marked identity-unverified; this is not an artist/recording identity merge. Distinct confirmed namesakes and ambiguous local matches remain separate, and unverified groups do not gain library status or verified counts. No stored artist, recording, claim, match or traversal job is rewritten.
+
+Ten focused overview checks passed, covering aggregation, external reference grouping, ambiguity, distinct canonical namesakes, graph bounds and read-only behaviour. Controller type checking, targeted lint and whitespace checks passed. No live UI inspection or deployment; controller rebuild required to refresh the projection/cache.
+
+### 19 October: Station Brain Stats & Discoveries
+
+- Added secondary Map / Stats & Discoveries tabs using the Stories segmented navigation convention; Map remains the default and fullscreen stays map-only.
+- External discoveries has Most connected (distinct library artists), Sample sources, and Sample users rankings, up to 20 each, with collapsed example connections and links to saved stories.
+- Counts use enabled, current indexed recording relationships directly from known library artists to names absent from the library. Duplicate source-recording/type/target identities count once; external names are display groups, not verified identities.
+- Calculations run only when requested, in the existing read-only graph child process. Results reuse its revision-based cache and in-flight request sharing; Refresh forces recalculation. No polling, provider calls, research jobs or playback changes.
+- Read-only measurement on the station snapshot was approximately 0.76 seconds in-process, so production calculation was moved to the existing graph worker.
+
+### 19 October: empty dossiers and duplicate artist search results
+
+- Known artists, recordings and releases without enabled claims now return an empty dossier; Stories displays a plain empty-state message. Unknown identities still return 404. Read-only verification confirmed the reported recording exists with zero saved claims.
+- Connection search suppresses repeated provisional artist rows before pagination, prefers identified artists, and retains distinct identified namesakes. The artist choice is grouped once rather than using repeated correlated scans.
+- Added focused regression coverage for empty/missing entities and provisional/identified artist search results. No stored identities or research state were modified.
+
+### 19 October: Overview links into Station Brain
+
+- Artist, album and track labels in On Air / Next Up now link into Station Brain using library IDs, preserving typography and adding hover descriptions. Missing IDs leave plain text.
+- Artist opens the library artist’s albums; album opens its track layer; track opens that album with the matching local track selected via `brainTrack`.
+- Live summary enriches only the current and next tracks from the existing lean local metadata lookup (two added scalar ID columns). No provider calls, queue changes, or research on navigation. Metadata from an outgoing queue item is not borrowed across a playback boundary.
+
+### 19 October: rotating Sleeve Notes on Dash
+
+- Added a conditional Sleeve Notes card between Queue and Booth log. It appears only while Extended Sleeve Notes is enabled, retaining a fixed content height through track changes, empty results and refresh failures.
+- Reads saved candidates for the server’s actual on-air track with the existing scope and identity rules; projects only display fields and stored review state. No LLM/provider calls, reservations, cooldown updates, or airtime actions. Refreshes on track changes and every 30 seconds.
+- Shuffles a complete cycle before reshuffling, avoiding immediate repeat at cycle boundaries. New items append to the cycle; existing items retain order. Track changes reset the cycle.
+- Reuses the skin’s `v3-blink` cursor style for a short text reveal, then waits 15 seconds before rotation. Hover or keyboard focus anywhere in the card completes the reveal and pauses rotation. Reduced motion and Lite mode show full text immediately.
+- Only narrative Sparks show the saved-fact review flag; connections and credits have source / Station Brain links but no flag. Long text scrolls within the fixed content area.
+- Focused render/shuffle checks and existing live-summary/library-connection checks passed; browser appearance remains to be checked after rebuild. Nothing deployed by the agent.
+
+### 19 October: compact Dash Sleeve Notes follow-up
+
+- Halved the fixed content height, removed footer source/exploration links, and halved reveal speed (three characters every 50ms).
+- Header Station Brain link targets the current library artist using local metadata IDs, with a unique cached library-artist lookup as fallback; no network resolution.
+- Replaced the left column’s two-row grid with a flex column. The additional card had occupied the expanding second grid row, leaving Booth log in an implicit third row. Booth log now takes the remaining column height directly below Sleeve Notes.
+- Focused render checks updated for the smaller height, artist target and removed footer; no deployment performed.
+
+### 19 October: dynamic Dash column alignment
+
+- Dash columns now share two desktop grid rows through CSS subgrid: Queue + Sleeve Notes alongside Manual Voice DJ, followed by Booth log alongside the remaining controls. Manual Voice DJ stretches as the queue grows; Sleeve Notes keeps its current fixed content height.
+- Below the existing 640px stacking breakpoint, each column returns to ordinary stacked layout. No JavaScript size observers or height measurements.
+- Targeted TypeScript and lint checks passed. Visual confirmation awaits the station rebuild.

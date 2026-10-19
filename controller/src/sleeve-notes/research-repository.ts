@@ -108,6 +108,10 @@ export function admitLocalEncounterInDatabase(db: Database.Database, input: Loca
       state = CASE WHEN sleeve_research_jobs.state IN ('failed', 'cancelled') THEN 'queued' ELSE sleeve_research_jobs.state END,
       updated_at = excluded.updated_at`)
       .run(randomUUID(), input.localTrackId, priority, now, now);
+    if (input.artist?.trim()) enqueueResearchJobInDatabase(db, {
+      provider: 'genius', subjectType: 'local-track', subjectId: input.localTrackId,
+      capability: 'connections', priority: 110, now, originLocalTrackId: input.localTrackId,
+    });
     if (input.source === 'played') queueWikipediaRefreshForEncounterInDatabase(db, input.localTrackId, now);
   });
   transaction();
@@ -307,13 +311,63 @@ export function canonicalReleaseForLocalTrack(localTrackId: string): { title: st
   return row ?? null;
 }
 
-export interface RecordingForGenius { id: string; title: string; artist: string | null; }
+export interface RecordingForGenius { id: string; title: string; artist: string | null; geniusSongId?: string | null; }
 
 export function recordingForGenius(id: string): RecordingForGenius | null {
-  const row = open().prepare(`SELECT r.id, r.title, a.name AS artist
+  const row = open().prepare(`SELECT r.id, r.title, a.name AS artist,
+      (SELECT CASE WHEN json_valid(source.content) THEN CAST(json_extract(source.content, '$.identity.providerId') AS TEXT) END
+        FROM sleeve_source_documents source
+        WHERE source.provider = 'genius' AND source.entity_type = 'recording' AND source.entity_id = r.id
+        ORDER BY source.retrieved_at DESC, source.id DESC LIMIT 1) AS geniusSongId
     FROM sleeve_recordings r LEFT JOIN sleeve_artists a ON a.id = r.artist_id
     WHERE r.id = ? AND r.match_state = 'matched' AND a.name IS NOT NULL`).get(id) as RecordingForGenius | undefined;
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, geniusSongId: typeof row.geniusSongId === 'string' && /^\d+$/.test(row.geniusSongId)
+    ? row.geniusSongId : null };
+}
+
+/** Local research identity is not a MusicBrainz confirmation. Never repoint the
+ * canonical attachment or move existing claims when the other provider resolves. */
+export function localRecordingForGenius(localTrackId: string): RecordingForGenius | null {
+  const db = open();
+  return db.transaction(() => {
+    const local = db.prepare(`SELECT title, artist, recording_id AS recordingId
+      FROM sleeve_local_attachments WHERE local_track_id = ?`).get(localTrackId) as {
+        title: string; artist: string | null; recordingId: string | null;
+      } | undefined;
+    if (!local?.artist?.trim()) return null;
+    if (local.recordingId) {
+      const canonical = recordingForGenius(local.recordingId);
+      if (canonical) return canonical;
+    }
+    const saved = db.prepare(`SELECT recording.id, recording.title, artist.name AS artist
+      FROM sleeve_genius_local_tracks local JOIN sleeve_recordings recording ON recording.id = local.recording_id
+      LEFT JOIN sleeve_artists artist ON artist.id = recording.artist_id WHERE local.local_track_id = ?`)
+      .get(localTrackId) as { id: string; title: string; artist: string | null } | undefined;
+    const sameMetadata = saved && connectionNameKey(saved.title) === connectionNameKey(local.title)
+      && connectionNameKey(saved.artist) === connectionNameKey(local.artist);
+    if (saved && !sameMetadata) db.prepare('DELETE FROM sleeve_genius_local_tracks WHERE local_track_id = ?').run(localTrackId);
+    let id = sameMetadata ? saved.id : undefined;
+    if (!id) {
+      const now = new Date().toISOString();
+      const artistId = randomUUID();
+      id = randomUUID();
+      db.prepare(`INSERT INTO sleeve_artists(id,name,created_at,updated_at) VALUES (?,?,?,?)`)
+        .run(artistId, local.artist, now, now);
+      db.prepare(`INSERT INTO sleeve_recordings(id,title,artist_id,match_state,created_at,updated_at)
+        VALUES (?,?,?,'unmatched',?,?)`).run(id, local.title, artistId, now, now);
+      db.prepare(`INSERT INTO sleeve_genius_local_tracks(local_track_id,recording_id) VALUES (?,?)`).run(localTrackId, id);
+    }
+    const source = db.prepare(`SELECT content FROM sleeve_source_documents
+      WHERE provider = 'genius' AND entity_type = 'recording' AND entity_id = ?
+      ORDER BY retrieved_at DESC, id DESC LIMIT 1`).get(id) as { content: string } | undefined;
+    let geniusSongId: string | null = null;
+    try {
+      const identity = JSON.parse(source?.content ?? '{}').identity;
+      if (/^\d+$/.test(String(identity?.providerId ?? ''))) geniusSongId = String(identity.providerId);
+    } catch { /* Invalid cached metadata does not establish an identity. */ }
+    return { id, title: local.title, artist: local.artist, geniusSongId };
+  })();
 }
 
 export function retainSourceDocument(input: {
@@ -825,35 +879,72 @@ export function retainGeniusResult(recording: RecordingForGenius, result: Sleeve
 export type ProviderRequestOutcome = 'ready' | 'no-match' | 'failed' | 'rate-limited';
 export type ProviderRequestReservation = { requestId: string } | { waitMs: number };
 
+/** Read the same rolling windows/backoff used by request reservation. No writes. */
+export function geniusRequestAllowance(db: Database.Database, now = new Date()) {
+  const nowMs = now.getTime();
+  const minuteCutoff = new Date(nowMs - 60_000).toISOString();
+  const dayCutoff = new Date(nowMs - 86_400_000).toISOString();
+  const failures = db.prepare(`SELECT outcome, status_code AS statusCode, requested_at AS requestedAt
+    FROM sleeve_provider_requests WHERE provider='genius' AND requested_at>=?
+    ORDER BY requested_at DESC LIMIT 100`).all(dayCutoff) as Array<{ outcome: string; statusCode: number | null; requestedAt: string }>;
+  let consecutiveFailures = 0;
+  for (const request of failures) {
+    if (!(request.outcome === 'rate-limited' || (request.statusCode !== null && request.statusCode >= 500)
+      || (request.outcome === 'failed' && request.statusCode === null))) break;
+    consecutiveFailures++;
+  }
+  const recent = db.prepare(`SELECT requested_at AS at FROM sleeve_provider_requests
+    WHERE provider='genius' AND requested_at>=? ORDER BY requested_at`).all(minuteCutoff) as Array<{ at: string }>;
+  const daily = db.prepare(`SELECT COUNT(*) AS count FROM sleeve_provider_requests
+    WHERE provider='genius' AND requested_at>=?`).get(dayCutoff) as { count: number };
+  let until = 0;
+  let reason: 'backoff' | 'allowance' | null = null;
+  if (consecutiveFailures) {
+    until = Date.parse(failures[0]!.requestedAt) + Math.min(60_000 * 2 ** Math.min(consecutiveFailures - 1, 6), 3_600_000);
+    if (until > nowMs) reason = 'backoff';
+  }
+  if (!reason) {
+    const minuteUntil = recent.length >= 6 ? Date.parse(recent[0]!.at) + 60_000 : 0;
+    const spacingUntil = recent.length ? Date.parse(recent.at(-1)!.at) + 10_000 : 0;
+    until = Math.max(minuteUntil, spacingUntil);
+    if (until > nowMs || recent.length >= 6) reason = 'allowance';
+  }
+  return { minuteRequests: recent.length, minuteLimit: 6, dayRequests: daily.count, dayLimit: null,
+    waitReason: reason, waitMs: reason ? Math.max(1_000, until - nowMs) : 0,
+    retryAt: reason ? new Date(Math.max(nowMs + 1_000, until)).toISOString() : null };
+}
+
+export function geniusQueueReadout(now = new Date()) {
+  const db = open();
+  const rows = db.prepare(`SELECT capability,state,COUNT(*) AS jobs,
+    SUM(CASE WHEN run_after IS NULL OR run_after<=? THEN 1 ELSE 0 END) AS ready,
+    MIN(CASE WHEN run_after IS NULL OR run_after<=? THEN created_at END) AS oldestReadyAt
+    FROM sleeve_research_jobs WHERE provider='genius' AND state IN ('queued','retry-at','running')
+    GROUP BY capability,state`).all(now.toISOString(), now.toISOString()) as Array<{
+      capability: string; state: string; jobs: number; ready: number; oldestReadyAt: string | null;
+    }>;
+  const pending = { encountered: 0, albums: 0, samples: 0 };
+  let ready = 0, readyRequests = 0, deferred = 0, running = 0;
+  let oldestReadyAt: string | null = null;
+  for (const row of rows) {
+    if (row.state === 'running') { running += row.jobs; continue; }
+    pending[row.capability === 'album-biography' ? 'albums'
+      : ['sample-traversal','expand-samples'].includes(row.capability) ? 'samples' : 'encountered'] += row.jobs;
+    ready += row.ready;
+    if (row.capability !== 'expand-samples') readyRequests += row.ready;
+    deferred += row.jobs - row.ready;
+    if (row.oldestReadyAt && (!oldestReadyAt || row.oldestReadyAt < oldestReadyAt)) oldestReadyAt = row.oldestReadyAt;
+  }
+  return { ...geniusRequestAllowance(db, now), pending, ready, readyRequests, deferred, running, oldestReadyAt,
+    oldestReadyAgeSeconds: oldestReadyAt ? Math.max(0, Math.floor((now.getTime() - Date.parse(oldestReadyAt)) / 1000)) : null };
+}
+
 /** Atomically enforce the station's conservative Genius request budget. */
 export function reserveGeniusProviderRequest(now = new Date(), capability = 'connections'): ProviderRequestReservation {
   const db = open();
   return db.transaction((): ProviderRequestReservation => {
-    const nowMs = now.getTime();
-    const minuteCutoff = new Date(nowMs - 60_000).toISOString();
-    const dayCutoff = new Date(nowMs - 86_400_000).toISOString();
-    const failures = db.prepare(`SELECT outcome, status_code AS statusCode, requested_at AS requestedAt
-      FROM sleeve_provider_requests WHERE provider = 'genius' AND requested_at >= ?
-      ORDER BY requested_at DESC LIMIT 100`).all(dayCutoff) as Array<{ outcome: string; statusCode: number | null; requestedAt: string }>;
-    let consecutiveFailures = 0;
-    for (const request of failures) {
-      const retryable = request.outcome === 'rate-limited'
-        || (request.statusCode !== null && request.statusCode >= 500)
-        || (request.outcome === 'failed' && request.statusCode === null);
-      if (!retryable) break;
-      consecutiveFailures++;
-    }
-    if (consecutiveFailures) {
-      const delayMs = Math.min(60_000 * 2 ** Math.min(consecutiveFailures - 1, 6), 3_600_000);
-      const backoffUntil = Date.parse(failures[0].requestedAt) + delayMs;
-      if (backoffUntil > nowMs) return { waitMs: backoffUntil - nowMs };
-    }
-    const recent = db.prepare(`SELECT requested_at AS requestedAt FROM sleeve_provider_requests
-      WHERE provider = 'genius' AND requested_at >= ? ORDER BY requested_at`).all(minuteCutoff) as Array<{ requestedAt: string }>;
-    if (recent.length >= 3) return { waitMs: Math.max(1_000, Date.parse(recent[0].requestedAt) + 60_000 - nowMs) };
-    const daily = db.prepare(`SELECT requested_at AS requestedAt FROM sleeve_provider_requests
-      WHERE provider = 'genius' AND requested_at >= ? ORDER BY requested_at`).all(dayCutoff) as Array<{ requestedAt: string }>;
-    if (daily.length >= 4_320) return { waitMs: Math.max(1_000, Date.parse(daily[0].requestedAt) + 86_400_000 - nowMs) };
+    const allowance = geniusRequestAllowance(db, now);
+    if (allowance.waitMs) return { waitMs: allowance.waitMs };
     const requestId = randomUUID();
     db.prepare(`INSERT INTO sleeve_provider_requests (id, provider, capability, requested_at, outcome)
       VALUES (?, 'genius', ?, ?, 'started')`).run(requestId, capability, now.toISOString());
@@ -1357,7 +1448,14 @@ export function retainCanonicalMusicBrainzMatchInDatabase(db: Database.Database,
       provider: 'musicbrainz', subjectType: 'release', subjectId: canonicalReleaseId,
       capability: 'release-context', priority: 200, now, originLocalTrackId: localTrackId,
     });
-    enqueueResearchJobInDatabase(db, {
+    const independentlyResearched = db.prepare(`SELECT 1 FROM sleeve_genius_local_tracks local
+      JOIN sleeve_source_documents source ON source.entity_id = local.recording_id
+      WHERE local.local_track_id = ? AND source.entity_type = 'recording' AND source.provider = 'genius' LIMIT 1`)
+      .get(localTrackId);
+    const independentJob = db.prepare(`SELECT 1 FROM sleeve_research_jobs WHERE provider = 'genius'
+      AND subject_type = 'local-track' AND subject_id = ? AND capability = 'connections'
+      AND state IN ('queued','retry-at','running','complete')`).get(localTrackId);
+    if (!independentlyResearched && !independentJob) enqueueResearchJobInDatabase(db, {
       provider: 'genius', subjectType: 'recording', subjectId: recordingId,
       capability: 'connections', priority: 100, now, originLocalTrackId: localTrackId,
     });
@@ -1750,6 +1848,8 @@ export interface ResearchStoreSummary {
   retainedClaims: number;
   airtimeClaims: number;
   creditClaims: number;
+  storyClaims: number;
+  connectionClaims: number;
   recycleBinPending: number;
   researchJobs: number;
 }
@@ -1818,6 +1918,8 @@ export function researchStoreSummaryInDatabase(db: Database.Database): ResearchS
       WHERE provider = 'musicbrainz' AND capability = 'match' AND state IN ('queued', 'retry-at')`),
     retainedClaims: count('SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1'),
     airtimeClaims: count("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1 AND category <> 'credits'"),
+    storyClaims: count("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1 AND category NOT IN ('credits', 'musical-connections')"),
+    connectionClaims: count("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1 AND category = 'musical-connections'"),
     creditClaims: count("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled = 1 AND category = 'credits'"),
     recycleBinPending: count("SELECT COUNT(*) AS count FROM sleeve_moderation_candidates WHERE status = 'pending'")
       + (db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_airing_reviews'").get()
@@ -1855,10 +1957,10 @@ export function searchResearchStoriesInDatabase(db:Database.Database,input:{sear
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     WHERE ${input.withdrawn?"c.enabled=0 AND c.operator_state<>'deleted'":'c.enabled=1'}`;
   const where=`(? = '' OR instr(lower(COALESCE(artist,'') || ' ' || COALESCE(recording,'') || ' ' || category || ' ' || topic || ' ' || wording),lower(?)) > 0)
-    AND (? = '' OR category = ?)`;
+    AND (? = '' OR category = ? OR (? = 'stories-only' AND category NOT IN ('credits', 'musical-connections')))`;
   // Recent is a named filter over the latest 80 facts, not the search default.
   const rows=`SELECT * FROM (${base} ORDER BY c.updated_at DESC,c.id DESC ${input.recent?'LIMIT 80':''})`;
-  const args=[term,term,category,category];
+  const args=[term,term,category,category,category];
   const total=(db.prepare(`SELECT COUNT(*) AS n FROM (${rows}) WHERE ${where}`).get(...args) as {n:number}).n;
   const claims=db.prepare(`${rows} WHERE ${where} LIMIT ? OFFSET ?`).all(...args,limit,offset) as ResearchStoreReadout['claims'];
   const categories=(db.prepare(`SELECT DISTINCT category FROM sleeve_claims WHERE ${input.withdrawn?"enabled=0 AND operator_state<>'deleted'":'enabled=1'} ORDER BY category`).all() as Array<{category:string}>).map(row=>row.category);
@@ -2218,20 +2320,19 @@ export function researchEntityDossierInDatabase(
     JOIN sleeve_source_documents source ON source.id = c.source_document_id
     WHERE c.enabled = 1 AND ${entityPredicate}
     ORDER BY c.updated_at DESC`).all(...entityParams) as Array<{ id: string; updatedAt: string; sourceUrl: string; provider: string; attribution: string }>;
-  if (!matchingClaims.length) return null;
-
+  let found = matchingClaims.length > 0;
   let title = entityId;
   let artist: string | null = null;
   let localMatch = false;
   if (entityType === 'artist') {
     const row = db.prepare(`SELECT name AS title, musicbrainz_id AS musicbrainzId
       FROM sleeve_artists WHERE id = ?`).get(entityId) as { title: string; musicbrainzId: string | null } | undefined;
-    if (row) { title = row.title; localMatch = !!row.musicbrainzId; }
+    if (row) { found = true; title = row.title; localMatch = !!row.musicbrainzId; }
   } else if (entityType === 'recording') {
     const row = db.prepare(`SELECT recording.title, artist.name AS artist, recording.match_state AS matchState
       FROM sleeve_recordings recording LEFT JOIN sleeve_artists artist ON artist.id = recording.artist_id
       WHERE recording.id = ?`).get(entityId) as { title: string; artist: string | null; matchState: string } | undefined;
-    if (row) { title = row.title; artist = row.artist; localMatch = row.matchState === 'matched'; }
+    if (row) { found = true; title = row.title; artist = row.artist; localMatch = row.matchState === 'matched'; }
   } else if (entityType === 'release') {
     const row = db.prepare(`SELECT release.title,
         (SELECT linked_artist.name FROM sleeve_recording_releases link
@@ -2239,7 +2340,7 @@ export function researchEntityDossierInDatabase(
           JOIN sleeve_artists linked_artist ON linked_artist.id = linked_recording.artist_id
           WHERE link.release_id = release.id ORDER BY link.is_canonical_home DESC LIMIT 1) AS artist
       FROM sleeve_releases release WHERE release.id = ?`).get(entityId) as { title: string; artist: string | null } | undefined;
-    if (row) { title = row.title; artist = row.artist; localMatch = true; }
+    if (row) { found = true; title = row.title; artist = row.artist; localMatch = true; }
   } else {
     const row = db.prepare(`SELECT MIN(release.title) AS title,
         (SELECT group_artist.name FROM sleeve_recordings group_recording
@@ -2254,7 +2355,10 @@ export function researchEntityDossierInDatabase(
     title = row.title ?? entityId;
     artist = row.artist;
     localMatch = row.releases > 0;
+    found ||= localMatch;
   }
+
+  if (!found) return null;
 
   const claims = db.prepare(`SELECT COALESCE(a.name, recording_artist.name,
     CASE WHEN c.entity_type = 'release' THEN (
@@ -2367,7 +2471,11 @@ export function searchConnectionsInDatabase(
   if (term.length < 2) return [];
   const capped = Math.max(1, Math.min(30, Math.trunc(limit)));
   const pattern = `%${term}%`;
-  const rows = db.prepare(`WITH results AS (
+  const rows = db.prepare(`WITH artist_choices AS (
+      SELECT lower(trim(name)) AS name_key, MIN(id) AS preferred_id,
+        MAX(musicbrainz_id IS NOT NULL) AS identified
+      FROM sleeve_artists GROUP BY lower(trim(name))
+    ), results AS (
       SELECT 'recording' AS kind, 'recording' AS entityType, recording.id AS entityId,
         recording.title, artist.name AS subtitle, 0 AS priority
       FROM sleeve_recordings recording
@@ -2375,8 +2483,9 @@ export function searchConnectionsInDatabase(
       WHERE lower(recording.title) LIKE ? OR lower(COALESCE(artist.name, '')) LIKE ?
       UNION ALL
       SELECT 'artist', 'artist', artist.id, artist.name, NULL, 1
-      FROM sleeve_artists artist
-      WHERE lower(artist.name) LIKE ? OR lower(COALESCE(artist.sort_name, '')) LIKE ?
+      FROM sleeve_artists artist JOIN artist_choices choice ON choice.name_key=lower(trim(artist.name))
+      WHERE (lower(artist.name) LIKE ? OR lower(COALESCE(artist.sort_name, '')) LIKE ?)
+        AND (artist.musicbrainz_id IS NOT NULL OR (choice.identified=0 AND artist.id=choice.preferred_id))
       UNION ALL
       SELECT 'release',
         CASE WHEN release.musicbrainz_release_group_id IS NULL THEN 'release' ELSE 'release-group' END,

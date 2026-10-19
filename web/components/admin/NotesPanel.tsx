@@ -1,4 +1,7 @@
 'use client';
+import { useDebounceValue } from 'usehooks-ts';
+import NotesHelp from './NotesHelp';
+import { formatNotesDate } from './sleeve-notes-view';
 import SleeveNotesSegmentSettings from './SleeveNotesSegmentSettings';
 
 import Link from 'next/link';
@@ -6,7 +9,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, BookOpen, Compass, ExternalLink, GitBranch, Search, Settings2, ShieldCheck } from 'lucide-react';
-import { Card, Eyebrow, Pill, Seg } from './ui';
+import { Card, Btn, Eyebrow, Pill, Seg } from './ui';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { SectionTabs } from './SectionTabs';
@@ -19,6 +22,7 @@ import { notify } from '../../lib/notify';
 import { useSettingsMutation, useSettingsQuery } from './settings/queries';
 import type { SettingsData } from './settings/shared';
 import ConnectionsVisualizer from './connections/ConnectionsVisualizer';
+import ExternalDiscoveries from './connections/ExternalDiscoveries';
 import AiringReviews from './AiringReviews';
 import MusicBrainzLists from './MusicBrainzLists';
 
@@ -27,6 +31,7 @@ type NotesTab = 'overview' | 'stories' | 'heard' | 'moderation' | 'connections' 
 type NotesStatus = {
   enabled: boolean;
   reviewReady?: number;
+  timezone?: string;
   providerEnabled: boolean;
   providerConfigured: boolean;
   providerTokenSource?: 'settings' | 'environment' | 'missing';
@@ -40,6 +45,13 @@ type NotesStatus = {
 };
 
 type NotesReadout = {
+  geniusQueue?: {
+    minuteRequests: number; minuteLimit: number; dayRequests: number; dayLimit: number | null;
+    waitReason: 'backoff' | 'allowance' | null; retryAt: string | null;
+    pending: { encountered: number; albums: number; samples: number };
+    ready: number; readyRequests: number; deferred: number; running: number; oldestReadyAt: string | null; oldestReadyAgeSeconds: number | null;
+    enabled: boolean; configured: boolean; worker: { running: boolean; quiet: boolean } | null;
+  };
   researchPausedByBudget?: boolean;
   active: boolean;
   readAt?: number;
@@ -52,12 +64,15 @@ type NotesReadout = {
   wikipediaExtractAverageLatencyMs?: number | null;
   wikipediaExtractCallCount?: number;
   airtimeClaims: number;
+  storyClaims: number;
+  connectionClaims: number;
   creditClaims: number;
   recycleBinPending: number;
   researchJobs: number;
   artists: Array<{ name: string; musicbrainzId: string | null; sources: number; claims: number }>;
   claims: Array<{
     id: string;
+    review?: {id:string;state:string}|null;
     enabled?: number;
     entityType?: ExploreEntity['entityType'];
     entityId?: string;
@@ -117,21 +132,15 @@ type ExplorePage = { active: boolean; entities: ExploreEntity[]; total: number; 
 type EntityDossier = ExploreEntity & { claims: Array<NotesReadout['claims'][number] & { attribution: string }> };
 
 const TABS = [
-  { id: 'overview', label: 'Overview', icon: BookOpen },
-  { id: 'stories', label: 'Stories', icon: Compass },
-  { id: 'heard', label: 'Heard on air', icon: BookOpen },
-  { id: 'connections', label: 'Station Brain', icon: GitBranch },
-  { id: 'moderation', label: 'Review', icon: ShieldCheck },
-  { id: 'config', label: 'Settings', icon: Settings2 },
+  { id: 'overview', description: 'See the current track, the next track, recent speech and the research queue.', label: 'Overview', icon: BookOpen },
+  { id: 'stories', description: 'Browse saved facts and their sources, or manage withdrawn facts.', label: 'Stories', icon: Compass },
+  { id: 'heard', description: 'Read confirmed aired speech and flag an exchange for review.', label: 'Heard on air', icon: BookOpen },
+  { id: 'connections', description: 'Explore artists, albums, tracks and the connections between them.', label: 'Station Brain', icon: GitBranch },
+  { id: 'moderation', description: 'Read model findings and decide which changes to apply.', label: 'Review', icon: ShieldCheck },
+  { id: 'config', description: 'Control collection, segments, source access and research instructions.', label: 'Settings', icon: Settings2 },
 ];
 const EXPLORE_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
-function dateTime(value: string | null | undefined) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-}
 
 function providerName(provider: string) {
   if (provider === 'web-operator') return 'Archived web research';
@@ -189,7 +198,7 @@ function ReadoutTable({
   title, empty, headings, rows, sub,
 }: { title: string; empty: string; headings: string[]; rows: ReactNode[]; sub?: string }) {
   return (
-    <Card title={title} sub={sub}>
+    <Card headingLevel={2} title={title} sub={sub}>
       <div className="max-h-[30rem] overflow-auto border border-border/70">
         <table className="w-full min-w-[650px] text-left text-xs">
           <thead className="sticky top-0 bg-card text-muted">
@@ -214,6 +223,8 @@ export function ClaimCard({ claim, adminFetch, readOnly = false }: { claim: Note
     request:(action,fetcher)=>adminJson(fetcher,`/sleeve-notes/claims/${encodeURIComponent(claim.id)}/${action}`,{method:'POST'}),
     onDone:async(_data,action,client)=>{notify.ok(action==='withdraw'?'Fact withdrawn from DJ use.':action==='restore'?'Fact restored for DJ use.':'Fact deleted.');await client.invalidateQueries({queryKey:['sleeve-notes']});},
   });
+  const currentReview = claim.review ?? review.data;
+  const activeReview = currentReview && ['queued','running','ready'].includes(currentReview.state);
   const identity = claim.recording || claim.artist || 'Unmatched entity';
   const subtitle = claim.recording && claim.artist ? claim.artist : providerName(claim.provider);
   return (
@@ -240,14 +251,15 @@ export function ClaimCard({ claim, adminFetch, readOnly = false }: { claim: Note
           {providerName(claim.provider)} source <ExternalLink className="size-3" aria-hidden="true" />
         </a>
       </div>
-      {!readOnly && <div className="mt-3 border-t border-border/60 pt-2">
-        <button type="button" disabled={review.isPending || review.isSuccess} onClick={() => review.mutate()}
-          className="text-xs font-medium text-primary hover:underline disabled:opacity-50">{review.isPending ? 'Flagging…' : review.isSuccess ? 'Flagged for review' : 'Flag for review'}</button>
+      {!readOnly && <div className="mt-3 border-t border-border/60 pt-2 [&_button]:max-w-full [&_button]:whitespace-normal">
+        <Btn sm disabled={review.isPending || !!activeReview} title="Ask the model to check this fact. The fact stays available for DJ use unless you withdraw it." onClick={() => review.mutate()}
+         >{review.isPending ? 'Flagging…' : activeReview ? 'Flagged for review' : currentReview ? 'Flag again' : 'Flag for review'}</Btn>
+        {currentReview && <Link href="/admin/notes?tab=moderation" className="ml-3 text-xs text-primary hover:underline">{currentReview.state==='ready'?'Ready for your decision':currentReview.state==='running'?'Reviewing':currentReview.state==='queued'?'Queued for review':'Review completed'} →</Link>}
         <div className="mt-2 flex flex-wrap gap-3">
-          <button type="button" disabled={availability.isPending} onClick={()=>availability.mutate(claim.enabled===0?'restore':'withdraw')}
-            className="text-xs font-medium text-primary hover:underline disabled:opacity-50">{claim.enabled===0?'Restore unchanged':'Withdraw from DJ use'}</button>
-          {claim.enabled===0&&<button type="button" disabled={availability.isPending} onClick={()=>availability.mutate('deleted')}
-            className="text-xs font-medium text-primary hover:underline disabled:opacity-50">Delete fact</button>}
+          <Btn sm title="Keep this fact saved, but change whether the DJ can use it." disabled={availability.isPending} onClick={()=>availability.mutate(claim.enabled===0?'restore':'withdraw')}
+           >{claim.enabled===0?'Restore unchanged':'Withdraw from DJ use'}</Btn>
+          {claim.enabled===0&&<Btn sm tone="danger" title="Delete this withdrawn fact from future use. Saved airing history is kept." disabled={availability.isPending} onClick={()=>{if(window.confirm('Delete this fact? It will no longer be available to the DJ. Saved airing history is kept.')) availability.mutate('deleted');}}
+           >Delete fact</Btn>}
         </div>
         <p className="mt-1 text-[11px] text-muted">{claim.enabled===0?'Withdrawn from DJ use. Dismissing a review will not restore it.':'Flagging requests an AI review and keeps this fact available. Withdraw it separately to stop DJ use immediately.'}</p>
         {availability.error&&<p role="alert" className="mt-1 text-xs text-vermilion">{availability.error.message}</p>}
@@ -279,6 +291,7 @@ export default function NotesPanel() {
   const fromBrain=searchParams.get('from')==='brain';
   const aliases: Record<string, NotesTab> = { research: 'stories', explore: 'stories', sources: 'stories', settings: 'config', review: 'moderation', brain: 'connections' };
   const tab: NotesTab = rawTab && TABS.some((item) => item.id === rawTab) ? rawTab as NotesTab : aliases[rawTab ?? ''] ?? 'overview';
+  const brainView=searchParams.get('brainView')==='discoveries'?'discoveries':'map';
   const storiesView=searchParams.get('storiesView');
   const [storiesMode, setStoriesMode] = useState(rawTab === 'sources' ? 'details' : ['all','recent','browse','details','withdrawn'].includes(storiesView??'') ? storiesView! : rawTab === 'explore' ? 'browse' : 'all');
   useEffect(()=>{if (storiesView&&['all','recent','browse','details','withdrawn'].includes(storiesView)) setStoriesMode(storiesView);},[storiesView]);
@@ -288,7 +301,7 @@ export default function NotesPanel() {
     key: ['sleeve-notes', 'dossier', storyType, storyId], adminFetch,
     enabled: hydrated && tab === 'stories' && !!storyId && ['artist', 'recording', 'release', 'release-group'].includes(storyType ?? ''),
     request: (fetcher, signal) => adminJson(fetcher, `/sleeve-notes/dossier/${encodeURIComponent(storyType ?? '')}/${encodeURIComponent(storyId ?? '')}`, undefined, signal),
-    staleTime: 10_000,
+    staleTime: 10_000, refetchInterval:30_000,
   });
 
   const status = useAdminQuery<NotesStatus>({
@@ -310,7 +323,10 @@ export default function NotesPanel() {
   const data = readout.data;
   const [search, setSearch] = useState(searchParams.get('q')??'');
   const [storyOffset,setStoryOffset]=useState(0);
-  const [category, setCategory] = useState('all');
+  const [debouncedSearch] = useDebounceValue(search, 250);
+  const categoryQuery=searchParams.get('category')??'all';
+  const [category, setCategory] = useState(categoryQuery);
+  useEffect(()=>{setCategory(categoryQuery);setStoryOffset(0);},[categoryQuery]);
   const storyQuery=searchParams.get('q')??'';
   useEffect(()=>{setSearch(storyQuery);setStoryOffset(0);if(fromBrain){setStoriesMode('all');setCategory('all');}},[storyQuery,fromBrain]);
   const [tokenDraft, setTokenDraft] = useState('');
@@ -319,10 +335,10 @@ export default function NotesPanel() {
   const [wikiRefreshBusy, setWikiRefreshBusy] = useState(false);
   const [wikiRefreshMessage, setWikiRefreshMessage] = useState('');
   const collection=useAdminQuery<{claims:NotesReadout['claims'];total:number;categories:string[]}>({
-    key:['sleeve-notes','stories',search,category,storiesMode,storyOffset],adminFetch,
+    key:['sleeve-notes','stories',debouncedSearch,category,storiesMode,storyOffset],adminFetch,
     enabled:hydrated&&tab==='stories'&&!storyId&&!['browse','details'].includes(storiesMode),
-    request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/stories?${new URLSearchParams({search,category:category==='all'?'':category,recent:storiesMode==='recent'?'1':'0',withdrawn:storiesMode==='withdrawn'?'1':'0',offset:String(storyOffset)})}`,undefined,signal),
-    staleTime:10_000,
+    request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/stories?${new URLSearchParams({search:debouncedSearch,category:category==='all'?'':category,recent:storiesMode==='recent'?'1':'0',withdrawn:storiesMode==='withdrawn'?'1':'0',offset:String(storyOffset)})}`,undefined,signal),
+    staleTime:10_000, refetchInterval:30_000, placeholderData: (previous,query) => query?.queryKey[3]===category&&query?.queryKey[4]===storiesMode?previous:undefined,
   });
   const backParams=new URLSearchParams(searchParams.toString());
   backParams.delete('storyType');backParams.delete('storyId');backParams.delete('storyName');
@@ -384,10 +400,11 @@ export default function NotesPanel() {
       <section className="card">
         <div className="border-b border-ink p-4">
           <Eyebrow className="text-vermilion">Programming</Eyebrow>
-          <div className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Extended Sleeve Notes</div>
+          <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Extended Sleeve Notes</h1>
           <p className="mt-1 max-w-3xl text-[11px] leading-[1.6] text-muted">
             Give your DJ stories about the music you play. Sleeve Notes gathers source-backed facts and connections; the DJ uses them when they fit.
           </p>
+          {status.data?.timezone&&<p className="mt-1 text-[11px] text-muted">Dates and times use the station time zone ({status.data.timezone}).</p>}
         </div>
         <SectionTabs tabs={TABS.map(item=>item.id==='moderation'&&status.data?.reviewReady ? {...item,count:status.data.reviewReady,attention:true}:item)} value={tab} onChange={selectTab} label="Extended Sleeve Notes sections" />
       </section>
@@ -426,20 +443,20 @@ export default function NotesPanel() {
       )}
 
       {tab !== 'overview' && tab !== 'config' && !hydrated && (
-        <Card title="Loading collection status"><p className="text-[13px] text-muted">Connecting to the station…</p></Card>
+        <Card headingLevel={2} title="Loading collection status"><p className="text-[13px] text-muted">Connecting to the station…</p></Card>
       )}
       {tab !== 'overview' && tab !== 'config' && hydrated && status.isLoading && (
-        <Card title="Checking collection status"><p className="text-[13px] text-muted">Reading the station-wide setting…</p></Card>
+        <Card headingLevel={2} title="Checking collection status"><p className="text-[13px] text-muted">Reading the station-wide setting…</p></Card>
       )}
       {tab !== 'overview' && tab !== 'config' && hydrated && status.error && (
-        <Card title="Collection status unavailable">
+        <Card headingLevel={2} title="Collection status unavailable">
           <p className="text-[13px] leading-[1.55] text-muted">The station’s Extended Sleeve Notes setting could not be read. Retry before assuming collection is on or off.</p>
           <button type="button" onClick={() => void status.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button>
         </Card>
       )}
 
       {tab !== 'overview' && tab !== 'config' && hydrated && !status.error && !status.isLoading && !enabled && (
-        <Card title="Extended Sleeve Notes is off" sub="No collection work is running">
+        <Card headingLevel={2} title="Extended Sleeve Notes is off" sub="No collection work is running">
           <p className="text-[13px] leading-[1.55] text-muted">Saved stories and connections remain browsable. Collection and Story Spark offers are paused until you enable Sleeve Notes in Settings.</p>
           <Link href="/admin/notes?tab=config" className="mt-3 inline-flex items-center gap-2 text-[13px] font-medium text-primary hover:underline">
             Open Sleeve Notes Settings <ArrowRight className="size-4" aria-hidden="true" />
@@ -448,17 +465,18 @@ export default function NotesPanel() {
       )}
 
       {hydrated && needsReadout && readout.error && (
-        <Card title="Could not load collection data">
+        <Card headingLevel={2} title="Could not load collection data">
           <p className="text-[13px] text-muted">{readout.error instanceof Error ? readout.error.message : 'The Notes readout is temporarily unavailable.'}</p>
           <button type="button" onClick={() => void readout.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button>
         </Card>
       )}
       {hydrated && needsReadout && readout.isLoading && <p className="text-[13px] text-muted">Loading collection data…</p>}
 
-      {tab === 'stories' && storyId && <Card title={story.data?.title ?? searchParams.get('storyName') ?? 'Saved story context'}>
+      {tab === 'stories' && storyId && <Card headingLevel={2} title={story.data?.title ?? searchParams.get('storyName') ?? 'Saved story context'}>
         <Link href={storyBack} className="text-xs text-primary">{fromBrain?'Back to Station Brain':'Back to Stories'}</Link>
         {story.error && <p role="alert" className="mt-3 text-[13px]">{story.error instanceof Error ? story.error.message : 'Could not load saved stories'}</p>}
         {story.isLoading && <p role="status" className="mt-3 text-[13px]">Loading saved facts…</p>}
+        {story.data && !story.data.claims.length && <p className="mt-3 text-[13px] text-muted">No saved stories yet for this artist, album or track.</p>}
         <div className="mt-3 space-y-3">{story.data?.claims.map((claim) => <ClaimCard key={`${claim.id}:${claim.wording}`} claim={claim} adminFetch={adminFetch} readOnly={!enabled} />)}</div>
       </Card>}
       {tab === 'stories' && !storyId && <Seg aria-label="Stories sections" value={storiesMode} options={[{id:'all',label:'All saved facts'},{ id: 'recent', label: 'Recent facts' }, { id: 'browse', label: 'Browse library' }, {id:'withdrawn',label:'Withdrawn facts'}, {id:'details',label:'Research details'}]} onChange={value=>{setStoriesMode(value);setStoryOffset(0);const params=new URLSearchParams(searchParams.toString());params.set('tab','stories');params.set('storiesView',value);router.replace(`${pathname??'/admin/notes'}?${params}`,{scroll:false});}} />}
@@ -479,14 +497,17 @@ export default function NotesPanel() {
           categories={collection.data.categories}
           claims={collection.data.claims}
           offset={storyOffset}
+          fetching={collection.isFetching || search !== debouncedSearch}
           onOffset={setStoryOffset}
         />
       )}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'details' && data && status.data && <ResearchDetailsView data={data} status={status.data} />}
-      {hydrated && tab === 'moderation' && <AiringReviews adminFetch={adminFetch} />}
-      {hydrated && tab === 'heard' && <HeardOnAir adminFetch={adminFetch} />}
+      {hydrated && tab === 'moderation' && <AiringReviews adminFetch={adminFetch} timezone={status.data?.timezone} />}
+      {hydrated && tab === 'heard' && <HeardOnAir adminFetch={adminFetch} timezone={status.data?.timezone} />}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'browse' && <ExploreView adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
-      {hydrated && tab === 'connections' && <ConnectionsVisualizer adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
+      {tab==='connections'&&<Seg aria-label="Station Brain sections" value={brainView} options={[{id:'map',label:'Map'},{id:'discoveries',label:'Stats & Discoveries'}]} onChange={value=>{const params=new URLSearchParams(searchParams.toString());params.set('brainView',value);router.replace(`${pathname??'/admin/notes'}?${params}`,{scroll:false});}} />}
+      {hydrated&&tab==='connections'&&brainView==='discoveries'&&<ExternalDiscoveries adminFetch={adminFetch} timezone={status.data?.timezone}/>}
+      {hydrated && tab === 'connections' && brainView==='map' && <ConnectionsVisualizer adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} timezone={status.data?.timezone} />}
 
     </div>
   );
@@ -504,11 +525,11 @@ function OverviewView({
   onRetryStatus: () => void;
 }) {
   if (statusLoading && !statusError) {
-    return <Card title="Checking Extended Sleeve Notes"><p className="text-[13px] text-muted">Reading the station-wide setting…</p></Card>;
+    return <Card headingLevel={2} title="Checking Extended Sleeve Notes"><p className="text-[13px] text-muted">Reading the station-wide setting…</p></Card>;
   }
   if (statusError || !status) {
     return (
-      <Card title="Collection status unavailable">
+      <Card headingLevel={2} title="Collection status unavailable">
         <p className="text-[13px] leading-[1.55] text-muted">The station’s Extended Sleeve Notes setting could not be read. Retry before assuming collection is on or off.</p>
         <button type="button" onClick={onRetryStatus} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button>
       </Card>
@@ -519,20 +540,27 @@ function OverviewView({
       <div><p className="text-sm font-medium">{enabled && !status.collectionPaused && !readout?.researchPausedByBudget ? 'Research enabled' : 'Research paused'}</p>
         <p className="mt-1 text-xs text-muted">{enabled && status.collectionPaused ? 'Collection is paused. Saved Sparks remain available to the DJ.' : enabled && readout?.researchPausedByBudget ? 'Paused by the station token budget. Saved jobs will resume when allowance is available.' : enabled ? 'Research runs when broadcast activity allows.' : 'Saved stories remain available to browse.'}</p></div>
       <div className="flex flex-wrap gap-5 text-sm">
-        <Link href="/admin/notes?tab=stories">{readout?.airtimeClaims?.toLocaleString() ?? '—'} stories for the DJ</Link>
+        <div>
+          <p className="mb-1 text-xs text-muted">Saved knowledge</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link href="/admin/notes?tab=stories&category=stories-only" title="Saved anecdotes and background about the music. Track relevance and cooldowns determine what the DJ can use now.">{readout?.storyClaims?.toLocaleString() ?? '—'} Stories</Link>
+            <Link href="/admin/notes?tab=stories&category=musical-connections" title="Saved relationship facts, such as samples and covers. This counts facts, rather than map links or matching library tracks.">{readout?.connectionClaims?.toLocaleString() ?? '—'} Connections</Link>
+            <Link href="/admin/notes?tab=stories&category=credits" title="Saved writer, producer and performer details. Credits provide context and are not standalone DJ stories.">{readout?.creditClaims?.toLocaleString() ?? '—'} Credits</Link>
+          </div>
+        </div>
         <Link href="/admin/notes?tab=moderation">{status.reviewReady?.toLocaleString() ?? '—'} ready for Review</Link>
       </div>
       <Link href="/admin/notes?tab=config" className="inline-flex items-center gap-2 text-xs text-primary">Research settings <ArrowRight className="size-4" /></Link>
     </div>
     <NotesLiveSummary adminFetch={adminFetch} enabled={enabled}>
-      <NotesRecentlyAired adminFetch={adminFetch} />
-      {readout ? <ResearchActivity data={readout} status={status} /> : <Card title="Research activity"><p className="text-[13px] text-muted">Loading research queue…</p></Card>}
+      <NotesRecentlyAired adminFetch={adminFetch} timezone={status.timezone} />
+      {readout ? <ResearchActivity data={readout} status={status} /> : <Card headingLevel={2} title="Research activity"><p className="text-[13px] text-muted">Loading research queue…</p></Card>}
     </NotesLiveSummary>
-    {enabled && status.providerEnabled && !status.providerConfigured && <Card title="Needs attention">
+    {enabled && status.providerEnabled && !status.providerConfigured && <Card headingLevel={2} title="Needs attention">
       <p className="text-[13px] text-muted">Genius connections are enabled but need an access token.</p>
       <Link href="/admin/notes?tab=config" className="mt-2 inline-block text-sm text-primary">Open Settings →</Link>
     </Card>}
-    {readout && readout.retainedClaims === 0 && <Card title="Get your first story">
+    {readout && readout.retainedClaims === 0 && <Card headingLevel={2} title="Get your first story">
       <ol className="list-decimal space-y-2 pl-5 text-[13px]"><li>Enable Sleeve Notes in Settings.</li><li>Optionally add a Genius token for credits and musical connections.</li><li>Play music. Research saves facts over time, then offers a suitable fact to the DJ as a Story Spark.</li></ol>
       <div className="mt-4 border border-border p-3 text-[13px]"><Eyebrow>Illustrative example · not station data</Eyebrow><p className="mt-2">Saved fact: an album was recorded in a converted church.</p><p className="mt-1">Offered Spark: that recording story, when an album track is played.</p><p className="mt-1">DJ line: “This album was recorded in a converted church — here’s another track from it.”</p></div>
     </Card>}
@@ -540,60 +568,75 @@ function OverviewView({
 }
 
 export function ResearchActivity({ data, status }: { data: NotesReadout; status: NotesStatus }) {
-  const [expanded,setExpanded]=useState(false);
-  const workQueue = data.workQueue ?? [];
-  const workQueueItems = (data.workQueueItems ?? []).filter((job) => job.phase !== 'unavailable');
-  const countPhase = (phase: NonNullable<NotesReadout['workQueue']>[number]['phase']) => workQueue
-    .filter((job) => job.phase === phase).reduce((sum, job) => sum + job.jobs, 0);
-  const readyJobs = countPhase('ready');
-  const waitingJobs = countPhase('first-play') + countPhase('next-play') + countPhase('time-delay');
-  const runningJobs = countPhase('running');
-
-  const queueTaskName = (job: NonNullable<NotesReadout['workQueueItems']>[number]) => {
-    const names: Record<string, string> = {
-      match: 'MusicBrainz track match', 'release-context': 'MusicBrainz album details',
-      connections: 'Genius track connections', 'album-biography': 'Genius album bio',
-      biography: 'Wikipedia artist article', 'release-group-biography': 'Wikipedia album article',
-      'extract-wikipedia': 'Extract Wikipedia artist section',
-      'extract-wikipedia-release-group': 'Extract Wikipedia album section',
-      'extract-genius-album': 'Extract Genius album bio',
-    };
-    return names[job.capability] ?? job.capability.replaceAll('-', ' ');
+  const [expanded,setExpanded] = useState<Record<string,boolean>>({});
+  const jobs = (data.workQueueItems ?? []).filter(job => job.phase !== 'unavailable');
+  const taskNames: Record<string, string> = {
+    match: 'MusicBrainz track match', 'release-context': 'MusicBrainz album details',
+    connections: 'Genius track connections', 'album-biography': 'Genius album biography',
+    'library-seed': 'Research an unexamined library track', 'sample-traversal': 'Follow a sample connection',
+    'expand-samples': 'Find sample connections in saved research', biography: 'Wikipedia artist article',
+    'release-group-biography': 'Wikipedia album article', 'extract-wikipedia': 'Extract artist stories',
+    'extract-wikipedia-release-group': 'Extract album stories', 'extract-genius-album': 'Extract album stories',
+    'review-flagged-speech': 'Review flagged speech',
   };
-  const queuePhaseText = (job: NonNullable<NotesReadout['workQueueItems']>[number]) => {
+  const phaseText = (job: NonNullable<NotesReadout['workQueueItems']>[number], detailed = false) => {
+    if (job.phase === 'running') return 'Researching';
+    if (job.phase === 'ready') return 'Ready';
     if (job.phase === 'first-play') return 'Needs first play';
     if (job.phase === 'next-play') return 'Waiting for next play';
-    if (job.phase === 'time-delay') return job.runAfter ? `Retry after ${dateTime(job.runAfter)}` : 'Retry scheduled';
-    if (job.phase === 'running') return 'Running';
-    return 'Ready';
+    if (!job.runAfter) return 'Retry scheduled';
+    if (detailed) return `Retry after ${formatNotesDate(job.runAfter,status.timezone)}`;
+    if (data.readAt == null) return 'Retry scheduled';
+    const minutes = Math.ceil((Date.parse(job.runAfter) - data.readAt) / 60_000);
+    return minutes > 0 ? `Retry in ${minutes} min` : 'Retry shortly';
   };
-
-  return <Card title="Research activity" sub="Background collection">
-    <div className="space-y-3">
-      <p className="text-xs"><span className="font-semibold tabular-nums">{runningJobs}</span> running <span className="text-muted">· {readyJobs} ready · {waitingJobs} waiting</span></p>
-      <p className="text-xs text-muted">{!status.enabled?'Sleeve Notes is off. Saved research is kept.':status.collectionPaused?'Collection is paused. Saved Sparks remain available on air.':data.researchPausedByBudget?'Collection is paused by the station token budget.':runningJobs?'Research is running in the background.':readyJobs?'Ready work starts when broadcast activity allows.':waitingJobs?'Queued work is waiting for a play or its scheduled retry.':'The research queue is clear.'}</p>
-      <div className="divide-y divide-border/60">
-        {workQueueItems.slice(0,expanded?undefined:2).map(job=>{
-          const subject=job.subjectArtist?`${job.subjectArtist} · ${job.subjectTitle}`:job.subjectTitle;
-          return <div key={job.id} className="flex flex-wrap items-start justify-between gap-2 py-2">
-            <div className="min-w-0 flex-1 basis-40">
-              <p className="truncate text-[13px] font-medium" title={subject}>{subject}</p>
-              <p className="text-xs text-muted">{queueTaskName(job)}</p>
-            </div>
-            <Pill tone={job.phase==='ready'||job.phase==='running'?'solid':'default'}>{queuePhaseText(job)}</Pill>
-          </div>;
-        })}
-      </div>
-      {workQueueItems.length>2&&<button type="button" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)} className="text-xs font-medium text-primary hover:underline">{expanded?'Show less':`Show more (${workQueueItems.length-2} more ${workQueueItems.length===3?'job':'jobs'})`}</button>}
+  const genius = data.geniusQueue;
+  return <Card headingLevel={2} title="Research activity">
+    <div className="divide-y divide-border/60">
+      {[{ name: 'Controller Research', llm: false, help: 'Collects source information and finds connections. Genius requests share Subwave’s rolling allowance and yield to broadcast work.' },
+        { name: 'LLM Research', llm: true, help: 'Turns collected material into Sparks and reviews flagged speech. It waits behind broadcast and interactive work.' }].map(section => {
+        const queue = jobs.filter(job => (job.provider === 'researcher') === section.llm).sort((a,b) =>
+          Number(b.phase === 'running') - Number(a.phase === 'running')
+          || Number(b.phase === 'ready') - Number(a.phase === 'ready') || b.priority - a.priority);
+        const current = queue[0];
+        const state = !status.enabled ? 'Research is off' : status.collectionPaused ? 'Collection paused'
+          : data.researchPausedByBudget ? 'Waiting for station budget'
+            : current?.provider === 'genius' && genius && !genius.enabled ? 'Genius research is off'
+              : current?.provider === 'genius' && genius && !genius.configured ? 'Genius access token needed'
+                : current?.phase === 'running' ? 'Researching'
+              : current?.phase === 'ready' && genius?.worker?.quiet === false ? 'Yielding to broadcast work'
+                : current?.provider === 'genius' && current.phase === 'ready' && current.capability !== 'expand-samples' && genius?.waitReason
+                  ? genius.waitReason === 'backoff' ? 'Backing off after an error' : 'Waiting for request allowance'
+                  : current ? phaseText(current) : 'Queue clear';
+        return <section key={section.name} aria-label={section.name} className="space-y-2 py-3 first:pt-0 last:pb-0">
+          <div className="flex items-center justify-between gap-2"><h3 className="text-[13px] font-semibold">{section.name}</h3><NotesHelp text={section.help} /></div>
+          <p className="text-xs">{state}<span className="text-muted"> · {queue.filter(job => job.phase !== 'running').length} queued</span></p>
+          {!section.llm && genius?.enabled && <p className="text-xs text-muted tabular-nums">Genius: {genius.minuteRequests} / {genius.minuteLimit} requests this minute</p>}
+          {current && <div className="min-w-0">
+            <p className="truncate text-[13px] font-medium" title={[current.subjectArtist,current.subjectTitle].filter(Boolean).join(' · ')}>{[current.subjectArtist,current.subjectTitle].filter(Boolean).join(' · ')}</p>
+            <p className="text-xs text-muted">{taskNames[current.capability] ?? current.capability.replaceAll('-',' ')}</p>
+          </div>}
+          {(queue.length > 1 || current?.phase === 'time-delay') && <details className="text-xs" onToggle={event => {
+            const open = event.currentTarget.open;
+            setExpanded(previous => ({...previous,[section.name]:open}));
+          }}><summary className="cursor-pointer text-primary">Show queue</summary>
+            {expanded[section.name] && <div className="mt-2 divide-y divide-border/60">{queue.map(job => <div key={job.id} className="space-y-1 py-2">
+              <p className="font-medium break-words">{[job.subjectArtist,job.subjectTitle].filter(Boolean).join(' · ')}</p>
+              <p className="text-muted">{taskNames[job.capability] ?? job.capability.replaceAll('-',' ')} · {phaseText(job,true)}</p>
+            </div>)}</div>}
+          </details>}
+        </section>;
+      })}
     </div>
   </Card>;
 }
 
 export function ResearchDetailsView({data,status}:{data:NotesReadout;status:NotesStatus}) {
-  return <Card title="Research details"><div className="space-y-4">
+  return <Card headingLevel={2} title="Research details" right={<NotesHelp text="These are collection totals, not the number of stories available for the current track. Credits, cooldowns and track relevance affect what the DJ can use." />}><div className="space-y-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <CompactMetric label="Saved facts" value={data.retainedClaims} />
             <CompactMetric label="Tracks encountered" value={data.localAttachments} />
+            {data.geniusQueue && <CompactMetric label="Genius requests · last 24 hours" value={data.geniusQueue.dayLimit == null ? data.geniusQueue.dayRequests.toLocaleString() : `${data.geniusQueue.dayRequests.toLocaleString()} / ${data.geniusQueue.dayLimit.toLocaleString()}`} />}
             {data.wikipediaExtractAverageLatencyMs != null && <CompactMetric label="Average Wiki extraction" value={`${(data.wikipediaExtractAverageLatencyMs / 1000).toFixed(1)}s`} />}
             {data.wikipediaArtistChunkCharacterTarget != null && <CompactMetric label="Artist Wiki chunk" value={`${data.wikipediaArtistChunkCharacterTarget} chars`} />}
             {data.wikipediaAlbumChunkCharacterTarget != null && <CompactMetric label="Album Wiki chunk" value={`${data.wikipediaAlbumChunkCharacterTarget} chars`} />}
@@ -604,8 +647,9 @@ export function ResearchDetailsView({data,status}:{data:NotesReadout;status:Note
 }
 
 function ResearchView({
-  total, recent, withdrawn, offset, onOffset, search, onSearch, category, onCategory, categories, claims, adminFetch, readOnly,
+  total, recent, withdrawn, offset, onOffset, fetching, search, onSearch, category, onCategory, categories, claims, adminFetch, readOnly,
 }: {
+  fetching:boolean;
   total:number; recent:boolean; withdrawn:boolean; offset:number; onOffset:(value:number)=>void;
   search: string;
   onSearch: (value: string) => void;
@@ -618,29 +662,30 @@ function ResearchView({
 }) {
   return (
     <div className="space-y-5">
-      <Card title={withdrawn?'Withdrawn facts':recent?'Recent saved facts':'All saved facts'} sub={withdrawn?'Saved facts kept off air until you explicitly restore them. Flag any fact for an AI review.':recent?'Search the latest 80 saved facts.':'Search stories, artists, albums and tracks across your saved collection.'}>
+      <Card headingLevel={2} title={withdrawn?'Withdrawn facts':recent?'Recent saved facts':'All saved facts'} right={<NotesHelp text="Saved facts are the source material. The DJ chooses suitable ones as Sparks. Flag asks for a review; withdraw immediately stops DJ use while keeping the fact saved." />} sub={withdrawn?'Saved facts kept off air until you explicitly restore them. Flag any fact for an AI review.':recent?'Search the latest 80 saved facts.':'Search stories, artists, albums and tracks across your saved collection.'}>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search saved facts</span>
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-            <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder={recent?'Search recent facts…':'Search all saved facts…'} className="w-full border border-border bg-transparent py-2 pr-3 pl-9 text-[13px] outline-none focus:border-primary" />
+            <Input type="search" maxLength={120} value={search} onChange={(event) => onSearch(event.target.value)} placeholder={recent?'Search recent facts…':'Search all saved facts…'} className="pr-3 pl-9" />
           </label>
           <label className="flex items-center gap-2 text-xs text-muted">
             <span>Category</span>
-            <select value={category} onChange={(event) => onCategory(event.target.value)} className="border border-border bg-transparent px-2 py-2 text-[13px] text-ink">
+            <select value={category} onChange={(event) => onCategory(event.target.value)} className="max-w-full border border-border bg-field px-3 py-[9px] text-[13px] text-ink">
               <option value="all">All</option>
+              <option value="stories-only">Stories (excluding connections and credits)</option>
               {categories.map((value) => <option key={value} value={value}>{value.replaceAll('-', ' ')}</option>)}
             </select>
           </label>
         </div>
-        <div className="max-h-[34rem] space-y-3 overflow-y-auto pr-2">
+        <div className="space-y-3">
           {claims.length
             ? claims.map((claim, index) => <ClaimCard key={`${claim.id??`${claim.provider}-${claim.topic}-${index}`}:${claim.wording}`} claim={claim} adminFetch={adminFetch} readOnly={readOnly} />)
             : <p className="border border-dashed border-border px-4 py-8 text-center text-[13px] text-muted">{search||category!=='all'?'No facts match those filters.':withdrawn?'No withdrawn facts. Flagging a fact does not withdraw it automatically.':'No facts saved yet. Play music with Sleeve Notes enabled to build your collection.'}</p>}
         </div>
-        <div className="mt-4 flex items-center gap-3 text-xs"><span>{total} matching facts</span>
-          <button type="button" disabled={!offset} onClick={()=>onOffset(Math.max(0,offset-30))}>Previous</button>
-          <button type="button" disabled={offset+30>=total} onClick={()=>onOffset(offset+30)}>Next</button>
+        <div className="mt-4 flex items-center gap-3 text-xs"><span role="status">{fetching?'Updating facts…':total?`${offset+1}–${Math.min(offset+30,total)} of ${total} facts`:'0 facts'}</span>
+          <Btn sm title="Show the previous page of saved facts" disabled={!offset} onClick={()=>onOffset(Math.max(0,offset-30))}>Previous</Btn>
+          <Btn sm title="Show the next page of saved facts" disabled={offset+30>=total} onClick={()=>onOffset(offset+30)}>Next</Btn>
         </div>
       </Card>
     </div>
@@ -777,7 +822,7 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
 
   return (
     <div className="space-y-5">
-      <Card title="Browse saved stories" sub="browse from artist to album to track">
+      <Card headingLevel={2} title="Browse saved stories" right={<NotesHelp text="Start with an artist, open an album, then select a track. The second panel shows saved facts for your selection. Search stays within the current level." />} sub="browse from artist to album to track">
         <nav aria-label="Explore location" className="mb-4 flex flex-wrap items-center gap-2 text-xs">
           <button type="button" onClick={showArtists} className={!selectedArtist ? 'font-semibold text-ink' : 'text-primary hover:underline'}>Artists</button>
           {selectedArtist && <><span aria-hidden="true" className="text-muted">/</span><button type="button" onClick={showAlbums} className={!selectedAlbum ? 'font-semibold text-ink' : 'text-primary hover:underline'}>{selectedArtist.title}</button></>}
@@ -788,18 +833,23 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">{searchPlaceholder}</span>
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={searchPlaceholder} className="w-full border border-border bg-transparent py-2 pr-3 pl-9 text-[13px] outline-none focus:border-primary" />
+            <Input type="search" maxLength={120} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={searchPlaceholder} className="pr-3 pl-9" />
           </label>
-          <button type="submit" className="border border-border px-3 py-2 text-xs font-medium hover:bg-muted/40">Search</button>
+          <Btn type="submit" title="Search within the artists, albums or tracks shown here">Search</Btn>
         </form>
       </Card>
-      {results.error && <Card title="Could not load the Notes library"><p className="text-[13px] text-muted">{results.error instanceof Error ? results.error.message : 'The Explore index is temporarily unavailable.'}</p><button type="button" onClick={() => void results.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button></Card>}
+      {results.error && <Card headingLevel={2} title="Could not load the Notes library"><p className="text-[13px] text-muted">{results.error instanceof Error ? results.error.message : 'The Explore index is temporarily unavailable.'}</p><button type="button" onClick={() => void results.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button></Card>}
       {results.isLoading && <p className="text-[13px] text-muted">Loading {level.toLowerCase()}…</p>}
       {!results.error && results.data && (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.4fr)]">
-          <Card title={listTitle} sub={results.data.total ? `${offset + 1}–${Math.min(offset + pageSize, results.data.total)} of ${results.data.total}` : `No ${level} with retained notes${selectedLetter ? ` starting with ${selectedLetter}` : ''}`}>
-            <div className="grid grid-cols-[minmax(0,1fr)_2rem] gap-2">
-              <div className="max-h-[36rem] overflow-y-auto pr-2">
+          <Card headingLevel={2} title={listTitle} sub={results.data.total ? `${offset + 1}–${Math.min(offset + pageSize, results.data.total)} of ${results.data.total}` : `No ${level} with retained notes${selectedLetter ? ` starting with ${selectedLetter}` : ''}`}>
+              <label className="flex items-center gap-2 text-xs xl:hidden">Starting letter
+                <select aria-label="Jump to first letter" value={selectedLetter} onChange={event=>jumpToLetter(event.target.value)} className="min-h-11 border border-border bg-field px-3">
+                  <option value="">All</option>{EXPLORE_LETTERS.map(letter=><option key={letter} value={letter}>{letter}</option>)}
+                </select>
+              </label>
+            <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_2rem]">
+              <div className="xl:max-h-[36rem] xl:overflow-y-auto xl:pr-2">
                 {results.data.entities.length ? (
                   <div className="divide-y divide-border/60">
                     {results.data.entities.map((entity) => (
@@ -826,20 +876,20 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
                   </div>
                 ) : <p className="py-5 text-[13px] text-muted">{emptyText}</p>}
               </div>
-              <nav aria-label="Jump to first letter" className="flex max-h-[36rem] flex-col items-stretch gap-0.5 overflow-y-auto border-l border-border/60 pl-1">
-                <button type="button" aria-pressed={!selectedLetter} onClick={() => jumpToLetter('')} className={`px-0.5 py-1 text-[9px] font-semibold ${!selectedLetter ? 'bg-ink text-bg' : 'text-muted hover:bg-muted/40 hover:text-ink'}`}>All</button>
+              <nav aria-label="Jump to first letter" className="hidden max-h-[36rem] flex-col items-stretch gap-1 overflow-y-auto border-l border-border/60 pl-1 xl:flex">
+                <button type="button" aria-pressed={!selectedLetter} onClick={() => jumpToLetter('')} className={`min-h-8 min-w-8 px-1 py-1 text-xs font-semibold ${!selectedLetter ? 'bg-ink text-bg' : 'text-muted hover:bg-muted/40 hover:text-ink'}`}>All</button>
                 {EXPLORE_LETTERS.map((letter) => (
-                  <button key={letter} type="button" aria-pressed={selectedLetter === letter} onClick={() => jumpToLetter(letter)} className={`px-0.5 py-0.5 text-[10px] font-medium ${selectedLetter === letter ? 'bg-ink text-bg' : 'text-muted hover:bg-muted/40 hover:text-ink'}`}>{letter}</button>
+                  <button key={letter} type="button" aria-pressed={selectedLetter === letter} onClick={() => jumpToLetter(letter)} className={`min-h-8 min-w-8 px-1 py-1 text-xs font-medium ${selectedLetter === letter ? 'bg-ink text-bg' : 'text-muted hover:bg-muted/40 hover:text-ink'}`}>{letter}</button>
                 ))}
               </nav>
             </div>
             {results.data.total > pageSize && <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
-              <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))} className="text-xs font-medium text-primary disabled:text-muted">Previous</button>
-              <span className="text-xs text-muted">Page {page + 1} of {totalPages}</span>
-              <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))} className="text-xs font-medium text-primary disabled:text-muted">Next</button>
+              <Btn sm disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))} >Previous</Btn>
+              <span className="text-xs text-muted">{offset+1}–{Math.min(offset+pageSize,results.data.total)} of {results.data.total} items</span>
+              <Btn sm disabled={page + 1 >= totalPages} onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))} >Next</Btn>
             </div>}
           </Card>
-          <Card title={dossier.data?.title ?? selected?.title ?? 'Saved stories'} sub={dossier.data ? `${selectedLabel ?? entityTypeName(dossier.data.entityType)} · ${dossier.data.localMatch ? 'matched to library' : 'not matched locally'}` : selected ? 'saved facts and source evidence' : 'select an artist, album or track'}>
+          <Card headingLevel={2} title={dossier.data?.title ?? selected?.title ?? 'Saved stories'} sub={dossier.data ? `${selectedLabel ?? entityTypeName(dossier.data.entityType)} · ${dossier.data.localMatch ? 'matched to library' : 'not matched locally'}` : selected ? 'saved facts and source evidence' : 'select an artist, album or track'}>
             {selected && <Link href={`/admin/notes?tab=connections&focusType=${encodeURIComponent(selected.entityType)}&focusId=${encodeURIComponent(selected.entityId)}`} className="mb-3 inline-flex items-center gap-2 text-[13px] font-medium text-primary hover:underline">
               View connections <GitBranch className="size-4" aria-hidden="true" />
             </Link>}
@@ -847,7 +897,7 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
             {selected && selected.claimCount === 0 && <p className="text-[13px] leading-[1.55] text-muted">No saved facts are attached directly to this {(selectedLabel ?? entityTypeName(selected.entityType)).toLowerCase()}. {level === 'artists' ? 'Browse its albums and tracks for saved stories.' : level === 'albums' ? 'Browse tracks on this album for saved stories.' : 'No source-backed track notes are available yet.'}</p>}
             {selected && selected.claimCount > 0 && dossier.isLoading && <p className="text-[13px] text-muted">Loading saved stories…</p>}
             {dossier.error && <p className="text-[13px] text-muted">{dossier.error instanceof Error ? dossier.error.message : 'Saved stories are temporarily unavailable.'}</p>}
-            {dossier.data && <div className="max-h-[38rem] space-y-3 overflow-y-auto pr-2">
+            {dossier.data && <div className="space-y-3 xl:max-h-[38rem] xl:overflow-y-auto xl:pr-2">
               {dossier.data.claims.length
                 ? dossier.data.claims.map((claim, index) => <ClaimCard key={`${claim.id??`${claim.provider}-${claim.topic}-${index}`}:${claim.wording}`} claim={claim} adminFetch={adminFetch} readOnly={readOnly} />)
                 : <p className="text-[13px] text-muted">No saved facts are attached to this artist, album or track.</p>}
@@ -942,20 +992,20 @@ function ConfigView({
 
   return (
     <div className="space-y-5">
-      <Card title="Enable Sleeve Notes" sub="Changes to switches save immediately">
-        <Seg value={values?.djBehaviour?.extendedSleeveNotes ? 'on' : 'off'} disabled={busy || loading || !!settingsError} options={[{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }]} onChange={(value) => onSave({ djBehaviour: { extendedSleeveNotes: value === 'on' } }, `Sleeve Notes ${value === 'on' ? 'enabled' : 'paused'}.`)} />
+      <Card headingLevel={2} title="Enable Sleeve Notes" right={<NotesHelp text="This is the main switch for collecting stories and offering them to the DJ. Turning it off keeps saved facts and aired history." />} sub="Changes to switches save immediately">
+        <Seg aria-label="Enable Sleeve Notes" value={values?.djBehaviour?.extendedSleeveNotes ? 'on' : 'off'} disabled={busy || loading || !!settingsError} options={[{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }]} onChange={(value) => onSave({ djBehaviour: { extendedSleeveNotes: value === 'on' } }, `Sleeve Notes ${value === 'on' ? 'enabled' : 'paused'}.`)} />
         <p className="mt-3 text-[13px] text-muted">Enable to gather facts from played music and offer Story Sparks to the DJ. Turning off pauses collection and offers; your saved stories stay available.</p>
         {settingsError && <p role="alert" className="mt-2 text-[13px]">{settingsError}</p>}
       </Card>
-      <Card title="Background collection" sub="Keep saved Sparks on air while research is paused">
-        <Seg value={values?.djBehaviour?.sleeveNotesCollectionPaused?'paused':'running'} disabled={busy||loading||!!settingsError} options={[{id:'running',label:'Collect stories'},{id:'paused',label:'Pause collection'}]} onChange={value=>onSave({djBehaviour:{sleeveNotesCollectionPaused:value==='paused'}},value==='paused'?'Collection paused. Saved Sparks remain available.':'Collection resumed.')} />
+      <Card headingLevel={2} title="Background collection" right={<NotesHelp text="Pause research without stopping the DJ from using stories already saved. Resume it here when you want collection to continue." />} sub="Keep saved Sparks on air while research is paused">
+        <Seg aria-label="Background collection" value={values?.djBehaviour?.sleeveNotesCollectionPaused?'paused':'running'} disabled={busy||loading||!!settingsError} options={[{id:'running',label:'Collect stories'},{id:'paused',label:'Pause collection'}]} onChange={value=>onSave({djBehaviour:{sleeveNotesCollectionPaused:value==='paused'}},value==='paused'?'Collection paused. Saved Sparks remain available.':'Collection resumed.')} />
         <p className="mt-3 text-[13px] text-muted">Pauses background matching, source collection and extraction. Saved jobs are kept for resumption. On-air links and segments retain access to cached Sparks while Sleeve Notes is enabled.</p>
       </Card>
       <SleeveNotesSegmentSettings key={JSON.stringify(values?.sleeveNotes?.segment)} config={values?.sleeveNotes?.segment} personas={values?.personas??[]} busy={busy||loading||!!settingsError} onSave={segment=>onSave({sleeveNotes:{segment}},'Sleeve Notes segment settings saved.')} />
-            <Card title="Genius connections (optional)" sub={savedInSettings ? 'saved in Settings' : status?.providerConfigured ? 'using a server environment token' : 'not configured'}>
+            <Card headingLevel={2} title="Genius connections (optional)" right={<NotesHelp text="Genius adds credits and connections between recordings. It needs a Client Access Token; Subwave does not collect lyrics." />} sub={savedInSettings ? 'saved in Settings' : status?.providerConfigured ? 'using a server environment token' : 'not configured'}>
             <div className="field">
               <Label>Genius metadata collection</Label>
-              <Seg value={geniusEnabled ? 'on' : 'off'} options={[
+              <Seg aria-label="Genius metadata collection" value={geniusEnabled ? 'on' : 'off'} options={[
                 { id: 'off', label: 'Off', title: 'Do not queue Genius metadata research' },
                 { id: 'on', label: 'On', title: 'Collect Genius recording credits and musical connections when configured' },
               ]} disabled={busy || loading || !!settingsError} onChange={(value) => onSave({ sleeveNotes: { providers: { genius: { enabled: value === 'on' } } } }, `Genius metadata collection ${value === 'on' ? 'enabled' : 'disabled'}.`)} />
@@ -969,22 +1019,22 @@ function ConfigView({
           <Label htmlFor="genius-access-token">Genius Client Access Token</Label>
           <Input id="genius-access-token" type="password" autoComplete="new-password" value={tokenDraft} onChange={(event) => onTokenDraft(event.target.value)} placeholder={savedInSettings ? 'Saved token is hidden; enter a replacement' : 'Paste Client Access Token'} />
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" disabled={busy || loading || !!settingsError || !tokenDraft.trim()} onClick={() => onSave({ sleeveNotes: { providers: { genius: { accessToken: tokenDraft.trim() } } } }, 'Genius token saved.')} className="bg-ink px-3 py-2 text-xs font-semibold text-bg disabled:opacity-50">Save token</button>
-          {savedInSettings && <button type="button" disabled={busy || loading || !!settingsError} onClick={() => onSave({ sleeveNotes: { providers: { genius: { accessToken: '' } } } }, 'Saved Genius token cleared.')} className="border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">Clear saved token</button>}
+        <div className="mt-3 flex flex-wrap gap-2 [&>button]:max-w-full [&>button]:text-left [&>button]:whitespace-normal">
+          <Btn tone="solid" type="button" disabled={busy || loading || !!settingsError || !tokenDraft.trim()} onClick={() => onSave({ sleeveNotes: { providers: { genius: { accessToken: tokenDraft.trim() } } } }, 'Genius token saved.')}>Save token</Btn>
+          {savedInSettings && <Btn type="button" disabled={busy || loading || !!settingsError} onClick={() => onSave({ sleeveNotes: { providers: { genius: { accessToken: '' } } } }, 'Saved Genius token cleared.')}>Clear saved token</Btn>}
         </div>
         {status?.providerTokenSource === 'environment' && <p className="mt-3 text-xs text-muted">A server environment token is currently available. A token saved here takes priority over it.</p>}
 
       </Card>
       <MusicBrainzLists adminFetch={adminFetch} hydrated={hydrated} />
-      <Card title="Collection preferences" sub="Switches save immediately · token, prompt and limits have their own Save buttons">
+      <Card headingLevel={2} title="Collection preferences" right={<NotesHelp text="Allow research when the station has no listeners. Broadcast and other higher-priority work still come first." />} sub="Switches save immediately · token, prompt and limits have their own Save buttons">
         {loading ? <p className="text-[13px] text-muted">Loading Settings…</p> : settingsError ? (
           <p className="text-[13px] text-muted">Could not read saved settings: {settingsError}</p>
         ) : (
           <div className="space-y-5">
             <div className="field">
               <Label>Research while the station is empty</Label>
-              <Seg value={researchWhenEmpty ? 'on' : 'off'} options={[
+              <Seg aria-label="Research while the station is empty" value={researchWhenEmpty ? 'on' : 'off'} options={[
                 { id: 'off', label: 'Off', title: 'Pause non-airing Sleeve Notes research while the station is empty' },
                 { id: 'on', label: 'On', title: 'Allow low-priority backfill while Icecast confirms zero listeners' },
               ]} disabled={busy || loading || !!settingsError} onChange={(value) => onSave({ djBehaviour: { sleeveNotesMaintenanceWhenEmpty: value === 'on' } }, `Empty-station research ${value === 'on' ? 'enabled' : 'disabled'}.`)} />
@@ -993,12 +1043,12 @@ function ConfigView({
           </div>
         )}
       </Card>
-      <details onToggle={(event) => setAdvancedOpen(event.currentTarget.open)} className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Advanced · research prompt and limits</summary><div className="mt-3"><Card title="Wikipedia research prompt" sub={status?.wikipediaPromptIsCustom ? 'custom prompt active' : 'default prompt active'}>
+      <details onToggle={(event) => setAdvancedOpen(event.currentTarget.open)} className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Advanced · research prompt and limits</summary><div className="mt-3"><Card headingLevel={2} title="Wikipedia research prompt" right={<NotesHelp text="These instructions tell the model which facts to save from source articles. Save changes to use them for future research. Preview tests the draft without saving any facts." />} sub={status?.wikipediaPromptIsCustom ? 'custom prompt active' : 'default prompt active'}>
         <p className="mb-3 max-w-4xl text-[13px] leading-[1.55] text-muted">Set the instructions used to choose and rank facts. Use <code>{'{wikiNumber}'}</code> where the prompt should state how many facts this article section may return. The code shares your Artist or Album limit across sections according to their text length; source checks may retain fewer. A refresh uses the saved Wikipedia text.</p>
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <label className="field"><span className="text-[13px] font-medium">Facts per artist article</span><Input type="number" min={1} max={20} step={1} value={artistClaimDraft} onChange={(event) => setArtistClaimDraft(event.target.value)} className="mt-1 w-28" /></label>
           <label className="field"><span className="text-[13px] font-medium">Facts per album article</span><Input type="number" min={1} max={20} step={1} value={albumClaimDraft} onChange={(event) => setAlbumClaimDraft(event.target.value)} className="mt-1 w-28" /></label>
-          <button type="button" disabled={busy || loading || !!settingsError || !/^([1-9]|1\d|20)$/u.test(artistClaimDraft) || !/^([1-9]|1\d|20)$/u.test(albumClaimDraft) || (Number(artistClaimDraft) === artistClaimLimit && Number(albumClaimDraft) === albumClaimLimit)} onClick={() => onSave({ sleeveNotes: { wikipedia: { artistClaimLimit: Number(artistClaimDraft), albumClaimLimit: Number(albumClaimDraft) } } }, 'Wikipedia fact limits saved.')} className="border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">Save fact limits</button>
+          <Btn type="button" disabled={busy || loading || !!settingsError || !/^([1-9]|1\d|20)$/u.test(artistClaimDraft) || !/^([1-9]|1\d|20)$/u.test(albumClaimDraft) || (Number(artistClaimDraft) === artistClaimLimit && Number(albumClaimDraft) === albumClaimLimit)} onClick={() => onSave({ sleeveNotes: { wikipedia: { artistClaimLimit: Number(artistClaimDraft), albumClaimLimit: Number(albumClaimDraft) } } }, 'Wikipedia fact limits saved.')}>Save fact limits</Btn>
         </div>
         <textarea
           aria-label="Wikipedia research prompt"
@@ -1011,8 +1061,8 @@ function ConfigView({
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
           <span>{wikiPromptDraft.length.toLocaleString('en-GB')} / 8,000 characters · {wikiPromptDraft === (status?.wikipediaDefaultPrompt ?? '') && !prompt ? 'Default prompt is active.' : 'Custom instructions are active after saving.'}</span>
           <div className="flex gap-2">
-            <button type="button" disabled={busy || loading || !!settingsError || wikiPromptDraft === (prompt || status?.wikipediaDefaultPrompt || '')} onClick={() => onSave({ sleeveNotes: { wikipedia: { extractPrompt: wikiPromptDraft } } }, 'Wikipedia research prompt saved.')} className="bg-ink px-3 py-2 font-semibold text-bg disabled:opacity-50">Save prompt</button>
-            <button type="button" disabled={busy || !prompt} onClick={() => { onWikiPromptDraft(''); onSave({ sleeveNotes: { wikipedia: { extractPrompt: '' } } }, 'Default Wikipedia research prompt restored.'); }} className="border border-border px-3 py-2 font-medium disabled:opacity-50">Restore default</button>
+            <Btn tone="solid" type="button" disabled={busy || loading || !!settingsError || wikiPromptDraft === (prompt || status?.wikipediaDefaultPrompt || '')} onClick={() => onSave({ sleeveNotes: { wikipedia: { extractPrompt: wikiPromptDraft } } }, 'Wikipedia research prompt saved.')}>Save prompt</Btn>
+            <Btn type="button" disabled={busy || !prompt} onClick={() => { onWikiPromptDraft(''); onSave({ sleeveNotes: { wikipedia: { extractPrompt: '' } } }, 'Default Wikipedia research prompt restored.'); }}>Restore default</Btn>
           </div>
         </div>
         {effectivePrompt && <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Preview active prompt</summary><pre className="mt-2 bg-muted/20 p-3 text-xs leading-[1.5] whitespace-pre-wrap">{effectivePrompt}</pre></details>}
@@ -1034,11 +1084,11 @@ function ConfigView({
               <option value="">Artist article</option>
               {(previewAlbums.data?.albums ?? []).map((album) => <option key={album.id} value={album.id} disabled={!album.hasCachedArticle}>{album.name}{album.hasCachedArticle ? '' : ' · no cached Wikipedia article'}</option>)}
             </select>
-            <button type="button" disabled={!status?.enabled || previewBusy || !previewArtistId || wikiPromptDraft.length > 8000}
+            <Btn type="button" disabled={!status?.enabled || previewBusy || !previewArtistId || wikiPromptDraft.length> 8000}
               onClick={() => void previewWikipediaPrompt()}
-              className="border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">
+             >
               {previewBusy ? 'Generating preview…' : 'Preview changes'}
-            </button>
+            </Btn>
           </div>
           {previewArtists.error && <p className="mt-2 text-xs text-ink">Could not load encountered artists.</p>}
           {previewAlbums.error && <p className="mt-2 text-xs text-ink">Could not load albums for this artist.</p>}
@@ -1052,12 +1102,12 @@ function ConfigView({
         </div>
       </Card>
       </div></details>
-      <details className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Maintenance · refresh saved Wikipedia facts</summary><div className="mt-3"><Card title="Refresh Wikipedia facts" sub="keeps existing facts and queues each refresh on that artist or album’s next play">
+      <details className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Maintenance · refresh saved Wikipedia facts</summary><div className="mt-3"><Card headingLevel={2} title="Refresh Wikipedia facts" right={<NotesHelp text="Keep facts leaves current stories available while replacement research waits for the next play. Disable automatic facts stops using those stories immediately. Manually reviewed facts are kept." />} sub="keeps existing facts and queues each refresh on that artist or album’s next play">
         {!status?.enabled && <p className="mb-3 text-[13px] text-muted">Enable Sleeve Notes to use maintenance actions.</p>}
         <p className="max-w-4xl text-[13px] leading-[1.55] text-muted">Research is extracted from the cached article text. The keep-facts option adds work only as each artist or album is encountered; manually reviewed facts are preserved in both modes.</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" disabled={wikiRefreshBusy || !status?.enabled} onClick={() => onWikiRefresh('replace')} className="border border-border px-3 py-2 text-xs font-medium disabled:opacity-50">{wikiRefreshBusy ? 'Working…' : 'Keep facts; refresh on next play'}</button>
-          <button type="button" disabled={wikiRefreshBusy || !status?.enabled} onClick={() => onWikiRefresh('clear')} className="border border-ink px-3 py-2 text-xs font-medium text-ink disabled:opacity-50">Disable automatic facts and refresh</button>
+        <div className="mt-3 flex flex-wrap gap-2 [&>button]:max-w-full [&>button]:text-left [&>button]:whitespace-normal">
+          <Btn type="button" disabled={wikiRefreshBusy || !status?.enabled} onClick={() => onWikiRefresh('replace')}>{wikiRefreshBusy ? 'Working…' : 'Keep facts; refresh on next play'}</Btn>
+          <Btn type="button" disabled={wikiRefreshBusy || !status?.enabled} onClick={() => onWikiRefresh('clear')}>Disable automatic facts and refresh</Btn>
         </div>
         {wikiRefreshMessage && <p role="status" className="mt-3 text-[13px] text-muted">{wikiRefreshMessage}</p>}
       </Card>
@@ -1089,7 +1139,7 @@ function SourcesView({
         <td className="px-3 py-2 tabular-nums">{series.members.toLocaleString('en-GB')}</td>
         <td className="px-3 py-2 tabular-nums">{series.localClaims.toLocaleString('en-GB')}</td>
         <td className="px-3 py-2 tabular-nums" title={`${series.libraryTracks.toLocaleString('en-GB')} local tracks linked`}>{series.libraryAlbums.toLocaleString('en-GB')}</td>
-        <td className="px-3 py-2 whitespace-nowrap">{dateTime(series.fetchedAt)}</td>
+        <td className="px-3 py-2 whitespace-nowrap">{formatNotesDate(series.fetchedAt,status?.timezone)}</td>
       </tr>
     );
   });
@@ -1099,7 +1149,7 @@ function SourcesView({
       <td className="px-3 py-2">{request.capability}</td>
       <td className="px-3 py-2">{request.outcome}{request.status ? ` · ${request.status}` : ''}</td>
       <td className="px-3 py-2 tabular-nums">{request.requests.toLocaleString('en-GB')}</td>
-      <td className="px-3 py-2 whitespace-nowrap">{dateTime(request.lastRequestedAt)}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{formatNotesDate(request.lastRequestedAt,status?.timezone)}</td>
     </tr>
   ));
 
@@ -1118,7 +1168,7 @@ function SourcesView({
         <ReadoutTable title="Provider activity" sub="Request outcomes grouped by source" empty="No provider requests have been recorded." headings={['Source', 'Work', 'Outcome', 'Calls', 'Latest']} rows={requestRows} />
       </div>
 
-      <Card title="Genius collection" sub={!status?.enabled ? 'collection paused' : status?.providerEnabled ? (status.providerConfigured ? 'provider enabled and configured' : 'server token missing') : 'provider disabled'}>
+      <Card headingLevel={2} title="Genius collection" sub={!status?.enabled ? 'collection paused' : status?.providerEnabled ? (status.providerConfigured ? 'provider enabled and configured' : 'server token missing') : 'provider disabled'}>
         <p className="text-[13px] leading-[1.55] text-muted">Genius collection requires both its provider switch and a server-held access token. It stores approved metadata and relationships; lyric text is never collected.</p>
       </Card>
 

@@ -1,5 +1,6 @@
 'use client';
 
+import NotesHelp from './NotesHelp';
 import type { QueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Card, Pill, Seg } from './ui';
@@ -85,7 +86,7 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
     </article>;
   }
 
-  return <Card title="MusicBrainz Lists" sub="Enable supplied lists or add your own · switches save immediately">
+  return <Card headingLevel={2} title="MusicBrainz Lists" right={<NotesHelp text="These lists add facts about recordings and albums in published selections. Turning a list off stops using its facts but keeps saved history. Use rankings only when the list supplies meaningful positions." />} sub="Enable supplied lists or add your own · switches save immediately">
     <p className="mb-4 text-[13px] leading-[1.55] text-muted">Enabled lists supply source-backed facts about tracks and albums in your library. Disabling stops refreshes and Story Spark offers; cached material and air history are kept.</p>
     {lists.data && !lists.data.enabled && <p className="mb-4 text-xs text-muted">Sleeve Notes is off. You can manage lists here; background collection waits until it is enabled.</p>}
     {lists.isLoading && <p role="status" className="text-[13px] text-muted">Loading lists…</p>}

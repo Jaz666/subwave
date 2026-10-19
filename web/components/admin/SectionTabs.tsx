@@ -1,6 +1,7 @@
 'use client';
 
 
+import { useId } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
@@ -9,6 +10,7 @@ export interface SectionTab {
   label: string;
   count?: number;
   attention?: boolean;
+  description?: string;
   icon: LucideIcon;
 }
 
@@ -37,6 +39,7 @@ export function SectionTabs({
 }) {
   // When the grid wraps, dividers must follow it: left rule on the right
   // column, top rule on the second row.
+  const descriptionId = useId();
   const wraps = tabs.length >= 4;
   const sixTabGrid = tabs.length === 6;
   return (
@@ -53,7 +56,8 @@ export function SectionTabs({
             type="button"
             aria-current={active ? 'page' : undefined}
             onClick={() => onChange(t.id)}
-            title={t.attention?'Review ready for your input':undefined}
+            title={t.attention?'A review is ready. Open Review to read the findings and choose what to change.':t.description}
+            aria-describedby={t.description?`${descriptionId}-${t.id}`:undefined}
             className={cn(
               'relative flex cursor-pointer items-center justify-center gap-2 px-2 py-[17px] transition-colors sm:gap-2.5 sm:px-3 sm:py-[19px]',
               wraps
@@ -71,6 +75,7 @@ export function SectionTabs({
             <span className="font-mono text-[11px] font-bold tracking-[0.1em] uppercase sm:text-[12px] sm:tracking-[0.16em]">
               {t.label}
             </span>
+            {t.description&&<span id={`${descriptionId}-${t.id}`} hidden>{t.description}</span>}
             {t.count != null && (
               <span className={cn('min-w-[14px] border border-current px-1.5 py-[2px] text-center font-mono text-[10px] leading-none font-bold',t.attention&&(active?'bg-bg text-ink':'bg-ink text-bg'))}>
                 {pad2(t.count)}{t.attention&&<span className="sr-only"> ready for your input</span>}

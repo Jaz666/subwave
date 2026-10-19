@@ -439,7 +439,7 @@ source-backed credits.
 
 Genius is enabled only when both the Sleeve Notes master switch and its
 provider switch are on and a server-held token is configured. Its conservative
-station-wide ceiling is three requests per minute and 4,320 per day. The
+station-wide ceiling is six requests per rolling minute, spaced at least ten seconds apart, with no daily cap. Last-24-hour usage is still counted. The
 worker retains only exact matched song identity, writer/producer credits, and
 the allowlisted cover/sample relationships as structured source data and
 claims. It never fetches lyrics, referents, annotations, page HTML or
@@ -815,3 +815,26 @@ DJ writer.
 - Lyrics never enter Sleeve Notes storage, APIs, UI, prompts, logs or tests.
 - Existing Verified Facts regression tests continue to prove that sparse
   metadata cannot create invented music history or show steering.
+
+
+## Operator queueing from Station Brain
+
+Station Brain uses the existing `POST /dj/queue-track` operator path. A selected library track queues that exact recording; a selected artist or album chooses one track within that source, preferring current show/context mood tags and using the shared tempo/key transition ranking against the queued tail (or on-air track when the queue is empty). No additional LLM call or automatic picker is used. Artist choices sample up to twenty albums with three catalogue reads in flight.
+
+The route accepts a `selection` object with `entityType` and `entityId`. Library IDs resolve directly; saved canonical identities resolve through confirmed local attachments or an exact artist-name resolution. Unsupported external entities and unresolved sources are refused without an unrelated fallback. As in Library → Queue on air, the append carries `requestedBy: 'studio'`, `operator: true`, and `allowDuplicate: true`: recency, artist spacing and duplicate guards do not veto an explicit operator choice, it consumes no listener-request slot, and the never-play blocklist remains absolute.
+
+Queue actions follow the visible layer: the artist overview requires an artist selection; artist-album layers default to that artist and narrow to a selected album; album-track layers default to that album and narrow to a selected recording. The button remains visible but disabled when no source is chosen. Dropdowns and the old browse sections are removed; arrow keys on the focused map select items/relationships and Enter opens the selected item. Queue results show the actual track, queue position and selection explanation. Full-screen mode gives the map the remaining dialog height and presents item/evidence details as a hideable overlay rather than a stacked card below it. Queueing remains available from saved library nodes when background Sleeve Notes collection is off; research controls retain their separate collection gate.
+
+Full-screen details are hidden on entry and remain hidden when the selected node changes. The operator opens them explicitly with Show details; queue controls remain in the map header.
+
+### Independent Genius track research
+
+Encountered tracks can queue Genius research by local artist/title independently of MusicBrainz. Schema 55 records provider-local research associations in `sleeve_genius_local_tracks`; these do not claim MusicBrainz confirmation or repoint canonical attachments. Exact Genius matches retain source-backed claims through that association. Later canonical enrichment preserves those claim IDs and operator decisions, and connection matching/link selection continue to resolve them to the local track. Existing worker quiet gates, collection pause and shared Genius request limits still apply. This checkpoint does not enable graph traversal or whole-library seeding.
+
+### Bounded Genius sample traversal
+
+Schema 56 stores a visited-song frontier and expansion cursor in `sleeve_genius_traversal`. The existing Genius worker expands at most twenty saved relationships per turn and follows only samples/sample-by links through an unambiguous artist in the populated library artist cache. A linked song need not be owned to continue exploration. Outside-library or ambiguous artists stop a branch; returned boundary evidence remains stored. Known Genius IDs use direct detail calls; shared cached identities can serve additional local tracks. All calls share existing limits and broadcast gates, and album work precedes traversal. No automatic connected-track picks or whole-library seeding are introduced by this checkpoint.
+
+### Fair Genius catalogue seeding
+
+When higher-priority Genius work has no ready jobs, the existing worker may queue one unexamined cached catalogue track. Schema 57 stores seed associations separately from encounters and persists an artist rotation cursor. Selection checks at most ten unambiguous artists per turn, waits for initial artist/track catalogue population, skips encountered identities (including exact album copies), and permits only one outstanding seed. No MusicBrainz, article or LLM work is created by seeding. The normal Genius adapter, quiet gate, request budget and retries remain authoritative. Seed evidence can join local connection matching and link selection through its explicit catalogue association. Historical traversal backfill and refresh policy are separate work.

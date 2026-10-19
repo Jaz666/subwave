@@ -8,7 +8,7 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 54;
+export const SCHEMA_VERSION = 57;
 
 let db: Database.Database | null = null;
 const cachedReads = new AsyncLocalStorage<Database.Database>();
@@ -1278,6 +1278,49 @@ export function migrate(d: Database.Database): void {
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ); CREATE INDEX IF NOT EXISTS idx_sleeve_airing_review_queue ON sleeve_airing_reviews(state,created_at);`);
     d.pragma('user_version = 54');
+  }
+
+  if (version < 55) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_genius_local_tracks (
+      local_track_id TEXT PRIMARY KEY REFERENCES sleeve_local_attachments(local_track_id),
+      recording_id TEXT NOT NULL REFERENCES sleeve_recordings(id)
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_genius_local_recording ON sleeve_genius_local_tracks(recording_id);`);
+    d.exec(`CREATE TRIGGER IF NOT EXISTS sleeve_genius_local_insert AFTER INSERT ON sleeve_genius_local_tracks BEGIN
+      UPDATE sleeve_connection_revisions SET facts = facts + 1, overview = overview + 1 WHERE id = 1;
+    END; CREATE TRIGGER IF NOT EXISTS sleeve_genius_local_delete AFTER DELETE ON sleeve_genius_local_tracks BEGIN
+      UPDATE sleeve_connection_revisions SET facts = facts + 1, overview = overview + 1 WHERE id = 1;
+    END;`);
+    d.pragma('user_version = 55');
+  }
+
+  if (version < 56) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_genius_traversal (
+      song_id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES sleeve_recordings(id),
+      title_key TEXT NOT NULL, artist_key TEXT NOT NULL,
+      source_document_id TEXT REFERENCES sleeve_source_documents(id),
+      next_relationship INTEGER NOT NULL DEFAULT 0
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_genius_traversal_name ON sleeve_genius_traversal(title_key,artist_key);`);
+    d.exec(`CREATE TRIGGER IF NOT EXISTS sleeve_genius_local_update AFTER UPDATE ON sleeve_genius_local_tracks BEGIN
+      UPDATE sleeve_connection_revisions SET facts=facts+1,overview=overview+1 WHERE id=1;
+    END;`);
+    d.pragma('user_version = 56');
+  }
+
+  if (version < 57) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_genius_library_seeds (
+      local_track_id TEXT PRIMARY KEY, recording_id TEXT NOT NULL REFERENCES sleeve_recordings(id),
+      title_key TEXT NOT NULL, artist_key TEXT NOT NULL
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_genius_seed_identity ON sleeve_genius_library_seeds(artist_key,title_key);
+    CREATE INDEX IF NOT EXISTS idx_sleeve_genius_seed_recording ON sleeve_genius_library_seeds(recording_id);
+    CREATE INDEX IF NOT EXISTS idx_sleeve_connection_library_artist_tracks
+      ON sleeve_connection_library_tracks(artist_key,title_key,local_track_id);
+    CREATE TABLE IF NOT EXISTS sleeve_genius_seed_cursor (
+      id INTEGER PRIMARY KEY CHECK(id=1), artist_key TEXT NOT NULL
+    );`);
+    for (const operation of ['INSERT','UPDATE','DELETE']) d.exec(`CREATE TRIGGER IF NOT EXISTS sleeve_genius_seed_${operation.toLowerCase()}
+      AFTER ${operation} ON sleeve_genius_library_seeds BEGIN
+      UPDATE sleeve_connection_revisions SET facts=facts+1,overview=overview+1 WHERE id=1; END;`);
+    d.pragma('user_version = 57');
   }
 
 }

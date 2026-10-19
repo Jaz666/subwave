@@ -99,15 +99,21 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
     const identity = key(track.title, track.artist);
     const group = byName.get(identity) ?? []; group.push(track); byName.set(identity, group);
   }
+  const hasGeniusLocal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sleeve_genius_local_tracks'").get();
+  const hasGeniusSeeds = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sleeve_genius_library_seeds'").get();
   const attachments = db.prepare(`SELECT local_track_id AS localTrackId, recording_id AS recordingId
-    FROM sleeve_local_attachments WHERE match_state = 'matched' AND recording_id IS NOT NULL`)
+    FROM sleeve_local_attachments WHERE match_state = 'matched' AND recording_id IS NOT NULL
+    ${hasGeniusLocal ? 'UNION SELECT local_track_id AS localTrackId, recording_id AS recordingId FROM sleeve_genius_local_tracks' : ''}
+    ${hasGeniusSeeds ? 'UNION SELECT local_track_id AS localTrackId, recording_id AS recordingId FROM sleeve_genius_library_seeds' : ''}`)
     .all() as Array<{ localTrackId: string; recordingId: string }>;
   const byRecording = new Map<string, ConnectionLibraryTrack[]>();
   const recordingForTrack = new Map<string, string>();
   for (const attachment of attachments) {
     const track = byId.get(attachment.localTrackId);
     if (!track) continue;
-    recordingForTrack.set(track.id, attachment.recordingId);
+    if (!recordingForTrack.has(track.id) || recordingMbids.get(attachment.recordingId)) {
+      recordingForTrack.set(track.id, attachment.recordingId);
+    }
     const group = byRecording.get(attachment.recordingId) ?? []; group.push(track); byRecording.set(attachment.recordingId, group);
   }
   const providerRecordings = new Map<string, Set<string>>();
@@ -171,7 +177,9 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
       const identified = localRecordingId(track);
       const mbid = track.musicbrainzId ?? (identified ? recordingMbids.get(identified) : null);
       const expectedMbid = recordingMbids.get(expectedRecordingId);
-      return (identified && identified !== expectedRecordingId) || (mbid && expectedMbid && mbid !== expectedMbid);
+      return (identified && identified !== expectedRecordingId
+        && !byRecording.get(expectedRecordingId)?.some(candidate => candidate.id === track.id))
+        || (mbid && expectedMbid && mbid !== expectedMbid);
     })) return [];
     const identities = candidates.map((track) => {
       const recordingId = localRecordingId(track);

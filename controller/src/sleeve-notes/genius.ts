@@ -136,11 +136,22 @@ export class GeniusProvider implements SleeveProvider {
     const search = await this.request(`https://api.genius.com/search?${query}`, headers, signal, 'search', entity);
     const id = selectGeniusSearchHit(await search.json(), entity);
     if (!id) return null;
-    // Genius has no published numeric quota. Keep the conservative Phase-0
-    // ceiling: at most one request per second, including this two-call lookup.
+    // Production calls share the worker's paced ledger. Keep a short pause
+    // between search/detail even when this adapter is used independently.
     await this.wait(1_000, signal);
-    const song = await this.request(`https://api.genius.com/songs/${encodeURIComponent(id)}`, headers, signal, 'song', entity);
-    return projectGeniusSong(await song.json());
+    return this.fetchSong(id, entity, signal);
+  }
+
+  /** Known identities need only one budgeted request; never search again implicitly. */
+  async fetchSong(id: string, entity: SleeveEntityInput, signal: AbortSignal): Promise<SleeveProviderResult | null> {
+    if (!/^\d+$/.test(id)) throw new Error('Invalid Genius song ID');
+    const response = await this.request(`https://api.genius.com/songs/${encodeURIComponent(id)}`,
+      { Authorization: `Bearer ${this.token}` }, signal, 'song', entity);
+    const result = projectGeniusSong(await response.json());
+    if (!result || result.identity.providerId !== id
+      || normal(result.identity.title) !== normal(entity.title)
+      || (entity.artist && normal(result.identity.artist) !== normal(entity.artist))) return null;
+    return result;
   }
 
   /** Resolve an encountered recording's album, then read only its plain bio. */
@@ -213,7 +224,7 @@ export class GeniusProvider implements SleeveProvider {
   private async request(url: string, headers: Record<string, string>, signal: AbortSignal, endpoint: 'search' | 'song' | 'album' | 'annotation', entity: SleeveEntityInput): Promise<Response> {
     const started = Date.now();
     try {
-      const response = await this.fetcher(url, { headers, signal });
+      const response = await this.fetcher(url, { headers: { ...headers, 'User-Agent': 'Subwave (Genius metadata research)' }, signal });
       recordProviderCall({ t: new Date().toISOString(), provider: 'genius', endpoint,
         title: entity.title, artist: entity.artist ?? null, ok: response.ok, status: response.status, ms: Date.now() - started });
       if (!response.ok) throw new GeniusRequestError(response.status);

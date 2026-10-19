@@ -1,5 +1,6 @@
 'use client';
 import { useId } from 'react';
+import NotesHelp from './NotesHelp';
 import { Controller } from 'react-hook-form';
 import { useZodForm, fieldAria } from '../../lib/form';
 import { TextField, SwitchField } from '../../lib/form-fields';
@@ -13,7 +14,7 @@ export default function SleeveNotesSegmentSettings({config,personas,busy,onSave}
 }) {
   const uid=useId();
   const form=useZodForm(sleeveNotesSegmentSchema,{...DEFAULT_SLEEVE_NOTES_SEGMENT,...config});
-  return <Card title="Sleeve Notes segment" sub="A longer observation or discussion from saved Story Sparks">
+  return <Card headingLevel={2} title="Sleeve Notes segment" right={<NotesHelp text="A segment is a longer solo story or a discussion with guests. Automatic segments use the normal broadcast slots; the selected host DJs can run them when enough suitable Sparks are available." />} sub="A longer observation or discussion from saved Story Sparks">
     <form className="space-y-4" onSubmit={form.handleSubmit(onSave)}>
       <SwitchField control={form.control} name="enabled" label="Enable Sleeve Notes segment" disabled={busy}
         description="Shares the existing segment slots with DJ skills. It waits for at least two usable Sparks about a track that has aired, its album or artist." />

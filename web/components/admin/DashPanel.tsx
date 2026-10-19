@@ -46,6 +46,7 @@ import { cn } from '../../lib/cn';
 import { RequestsCard } from './dash/RequestsCard';
 import { TakeoverCard } from './dash/TakeoverCard';
 import QueueHeldBadge from './dash/QueueHeldBadge';
+import DashSleeveNotes from './dash/DashSleeveNotes';
 import { BoothTurnText, SegmentButton, SortableTh, ToggleRow, classTone } from './dash/bits';
 import type {
   ActResponse,
@@ -402,8 +403,10 @@ export default function DashPanel() {
 
       {err && <ErrorState error={err} />}
 
-      <div className="stack-mobile grid grid-cols-[1.4fr_1fr] gap-4">
-        <div className="grid grid-rows-[auto_1fr] gap-4">
+      {/* Shared rows keep Queue + Sleeve Notes aligned with Manual voice DJ. */}
+      <div className="stack-mobile grid grid-cols-[1.4fr_1fr] gap-4 min-[641px]:grid-rows-[auto_1fr]">
+        <div className="grid min-h-0 gap-4 min-[641px]:row-span-2 min-[641px]:grid-rows-subgrid">
+          <div className="flex flex-col justify-between gap-4">
           <Card
             title="Queue"
             sub={`${upcoming.length} upcoming`}
@@ -535,10 +538,13 @@ export default function DashPanel() {
             </Queue>
           </Card>
 
+          <DashSleeveNotes adminFetch={adminFetch} trackId={np?.subsonic_id??null} />
+          </div>
+
           <Card
             title="Booth log"
             sub={`${booth.length} session turns${tz ? ` · times in ${tz}` : ''}`}
-            className="flex min-h-0 flex-col"
+            className="flex min-h-0 flex-1 flex-col"
             bodyClass="flex flex-1 flex-col min-h-0"
           >
             {booth.length === 0 ? (
@@ -586,7 +592,7 @@ export default function DashPanel() {
           </Card>
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-4 min-[641px]:row-span-2 min-[641px]:grid-rows-subgrid">
           <Card title="Manual voice DJ" sub="speak now">
             <div className="mb-2.5 flex items-center gap-1.5">
               <div className="min-w-0 flex-1">
@@ -654,6 +660,7 @@ export default function DashPanel() {
             </PromptInput>
           </Card>
 
+          <div className="grid content-start gap-4">
           <Card title="DJ segments" sub="fire on demand" bodyClass="loose">
             <div className="grid auto-rows-fr grid-cols-[repeat(auto-fit,minmax(90px,1fr))] gap-2">
               {[...SEGMENTS, ...((status?.activeShow?.guests?.length ?? 0) > 0 ? [BANTER_SEGMENT] : [])].map(s => {
@@ -716,6 +723,7 @@ export default function DashPanel() {
               </div>
             </div>
           </Card>
+          </div>
         </div>
       </div>
 

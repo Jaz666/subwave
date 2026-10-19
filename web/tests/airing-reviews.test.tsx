@@ -79,3 +79,22 @@ test('proposed corrections have editable wording and evidence; saved and read-on
   const saved=render();assert.match(saved,/Saved Spark correction/);assert.match(saved,/The Libertines formed in London in 1997/);assert.doesNotMatch(saved,/<textarea/);
   client.clear();
 });
+
+
+test('Stories shows the persisted review after the card is mounted again',()=>{
+  const client=new QueryClient();
+  const claim={id:'fact',artist:'The Libertines',recording:null,provider:'wikipedia',category:'artist-stories',topic:'formation',
+    wording:'The band formed in London.',shortWording:'',sourceUrl:'https://example.test',evidence:'The band formed in London.',enabled:1,
+    review:{id:'existing-review',state:'ready'}};
+  const html=renderToStaticMarkup(<QueryClientProvider client={client}><ClaimCard claim={claim} adminFetch={fetcher}/></QueryClientProvider>);
+  assert.match(html,/Flagged for review/);assert.match(html,/Ready for your decision/);
+  assert.match(html,/disabled=""/);assert.match(html,/tab=moderation/);client.clear();
+});
+
+test('Heard on air keeps its default detected-use filter until the operator changes it',()=>{
+  const client=new QueryClient();
+  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','detected'],{items:[],total:0,readOnly:false,feedbackTotals:{story:[],delivery:[]}});
+  const html=renderToStaticMarkup(<QueryClientProvider client={client}><HeardOnAir adminFetch={fetcher}/></QueryClientProvider>);
+  assert.doesNotMatch(html,/Reset filters/);
+  assert.match(html,/<option value="detected" selected="">Use detected/);client.clear();
+});
