@@ -24,3 +24,12 @@ test('a substitution intro cannot claim the named song or artist is absent', asy
   assert.match(prompt, /not an exact fulfilment/);
   assert.match(prompt, /never promise the named song or claim it is absent/);
 });
+
+test('worked-example acks read as a found request, never a holding line', async () => {
+  // The listener sees a matched request's ack after the library search, so a
+  // copied "let me look" line would answer a request that is already queued.
+  const { requestMatcherSystem } = await import('../src/llm/internal/prompts/request.js');
+  const acks = [...requestMatcherSystem(null).matchAll(/\{"kind":"track"[^\n]*?"ack":"([^"]*)"/g)].map(m => m[1]);
+  assert.ok(acks.length >= 10, `found ${acks.length} track examples`);
+  for (const ack of acks) assert.doesNotMatch(ack, /\blook(?:ing)? for\b|\blet me (?:check|see)\b|\bsearching\b/i, ack);
+});
