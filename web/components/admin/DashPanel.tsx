@@ -47,6 +47,8 @@ import { RequestsCard } from './dash/RequestsCard';
 import { TakeoverCard } from './dash/TakeoverCard';
 import QueueHeldBadge from './dash/QueueHeldBadge';
 import DashSleeveNotes from './dash/DashSleeveNotes';
+import {useSettingsQuery} from './settings/queries';
+import type {SettingsData} from './settings/shared';
 import { deadlineFallbacks, djLatencyMs, failedCallsNote } from './dash/latency-gauge';
 import { BoothTurnText, SegmentButton, SortableTh, ToggleRow, classTone } from './dash/bits';
 import type {
@@ -330,6 +332,8 @@ export default function DashPanel() {
     }
   };
 
+  const featureSettings=useSettingsQuery<SettingsData>({adminFetch,enabled:ready});
+  const sleeveEnabled=featureSettings.data?.values?.djBehaviour?.extendedSleeveNotes===true;
   const np = status?.nowPlaying;
   const ctx = status?.context;
   // On-air timestamps render in the station zone so they match what the DJ
@@ -404,9 +408,9 @@ export default function DashPanel() {
 
       {err && <ErrorState error={err} />}
 
-      {/* Shared rows keep Queue + Sleeve Notes aligned with Manual voice DJ. */}
-      <div className="stack-mobile grid grid-cols-[1.4fr_1fr] gap-4 min-[641px]:grid-rows-[auto_1fr]">
-        <div className="grid min-h-0 gap-4 min-[641px]:row-span-2 min-[641px]:grid-rows-subgrid">
+      {/* Share rows only while Sleeve Notes is visible; otherwise Booth log fills below Queue. */}
+      <div data-dash-layout className="stack-mobile grid grid-cols-[1.4fr_1fr] gap-4">
+        <div data-dash-column className="grid min-h-0 grid-rows-[auto_1fr] gap-4">
           <div className="flex flex-col justify-between gap-4">
           <Card
             title="Queue"
@@ -539,7 +543,7 @@ export default function DashPanel() {
             </Queue>
           </Card>
 
-          <DashSleeveNotes adminFetch={adminFetch} trackId={np?.subsonic_id??null} />
+          {sleeveEnabled&&<DashSleeveNotes adminFetch={adminFetch} trackId={np?.subsonic_id??null} />}
           </div>
 
           <Card
@@ -593,7 +597,7 @@ export default function DashPanel() {
           </Card>
         </div>
 
-        <div className="grid gap-4 min-[641px]:row-span-2 min-[641px]:grid-rows-subgrid">
+        <div data-dash-column className="grid gap-4">
           <Card title="Manual voice DJ" sub="speak now">
             <div className="mb-2.5 flex items-center gap-1.5">
               <div className="min-w-0 flex-1">
@@ -677,7 +681,7 @@ export default function DashPanel() {
                   />
                 );
               })}
-              <SegmentButton
+              {sleeveEnabled&&<SegmentButton
                 label="Sleeve Notes"
                 icon={BookOpen}
                 busyHere={busy === 'seg:sleeve-notes'}
@@ -685,7 +689,7 @@ export default function DashPanel() {
                 anyBusy={!!busy || !status?.nowPlaying?.subsonic_id}
                 title="Run Sleeve Notes for the on-air track, bypassing automatic enablement, DJ assignments and cooldowns."
                 onFire={() => act('seg:sleeve-notes', '/sleeve-notes/segment/run', null, 'Sleeve Notes')}
-              />
+              />}
             </div>
           </Card>
 

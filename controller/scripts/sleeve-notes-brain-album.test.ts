@@ -146,13 +146,13 @@ test('explicit fallback handoff restarts completed work but preserves an active 
 const app=express();app.use(express.json(),router);const server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));
 const address=server.address();if(!address||typeof address==='string')throw new Error('Missing address');
 const base=`http://127.0.0.1:${address.port}/sleeve-notes/connections`,auth=`Basic ${Buffer.from('album-test:album-password').toString('base64')}`;
-test('album API requires admin access, rejects disabled writes and reads an older cache without migration',async()=>{
+test('album API requires admin access, blocks disabled access and preserves the older internal cache',async()=>{
  const post=(headers:Record<string,string>={Authorization:auth})=>fetch(`${base}/research`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({entityType:'release-group',entityId:'new-group'})});
  assert.equal((await post({})).status,401);assert.equal((await post()).status,200);
  await settings.update({djBehaviour:{extendedSleeveNotes:false}});assert.equal((await post()).status,409);
  open().pragma('user_version=48');close();const before=readFileSync(DB_PATH);
  const response=await fetch(`${base}/album-coverage?entityType=release-group&entityId=new-group`,{headers:{Authorization:auth}});
- assert.equal(response.status,200);assert.deepEqual(readFileSync(DB_PATH),before);
+ assert.equal(response.status,409);assert.deepEqual(readFileSync(DB_PATH),before);
  assert.equal(withCachedRead(()=>open().pragma('user_version',{simple:true})),48);
 });
 test.after(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));close();rmSync(root,{recursive:true,force:true});});

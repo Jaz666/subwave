@@ -1,8 +1,8 @@
 import {loadExtendedSleeveNoteCandidatesInDatabase} from '../sleeve-notes/link-selection.js';
 import {getPlaybackMeta} from '../music/library.js';
 import { researchAllowed } from '../broadcast/dj-budget.js';
-// Phase 1 status surface. It deliberately does not open the Sleeve Notes
-// database. Explicit cached browsing while disabled uses a read-only handle.
+// Feature routes are admin-only and require the master switch. Status and
+// Dash gating remain available while off; internal cached reads stay read-only.
 import express from 'express';
 import { getStationTimezone } from '../time.js';
 import { brainAlbumCoverageInDatabase, queueBrainAlbumInDatabase, queueBrainLibraryAlbumInDatabase, type BrainAlbumType } from '../sleeve-notes/brain-album-research.js';
@@ -60,6 +60,12 @@ import { airingReviewDecisionSchema } from '../schemas/sleeve-notes-feedback.js'
 import { airingReviewKey, flagAiredUse, listAiringReviews, decideAiringReview, reviewReadyCount, flagStoredClaim, storedClaimReviews } from '../sleeve-notes/airing-review.js';
 
 export const router = express.Router();
+
+router.use('/sleeve-notes', requireAdmin, async (req,res,next)=>{
+  await settings.load();
+  if(['/status','/dash-stories'].includes(req.path)||settings.get().djBehaviour.extendedSleeveNotes===true)return next();
+  return res.status(409).json({error:'Enable Extended Sleeve Notes in Settings → DJ Behaviour to use this feature'});
+});
 
 router.get('/sleeve-notes/heard-on-air', requireAdmin, async (req, res) => {
   await settings.load();

@@ -397,10 +397,22 @@ test('operator preparation bypasses automatic enablement, assignment, segment an
  db.close();
 });
 
-test('an operator script can publish with automatic settings off; overlapping runs stand down',async()=>{
+test('the master switch blocks manual segment preparation and generation without spending tokens',async()=>{
+ const saved=settings.get();
+ const brief=prepareSleeveNotesSegmentInDatabase(open(),track,config,host,[],Date.now(),true)!;
+ store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:false}});
+ try {
+  assert.equal((await import('../src/sleeve-notes/segment.js')).prepareSleeveNotesSegment(track,true),null);
+  let called=false;
+  assert.equal(await runSleeveNotesSegment(brief,async()=>true,async()=>{called=true;return {};}),false);
+  assert.equal(called,false);
+ }finally{store.setCache(saved);}
+});
+
+test('an operator script can publish with automatic segment settings off; overlapping runs stand down',async()=>{
  const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
  const saved=settings.get();
- store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:false},
+ store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:true},
   sleeveNotes:{...saved.sleeveNotes,segment:{...config,enabled:false,personaIds:[]}}});
  try {
  const brief=prepareSleeveNotesSegmentInDatabase(db,track,settings.get().sleeveNotes.segment,host,[],Date.now(),true)!;
@@ -417,13 +429,13 @@ test('an operator script can publish with automatic settings off; overlapping ru
  } finally {store.setCache(saved);}
 });
 
-test('Run Now route is admin-only, reads the live track, bypasses switches and records the ordinary air path',async t=>{
+test('Run Now route is admin-only, reads the live track, bypasses automatic segment switches and records the ordinary air path',async t=>{
  const express=(await import('express')).default;
  const {router}=await import('../src/routes/sleeve-notes.js');
  const {queue}=await import('../src/broadcast/queue.js');
  const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
  const saved=settings.get();
- store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:false},
+ store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:true},
   sleeveNotes:{...saved.sleeveNotes,segment:{...config,enabled:false,cohosts:false,personaIds:[]}},
   llm:{...saved.llm,provider:'openai',model:'manual-segment-test',fallback:{...saved.llm.fallback,enabled:false}}});
  const {primaryLeg}=await import('../src/llm/internal/provider/legs.js');
@@ -456,6 +468,9 @@ test('Run Now route is admin-only, reads the live track, bypasses switches and r
  response=await fetch(url,{method:'POST',headers});body=await response.json() as typeof body;
  assert.equal(body.queued,false);assert.equal(body.reason,'Nothing worth adding.');assert.equal(announce.mock.callCount(),1);
  fail=true;response=await fetch(url,{method:'POST',headers});assert.equal(response.status,500);
+ assert.equal(announce.mock.callCount(),1);
+ store.setCache({...settings.get(),djBehaviour:{...settings.get().djBehaviour,extendedSleeveNotes:false}});
+ response=await fetch(url,{method:'POST',headers});assert.equal(response.status,409);
  assert.equal(announce.mock.callCount(),1);
  } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));store.setCache(saved);}
 });
@@ -656,3 +671,21 @@ test('timing targets enter the prompt and slow writing stands down before reserv
 });
 
 test.after(()=>{close();rmSync(root,{recursive:true,force:true});});
+
+test('disable during generation cancels late output without reservations or publication',async()=>{
+ const saved=settings.get();const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
+ store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:true}});
+ const brief=prepareSleeveNotesSegmentInDatabase(db,track,config,host,[],Date.now(),true)!;
+ let release:()=>void=()=>{};let entered:()=>void=()=>{};let signal:AbortSignal|undefined;let published=false;
+ const started=new Promise<void>(resolve=>{entered=resolve;});
+ try {
+  const running=runSleeveNotesSegment(brief,async()=>{published=true;return true;},async options=>{
+   signal=options.signal;entered();await new Promise<void>(resolve=>{release=resolve;});
+   return {air:true,reason:'A source-backed story.',lines:[{speaker:host.id,text:first}]};
+  });
+  await started;store.setCache({...settings.get(),djBehaviour:{...settings.get().djBehaviour,extendedSleeveNotes:false}});
+  assert.equal(signal?.aborted,true);store.setCache({...settings.get(),djBehaviour:{...settings.get().djBehaviour,extendedSleeveNotes:true}});
+  release();assert.equal(await running,false);
+  assert.equal(published,false);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as {n:number}).n,0);
+ }finally{release();store.setCache(saved);}
+});

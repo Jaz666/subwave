@@ -37,6 +37,42 @@ export function connectionNameKey(value: unknown): string {
     .toLocaleLowerCase().replace(/\s+/gu, ' ').trim() : '';
 }
 
+/** Artist spelling only. Never use this fold for recording titles. */
+export function connectionArtistVariantKey(value: unknown): string {
+  return connectionNameKey(value).replace(/[.\s\p{Pd}]/gu, '');
+}
+
+export function connectionArtistNames(db: Database.Database) {
+  const local = new Map<string, Map<string, string>>();
+  const identified = new Map<string, Map<string, string>>();
+  for (const row of db.prepare('SELECT local_artist_id AS id,name FROM sleeve_connection_library_artists').all() as {id:string;name:string}[]) {
+    const variant=connectionArtistVariantKey(row.name);
+    if(!variant)continue;
+    const group=local.get(variant)??new Map<string,string>();
+    group.set(row.id,row.name);local.set(variant,group);
+  }
+  for (const row of db.prepare('SELECT name,musicbrainz_id AS id FROM sleeve_artists WHERE musicbrainz_id IS NOT NULL').all() as {name:string;id:string}[]) {
+    const variant=connectionArtistVariantKey(row.name);
+    if(!variant)continue;
+    const group=identified.get(variant)??new Map<string,string>();
+    group.set(row.id,row.name);identified.set(variant,group);
+  }
+  return {
+    key(value:unknown) {
+      const variant=connectionArtistVariantKey(value);
+      // Multiple possible identities keep strict spelling; no alias is inferred.
+      return variant&&(local.get(variant)?.size??0)<=1&&(identified.get(variant)?.size??0)<=1
+        ? variant : connectionNameKey(value);
+    },
+    libraryName(value:unknown):string|null {
+      const group=local.get(connectionArtistVariantKey(value));
+      if(group?.size!==1)return null;
+      return [...group.values()][0];
+    },
+
+  };
+}
+
 export function cacheConnectionLibraryTracks(
   db: Database.Database, tracks: readonly ConnectionLibraryTrack[], generation: string,
 ): void {
@@ -94,7 +130,8 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
   const sleeveRecordingForMbid = new Map([...recordingMbids].filter((entry): entry is [string, string] => !!entry[1])
     .map(([id, mbid]) => [mbid, id]));
   const byName = new Map<string, ConnectionLibraryTrack[]>();
-  const key = (title: unknown, artist: unknown) => JSON.stringify([connectionNameKey(title), connectionNameKey(artist)]);
+  const artistNames=connectionArtistNames(db);
+  const key = (title: unknown, artist: unknown) => JSON.stringify([connectionNameKey(title), artistNames.key(artist)]);
   for (const track of tracks) {
     const identity = key(track.title, track.artist);
     const group = byName.get(identity) ?? []; group.push(track); byName.set(identity, group);
@@ -219,7 +256,9 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
       const identified = known?.size === 1 ? recordingTracks([...known][0]) : [];
       const candidates = identified.length ? identified : edge.targetArtist
         ? byName.get(key(edge.targetTitle, edge.targetArtist)) ?? [] : [];
-      edge.tracks = resolve(candidates, identified.length ? 'genius-identity' : 'exact-title-and-artist', known?.size === 1 ? [...known][0] : undefined)
+      const basis=identified.length?'genius-identity':candidates.some(track=>connectionNameKey(track.artist)!==connectionNameKey(edge.targetArtist))
+        ?'exact-title-and-artist-variant':'exact-title-and-artist';
+      edge.tracks = resolve(candidates, basis, known?.size === 1 ? [...known][0] : undefined)
         .filter((track) => !sourceTrackIds.has(track.id));
       edge.matchState = edge.tracks.length ? 'matched' : candidates.length > 1 ? 'ambiguous' : 'unresolved';
     } else {

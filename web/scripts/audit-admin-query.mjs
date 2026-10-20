@@ -187,6 +187,10 @@ const allowed = new Map([
       path: /^\/debug\/llm-calls\/export\?format=\$\{\}$/,
     }],
   ])],
+  ['connections/ExternalDiscoveries.tsx', new Map([
+    // Explicit recomputation command; the retained result is read by the query.
+    ['explicit-discoveries-refresh', { callee: 'adminJson', method: 'GET', path: /^\/sleeve-notes\/connections\/discoveries\?refresh=1$/ }],
+  ])],
   ['connect/ConnectPanel.tsx', new Map([
     ['openapi-download', { callee: 'adminResponse', method: 'GET', path: /^catalog\.openapiPath$/ }],
   ])],

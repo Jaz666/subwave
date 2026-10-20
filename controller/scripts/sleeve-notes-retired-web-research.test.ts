@@ -56,7 +56,10 @@ test('legacy web sources cannot qualify for Sparks even if a saved claim is enab
   db.close();
 });
 
-test('removed web research endpoints accept no reads or new requests', async () => {
+test('removed web research endpoints accept no reads or new requests while the feature is enabled', async () => {
+  const settings = await import('../src/settings.js');
+  await settings.load();
+  await settings.update({djBehaviour:{extendedSleeveNotes:true}});
   const app = express(); app.use(express.json(), router);
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));

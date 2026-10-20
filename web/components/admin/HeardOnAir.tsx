@@ -28,9 +28,9 @@ const DELIVERY_LABELS: Record<string, string> = { worked: 'Worked well', forced:
 
 export default function HeardOnAir({ adminFetch, timezone }: { adminFetch: AdminFetch; timezone?: string }) {
   const [offset, setOffset] = useState(0);
-  const [search, setSearch] = useState(''), [kind, setKind] = useState(''), [period, setPeriod] = useState(''), [usage, setUsage] = useState('detected');
+  const [search, setSearch] = useState(''), [kind, setKind] = useState(''), [period, setPeriod] = useState(''), [usage, setUsage] = useState('sleeve-notes');
   const [debouncedSearch] = useDebounceValue(search,250);
-  const filtered = !!(search.trim() || kind || period || usage !== 'detected');
+  const filtered = !!(search.trim() || kind || period || usage !== 'sleeve-notes');
   const shelf = useAdminQuery<Shelf>({
     key: ['sleeve-notes', 'heard-on-air', offset, debouncedSearch, kind, period, usage], adminFetch,
     request: (fetcher, signal) => adminJson(fetcher, `/sleeve-notes/heard-on-air?${new URLSearchParams({offset: String(offset), search:debouncedSearch, kind, period, usage})}`, undefined, signal),
@@ -38,7 +38,7 @@ export default function HeardOnAir({ adminFetch, timezone }: { adminFetch: Admin
   });
   const groups=groupAiredStories(shelf.data?.items??[]);
   return <div className="space-y-4">
-    <Card headingLevel={2} title="Heard on air" right={<NotesHelp text="Only confirmed broadcasts appear here. Spark use is a wording match, so a DJ paraphrase may not be detected. Use All aired exchanges to see those too." />} sub="Confirmed DJ links and Sleeve Notes segments with offered Sparks">
+    <Card headingLevel={2} title="Heard on air" right={<NotesHelp text="Shows every confirmed Sleeve Notes segment and links with detected Spark use by default. Spark-use detection can miss paraphrases; All aired exchanges includes those links too." />} sub="Confirmed DJ links and Sleeve Notes segments with offered Sparks">
       <p className="text-[13px] text-muted">Revisit the words spoken and their offered Sparks. Flag an exchange for a background review; the model investigates and proposes a resolution for you to approve.</p>
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="min-w-0 flex-1 basis-64 text-xs">Search
@@ -52,10 +52,10 @@ export default function HeardOnAir({ adminFetch, timezone }: { adminFetch: Admin
             <option value="">All exchanges</option><option value="link">DJ links</option><option value="segment">Sleeve Notes segments</option>
           </select>
         </label>
-        <label className="text-xs">Spark usage
+        <label className="text-xs">Show
           <select value={usage} onChange={event=>{setUsage(event.target.value);setOffset(0);}}
             className="mt-1 block max-w-full border border-border bg-field px-3 py-[9px] text-[13px] text-ink">
-            <option value="detected">Use detected</option><option value="not-detected">Use not detected</option><option value="">All aired exchanges</option>
+            <option value="sleeve-notes">Segments and used Sparks</option><option value="detected">Use detected</option><option value="not-detected">Use not detected</option><option value="">All aired exchanges</option>
           </select>
         </label>
         <label className="text-xs">Aired
@@ -64,13 +64,13 @@ export default function HeardOnAir({ adminFetch, timezone }: { adminFetch: Admin
             <option value="">All time</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option>
           </select>
         </label>
-        {filtered&&<Btn sm onClick={()=>{setSearch('');setKind('');setPeriod('');setUsage('detected');setOffset(0);}}>Reset filters</Btn>}
+        {filtered&&<Btn sm onClick={()=>{setSearch('');setKind('');setPeriod('');setUsage('sleeve-notes');setOffset(0);}}>Reset filters</Btn>}
       </div>
-      <p className="mt-2 text-xs text-muted">Spark-use detection can miss paraphrases. Choose All aired exchanges to include them.</p>
+      <p className="mt-2 text-xs text-muted">All confirmed Sleeve Notes segments appear by default. Choose All aired exchanges to also include links without detected Spark use.</p>
       {shelf.data?.readOnly && <p className="mt-2 text-[13px] text-muted">Saved airings remain available. Enable Sleeve Notes in Settings to flag speech for review.</p>}
       {shelf.error && <p role="alert" className="mt-3 text-sm">{shelf.error instanceof Error ? shelf.error.message : 'Could not load aired stories'}</p>}
       {shelf.isLoading && <p role="status" className="mt-3 text-sm">Loading aired stories…</p>}
-      {shelf.data && shelf.data.total === 0 && <p className="mt-3 text-sm">{filtered?'No aired exchanges match these filters. Try a broader search or clear the filters.':'No confirmed aired links with Sparks yet. Drafts and unconfirmed broadcasts do not appear here.'}</p>}
+      {shelf.data && shelf.data.total === 0 && <p className="mt-3 text-sm">{filtered?'No aired exchanges match these filters. Try a broader search or clear the filters.':'No confirmed Sleeve Notes segments or links with detected Spark use yet. Drafts and unconfirmed broadcasts do not appear here.'}</p>}
       {shelf.data && <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
         <span role="status">{shelf.isFetching||search!==debouncedSearch?'Updating airings…':(shelf.data.conversationTotal??shelf.data.total)?`${offset+1}–${Math.min(offset+20,shelf.data.conversationTotal??shelf.data.total)} of ${shelf.data.conversationTotal??shelf.data.total} aired exchanges`:'0 aired exchanges'}</span>
         <Btn sm onClick={() => setOffset(Math.max(0, offset - 20))} disabled={offset === 0}>Previous</Btn>

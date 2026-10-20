@@ -6,6 +6,7 @@ import {BookOpen} from 'lucide-react';
 import NotesRecentlyAired from '../components/admin/NotesRecentlyAired';
 import NotesLiveSummary from '../components/admin/NotesLiveSummary';
 import {SectionTabs} from '../components/admin/SectionTabs';
+import ReviewCount from '../components/admin/ReviewCount';
 import {Card} from '../components/admin/ui';
 import type {ComponentProps} from 'react';
 import {ResearchActivity,ResearchDetailsView} from '../components/admin/NotesPanel';
@@ -16,7 +17,7 @@ test('Recently aired shows the last two exchanges once with full confirmed speak
   const client=new QueryClient();
   const item={id:'one',segmentId:'segment',artist:'Example Band',title:'Recent track',airedAt:'2026-10-17T12:00:00Z',spokenText:'An excerpt.',
     conversation:{id:'segment',lines:[{speakerName:'Host',text:'A confirmed introduction.'},{speakerName:'Guest',text:'A confirmed reply.'}]}};
-  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','detected'],{items:[item,{...item,id:'two'},
+  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','sleeve-notes'],{items:[item,{...item,id:'two'},
     {...item,id:'three',segmentId:null,title:'Previous track',conversation:null,review:{id:'review',state:'queued'}},
     {...item,id:'four',segmentId:null,title:'Older track',conversation:null}]});
   const html=renderToStaticMarkup(<QueryClientProvider client={client}><NotesRecentlyAired adminFetch={fetcher}/></QueryClientProvider>);
@@ -41,11 +42,20 @@ test('the Overview uses one responsive grid for all four boxes',()=>{
   assert.match(html,/Recently aired/);assert.match(html,/Research activity/);client.clear();
 });
 
-test('a ready review count is highlighted and has an accessible explanation',()=>{
-  const html=renderToStaticMarkup(<SectionTabs tabs={[{id:'review',label:'Review',icon:BookOpen,count:2,attention:true}]}
-    value="overview" onChange={()=>{}} label="Sleeve Notes sections"/>);
-  assert.match(html,/A review is ready/);assert.match(html,/02/);assert.match(html,/ready for your input/);
-  assert.match(html,/bg-ink text-bg/);
+test('a ready review count uses the theme accent whether its tab is active or inactive',()=>{
+  for(const value of ['overview','review']) {
+    const html=renderToStaticMarkup(<SectionTabs tabs={[{id:'review',label:'Review',icon:BookOpen,count:2,attention:true}]}
+      value={value} onChange={()=>{}} label="Sleeve Notes sections"/>);
+    assert.match(html,/A review is ready/);assert.match(html,/02/);assert.match(html,/ready for your input/);
+    assert.match(html,/border-primary bg-primary/);assert.match(html,/text-primary-foreground/);
+  }
+});
+
+test('the shared sidebar and tab badge hides empty counts and labels positive counts',()=>{
+  assert.equal(renderToStaticMarkup(<ReviewCount count={0}/>),'');
+  const html=renderToStaticMarkup(<ReviewCount count={3}/>);
+  assert.match(html,/03/);assert.match(html,/ready for your input/);
+  assert.match(html,/bg-primary/);assert.match(html,/text-primary-foreground/);
 });
 
 
@@ -74,7 +84,7 @@ test('Genius overview keeps minute usage and waiting reason while daily usage li
     subjectTitle:'Track',subjectArtist:'Artist'}],musicBrainzSeries:[],providerSummary:[]} as unknown as ComponentProps<typeof ResearchActivity>['data'];
   const status={enabled:true,timezone:'Europe/London'} as ComponentProps<typeof ResearchActivity>['status'];
   const render=()=>renderToStaticMarkup(<ResearchActivity data={data} status={status}/>);
-  let html=render();assert.match(html,/Genius: 3 \/ 3 requests this minute/);assert.match(html,/Waiting for request allowance/);
+  const html=render();assert.match(html,/Genius: 3 \/ 3 requests this minute/);assert.match(html,/Waiting for request allowance/);
   assert.doesNotMatch(html,/24 hours|598|Oldest ready|Sample exploration/);
   queue.worker.quiet=false;assert.match(render(),/Yielding to broadcast work/);
   queue.worker.quiet=true;queue.waitReason='backoff';assert.match(render(),/Backing off after an error/);

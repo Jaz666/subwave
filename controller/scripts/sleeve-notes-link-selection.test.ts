@@ -114,3 +114,14 @@ test('rotation keeps pending reservations and confirmed-use entity cooldowns', (
   assert.equal(selectMostSpecificEligibleClaim([first, second], [pending], now), null);
   assert.equal(selectMostSpecificEligibleClaim([first, second], [{ ...pending, detectionStatus: 'detected', airedAt: pending.suppliedAt }], now), null);
 });
+
+test('a series has a six-hour station-wide cooldown only after confirmed Spark use',()=>{
+ const note=candidate({provider:'musicbrainz-series',category:'recognition',sourceUrl:'https://musicbrainz.org/series/list-a'});
+ const aired=use({seriesKey:note.sourceUrl,entityId:'another-recording'});
+ assert.equal(selectMostSpecificEligibleClaim([note],[aired],now),null);
+ assert.equal(selectMostSpecificEligibleClaim([note],[{...aired,seriesKey:'https://musicbrainz.org/series/list-b'}],now)?.claimId,note.claimId);
+ assert.equal(selectMostSpecificEligibleClaim([note],[{...aired,airedAt:null}],now)?.claimId,note.claimId);
+ assert.equal(selectMostSpecificEligibleClaim([note],[{...aired,detectionStatus:'not-detected'}],now)?.claimId,note.claimId);
+ assert.equal(selectMostSpecificEligibleClaim([note],[{...aired,airedAt:new Date(now-6*60*60*1000).toISOString()}],now)?.claimId,note.claimId);
+ assert.equal(selectMostSpecificEligibleClaim([candidate()],[aired],now)?.claimId,'claim-1');
+});

@@ -363,7 +363,7 @@ app.listen(config.server.port, async (err?: Error) => {
   // backlog stable until a listener returns.
   const sleeveNotesQuietGate = {
     isQuiet: () => researchRunAllowed({
-      researchBudgetAllowed: researchAllowed() && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true,
+      researchBudgetAllowed: settings.get().djBehaviour.extendedSleeveNotes === true && researchAllowed() && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true,
       playbackCriticalBusy: queue.playbackCriticalBusy(),
       agentWorkActive: interactiveAgentWorkActive(),
       djCallsAllowed: djCallsAllowed(),
@@ -381,7 +381,7 @@ app.listen(config.server.port, async (err?: Error) => {
   startResearchWorker(sleeveNotesQuietGate);
   startGeniusResearchWorker(sleeveNotesQuietGate);
   startConnectionLibraryWorker(sleeveNotesQuietGate);
-  startBrainArtistPopulation();
+  startBrainArtistPopulation(sleeveNotesQuietGate);
   jingles
     .ensureDefaultIdent()
     .catch(err => console.error('[jingles] ident generation failed:', err.message));

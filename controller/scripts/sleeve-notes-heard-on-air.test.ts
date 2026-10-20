@@ -91,6 +91,11 @@ test('filters search the full history before paging and keep matching segments c
     assert.equal(page.conversationTotal, 1); assert.equal(page.total, 2);
     assert.equal(heardOnAir(20, 0, true, {kind:'segment', usage:'detected'}).total, 2, 'one detected Spark retains the full segment');
     assert.equal(heardOnAir(20, 0, true, {kind:'segment', usage:'not-detected'}).total, 0, 'a segment with detected use is not an unused exchange');
+    db.prepare("UPDATE sleeve_claim_uses SET speech_signal=? WHERE segment_id='filter-segment'").run(JSON.stringify({version:2,status:'not-detected'}));
+    assert.equal(heardOnAir(20,0,true,{kind:'segment',usage:'detected'}).total,0);
+    assert.equal(heardOnAir(20,0,true,{kind:'segment',usage:'sleeve-notes'}).total,2,'confirmed segments do not need detected wording');
+    assert.ok(!heardOnAir(20,0,true,{usage:'sleeve-notes'}).items.some(item=>item.id==='passed'),'ordinary greetings remain excluded');
+
     assert.deepEqual(new Set(page.items.map(item=>item.id)), new Set(['segment-a','segment-b']));
     assert.equal(heardOnAir(1, 1, true, {search: 'lighthouse'}).items.length, 0);
     assert.equal(heardOnAir(20, 0, true, {search: 'unexpected setting'}).total, 2, 'search includes guest turns without Spark attribution');
@@ -165,10 +170,10 @@ test('historical feedback does not reopen a claim explicitly removed by the oper
   assert.equal(heardOnAir().total, 4);
 });
 
-test('disabled reads keep history without migrating a v45 cache, and reject feedback writes', async () => {
+test('disabled API blocks browsing and writes while retained v45 cache remains readable without migration', async () => {
   configure(false);
   assert.equal((await post('aired', { story: 'good', delivery: null, note: '' })).status, 409);
-  const response = await fetch(base); assert.equal((await response.json() as { readOnly: boolean }).readOnly, true);
+  const response = await fetch(base); assert.equal(response.status,409);
   const path = join(root, 'old-cache.db');
   await db.backup(path);
   const snapshot = new Database(path);

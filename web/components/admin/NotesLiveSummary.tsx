@@ -57,7 +57,7 @@ function Summary({ title, item, loading, unavailable, enabled, action }: { title
     : spark?.passReason ? 'DJ passed on this Spark'
       : spark?.qualityConcern ? 'DJ flagged this Spark'
         : spark?.renderedAt ? 'DJ speech prepared' : item?.djLine ? 'DJ line drafted' : 'Link not prepared yet';
-  return <Card headingLevel={2} title={title} sub={unavailable && item ? 'Last received summary · refresh unavailable' : undefined} right={action}>
+  return <Card headingLevel={2} title={title} headClass="min-h-[59px] sm:min-h-[53px]" sub={unavailable && item ? 'Last received summary · refresh unavailable' : undefined} right={action}>
     {loading && !item ? <p className="text-[13px] text-muted">Reading the station…</p>
       : !item ? <p className="text-[13px] text-muted">{unavailable ? 'Live summary unavailable.' : title === 'On air' ? 'No track is currently reported on air.' : 'No track is queued yet.'}</p>
         : <div className="space-y-3">

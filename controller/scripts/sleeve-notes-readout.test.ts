@@ -25,7 +25,7 @@ test('the research readout exposes claims with their evidence rather than raw pr
 
   const readout = researchStoreReadoutInDatabase(db);
   assert.deepEqual(readout.artists, [{ name: 'Example Band', musicbrainzId: 'mb-artist', sources: 1, claims: 1 }]);
-  assert.deepEqual(readout.claims, [{ id: 'claim', entityType: 'artist', entityId: 'artist', recording: null, provider: 'wikipedia', shortWording: '', artist: 'Example Band', category: 'artist-stories', topic: 'origin',
+  assert.deepEqual(readout.claims, [{ id: 'claim', enabled: 1, operatorState: 'auto', entityType: 'artist', entityId: 'artist', recording: null, provider: 'wikipedia', shortWording: '', artist: 'Example Band', category: 'artist-stories', topic: 'origin',
     wording: 'Example Band formed in Liverpool.', evidence: 'Example Band formed in Liverpool.', sourceUrl: 'https://example.test/wiki' }]);
   assert.deepEqual(readout.jobs, [{ provider: 'wikipedia', subjectType: 'artist', capability: 'biography',
     state: 'retry-at', priority: 300, attempts: 2, runAfter: '2026-09-14T15:30:00.000Z', updatedAt: now }]);

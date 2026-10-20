@@ -14,6 +14,7 @@ import { libraryConnectionsInDatabase, type LibraryConnection } from './library-
 const EXACT_CLAIM_COOLDOWN_MS = 21 * 24 * 60 * 60 * 1000;
 const TOPIC_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
 const RELATIONSHIP_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
+const SERIES_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const PENDING_RESERVATION_MS = 2 * 60 * 60 * 1000;
 // A measured vocal entry below this leaves no useful room for an Extended
 // Sleeve Note. Skip the lookup entirely so the ordinary link writer receives
@@ -67,6 +68,7 @@ export interface SleeveNoteSelectionCandidate extends ExtendedSleeveNote {
 }
 
 export interface SleeveNoteRecentUse {
+  seriesKey?: string | null;
   claimId: string;
   entityType: ExtendedSleeveNote['entityType'];
   entityId: string;
@@ -146,6 +148,8 @@ function isNovel(candidate: SleeveNoteSelectionCandidate, uses: readonly SleeveN
     // A link airing does not prove the DJ used its offered claim. Cool down
     // only when the spoken text had a clear claim signal and the clip aired.
     const claimAiredAt = use.detectionStatus === 'detected' ? use.airedAt : null;
+    if (candidate.provider === 'musicbrainz-series' && use.seriesKey === candidate.sourceUrl
+      && claimAiredAt && isRecent(claimAiredAt, nowMs, SERIES_COOLDOWN_MS)) return false;
     const creditRejectedAt = candidate.category === 'credits' && use.claimId === candidate.claimId
       && use.qualityRejectionReason ? use.airedAt : null;
     if (!reservationActive && !claimAiredAt && !creditRejectedAt) continue;
@@ -194,7 +198,7 @@ function recentUsesForCandidates(
   const relevant = `(${relevantParts.join(' OR ')})`;
   const recentCutoff = new Date(nowMs - MAX_COOLDOWN_MS).toISOString();
   const reservationCutoff = new Date(nowMs - PENDING_RESERVATION_MS).toISOString();
-  return db.prepare(`SELECT claim_id AS claimId, entity_type AS entityType,
+  const uses = db.prepare(`SELECT claim_id AS claimId, entity_type AS entityType,
       entity_id AS entityId, topic, relationship_key AS relationshipKey,
       supplied_at AS suppliedAt, aired_at AS airedAt, released_at AS releasedAt,
       detection_status AS detectionStatus,
@@ -206,6 +210,23 @@ function recentUsesForCandidates(
       OR (dj_context_pass_reason IS NOT NULL AND supplied_at >= ? AND ${relevant})`)
     .all(recentCutoff, ...relevantParams, reservationCutoff, ...relevantParams,
       recentCutoff, ...relevantParams) as SleeveNoteRecentUse[];
+  const seriesUrls = [...new Set(candidates.filter(candidate => candidate.provider === 'musicbrainz-series')
+    .map(candidate => candidate.sourceUrl))];
+  if (seriesUrls.length) {
+    // Resolve old ledger rows through their retained source, so this also works
+    // for airings recorded before series-wide cooldowns existed.
+    const seriesUses = db.prepare(`SELECT u.claim_id AS claimId, u.entity_type AS entityType,
+      u.entity_id AS entityId, u.topic, u.relationship_key AS relationshipKey,
+      u.supplied_at AS suppliedAt, u.aired_at AS airedAt, u.released_at AS releasedAt,
+      u.detection_status AS detectionStatus, s.source_url AS seriesKey
+      FROM sleeve_claim_uses u JOIN sleeve_claims c ON c.id=u.claim_id
+      JOIN sleeve_source_documents s ON s.id=c.source_document_id
+      WHERE u.aired_at > ? AND u.detection_status='detected' AND s.provider='musicbrainz-series'
+        AND s.source_url IN (${seriesUrls.map(() => '?').join(',')})`)
+      .all(new Date(nowMs-SERIES_COOLDOWN_MS).toISOString(), ...seriesUrls) as SleeveNoteRecentUse[];
+    uses.push(...seriesUses);
+  }
+  return uses;
 }
 
 function eligibleCandidates(candidates: readonly SleeveNoteSelectionCandidate[], uses: readonly SleeveNoteRecentUse[], nowMs: number, segment = false): SleeveNoteSelectionCandidate[] {

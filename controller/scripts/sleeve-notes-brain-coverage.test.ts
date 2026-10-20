@@ -152,7 +152,7 @@ test('API enforces admin access, validates targets and keeps disabled reads read
   assert.equal((await post({ entityType: 'artist', entityId: 'manual' })).status, 200);
   assert.equal(((await (await post({ entityType: 'artist', entityId: 'manual' })).json()) as { queued: boolean }).queued, false);
   await settings.update({ djBehaviour: { extendedSleeveNotes: false } }); assert.equal((await post({ entityType: 'artist', entityId: 'manual' })).status, 409);
-  const read = await fetch(`${url}/sleeve-notes/connections/coverage?cached=1`, { headers: { Authorization: auth } }); assert.equal(read.status, 200); assert.equal(((await read.json()) as { active: boolean }).active, false);
+  const read = await fetch(`${url}/sleeve-notes/connections/coverage?cached=1`, { headers: { Authorization: auth } }); assert.equal(read.status, 409);
   assert.doesNotThrow(() => withCachedRead(() => brainCoverageInDatabase(open())));
 });
 test.after(async () => { await new Promise<void>(resolve => server.close(() => resolve())); close(); rmSync(root, { recursive: true, force: true }); });

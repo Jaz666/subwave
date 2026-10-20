@@ -30,7 +30,7 @@ let songs=[slow,fast];
 
 beforeEach(async context=>{
   const t=context as TestContext;
-  await settings.load();await settings.update({tts:{enabled:false}} as never);
+  await settings.load();await settings.update({tts:{enabled:false},djBehaviour:{extendedSleeveNotes:true}} as never);
   await library.load();await blocklist.load();
   for(const entry of blocklist.list())await blocklist.remove(entry.type,entry.id);
   queue.upcoming=[];queue.history=[];queue.current={track:{...fast,id:'on-air'}} as never;
@@ -115,11 +115,11 @@ test('a saved canonical artist resolves to the same library artist',async()=>{
 
 test('a saved release group resolves through a confirmed library album',async()=>{
   const db=sleeveDb.open(),now=new Date().toISOString();
-  db.prepare('INSERT INTO sleeve_recordings(id,title,match_state,created_at,updated_at) VALUES (?,?,?,?,?)').run('recording',slow.title,'matched',now,now);
-  db.prepare('INSERT INTO sleeve_releases(id,title,musicbrainz_release_group_id,created_at,updated_at) VALUES (?,?,?,?,?)').run('release','Album','group',now,now);
-  db.prepare('INSERT INTO sleeve_recording_releases(recording_id,release_id) VALUES (?,?)').run('recording','release');
+  db.prepare('INSERT INTO sleeve_recordings(id,title,match_state,created_at,updated_at) VALUES (?,?,?,?,?)').run('brain-queue-fixture-recording',slow.title,'matched',now,now);
+  db.prepare('INSERT INTO sleeve_releases(id,title,musicbrainz_release_group_id,created_at,updated_at) VALUES (?,?,?,?,?)').run('brain-queue-fixture-release','Album','group',now,now);
+  db.prepare('INSERT INTO sleeve_recording_releases(recording_id,release_id) VALUES (?,?)').run('brain-queue-fixture-recording','brain-queue-fixture-release');
   db.prepare(`INSERT INTO sleeve_local_attachments(local_track_id,recording_id,title,artist,release_title,match_state,first_encountered_at,last_encountered_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?)`).run(slow.id,'recording',slow.title,slow.artist,'Album','matched',now,now,now);
+    VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(local_track_id) DO UPDATE SET recording_id=excluded.recording_id,release_title=excluded.release_title,match_state=excluded.match_state`).run(slow.id,'brain-queue-fixture-recording',slow.title,slow.artist,'Album','matched',now,now,now);
   const result=await submit({entityType:'release-group',entityId:'group'});
   assert.equal(result.status,200);assert.equal(queue.upcoming.at(-1)?.track.albumId,'album');
   db.prepare("UPDATE sleeve_local_attachments SET release_title='Different album' WHERE local_track_id=?").run(slow.id);
@@ -130,6 +130,6 @@ test('a saved release group resolves through a confirmed library album',async()=
 
 
 test('a canonical recording can queue its confirmed attachment without a relationship match',async()=>{
-  const result=await submit({entityType:'recording',entityId:'recording'});
+  const result=await submit({entityType:'recording',entityId:'brain-queue-fixture-recording'});
   assert.equal(result.status,200);assert.equal(queue.upcoming.at(-1)?.track.id,slow.id);
 });

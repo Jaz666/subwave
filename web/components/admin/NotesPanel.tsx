@@ -8,11 +8,12 @@ import Link from 'next/link';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, BookOpen, Compass, ExternalLink, GitBranch, Search, Settings2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ExternalLink, GitBranch, Search } from 'lucide-react';
 import { Card, Btn, Eyebrow, Pill, Seg } from './ui';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { SectionTabs } from './SectionTabs';
+import { NOTES_TABS as TABS } from './notes-tabs';
 import HeardOnAir from './HeardOnAir';
 import NotesLiveSummary from './NotesLiveSummary';
 import NotesRecentlyAired from './NotesRecentlyAired';
@@ -131,14 +132,7 @@ type ExploreEntity = {
 type ExplorePage = { active: boolean; entities: ExploreEntity[]; total: number; limit: number; offset: number };
 type EntityDossier = ExploreEntity & { claims: Array<NotesReadout['claims'][number] & { attribution: string }> };
 
-const TABS = [
-  { id: 'overview', description: 'See the current track, the next track, recent speech and the research queue.', label: 'Overview', icon: BookOpen },
-  { id: 'stories', description: 'Browse saved facts and their sources, or manage withdrawn facts.', label: 'Stories', icon: Compass },
-  { id: 'heard', description: 'Read confirmed aired speech and flag an exchange for review.', label: 'Heard on air', icon: BookOpen },
-  { id: 'connections', description: 'Explore artists, albums, tracks and the connections between them.', label: 'Station Brain', icon: GitBranch },
-  { id: 'moderation', description: 'Read model findings and decide which changes to apply.', label: 'Review', icon: ShieldCheck },
-  { id: 'config', description: 'Control collection, segments, source access and research instructions.', label: 'Settings', icon: Settings2 },
-];
+
 const EXPLORE_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 
@@ -297,27 +291,26 @@ export default function NotesPanel() {
   useEffect(()=>{if (storiesView&&['all','recent','browse','details','withdrawn'].includes(storiesView)) setStoriesMode(storiesView);},[storiesView]);
   const storyType = searchParams.get('storyType');
   const storyId = searchParams.get('storyId');
+  const settingsQuery=useSettingsQuery<SettingsData>({adminFetch,enabled:hydrated});
+  const status = useAdminQuery<NotesStatus>({
+    key: ['sleeve-notes', 'status'], adminFetch, enabled: hydrated && settingsQuery.data?.values?.djBehaviour?.extendedSleeveNotes===true,
+    request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/status', undefined, signal),
+    staleTime: 10_000, refetchInterval: 30_000,
+  });
+
+  const enabled = settingsQuery.data?.values?.djBehaviour?.extendedSleeveNotes === true;
   const story = useAdminQuery<EntityDossier>({
     key: ['sleeve-notes', 'dossier', storyType, storyId], adminFetch,
-    enabled: hydrated && tab === 'stories' && !!storyId && ['artist', 'recording', 'release', 'release-group'].includes(storyType ?? ''),
+    enabled: hydrated && enabled && tab === 'stories' && !!storyId && ['artist', 'recording', 'release', 'release-group'].includes(storyType ?? ''),
     request: (fetcher, signal) => adminJson(fetcher, `/sleeve-notes/dossier/${encodeURIComponent(storyType ?? '')}/${encodeURIComponent(storyId ?? '')}`, undefined, signal),
     staleTime: 10_000, refetchInterval:30_000,
   });
 
-  const status = useAdminQuery<NotesStatus>({
-    key: ['sleeve-notes', 'status'], adminFetch, enabled: hydrated,
-    request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/status', undefined, signal),
-    staleTime: 10_000, refetchInterval: 30_000,
-  });
-  const enabled = status.data?.enabled === true;
   const needsReadout = tab === 'overview' || tab === 'stories' && !storyId && storiesMode === 'details';
   const readout = useAdminQuery<NotesReadout>({
-    key: ['sleeve-notes', 'readout', enabled], adminFetch, enabled: hydrated && !!status.data && needsReadout,
+    key: ['sleeve-notes', 'readout', enabled], adminFetch, enabled: hydrated && enabled && needsReadout,
     request: (fetcher, signal) => adminJson(fetcher, `/sleeve-notes/readout${enabled?'':'?cached=1'}`, undefined, signal),
     staleTime: 10_000, refetchInterval: 30_000,
-  });
-  const settingsQuery = useSettingsQuery<SettingsData>({
-    adminFetch, enabled: hydrated && tab === 'config',
   });
   const settingsSave = useSettingsMutation<SettingsData>({ adminFetch });
   const data = readout.data;
@@ -336,7 +329,7 @@ export default function NotesPanel() {
   const [wikiRefreshMessage, setWikiRefreshMessage] = useState('');
   const collection=useAdminQuery<{claims:NotesReadout['claims'];total:number;categories:string[]}>({
     key:['sleeve-notes','stories',debouncedSearch,category,storiesMode,storyOffset],adminFetch,
-    enabled:hydrated&&tab==='stories'&&!storyId&&!['browse','details'].includes(storiesMode),
+    enabled:hydrated&&enabled&&tab==='stories'&&!storyId&&!['browse','details'].includes(storiesMode),
     request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/stories?${new URLSearchParams({search:debouncedSearch,category:category==='all'?'':category,recent:storiesMode==='recent'?'1':'0',withdrawn:storiesMode==='withdrawn'?'1':'0',offset:String(storyOffset)})}`,undefined,signal),
     staleTime:10_000, refetchInterval:30_000, placeholderData: (previous,query) => query?.queryKey[3]===category&&query?.queryKey[4]===storiesMode?previous:undefined,
   });
@@ -394,6 +387,11 @@ export default function NotesPanel() {
       setConfigMessage(error instanceof Error ? error.message : 'Could not save Sleeve Notes settings.');
     }
   }
+
+  if(!enabled)return <Card headingLevel={2} title="Extended Sleeve Notes">
+    <p className="text-[13px] text-muted">{settingsQuery.isLoading?'Checking feature status…':settingsQuery.error?'Feature status could not be read.':'Enable Extended Sleeve Notes in Settings → DJ Behaviour to use this feature.'}</p>
+    <Link href="/admin/settings?section=behaviour#extended-sleeve-notes" className="mt-3 inline-block text-[13px] text-primary hover:underline">Open DJ Behaviour settings →</Link>
+  </Card>;
 
   return (
     <div className={`mx-auto w-full space-y-5 ${tab === 'connections' ? 'max-w-none' : 'max-w-6xl'}`}>
@@ -539,7 +537,7 @@ function OverviewView({
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
       <div><p className="text-sm font-medium">{enabled && !status.collectionPaused && !readout?.researchPausedByBudget ? 'Research enabled' : 'Research paused'}</p>
         <p className="mt-1 text-xs text-muted">{enabled && status.collectionPaused ? 'Collection is paused. Saved Sparks remain available to the DJ.' : enabled && readout?.researchPausedByBudget ? 'Paused by the station token budget. Saved jobs will resume when allowance is available.' : enabled ? 'Research runs when broadcast activity allows.' : 'Saved stories remain available to browse.'}</p></div>
-      <div className="flex flex-wrap gap-5 text-sm">
+      <div className="flex flex-wrap items-end gap-5 text-sm">
         <div>
           <p className="mb-1 text-xs text-muted">Saved knowledge</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -992,10 +990,9 @@ function ConfigView({
 
   return (
     <div className="space-y-5">
-      <Card headingLevel={2} title="Enable Sleeve Notes" right={<NotesHelp text="This is the main switch for collecting stories and offering them to the DJ. Turning it off keeps saved facts and aired history." />} sub="Changes to switches save immediately">
-        <Seg aria-label="Enable Sleeve Notes" value={values?.djBehaviour?.extendedSleeveNotes ? 'on' : 'off'} disabled={busy || loading || !!settingsError} options={[{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }]} onChange={(value) => onSave({ djBehaviour: { extendedSleeveNotes: value === 'on' } }, `Sleeve Notes ${value === 'on' ? 'enabled' : 'paused'}.`)} />
-        <p className="mt-3 text-[13px] text-muted">Enable to gather facts from played music and offer Story Sparks to the DJ. Turning off pauses collection and offers; your saved stories stay available.</p>
-        {settingsError && <p role="alert" className="mt-2 text-[13px]">{settingsError}</p>}
+      <Card headingLevel={2} title="Feature switch">
+        <p className="text-[13px] text-muted">Manage the master switch in Settings → DJ Behaviour. Turning it off hides Sleeve Notes and stops processing while keeping saved research.</p>
+        <Link href="/admin/settings?section=behaviour#extended-sleeve-notes" className="mt-3 inline-block text-[13px] text-primary hover:underline">Open DJ Behaviour settings →</Link>
       </Card>
       <Card headingLevel={2} title="Background collection" right={<NotesHelp text="Pause research without stopping the DJ from using stories already saved. Resume it here when you want collection to continue." />} sub="Keep saved Sparks on air while research is paused">
         <Seg aria-label="Background collection" value={values?.djBehaviour?.sleeveNotesCollectionPaused?'paused':'running'} disabled={busy||loading||!!settingsError} options={[{id:'running',label:'Collect stories'},{id:'paused',label:'Pause collection'}]} onChange={value=>onSave({djBehaviour:{sleeveNotesCollectionPaused:value==='paused'}},value==='paused'?'Collection paused. Saved Sparks remain available.':'Collection resumed.')} />

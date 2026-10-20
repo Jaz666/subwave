@@ -1,3 +1,4 @@
+import {connectionArtistVariantKey} from './library-connections.js';
 import type { ProviderContributor, ProviderIdentity, ProviderRelationship, SleeveEntityInput, SleeveProvider, SleeveProviderResult } from './provider.js';
 import { recordProviderCall } from './telemetry.js';
 
@@ -35,8 +36,12 @@ function text(value: unknown): string | undefined {
 }
 
 function normal(value: string | undefined): string {
-  return (value ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return (value ?? '').normalize('NFKD').replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+    .normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
+}
+
+function normalArtist(value: string | undefined): string {
+  return connectionArtistVariantKey(normal(value));
 }
 
 function songIdentity(song: unknown): ProviderIdentity | null {
@@ -81,14 +86,18 @@ export function selectGeniusSearchHit(payload: unknown, entity: SleeveEntityInpu
   const hits = root?.response?.hits;
   if (!Array.isArray(hits)) return null;
   const wantedTitle = normal(entity.title);
-  const wantedArtist = normal(entity.artist);
+  const wantedArtist = normalArtist(entity.artist);
+  if (!wantedTitle || (entity.artist && !wantedArtist)) return null;
+  const exact=new Set<string>(),variants=new Set<string>();
   for (const hit of hits) {
     const candidate = songIdentity((hit as { result?: unknown })?.result);
     if (!candidate || normal(candidate.title) !== wantedTitle) continue;
-    if (wantedArtist && normal(candidate.artist) !== wantedArtist) continue;
-    return candidate.providerId;
+    if (wantedArtist && normalArtist(candidate.artist) !== wantedArtist) continue;
+    variants.add(candidate.providerId);
+    if(normal(candidate.artist)===normal(entity.artist))exact.add(candidate.providerId);
   }
-  return null;
+  if(exact.size)return exact.size===1?[...exact][0]:null;
+  return variants.size===1?[...variants][0]:null;
 }
 
 /** Projects only the Phase-0 allowlist. Raw Genius payloads are never retained. */
@@ -148,9 +157,10 @@ export class GeniusProvider implements SleeveProvider {
     const response = await this.request(`https://api.genius.com/songs/${encodeURIComponent(id)}`,
       { Authorization: `Bearer ${this.token}` }, signal, 'song', entity);
     const result = projectGeniusSong(await response.json());
-    if (!result || result.identity.providerId !== id
+    if (!normal(entity.title) || (entity.artist && !normalArtist(entity.artist))
+      || !result || result.identity.providerId !== id
       || normal(result.identity.title) !== normal(entity.title)
-      || (entity.artist && normal(result.identity.artist) !== normal(entity.artist))) return null;
+      || (entity.artist && normalArtist(result.identity.artist) !== normalArtist(entity.artist))) return null;
     return result;
   }
 
@@ -173,7 +183,7 @@ export class GeniusProvider implements SleeveProvider {
         continue;
       }
       const candidateTitle = text(album?.name) ?? text(album?.title);
-      if (normal(candidateTitle) !== normal(expected.title)) {
+      if (!normal(expected.title) || normal(candidateTitle) !== normal(expected.title)) {
         mismatchedTitles.push(candidateTitle ?? 'untitled');
         continue;
       }
@@ -254,8 +264,9 @@ export function projectGeniusAlbumBiography(payload: unknown, expected: { title:
     : text((description as Record<string, unknown> | null)?.plain);
   const biographyText = [plain, albumAnnotationText(album), text(album.description_preview)]
     .find((value) => typeof value === 'string' && value.trim().length >= 80);
-  if ((typeof id !== 'number' && typeof id !== 'string') || !title || !artistName || !url || !biographyText
-    || normal(title) !== normal(expected.title) || normal(artistName) !== normal(expected.artist)) return null;
+  if (!normal(expected.title) || !normalArtist(expected.artist)
+    || (typeof id !== 'number' && typeof id !== 'string') || !title || !artistName || !url || !biographyText
+    || normal(title) !== normal(expected.title) || normalArtist(artistName) !== normalArtist(expected.artist)) return null;
   const cleaned = biographyText.replace(/\s+/g, ' ').trim();
   if (cleaned.length < 80) return null;
   const bounded = cleaned.length <= 8_000 ? cleaned : cleaned.slice(0, 8_000).replace(/\s+\S*$/u, '').trim();
@@ -285,7 +296,7 @@ function geniusAlbumBiographyRejection(payload: unknown, expected: { title: stri
   const artist = (album.artist ?? album.primary_artist ?? artists[0]) as Record<string, unknown> | undefined;
   const artistName = text(artist?.name);
   if (normal(title) !== normal(expected.title)) return `album title differs (${title ?? 'untitled'})`;
-  if (normal(artistName) !== normal(expected.artist)) return `album artist differs (${artistName ?? 'unknown'})`;
+  if (normalArtist(artistName) !== normalArtist(expected.artist)) return `album artist differs (${artistName ?? 'unknown'})`;
   if (!text(album.url)) return 'album URL missing';
   if (!text(album.description_preview) && !text((album.description as Record<string, unknown> | null)?.plain)
     && !albumAnnotationText(album)) {

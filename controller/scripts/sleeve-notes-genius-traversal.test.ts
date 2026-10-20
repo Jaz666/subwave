@@ -99,6 +99,17 @@ test('the real worker yields before expansion and expands without any provider r
   assert.equal(db.prepare(`SELECT state FROM sleeve_research_jobs WHERE subject_id=? AND capability='expand-samples'`).get(recording.id)!.state, 'complete');
 });
 
+test('MB-free traversal uses the library artist name and reuses provider spelling variants',()=>{
+ db.prepare("INSERT INTO sleeve_connection_library_artists VALUES ('run','Run‐D.M.C.','run‐d.m.c.')").run();
+ const parent=save('99001',[relationship('99002','Run-DMC')]);
+ assert.equal(expandGeniusSamples(parent.id),true);
+ const row=db.prepare("SELECT recording_id AS id FROM sleeve_genius_traversal WHERE song_id='99002'").get() as {id:string};
+ assert.equal(traversalRecording(row.id)?.artist,'Run‐D.M.C.');
+ assert.equal(knownGeniusSongId({id:'different',title:'Song 99002',artist:'Run-DMC'}),'99002');
+ db.prepare("INSERT INTO sleeve_connection_library_artists VALUES ('run-other','Run.DMC','run.dmc')").run();
+ assert.equal(knownGeniusSongId({id:'different',title:'Song 99002',artist:'Run.DMC'}),null);
+});
+
 test('expansion resumes from the durable cursor after database reopen', () => {
   const recording = save('5000', Array.from({ length: 25 }, (_, i) => relationship(String(5001 + i))));
   assert.equal(expandGeniusSamples(recording.id), false);

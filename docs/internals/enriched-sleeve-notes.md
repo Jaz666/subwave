@@ -1,5 +1,28 @@
 # Extended Sleeve Notes — design and delivery plan
 
+## Current runtime contract — 20 October 2026
+
+This section describes the current implementation. The dated design and delivery
+notes below retain historical decisions and may describe superseded behaviour.
+
+| Situation | Current behaviour |
+| --- | --- |
+| Master switch off | Feature UI and operations are disabled; API operations return 409 except status/Dash gating. Scheduled cleanup does not create, migrate or expire the retained cache. |
+| Collection paused, master on | Background collection waits; saved Sparks remain available to on-air links and segments. Explicit operator actions retain their existing override. |
+| Artist index population | Automatic population uses the shared quiet gate. The complete awaited operation participates in restore coordination; disabled or superseded work cannot publish its index. |
+| Manual Station Brain queueing | Uses the normal operator queue and blocklist protections. Enablement is rechecked after catalogue lookup, immediately before synchronous queue insertion. |
+| Genius identity | Unicode title/artist identity is retained. Latin accent tolerance and artist punctuation variants remain supported; distinct non-Latin titles, recording versions and ambiguous hits remain distinct. |
+| Disable during generation | The in-flight generation is aborted; even a late response after re-enable cannot publish from that cancelled operation. |
+| Speech already committed to a mixer silence | The matching voice finishes safely. Disabling must preserve the existing commitment guard rather than leave dead air. |
+| Aired speech and wording detection | Air confirmation and detected Spark wording are separate records. Stored Sparks are trusted; wording detection is bookkeeping, not a factual-publication veto. |
+
+Read the [20 October audit](../investigations/2026-10-20-extended-sleeve-notes-contribution-practices-audit.md)
+and its [implementation follow-up](../investigations/2026-10-20-extended-sleeve-notes-audit-follow-up.md)
+for findings, changes, checks and remaining validation limits. The public
+[manual guide](../../web/components/manual/ExtendedSleeveNotes.tsx) introduces the
+feature to new operators.
+
+
 **Wikipedia implementation update (4 October 2026):** The local source now
 uses revision-pinned rendered HTML, prose and quote preservation, combined
 context-bounded chunks, a single free-text extraction call per chunk, durable
@@ -36,9 +59,9 @@ An admin can edit and approve a candidate once it passes the controller's
 deterministic evidence and shape checks, or delete it. The same workspace can
 correct or delete already live, text-backed research claims. Approved edits
 and deletion tombstones are protected from ordinary research replays; decisions
-and edits are recorded in local history tables. Moderation remains available
-when Extended Sleeve Notes is switched off, so saved material can be reviewed
-without putting it on air.
+and edits are recorded in local history tables. Moderation is available only while Extended Sleeve Notes is enabled. Switching
+off hides the feature and suspends processing, while retaining saved material
+and review jobs for a later re-enable.
 
 The queue starts collecting live research rejections after the controller
 upgrade. The completed frozen Wikipedia replay separately saved its 27,158
@@ -578,17 +601,17 @@ pattern used by Library, Shows, Imaging and Moods:
 The **Overview** has two states driven by the station-wide Extended Sleeve
 Notes switch in global Settings → DJ Behaviour.
 
-- With the switch **off**, explain what Extended Sleeve Notes adds, how it
-  differs from ordinary Vanilla Sleeve Notes, and the resource trade-offs.
-  Vanilla Sleeve Notes remain the normal factual notes. Extended Notes may
-  supply one source-backed story spark for an eligible link; Config controls
-  how strongly the DJ is guided to use it. Collection is background work and
-  must never delay playback. When off, no Extended provider work or prompt-time use occurs;
-  already cached material remains stored. Describe provider/API limits and the
-  extra model context used when a cached spark is eligible, but do not show
-  invented token or dollar estimates before those costs are measured. Provide
-  a link to global Settings → DJ Behaviour that opens that section and, where
-  the settings UI permits, scrolls to the master switch.
+- With the switch **off**, hide Notes navigation (including command search), the
+  Dash card and manual segment button, and all feature pages. A direct page link
+  shows only a link to Settings → DJ Behaviour. Feature API requests, including
+  explicit cached browsing and manual firing, are rejected while disabled.
+  Stop new research, reviews, Spark offers and segment generation; discard
+  uncommitted prepared segments. Already committed mixer audio finishes normally
+  to avoid leaving a scheduled silent gap. Retain stored data and pending jobs.
+  The visible master switch lives outside Advanced settings in DJ Behaviour,
+  explaining paid LLM Provider costs and the station-based estimate of roughly
+  2,000 additional background-research tokens per track played. Actual usage
+  varies; reviews and on-air segments add further usage.
 - With the switch **on**, show collection health, library coverage, recent
   activity, queued/retrying/failed work, provider readiness, and a bounded
   history pairing each offered story spark with its generated link, the
@@ -838,3 +861,24 @@ Schema 56 stores a visited-song frontier and expansion cursor in `sleeve_genius_
 ### Fair Genius catalogue seeding
 
 When higher-priority Genius work has no ready jobs, the existing worker may queue one unexamined cached catalogue track. Schema 57 stores seed associations separately from encounters and persists an artist rotation cursor. Selection checks at most ten unambiguous artists per turn, waits for initial artist/track catalogue population, skips encountered identities (including exact album copies), and permits only one outstanding seed. No MusicBrainz, article or LLM work is created by seeding. The normal Genius adapter, quiet gate, request budget and retries remain authoritative. Seed evidence can join local connection matching and link selection through its explicit catalogue association. Historical traversal backfill and refresh policy are separate work.
+
+
+MusicBrainz series Sparks have a six-hour station-wide cooldown per series source.
+Only confirmed airtime with detected Spark use starts it; offered, unused or
+released reservations do not cool down other members of the list. Ordinary links,
+automatic segments and availability counts share this guard; manual segments
+retain their existing operator override of aired-story cooldowns. The cooldown
+reads retained source identity through the existing airing ledger, including old
+airings, without a schema migration. Other series and narrative facts remain
+eligible under their normal guards.
+
+
+Artist naming during Genius research uses MusicBrainz names for confirmed
+identities; MB-free traversal uses the unique cached library artist name.
+An artist-only fallback ignores dots, whitespace and Unicode dashes, with
+ambiguous library names or confirmed identities retaining strict spelling.
+Genius search requires an unambiguous matching song; cached frontier lookup
+uses the same artist rules. Recording titles retain their existing strict
+matching, including version/remix/live qualifiers. Retained provider evidence
+is not rewritten, and this adds no MusicBrainz requests. Connection matches
+using an artist variant are labelled `exact-title-and-artist-variant`.

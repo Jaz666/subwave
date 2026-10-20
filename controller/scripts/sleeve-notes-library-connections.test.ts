@@ -247,3 +247,17 @@ test('a transient empty catalogue leaves the cached tracks and connections intac
   assert.ok(db.prepare("SELECT 1 FROM sleeve_connection_library_tracks WHERE local_track_id = 'target'").get());
   db.close();
 });
+
+test('artist spelling variants resolve to library tracks while title variants remain distinct',()=>{
+ const db=fixture();
+ try{
+  relation(db,'variant','samples','Target','Run-DMC');
+  db.prepare("INSERT INTO sleeve_connection_library_artists VALUES ('run','Run‐D.M.C.','run‐d.m.c.')").run();
+  cacheConnectionLibraryTracks(db,[{id:'run-song',title:'Target',artist:'Run‐D.M.C.'}],'variant');
+  reconcileLibraryConnections(db,now);
+  assert.equal(libraryConnectionsInDatabase(db,'source')[0].tracks[0]?.id,'run-song');
+  cacheConnectionLibraryTracks(db,[{id:'run-song',title:'Target (Live)',artist:'Run‐D.M.C.'}],'variant-live');
+  reconcileLibraryConnections(db,now);
+  assert.equal(libraryConnectionsInDatabase(db,'source')[0].matchState,'unresolved');
+ }finally{db.close();}
+});

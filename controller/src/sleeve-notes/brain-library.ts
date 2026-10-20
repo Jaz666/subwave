@@ -4,52 +4,77 @@
 import { z } from 'zod';
 import * as subsonic from '../music/subsonic.js';
 import * as settings from '../settings.js';
-import { open } from './db.js';
+import { open, runResearchDatabaseWork } from './db.js';
+import type { QuietGate } from './musicbrainz-worker.js';
 import { connectionNameKey } from './library-connections.js';
 import { resolveConnectionLocalTracks, type ConnectionGraph, type ConnectionNode,
   type ConnectionSearchResult } from './research-repository.js';
 
 let population: Promise<{ artists: number }> | null = null;
 
-export function populateBrainArtists(): Promise<{ artists: number }> {
+export function populateBrainArtists(quietGate?: QuietGate): Promise<{ artists: number }> {
   if (population) return population;
   population = (async () => {
-    if (await subsonic.getScanStatus() === true) throw new Error('Navidrome is scanning. Try populating the Brain after the scan finishes.');
-    const artists = await subsonic.getLibraryArtists({ requireComplete: true });
-    if (await subsonic.getScanStatus() === true) throw new Error('Navidrome started scanning. The previous artist map has been kept.');
-    const db = open();
-    const existing = db.prepare('SELECT COUNT(*) AS count FROM sleeve_connection_library_artists').get() as { count: number };
-    if (!artists.length && existing.count) throw new Error('Navidrome returned an empty artist index. The previous map has been kept.');
-    const unique = new Map(artists.map((artist) => [artist.id, artist]));
-    if (unique.size !== artists.length) throw new Error('Navidrome returned duplicate artist identities. The previous map has been kept.');
-    db.transaction(() => {
-      const remove = db.prepare('DELETE FROM sleeve_connection_library_artists WHERE local_artist_id = ?');
-      for (const row of db.prepare('SELECT local_artist_id AS id FROM sleeve_connection_library_artists').all() as Array<{ id: string }>) {
-        if (!unique.has(row.id)) remove.run(row.id);
+    let count = 0;
+    let interrupted = false;
+    const assertAllowed = () => {
+      if (interrupted || !settings.get().djBehaviour.extendedSleeveNotes || (quietGate && !quietGate.isQuiet())) {
+        throw new Error('Artist population interrupted; waiting for another enabled quiet slot');
       }
-      const insert = db.prepare(`INSERT INTO sleeve_connection_library_artists (local_artist_id, name, name_key) VALUES (?, ?, ?)
-        ON CONFLICT(local_artist_id) DO UPDATE SET name=excluded.name, name_key=excluded.name_key
-        WHERE name IS NOT excluded.name OR name_key IS NOT excluded.name_key`);
-      for (const artist of unique.values()) insert.run(artist.id, artist.name, connectionNameKey(artist.name));
-      db.prepare(`INSERT INTO sleeve_connection_artist_population (id, completed_at) VALUES (1, ?)
-        ON CONFLICT(id) DO UPDATE SET completed_at = excluded.completed_at`).run(new Date().toISOString());
-    })();
-    return { artists: unique.size };
+    };
+    const unsubscribe = settings.onCacheChange(() => {
+      if (!settings.get().djBehaviour.extendedSleeveNotes || (quietGate && !quietGate.isQuiet())) interrupted = true;
+    });
+    try {
+      const ran = await runResearchDatabaseWork(async () => {
+        assertAllowed();
+        if (await subsonic.getScanStatus() === true) throw new Error('Navidrome is scanning. Try populating the Brain after the scan finishes.');
+        assertAllowed();
+        const artists = await subsonic.getLibraryArtists({ requireComplete: true });
+        assertAllowed();
+        if (await subsonic.getScanStatus() === true) throw new Error('Navidrome started scanning. The previous artist map has been kept.');
+        assertAllowed();
+        const db = open();
+        const existing = db.prepare('SELECT COUNT(*) AS count FROM sleeve_connection_library_artists').get() as { count: number };
+        if (!artists.length && existing.count) throw new Error('Navidrome returned an empty artist index. The previous map has been kept.');
+        const unique = new Map(artists.map((artist) => [artist.id, artist]));
+        if (unique.size !== artists.length) throw new Error('Navidrome returned duplicate artist identities. The previous map has been kept.');
+        db.transaction(() => {
+          const remove = db.prepare('DELETE FROM sleeve_connection_library_artists WHERE local_artist_id = ?');
+          for (const row of db.prepare('SELECT local_artist_id AS id FROM sleeve_connection_library_artists').all() as Array<{ id: string }>) {
+            if (!unique.has(row.id)) remove.run(row.id);
+          }
+          const insert = db.prepare(`INSERT INTO sleeve_connection_library_artists (local_artist_id, name, name_key) VALUES (?, ?, ?)
+            ON CONFLICT(local_artist_id) DO UPDATE SET name=excluded.name, name_key=excluded.name_key
+            WHERE name IS NOT excluded.name OR name_key IS NOT excluded.name_key`);
+          for (const artist of unique.values()) insert.run(artist.id, artist.name, connectionNameKey(artist.name));
+          db.prepare(`INSERT INTO sleeve_connection_artist_population (id, completed_at) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET completed_at = excluded.completed_at`).run(new Date().toISOString());
+        })();
+        count = unique.size;
+        return true;
+      });
+      if (!ran) throw new Error('Sleeve Notes restore is in progress; try again shortly');
+      return { artists: count };
+    } finally { unsubscribe(); }
   })().finally(() => { population = null; });
   return population;
 }
 
 // One fast index request on first enabled startup, then at most once a day.
 // A failed attempt backs off for an hour; the operator can retry explicitly.
-export function startBrainArtistPopulation(): void {
+export function startBrainArtistPopulation(quietGate: QuietGate): void {
   let retryAfter = 0;
   const run = async () => {
-    if (settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || Date.now() < retryAfter) return;
-    const saved = open().prepare('SELECT completed_at AS at FROM sleeve_connection_artist_population WHERE id = 1')
-      .get() as { at: string } | undefined;
-    if (saved && Date.now() - Date.parse(saved.at) < 24 * 60 * 60_000) return;
-    retryAfter = Date.now() + 60 * 60_000;
-    await populateBrainArtists();
+    if (settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !quietGate.isQuiet() || Date.now() < retryAfter) return;
+    await runResearchDatabaseWork(async () => {
+      const saved = open().prepare('SELECT completed_at AS at FROM sleeve_connection_artist_population WHERE id = 1')
+        .get() as { at: string } | undefined;
+      if (saved && Date.now() - Date.parse(saved.at) < 24 * 60 * 60_000) return false;
+      retryAfter = Date.now() + 60 * 60_000;
+      await populateBrainArtists(quietGate);
+      return true;
+    });
   };
   const tick = () => { void run().catch((error: unknown) => {
     console.warn('[sleeve-notes] Brain artist population:', error instanceof Error ? error.message : String(error));

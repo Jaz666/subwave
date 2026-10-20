@@ -3231,6 +3231,17 @@ html:has(.admin-root.paper) {
 }
 
 
+/* Align the two Dash stacks only when the optional Sleeve Notes card exists. */
+@media (min-width: 641px) {
+    .admin-root [data-dash-layout]:has([data-card="sleeve-notes"]) {
+        grid-template-rows: auto 1fr;
+    }
+    .admin-root [data-dash-layout]:has([data-card="sleeve-notes"]) > [data-dash-column] {
+        grid-row: span 2;
+        grid-template-rows: subgrid;
+    }
+}
+
 /* Collapse the panels' multi-column grids to one column. `!important` is required
    because the panels set `grid-template-columns` via inline styles. */
 @media (max-width: 640px) {

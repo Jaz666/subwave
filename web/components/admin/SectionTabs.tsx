@@ -4,6 +4,7 @@
 import { useId } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import ReviewCount from './ReviewCount';
 
 export interface SectionTab {
   id: string;
@@ -76,11 +77,11 @@ export function SectionTabs({
               {t.label}
             </span>
             {t.description&&<span id={`${descriptionId}-${t.id}`} hidden>{t.description}</span>}
-            {t.count != null && (
-              <span className={cn('min-w-[14px] border border-current px-1.5 py-[2px] text-center font-mono text-[10px] leading-none font-bold',t.attention&&(active?'bg-bg text-ink':'bg-ink text-bg'))}>
-                {pad2(t.count)}{t.attention&&<span className="sr-only"> ready for your input</span>}
+            {t.count != null && (t.attention ? <ReviewCount count={t.count} /> : (
+              <span className="min-w-[14px] border border-current px-1.5 py-[2px] text-center font-mono text-[10px] leading-none font-bold">
+                {pad2(t.count)}
               </span>
-            )}
+            ))}
           </button>
         );
       })}

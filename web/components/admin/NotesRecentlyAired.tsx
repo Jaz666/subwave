@@ -12,15 +12,15 @@ type AiredItem={id:string;consumer?:string;segmentId?:string|null;artist:string|
 
 export default function NotesRecentlyAired({adminFetch,timezone}:{adminFetch:AdminFetch;timezone?:string}) {
   const shelf=useAdminQuery<{items:AiredItem[];readOnly?:boolean}>({
-    key:['sleeve-notes','heard-on-air',0,'','','','detected'],adminFetch,
-    request:(fetcher,signal)=>adminJson(fetcher,'/sleeve-notes/heard-on-air?offset=0&usage=detected',undefined,signal),
+    key:['sleeve-notes','heard-on-air',0,'','','','sleeve-notes'],adminFetch,
+    request:(fetcher,signal)=>adminJson(fetcher,'/sleeve-notes/heard-on-air?offset=0&usage=sleeve-notes',undefined,signal),
     staleTime:10_000,refetchInterval:15_000,
   });
   const exchanges=[...groupAiredStories(shelf.data?.items??[]).entries()].slice(0,2);
   return <Card headingLevel={2} title="Recently aired" right={<Link href="/admin/notes?tab=heard" className="text-xs text-primary hover:underline">Heard on Air</Link>}>
     {shelf.isLoading&&<p role="status" className="text-[13px] text-muted">Loading recent airings…</p>}
     {shelf.error&&<p role="alert" className="text-[13px] text-muted">Recent airings could not be refreshed. <button type="button" className="text-primary hover:underline" onClick={()=>void shelf.refetch()}>Retry</button></p>}
-    {shelf.data&&!exchanges.length&&<p className="text-[13px] text-muted">No confirmed aired links or segments with detected Spark use yet.</p>}
+    {shelf.data&&!exchanges.length&&<p className="text-[13px] text-muted">No confirmed Sleeve Notes segments or links with detected Spark use yet.</p>}
     <div className="divide-y divide-border/60">{exchanges.map(([id,items])=>{
       const item=items[0]!;
       const speech=item.conversation?.lines.map(line=>`${line.speakerName}: ${line.text}`).join('\n\n')

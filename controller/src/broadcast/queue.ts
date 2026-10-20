@@ -2470,6 +2470,7 @@ class Queue {
       const targetFile = channel === 'intro'
         ? config.liquidsoap.introFile
         : config.liquidsoap.sayFile;
+      if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return {accepted:false,deferred:false,completed:Promise.resolve(false)};
       const seg: SegmentDesc = { kind, channel, text: safeText, meta, persona, track: this.current?.track ?? null, sleeveClaimUseId };
       if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) {
         releaseSleeveNoteUse(sleeveClaimUseId);
@@ -2592,6 +2593,7 @@ class Queue {
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
   async announceExchange(lines: { persona: Persona; text: string; meta?: TurnMeta }[], kind = 'banter', { castNames = [], speechDeadline = null }: { castNames?: readonly string[];speechDeadline?:SpeechDeadline|null } = {}) {
+    if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return false;
     if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
       this.log('scheduler', `Dropped ${kind} exchange — the show handoff has already claimed this boundary`);
       return false;
@@ -2634,6 +2636,7 @@ class Queue {
       return false;
     }
     for (const [index, l] of rendered.entries()) {
+      if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return false;
       if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
         this.log('scheduler', `Dropped ${kind} exchange — the show handoff completed while it rendered`);
         return false;
@@ -2745,6 +2748,11 @@ class Queue {
     } = {},
   ): boolean {
     if (!clips.length) return false;
+    if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes){
+      for(const clip of clips)releaseSleeveNotesSegment(clip.meta);
+      onCompleted?.(false);
+      return false;
+    }
     const superseded = this._pendingVoice;
     // Once the silence handoff has an id it is a committed music-timeline
     // request, not a cancellable forecast. Replacing it would leave a real gap
@@ -2979,6 +2987,10 @@ class Queue {
     // Bounded so a silence that never reaches the mixer cannot pin the one
     // pending slot: past the arm limit the break disarms and the clip falls
     // through to ordinary ducked delivery below.
+    if(this._pendingVoice?.kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes){
+      this.dropPendingVoice('Extended Sleeve Notes was disabled');
+      if(!this._pendingVoice)return;
+    }
     const committed = this._pendingVoice;
     if (committed?.pauseId) {
       if (!pauseTalkArmExpired(committed.pauseArmedAt, Date.now())) return;
@@ -4948,6 +4960,9 @@ export const queue = new Queue();
 settings.onCacheChange(() => {
   session.refreshHost();
   queue.invalidateObsoleteHostSpeech();
+  if(!settings.get().djBehaviour.extendedSleeveNotes&&queue.pendingVoiceTalk()?.kind==='sleeve-notes'){
+    queue.dropPendingVoice('Extended Sleeve Notes was disabled');
+  }
 });
 
 // Handing the rotate to the controller starts a clean N-track cycle (#1619).

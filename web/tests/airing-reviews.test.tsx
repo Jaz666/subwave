@@ -13,9 +13,9 @@ test('a multi-Spark conversation offers one Flag action without a mandatory feed
     offeredWording:'The founding members reunited.',currentWording:'The founding members reunited.',wordingAtOffer:'The founding members reunited.',
     spokenText:'Even in death we find closure.',enabled:1,operatorState:'auto',sourceUrl:'https://example.test',provider:'wikipedia',attribution:'Source',sparkDetected:0,
     story:null,delivery:null,note:null,feedbackAt:null};
-  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','detected'],{items:[first,{...first,id:'two'}],total:2,conversationTotal:1,readOnly:false,feedbackTotals:{story:[],delivery:[]}});
+  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','sleeve-notes'],{items:[first,{...first,id:'two'}],total:2,conversationTotal:1,readOnly:false,feedbackTotals:{story:[],delivery:[]}});
   const html=renderToStaticMarkup(<QueryClientProvider client={client}><HeardOnAir adminFetch={fetcher}/></QueryClientProvider>);
-  assert.match(html,/type="search"/);assert.match(html,/Exchange type/);assert.match(html,/Last 24 hours/);assert.match(html,/<option value="detected" selected="">Use detected/);
+  assert.match(html,/type="search"/);assert.match(html,/Exchange type/);assert.match(html,/Last 24 hours/);assert.match(html,/<option value="sleeve-notes" selected="">Segments and used Sparks/);
   assert.equal(html.split('Flag for review').length-1,1);assert.match(html,/use not detected/);
   assert.doesNotMatch(html,/<form|Specific story problem|Leave feedback/);client.clear();
 });
@@ -91,10 +91,10 @@ test('Stories shows the persisted review after the card is mounted again',()=>{
   assert.match(html,/disabled=""/);assert.match(html,/tab=moderation/);client.clear();
 });
 
-test('Heard on air keeps its default detected-use filter until the operator changes it',()=>{
+test('Heard on air defaults to confirmed segments and detected-use links',()=>{
   const client=new QueryClient();
-  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','detected'],{items:[],total:0,readOnly:false,feedbackTotals:{story:[],delivery:[]}});
+  client.setQueryData(['sleeve-notes','heard-on-air',0,'','','','sleeve-notes'],{items:[],total:0,readOnly:false,feedbackTotals:{story:[],delivery:[]}});
   const html=renderToStaticMarkup(<QueryClientProvider client={client}><HeardOnAir adminFetch={fetcher}/></QueryClientProvider>);
   assert.doesNotMatch(html,/Reset filters/);
-  assert.match(html,/<option value="detected" selected="">Use detected/);client.clear();
+  assert.match(html,/<option value="sleeve-notes" selected="">Segments and used Sparks/);client.clear();
 });

@@ -52,6 +52,10 @@ const validImperativeFixtures = {
   // admin-query-imperative: llm-call-export
   return adminResponse(adminFetch, \`/debug/llm-calls/export?format=\${format}\`);
 }\n`,
+  'connections/ExternalDiscoveries.tsx': `export async function run(adminFetch) {
+  // admin-query-imperative: explicit-discoveries-refresh
+  return adminJson(adminFetch, '/sleeve-notes/connections/discoveries?refresh=1');
+}\n`,
   'connect/ConnectPanel.tsx': `export async function run(adminFetch, catalog) {
   // admin-query-imperative: openapi-download
   return adminResponse(adminFetch, catalog.openapiPath);

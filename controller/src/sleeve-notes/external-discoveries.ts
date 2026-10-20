@@ -1,8 +1,23 @@
 import type Database from 'better-sqlite3';
-import {connectionNameKey} from './library-connections.js';
+import {connectionNameKey,connectionArtistVariantKey} from './library-connections.js';
 
 export function externalDiscoveriesInDatabase(db: Database.Database) {
   const local = new Set((db.prepare('SELECT name_key FROM sleeve_connection_library_artists').all() as {name_key:string}[]).map(row=>row.name_key));
+  // Display-only membership fallback: punctuation variants must identify one
+  // library name. This never establishes a recording match or merges identities.
+  const displayKey=connectionArtistVariantKey;
+  const variants=new Map<string,Set<string>>();
+  for(const name of local){
+    const key=displayKey(name);
+    if(!key)continue;
+    const names=variants.get(key)??new Set<string>();names.add(name);variants.set(key,names);
+  }
+  const localName=(name:string)=>{
+    const exact=connectionNameKey(name);
+    if(local.has(exact))return exact;
+    const matches=variants.get(displayKey(name));
+    return matches?.size===1?[...matches][0]:null;
+  };
   const rows=db.prepare(`SELECT e.source_recording_id AS recordingId, e.relationship_type AS type,
     e.target_provider_id AS targetId, e.target_artist AS artist, e.target_title AS title,
     s.name AS sourceArtist, r.title AS sourceTitle, c.source_document_id AS sourceId
@@ -12,9 +27,9 @@ export function externalDiscoveriesInDatabase(db: Database.Database) {
     ORDER BY c.updated_at DESC`).all() as Array<{recordingId:string;type:string;targetId:string;artist:string;title:string;sourceArtist:string;sourceTitle:string;sourceId:string}>;
   const groups=new Map<string,{artist:string;references:number;libraryArtists:Set<string>;sources:number;users:number;examples:Array<{artist:string;track:string;targetTrack:string;type:string}>;seen:Set<string>}>();
   for(const row of rows){
-    const key=connectionNameKey(row.artist),sourceKey=connectionNameKey(row.sourceArtist);
+    const key=connectionNameKey(row.artist),sourceKey=localName(row.sourceArtist);
     // Only connections directly from an artist in the local catalogue count.
-    if(!key||local.has(key)||!local.has(sourceKey))continue;
+    if(!key||localName(row.artist)||!sourceKey)continue;
     let group=groups.get(key);
     if(!group){group={artist:row.artist,references:0,libraryArtists:new Set(),sources:0,users:0,examples:[],seen:new Set()};groups.set(key,group);}
     const identity=JSON.stringify([row.recordingId,row.type,row.targetId]);

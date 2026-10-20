@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { GeniusProvider, projectGeniusSong, selectGeniusSearchHit } from '../src/sleeve-notes/genius.js';
+import { GeniusProvider, projectGeniusSong, projectGeniusAlbumBiography, selectGeniusSearchHit } from '../src/sleeve-notes/genius.js';
 import { clearProviderCallsForTest, recentProviderCalls } from '../src/sleeve-notes/telemetry.js';
 
 const search = { response: { hits: [
@@ -85,4 +85,51 @@ test('song detail refuses mismatched identity without searching for a replacemen
       new AbortController().signal), null);
   }
   assert.equal(calls, 3);
+});
+
+test('artist punctuation variants match canonical names without relaxing recording titles or choosing ambiguous hits',()=>{
+ const hit=(id:number,title='Walk This Way')=>({result:{id,title,url:`https://genius.com/${id}`,primary_artist:{name:'Run-DMC'}}});
+ const entity={kind:'track' as const,title:'Walk This Way',artist:'Run‐D.M.C.'};
+ assert.equal(selectGeniusSearchHit({response:{hits:[hit(100)]}},entity),'100');
+ assert.equal(selectGeniusSearchHit({response:{hits:[hit(100,'Walk This Way (Live)')]}},entity),null);
+ assert.equal(selectGeniusSearchHit({response:{hits:[hit(100),hit(101)]}},entity),null);
+});
+
+test('Unicode identity distinguishes scripts, marks and versions through search and direct detail', async () => {
+  for (const [title, artist, otherTitle, otherArtist] of [
+    ['春', '東京', '夏', '大阪'],
+    ['バンド', '日本', 'ハンド', '日本'],
+    ['Мир', 'Кино', 'Мир (Live)', 'Кино'],
+    ['سلام', 'فنان', 'سلام (Remix)', 'آخر'],
+    ['Café', 'Beyoncé', 'Cafe (Acoustic)', 'Adele'],
+  ]) {
+    const song = (id: number, name: string, performer: string) => ({id,title:name,url:`https://genius.test/${id}`,primary_artist:{name:performer}});
+    const entity = {kind:'track' as const,title,artist};
+    const expected = song(10,title,artist);
+    const near = song(11,otherTitle,artist);
+    const namesake = song(12,title,otherArtist);
+    const hits = [near, expected, ...(artist===otherArtist?[]:[namesake])].map(result=>({result}));
+    assert.equal(selectGeniusSearchHit({response:{hits}},entity),'10');
+    assert.equal(selectGeniusSearchHit({response:{hits:[{result:near}]}},entity),null);
+    for (const candidate of [expected,near,...(artist===otherArtist?[]:[namesake])]) {
+      const provider = new GeniusProvider('fixture',async()=>Response.json({response:{song:candidate}}));
+      const result = await provider.fetchSong(String(candidate.id),entity,new AbortController().signal);
+      assert.equal(result?.identity.providerId??null,candidate===expected?'10':null);
+    }
+  }
+  for (const title of ['', '---', '🎵']) {
+    assert.equal(selectGeniusSearchHit({response:{hits:[{result:{id:10,title,url:'https://genius.test/10',primary_artist:{name:'Band'}}}]}},{kind:'track',title,artist:'Band'}),null);
+  }
+  const accented = {result:{id:10,title:'Cafe',url:'https://genius.test/10',primary_artist:{name:'Beyonce'}}};
+  assert.equal(selectGeniusSearchHit({response:{hits:[accented]}},{kind:'track',title:'Café',artist:'Beyoncé'}),'10');
+});
+
+
+test('album biographies retain non-Latin identity and refuse unrelated titles and empty keys',()=>{
+ const album={id:10,name:'春',artist:{name:'東京'},url:'https://genius.test/album',description:{plain:'An album recorded with the band and their producer in a converted studio, documenting the sessions and the creation of its songs.'}};
+ const expected={title:'春',artist:'東京'};
+ assert.equal(projectGeniusAlbumBiography({response:{album}},expected)?.title,'春');
+ assert.equal(projectGeniusAlbumBiography({response:{album:{...album,name:'夏'}}},expected),null);
+ assert.equal(projectGeniusAlbumBiography({response:{album:{...album,artist:{name:'大阪'}}}},expected),null);
+ assert.equal(projectGeniusAlbumBiography({response:{album:{...album,name:'---'}}},{...expected,title:'---'}),null);
 });

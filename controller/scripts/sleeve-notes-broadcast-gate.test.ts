@@ -27,3 +27,21 @@ test('rendered speech waiting for a boundary leaves research available while act
   t.mock.method(waiting._introRenders, 'busy', () => true);
   assert.equal(allowed(), false, 'active TTS rendering retains priority');
 });
+
+test('disabled Sleeve Notes drops a waiting segment without touching ordinary station speech',async()=>{
+ const settings=await import('../src/settings.js');
+ const store=await import('../src/settings/store.js');
+ const saved=settings.get();
+ store.setCache({...saved,djBehaviour:{...saved.djBehaviour,extendedSleeveNotes:false}});
+ try {
+  const waiting=Object.create(Object.getPrototypeOf(queue));
+  waiting.log=()=>{};
+  let result:boolean|undefined;
+  waiting._pendingVoice={kind:'sleeve-notes',clips:[],onCompleted:(aired:boolean)=>{result=aired;}};
+  await waiting.airPendingVoice();
+  assert.equal(waiting._pendingVoice,null);
+  assert.equal(result,false);
+  assert.equal(waiting.holdForNextTrack('sleeve-notes',[{meta:{}}]),false);
+  assert.equal(waiting._pendingVoice,null);
+ }finally{store.setCache(saved);}
+});

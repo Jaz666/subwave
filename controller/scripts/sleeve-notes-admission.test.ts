@@ -27,10 +27,11 @@ test('an encounter creates one local attachment and one durable MusicBrainz matc
   }]);
   assert.equal((db.prepare('SELECT COUNT(*) AS count FROM sleeve_encounters').get() as { count: number }).count, 2);
   assert.deepEqual(db.prepare(`SELECT provider, subject_type AS subjectType, subject_id AS subjectId,
-    capability, state, priority FROM sleeve_research_jobs`).all(), [{
+    capability, state, priority FROM sleeve_research_jobs WHERE provider='musicbrainz'`).all(), [{
     provider: 'musicbrainz', subjectType: 'local-track', subjectId: 'navidrome-1',
     capability: 'match', state: 'queued', priority: 4,
   }]);
+  assert.ok(db.prepare("SELECT 1 FROM sleeve_research_jobs WHERE provider='genius' AND capability='connections' AND state='queued'").get());
   db.close();
 });
 
@@ -41,11 +42,12 @@ test('a transient provider failure remains a timed retry rather than a no-match'
     localTrackId: 'navidrome-retry', title: 'Communication Breakdown', artist: 'Led Zeppelin',
     releaseTitle: 'Remasters', musicbrainzRecordingId: null, source: 'queue', priority: 0,
   });
-  const id = (db.prepare('SELECT id FROM sleeve_research_jobs').get() as { id: string }).id;
+  const id = (db.prepare("SELECT id FROM sleeve_research_jobs WHERE provider='musicbrainz' AND capability='match'").get() as { id: string }).id;
   retryResearchJobInDatabase(db, id, 300_000, new Date('2026-09-14T12:00:00.000Z'));
-  assert.deepEqual(db.prepare('SELECT state, run_after AS runAfter FROM sleeve_research_jobs').all(), [{
+  assert.deepEqual(db.prepare("SELECT state, run_after AS runAfter FROM sleeve_research_jobs WHERE provider='musicbrainz'").all(), [{
     state: 'retry-at', runAfter: '2026-09-14T12:05:00.000Z',
   }]);
+  assert.ok(db.prepare("SELECT 1 FROM sleeve_research_jobs WHERE provider='genius' AND capability='connections' AND state='queued'").get());
   db.close();
 });
 
@@ -68,10 +70,11 @@ test('a MusicBrainz outage defers every pending external match together', () => 
     VALUES ('release', 'musicbrainz', 'release', 'release-id', 'release-context', 'queued', 200, 0, NULL, 'old', 'old')`).run();
   assert.equal(deferMusicBrainzMatchesInDatabase(db, 300_000, new Date('2026-09-16T12:00:00.000Z')), 2);
   assert.deepEqual(db.prepare(`SELECT subject_type AS subjectType, capability, state, run_after AS runAfter
-    FROM sleeve_research_jobs ORDER BY subject_type, capability`).all(), [
+    FROM sleeve_research_jobs WHERE provider='musicbrainz' ORDER BY subject_type, capability`).all(), [
     { subjectType: 'local-track', capability: 'match', state: 'retry-at', runAfter: '2026-09-16T12:05:00.000Z' },
     { subjectType: 'local-track', capability: 'match', state: 'retry-at', runAfter: '2026-09-16T12:05:00.000Z' },
     { subjectType: 'release', capability: 'release-context', state: 'queued', runAfter: null },
   ]);
+  assert.ok(db.prepare("SELECT 1 FROM sleeve_research_jobs WHERE provider='genius' AND capability='connections' AND state='queued'").get());
   db.close();
 });

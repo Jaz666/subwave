@@ -1151,6 +1151,12 @@ export function startResearchWorker(quietGate: QuietGate): void {
   const worker = new ResearchWorker(quietGate);
   timer = setInterval(() => { void worker.runOnce(); }, 10_000);
   timer.unref();
-  const expiryTimer = setInterval(() => { expireRecycleBin(); }, 60 * 60 * 1000);
+  const expiryTimer = setInterval(() => {
+    if (!settings.get().djBehaviour.extendedSleeveNotes || !quietGate.isQuiet()) return;
+    void runResearchDatabaseWork(async () => {
+      expireRecycleBin();
+      return true;
+    }).catch(error => console.warn('[sleeve-notes] Recycle Bin cleanup deferred:', error instanceof Error ? error.message : String(error)));
+  }, 60 * 60 * 1000);
   expiryTimer.unref();
 }

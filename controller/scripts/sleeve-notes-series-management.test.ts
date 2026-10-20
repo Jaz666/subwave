@@ -9,9 +9,11 @@ process.env.STATE_DIR = root;
 delete process.env.ADMIN_USER; delete process.env.ADMIN_PASS;
 const { open, close } = await import('../src/sleeve-notes/db.js');
 const store = await import('../src/sleeve-notes/series-catalog-store.js');
+const settings=await import('../src/settings.js');
+await settings.update({djBehaviour:{extendedSleeveNotes:true}});
 const repository = await import('../src/sleeve-notes/research-repository.js');
 const { DEFAULT_MUSICBRAINZ_SERIES } = await import('../src/sleeve-notes/musicbrainz-series-catalog.js');
-const { loadExtendedSleeveNoteCandidatesInDatabase } = await import('../src/sleeve-notes/link-selection.js');
+const { loadExtendedSleeveNoteCandidatesInDatabase,countExtendedSleeveNoteCandidatesInDatabase } = await import('../src/sleeve-notes/link-selection.js');
 const { router } = await import('../src/routes/sleeve-notes.js');
 const db = open();
 const app = express(); app.use(express.json(), router);
@@ -98,6 +100,28 @@ test('1001 editions fold to the earliest enabled edition, including cached disab
   await request('/configure', { ids: [editions[0].id], enabled: true });
   assert.equal(candidates().length, 1); assert.match(candidates()[0].wording, /2005/);
 });
+test('series cooldown finds confirmed airings on another recording through retained sources',async()=>{
+ const definition=DEFAULT_MUSICBRAINZ_SERIES.find(item=>item.entityType==='recording')!;
+ await request('/configure',{ids:[definition.id],enabled:true});
+ const other='44444444-4444-4444-8444-444444444444';
+ repository.retainMusicBrainzSeriesSnapshot(definition,{id:definition.id,name:definition.label,type:'Recording series',members:[
+  {id:member,title:'First',rank:'1'},{id:other,title:'Second',rank:'2'}]});
+ repository.retainLibrarySeriesClaims({localAlbumId:'cooldown-first',releaseGroupMbid:null,songs:[{id:'cooldown-first',musicBrainzId:member}]});
+ repository.retainLibrarySeriesClaims({localAlbumId:'cooldown-second',releaseGroupMbid:null,songs:[{id:'cooldown-second',musicBrainzId:other}]});
+ const note=loadExtendedSleeveNoteCandidatesInDatabase(db,'cooldown-first','First Artist')[0];
+ const now=Date.now(),at=new Date(now).toISOString();
+ db.prepare(`INSERT INTO sleeve_claim_uses(id,claim_id,entity_type,entity_id,category,topic,local_track_id,supplied_at,aired_at,detection_status)
+ VALUES ('series-cooldown',?,?,?,?,?,'cooldown-first',?,?,'detected')`).run(note.claimId,note.entityType,note.entityId,note.category,note.topic,at,at);
+ const available=(time=now)=>countExtendedSleeveNoteCandidatesInDatabase(db,'cooldown-second','Second Artist',time).availableCount;
+ assert.equal(available(),0);
+ db.prepare("UPDATE sleeve_claim_uses SET detection_status='not-detected' WHERE id='series-cooldown'").run();
+ assert.equal(available(),1);
+ db.prepare("UPDATE sleeve_claim_uses SET detection_status='detected',aired_at=NULL,released_at=? WHERE id='series-cooldown'").run(at);
+ assert.equal(available(),1);
+ db.prepare("UPDATE sleeve_claim_uses SET aired_at=? WHERE id='series-cooldown'").run(at);
+ assert.equal(available(now+6*60*60*1000),1);
+});
+
 test.after(async () => {
   globalThis.fetch = originalFetch;
   await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -9,6 +9,8 @@ const root = mkdtempSync(join(tmpdir(), 'subwave-cached-notes-'));
 process.env.STATE_DIR = root;
 delete process.env.ADMIN_USER;
 delete process.env.ADMIN_PASS;
+const { researchStoreReadout, researchStoreExplore, researchEntityDossier, researchConnectionsGraph } = await import('../src/sleeve-notes/research-repository.js');
+const { cachedBrainLibraryGraph } = await import('../src/sleeve-notes/brain-library.js');
 const { migrate, open, close, withCachedRead } = await import('../src/sleeve-notes/db.js');
 const { router } = await import('../src/routes/sleeve-notes.js');
 const { stopConnectionCompute } = await import('../src/sleeve-notes/connection-compute.js');
@@ -35,12 +37,11 @@ const get = async (endpoint: string) => {
     entities: Array<{ title: string }>; nodes: Array<{ title: string }>;
   };
 };
-test('off-feature browsing has usable empty responses and never creates the station cache', async () => {
+test('the disabled API exposes status but blocks cached browsing without creating the station cache', async () => {
   assert.equal((await get('status')).enabled, false);
-  assert.equal((await get('readout?cached=1')).retainedClaims, 0);
-  assert.equal((await get('explore?cached=1')).total, 0);
-  assert.deepEqual((await get('connections/overview?cached=1')).nodes, []);
-  assert.equal((await get('moderation')).total, 0);
+  for (const endpoint of ['readout?cached=1','explore?cached=1','connections/overview?cached=1','moderation']) {
+    assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`)).status,409);
+  }
   assert.equal(existsSync(path), false);
 });
 test('cached Stories, history, Review and Brain read v42 without migration or writes', async () => {
@@ -60,28 +61,27 @@ test('cached Stories, history, Review and Brain read v42 without migration or wr
   db.pragma('user_version = 42');
   db.close();
   const before = readFileSync(path);
-  const readout = await get('readout?cached=1');
-  assert.equal(readout.active, false);
+  const readout = withCachedRead(() => researchStoreReadout());
   assert.equal(readout.claims[0].entityId, 'a');
   assert.equal(readout.recentSparks[0].speechSignal, null);
-  assert.equal((await get('explore?cached=1')).entities[0].title, 'Example Band');
-  assert.equal((await get('dossier/artist/a?cached=1')).claims.length, 1);
-  assert.equal((await get('connections/graph?entityType=artist&entityId=a&cached=1')).nodes[0].title, 'Example Band');
-  await get('connections/search?q=Example&cached=1');
-  await get('connections/overview?cached=1');
-  await get('moderation');
+  assert.equal(withCachedRead(() => researchStoreExplore({})).entities[0].title, 'Example Band');
+  assert.equal(withCachedRead(() => researchEntityDossier('artist','a'))!.claims.length, 1);
+  assert.equal(withCachedRead(() => researchConnectionsGraph({entityType:'artist',entityId:'a'}))!.nodes[0].title, 'Example Band');
+  for (const endpoint of ['connections/search?q=Example&cached=1','connections/overview?cached=1','moderation']) {
+    assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`)).status,409);
+  }
   assert.throws(() => withCachedRead(() => open().exec("UPDATE sleeve_artists SET name = 'Bad'")), /readonly/);
   assert.deepEqual(readFileSync(path), before);
   assert.equal(existsSync(`${path}-wal`), false);
 });
-test('disabled library layers use snapshots and research actions are refused', async () => {
+test('internal library snapshots remain readable while disabled API access is refused', async () => {
   const db = new Database(path);
   migrate(db);
   const graph = { focusId: 'library-artist:local', nodes: [{ id: 'library-artist:local', title: 'Example Band' }], edges: [], truncated: false };
   db.prepare('INSERT INTO sleeve_brain_layers VALUES (?, ?, ?)').run('library-artist', 'local', JSON.stringify(graph));
   db.close();
-  assert.equal((await get('connections/graph?entityType=library-artist&entityId=local&cached=1')).nodes[0].title, 'Example Band');
-  assert.equal((await fetch(`${base}/sleeve-notes/connections/graph?entityType=library-album&entityId=missing&cached=1`)).status, 404);
+  assert.equal(withCachedRead(() => cachedBrainLibraryGraph('library-artist','local'))!.nodes[0].title, 'Example Band');
+  assert.equal((await fetch(`${base}/sleeve-notes/connections/graph?entityType=library-album&entityId=missing&cached=1`)).status, 409);
   for (const endpoint of ['connections/populate', 'wikipedia-refresh', 'wikipedia-prompt-preview']) {
     assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 409);
   }

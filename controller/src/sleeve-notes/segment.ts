@@ -61,7 +61,7 @@ export function prepareSleeveNotesSegmentInDatabase(db: Database.Database, track
 
 export function prepareSleeveNotesSegment(track: SegmentTrack | null, manual = false): SleeveNotesSegmentBrief | null {
   const s=settings.get(), config=s.sleeveNotes.segment;
-  if (!track || (!manual && (!s.djBehaviour.extendedSleeveNotes || !config.enabled))) return null;
+  if (!track || !s.djBehaviour.extendedSleeveNotes || (!manual && !config.enabled)) return null;
   const {host,guests,show}=settings.getOnAirRoster();
   return prepareSleeveNotesSegmentInDatabase(open(),track,config,host,guests,Date.now(),manual,show);
 }
@@ -134,20 +134,26 @@ export async function runSleeveNotesSegment(brief: SleeveNotesSegmentBrief,
   runObject:(args:Parameters<typeof djObject>[0])=>Promise<unknown>=djObject,
   onStandDown:(reason:string)=>void=()=>{}): Promise<boolean> {
   const decline=(reason:string)=>{onStandDown(reason);return false;};
+  if (!settings.get().djBehaviour.extendedSleeveNotes) return decline('Extended Sleeve Notes is disabled');
   if (segmentRunning) return decline('a Sleeve Notes segment is already being prepared');
   if(brief.speechBudget&&brief.speechBudget.maxWords<brief.speechBudget.minWords)return decline('not enough track time remains for a complete Sleeve Notes segment');
   segmentRunning=true;
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(new Error('Sleeve Notes segment generation timed out')),settings.get().llm.agentTimeoutMs ?? 45_000);
+  const stopOnDisable=settings.onCacheChange(()=>{
+    if(!settings.get().djBehaviour.extendedSleeveNotes)controller.abort(new Error('Extended Sleeve Notes was disabled'));
+  });
   const uses:string[]=[];
   try {
     const schema=sleeveNotesSegmentOutputSchema(brief.cast);
     const output=schema.parse(await runObject({...sleeveNotesSegmentPrompt(brief),schema,kind:'generateSleeveNotesSegment',temperature:0.65,maxOutputTokens:2400,signal:controller.signal}));
+    if (controller.signal.aborted) return decline(controller.signal.reason instanceof Error ? controller.signal.reason.message : 'Sleeve Notes generation was interrupted');
     if (!output.air) return decline(output.reason || 'the DJ found nothing worthwhile to say');
     if(brief.speechBudget&&!fitsSpeechBudget(brief.speechBudget,output.lines.reduce((sum,line)=>sum+spokenWordCount(line.text),0),output.lines.length))
       return decline('the written segment no longer fits the remaining track time');
     const s=settings.get(), roster=settings.getOnAirRoster();
-    if (!brief.manual && (!s.djBehaviour.extendedSleeveNotes || !s.sleeveNotes.segment.enabled
+    if (!s.djBehaviour.extendedSleeveNotes) return decline('Extended Sleeve Notes was disabled');
+    if (!brief.manual && (!s.sleeveNotes.segment.enabled
       || roster.host?.id!==brief.cast[0].id
       || (s.sleeveNotes.segment.personaIds!==null && !s.sleeveNotes.segment.personaIds.includes(brief.cast[0].id))
       || (brief.cast.length>1 && (!s.sleeveNotes.segment.cohosts || brief.cast.slice(1).some(p=>!roster.guests.some(g=>g.id===p.id)))))) return decline('the segment settings or on-air roster changed');
@@ -175,5 +181,5 @@ export async function runSleeveNotesSegment(brief: SleeveNotesSegmentBrief,
   } catch (error) {
     for (const id of uses) releaseExtendedSleeveNoteReservation(id);
     throw error;
-  } finally {clearTimeout(timer);segmentRunning=false;}
+  } finally {stopOnDisable();clearTimeout(timer);segmentRunning=false;}
 }

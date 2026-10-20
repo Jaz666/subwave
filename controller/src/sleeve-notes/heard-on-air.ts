@@ -21,6 +21,10 @@ export function heardOnAir(limit = 20, offset = 0, groupConversations = false, f
   const hasLines=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get();
   const detected = "CASE WHEN json_valid(u.speech_signal) THEN COALESCE(json_extract(u.speech_signal,'$.status')='detected',0) ELSE 0 END";
   const conditions: string[] = [], values: string[] = [];
+  if(filters.usage==='sleeve-notes') {
+    conditions.push(`${groupKey} IN (SELECT ${groupKey} FROM sleeve_claim_uses u
+      WHERE ${ELIGIBLE} AND (u.consumer='sleeveNotesSegment' OR ${detected}=1))`);
+  }
   if (filters.usage === 'detected' || filters.usage === 'not-detected') {
     conditions.push(`${groupKey} ${filters.usage === 'not-detected' ? 'NOT IN' : 'IN'} (
       SELECT ${groupKey} FROM sleeve_claim_uses u WHERE ${ELIGIBLE} AND ${detected}=1)`);

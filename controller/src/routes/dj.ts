@@ -949,9 +949,11 @@ router.post('/dj/queue-track', requireAdmin, async (req, res) => {
   }
   try {
     if (selection) {
+      if(!settings.get().djBehaviour.extendedSleeveNotes)return res.status(409).json({error:'Extended Sleeve Notes is disabled'});
       const parsed=brainQueueSelectionSchema.safeParse(selection);
       if (!parsed.success) return res.status(400).json({error:'Choose a supported Station Brain artist, album or track.'});
       const selected=await selectBrainQueueTrack(parsed.data);
+      if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Extended Sleeve Notes is disabled'});
       track=selected.track;reason=selected.reason;
     }
     // Explicit operator action — bypass the request/AI dedup guard (#619) so a

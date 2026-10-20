@@ -19,11 +19,20 @@ test('external rankings count distinct references from library artists only',()=
  add('one','r','samples','External');add('duplicate','r','samples','EXTERNAL');
  add('two','r','sampled_in','External');add('local','r','samples','Local');
  add('outside','x','samples','Unreachable');add('disabled','r','samples','Disabled',0);
+ db.prepare('INSERT INTO sleeve_connection_library_artists VALUES (?)').run('run‐d.m.c.');
+ add('library-punctuation-variant','r','samples','Run-DMC');
+ db.prepare("INSERT INTO sleeve_artists VALUES ('run','Run-DMC')").run();
+ db.prepare("INSERT INTO sleeve_recordings VALUES ('run-track','run','Run song')").run();
+ add('source-punctuation-variant','run-track','samples','External');
  const result=externalDiscoveriesInDatabase(db);
  assert.equal(result.externalArtists,1);
- assert.equal(result.mostConnected[0]?.references,2);
- assert.equal(result.mostConnected[0]?.libraryArtists,1);
- assert.equal(result.sampleSources[0]?.sources,1);
+ assert.equal(result.mostConnected[0]?.references,3);
+ assert.equal(result.mostConnected[0]?.libraryArtists,2);
+ assert.equal(result.sampleSources[0]?.sources,2);
  assert.equal(result.sampleUsers[0]?.users,1);
+ assert.ok(!result.sampleSources.some(row=>row.artist==='Run-DMC'));
+ // Two library names sharing the fallback key remain ambiguous.
+ db.prepare('INSERT INTO sleeve_connection_library_artists VALUES (?)').run('run.dmc');
+ assert.ok(externalDiscoveriesInDatabase(db).sampleSources.some(row=>row.artist==='Run-DMC'));
  db.close();
 });

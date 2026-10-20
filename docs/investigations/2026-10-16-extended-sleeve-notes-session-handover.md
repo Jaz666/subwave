@@ -1,3 +1,5 @@
+> **Latest handover:** [19 October 2026](2026-10-19-extended-sleeve-notes-session-handover.md). Read that first; this file is historical context.
+
 # Extended Sleeve Notes — fresh-chat handover, 16 October 2026
 
 Read this first. It supersedes the 13 October checkout/PR guidance. Earlier investigation notes remain useful history, but their deployment instructions, test counts and proposed features may be outdated.
@@ -325,3 +327,37 @@ Ten focused overview checks passed, covering aggregation, external reference gro
 - Local `develop` fast-forwarded to the fork’s `29bd104d`, which already includes upstream `7cb507f5` and retains the fork’s additional documentation/history.
 - Recovery refs: `backup/station-before-upstream-20261019`, `backup/station-checkpoint-before-upstream-20261019`, and `backup/develop-before-upstream-20261019`.
 - PR #5’s feature head is updated from the integrated station branch. The owner still performs deployment; upstream includes broadcast image/Liquidsoap changes, so rebuild controller, web and broadcast together. No containers or live station data were changed by this update.
+
+
+### 19 October: all-or-nothing master switch
+
+- The only master switch is now visible in Settings → DJ Behaviour, outside Advanced, with feature description, paid LLM Provider warning and the rough 2,000 extra research tokens per track estimate. The Notes settings page links back to it.
+- Off hides Notes sidebar/command targets, Dash card and manual firing. Direct feature pages show only the settings link; feature API operations, including cached browsing and manual firing, return 409. Status and the empty Dash shelf remain readable for gating.
+- The shared worker quiet gate now includes master enablement, interrupting monitored LLM work on disable. Segment preparation/generation/publication honours the master even for manual runs. Settings publication drops waiting uncommitted Sleeve Notes speech, and render/deferred publication checks reject late work. Mixer-committed speech is preserved to avoid a silent scheduled break. Saved facts and jobs remain intact.
+- Segment, disabled API, pending speech and master-switch-copy checks cover the new policy. No deployment or live settings changes performed by the agent.
+
+
+### 19 October: series-wide airtime cooldown
+
+- Added a six-hour cooldown keyed to the MusicBrainz series source, shared across tracks/artists for ordinary links, automatic segments and availability readouts. Manual segment runs keep the established cooldown override.
+- Starts only on confirmed aired speech with detected fact use. Unused offers, failed/dropped speech and other series do not consume the cooldown. Existing fact/entity/topic guards remain.
+- Reads historical use rows through retained claim/source joins, so older airings participate without a migration. Added pure selection coverage and a database regression with two recordings from the same series; the latter also verifies expiry and unused/dropped cases.
+
+### 19 October: external-discovery punctuation variants
+
+- Fixed Run-DMC appearing external despite library Run‐D.M.C. Discovery membership now falls back to a unique library name after removing dots, whitespace and Unicode dashes, on both the source and target sides. Exact matches retain precedence; ambiguous fallback names remain unresolved.
+- This is presentation-only exclusion/group counting, not an identity merge, traversal eligibility change, or recording match. Regression coverage includes variant targets, variant sources and ambiguous names. Read-only station verification confirms Run-DMC no longer appears in sample-source leaders.
+
+
+### 19 October: canonical names across Genius matching
+
+- Applied artist-only punctuation/dash equivalence to Genius search/detail validation, cached song/frontier reuse, sample traversal and library connection matching. Search refuses ambiguous matching song IDs; titles retain the previous strict rules.
+- Confirmed identities keep MusicBrainz names; newly created MB-free traversal artist records use the unique library spelling. Existing provisional traversal rows resolve to that library spelling on read. Provider source evidence stays unchanged; no identity merge or extra MusicBrainz calls.
+- The shared artist lookup keeps strict spelling where library or MB identities collide. Discovery rankings reuse the same punctuation-fold helper. Derived connection matches disclose artist-variant matching in their match basis.
+- Regression coverage includes Run-DMC / Run‐D.M.C., traversal naming/cache reuse, ambiguous artists/search hits, and rejecting live-version substitutions. No live database or deployment changes made.
+
+### 19 October: confirmed segments hidden by the airing filter
+
+- Read-only station inspection found nine confirmed segments today, all with eligible rendered-and-aired ledger rows and complete transcript lines. Four had no detected wording match and were hidden by the default filter rather than missing from storage.
+- Added `usage=sleeve-notes`: all confirmed native Sleeve Notes segments plus ordinary links with detected Spark use. Recently Aired and Heard on Air now use it by default. The strict detected/not-detected filters and All aired exchanges remain available; ordinary greetings without detected Spark use remain excluded by default.
+- No historical records or detection results changed. Added database coverage for confirmed segments with no detected wording, preserving complete conversations and excluding unused greetings; updated UI default-filter checks. Existing history becomes visible after rebuild without backfill.
