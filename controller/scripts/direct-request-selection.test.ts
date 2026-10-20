@@ -401,6 +401,13 @@ test('popular uses evidence from top songs rather than arbitrary album order', a
   assert.equal(r.source, 'artist-popular');
 });
 
+test('a guessed popular sort does not relabel a named song found on an album', async () => {
+  const f = fixture({ searchPage: async () => ({ songs: [], rawCount: 0 }) });
+  const r = await resolveDirectRequest({ ...songRequest, sort: 'popular' }, f.deps);
+  assert.equal(r.track?.id, exact.id);
+  assert.equal(r.outcome, 'matched');
+});
+
 test('latest release uses precise dates on a chronological scale', async () => {
   assert.ok(requestReleaseRank({ originalReleaseDate: { year: 2020 } }) > requestReleaseRank({ releaseDate: '2019-12-31' }));
   assert.ok(requestReleaseRank({ releaseDate: '2020-02-01' }) > requestReleaseRank({ year: 2020 }));

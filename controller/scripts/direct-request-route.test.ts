@@ -625,3 +625,16 @@ test('a request pointing at the on-air track still reaches the similarity rung',
   assert.equal(result.outcome, 'matched');
   assert.equal(requestLog.snapshot(1)[0].pickSource, 'similar-to-current');
 });
+
+test('a credit found by searching the listener\'s own spelling is not called a different artist', async () => {
+  // "Tupac" finds the library's 2Pac. The controller cannot prove they are one
+  // act, so the track stays an alternative, but the intro is not told it is
+  // by somebody else.
+  const changes = { id: '2pac-changes', title: 'Changes', artist: '2Pac', album: 'Greatest Hits', duration: 269 };
+  catalogueSongs = [changes];
+  modelOutput = { kind: 'track', title: null, artist: 'Tupac', search_terms: ['Tupac'] };
+  const result = await submit('play some Tupac');
+  assert.equal(result.outcome, 'substituted');
+  assert.equal(queue.upcoming[0].track.id, changes.id);
+  assert.equal(requestLog.snapshot(1)[0].artistMiss, null);
+});

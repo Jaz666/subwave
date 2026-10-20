@@ -516,7 +516,10 @@ async function resolveRequest(entry) {
       ? 'Could not verify a track meeting the requested language or genre requirements. Try simplifying the request.'
       : sorryNoMatch(requester));
   }
-  if (selection.outcome === 'substituted' && matched.artist && !requestArtistMatches(matched.artist, pick)) {
+  // A search in the listener's own spelling answers in the library's ("Tupac"
+  // finds 2Pac). That may be the same act, so the intro is not told it is not.
+  if (selection.outcome === 'substituted' && matched.artist && !requestArtistMatches(matched.artist, pick)
+    && !matchedRequestLookups(searches, text).some(credit => requestArtistMatches(credit, pick))) {
     entry.artistMiss = matched.artist;
     entry.missedArtist = cleanMissedArtist(matched.artist);
   }

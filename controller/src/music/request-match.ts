@@ -410,7 +410,8 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
           continue;
         }
         const result = select(songs, 'artist-albums');
-        if (result) return match.sort === 'popular' ? { ...result, outcome: 'substituted' } : result;
+        // Album order is no evidence of popularity, but a named song is itself.
+        if (result) return match.sort === 'popular' && !title ? { ...result, outcome: 'substituted' } : result;
       }
       if (artistMoodPool.length) {
         const result = select(artistMoodPool, 'artist-mood');
