@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import type { StationApi } from '@/lib/api';
 import type { NowPlayingTrack, RequestResult, StationContext } from '@/lib/types';
-import { requestResultLabel } from '@/lib/request-outcome';
+import { isRefusedOutcome, requestResultLabel } from '@/lib/request-outcome';
 import { useTheme } from '@/theme/ThemeContext';
 
 const SUCCESS_HOLD_MS = 2800;
@@ -266,7 +266,7 @@ export default function RequestDrawer({ api, nowPlaying, context, onClose }: Req
 function SuccessCard({ result }: { result: RequestResult }) {
   const { colors } = useTheme();
   const { ack, track, queuePosition, pending, requestText, outcome } = result;
-  const refused = outcome === 'cooldown' || outcome === 'already-queued';
+  const refused = isRefusedOutcome(outcome);
   return (
     <View style={{ paddingVertical: 8 }}>
       <View className="flex-row items-center" style={{ gap: 8, marginBottom: 14 }}>

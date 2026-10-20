@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { usePlayerActions, usePlayerFeed } from '@/components/player/PlayerCore';
 import { useLiteMode } from '@/hooks/useLiteMode';
+import { isRefusedOutcome } from '@/lib/request-outcome';
 import { lastVoiceLine, voiceOnAirMs } from './shared';
 
 /** Whether a skin may run a JS-driven (motion) transition right now. Lite
@@ -110,7 +111,7 @@ export function useRequestSlip(copy: RequestSlipCopy): RequestSlip {
           typeof data.queuePosition === 'number' && data.queuePosition > 0
             ? ` — #${data.queuePosition} in the queue`
             : '';
-        const refused = data.outcome === 'cooldown' || data.outcome === 'already-queued';
+        const refused = isRefusedOutcome(data.outcome);
         const identity = t?.title ? `“${t.title}”${t.artist ? ` by ${t.artist}` : ''}` : '';
         setAck([data.ack || (identity ? `Lining up ${identity}${pos}.` : copy.sent), data.ack && identity ? identity : ''].filter(Boolean).join(' '));
         setOutcome(refused ? 'refused' : 'sent');

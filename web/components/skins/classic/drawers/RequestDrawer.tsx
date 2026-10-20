@@ -5,7 +5,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { ArrowUpRight, Radio } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { NowPlayingTrack, RequestResult, StationContext } from '@/lib/types';
-import { requestResultLabel } from '@/lib/request-outcome';
+import { isRefusedOutcome, requestResultLabel } from '@/lib/request-outcome';
 import { REQUEST_NAME_MAX } from '@/lib/schemas.generated';
 
 const SUCCESS_HOLD_MS = 2800;
@@ -319,7 +319,7 @@ interface SuccessCardProps {
 
 function SuccessCard({ result }: SuccessCardProps) {
   const { ack, track, queuePosition, pending, requestText, outcome } = result;
-  const refused = outcome === 'cooldown' || outcome === 'already-queued';
+  const refused = isRefusedOutcome(outcome);
   return (
     <div className="py-2">
       <div className="mb-[14px] flex items-center gap-2 text-[9px] tracking-[0.4em] text-vermilion uppercase">
