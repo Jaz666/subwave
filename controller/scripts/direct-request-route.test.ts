@@ -653,3 +653,62 @@ test('a model reply that kept only the artist recovers a "Title - Artist" title'
   assert.equal(result.outcome, 'matched');
   assert.equal(queue.upcoming[0].track.id, exact.id);
 });
+
+
+for (const [open, close] of [['"', '"'], ['“', '”'], ["'", "'"], ['‘', '’']]) {
+  test(`a quoted title is recovered without trusting an unrelated search term: ${open}`, async () => {
+    const wrong = { ...killerQueen, title: open === '‘' ? 'Play' : 'Killer Queen' };
+    catalogueSongs = [exact, wrong];
+    artistSongs = [wrong];
+    modelOutput = { title: null, artist: 'Queen', genre: 'rock', mood: 'celebratory', search_terms: [wrong.title] };
+    const result = await submit(`Play ${open}Bohemian Rhapsody${close}`);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0].track.id, exact.id);
+  });
+}
+
+test('a missing quoted title produces an honest alternative', async () => {
+  catalogueSongs = [killerQueen];
+  artistSongs = [killerQueen];
+  modelOutput = { title: null, artist: 'Queen', genre: 'rock', search_terms: ['Killer Queen'] };
+  const result = await submit('Play "Unavailable Example Recording"');
+  assert.equal(result.outcome, 'substituted');
+  assert.match(result.ack, /alternative/);
+});
+
+
+for (const [title, artist, text] of [
+  ['Touched by the Hand of God', 'New Order', 'Play "Touched by the Hand of God" by New Order'],
+  ['September', 'Earth, Wind & Fire', '"Earth, Wind & Fire", "September"'],
+  ['One - Two', 'Fixture Band', '"One - Two" - "Fixture Band"'],
+]) {
+  test(`literal recovery ignores separators inside quoted names: ${text}`, async () => {
+    modelError = true;
+    catalogueSongs = [{ ...exact, title, artist }];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0].track.title, title);
+    assert.equal(queue.upcoming[0].track.artist, artist);
+  });
+}
+
+
+test('a punctuation-only artist is an identity, not an unrestricted artist request', async t => {
+  t.mock.method(Math, 'random', () => 0);
+  const wanted = { ...exact, id: 'punctuation-artist', artist: '!!!', title: 'Normal People' };
+  catalogueSongs = [filler, wanted];
+  modelOutput = { artist: '!!!', title: null, search_terms: [] };
+  const result = await submit('Play something by !!!');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, wanted.id);
+});
+
+test('distinct punctuation-only titles never match each other', async t => {
+  t.mock.method(Math, 'random', () => 0);
+  const wanted = { ...exact, id: 'question-title', artist: 'OutKast', title: '?' };
+  catalogueSongs = [{ ...wanted, id: 'wrong-title', title: '!!!' }, wanted];
+  modelOutput = { artist: 'OutKast', title: null, genre: 'rock', search_terms: ['!!!'] };
+  const result = await submit('Play "?"');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, wanted.id);
+});

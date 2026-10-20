@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  directRequestUnsupported, explicitRequestAttribute, modelFreeRequest, requestArtistMatches, requestReleaseRank, requestTitleMatches,
+  directRequestUnsupported, explicitRequestAttribute, modelFreeRequest, requestedTitle, repairRequestMatch, requestArtistMatches, requestReleaseRank, requestTitleMatches,
   resolveDirectRequest, type RequestCatalog, type RequestMatch, type RequestSong,
 } from '../src/music/request-match.js';
 
@@ -518,4 +518,33 @@ for (const text of ['Queen, Bohemian Rhapsody', 'Please play Bohemian Rhapsody b
 test('model-free artist requests do not invent a song title', () => {
   assert.equal(modelFreeRequest('play some Queen').artist, 'Queen');
   assert.equal(modelFreeRequest('play anything by Queen').title, null);
+});
+
+
+test('quoted spans cannot prove an unrelated title and search-term order cannot hide a real one', () => {
+  const plan = { title: null, artist: 'Queen', genre: 'rock', search_terms: ['Killer Queen'] };
+  assert.equal(requestedTitle(plan, 'Play "Bohemian Rhapsody"'), null);
+  assert.equal(requestedTitle({ ...plan, search_terms: ['Rhapsody'] }, 'Play "Bohemian Rhapsody"'), null);
+  assert.equal(requestedTitle({ ...plan, search_terms: ['Play'] }, 'Play "Bohemian Rhapsody"'), null);
+  assert.equal(requestedTitle({ ...plan, search_terms: ['Killer Queen', 'Bohemian Rhapsody'] },
+    'Play Bohemian Rhapsody'), 'Bohemian Rhapsody');
+});
+
+test('quoted artist names, lyrics and self-introductions are not repaired into song titles', () => {
+  const plan = { title: null, artist: 'Queen', genre: 'rock', search_terms: ['Queen'] };
+  for (const text of ['Play "Queen"', 'Play the song with the lyrics "a fictional line"', 'I am "Mara Vale", play Queen']) {
+    assert.equal(repairRequestMatch(plan, text).title, null, text);
+  }
+});
+
+
+test('punctuation-only identities stay distinct and survive literal parsing', () => {
+  assert.equal(requestArtistMatches('!!!', { id: 'other', artist: 'Queen' }), false);
+  assert.ok(requestArtistMatches('!!!', { id: 'wanted', artist: '!!!' }));
+  assert.equal(requestTitleMatches('?', '!!!'), false);
+  assert.ok(requestTitleMatches('?', '?'));
+  assert.equal(repairRequestMatch({ title: null, artist: 'OutKast' }, 'Play "?"').title, '?');
+  assert.equal(modelFreeRequest('The Roots, !!!!!!!').title, '!!!!!!!');
+  assert.equal(modelFreeRequest('Normal People - !!!').title, '!!!');
+  assert.equal(modelFreeRequest('Normal People by !!!').artist, '!!!');
 });

@@ -1,6 +1,6 @@
 // Direct requests: interpret once, then resolve identity and eligibility in code.
 // No model tools or station/session state belong in this module.
-import { artistNameKey, artistParticipantKeys } from './recency.js';
+import { artistNameKey, artistParticipantKeys, nameKey } from './recency.js';
 
 export interface RequestMatch {
   kind?: string;
@@ -92,12 +92,15 @@ export function requestName(value: unknown): string {
     .replace(/[’‘']/g, '').replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
 }
 
+const QUOTED_NAMES = /"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu;
+
 // Replace quoted spans and whole names in the listener's text with `token`.
-function maskNames(text: string, names: Array<string | null | undefined>, token: string): string {
-  let prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, token)
+function maskNames(text: string, names: Array<string | null | undefined>, token: string, quoted = true): string {
+  let prose = (quoted ? text.replace(QUOTED_NAMES, token) : text)
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘']/g, '');
   for (const name of names.filter(Boolean).sort((a, b) => b!.length - a!.length)) {
     const words = requestName(name).split(' ').filter(Boolean);
+    if (!words.length && name!.trim()) prose = prose.replaceAll(name!.trim(), token);
     // A leading "The" is optional: the model's "The Rock Steady Crew" still
     // masks the listener's "Rock Steady Crew".
     const article = words.length > 1 && words[0] === 'the' ? `(?:${words.shift()}[^\\p{L}\\p{N}\\p{M}]+)?` : '';
@@ -122,8 +125,9 @@ const REQUEST_FRAME = new Set(['play', 'please', 'pls', 'can', 'could', 'would',
 // Does the listener's text name `term`, with nothing but other names and
 // request framing around it?
 function namedInRequest(text: string, term: string, names: Array<string | null | undefined>): boolean {
-  const masked = maskNames(text, [term], ' \u0000 ');
-  return masked.includes('\u0000') && requestName(maskNames(masked, names, ' ')).split(' ').every(word => !word || REQUEST_FRAME.has(word));
+  // Only an occurrence of this term is proof, never an unrelated quoted span.
+  const masked = maskNames(text, [term], ' \u0000 ', false);
+  return masked.includes('\u0000') && requestName(maskNames(masked, names, ' ', false)).split(' ').every(word => !word || REQUEST_FRAME.has(word));
 }
 
 // The search terms that can be names: never the reading's own artist, nor a
@@ -198,7 +202,8 @@ export async function resolveRequestGenre(catalog: RequestCatalog, name: string)
 // listener's spelling is then compared without accents, punctuation or a
 // leading "The".
 function artistIdentityKey(value: unknown): string {
-  return requestName(artistNameKey(value)).replace(/^the (?=\S)/, '');
+  const key = artistNameKey(value);
+  return requestName(key).replace(/^the (?=\S)/, '') || key;
 }
 
 export function requestArtistMatches(want: unknown, song: RequestSong): boolean {
@@ -212,16 +217,16 @@ export function requestArtistMatches(want: unknown, song: RequestSong): boolean 
 export function requestedTitle(match: RequestMatch, text?: string): string | null {
   if (match.title?.trim()) return match.title.trim();
   if (match.album) return null;
-  const term = nameSearchTerms(match)[0]?.trim() || null;
+  const terms = nameSearchTerms(match).map(term => term.trim());
   // The tolerant schema reads an omitted title as null, so a null title beside
   // a mood, genre or language is #1961's reply shape: a small model guessed
   // attributes and left the song in search_terms. The term is the title when
   // the listener's own words name it with only request framing around it;
   // "something calm for an overcast evening" stays a vibe.
-  if (term && match.title === null && (match.mood || match.genre || match.language)) {
-    return text !== undefined && namedInRequest(text, term, [match.artist, match.album]) ? term : null;
+  if (match.title === null && (match.mood || match.genre || match.language)) {
+    return text === undefined ? null : terms.find(term => namedInRequest(text, term, [match.artist, match.album])) || null;
   }
-  return term;
+  return terms[0] || null;
 }
 
 // Catalogue decorations around one recording. A featured credit never makes
@@ -248,6 +253,8 @@ function undecorated(value: unknown, patterns: RegExp[]): string {
 }
 
 export function requestTitleMatches(want: unknown, got: unknown): boolean {
+  // Names such as "?" and "!!!" are real identities, not two empty keys.
+  if (!requestName(want) || !requestName(got)) return nameKey(want) === nameKey(got);
   if (requestName(want) === requestName(got)) return true;
   const wanted = undecorated(want, FEATURED_CREDIT);
   const edition = undecorated(want, [...FEATURED_CREDIT, EDITION]) !== wanted;
@@ -267,13 +274,22 @@ export function modelFreeRequest(text: string): RequestMatch {
     && requestLanguageCode(languageHint[1]) ? languageHint : null;
   const unverifiedConditions = languageHint && !language ? ['unparsed language condition'] : [];
   const query = language ? cleaned.slice(0, language.index) : cleaned;
-  const by = query.match(/^(.+?)\s+by\s+(.+?)[.!?]*$/i);
+  // Keep offsets into the original text, but never split a quoted name on its
+  // own "by", comma or spaced dash.
+  const separators = query.replace(QUOTED_NAMES, name => '\u0000'.repeat(name.length));
+  const pair = (separator: RegExpMatchArray | null, trimSentence = false) => {
+    if (!separator) return null;
+    let tail = query.slice(separator.index! + separator[0].length);
+    if (trimSentence && /[^\s.!?]/u.test(tail)) tail = tail.replace(/[.!?]*$/, '');
+    return [separator[0], query.slice(0, separator.index), tail];
+  };
+  const by = pair(separators.match(/\s+by\s+/i), true);
   const artistOnly = query.match(/^(?:some|(?:anything|something|music|a song|a track) (?:by|from))\s+(.+?)[.!?]*$/i);
   const describedArtist = query.match(/^(?:some|anything|something|music|a song|a track)\s+(.+?)\s+by\s+(.+?)[.!?]*$/i);
   const knownMood = describedArtist && /^(?:energetic|calm|reflective|celebratory|romantic|spiritual|focus|workout|driving|cooking|rainy|sunny|night|morning|evening|festival|cultural)$/i.test(describedArtist[1]);
   if (artistOnly || knownMood) return { kind: 'track', artist: unquote(artistOnly?.[1] || describedArtist![2]), title: null,
     unverifiedConditions, language: language?.[1] || null, mood: describedArtist?.[1] || null, album: null, search_terms: [], scope: 'song', ack: '' };
-  const separated = !by && (query.match(/^([^,]+),\s*(.+)$/) || query.match(/^(.+?)\s+[-–—]\s+(.+)$/));
+  const separated = !by && pair(separators.match(/,\s*/) || separators.match(/\s+[-–—]\s+/));
   const title = unquote(by?.[1] || separated?.[2] || query);
   const artist = by?.[2] || separated?.[1] || null;
   return { kind: 'track', title, album: null, unverifiedConditions, artist: artist ? unquote(artist) : null, reversible: !!separated,
@@ -285,6 +301,13 @@ export function modelFreeRequest(text: string): RequestMatch {
 export function repairRequestMatch(match: RequestMatch, text: string): RequestMatch {
   if (match.kind === 'chat') return match;
   const literal = modelFreeRequest(text);
+  // A bare quoted song is explicit even if the model supplies a different
+  // search term. Require request framing and an opening quote at the name,
+  // not a quotation elsewhere (lyrics, a dedication or a self-introduction).
+  if (!match.title && !match.album && match.scope !== 'album' && literal.title && !literal.artist
+    && /^(?:(?:please\s+)?(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:(?:play|put on|queue|request)\s+)?["“‘']/i.test(text.trim())
+    && !requestArtistMatches(literal.title, { id: 'literal', artist: match.artist || '' })
+    && namedInRequest(text, literal.title, [match.artist])) return { ...match, title: literal.title };
   if (!literal.artist || !literal.title) return match;
   if (!match.unsupported?.length
     && ![match.title, match.album, match.artist, match.genre, match.language, match.mood, ...(match.search_terms || [])].some(Boolean)) {
