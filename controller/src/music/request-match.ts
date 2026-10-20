@@ -88,15 +88,19 @@ function maskNames(text: string, names: Array<string | null | undefined>, token:
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘']/g, '');
   for (const name of names.filter(Boolean).sort((a, b) => b!.length - a!.length)) {
     const words = requestName(name).split(' ').filter(Boolean);
-    if (words.length) prose = prose.replace(new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${words.join('[^\\p{L}\\p{N}\\p{M}]+')}(?![\\p{L}\\p{N}\\p{M}])`, 'giu'), token);
+    // A leading "The" is optional: the model's "The Rock Steady Crew" still
+    // masks the listener's "Rock Steady Crew".
+    const article = words.length > 1 && words[0] === 'the' ? `(?:${words.shift()}[^\\p{L}\\p{N}\\p{M}]+)?` : '';
+    if (words.length) prose = prose.replace(new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${article}${words.join('[^\\p{L}\\p{N}\\p{M}]+')}(?![\\p{L}\\p{N}\\p{M}])`, 'giu'), token);
   }
   return prose;
 }
 
 // Names are data, including exclusion-like words in titles and years in artist
-// names. Mask whole names before looking for conditions or attribute evidence.
+// names. Mask whole names, the reading's name search terms included, before
+// looking for conditions or attribute evidence.
 function requestConditionProse(text: string, match: RequestMatch): string {
-  return maskNames(text, [match.title, match.album, match.artist], ' <name> ');
+  return maskNames(text, [match.title, match.album, match.artist, ...nameSearchTerms(match)], ' <name> ');
 }
 
 // The words that only frame a request around a name: "could you play X by Y

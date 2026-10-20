@@ -597,3 +597,12 @@ test('#1961: a vibe phrase left in search_terms is not read as a named song', as
   assert.equal(result.outcome, 'matched');
   assert.equal(queue.upcoming[0].track.id, filler.id);
 });
+
+test('a model that respells a name with "The" cannot turn a word in it into a hard genre', async () => {
+  const heyYou = { id: 'hey-you', title: 'Hey You', artist: 'The Rock Steady Crew', genre: 'Hip-Hop', duration: 240 };
+  catalogueSongs = [filler, heyYou];
+  modelOutput = { kind: 'track', title: 'Hey You', artist: 'The Rock Steady Crew', genre: 'rock', search_terms: ['Hey You'] };
+  const result = await submit('Hey You by Rock Steady Crew');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, heyYou.id);
+});

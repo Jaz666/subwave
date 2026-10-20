@@ -91,6 +91,17 @@ test('explicit negative instructions survive an omitted model condition', () => 
   ]) assert.ok(directRequestUnsupported(text).includes('exclusions'), text);
 });
 
+test('a name left in search terms, or spelled with "The", is masked before condition checks', () => {
+  // #1961's reply shape: the title only in search_terms beside a guessed mood.
+  assert.deepEqual(directRequestUnsupported('A Horse with No Name by America',
+    { title: null, artist: 'America', mood: 'reflective', search_terms: ['A Horse with No Name'] }), []);
+  assert.equal(explicitRequestAttribute('Hey You by Rock Steady Crew',
+    { title: 'Hey You', artist: 'The Rock Steady Crew' }, 'rock'), false);
+  // A term carrying the reading's own genre word is not a name.
+  assert.equal(explicitRequestAttribute('play some rock songs', { genre: 'rock', search_terms: ['rock songs'] }, 'rock'), true);
+  assert.deepEqual(directRequestUnsupported('play soul with no metal by Queen', { artist: 'Queen', genre: 'soul', search_terms: ['Queen'] }), ['exclusions']);
+});
+
 test('negative-looking names and idioms remain requestable', () => {
   for (const text of [
     'Play Anything But Love by Example', 'Play Other Than This by Example',
