@@ -80,16 +80,45 @@ export function requestName(value: unknown): string {
     .replace(/[’‘']/g, '').replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
 }
 
+// Replace quoted spans and whole names in the listener's text with `token`.
+function maskNames(text: string, names: Array<string | null | undefined>, token: string): string {
+  let prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, token)
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘']/g, '');
+  for (const name of names.filter(Boolean).sort((a, b) => b!.length - a!.length)) {
+    const words = requestName(name).split(' ').filter(Boolean);
+    if (words.length) prose = prose.replace(new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${words.join('[^\\p{L}\\p{N}\\p{M}]+')}(?![\\p{L}\\p{N}\\p{M}])`, 'giu'), token);
+  }
+  return prose;
+}
+
 // Names are data, including exclusion-like words in titles and years in artist
 // names. Mask whole names before looking for conditions or attribute evidence.
 function requestConditionProse(text: string, match: RequestMatch): string {
-  let prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, ' <name> ')
-    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘']/g, '');
-  for (const name of [match.title, match.album, match.artist].filter(Boolean).sort((a, b) => b!.length - a!.length)) {
-    const words = requestName(name).split(' ').filter(Boolean);
-    if (words.length) prose = prose.replace(new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${words.join('[^\\p{L}\\p{N}\\p{M}]+')}(?![\\p{L}\\p{N}\\p{M}])`, 'giu'), ' <name> ');
-  }
-  return prose;
+  return maskNames(text, [match.title, match.album, match.artist], ' <name> ');
+}
+
+// The words that only frame a request around a name: "could you play X by Y
+// please". English only, like the condition backstop.
+const REQUEST_FRAME = new Set(['play', 'please', 'pls', 'can', 'could', 'would', 'will', 'you', 'i', 'id', 'im', 'like',
+  'love', 'want', 'wanna', 'to', 'hear', 'listen', 'put', 'on', 'queue', 'request', 'me', 'us', 'some', 'a', 'an', 'the',
+  'song', 'track', 'tune', 'by', 'from', 'of', 'next', 'now', 'up', 'hey', 'hi', 'dj', 'thanks', 'thank', 'cheers', 'just']);
+
+// Does the listener's text name `term`, with nothing but other names and
+// request framing around it?
+function namedInRequest(text: string, term: string, names: Array<string | null | undefined>): boolean {
+  const masked = maskNames(text, [term], ' \u0000 ');
+  return masked.includes('\u0000') && requestName(maskNames(masked, names, ' ')).split(' ').every(word => !word || REQUEST_FRAME.has(word));
+}
+
+// The search terms that can be names: never the reading's own artist, nor a
+// term carrying its mood, genre or language word ("calm Queen songs").
+function nameSearchTerms(match: RequestMatch): string[] {
+  const artist = requestName(match.artist);
+  const attributes = [match.genre, match.language, match.mood].map(requestName).filter(Boolean);
+  return (match.search_terms || []).filter(term => {
+    const key = requestName(term);
+    return !!key && key !== artist && !attributes.some(word => ` ${key} `.includes(` ${word} `));
+  });
 }
 
 // ICU supplies translated names for the languages recognised by literal
@@ -158,15 +187,19 @@ export function requestArtistMatches(want: unknown, song: RequestSong): boolean 
   });
 }
 
-export function requestedTitle(match: RequestMatch): string | null {
+export function requestedTitle(match: RequestMatch, text?: string): string | null {
   if (match.title?.trim()) return match.title.trim();
   if (match.album) return null;
-  // A modern reply explicitly saying "no title" must not turn a stray vibe
-  // search term into a named recording. Legacy replies can still omit title.
-  if (match.title === null && (match.mood || match.genre || match.language)) return null;
-  // Compatibility with pre-field model replies and the model-free parser.
-  const attributes = [match.artist, match.genre, match.language, match.mood].map(requestName);
-  return match.search_terms?.find(term => requestName(term) && !attributes.includes(requestName(term)))?.trim() || null;
+  const term = nameSearchTerms(match)[0]?.trim() || null;
+  // The tolerant schema reads an omitted title as null, so a null title beside
+  // a mood, genre or language is #1961's reply shape: a small model guessed
+  // attributes and left the song in search_terms. The term is the title when
+  // the listener's own words name it with only request framing around it;
+  // "something calm for an overcast evening" stays a vibe.
+  if (term && match.title === null && (match.mood || match.genre || match.language)) {
+    return text !== undefined && namedInRequest(text, term, [match.artist, match.album]) ? term : null;
+  }
+  return term;
 }
 
 export function requestTitleMatches(want: unknown, got: unknown): boolean {
@@ -242,7 +275,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const safe = async <T>(source: string, run: () => Promise<T>, fallback: T): Promise<T> => {
     try { return await run(); } catch (err) { errors.push(`${source}: ${err instanceof Error ? err.message : String(err)}`); return fallback; }
   };
-  let title = requestedTitle(match);
+  let title = requestedTitle(match, deps.text);
   let artistName = match.artist;
   const requiredGenre = !!match.genre && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.genre));
   const requiredLanguage = !!match.language && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.language));

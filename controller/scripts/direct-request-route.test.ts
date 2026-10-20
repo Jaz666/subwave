@@ -38,6 +38,10 @@ let modelError = false;
 let introError = false;
 let searchEmpty = false;
 let catalogueSongs: RequestSong[];
+// The artist catalogue and genre pool the issue's lottery drew from; empty
+// unless a test asks for them.
+let artistSongs: RequestSong[];
+let genreSongs: RequestSong[];
 let bodies: any[] = [];
 let agentCalls = 0;
 
@@ -62,6 +66,8 @@ beforeEach(async context => {
   introError = false;
   searchEmpty = false;
   catalogueSongs = [filler, exact];
+  artistSongs = [];
+  genreSongs = [];
   agentCalls = 0;
   modelOutput = { kind: 'track', title: exact.title, artist: 'Queen', search_terms: [exact.title, 'Queen'], genre: 'Rock', scope: 'song' };
   t.mock.method(requestAgent, 'run', async () => { agentCalls++; throw Error('Direct must never invoke the request agent'); });
@@ -82,11 +88,14 @@ beforeEach(async context => {
     if (url.origin === base) return realFetch(input, init);
     if (url.hostname !== 'direct-library.invalid') throw Error('synthetic offline dependency');
     const endpoint = url.pathname.split('/').at(-1);
-    const data = endpoint === 'search3' ? { searchResult3: { song: searchEmpty ? [] : catalogueSongs } }
+    const artistQuery = artistSongs.length && /queen/i.test(url.searchParams.get('query') || '');
+    const data = endpoint === 'search3' ? { searchResult3: { song: searchEmpty ? [] : catalogueSongs, artist: artistQuery ? [{ id: 'queen', name: 'Queen' }] : [] } }
       : endpoint === 'getStarred2' ? { starred2: { song: [filler] } }
         : endpoint === 'getSimilarSongs2' ? { similarSongs2: { song: [filler] } }
         : endpoint === 'getGenres' ? { genres: { genre: [{ value: 'Rock', songCount: 2 }] } }
-          : endpoint === 'getArtist' ? { artist: { album: [] } } : {};
+          : endpoint === 'getSongsByGenre' ? { songsByGenre: { song: genreSongs } }
+          : endpoint === 'getArtist' ? { artist: { album: artistSongs.length ? [{ id: 'queen-album', name: 'Sheer Heart Attack' }] : [] } }
+          : endpoint === 'getAlbum' ? { album: { song: artistSongs } } : {};
     return Response.json({ 'subsonic-response': { status: 'ok', version: '1.16.1', ...data } });
   });
 });
@@ -537,4 +546,54 @@ test('a genuine condition-like artist name is verified before it may hide condit
   const result = await submit('Play something by Everything but the Girl');
   assert.equal(result.outcome, 'matched');
   assert.equal(queue.upcoming[0].track.artist, 'Everything but the Girl');
+});
+
+// The reply quoted in #1961, verbatim: no title key, and a genre and mood the
+// listener never asked for. The tolerant schema reads the missing title as null.
+const issueReply = {
+  kind: 'track', search_terms: ['Bohemian Rhapsody', 'Queen'], artist: 'Queen', genre: 'rock', language: null, sort: null,
+  scope: 'song', mood: 'celebratory', intent: 'Wants the classic Queen anthem.',
+  ack: 'The stage is set — here comes a bit of Freddie and Brian.',
+};
+const killerQueen = { id: 'killer-queen', title: 'Killer Queen', artist: 'Queen', album: 'Sheer Heart Attack', duration: 180, genre: 'Rock' };
+const issuePhrasings = ['Queen, Bohemian Rhapsody', 'Bohemian Rhapsody by Queen', 'play Bohemian Rhapsody from Queen',
+  'Queen Bohemian Rhapsody', 'Queen: Bohemian Rhapsody', 'play Bohemian Rhapsody'];
+
+for (const text of issuePhrasings) {
+  test(`#1961: the issue's own reply queues the named song: ${text}`, async () => {
+    modelOutput = issueReply;
+    artistSongs = [killerQueen];
+    genreSongs = [filler];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0].track.id, exact.id);
+  });
+
+  test(`#1961: the issue's own reply never passes a substitute off as the named song: ${text}`, async () => {
+    modelOutput = issueReply;
+    catalogueSongs = [filler];
+    artistSongs = [killerQueen];
+    genreSongs = [filler];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'substituted');
+    assert.notEqual(queue.upcoming[0].track.id, exact.id);
+    assert.match(result.ack, /alternative/);
+    assert.doesNotMatch(result.ack, /Freddie|stage is set/);
+  });
+}
+
+test('#1961: a reply that names no artist still keeps a song the listener named', async () => {
+  modelOutput = { ...issueReply, artist: null, search_terms: ['Bohemian Rhapsody'] };
+  genreSongs = [filler];
+  const result = await submit('play Bohemian Rhapsody');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, exact.id);
+});
+
+test('#1961: a vibe phrase left in search_terms is not read as a named song', async () => {
+  modelOutput = { kind: 'track', title: null, artist: null, genre: 'rock', mood: null, search_terms: ['overcast evening'] };
+  genreSongs = [filler];
+  const result = await submit('some rock for an overcast evening');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, filler.id);
 });
