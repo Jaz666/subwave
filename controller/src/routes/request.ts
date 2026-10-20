@@ -27,7 +27,7 @@ import {
 } from '../middleware/ratelimit.js';
 import { validatePublicBody } from '../middleware/validate.js';
 import { listenerRequestSchema } from '../schemas/request.js';
-import { directRequestUnsupported, explicitRequestAttribute, modelFreeRequest, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
+import { directRequestUnsupported, isRefusedOutcome, modelFreeRequest, repairRequestMatch, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
 import { requestWaitClause } from '../broadcast/queue/pure.js';
 import { matchedRequestLookups, matchedRequestStandIn } from '../util/request-claim.js';
 import { ARTIST_VARIETY_WINDOW, drawRequestCandidate } from '../broadcast/dj-agent/artist-guard.js';
@@ -185,6 +185,8 @@ function withWaitNotice(ack: string | null | undefined, trackId: string | null |
 // "similar") opens the similar-to-current rung. Never a bare "like": "I'd
 // like X by Y" names X, and Y's catalogue answers a miss better.
 const ON_AIR_REFERENCE = /\bsimilar\b|\b(?:something|anything|more|songs?|tracks?|music|stuff|one)\s+like\b|\blike\s+(?:this|that|these|those)\b|\bmatch\s+this\b/i;
+
+const UNSUPPORTED_REFUSAL = `I couldn't reliably check all the conditions in that request. Try naming a song, artist, album, genre or simple mood.`;
 
 // A bounded literal parser for hard-budget or failed interpretation calls.
 // The resolver still verifies its title/artist against the actual catalogue.
@@ -381,28 +383,7 @@ async function resolveRequest(entry) {
   let matched = modelFreeMatch(text);
   if (budget.requestsAllowed()) {
     try {
-      matched = await dj.matchRequest(text, { listenerName: requester, nowPlaying: currentTrack });
-      const literal = modelFreeMatch(text);
-      if (matched.kind !== 'chat' && !matched.unsupported?.length
-        && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)
-        && literal.artist && literal.title) {
-        // A valid empty plan is not a failure. Preserve an unambiguous name
-        // pair when present; generic asks still proceed as "anything".
-        matched = { ...matched, title: literal.title, artist: literal.artist, literal: true, reversible: literal.reversible, unverifiedConditions: literal.unverifiedConditions };
-      }
-      if (matched.kind !== 'chat' && !matched.title && !matched.album && matched.scope !== 'album'
-        && matched.artist && literal.artist && literal.title
-        && requestArtistMatches(matched.artist, { id: 'literal', artist: literal.artist })) {
-        // A small model can retain the artist but omit the title fields. Only
-        // recover an unambiguous literal form whose artist agrees with it.
-        matched = { ...matched, title: literal.title };
-      } else if (matched.kind !== 'chat' && !matched.title && !matched.album && matched.scope !== 'album'
-        && matched.artist && literal.reversible && literal.title
-        && requestArtistMatches(matched.artist, { id: 'literal', artist: literal.title })) {
-        // The same, written "Title - Artist".
-        matched = { ...matched, title: literal.artist };
-      }
-
+      matched = repairRequestMatch(await dj.matchRequest(text, { listenerName: requester, nowPlaying: currentTrack }), text) as typeof matched;
     } catch (err) {
       entry.interpretationFallback = true;
       queue.log('error', `request interpretation failed: ${err.message} — trying library search`);
@@ -414,7 +395,7 @@ async function resolveRequest(entry) {
     entry.pickSource = 'unsupported';
     entry.outcome = 'unsupported';
     entry.unsupported = unsupported;
-    return failed(`I couldn't reliably check all the conditions in that request. Try naming a song, artist, album, genre or simple mood.`);
+    return failed(UNSUPPORTED_REFUSAL);
   }
   queue.log('intent', `"${text}" → ${matched.intent || '(no intent)'}`, {
     mood: matched.mood,
@@ -515,9 +496,9 @@ async function resolveRequest(entry) {
     entry.pickSource = pickSource;
     if (selection.outcome === 'unsupported') {
       entry.unsupported = selection.unsupported || [];
-      return failed(`I couldn't reliably check all the conditions in that request. Try naming a song, artist, album, genre or simple mood.`);
+      return failed(UNSUPPORTED_REFUSAL);
     }
-    return failed(explicitRequestAttribute(text, matched, matched.language) || explicitRequestAttribute(text, matched, matched.genre)
+    return failed(selection.required?.length
       ? 'Could not verify a track meeting the requested language or genre requirements. Try simplifying the request.'
       : sorryNoMatch(requester));
   }
@@ -528,7 +509,7 @@ async function resolveRequest(entry) {
     entry.artistMiss = matched.artist;
     entry.missedArtist = cleanMissedArtist(matched.artist);
   }
-  if (selection.outcome === 'cooldown' || selection.outcome === 'already-queued') {
+  if (isRefusedOutcome(selection.outcome)) {
     entry.pick = pick;
     entry.pickSource = `${pickSource}:${selection.outcome}`;
     entry.refused = true;

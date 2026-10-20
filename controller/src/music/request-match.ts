@@ -58,6 +58,14 @@ export interface RequestSelection {
   errors: string[];
   unmetPreferences?: string[];
   unsupported?: string[];
+  // The hard requirements in force, so a no-match can say what it could not verify.
+  required?: string[];
+}
+
+// The resolver named the track but declined to queue it: it played recently,
+// or it is already playing or queued.
+export function isRefusedOutcome(outcome: string | null | undefined): boolean {
+  return outcome === 'cooldown' || outcome === 'already-queued';
 }
 
 // Backstop for common conditions a small model can silently omit. Quoted
@@ -273,6 +281,26 @@ export function modelFreeRequest(text: string): RequestMatch {
     scope: 'song', intent: 'library search without model interpretation', ack: '' };
 }
 
+// A model reply repaired against the literal reading of the same words.
+export function repairRequestMatch(match: RequestMatch, text: string): RequestMatch {
+  if (match.kind === 'chat') return match;
+  const literal = modelFreeRequest(text);
+  if (!literal.artist || !literal.title) return match;
+  if (!match.unsupported?.length
+    && ![match.title, match.album, match.artist, match.genre, match.language, match.mood, ...(match.search_terms || [])].some(Boolean)) {
+    // A valid empty plan is not a failure. Keep an unambiguous name pair when
+    // the words hold one; generic asks still proceed as "anything".
+    return { ...match, title: literal.title, artist: literal.artist, literal: true, reversible: literal.reversible,
+      unverifiedConditions: literal.unverifiedConditions };
+  }
+  if (match.title || match.album || match.scope === 'album' || !match.artist) return match;
+  // A small model can keep the artist but drop the title. Recover the literal
+  // title whose artist agrees, written either way round.
+  if (requestArtistMatches(match.artist, { id: 'literal', artist: literal.artist })) return { ...match, title: literal.title };
+  if (literal.reversible && requestArtistMatches(match.artist, { id: 'literal', artist: literal.title })) return { ...match, title: literal.artist };
+  return match;
+}
+
 // One chronological scale; precise original dates precede release/year fallbacks.
 export function requestReleaseRank(album: { year?: number; originalReleaseDate?: { year?: number; month?: number; day?: number }; releaseDate?: string }): number {
   const date = album.originalReleaseDate;
@@ -310,6 +338,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   let artistName = match.artist;
   const requiredGenre = !!match.genre && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.genre));
   const requiredLanguage = !!match.language && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.language));
+  const required = [requiredGenre && 'genre', requiredLanguage && 'language'].filter((value): value is string => !!value);
   const moodPool = match.mood ? await safe('mood tracks', () => deps.moodSongs(match.mood!), []) : [];
   const moodIds = new Set(moodPool.map(song => song.id));
   const moodMatches = (song: RequestSong) => !match.mood || moodIds.has(song.id)
@@ -495,5 +524,5 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const searchAlternative = select(searched, 'search', false);
   if (searchAlternative) return searchAlternative;
   const fallback = select(await safe('fallback tracks', deps.fallbackSongs, []), 'fallback', false);
-  return fallback || { track: null, source: errors.length ? 'lookup-error' : 'no-match', outcome: 'no-match', errors };
+  return fallback || { track: null, source: errors.length ? 'lookup-error' : 'no-match', outcome: 'no-match', errors, required };
 }
