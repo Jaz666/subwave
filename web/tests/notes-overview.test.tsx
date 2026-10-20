@@ -9,7 +9,7 @@ import {SectionTabs} from '../components/admin/SectionTabs';
 import ReviewCount from '../components/admin/ReviewCount';
 import {Card} from '../components/admin/ui';
 import type {ComponentProps} from 'react';
-import {ResearchActivity,ResearchDetailsView} from '../components/admin/NotesPanel';
+import {OverviewView,ResearchActivity,ResearchDetailsView} from '../components/admin/NotesPanel';
 
 const fetcher=async()=>{throw new Error('No network in render checks');};
 
@@ -118,4 +118,17 @@ test('paused Genius work is explained and does not take the visible slot from ru
  assert.match(paused,/Paused — Genius capture is off/);
  const missing=renderToStaticMarkup(<ResearchActivity data={{...data,workQueueItems:data.workQueueItems?.slice(0,1)}} status={{...status,providerEnabled:true,providerConfigured:false}}/>);
  assert.match(missing,/Waiting for a Genius API key/);
+});
+
+
+test('Saved knowledge links its library-only count to the matching filter',()=>{
+ const client=new QueryClient();
+ const readout={storyClaims:12,libraryConnections:2,connectionClaims:900,creditClaims:7,musicBrainzSeries:[],providerSummary:[],workQueueItems:[]} as unknown as ComponentProps<typeof OverviewView>['readout'];
+ const status={enabled:true,reviewReady:0} as ComponentProps<typeof OverviewView>['status'];
+ const html=renderToStaticMarkup(<QueryClientProvider client={client}><OverviewView enabled status={status} statusLoading={false} statusError={false} readout={readout} onRetryStatus={()=>{}} adminFetch={fetcher}/></QueryClientProvider>);
+ assert.match(html,/category=library-connections/);
+ assert.match(html,/>2<!-- --> Library connections|>2 Library connections/);
+ assert.doesNotMatch(html,/900/);
+ assert.match(html,/Each relationship is counted once/);
+ client.clear();
 });

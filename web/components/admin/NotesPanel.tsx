@@ -70,6 +70,7 @@ type NotesReadout = {
   airtimeClaims: number;
   storyClaims: number;
   connectionClaims: number;
+  libraryConnections?: number;
   creditClaims: number;
   recycleBinPending: number;
   researchJobs: number;
@@ -320,6 +321,12 @@ export default function NotesPanel() {
     request: (fetcher, signal) => adminJson(fetcher, `/sleeve-notes/readout${enabled?'':'?cached=1'}`, undefined, signal),
     staleTime: 10_000, refetchInterval: 30_000,
   });
+  const libraryConnections = useAdminQuery<{total:number}>({
+    key: ['sleeve-notes', 'library-connection-count'], adminFetch,
+    enabled: hydrated && enabled && tab === 'overview',
+    request: (fetcher, signal) => adminJson(fetcher, '/sleeve-notes/stories?category=library-connections&limit=1', undefined, signal),
+    staleTime: 10_000, refetchInterval: 30_000,
+  });
   const settingsSave = useSettingsMutation<SettingsData>({ adminFetch });
   const data = readout.data;
   const [search, setSearch] = useState(searchParams.get('q')??'');
@@ -442,7 +449,7 @@ export default function NotesPanel() {
           status={status.data}
           statusLoading={status.isLoading || !hydrated}
           statusError={!!status.error}
-          readout={data}
+          readout={data ? {...data, libraryConnections:libraryConnections.data?.total} : undefined}
           onRetryStatus={() => void status.refetch()}
         />
       )}
@@ -540,7 +547,7 @@ export default function NotesPanel() {
   );
 }
 
-function OverviewView({
+export function OverviewView({
   enabled, status, statusLoading, statusError, readout, onRetryStatus, adminFetch,
 }: {
   adminFetch: AdminFetch;
@@ -571,7 +578,7 @@ function OverviewView({
           <p className="mb-1 text-xs text-muted">Saved knowledge</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link href="/admin/notes?tab=stories&category=stories-only" title="Saved anecdotes and background about the music. Track relevance and cooldowns determine what the DJ can use now.">{readout?.storyClaims?.toLocaleString() ?? '—'} Stories</Link>
-            <Link href="/admin/notes?tab=stories&category=musical-connections" title="Saved relationship facts, such as samples and covers. This counts facts, rather than map links or matching library tracks.">{readout?.connectionClaims?.toLocaleString() ?? '—'} Connections</Link>
+            <Link href="/admin/notes?tab=stories&category=library-connections" title="Unique sample and cover relationships between recordings matched to your current library. Each relationship is counted once, including when saved from both directions.">{readout?.libraryConnections?.toLocaleString() ?? '—'} Library connections</Link>
             <Link href="/admin/notes?tab=stories&category=credits" title="Saved writer, producer and performer details. Credits provide context and are not standalone DJ stories.">{readout?.creditClaims?.toLocaleString() ?? '—'} Credits</Link>
           </div>
         </div>
@@ -696,7 +703,7 @@ function ResearchView({
 }) {
   return (
     <div className="space-y-5">
-      <Card headingLevel={2} title={withdrawn?'Withdrawn facts':recent?'Recent saved facts':'All saved facts'} right={<NotesHelp text="Saved facts are the source material. The DJ chooses suitable ones as Sparks. Flag asks for a review; withdraw immediately stops DJ use while keeping the fact saved." />} sub={withdrawn?'Saved facts kept off air until you explicitly restore them. Flag any fact for an AI review.':recent?'Search the latest 80 saved facts.':'Search stories, artists, albums and tracks across your saved collection.'}>
+      <Card headingLevel={2} title={category==='library-connections'?'Library connections':withdrawn?'Withdrawn facts':recent?'Recent saved facts':'All saved facts'} right={<NotesHelp text="Saved facts are the source material. The DJ chooses suitable ones as Sparks. Flag asks for a review; withdraw immediately stops DJ use while keeping the fact saved." />} sub={category==='library-connections'?'Unique sample and cover relationships between recordings in your library. Each relationship appears once.':withdrawn?'Saved facts kept off air until you explicitly restore them. Flag any fact for an AI review.':recent?'Search the latest 80 saved facts.':'Search stories, artists, albums and tracks across your saved collection.'}>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search saved facts</span>
@@ -708,6 +715,7 @@ function ResearchView({
             <select value={category} onChange={(event) => onCategory(event.target.value)} className="max-w-full border border-border bg-field px-3 py-[9px] text-[13px] text-ink">
               <option value="all">All</option>
               <option value="stories-only">Stories (excluding connections and credits)</option>
+              <option value="library-connections">Library connections</option>
               {categories.map((value) => <option key={value} value={value}>{value.replaceAll('-', ' ')}</option>)}
             </select>
           </label>

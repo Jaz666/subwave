@@ -1,3 +1,4 @@
+import { searchResearchStoriesInDatabase } from './research-repository.js';
 import {externalDiscoveriesInDatabase} from './external-discoveries.js';
 import { fork, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +36,7 @@ export function clearConnectionComputeCache():void {
   stopConnectionCompute();cache.clear();inFlight.clear();
 }
 
-function compute<T>(path: string, kind: 'overview' | 'matches' | 'discoveries', edges?: readonly ConnectionEdgeType[]): Promise<T> {
+function compute<T>(path: string, kind: 'overview' | 'matches' | 'discoveries' | 'library-stories', edges?: readonly ConnectionEdgeType[], input?: Parameters<typeof searchResearchStoriesInDatabase>[1]): Promise<T> {
   clearIdleTimer();
   if (!child) {
     const proc = fork(fileURLToPath(new URL('./connection-compute-worker.ts', import.meta.url)), [], {
@@ -65,7 +66,7 @@ function compute<T>(path: string, kind: 'overview' | 'matches' | 'discoveries', 
       reject(new Error('Connection calculation timed out'));
     }, 60_000).unref();
     pending.set(id, { resolve: (result) => resolve(result as T), reject, timer });
-    proc.send({ id, path, kind, edges }, (error) => {
+    proc.send({ id, path, kind, edges, input }, (error) => {
       if (error) {
         clearTimeout(timer); pending.delete(id); reject(error); releaseWhenIdle();
       }
@@ -102,4 +103,11 @@ export function cachedConnectionsOverview(edges: readonly ConnectionEdgeType[], 
   })().finally(() => { inFlight.delete(flightKey); });
   inFlight.set(flightKey, task);
   return task;
+}
+
+
+/** Keep relationship grouping and page selection off the broadcast event loop. */
+export async function libraryConnectionStoriesInBackground(db: Database.Database, input: Parameters<typeof searchResearchStoriesInDatabase>[1]) {
+  return db.memory ? searchResearchStoriesInDatabase(db, input)
+    : compute<ReturnType<typeof searchResearchStoriesInDatabase>>(db.name, 'library-stories', undefined, input);
 }

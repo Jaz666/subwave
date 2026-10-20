@@ -275,3 +275,113 @@ test('a Genius leading The resolves to the library artist while conflicting arti
   assert.notEqual(libraryConnectionsInDatabase(db,'source')[0].matchState,'matched','distinct library identities must not be merged by name folding');
  } finally {db.close();}
 });
+
+test('saved knowledge and its filtered view count each intra-library sample/cover once', async () => {
+  const { researchStoreSummaryInDatabase, searchResearchStoriesInDatabase } = await import('../src/sleeve-notes/research-repository.js');
+  const { externalDiscoveriesInDatabase } = await import('../src/sleeve-notes/external-discoveries.js');
+  const db = fixture();
+  recording(db, 'target', 'Target', '2');
+  db.prepare(`INSERT INTO sleeve_local_attachments(local_track_id,recording_id,title,artist,match_state,first_encountered_at,last_encountered_at,updated_at)
+    VALUES ('local-target','target','Target','Band','matched',?,?,?)`).run(now,now,now);
+  cacheConnectionLibraryTracks(db, [
+    { id: 'local-source', title: 'Source', artist: 'Band' },
+    { id: 'local-target', title: 'Target', artist: 'Band' },
+    { id: 'target-copy', title: 'Target', artist: 'Band' },
+  ], 'scan');
+  db.prepare(`INSERT INTO sleeve_genius_library_seeds(local_track_id,recording_id,artist_key,title_key)
+    VALUES ('target-copy','target','band','target')`).run();
+  relation(db, 'sample', 'samples', 'Target', 'Band');
+  relation(db, 'sample-copy', 'samples', 'Target', 'Band');
+  claim(db, 'sample-inverse', 'target', 'musical-connections', { type: 'sampled_in', target: { providerId: '1', title: 'Source', artist: 'Band' } });
+  relation(db, 'cover', 'cover_of', 'Target', 'Band');
+  claim(db, 'cover-inverse', 'target', 'musical-connections', { type: 'covered_by', target: { providerId: '1', title: 'Source', artist: 'Band' } });
+  claim(db, 'external', 'source', 'musical-connections', { type: 'samples', target: { providerId: '3', title: 'Outside', artist: 'Other Band' } });
+  recording(db, 'off-library', 'Outside recording', '3');
+  claim(db, 'off-library-source', 'off-library', 'musical-connections', { type: 'samples', target: { providerId: '1', title: 'Source', artist: 'Band' } });
+  credit(db, 'producer', 'source');
+  reconcileLibraryConnections(db, now);
+  const summary = () => ({...researchStoreSummaryInDatabase(db),libraryConnections:searchResearchStoriesInDatabase(db,{category:'library-connections'}).total});
+  const filtered = (input = {}) => searchResearchStoriesInDatabase(db, { category: 'library-connections', ...input });
+  assert.equal(summary().libraryConnections, 2);
+  assert.equal(summary().connectionClaims, 7, 'all saved facts retain their original count');
+  assert.equal(externalDiscoveriesInDatabase(db).allSavedRelationships, 7);
+  assert.equal(filtered().total, 2);
+  assert.equal(filtered().claims.length, 2);
+  assert.ok(filtered().claims.every(row => row.category === 'musical-connections'));
+  assert.equal(filtered({ limit: 1, offset: 1 }).claims.length, 1);
+  assert.equal(filtered({ search: 'absent phrase' }).total, 0);
+  // Withdrawn facts and stale match snapshots cannot contribute a relationship.
+  db.prepare("UPDATE sleeve_claims SET enabled=0 WHERE id IN ('sample','sample-copy')").run();
+  assert.equal(summary().libraryConnections, 2, 'the inverse fact still supports the same pair');
+  db.prepare("UPDATE sleeve_claims SET evidence='Changed evidence' WHERE id='sample-inverse'").run();
+  assert.equal(summary().libraryConnections, 1);
+  assert.equal(filtered().total, 1);
+  db.prepare("UPDATE sleeve_connection_edges SET match_state='ambiguous' WHERE claim_id IN ('cover','cover-inverse')").run();
+  assert.equal(summary().libraryConnections, 0);
+  reconcileLibraryConnections(db, now);
+  assert.equal(summary().libraryConnections, 1);
+  db.prepare("DELETE FROM sleeve_connection_library_tracks WHERE local_track_id IN ('local-target','target-copy')").run();
+  assert.equal(summary().libraryConnections, 0, 'both ends must still exist in the current catalogue');
+  assert.equal(filtered().total, 0);
+  assert.equal(summary().connectionClaims, 5, 'library removal does not delete the saved collection');
+  db.close();
+});
+
+
+test('the real read-only child serves library connection pages without blocking or changing the cache', async () => {
+  const { libraryConnectionStoriesInBackground, stopConnectionCompute } = await import('../src/sleeve-notes/connection-compute.js');
+  const { readFileSync } = await import('node:fs');
+  const db = fixture();
+  relation(db, 'sample', 'samples', 'Target', 'Band');
+  cacheConnectionLibraryTracks(db, [{ id:'local-source',title:'Source',artist:'Band' },{ id:'target-local',title:'Target',artist:'Band' }], 'scan');
+  reconcileLibraryConnections(db, now);
+  const file=join(root,'library-count-child.db');await db.backup(file);db.close();
+  const saved=readFileSync(file);const disk=new Database(file);
+  try {
+    let yielded=false;
+    const reading=libraryConnectionStoriesInBackground(disk,{category:'library-connections',limit:1});
+    await new Promise<void>(resolve=>setImmediate(()=>{yielded=true;resolve();}));
+    const result=await reading;
+    assert.equal(yielded,true);assert.equal(result.total,1);assert.equal(result.claims[0].id,'sample');
+    assert.deepEqual(readFileSync(file),saved,'background reads cannot rewrite the saved database');
+    disk.prepare("DELETE FROM sleeve_connection_library_tracks WHERE local_track_id='target-local'").run();
+    assert.equal((await libraryConnectionStoriesInBackground(disk,{category:'library-connections'})).total,0);
+  } finally {stopConnectionCompute();disk.close();}
+});
+
+test('the library-only HTTP filter shares its count with pages and respects the master switch', async () => {
+  const express=(await import('express')).default;
+  const notes=await import('../src/sleeve-notes/db.js');
+  const settings=await import('../src/settings.js');
+  const settingsStore=await import('../src/settings/store.js');
+  const {router}=await import('../src/routes/sleeve-notes.js');
+  const {stopConnectionCompute}=await import('../src/sleeve-notes/connection-compute.js');
+  const {existsSync,readFileSync}=await import('node:fs');
+  const previous=settings.get();
+  settingsStore.setCache({...previous,djBehaviour:{...previous.djBehaviour,extendedSleeveNotes:false}});
+  notes.close();
+  for(const suffix of ['','-wal','-shm'])rmSync(notes.DB_PATH+suffix,{force:true});
+  const app=express();app.use(router);const server=app.listen(0,'127.0.0.1');
+  await new Promise<void>(resolve=>server.once('listening',resolve));
+  const address=server.address();if(!address||typeof address==='string')throw Error('No port');
+  const url=`http://127.0.0.1:${address.port}/sleeve-notes/stories?category=library-connections&cached=1`;
+  try {
+    const absent=await fetch(url+'&limit=1');assert.equal(absent.status,409);
+    assert.equal(existsSync(notes.DB_PATH),false,'disabled reads cannot create the station cache');
+    const fixtureDb=fixture();relation(fixtureDb,'sample','samples','Target','Band');
+    cacheConnectionLibraryTracks(fixtureDb,[{id:'local-source',title:'Source',artist:'Band'},{id:'target-local',title:'Target',artist:'Band'}],'scan');
+    reconcileLibraryConnections(fixtureDb,now);await fixtureDb.backup(notes.DB_PATH);fixtureDb.close();
+    const bytes=readFileSync(notes.DB_PATH);
+    const cached=await fetch(url);assert.equal(cached.status,409,'cached=1 cannot bypass the master switch');
+    assert.deepEqual(readFileSync(notes.DB_PATH),bytes);
+    settingsStore.setCache({...previous,djBehaviour:{...previous.djBehaviour,extendedSleeveNotes:true}});
+    const count=await fetch(url+'&limit=1');assert.equal(count.status,200);
+    const result=await count.json() as {total:number;claims:Array<{id:string}>};
+    assert.equal(result.total,1);assert.equal(result.claims[0].id,'sample');
+    const page=await fetch(url);assert.equal(page.status,200);
+    assert.equal((await page.json() as {total:number}).total,result.total);
+  } finally {
+    stopConnectionCompute();notes.close();settingsStore.setCache(previous);
+    await new Promise<void>(resolve=>server.close(()=>resolve()));
+  }
+});

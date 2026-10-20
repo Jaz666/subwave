@@ -25,7 +25,7 @@ import { geniusWorkerStatus } from '../sleeve-notes/genius-worker.js';
 import { geniusAccessToken } from '../sleeve-notes/genius-token.js';
 import { libraryConnectionsForRecording } from '../sleeve-notes/library-connections.js';
 import { researchConnectionsOverviewInDatabase } from '../sleeve-notes/connections-overview.js';
-import { cachedConnectionsOverview } from '../sleeve-notes/connection-compute.js';
+import { cachedConnectionsOverview, libraryConnectionStoriesInBackground } from '../sleeve-notes/connection-compute.js';
 import { brainLibraryResearchSeed, brainLibraryAlbumResearchSeed, brainLibraryGraph, cachedBrainLibraryGraph, localBrainArtistId, populateBrainArtists, searchBrainArtists } from '../sleeve-notes/brain-library.js';
 import { runResearchDatabaseWork, withCachedRead, open as openSleeveNotesDb } from '../sleeve-notes/db.js';
 import {
@@ -553,6 +553,11 @@ router.get('/sleeve-notes/stories', requireAdmin, async (req,res) => {
   const input={search:typeof req.query.search==='string'?req.query.search.slice(0,120):'',
     category:typeof req.query.category==='string'?req.query.category.slice(0,100):'',recent:req.query.recent==='1',withdrawn:req.query.withdrawn==='1',
     limit:Math.max(1,Math.min(100,number(req.query.limit,30))),offset:Math.max(0,number(req.query.offset,0))};
+  if (input.category==='library-connections') {
+    const result=await libraryConnectionStoriesInBackground(openSleeveNotesDb(),input);
+    const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));
+    return res.json({...result,claims:result.claims.map(claim=>({...claim,review:reviews[claim.id]??null}))});
+  }
   const read=()=>{
     const result=searchResearchStoriesInDatabase(openSleeveNotesDb(),input);
     const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));

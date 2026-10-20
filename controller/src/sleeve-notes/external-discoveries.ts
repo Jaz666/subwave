@@ -41,5 +41,6 @@ export function externalDiscoveriesInDatabase(db: Database.Database) {
   }
   const entries=[...groups.values()].map(({seen:_seen,libraryArtists,...entry})=>({...entry,libraryArtists:libraryArtists.size}));
   const rank=(field:'libraryArtists'|'sources'|'users')=>entries.filter(row=>row[field]>0).sort((a,b)=>b[field]-a[field]||b.references-a.references||a.artist.localeCompare(b.artist)).slice(0,20);
-  return {calculatedAt:new Date().toISOString(),externalArtists:entries.length,mostConnected:rank('libraryArtists'),sampleSources:rank('sources'),sampleUsers:rank('users')};
+  const allSavedRelationships=(db.prepare("SELECT COUNT(*) AS count FROM sleeve_claims WHERE enabled=1 AND category='musical-connections'").get() as {count:number}).count;
+  return {allSavedRelationships,calculatedAt:new Date().toISOString(),externalArtists:entries.length,mostConnected:rank('libraryArtists'),sampleSources:rank('sources'),sampleUsers:rank('users')};
 }

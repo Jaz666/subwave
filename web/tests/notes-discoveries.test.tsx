@@ -6,10 +6,13 @@ import GeniusCaptureNotice from '../components/admin/connections/GeniusCaptureNo
 import ExternalDiscoveries from '../components/admin/connections/ExternalDiscoveries';
 test('discoveries render ranked artists with collapsed examples and refresh',()=>{
  const client=new QueryClient();
- client.setQueryData(['sleeve-notes','external-discoveries'],{calculatedAt:'2026-10-19T10:00:00Z',externalArtists:1,
+ client.setQueryData(['sleeve-notes','external-discoveries'],{allSavedRelationships:72859,calculatedAt:'2026-10-19T10:00:00Z',externalArtists:1,
  mostConnected:[{artist:'External',references:4,libraryArtists:2,sources:3,users:1,examples:[{artist:'Local',track:'Song',targetTrack:'Outside song',type:'samples'}]}],sampleSources:[],sampleUsers:[]});
  const html=renderToStaticMarkup(<QueryClientProvider client={client}><ExternalDiscoveries adminFetch={async()=>{throw Error('No network');}} timezone="Europe/London"/></QueryClientProvider>);
  assert.match(html,/Stats|Most connected/);assert.match(html,/2 library artists/);
+ assert.match(html,/All saved relationships: <!-- -->72,859|All saved relationships: 72,859/);
+ assert.match(html,/category=musical-connections/);
+ assert.match(html,/Includes recordings outside your library/);
  assert.match(html,/Refresh/);assert.match(html,/Example connections/);
  assert.match(html,/tab=stories/);assert.doesNotMatch(html,/<details[^>]* open/);
  client.clear();

@@ -207,6 +207,16 @@ export default function ExtendedSleeveNotes() {
           <li><strong>A source</strong> is the supporting reference behind the material. Follow it when you want to understand or check a claim.</li>
         </ul>
         <p>
+          On Overview, <strong>Library connections</strong> counts unique sample and
+          cover relationships between recordings matched to your current library.
+          Seeing the same relationship from both recordings counts once. Select the
+          number to browse those connections. In Station Brain&rsquo;s
+          <strong> Stats &amp; Discoveries</strong>, <strong>All saved relationships</strong>{' '}
+          includes the wider collection, with recordings outside your library and
+          facts saved from either direction. Shared writers and producers stay
+          under Credits.
+        </p>
+        <p>
           Use the <strong>Stories</strong> tab to browse saved facts, recent additions
           and material associated with your library. Saved does not mean aired, and
           offered does not mean spoken. A source gives you something to check; it does
