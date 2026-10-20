@@ -134,10 +134,15 @@ const REQUEST_FRAME = new Set(['play', 'please', 'pls', 'can', 'could', 'would',
   'love', 'want', 'wanna', 'to', 'hear', 'listen', 'put', 'on', 'queue', 'request', 'me', 'us', 'some', 'a', 'an', 'the',
   'song', 'track', 'tune', 'by', 'from', 'of', 'next', 'now', 'up', 'hey', 'hi', 'dj', 'thanks', 'thank', 'cheers', 'just']);
 
+// Does the listener's text hold `term` as whole words? Only an occurrence of
+// this term is proof, never an unrelated quoted span.
+function inRequest(text: string, term: string): boolean {
+  return maskNames(text, [term], ' \u0000 ', false).includes('\u0000');
+}
+
 // Does the listener's text name `term`, with nothing but other names and
 // request framing around it?
 function namedInRequest(text: string, term: string, names: Array<string | null | undefined>): boolean {
-  // Only an occurrence of this term is proof, never an unrelated quoted span.
   const masked = maskNames(text, [term], ' \u0000 ', false);
   return masked.includes('\u0000') && requestName(maskNames(masked, names, ' ', false)).split(' ').every(word => !word || REQUEST_FRAME.has(word));
 }
@@ -156,14 +161,15 @@ function headsLiteral(literal: string, term: string): boolean {
   return (dedication < 0 ? words : words.slice(0, dedication)).every(word => REQUEST_FRAME.has(word));
 }
 
-// The search terms that can be names: never the reading's own artist, nor a
-// term carrying its mood, genre or language word ("calm Queen songs").
+// The search terms that can be names: never the reading's own artist in any
+// spelling ("Beatles" for The Beatles), nor a term carrying its mood, genre or
+// language word ("calm Queen songs").
 function nameSearchTerms(match: RequestMatch): string[] {
-  const artist = requestName(match.artist);
+  const artist = artistIdentityKey(match.artist);
   const attributes = [match.genre, match.language, match.mood].map(requestName).filter(Boolean);
   return (match.search_terms || []).filter(term => {
     const key = requestName(term);
-    return !!key && key !== artist && !attributes.some(word => ` ${key} `.includes(` ${word} `));
+    return !!key && artistIdentityKey(term) !== artist && !attributes.some(word => ` ${key} `.includes(` ${word} `));
   });
 }
 
@@ -390,6 +396,16 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const requiredGenre = !!match.genre && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.genre));
   const requiredLanguage = !!match.language && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.language));
   const required = [requiredGenre && 'genre', requiredLanguage && 'language'].filter((value): value is string => !!value);
+  // #1961's reply shape with more than framing around the song ("Play
+  // Bohemian Rhapsody by Queen, it is my birthday"): no title, and attributes
+  // the listener's words never asked for. The search terms those words hold
+  // may still name the song, so each is tried as a title before any pool.
+  const namedTerms = deps.text !== undefined && !title && match.title === null && !match.album && match.scope !== 'album'
+    && [match.mood, match.genre, match.language].some(Boolean) && !required.length
+    && !explicitRequestAttribute(deps.text, match, match.mood)
+    ? nameSearchTerms(match).filter(term => inRequest(deps.text!, term)) : [];
+  // Once a named song missed, a pool draw only stands in for it.
+  let standingIn = false;
   const moodPool = match.mood ? await safe('mood tracks', () => deps.moodSongs(match.mood!), []) : [];
   const moodIds = new Set(moodPool.map(song => song.id));
   const moodMatches = (song: RequestSong) => !match.mood || moodIds.has(song.id)
@@ -425,13 +441,14 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const select = (songs: RequestSong[], source: string, exact = true): RequestSelection | null => {
     const pool = unique(songs).filter(s => constraints(s, source) && (!exact || identity(s)));
     const track = choose(pool.filter(eligible));
+    const named = exact && !standingIn;
     if (track) {
       const unmetPreferences = [!moodMatches(track) && 'mood', !genreMatches(track) && 'genre', !languageMatches(track) && 'language'].filter((value): value is string => !!value);
-      return { track, source, outcome: exact ? 'matched' : 'substituted', errors, unmetPreferences };
+      return { track, source, outcome: named ? 'matched' : 'substituted', errors, unmetPreferences };
     }
     // Preserve the requested identity for an honest refusal, never replace an
     // exact recording merely because it is queued or on cooldown.
-    if (exact && pool.length && !held) held = { track: pool[0], source };
+    if (named && pool.length && !held) held = { track: pool[0], source };
     return null;
   };
   const refusal = (): RequestSelection | null => held ? {
@@ -466,6 +483,21 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     }
     // Accent/punctuation variants or compilation indexing may need the artist
     // catalogue below; never union an artist query into a named-title lottery.
+  }
+  // Only a catalogue hit for the term counts. With no artist in the reading,
+  // another named term must be it ("Queen, Bohemian Rhapsody").
+  for (const term of namedTerms) {
+    const others = namedTerms.filter(other => other !== term);
+    title = term;
+    resolvedArtistName = match.artist;
+    const hits = await search(term);
+    for (const artist of match.artist ? [match.artist] : others.length ? others : [null]) {
+      resolvedArtistName = artist;
+      const hit = select(hits, 'search') || refusal();
+      if (hit) return hit;
+    }
+    [title, resolvedArtistName] = [null, match.artist];
+    standingIn = true;
   }
 
   if (match.literal && !artistName && title) {

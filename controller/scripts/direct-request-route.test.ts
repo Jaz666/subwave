@@ -590,6 +590,48 @@ test('#1961: a reply that names no artist still keeps a song the listener named'
   assert.equal(queue.upcoming[0].track.id, exact.id);
 });
 
+// Neither search term sits alone with request framing here, so neither is
+// read as the title outright; each is searched as one before any pool.
+for (const text of ['Queen, Bohemian Rhapsody', 'Bohemian Rhapsody by Queen', 'Queen - Bohemian Rhapsody']) {
+  test(`#1961: a reply without its artist searches the named song before the genre pool: ${text}`, async () => {
+    modelOutput = { ...issueReply, artist: null };
+    genreSongs = [filler];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0].track.id, exact.id);
+  });
+
+  test(`#1961: a genre pool draw for a missing named song is an alternative: ${text}`, async () => {
+    modelOutput = { ...issueReply, artist: null };
+    catalogueSongs = [filler];
+    genreSongs = [filler];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'substituted');
+    assert.match(result.ack, /alternative/);
+    assert.doesNotMatch(result.ack, /Freddie|stage is set/);
+  });
+}
+
+for (const text of ['Play Bohemian Rhapsody by Queen, it is my birthday', 'Bohemian Rhapsody by Queen for my mum']) {
+  test(`#1961: words after the named song do not turn it into an artist lottery: ${text}`, async () => {
+    modelOutput = issueReply;
+    artistSongs = [killerQueen];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0].track.id, exact.id);
+  });
+
+  test(`#1961: an artist pool draw for a missing named song is an alternative: ${text}`, async () => {
+    modelOutput = issueReply;
+    catalogueSongs = [filler];
+    artistSongs = [killerQueen];
+    const result = await submit(text);
+    assert.equal(result.outcome, 'substituted');
+    assert.equal(queue.upcoming[0].track.id, killerQueen.id);
+    assert.match(result.ack, /alternative/);
+  });
+}
+
 test('#1961: a vibe phrase left in search_terms is not read as a named song', async () => {
   modelOutput = { kind: 'track', title: null, artist: null, genre: 'rock', mood: null, search_terms: ['overcast evening'] };
   genreSongs = [filler];

@@ -558,6 +558,25 @@ test('quoted artist names, lyrics and self-introductions are not repaired into s
 });
 
 
+test('with no artist in the reading, another named term must be the artist of a term searched as a title', async () => {
+  const otherQueen = { id: 'other-queen', title: 'Queen', artist: 'Perfume Genius', genre: 'Rock' };
+  const f = fixture({ searchPage: async query => ({ songs: query === 'Queen' ? [otherQueen] : [], rawCount: 1 }) });
+  const r = await resolveDirectRequest({ title: null, artist: null, genre: 'rock', mood: 'celebratory', search_terms: ['Bohemian Rhapsody', 'Queen'] },
+    { ...f.deps, text: 'Queen, Bohemian Rhapsody' });
+  assert.notEqual(r.track?.id, otherQueen.id);
+  assert.equal(r.outcome, 'substituted');
+});
+
+test('an artist spelt without its "The" is not a song title beside a guessed mood', async () => {
+  const beatles = { id: 'beatles-song', title: 'Here Comes the Sun', artist: 'The Beatles' };
+  const f = fixture({ resolveArtist: async () => ({ id: 'beatles', name: 'The Beatles' }), getArtist: async () => ({ album: [{ id: 'abbey-road' }] }),
+    getAlbum: async () => [beatles] });
+  const r = await resolveDirectRequest({ title: null, artist: 'The Beatles', mood: 'celebratory', search_terms: ['Beatles'] },
+    { ...f.deps, text: 'play some Beatles for my birthday' });
+  assert.equal(r.track?.id, beatles.id);
+  assert.equal(r.outcome, 'matched');
+});
+
 test('punctuation-only identities stay distinct and survive literal parsing', () => {
   assert.equal(requestArtistMatches('!!!', { id: 'other', artist: 'Queen' }), false);
   assert.ok(requestArtistMatches('!!!', { id: 'wanted', artist: '!!!' }));
