@@ -171,14 +171,14 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
             <Seg
               value={form.llm.requestMatching}
               options={[
-                { id: 'direct', label: 'Direct', title: 'Named songs and artists, tracks from albums, genres and simple moods; works without model tools' },
+                { id: 'direct', label: 'Direct', title: 'Named songs and artists, tracks from albums, genres and simple moods' },
                 { id: 'agentic', label: 'Agent-assisted', title: 'Uses music-search tools for detailed or compound requests' },
               ]}
               onChange={v => setForm(f => ({ ...f, llm: { ...f.llm, requestMatching: v as 'agentic' | 'direct' } }))}
             />
             <div className="field-hint space-y-2">
               <p>
-                Direct handles named music, genres and simple moods without model tools.
+                Direct handles named music, genres and simple moods.
                 Agent-assisted explores more detailed requests with a tool-capable model.
               </p>
               <details className="group">
@@ -191,15 +191,14 @@ export function MusicSelectionSection({ data, form, setForm, busy, saveSettings,
                     <strong>Direct</strong> matches named songs and artists, tracks from named albums,
                     genres and simple moods — for example, &ldquo;play something by Queen&rdquo; or
                     &ldquo;something calm&rdquo;.
-                    Works with models that do not support tools.
                   </p>
                   <p>
                     It cannot reliably identify songs from remembered lyrics, films or current trends,
                     refer back to earlier conversations, or follow exclusions and complex conditions
                     such as &ldquo;anything except Queen&rdquo; or &ldquo;instrumental tracks from the
                     1990s&rdquo;. Language requests depend on your library&apos;s tags or metadata.
-                    Recognised unsupported conditions are declined; unverified mood preferences are
-                    reported as compromises. Explicit genre and language requirements are never
+                    Recognised unsupported conditions are declined. Mood is a preference; an exact
+                    recording stays a match even when its mood cannot be verified. Explicit genre and language requirements are never
                     relaxed to queue an alternative.
                   </p>
                   <p>

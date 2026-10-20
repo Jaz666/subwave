@@ -1,7 +1,5 @@
 'use client';
 
-import { requestPollPhase, REQUEST_DELAY_MESSAGE, REQUEST_UNCONFIRMED_MESSAGE, REQUEST_UNKNOWN_MESSAGE } from '@/lib/request-outcome';
-
 // The hook siblings of shared.ts (which stays pure derivations). Everything
 // here reads only the core contexts, per the skin contract (see types.ts);
 // wording and layout stay with each skin.
@@ -37,6 +35,7 @@ export function useSkinCalm(): boolean {
 // Poll cadence + give-up window for a submitted request's outcome. Past the
 // deadline the accepted line stands.
 const POLL_INTERVAL_MS = 1500;
+const POLL_DEADLINE_MS = 60_000;
 
 /** Copy for a request slip's three outcomes, when the controller doesn't
  *  supply its own line — each skin keeps its own voice. */
@@ -99,19 +98,10 @@ export function useRequestSlip(copy: RequestSlipCopy): RequestSlip {
 
   const startPolling = (requestId: string) => {
     pollStopRef.current = false;
-    const startedAt = Date.now();
-    let delayShown = false;
+    const deadline = Date.now() + POLL_DEADLINE_MS;
     const tick = async () => {
       if (pollStopRef.current) return;
-      const phase = requestPollPhase(startedAt, Date.now());
-      if (phase === 'unconfirmed') {
-        setAck(REQUEST_UNCONFIRMED_MESSAGE);
-        return;
-      }
-      if (!delayShown && phase === 'delayed') {
-        delayShown = true;
-        setAck(REQUEST_DELAY_MESSAGE);
-      }
+      if (Date.now() > deadline) return;
       const data = await pollRequest(requestId);
       if (pollStopRef.current) return;
       if (data?.status === 'resolved') {
@@ -131,7 +121,7 @@ export function useRequestSlip(copy: RequestSlipCopy): RequestSlip {
         setOutcome('refused');
         return;
       }
-      if (data?.status === 'unknown') { setAck(REQUEST_UNKNOWN_MESSAGE); return; }
+      if (data?.status === 'unknown') return;
       // pending, or a transient network null — keep polling.
       pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
     };

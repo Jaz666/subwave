@@ -5,11 +5,12 @@ import { AnimatePresence, m } from 'motion/react';
 import { ArrowUpRight, Radio } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { NowPlayingTrack, RequestResult, StationContext } from '@/lib/types';
-import { requestResultLabel, requestPollPhase, REQUEST_DELAY_MESSAGE, REQUEST_UNCONFIRMED_MESSAGE, REQUEST_UNKNOWN_MESSAGE } from '@/lib/request-outcome';
+import { requestResultLabel } from '@/lib/request-outcome';
 import { REQUEST_NAME_MAX } from '@/lib/schemas.generated';
 
 const SUCCESS_HOLD_MS = 2800;
 const POLL_INTERVAL_MS = 1500;
+const POLL_DEADLINE_MS = 60_000;
 
 // Rules every 30px, as an arbitrary Tailwind `bg-[…]` utility because inline
 // styles are banned project-wide. The textarea's `leading-[30px]` must match
@@ -133,19 +134,10 @@ export default function RequestDrawer({
   // the real track + DJ ack, then auto-closes.
   const startPolling = (requestId: string) => {
     pollStopRef.current = false;
-    const startedAt = Date.now();
-    let delayShown = false;
+    const deadline = Date.now() + POLL_DEADLINE_MS;
     const tick = async () => {
       if (pollStopRef.current) return;
-      const phase = requestPollPhase(startedAt, Date.now());
-      if (phase === 'unconfirmed') {
-        setResult({ success: false, message: REQUEST_UNCONFIRMED_MESSAGE });
-        return;
-      }
-      if (!delayShown && phase === 'delayed') {
-        delayShown = true;
-        setResult(prev => prev ? { ...prev, ack: REQUEST_DELAY_MESSAGE } : prev);
-      }
+      if (Date.now() > deadline) { scheduleClose(); return; }
       const data = await onPoll?.(requestId);
       if (pollStopRef.current) return;
       if (data?.status === 'resolved') {
@@ -163,10 +155,7 @@ export default function RequestDrawer({
         setResult({ success: false, outcome: data.outcome, message: data.message || 'No match — try different words.' });
         return;
       }
-      if (data?.status === 'unknown') {
-        setResult({ success: false, message: REQUEST_UNKNOWN_MESSAGE });
-        return;
-      }
+      if (data?.status === 'unknown') { scheduleClose(); return; }
       // pending, or a transient network null — keep polling.
       pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
     };

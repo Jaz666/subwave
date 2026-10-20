@@ -9,14 +9,3 @@ export function requestResultLabel(result: Pick<RequestResult, 'pending' | 'outc
   if (result.outcome === 'substituted') return 'Alternative queued';
   return result.track ? 'Queued' : 'Answered';
 }
-
-export const REQUEST_POLL_DEADLINE_MS = 9 * 60_000;
-export const REQUEST_DELAY_MESSAGE = 'The booth is still looking — you can keep listening while it finishes.';
-export const REQUEST_UNCONFIRMED_MESSAGE = 'The booth has not confirmed the result yet. Your request may still be processed.';
-export const REQUEST_UNKNOWN_MESSAGE = 'The booth no longer has a result for this request. It may already have been processed.';
-
-export function requestPollPhase(startedAt: number, now: number): 'waiting' | 'delayed' | 'unconfirmed' {
-  const elapsed = now - startedAt;
-  if (elapsed > REQUEST_POLL_DEADLINE_MS) return 'unconfirmed';
-  return elapsed > 60_000 ? 'delayed' : 'waiting';
-}
