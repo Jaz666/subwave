@@ -456,6 +456,32 @@ test('a mastering suffix is accepted but different performances are distinct', (
   assert.ok(!requestTitleMatches('Bohemian Rhapsody (2011 Remaster)', 'Bohemian Rhapsody'));
 });
 
+test('featured credits and edition labels fold, but a requested edition stays strict', () => {
+  assert.ok(requestTitleMatches('Bohemian Rhapsody', 'Bohemian Rhapsody (Remastered Version)'));
+  assert.ok(requestTitleMatches('Song', 'Song (Explicit Version)'));
+  assert.ok(requestTitleMatches('Empire State of Mind', 'Empire State of Mind feat. Alicia Keys'));
+  assert.ok(requestTitleMatches('Empire State of Mind (feat. Alicia Keys)', 'Empire State of Mind'));
+  assert.ok(requestTitleMatches('Empire State of Mind (feat. Alicia Keys)', 'Empire State of Mind - Radio Edit'));
+  assert.ok(!requestTitleMatches('Song (Radio Edit)', 'Song'));
+  assert.ok(!requestTitleMatches('Song (Radio Edit) (feat. X)', 'Song (Album Version)'));
+  assert.ok(!requestTitleMatches('The', 'The Feat of Clay'));
+});
+
+test('a literal "Title - Artist" is read the other way round only on catalogue proof', async () => {
+  const song = { id: 'och', title: 'One Crowded Hour', artist: 'Augie March', album: 'Moo, You Bloody Choir' };
+  const literal = { ...modelFreeRequest('One Crowded Hour - Augie March'), literal: true };
+  assert.equal(literal.reversible, true);
+  const f = fixture({
+    searchPage: async query => ({ songs: /crowded/i.test(query) ? [song] : [filler], rawCount: 1 }),
+    resolveArtist: async () => null,
+  });
+  const r = await resolveDirectRequest(literal, f.deps);
+  assert.equal(r.track?.id, song.id);
+  assert.equal(r.outcome, 'matched');
+  // A "by" form says which side is which, so it is never swapped.
+  assert.equal(modelFreeRequest('Augie March by One Crowded Hour').reversible, false);
+});
+
 for (const [want, got, matches] of [
   ['The Beatles', 'The Gathering', false], ['Beyonce', 'Beyoncé', true],
   ['宇多田ヒカル', '宇多田ヒカル', true], ['Queen', 'Queen Latifah', false],

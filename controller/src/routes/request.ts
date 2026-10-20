@@ -388,7 +388,7 @@ async function resolveRequest(entry) {
         && literal.artist && literal.title) {
         // A valid empty plan is not a failure. Preserve an unambiguous name
         // pair when present; generic asks still proceed as "anything".
-        matched = { ...matched, title: literal.title, artist: literal.artist, literal: true, unverifiedConditions: literal.unverifiedConditions };
+        matched = { ...matched, title: literal.title, artist: literal.artist, literal: true, reversible: literal.reversible, unverifiedConditions: literal.unverifiedConditions };
       }
       if (matched.kind !== 'chat' && !matched.title && !matched.album && matched.scope !== 'album'
         && matched.artist && literal.artist && literal.title
@@ -396,6 +396,11 @@ async function resolveRequest(entry) {
         // A small model can retain the artist but omit the title fields. Only
         // recover an unambiguous literal form whose artist agrees with it.
         matched = { ...matched, title: literal.title };
+      } else if (matched.kind !== 'chat' && !matched.title && !matched.album && matched.scope !== 'album'
+        && matched.artist && literal.reversible && literal.title
+        && requestArtistMatches(matched.artist, { id: 'literal', artist: literal.title })) {
+        // The same, written "Title - Artist".
+        matched = { ...matched, title: literal.artist };
       }
 
     } catch (err) {

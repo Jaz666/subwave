@@ -638,3 +638,18 @@ test('a credit found by searching the listener\'s own spelling is not called a d
   assert.equal(queue.upcoming[0].track.id, changes.id);
   assert.equal(requestLog.snapshot(1)[0].artistMiss, null);
 });
+
+test('an interpreter outage still finds a song written "Title - Artist"', async () => {
+  modelError = true;
+  const result = await submit('Bohemian Rhapsody - Queen');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, exact.id);
+});
+
+test('a model reply that kept only the artist recovers a "Title - Artist" title', async () => {
+  artistSongs = [killerQueen];
+  modelOutput = { kind: 'track', title: null, artist: 'Queen', search_terms: ['Queen'] };
+  const result = await submit('Bohemian Rhapsody - Queen');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, exact.id);
+});

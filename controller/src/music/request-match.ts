@@ -16,8 +16,10 @@ export interface RequestMatch {
   intent?: string;
   ack?: string;
   unsupported?: string[];
-  // Controller-owned marker; never part of the model's interpretation schema.
+  // Controller-owned markers; never part of the model's interpretation schema.
   literal?: boolean;
+  // A literal "A - B" or "A, B" whose words do not say which side is the artist.
+  reversible?: boolean;
   // Names need catalogue proof before they may hide condition words.
   unverifiedConditions?: string[];
 }
@@ -214,17 +216,34 @@ export function requestedTitle(match: RequestMatch, text?: string): string | nul
   return term;
 }
 
+// Catalogue decorations around one recording. A featured credit never makes
+// another recording, in either the request or the library title; a mastering
+// or edit label does only when the listener named one. Live, remix and
+// acoustic recordings stay distinct.
+const FEATURED_CREDIT = [
+  /\s*(?:[-–—]\s*|\(|\[)(?:feat\.?|featuring|ft\.?)\s+[^)\]]+[\])]?\s*$/i,
+  // Bare "Title feat. X" needs the dot, so "The Feat of Clay" keeps its title.
+  /\s+(?:feat\.|ft\.|featuring)\s+[^)\]]+$/i,
+];
+const EDITION = /\s*(?:[-–—]\s*|\(|\[)(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+(?:\d{4}|version|edition))*|radio\s+edit|single\s+version|album\s+version|explicit(?:\s+version)?)[\])]?\s*$/i;
+
+function undecorated(value: unknown, patterns: RegExp[]): string {
+  let title = String(value ?? '');
+  for (let stripped = true; stripped;) {
+    stripped = false;
+    for (const pattern of patterns) {
+      const next = title.replace(pattern, '');
+      if (next !== title && next.trim()) { title = next; stripped = true; }
+    }
+  }
+  return requestName(title);
+}
+
 export function requestTitleMatches(want: unknown, got: unknown): boolean {
   if (requestName(want) === requestName(got)) return true;
-  // Fold catalogue decorations only when the listener did not request a
-  // version. Live, remix and acoustic recordings remain distinct.
-  const decoration = /\s*(?:[-–—]\s*|\(|\[)(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|(?:feat\.?|featuring|ft\.?)\s+[^)\]]+|(?:radio\s+edit|single\s+version|album\s+version|explicit))[\])]?[\s]*$/i;
-  const base = (value: unknown) => {
-    let title = String(value ?? '');
-    while (decoration.test(title)) title = title.replace(decoration, '');
-    return requestName(title);
-  };
-  return base(want) === requestName(want) && requestName(want) === base(got);
+  const wanted = undecorated(want, FEATURED_CREDIT);
+  const edition = undecorated(want, [...FEATURED_CREDIT, EDITION]) !== wanted;
+  return wanted === undecorated(got, edition ? FEATURED_CREDIT : [...FEATURED_CREDIT, EDITION]);
 }
 
 export function modelFreeRequest(text: string): RequestMatch {
@@ -249,7 +268,7 @@ export function modelFreeRequest(text: string): RequestMatch {
   const separated = !by && (query.match(/^([^,]+),\s*(.+)$/) || query.match(/^(.+?)\s+[-–—]\s+(.+)$/));
   const title = unquote(by?.[1] || separated?.[2] || query);
   const artist = by?.[2] || separated?.[1] || null;
-  return { kind: 'track', title, album: null, unverifiedConditions, artist: artist ? unquote(artist) : null,
+  return { kind: 'track', title, album: null, unverifiedConditions, artist: artist ? unquote(artist) : null, reversible: !!separated,
     search_terms: [title], genre: null, language: language?.[1] || null, mood: null, sort: null,
     scope: 'song', intent: 'library search without model interpretation', ack: '' };
 }
@@ -356,6 +375,15 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     if (exact) return exact;
     const heldExact = refusal();
     if (heldExact) return heldExact;
+    // "One Crowded Hour - Augie March" reads either way round. The other
+    // reading counts only on catalogue proof of both its title and artist.
+    if (match.reversible && artistName) {
+      const reading = { title, artistName };
+      [title, artistName, resolvedArtistName] = [reading.artistName, reading.title, reading.title];
+      const swapped = select(await search(title), 'search') || refusal();
+      if (swapped) return swapped;
+      [title, artistName, resolvedArtistName] = [reading.title, reading.artistName, reading.artistName];
+    }
     // Accent/punctuation variants or compilation indexing may need the artist
     // catalogue below; never union an artist query into a named-title lottery.
   }
