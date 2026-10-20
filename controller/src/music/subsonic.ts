@@ -10,7 +10,6 @@ import * as blocklist from './blocklist.js';
 import * as sceneVocab from './scene-vocab.js';
 import { trackEraYear } from './show-filter.js';
 import { albumEraSuspect } from './era-suspect.js';
-import { requestName } from './request-match.js';
 
 function buildAuth() {
   const salt = crypto.randomBytes(8).toString('hex');
@@ -375,20 +374,18 @@ export async function getGenres() {
 }
 
 // Fuzzy-match free text ("hip hop") against a real genre tag ("Hip-Hop"):
-// Exact normalised match wins, then whole-word refinement. "rap" can reach
-// "Rap Rock", never the unrelated tag "Trap". null when no hit.
+// exact normalised match wins, then substring either way. null when no hit.
 export async function resolveGenreName(name) {
   if (!name) return null;
-  const norm = requestName;
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
   const target = norm(name);
   if (!target) return null;
   const genres = await getGenres();
   let hit = genres.find(g => norm(g.value) === target);
-  if (!hit) hit = genres.find(g => norm(g.value).replace(/ /g, '') === target.replace(/ /g, ''));
   if (!hit) {
     hit = genres.find(g => {
       const gv = norm(g.value);
-      return gv && ` ${gv} `.includes(` ${target} `);
+      return gv && (gv.includes(target) || target.includes(gv));
     });
   }
   return hit?.value || null;

@@ -143,7 +143,7 @@ test('#1993: what the listener asked for is drawn however recently its artist pl
   });
   const { outcome, record } = await request('Holiday by Madonna please');
   assert.equal(outcome.track?.title, 'Holiday');
-  assert.equal(record.pickSource, 'search:title');
+  assert.equal(record.pickSource, 'search');
   assert.equal(record.guard, null);
   assert.deepEqual(boothLines(), []);
 });
@@ -168,9 +168,10 @@ test('#1993: a pool of nothing but recent stand-ins still fills the request', as
   assert.ok(boothLines().some((l) => /stand-in by recently-played artist "Madonna" allowed/.test(l)), boothLines().join(' | '));
 });
 
-test('#1993: past the token cap an unverified dedication is declined without artist spacing', async (t) => {
-  // Without interpretation, Direct matching only queues verified literal
-  // identities. A dedication must not become an unrelated substitute.
+test('#1993: past the token cap there is no matcher reading, so a dedication or "more of this" is never spaced', async (t) => {
+  // modelFreeMatch hands the whole request on as the one search term, and no
+  // dedication or deictic slot can hold a whole request: read as a name, it
+  // spaced the on-air artist for both of these.
   await settings.update({ llm: { dailyTokenCap: 1000, exemptRequests: false } } as never);
   t.after(() => settings.update({ llm: { dailyTokenCap: 0 } } as never));
   addDailyUsage(5000);
@@ -179,8 +180,8 @@ test('#1993: past the token cap an unverified dedication is declined without art
     queue.upcoming = [];
     queue.djLog = [];
     const { outcome, record } = await request(text);
-    assert.equal(outcome.status, 'failed', text);
-    assert.equal(record.pickSource, 'literal-no-match', text);
+    assert.equal(outcome.track?.title, 'Holiday', text);
+    assert.equal(record.pickSource, 'similar-to-current', text);
     assert.equal(record.guard, null, text);
     assert.deepEqual(boothLines(), [], text);
   }
@@ -196,20 +197,23 @@ test('#1993 review: a search in the listener\'s own spelling found their ask, wh
   });
   const { outcome, record } = await request('play some Tupac');
   assert.equal(outcome.track?.title, 'Changes', 'the ask, not a stand-in for it');
-  assert.equal(record.pickSource, 'fallback');
+  assert.equal(record.pickSource, 'search');
   assert.equal(record.guard, null);
   assert.deepEqual(boothLines(), []);
 });
 
-test('#1993 review: interpreted "more like this" with a dedication is never spaced', async (t) => {
-  // No artist or title is explicitly requested in the interpretation.
-  for (const text of ['more like this please', 'something like this for Sarah']) {
+test('#1993 review: "more like this" the matcher read as the on-air track is never spaced', async (t) => {
+  // The on-air title alone, and the request copied whole by a weak matcher:
+  // both point at the on-air track and name nobody else, so the similar
+  // rung's on-air artist is the ask.
+  for (const term of ['Danceteria', 'something like this for Sarah']) {
     queue.upcoming = [];
     queue.djLog = [];
     stubNetwork(t, {
-      matcher: { ...LIKE_MJ, search_terms: [], title: null, artist: null, intent: 'Wants more like the current track.' },
+      matcher: { ...LIKE_MJ, search_terms: [term], artist: null, intent: 'Wants more like the current track.' },
       similar: [HOLIDAY, GIRLS],
     });
+    const text = term === 'Danceteria' ? 'more like this please' : term;
     const { outcome, record } = await request(text);
     assert.equal(outcome.track?.title, 'Holiday', text);
     assert.equal(record.pickSource, 'similar-to-current', text);

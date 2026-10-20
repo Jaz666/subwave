@@ -54,7 +54,7 @@ test('negative-looking names and idioms remain requestable', () => {
     'Play soul, not least Motown', 'Play Noël', 'Play Ōno',
     'Play Shingeki no Kyojin', 'Play “Avoid Metal”',
     'Play With No Regrets by Example',
-  ]) assert.deepEqual(directRequestUnsupported(text), [], text);
+  ]) assert.deepEqual(directRequestUnsupported(text, / by /i.test(text) ? modelFreeRequest(text) : {}), [], text);
   assert.deepEqual(directRequestUnsupported('Play Anything But Love by Example', { unsupported: ['exclusions'] }), ['exclusions']);
 });
 
@@ -88,28 +88,26 @@ test('a language-compatible alternative is still identified as a substitution', 
   assert.equal(result.outcome, 'substituted');
 });
 
-test('literal recovery cannot reinterpret unparsed artist conditions through fuzzy resolution', async () => {
+test('literal fallback cannot claim a fuzzy artist as an exact match', async () => {
   const f = fixture();
   const result = await resolveDirectRequest({ ...songRequest, artist: 'Queen in French', literal: true }, f.deps);
-  assert.equal(result.track, null);
-  assert.equal(result.outcome, 'no-match');
+  assert.ok(result.track);
+  assert.equal(result.outcome, 'substituted');
   assert.deepEqual(f.albums, []);
-  assert.equal(f.fallbackCalls(), 0);
 });
 
-test('literal recovery does not substitute for an unverified title', async () => {
+test('literal recovery can offer an honestly labelled alternative', async () => {
   const f = fixture();
   const result = await resolveDirectRequest({ title: 'Bohemian Rhapsody in French', artist: 'Queen', literal: true }, f.deps);
-  assert.equal(result.track, null);
-  assert.equal(result.outcome, 'no-match');
-  assert.equal(f.fallbackCalls(), 0);
+  assert.ok(result.track);
+  assert.equal(result.outcome, 'substituted');
 });
 
-test('an unmet artist mood preference is an explicit compromise', async () => {
+test('an unmet artist mood preference is diagnostic', async () => {
   const f = fixture();
   const result = await resolveDirectRequest({ artist: 'Queen', mood: 'calm' }, f.deps);
   assert.equal(result.track?.artist, 'Queen');
-  assert.equal(result.outcome, 'substituted');
+  assert.equal(result.outcome, 'matched');
   assert.deepEqual(result.unmetPreferences, ['mood']);
 });
 
@@ -118,7 +116,7 @@ test('a named recording stays selected when its mood cannot be verified', async 
   f.deps.moodSongs = async () => { throw Error('mood database unavailable'); };
   const result = await resolveDirectRequest({ ...songRequest, mood: 'calm' }, f.deps);
   assert.equal(result.track?.id, exact.id);
-  assert.equal(result.outcome, 'substituted');
+  assert.equal(result.outcome, 'matched');
   assert.deepEqual(result.unmetPreferences, ['mood']);
   assert.equal(result.errors.length, 1);
 });

@@ -31,7 +31,7 @@ export const directRequestCases: DirectRequestCase[] = [
   { name: 'named-album', text: 'Play a track from Abbey Road by The Beatles', ids: ['something'], outcome: 'matched', fields: { album: 'Abbey Road', title: null } },
   { name: 'genre', text: 'Play some jazz', ids: ['jazz'], outcome: 'matched', fields: { genre: 'Jazz', title: null } },
   { name: 'artist-mood', text: 'Play something calm by Queen', ids: ['queen-calm'], outcome: 'matched', fields: { artist: 'Queen', mood: 'calm', title: null } },
-  { name: 'mood-compromise', text: 'Play something calm by Fixture Band', ids: ['energetic', 'named-live'], outcome: 'substituted', fields: { artist: 'Fixture Band', mood: 'calm', title: null } },
+  { name: 'mood-compromise', text: 'Play something calm by Fixture Band', ids: ['energetic', 'named-live'], outcome: 'matched', fields: { artist: 'Fixture Band', mood: 'calm', title: null } },
   { name: 'named-song-language', text: 'Play Bohemian Rhapsody by Queen in French', ids: ['queen-french'], outcome: 'matched', fields: { title: 'Bohemian Rhapsody', language: 'French' } },
   { name: 'unavailable-language', text: 'Play Bohemian Rhapsody by Queen in German', outcome: 'no-match', fields: { title: 'Bohemian Rhapsody', language: 'German' } },
   { name: 'named-version', text: 'Play "Example Song (Live)" by Fixture Band', ids: ['named-live'], outcome: 'matched', fields: { title: 'Example Song (Live)' } },
@@ -67,7 +67,7 @@ export async function runDirectRequestCase(c: DirectRequestCase, interpret: (tex
     return { plan, selection: { track: null, source: 'chat', outcome: 'no-match' as const, errors: [] } };
   }
   const selection = await resolveDirectRequest({ ...plan, unsupported }, {
-    catalog, recentIds: new Set(), queuedIds: new Set(), random: () => 0,
+    catalog, text: c.text, recentIds: new Set(), queuedIds: new Set(), random: () => 0,
     moodSongs: async mood => songs.filter(song => song.moods?.includes(mood)),
     fallbackSongs: async () => songs,
   });

@@ -12,12 +12,12 @@ test('evaluation detects a dropped language requirement even if selection report
   assert.ok(checkDirectRequestCase(c, out).includes('interpretation:language'));
 });
 
-test('evaluation distinguishes mood compromises from satisfied preferences', async () => {
+test('evaluation keeps unmet moods diagnostic without mislabelling identity', async () => {
   const c = directRequestCases.find(c => c.name === 'mood-compromise')!;
   const out = await runDirectRequestCase(c, async () => ({ artist: 'Fixture Band', mood: 'calm' }));
   assert.deepEqual(checkDirectRequestCase(c, out), []);
   assert.deepEqual(out.selection.unmetPreferences, ['mood']);
-  assert.ok(checkDirectRequestCase(c, { ...out, selection: { ...out.selection, outcome: 'matched' } }).length);
+  assert.ok(checkDirectRequestCase(c, { ...out, selection: { ...out.selection, outcome: 'substituted' } }).length);
 });
 
 test('evaluation exercises the exclusion backstop when a model drops the condition', async () => {

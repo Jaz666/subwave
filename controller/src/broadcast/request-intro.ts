@@ -15,6 +15,7 @@ export interface QueuedRequestIntro {
   introPersona: Persona | null;
   introHostSpeech: HostSpeechStamp | null;
   guard: string | null;
+  failure?: string | null;
 }
 
 export async function generateQueuedRequestIntro(
@@ -44,6 +45,6 @@ export async function generateQueuedRequestIntro(
     };
   } catch (err) {
     console.error(`[request] optional intro failed: ${err instanceof Error ? err.message : String(err)}`);
-    return { introScript: null, introPersona: null, introHostSpeech: null, guard: 'intro-failed' };
+    return { introScript: null, introPersona: null, introHostSpeech: null, guard: null, failure: 'intro-failed' };
   }
 }

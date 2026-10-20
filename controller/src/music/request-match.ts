@@ -16,6 +16,8 @@ export interface RequestMatch {
   unsupported?: string[];
   // Controller-owned marker; never part of the model's interpretation schema.
   literal?: boolean;
+  // Literal names need catalogue proof before they may hide condition words.
+  unverifiedConditions?: string[];
 }
 
 export interface RequestSong {
@@ -41,6 +43,7 @@ export interface RequestCatalog {
   getAlbum(id: string): Promise<RequestSong[]>;
   getTopSongs(name: string, options: { count: number }): Promise<RequestSong[]>;
   resolveGenreName(name: string): Promise<string | null>;
+  getGenres?(): Promise<Array<{ value: string }>>;
   getSongsByGenreSampled(genre: string, options: { count: number }): Promise<RequestSong[]>;
 }
 
@@ -56,19 +59,14 @@ export interface RequestSelection {
 // names are data: "Everything but the Girl" is not an exclusion instruction.
 // This is deliberately bounded, not a second natural-language interpreter.
 export function directRequestUnsupported(text: string, match: RequestMatch = {}): string[] {
-  const prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, ' <name> ');
-  // An explicit title-by-artist form can contain exclusion-like words. Only
-  // shield that title from the ambiguous phrase check; imperative clauses
-  // are still checked against the original prose below.
-  const exclusionProse = prose.replace(/^(\s*(?:(?:please\s+)?(?:play|queue|put on)\s+)?)([^,;.!?]+?)\s+by\s+(?=\S)/iu,
-    (whole, prefix: string, title: string) => /\b(?:except|excluding|but not|but no)\b|\S\s+with\s+no\b/iu.test(title)
-      ? whole : `${prefix}<name> by `);
+  if (match.kind === 'chat') return [];
+  const prose = requestConditionProse(text, match);
   const reasons = new Set((match.unsupported || []).filter(reason => reason.trim()));
-  if (/\b(?:anything|something|music|songs?|tracks?)\s+(?:except|excluding|but(?: not)?)\b|\b(?:but not|but no|excluding|except(?: for)?|other than)\s+\S|\b(?:do not|don't|don’t)\s+play\b/i.test(exclusionProse)) reasons.add('exclusions');
+  if (/\b(?:anything|something|music|songs?|tracks?)\s+(?:except|excluding|but(?: not)?)\b|\b(?:but not|but no|excluding|except(?: for)?|other than)\s+\S|\b(?:do not|don['’]?t)\s+play\b/i.test(prose)) reasons.add('exclusions');
   // Require an instruction/clause boundary, not bare no/not or a cue inside
   // a name such as No Doubt, Not Waving, Skip James or Never Shout Never.
-  if (/(?:^|[,;.!?]\s*|\s+(?:but|and|please)\s+)(?:please\s+)?(?:avoid\s+|steer\s+clear\s+of\s+|(?:do\s+not|don['’]t)\s+(?:include|play)\s+|exclude\s+)(?=\S)/iu.test(prose)
-    || /(?<![\p{L}\p{N}])with\s+no\s+(?=\S)/iu.test(exclusionProse)) reasons.add('exclusions');
+  if (/(?:^|[,;.!?]\s*|\s+(?:but|and|please)\s+)(?:please\s+)?(?:avoid\s+|steer\s+clear\s+of\s+|(?:do\s+not|don['’]?t)\s+(?:include|play)\s+|exclude\s+)(?=\S)/iu.test(prose)
+    || /(?<![\p{L}\p{N}])with\s+no\s+(?=\S)/iu.test(prose)) reasons.add('exclusions');
   if (/\b(?:19|20)\d0s\b|\b(?:from|during|in)\s+(?:the\s+)?(?:19|20)\d{2}\b/i.test(prose)) reasons.add('era');
   if (/\b(?:instrumental|acoustic|live)\s+(?:only|music|songs?|tracks?|versions?)\b|\b(?:only|strictly)\s+(?:instrumental|acoustic|live)\b|\bwithout\s+(?:vocals|singing|lyrics)\b/i.test(prose)) reasons.add('recording condition');
   if (/\b(?:song|track|one)\s+(?:from|in)\s+(?:that|the|a)\s+(?:new\s+)?(?:film|movie|show|advert|commercial)\b|\b(?:song|track|one)\s+(?:with|containing|that has)\s+(?:the\s+)?(?:lyrics|words|line)\b/i.test(prose)) reasons.add('external identification');
@@ -79,6 +77,40 @@ export function directRequestUnsupported(text: string, match: RequestMatch = {})
 export function requestName(value: unknown): string {
   return String(value ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[’‘']/g, '').replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
+}
+
+// Names are data, including exclusion-like words in titles and years in artist
+// names. Mask whole names before looking for conditions or attribute evidence.
+function requestConditionProse(text: string, match: RequestMatch): string {
+  let prose = text.replace(/"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu, ' <name> ')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘']/g, '');
+  for (const name of [match.title, match.album, match.artist].filter(Boolean).sort((a, b) => b!.length - a!.length)) {
+    const words = requestName(name).split(' ').filter(Boolean);
+    if (words.length) prose = prose.replace(new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${words.join('[^\\p{L}\\p{N}\\p{M}]+')}(?![\\p{L}\\p{N}\\p{M}])`, 'giu'), ' <name> ');
+  }
+  return prose;
+}
+
+export function explicitRequestAttribute(text: string, match: RequestMatch, value: string | null | undefined): boolean {
+  const term = requestName(value);
+  return !!term && ` ${requestName(requestConditionProse(text, match))} `.includes(` ${term} `);
+}
+
+function requestGenreMatches(want: string, got: string): boolean {
+  const target = requestName(want), tag = requestName(got);
+  return !!target && (target.replace(/ /g, '') === tag.replace(/ /g, '') || ` ${tag} `.includes(` ${target} `));
+}
+
+// Request-only strictness: shared genre resolution remains fuzzy for shows,
+// journeys and the picker. Prefer a strict catalogue hit over a fuzzy first hit.
+export async function resolveRequestGenre(catalog: RequestCatalog, name: string): Promise<string | null> {
+  if (catalog.getGenres) {
+    const genres = await catalog.getGenres();
+    return genres.find(g => requestName(g.value).replace(/ /g, '') === requestName(name).replace(/ /g, ''))?.value
+      || genres.find(g => requestGenreMatches(name, g.value))?.value || null;
+  }
+  const genre = await catalog.resolveGenreName(name);
+  return genre && requestGenreMatches(name, genre) ? genre : null;
 }
 
 export function requestArtistMatches(want: unknown, song: RequestSong): boolean {
@@ -106,27 +138,41 @@ export function requestedTitle(match: RequestMatch): string | null {
 
 export function requestTitleMatches(want: unknown, got: unknown): boolean {
   if (requestName(want) === requestName(got)) return true;
-  // A mastering suffix does not change the recording. Live/remix/acoustic
-  // versions DO, and remain distinct unless the listener asked for them.
-  const mastering = (value: unknown) => String(value ?? '').replace(/\s*(?:[-–—]\s*|\(|\[)(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?[\])]?\s*$/i, '');
-  return requestName(mastering(want)) === requestName(want) && requestName(want) === requestName(mastering(got));
+  // Fold catalogue decorations only when the listener did not request a
+  // version. Live, remix and acoustic recordings remain distinct.
+  const decoration = /\s*(?:[-–—]\s*|\(|\[)(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|(?:feat\.?|featuring|ft\.?)\s+[^)\]]+|(?:radio\s+edit|single\s+version|album\s+version|explicit))[\])]?[\s]*$/i;
+  const base = (value: unknown) => {
+    let title = String(value ?? '');
+    while (decoration.test(title)) title = title.replace(decoration, '');
+    return requestName(title);
+  };
+  return base(want) === requestName(want) && requestName(want) === base(got);
 }
 
 export function modelFreeRequest(text: string): RequestMatch {
   const cleaned = text.replace(/^\s*(?:please\s+)?(?:can|could|would)\s+you\s+/i, '')
     .replace(/^\s*(?:please\s+)?(?:play|put on|queue|request)\s+/i, '').replace(/\s+please[.!?]*$/i, '').trim();
   const unquote = (s: string) => s.replace(/^["'“‘]|["'”’][.!?]*$/g, '').trim();
-  const by = cleaned.match(/^(.+?)\s+by\s+(.+?)[.!?]*$/i);
-  const describedArtist = cleaned.match(/^(?:some|anything|something|music|a song|a track)\s+.+?\s+by\s+(.+?)[.!?]*$/i);
-  if (describedArtist) return { kind: 'track', artist: unquote(describedArtist[1]), title: null,
-    unsupported: ['description needs interpretation'], search_terms: [], ack: '' };
-  const artistOnly = cleaned.match(/^(?:some|anything by|something by|music by)\s+(.+?)[.!?]*$/i);
-  if (artistOnly) return { kind: 'track', artist: unquote(artistOnly[1]), title: null, album: null, search_terms: [], scope: 'song', ack: '' };
-  const comma = !by && cleaned.match(/^([^,]+),\s*(.+)$/);
-  const title = unquote(by?.[1] || comma?.[2] || cleaned);
-  const artist = by?.[2] || comma?.[1] || null;
-  return { kind: 'track', title, album: null, artist: artist ? unquote(artist) : null,
-    search_terms: [title], genre: null, language: null, mood: null, sort: null,
+  // A trailing language condition stays explicit even without interpretation.
+  const languageHint = cleaned.match(/\s+in\s+([\p{L}][\p{L} -]*?)[.!?]*$/iu);
+  // Only split an unambiguous, familiar language after a name-pair delimiter.
+  // Other "in" phrases stay in the literal name and need catalogue proof;
+  // e.g. A Day in the Life and Explosions in the Sky are names, not languages.
+  const language = languageHint && /\sby\s|,\s|\s[-–—]\s/i.test(cleaned.slice(0, languageHint.index))
+    && /^(?:English|French|German|Spanish|Italian|Portuguese|Punjabi|Hindi|Urdu|Turkish|Arabic|Japanese|Korean|Chinese|Mandarin|Cantonese|Russian|Polish|Dutch|Bengali|Tamil|Telugu|Marathi)$/i.test(languageHint[1]) ? languageHint : null;
+  const unverifiedConditions = languageHint && !language ? ['unparsed language condition'] : [];
+  const query = language ? cleaned.slice(0, language.index) : cleaned;
+  const by = query.match(/^(.+?)\s+by\s+(.+?)[.!?]*$/i);
+  const artistOnly = query.match(/^(?:some|(?:anything|something|music|a song|a track) (?:by|from))\s+(.+?)[.!?]*$/i);
+  const describedArtist = query.match(/^(?:some|anything|something|music|a song|a track)\s+(.+?)\s+by\s+(.+?)[.!?]*$/i);
+  const knownMood = describedArtist && /^(?:energetic|calm|reflective|celebratory|romantic|spiritual|focus|workout|driving|cooking|rainy|sunny|night|morning|evening|festival|cultural)$/i.test(describedArtist[1]);
+  if (artistOnly || knownMood) return { kind: 'track', artist: unquote(artistOnly?.[1] || describedArtist![2]), title: null,
+    unverifiedConditions, language: language?.[1] || null, mood: describedArtist?.[1] || null, album: null, search_terms: [], scope: 'song', ack: '' };
+  const separated = !by && (query.match(/^([^,]+),\s*(.+)$/) || query.match(/^(.+?)\s+[-–—]\s+(.+)$/));
+  const title = unquote(by?.[1] || separated?.[2] || query);
+  const artist = by?.[2] || separated?.[1] || null;
+  return { kind: 'track', title, album: null, unverifiedConditions, artist: artist ? unquote(artist) : null,
+    search_terms: [title], genre: null, language: language?.[1] || null, mood: null, sort: null,
     scope: 'song', intent: 'library search without model interpretation', ack: '' };
 }
 
@@ -141,6 +187,7 @@ export function requestReleaseRank(album: { year?: number; originalReleaseDate?:
 
 export async function resolveDirectRequest(match: RequestMatch, deps: {
   catalog: RequestCatalog;
+  text?: string;
   recentIds: Set<string>;
   queuedIds: Set<string>;
   currentId?: string | null;
@@ -156,7 +203,10 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const safe = async <T>(source: string, run: () => Promise<T>, fallback: T): Promise<T> => {
     try { return await run(); } catch (err) { errors.push(`${source}: ${err instanceof Error ? err.message : String(err)}`); return fallback; }
   };
-  const title = requestedTitle(match);
+  let title = requestedTitle(match);
+  let artistName = match.artist;
+  const requiredGenre = !!match.genre && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.genre));
+  const requiredLanguage = !!match.language && (deps.text === undefined || explicitRequestAttribute(deps.text, match, match.language));
   const moodPool = match.mood ? await safe('mood tracks', () => deps.moodSongs(match.mood!), []) : [];
   const moodIds = new Set(moodPool.map(song => song.id));
   const moodMatches = (song: RequestSong) => !match.mood || moodIds.has(song.id)
@@ -167,25 +217,24 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const tags = (song: RequestSong) => [song.genre, ...(song.genres || []).map(g => typeof g === 'string' ? g : g.name)].map(requestName).filter(Boolean);
   let genre: string | null = null;
   let languageGenre: string | null = null;
-  // The interpretation contract only supplies explicitly requested attributes.
-  // These requirements also apply to named songs and every alternative.
-  if (match.genre) genre = await safe('genre resolution', () => catalog.resolveGenreName(match.genre!), null);
-  if (match.language) languageGenre = await safe('language resolution', () => catalog.resolveGenreName(match.language!), null);
-  const constraints = (song: RequestSong, source: string) => {
-    const genres = tags(song);
-    if (match.genre && !(genre && source === `genre:${genre}`)
-      && !genres.some(g => g === requestName(genre || match.genre) || g.split(' ').includes(requestName(match.genre)))) return false;
-    if (match.language) {
-      const languages = [song.language, ...(song.languages || []), ...genres].map(requestName);
-      if (!(languageGenre && source === `language-genre:${languageGenre}`) && !languages.includes(requestName(match.language))) return false;
-    }
-    return true;
-  };
+  // Small models may guess attributes despite the prompt. Only terms present
+  // outside recognised names are hard requirements; guesses stay preferences.
+  if (match.genre) genre = await safe('genre resolution', () => resolveRequestGenre(catalog, match.genre!), null);
+  if (match.language) languageGenre = await safe('language resolution', () => resolveRequestGenre(catalog, match.language!), null);
+  const genreMatches = (song: RequestSong) => !match.genre || tags(song).some(g => requestGenreMatches(genre || match.genre!, g));
+  const languageMatches = (song: RequestSong) => !match.language
+    || [song.language, ...(song.languages || []), ...tags(song)].map(requestName).includes(requestName(match.language));
+  const constraints = (song: RequestSong, source: string) =>
+    (!requiredGenre || (genre && source === `genre:${genre}`) || genreMatches(song))
+    && (!requiredLanguage || (languageGenre && source === `language-genre:${languageGenre}`) || languageMatches(song));
   const eligible = (song: RequestSong) => !recentIds.has(song.id) && !queuedIds.has(song.id) && song.id !== currentId;
   const unique = (songs: RequestSong[]) => [...new Map(songs.filter(s => s?.id).map(s => [s.id, s])).values()];
   const choose = (songs: RequestSong[]) => {
-    const moodHits = match.mood ? songs.filter(moodMatches) : [];
-    const pool = moodHits.length ? moodHits : songs;
+    const score = (song: RequestSong) => Number(!!match.mood && moodMatches(song))
+      + Number(!!match.genre && !requiredGenre && genreMatches(song))
+      + Number(!!match.language && !requiredLanguage && languageMatches(song));
+    const best = songs.reduce((best, song) => Math.max(best, score(song)), 0);
+    const pool = songs.filter(song => score(song) === best);
     if (deps.choose) return deps.choose(pool);
     return pool[Math.min(pool.length - 1, Math.floor((deps.random || Math.random)() * pool.length))] || null;
   };
@@ -194,8 +243,8 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     const pool = unique(songs).filter(s => constraints(s, source) && (!exact || identity(s)));
     const track = choose(pool.filter(eligible));
     if (track) {
-      const unmetPreferences = moodMatches(track) ? [] : ['mood'];
-      return { track, source, outcome: exact && !unmetPreferences.length ? 'matched' : 'substituted', errors, unmetPreferences };
+      const unmetPreferences = [!moodMatches(track) && 'mood', !genreMatches(track) && 'genre', !languageMatches(track) && 'language'].filter((value): value is string => !!value);
+      return { track, source, outcome: exact ? 'matched' : 'substituted', errors, unmetPreferences };
     }
     // Preserve the requested identity for an honest refusal, never replace an
     // exact recording merely because it is queued or on cooldown.
@@ -219,7 +268,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   const artistAlternatives: RequestSong[] = [];
   if (title) {
     searched = await search(title);
-    const exact = select(searched, 'search:title');
+    const exact = select(searched, 'search');
     if (exact) return exact;
     const heldExact = refusal();
     if (heldExact) return heldExact;
@@ -227,17 +276,22 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     // catalogue below; never union an artist query into a named-title lottery.
   }
 
-  if (match.artist) {
+  if (match.literal && !artistName && title) {
+    artistName = title;
+    resolvedArtistName = title;
+    title = null;
+  }
+  if (artistName) {
     if (match.sort === 'popular' && !title && !match.album) {
-      const popular = await safe('popular songs', () => catalog.getTopSongs(match.artist!, { count: 100 }), []);
+      const popular = await safe('popular songs', () => catalog.getTopSongs(artistName!, { count: 100 }), []);
       const candidates = unique(popular).filter(s => identity(s) && constraints(s, 'artist-popular'));
       const best = candidates.find(eligible) || candidates[0];
       const result = select(best ? [best] : [], 'artist-popular');
       if (result) return result;
     }
-    const artist = await safe('artist resolution', () => catalog.resolveArtist(match.artist!), null);
-    if (artist && (!match.literal || requestArtistMatches(match.artist, { id: artist.id, artist: artist.name }))) {
-      resolvedArtistName = artist.name || match.artist;
+    const artist = await safe('artist resolution', () => catalog.resolveArtist(artistName!), null);
+    if (artist && (!match.literal || requestArtistMatches(artistName, { id: artist.id, artist: artist.name }))) {
+      resolvedArtistName = artist.name || artistName;
       const full = await safe('artist albums', () => catalog.getArtist(artist.id), null);
       let albums = full?.album || [];
       if (match.album) albums = albums.filter(a => requestName(a.name || a.title) === requestName(match.album));
@@ -282,17 +336,18 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     }
     // Song artists on compilations need not have an artist-album index entry.
     if (!title) {
-      searched = await search(match.album || match.artist);
-      const result = select(searched, 'search:artist');
+      searched = await search(match.album || artistName);
+      const result = select(searched, 'search');
       if (result) return match.sort ? { ...result, outcome: 'substituted' } : result;
     }
   } else if (match.album) {
     searched = await search(match.album);
-    const result = select(searched, 'search:album');
+    const result = select(searched, 'search');
     if (result) return result;
   }
   const identityRefusal = refusal();
   if (identityRefusal) return identityRefusal;
+  if (match.unverifiedConditions?.length) return { track: null, source: 'unsupported', outcome: 'unsupported', errors };
 
   if (!title && !match.album) {
     if (genre) {
@@ -307,19 +362,19 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
       const result = select(moodPool, `library-mood:${match.mood}`);
       if (result) return result;
     }
-    if (deps.similarSongs) {
-      const result = select(await safe('similar tracks', deps.similarSongs, []), 'similar-to-current', !match.artist);
-      if (result) return result;
-    }
     const constrainedRefusal = refusal();
     if (constrainedRefusal) return constrainedRefusal;
   }
-  // A failed interpreter cannot safely relax text it may have misread as a
-  // name (e.g. "Queen in French"). Only verified literal identities can queue.
-  if (match.literal) return { track: null, source: 'literal-no-match', outcome: 'no-match', errors };
-  // Interpreted requests can offer alternatives within their hard constraints.
+  if (deps.similarSongs) {
+    const result = select(await safe('similar tracks', deps.similarSongs, []), 'similar-to-current', !title && !artistName && !match.album);
+    if (result) return result;
+  }
+  // Both interpreted and literal requests can offer honest alternatives,
+  // within any explicit hard constraints.
   const artistAlternative = select(artistAlternatives, 'artist-alternative', false);
   if (artistAlternative) return artistAlternative;
-  const fallback = select([...searched, ...await safe('fallback tracks', deps.fallbackSongs, [])], 'fallback', false);
+  const searchAlternative = select(searched, 'search', false);
+  if (searchAlternative) return searchAlternative;
+  const fallback = select(await safe('fallback tracks', deps.fallbackSongs, []), 'fallback', false);
   return fallback || { track: null, source: errors.length ? 'lookup-error' : 'no-match', outcome: 'no-match', errors };
 }

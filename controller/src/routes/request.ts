@@ -27,7 +27,7 @@ import {
 } from '../middleware/ratelimit.js';
 import { validatePublicBody } from '../middleware/validate.js';
 import { listenerRequestSchema } from '../schemas/request.js';
-import { directRequestUnsupported, modelFreeRequest, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
+import { directRequestUnsupported, explicitRequestAttribute, modelFreeRequest, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
 import { requestWaitClause } from '../broadcast/queue/pure.js';
 import { matchedRequestLookups, matchedRequestStandIn } from '../util/request-claim.js';
 import { ARTIST_VARIETY_WINDOW, drawRequestCandidate } from '../broadcast/dj-agent/artist-guard.js';
@@ -53,11 +53,16 @@ function pruneRequests() {
   }
 }
 
-// The same catalogue/identity resolver serves the shortcut, with its seed,
-// queued tracks and recent plays excluded absolutely before similarity fallback.
-async function pickMoreByArtist(artistName: string, recentIds: Set<string>) {
+// The shortcut shares identity lookup. Seed/queued tracks are excluded; recent
+// plays retain the upstream soft two-hour preference.
+async function pickMoreByArtist(artistName: string, recentIds: Set<string>, seedId?: string | null) {
   const result = await resolveDirectRequest({ artist: artistName }, {
-    catalog: subsonic, recentIds, queuedIds: new Set<string>(),
+    catalog: subsonic, recentIds: new Set<string>(), queuedIds: queue.queuedIds(), currentId: seedId,
+    choose: songs => {
+      const fresh = songs.filter(song => !recentIds.has(song.id));
+      const pool = fresh.length ? fresh : songs;
+      return pool[Math.floor(Math.random() * pool.length)] || null;
+    },
     moodSongs: async () => [], fallbackSongs: async () => [],
   });
   return result.outcome === 'matched' ? result.track : null;
@@ -128,6 +133,7 @@ function recordOutcome(entry) {
       introScript: entry.introScript || null,
       message: entry.message || null,
       guard: entry.guard ?? null,
+      introFailure: entry.introFailure ?? null,
     });
   } catch (err) {
     queue.log('error', `request-log record failed: ${err.message}`);
@@ -248,12 +254,12 @@ async function resolveRequest(entry) {
       return failed(`Nothing's playing yet — tell me what you're after instead.`);
     }
     // Use the request cooldown; the seed and queued tracks are always excluded.
-    const recentIds = queue.recentlyPlayedIds(Number(settings.get().requests.repeatCooldownMin || 0) / 60);
+    const recentIds = queue.recentlyPlayedIds(2);
     if (reference?.track?.id) recentIds.add(reference.track.id);
     for (const id of queue.queuedIds()) recentIds.add(id);
     // Same artist first, then real track similarity so a one-off collab credit
     // playing now doesn't dead-end the request.
-    let pick = await pickMoreByArtist(refArtist, recentIds);
+    let pick = await pickMoreByArtist(refArtist, recentIds, reference?.track?.id);
     if (!pick) {
       pick = await pickSimilarToTrack(reference, recentIds);
       if (pick) entry.pickSource = 'more-like-this:similar';
@@ -274,6 +280,10 @@ async function resolveRequest(entry) {
       recentTracks: queue.getRecentTracks(),
       recentOpeners: queue.getRecentOpeners(),
     }, text);
+    if (generatedIntro.failure) {
+      entry.introFailure = generatedIntro.failure;
+      queue.log('error', 'more-like-this optional intro failed — queueing without speech');
+    }
     if (generatedIntro.guard) {
       flagGuard(entry, generatedIntro.guard);
       queue.log('request-guard', `more-like-this intro echoed request text — ${generatedIntro.guard}`);
@@ -368,6 +378,13 @@ async function resolveRequest(entry) {
     try {
       matched = await dj.matchRequest(text, { listenerName: requester, nowPlaying: currentTrack });
       const literal = modelFreeMatch(text);
+      if (matched.kind !== 'chat' && !matched.unsupported?.length
+        && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)
+        && literal.artist && literal.title) {
+        // A valid empty plan is not a failure. Preserve an unambiguous name
+        // pair when present; generic asks still proceed as "anything".
+        matched = { ...matched, title: literal.title, artist: literal.artist, literal: true, unverifiedConditions: literal.unverifiedConditions };
+      }
       if (matched.kind !== 'chat' && !matched.title && !matched.album && matched.scope !== 'album'
         && matched.artist && literal.artist && literal.title
         && requestArtistMatches(matched.artist, { id: 'literal', artist: literal.artist })) {
@@ -375,16 +392,16 @@ async function resolveRequest(entry) {
         // recover an unambiguous literal form whose artist agrees with it.
         matched = { ...matched, title: literal.title };
       }
-      if (matched.kind !== 'chat' && !matched.unsupported?.length && !(currentTrack?.id && /\b(?:like this|match this)\b/i.test(text)) && ![matched.title, matched.album, matched.artist, matched.genre, matched.language, matched.mood, ...(matched.search_terms || [])].some(Boolean)) {
-        entry.interpretationFallback = true;
-        matched = modelFreeMatch(text);
-      }
+
     } catch (err) {
       entry.interpretationFallback = true;
       queue.log('error', `request interpretation failed: ${err.message} — trying library search`);
     }
   }
   const unsupported = directRequestUnsupported(text, matched);
+  if (matched.literal) {
+    matched.unverifiedConditions = [...new Set([...(matched.unverifiedConditions || []), ...directRequestUnsupported(text)])];
+  }
   if (unsupported.length) {
     entry.path = 'cascade';
     entry.pickSource = 'unsupported';
@@ -437,6 +454,7 @@ async function resolveRequest(entry) {
   const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
   const cdMin = Number(settings.get().requests.repeatCooldownMin ?? 120);
   const selection = await resolveDirectRequest(matched, {
+    text,
     catalog: {
       ...subsonic,
       searchPage: async (term, options) => {
@@ -488,7 +506,11 @@ async function resolveRequest(entry) {
   for (const error of selection.errors) queue.log('error', `request lookup ${error}`);
   if (!pick) {
     entry.pickSource = pickSource;
-    return failed(matched.language || matched.genre
+    if (selection.outcome === 'unsupported') {
+      entry.unsupported = matched.unverifiedConditions || [];
+      return failed(`I couldn't reliably check all the conditions in that request. Try naming a song, artist, album, genre or simple mood.`);
+    }
+    return failed(explicitRequestAttribute(text, matched, matched.language) || explicitRequestAttribute(text, matched, matched.genre)
       ? 'Could not verify a track meeting the requested language or genre requirements. Try simplifying the request.'
       : sorryNoMatch(requester));
   }
@@ -505,13 +527,14 @@ async function resolveRequest(entry) {
     return resolved({ ack, track: { title: pick.title, artist: pick.artist }, queuePosition: null });
   }
   queue.log('request', `resolved via ${pickSource} (${selection.outcome}): ${pick.title} — ${pick.artist}`);
-  // Fixed copy makes the final result authoritative and never repeats raw
-  // listener/model-derived names. The response's track carries library identity.
-  const ack = selection.unmetPreferences?.includes('mood')
-    ? `Couldn't verify the requested mood — here's an alternative from the library.`
-    : selection.outcome === 'substituted'
-      ? `Couldn't match that request exactly — here's an alternative from the library.`
-    : 'Found a match — your track is on the way.';
+  // Substitutions need honest fixed copy. A real match keeps the screened
+  // persona-language acknowledgement; optional preference misses stay private.
+  let ack = `Couldn't match that request exactly — here's an alternative from the library.`;
+  if (selection.outcome === 'matched') {
+    const screened = screenAck(matched.ack, text, 'Found a match — your track is on the way.');
+    if (screened.guard) flagGuard(entry, screened.guard);
+    ack = screened.ack;
+  }
 
   // 3. DJ intro. On a miss, flag it (and pass the cleaned name, when one
   // survived) so the intro owns the substitution. Station voice off means no
@@ -527,6 +550,10 @@ async function resolveRequest(entry) {
     recentTracks: queue.getRecentTracks(),
     recentOpeners: queue.getRecentOpeners(),
   }, text);
+  if (generatedIntro.failure) {
+    entry.introFailure = generatedIntro.failure;
+    queue.log('error', 'request optional intro failed — queueing without speech');
+  }
   if (generatedIntro.guard) {
     flagGuard(entry, generatedIntro.guard);
     queue.log('request-guard', `intro echoed request text — ${generatedIntro.guard}`);
