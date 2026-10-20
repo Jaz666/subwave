@@ -342,6 +342,16 @@ test('compilation song artists are resolved without an artist-album index', asyn
   assert.equal((await resolveDirectRequest({ artist: 'Queen' }, f.deps)).outcome, 'matched');
 });
 
+test('a non-Latin artist resolves through catalogue search when artist lookup finds nothing', async () => {
+  // Shared artist resolution folds to ASCII, so it misses "Кино"; the
+  // request's own identity check keeps every script.
+  const song = { id: 'kino', title: 'Группа крови', artist: 'Кино' };
+  const f = fixture({ resolveArtist: async () => null, searchPage: async () => ({ songs: [filler, song], rawCount: 2 }) });
+  const r = await resolveDirectRequest({ artist: 'Кино' }, f.deps);
+  assert.equal(r.track?.id, song.id);
+  assert.equal(r.outcome, 'matched');
+});
+
 test('a fuzzy artist resolution uses the canonical library name', async () => {
   const song = { ...exact, artist: 'Sikander Kahlon' };
   const f = fixture({ resolveArtist: async () => ({ id: 'a', name: song.artist }), getAlbum: async () => [song] });

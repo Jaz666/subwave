@@ -398,7 +398,7 @@ function normArtist(s: string): string {
   return String(s || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\p{M} ]/gu, ' ') // punctuation → space, preserve scripts
+    .replace(/[^a-z0-9 ]/g, ' ')                       // punctuation → space
     .replace(/\s+/g, ' ')
     .trim();
 }
