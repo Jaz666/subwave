@@ -46,6 +46,9 @@ import { cn } from '../../lib/cn';
 import { RequestsCard } from './dash/RequestsCard';
 import { TakeoverCard } from './dash/TakeoverCard';
 import QueueHeldBadge from './dash/QueueHeldBadge';
+import { blockPlayingTrack, freshOnAirId, neverPlayToast, skipDecision, type SkipOutcome } from './dash/never-play';
+import { deleteBlockEntry, notifyBlockedWithUndo, reconcileBlockCaches } from './library/block-actions';
+import type { BlockEntry } from './library/types';
 import { deadlineFallbacks, djLatencyMs, failedCallsNote } from './dash/latency-gauge';
 import { BoothTurnText, SegmentButton, SortableTh, ToggleRow, classTone } from './dash/bits';
 import type {
@@ -98,6 +101,7 @@ export default function DashPanel() {
   // Drives the PromptInputSubmit glyph: ready → submitted → error flash → ready.
   const [sayStatus, setSayStatus] = useState<ChatStatus>('ready');
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const [confirmNeverPlay, setConfirmNeverPlay] = useState(false);
 
   // Hardcoded set until the controller has a generated batch. The GET on mount
   // never calls a model; the refresh button's POST does.
@@ -224,6 +228,82 @@ export default function DashPanel() {
 
   // Runs only after the confirm dialog — a skip cuts the track for every listener.
   const doSkip = () => act('skip', '/dj/skip', {}, 'skip track');
+
+  // The same block write and cache reconciliation the Library page uses
+  // (library/block-actions), so its Blocked tab and loaded lists show the
+  // entry whether or not they are mounted.
+  const blockMutation = useAdminMutation({
+    adminFetch,
+    toastOnError: false,
+    request: (trackId: string, fetcher) => blockPlayingTrack(fetcher, trackId),
+    // Not awaited: re-marking cached Library rows must not hold up the skip.
+    onDone: (_data, _vars, client) => { void reconcileBlockCaches(client, adminFetch); },
+  });
+  const unblockMutation = useAdminMutation<void, BlockEntry>({
+    adminFetch,
+    // The Undo toast reports a failure itself.
+    toastOnError: false,
+    request: (entry, fetcher) => deleteBlockEntry(fetcher, entry),
+    onDone: (_data, _vars, client) => reconcileBlockCaches(client, adminFetch),
+  });
+
+  // Runs only after the confirm dialog. The block lands FIRST: a failed block
+  // must not leave the operator with a skipped track that will still air
+  // again. The track is captured at open time, so a track change while the
+  // dialog is up blocks what the operator was looking at, not its successor.
+  const [neverPlayTarget, setNeverPlayTarget] = useState<{ id: string; title: string; artist?: string } | null>(null);
+  const openNeverPlay = () => {
+    const cur = status?.nowPlaying;
+    if (!cur?.subsonic_id || !cur.title) return;
+    setNeverPlayTarget({ id: cur.subsonic_id, title: cur.title, artist: cur.artist });
+    setConfirmNeverPlay(true);
+  };
+  const doNeverPlay = async (skipToo: boolean) => {
+    const target = neverPlayTarget;
+    if (!target) return;
+    setBusy('never-play');
+    try {
+      const r = await blockMutation.mutateAsync(target.id);
+      let skip: SkipOutcome = 'not-asked';
+      let skipError: string | undefined;
+      if (skipToo) {
+        // Decide on a read that landed AFTER the block, never on `status`
+        // from this render: the track can change while the block request is
+        // in flight, and the closure would still show the blocked one
+        // (skipping its successor for every listener). A failed or offline
+        // refetch is no read, and nothing is skipped without one. The read
+        // cannot see a jingle, bed or pause-talk break (none updates
+        // now-playing) and /dj/skip takes no target, so either can still cut
+        // what follows the blocked song, as the plain Skip can; a targeted
+        // skip is a controller follow-up.
+        const since = Date.now();
+        await queryClient.refetchQueries({ queryKey: dashKeys.status(), exact: true });
+        const onAirId = freshOnAirId(queryClient.getQueryState<DashStatus>(dashKeys.status()), since);
+        const decision = skipDecision({ targetId: target.id, onAirId });
+        if (decision === 'skip') {
+          setBusy('skip');
+          try {
+            await actionMutation.mutateAsync({ path: '/dj/skip', body: {} });
+            skip = 'done';
+          } catch (e) {
+            skip = 'failed';
+            skipError = errorMessage(e);
+          }
+        } else {
+          skip = decision;
+        }
+      }
+      const t = neverPlayToast({ title: target.title, artist: target.artist, block: r.block, skip, purged: r.purged, skipError });
+      if (t.tone === 'err') notify.err(t.text);
+      else if (r.entry) notifyBlockedWithUndo(t.text, r.entry, e => unblockMutation.mutateAsync(e));
+      else notify.ok(t.text);
+    } catch (e) {
+      notify.err(`never play: ${errorMessage(e)}`);
+    } finally {
+      setBusy(null);
+      void queryClient.invalidateQueries({ queryKey: dashKeys.status() });
+    }
+  };
 
   // No confirm: nothing on-air changes, worst case a 409 because the track went
   // on air first. The row drops optimistically; the poll confirms.
@@ -384,6 +464,8 @@ export default function DashPanel() {
       <StationHeader
         metrics={healthMetrics}
         np={np}
+        onNeverPlay={openNeverPlay}
+        canNeverPlay={!!np?.subsonic_id}
         djName={djName}
         showName={showName}
         weatherText={weatherText}
@@ -841,6 +923,24 @@ export default function DashPanel() {
         confirmLabel="skip track"
         danger
         onConfirm={doSkip}
+      />
+
+      {/* The target outlives the close on purpose: the close animation still
+          shows its text, and clearing it blanked the dialog as it faded.
+          openNeverPlay overwrites it before every open, and the two actions,
+          its only readers, exist only while the dialog is open. */}
+      <V3AlertDialog
+        open={confirmNeverPlay}
+        onOpenChange={setConfirmNeverPlay}
+        title="Never play this track"
+        description={neverPlayTarget
+          ? `Add “${neverPlayTarget.title}”${neverPlayTarget.artist ? ` — ${neverPlayTarget.artist}` : ''} to the never-play list? It will never air again, listener requests included. You can lift it from Library → Blocked.`
+          : ''}
+        altLabel="block, let it finish"
+        onAlt={() => void doNeverPlay(false)}
+        confirmLabel="block + skip now"
+        danger
+        onConfirm={() => void doNeverPlay(true)}
       />
     </div>
   );
