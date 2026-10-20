@@ -142,6 +142,20 @@ function namedInRequest(text: string, term: string, names: Array<string | null |
   return masked.includes('\u0000') && requestName(maskNames(masked, names, ' ', false)).split(' ').every(word => !word || REQUEST_FRAME.has(word));
 }
 
+// Is `term` the name at the head of a literal title, followed only by what a
+// listener adds after a name: request framing, a dedication ("for my mum") or
+// a new clause (", it's my birthday")? A recording's own words ("(Live)",
+// "- Remastered", "Part 2") are no such tail.
+function headsLiteral(literal: string, term: string): boolean {
+  const [head, ...rest] = maskNames(literal, [term], '\u0000', false).split('\u0000');
+  const tail = rest.join(' ');
+  if (head.trim() || !requestName(tail)) return false;
+  if (/^\s*[,;.!?]/.test(tail)) return true;
+  const words = requestName(tail).split(' ');
+  const dedication = words.indexOf('for');
+  return (dedication < 0 ? words : words.slice(0, dedication)).every(word => REQUEST_FRAME.has(word));
+}
+
 // The search terms that can be names: never the reading's own artist, nor a
 // term carrying its mood, genre or language word ("calm Queen songs").
 function nameSearchTerms(match: RequestMatch): string[] {
@@ -329,9 +343,12 @@ export function repairRequestMatch(match: RequestMatch, text: string): RequestMa
   }
   if (match.title || match.album || match.scope === 'album' || !match.artist) return match;
   // A small model can keep the artist but drop the title. Recover the literal
-  // title whose artist agrees, written either way round.
-  if (requestArtistMatches(match.artist, { id: 'literal', artist: literal.artist })) return { ...match, title: literal.title };
-  if (literal.reversible && requestArtistMatches(match.artist, { id: 'literal', artist: literal.title })) return { ...match, title: literal.artist };
+  // title whose artist agrees, written either way round. The literal keeps
+  // whatever the listener said after the name, so a search term heading it
+  // is the title instead ("Queen, Bohemian Rhapsody for my mum").
+  const recovered = (title: string) => ({ ...match, title: nameSearchTerms(match).find(term => headsLiteral(title, term)) || title });
+  if (requestArtistMatches(match.artist, { id: 'literal', artist: literal.artist })) return recovered(literal.title);
+  if (literal.reversible && requestArtistMatches(match.artist, { id: 'literal', artist: literal.title })) return recovered(literal.artist);
   return match;
 }
 

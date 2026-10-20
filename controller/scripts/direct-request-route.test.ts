@@ -654,6 +654,18 @@ test('a model reply that kept only the artist recovers a "Title - Artist" title'
   assert.equal(queue.upcoming[0].track.id, exact.id);
 });
 
+// The reply omits title, so the literal reading supplies one, and that keeps
+// whatever the listener said after the name.
+for (const text of ['Queen, Bohemian Rhapsody for my mum', 'Bohemian Rhapsody for my mum - Queen', 'Queen - Bohemian Rhapsody please DJ']) {
+  test(`a recovered literal title leaves out what follows the name: ${text}`, async () => {
+    artistSongs = [killerQueen];
+    modelOutput = { kind: 'track', artist: 'Queen', search_terms: ['Bohemian Rhapsody', 'Queen'], scope: 'song' };
+    const result = await submit(text);
+    assert.equal(result.outcome, 'matched');
+    assert.equal(queue.upcoming[0].track.id, exact.id);
+  });
+}
+
 
 for (const [open, close] of [['"', '"'], ['“', '”'], ["'", "'"], ['‘', '’']]) {
   test(`a quoted title is recovered without trusting an unrelated search term: ${open}`, async () => {

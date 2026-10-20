@@ -539,6 +539,17 @@ test('a quoted title is the quoted span alone, never the words after it', () => 
   assert.equal(repairRequestMatch(plan, 'Play ""').title, null);
 });
 
+test('a recovered literal title drops what follows the name, never a recording\'s own words', () => {
+  const plan = { title: null, artist: 'Queen', search_terms: ['Bohemian Rhapsody', 'Queen'] };
+  for (const text of ['Queen, Bohemian Rhapsody for my mum', 'Bohemian Rhapsody for my mum - Queen',
+    'Queen - Bohemian Rhapsody please DJ', 'Queen, Bohemian Rhapsody, it is my birthday']) {
+    assert.equal(repairRequestMatch(plan, text).title, 'Bohemian Rhapsody', text);
+  }
+  for (const title of ['Bohemian Rhapsody (Live)', 'Bohemian Rhapsody - Live at Wembley', 'Bohemian Rhapsody Part 2']) {
+    assert.equal(repairRequestMatch(plan, `Queen - ${title}`).title, title);
+  }
+});
+
 test('quoted artist names, lyrics and self-introductions are not repaired into song titles', () => {
   const plan = { title: null, artist: 'Queen', genre: 'rock', search_terms: ['Queen'] };
   for (const text of ['Play "Queen"', 'Play the song with the lyrics "a fictional line"', 'I am "Mara Vale", play Queen']) {
