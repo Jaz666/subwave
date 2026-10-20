@@ -181,6 +181,11 @@ function withWaitNotice(ack: string | null | undefined, trackId: string | null |
   return `${ack}${requestWaitClause({ waitSec: queue.airForecastSec(queue.upcoming[idx]), blockLabel })}`;
 }
 
+// A comparison ("something like Michael Jackson", "anything like this",
+// "similar") opens the similar-to-current rung. Never a bare "like": "I'd
+// like X by Y" names X, and Y's catalogue answers a miss better.
+const ON_AIR_REFERENCE = /\bsimilar\b|\b(?:something|anything|more|songs?|tracks?|music|stuff|one)\s+like\b|\blike\s+(?:this|that|these|those)\b|\bmatch\s+this\b/i;
+
 // A bounded literal parser for hard-budget or failed interpretation calls.
 // The resolver still verifies its title/artist against the actual catalogue.
 function modelFreeMatch(text: string): Awaited<ReturnType<typeof dj.matchRequest>> {
@@ -492,7 +497,7 @@ async function resolveRequest(entry) {
         return moodSongs;
       }
     },
-    ...(currentTrack?.id && /\b(?:similar|like|match this)\b/i.test(text)
+    ...(currentTrack?.id && ON_AIR_REFERENCE.test(text)
       ? { similarSongs: () => subsonic.getSimilarSongs(currentTrack.id, { count: 20 }) } : {}),
   });
   const pick = selection.track;

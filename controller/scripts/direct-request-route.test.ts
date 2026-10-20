@@ -606,3 +606,22 @@ test('a model that respells a name with "The" cannot turn a word in it into a ha
   assert.equal(result.outcome, 'matched');
   assert.equal(queue.upcoming[0].track.id, heyYou.id);
 });
+
+test('"I\'d like X by Y" offers Y\'s catalogue for a missing X, not a track like the one on air', async () => {
+  queue.current = { track: { id: 'on-air', title: 'Dancing Queen', artist: 'ABBA' } } as any;
+  catalogueSongs = [filler];
+  artistSongs = [killerQueen];
+  modelOutput = { kind: 'track', title: 'Missing Song', artist: 'Queen', search_terms: ['Missing Song'] };
+  const result = await submit("I'd like Missing Song by Queen");
+  assert.equal(result.outcome, 'substituted');
+  assert.equal(queue.upcoming[0].track.id, killerQueen.id);
+  assert.equal(requestLog.snapshot(1)[0].pickSource, 'artist-alternative');
+});
+
+test('a request pointing at the on-air track still reaches the similarity rung', async () => {
+  queue.current = { track: { id: 'on-air', title: 'Dancing Queen', artist: 'ABBA' } } as any;
+  modelOutput = { kind: 'track', title: null, artist: null, search_terms: [] };
+  const result = await submit('play something like this');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(requestLog.snapshot(1)[0].pickSource, 'similar-to-current');
+});
