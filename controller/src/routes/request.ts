@@ -260,7 +260,9 @@ async function resolveRequest(entry) {
     if (!refArtist) {
       return failed(`Nothing's playing yet — tell me what you're after instead.`);
     }
-    // Use the request cooldown; the seed and queued tracks are always excluded.
+    // A two-hour window, not the request cooldown: the artist pick only
+    // prefers tracks outside it, and the similarity fallback skips them. The
+    // seed and queued tracks are always excluded.
     const recentIds = queue.recentlyPlayedIds(2);
     if (reference?.track?.id) recentIds.add(reference.track.id);
     for (const id of queue.queuedIds()) recentIds.add(id);
