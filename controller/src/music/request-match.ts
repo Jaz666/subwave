@@ -372,6 +372,12 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
     const artist = await safe('artist resolution', () => catalog.resolveArtist(artistName!), null);
     if (artist && ((!match.literal && !unverifiedConditions.length) || requestArtistMatches(artistName, { id: artist.id, artist: artist.name }))) {
       resolvedArtistName = artist.name || artistName;
+      // The title search judged its hits against the listener's spelling of
+      // the artist; the library's own spelling may prove one of them.
+      if (title && resolvedArtistName !== artistName) {
+        const exact = select(searched, 'search') || refusal();
+        if (exact) return exact;
+      }
       const full = await safe('artist albums', () => catalog.getArtist(artist.id), null);
       let albums = full?.album || [];
       if (match.album) albums = albums.filter(a => requestName(a.name || a.title) === requestName(match.album));

@@ -337,6 +337,23 @@ test('a fuzzy artist resolution uses the canonical library name', async () => {
   assert.equal((await resolveDirectRequest({ artist: 'Sikandar Kahlon' }, f.deps)).track?.id, exact.id);
 });
 
+test('a search hit is rechecked against the resolved artist before the album walk', async () => {
+  // The model's "Guns and Roses" misses the library's credit, so the title
+  // search's own hit only proves itself once the artist resolves.
+  const song = { id: 'scom', title: "Sweet Child o' Mine", artist: "Guns N' Roses", album: 'Appetite for Destruction' };
+  const albums = Array.from({ length: 25 }, (_, i) => ({ id: `album-${i}`, name: `Album ${i}` }));
+  const f = fixture({
+    searchPage: async () => ({ songs: [song], rawCount: 1 }),
+    resolveArtist: async () => ({ id: 'gnr', name: "Guns N' Roses" }),
+    getArtist: async () => ({ album: albums }),
+    getAlbum: async id => [{ id: `t-${id}`, title: `Track on ${id}`, artist: "Guns N' Roses" }],
+  });
+  const r = await resolveDirectRequest({ title: song.title, artist: 'Guns and Roses', search_terms: [song.title] }, f.deps);
+  assert.equal(r.track?.id, song.id);
+  assert.equal(r.outcome, 'matched');
+  assert.deepEqual(f.albums, []);
+});
+
 test('artist, genre and language requirements are combined before a broad pick', async () => {
   const wanted = { ...other, id: 'wanted', language: 'French', moods: ['calm'] };
   const f = fixture({ getAlbum: async () => [exact, other, wanted] });
