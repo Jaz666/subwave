@@ -25,6 +25,10 @@ and then its one scoped reference for the area being changed.
 
 For the consistent start/end-of-session procedure, read [`HANDOFF.md`](HANDOFF.md).
 
+When preparing a contribution, use the [contribution practices guide](docs/CONTRIBUTION_PRACTICES.md)
+alongside the scoped engineering instructions. It records review lessons,
+compatibility checks, relevant test scenarios and commit-note guidance for this fork.
+
 ## Working-tree and branch discipline
 
 | Place | Purpose | Rule |
