@@ -2,18 +2,24 @@
 
 ## Current runtime contract — 20 October 2026
 
+For changes to existing station behaviour, start with the [integration review map and regression evidence](sleeve-notes-integration.md). It separates feature-only work from shared changes and names the tests and remaining acceptance work at each boundary.
+
 This section describes the current implementation. The dated design and delivery
 notes below retain historical decisions and may describe superseded behaviour.
 
 | Situation | Current behaviour |
 | --- | --- |
 | Master switch off | Feature UI and operations are disabled; API operations return 409 except status/Dash gating. Scheduled cleanup does not create, migrate or expire the retained cache. |
+| Wikipedia article cache | Schema v58 records when an article is reduced to retained evidence/context. Successfully completed scans get a 24-hour preview window; hourly quiet-time batches process up to ten eligible sources. Pending work, reviews, refresh requests and unverifiable citations retain full text. Refresh reacquires cleared articles via the paced Wikipedia worker; saved facts and operator corrections remain. |
+| Genius capture off | No new Genius jobs are admitted from encounters, canonical matches, fallback requests, album pilots or library seeding. Existing jobs and sources remain intact; the worker makes no requests. Paused Genius jobs do not block fresh Wikipedia admission. Station Brain retains library browsing and saved research with explicit off/missing-key explanations. |
 | Collection paused, master on | Background collection waits; saved Sparks remain available to on-air links and segments. Explicit operator actions retain their existing override. |
 | Artist index population | Automatic population uses the shared quiet gate. The complete awaited operation participates in restore coordination; disabled or superseded work cannot publish its index. |
 | Manual Station Brain queueing | Uses the normal operator queue and blocklist protections. Enablement is rechecked after catalogue lookup, immediately before synchronous queue insertion. |
-| Genius identity | Unicode title/artist identity is retained. Latin accent tolerance and artist punctuation variants remain supported; distinct non-Latin titles, recording versions and ambiguous hits remain distinct. |
+| Genius identity | Unicode title/artist identity is retained. Latin accent tolerance, artist punctuation variants and an optional leading "The" remain supported; distinct non-Latin titles, recording versions and ambiguous hits remain distinct. |
 | Disable during generation | The in-flight generation is aborted; even a late response after re-enable cannot publish from that cancelled operation. |
 | Speech already committed to a mixer silence | The matching voice finishes safely. Disabling must preserve the existing commitment guard rather than leave dead air. |
+| Standalone time context | Research instructions require relative dates to be resolved from supplied preceding sentences or section context, including with custom Wikipedia prompts. Evidence must retain the time anchor. Review can propose the same context repair, distinguishing announcement dates from event dates and reporting unclear context rather than guessing. This is prompt guidance, not a deterministic factual guarantee. |
+| Flagged-fact review | The review prompt checks punctuation, grammar and extraction artefacts as well as factual accuracy. It asks for the smallest correction, preserving dates and factual clauses for punctuation-only fixes; factual changes need explicit contradictory source evidence. Corrections still require operator approval. |
 | Aired speech and wording detection | Air confirmation and detected Spark wording are separate records. Stored Sparks are trusted; wording detection is bookkeeping, not a factual-publication veto. |
 
 Read the [20 October audit](../investigations/2026-10-20-extended-sleeve-notes-contribution-practices-audit.md)
@@ -345,8 +351,10 @@ tagged MusicBrainz release ID must resolve to an exact cached release-group
 member before any local track receives the claim. Matching albums attach the
 recognition claim to each local song without waiting for that song to be
 played or starting its biography research. The scan resumes from a stored
-album-page offset, revisits the library daily and restarts after a Series
-snapshot refresh. Albums without a verifiable MusicBrainz identity remain
+album-page offset and settles into an idle state on completion. New or changed
+Series membership and operator list configuration restart the sweep; unchanged
+30-day checks preserve existing matches. The existing connection catalogue scan
+queues only new or changed albums for later Series matching. Albums without a verifiable MusicBrainz identity remain
 unmatched rather than receiving a title-only claim.
 
 #### Future Series settings

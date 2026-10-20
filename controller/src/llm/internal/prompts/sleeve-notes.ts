@@ -2,6 +2,7 @@
 // This deliberately knows nothing about picker reasoning, tool transcripts, or
 // the model prompt: it is a small trusted packet for the main DJ link path.
 
+import * as settings from '../../../settings.js';
 import { trackEraYear } from '../../../music/show-filter.js';
 import { unairedFlag, type AiredIndex } from '../../../music/airing.js';
 import { canonicalReleaseForLocalTrack } from '../../../sleeve-notes/research-repository.js';
@@ -19,7 +20,11 @@ export function sleeveNotesFor(track: any): string[] {
   let canonicalRelease: ReturnType<typeof canonicalReleaseForLocalTrack> = null;
   try {
     const localTrackId = String(track?.id ?? '').trim();
-    if (localTrackId) canonicalRelease = canonicalReleaseForLocalTrack(localTrackId);
+    // Ordinary links also run on stations that never enable research. Do not
+    // open or migrate the optional store just to assemble their library facts.
+    if (localTrackId && settings.get().djBehaviour.extendedSleeveNotes === true) {
+      canonicalRelease = canonicalReleaseForLocalTrack(localTrackId);
+    }
   } catch {
     // Canonical metadata is an optional enrichment. Keep ordinary library
     // facts available if its local research store cannot be read.

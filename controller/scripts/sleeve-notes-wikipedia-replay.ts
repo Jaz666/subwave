@@ -159,6 +159,7 @@ async function main() {
       source.content_hash AS contentHash, source.content
     FROM sleeve_source_documents source
     WHERE source.provider = 'wikipedia' AND source.revision_id IS NOT NULL
+      AND source.wikipedia_pruned_at IS NULL
       AND NOT EXISTS (
         SELECT 1 FROM sleeve_source_documents newer
         WHERE newer.provider = source.provider

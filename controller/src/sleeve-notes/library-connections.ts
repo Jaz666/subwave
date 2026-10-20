@@ -37,9 +37,9 @@ export function connectionNameKey(value: unknown): string {
     .toLocaleLowerCase().replace(/\s+/gu, ' ').trim() : '';
 }
 
-/** Artist spelling only. Never use this fold for recording titles. */
+/** Artist spelling only, including an optional leading "The". Never fold recording titles. */
 export function connectionArtistVariantKey(value: unknown): string {
-  return connectionNameKey(value).replace(/[.\s\p{Pd}]/gu, '');
+  return connectionNameKey(value).replace(/^the (?=\S)/u, '').replace(/[.\s\p{Pd}]/gu, '');
 }
 
 export function connectionArtistNames(db: Database.Database) {

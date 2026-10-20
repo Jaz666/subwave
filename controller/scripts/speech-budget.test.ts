@@ -56,22 +56,32 @@ test('deferred and unknown clocks retain existing placement, while immediate spe
  } finally {queue.current=saved;ttsCalls.length=0;store.setCache(oldSettings);}
 });
 
-test('an exchange that renders too slowly is rejected before any line airs',async t=>{
- const {queue}=await import('../src/broadcast/queue.js');
- const {withTalkAir}=await import('../src/broadcast/talk-air.js');
- const at=new Date().toISOString(),saved=queue.current;
- queue.current={track:{id:'track'},startedAt:at} as typeof queue.current;
- const wav=join(root,'voice.wav');
- const pcm=Buffer.alloc(44+32000);pcm.write('RIFF',0);pcm.writeUInt32LE(pcm.length-8,4);pcm.write('WAVEfmt ',8);
- pcm.writeUInt32LE(16,16);pcm.writeUInt16LE(1,20);pcm.writeUInt16LE(1,22);pcm.writeUInt32LE(16000,24);
- pcm.writeUInt32LE(32000,28);pcm.writeUInt16LE(2,32);pcm.writeUInt16LE(16,34);pcm.write('data',36);pcm.writeUInt32LE(32000,40);writeFileSync(wav,pcm);
- t.mock.method(queue,'_speak',async()=>wav);
- const air=t.mock.method(queue,'_airVoice',async()=>{throw new Error('Oversized speech must not be published');});
- try {
-  assert.equal(await withTalkAir('immediate',()=>queue.announceExchange([{persona:{id:'a',name:'Host'},text:'Some words.'},{persona:{id:'b',name:'Guest'},text:'More words.'}], 'sleeve-notes',
-   {speechDeadline:{finishByMs:Date.now()+500,trackId:'track',startedAt:at}})),false);
+for (const kind of ['banter','sleeve-notes']) for (const outcome of ['deadline','different-track','replayed-track']) {
+ test(`${kind}: rendered exchange is rejected before air after ${outcome}`,async t=>{
+  const {queue}=await import('../src/broadcast/queue.js');
+  const {withTalkAir}=await import('../src/broadcast/talk-air.js');
+  const settings=await import('../src/settings.js');
+  const store=await import('../src/settings/store.js');
+  const savedSettings=settings.get(),savedTrack=queue.current,at=new Date().toISOString();
+  store.setCache({...savedSettings,djBehaviour:{...savedSettings.djBehaviour,extendedSleeveNotes:true}});
+  queue.current={track:{id:'track'},startedAt:at} as typeof queue.current;
+  t.after(()=>{queue.current=savedTrack;store.setCache(savedSettings);});
+  const wav=join(root,`${kind}-${outcome}.wav`);
+  const pcm=Buffer.alloc(44+32000);pcm.write('RIFF',0);pcm.writeUInt32LE(pcm.length-8,4);pcm.write('WAVEfmt ',8);
+  pcm.writeUInt32LE(16,16);pcm.writeUInt16LE(1,20);pcm.writeUInt16LE(1,22);pcm.writeUInt32LE(16000,24);
+  pcm.writeUInt32LE(32000,28);pcm.writeUInt16LE(2,32);pcm.writeUInt16LE(16,34);pcm.write('data',36);pcm.writeUInt32LE(32000,40);writeFileSync(wav,pcm);
+  const render=t.mock.method(queue,'_speak',async()=>{
+   if(outcome==='different-track')queue.current={track:{id:'other'},startedAt:at} as typeof queue.current;
+   if(outcome==='replayed-track')queue.current={track:{id:'track'},startedAt:at+'-replay'} as typeof queue.current;
+   return wav;
+  });
+  const air=t.mock.method(queue,'_airVoice',async()=>{throw new Error('Rejected exchange must not be published');});
+  assert.equal(await withTalkAir('immediate',()=>queue.announceExchange([
+   {persona:{id:'a',name:'Host'},text:'Some words.'},{persona:{id:'b',name:'Guest'},text:'More words.'}],kind,
+   {speechDeadline:{finishByMs:Date.now()+(outcome==='deadline'?500:60_000),trackId:'track',startedAt:at}})),false);
+  assert.equal(render.mock.callCount(),2,'both voices must render before the deadline/track guard rejects publication');
   assert.equal(air.mock.callCount(),0);
- } finally {queue.current=saved;}
-});
+ });
+}
 
 test.after(()=>rmSync(root,{recursive:true,force:true}));

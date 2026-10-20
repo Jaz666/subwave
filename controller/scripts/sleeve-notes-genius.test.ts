@@ -133,3 +133,24 @@ test('album biographies retain non-Latin identity and refuse unrelated titles an
  assert.equal(projectGeniusAlbumBiography({response:{album:{...album,artist:{name:'大阪'}}}},expected),null);
  assert.equal(projectGeniusAlbumBiography({response:{album:{...album,name:'---'}}},{...expected,title:'---'}),null);
 });
+
+test('optional leading The matches artist identity across search, detail and album lookup without relaxing titles',async()=>{
+ const bare='Incredible Bongo Band',prefixed='The Incredible Bongo Band';
+ const song=(id:number,artist:string,title='Apache')=>({id,title,url:`https://genius.test/${id}`,primary_artist:{name:artist}});
+ for(const [canonical,providerName] of [[bare,prefixed],[prefixed,bare]]) {
+  const entity={kind:'track' as const,title:'Apache',artist:canonical};
+  const candidate=song(10,providerName);
+  assert.equal(selectGeniusSearchHit({response:{hits:[{result:candidate}]}},entity),'10');
+  assert.equal(selectGeniusSearchHit({response:{hits:[{result:candidate},{result:song(11,providerName)}]}},entity),null);
+  assert.equal(selectGeniusSearchHit({response:{hits:[{result:candidate},{result:song(12,canonical)}]}},entity),'12','exact artist spelling retains preference');
+  for(const title of ['Apache (Live)','The Apache']) {
+   assert.equal(selectGeniusSearchHit({response:{hits:[{result:song(10,providerName,title)}]}},entity),null);
+  }
+  const provider=new GeniusProvider('fixture',async()=>Response.json({response:{song:candidate}}));
+  assert.equal((await provider.fetchSong('10',entity,new AbortController().signal))?.identity.artist,providerName);
+  const album={id:20,name:'Bongo Rock',artist:{name:providerName},url:'https://genius.test/album',description:{plain:'The band recorded this album with their producer in a converted studio, documenting the sessions and the creation of its songs.'}};
+  assert.ok(projectGeniusAlbumBiography({response:{album}},{title:'Bongo Rock',artist:canonical}));
+  assert.equal(projectGeniusAlbumBiography({response:{album:{...album,name:'The Bongo Rock'}}},{title:'Bongo Rock',artist:canonical}),null);
+ }
+ assert.equal(selectGeniusSearchHit({response:{hits:[{result:song(10,'Another Incredible Bongo Band')}]}},{kind:'track',title:'Apache',artist:bare}),null);
+});

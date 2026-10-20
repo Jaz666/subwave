@@ -94,7 +94,7 @@ test('exporting an older disabled cache never migrates the source database',asyn
  const unchanged=new Database(notes.DB_PATH,{readonly:true});
  assert.equal(unchanged.pragma('user_version',{simple:true}),52);
  assert.equal(unchanged.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get(),undefined);unchanged.close();
- assert.equal((await restore(zip)).status,200);assert.equal(notes.schemaVersion(),57);
+ assert.equal((await restore(zip)).status,200);assert.equal(notes.schemaVersion(),59);
 });
 
 test.after(()=>{server.closeAllConnections();server.close();notes.close();rmSync(root,{recursive:true,force:true});});

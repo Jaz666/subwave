@@ -107,3 +107,15 @@ test('live overview links artist, album and track using library identities',()=>
  assert.match(html,/brainTrack=song-id/);
  client.clear();
 });
+
+test('paused Genius work is explained and does not take the visible slot from runnable Wikipedia work',()=>{
+ const status={enabled:true,providerEnabled:false,providerConfigured:true} as ComponentProps<typeof ResearchActivity>['status'];
+ const data={workQueueItems:[{id:'g',provider:'genius',capability:'connections',phase:'ready',priority:999,subjectTitle:'Genius track'},
+  {id:'w',provider:'wikipedia',capability:'biography',phase:'ready',priority:1,subjectTitle:'Wikipedia artist'}]} as ComponentProps<typeof ResearchActivity>['data'];
+ const html=renderToStaticMarkup(<ResearchActivity data={data} status={status}/>);
+ assert.match(html,/Wikipedia artist/);assert.doesNotMatch(html,/Genius track/);
+ const paused=renderToStaticMarkup(<ResearchActivity data={{...data,workQueueItems:data.workQueueItems?.slice(0,1)}} status={status}/>);
+ assert.match(paused,/Paused — Genius capture is off/);
+ const missing=renderToStaticMarkup(<ResearchActivity data={{...data,workQueueItems:data.workQueueItems?.slice(0,1)}} status={{...status,providerEnabled:true,providerConfigured:false}}/>);
+ assert.match(missing,/Waiting for a Genius API key/);
+});

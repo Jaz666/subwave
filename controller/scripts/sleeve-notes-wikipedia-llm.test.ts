@@ -42,7 +42,7 @@ const job: ResearchJob = {
 };
 
 type Options = { tools?: Array<{ name: string }> };
-function configure(t: TestContext, provider: string, answer: unknown, recovery = false) {
+function configure(t: TestContext, provider: string, answer: unknown, recovery = false, inspect: (options: Options)=>void = ()=>{}) {
   const defaults = settings.getDefaults();
   store.setCache({ ...defaults, llm: {
     ...defaults.llm, provider, model: 'wikipedia-test', baseUrl: 'http://wikipedia-test.invalid/v1',
@@ -54,6 +54,7 @@ function configure(t: TestContext, provider: string, answer: unknown, recovery =
   let calls = 0;
   for (const model of new Set([leg.model, leg.noThinkModel])) {
     t.mock.method(model, 'doGenerate', async (options: Options) => {
+      inspect(options);
       const declined = recovery && calls === 0;
       calls++;
       const emit = !declined && options.tools?.some((tool) => tool.name === 'emit');
@@ -123,4 +124,21 @@ test('Wikipedia usage observers cannot fail a valid extraction', async (t) => {
   const result = await new LlmResearcher().extractWikipediaSparks(job, 'Recording',
     new AbortController().signal, 'Choose music stories.', () => { throw new Error('observer failed'); });
   assert.deepEqual(result.claims, [artistClaim]);
+});
+
+test('standalone time context is required even with custom Wikipedia instructions', async t=>{
+  const source="In January 2010, the band announced a new tour. The following month, it was confirmed that the band would be playing Open’er Festival in Poland as well as Reading and Leeds in the UK.";
+  const claim={wording:"In February 2010, the band was confirmed for Open’er Festival in Poland and Reading and Leeds in the UK.",category:'artist-stories',airtimeScope:'general'};
+  configure(t,'openai',{claims:[claim]},false,options=>{
+    const sent=JSON.stringify(options);
+    assert.match(sent,/Resolve relative time references/);
+    assert.match(sent,/Do not use the current date or guess a missing date/);
+    assert.ok(sent.includes(source));
+  });
+  const result=await new LlmResearcher().extractWikipediaSparks({...job,document:{...job.document,text:source}},'Touring',new AbortController().signal,'Keep wording close to the source.');
+  const candidates=wikipediaCandidatesFromSparks(result.claims,source,'artist');
+  assert.equal(candidates.length,1);
+  assert.equal(candidates[0].wording,claim.wording);
+  assert.match(candidates[0].evidence,/January 2010/,'retained evidence includes the preceding time anchor');
+  assert.match(candidates[0].evidence,/following month/);
 });

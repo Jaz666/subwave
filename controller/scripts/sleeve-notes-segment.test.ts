@@ -279,7 +279,7 @@ test('play admission snapshots attribution and migration preserves legacy plays 
  assert.deepEqual(db.prepare("SELECT host_id,host_name FROM sleeve_encounters WHERE source='queue'").get(),{host_id:null,host_name:null});
  db.exec('ALTER TABLE sleeve_encounters DROP COLUMN host_id; ALTER TABLE sleeve_encounters DROP COLUMN host_name; PRAGMA user_version=51;');
  migrate(db);migrate(db);
- assert.equal(db.pragma('user_version',{simple:true}),57);
+ assert.equal(db.pragma('user_version',{simple:true}),59);
  assert.deepEqual(db.prepare("SELECT host_id,host_name,encountered_at FROM sleeve_encounters WHERE source='played'").get(),
   {host_id:null,host_name:null,encountered_at:input.encounteredAt});db.close();
 });

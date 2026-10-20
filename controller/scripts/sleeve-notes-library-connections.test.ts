@@ -137,7 +137,7 @@ test('upgrade restores saved extraction rank and leaves original claims and word
     extraction_rank: 2, extraction_section: 3, feedback_hold: 0,
   });
   migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }), 57);
+  assert.equal(db.pragma('user_version', { simple: true }),59);
   db.close();
 });
 
@@ -260,4 +260,18 @@ test('artist spelling variants resolve to library tracks while title variants re
   reconcileLibraryConnections(db,now);
   assert.equal(libraryConnectionsInDatabase(db,'source')[0].matchState,'unresolved');
  }finally{db.close();}
+});
+
+test('a Genius leading The resolves to the library artist while conflicting artist identities remain separate',()=>{
+ const db=fixture();
+ try {
+  relation(db,'article-variant','samples','Target','The Incredible Bongo Band');
+  db.prepare("INSERT INTO sleeve_connection_library_artists VALUES ('bongo','Incredible Bongo Band','incredible bongo band')").run();
+  cacheConnectionLibraryTracks(db,[{id:'bongo-song',title:'Target',artist:'Incredible Bongo Band'}],'article-variant');
+  reconcileLibraryConnections(db,now);
+  assert.equal(libraryConnectionsInDatabase(db,'source')[0].tracks[0]?.id,'bongo-song');
+  db.prepare("INSERT INTO sleeve_connection_library_artists VALUES ('other-bongo','The Incredible Bongo Band','the incredible bongo band')").run();
+  reconcileLibraryConnections(db,now);
+  assert.notEqual(libraryConnectionsInDatabase(db,'source')[0].matchState,'matched','distinct library identities must not be merged by name folding');
+ } finally {db.close();}
 });

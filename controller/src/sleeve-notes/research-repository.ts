@@ -1,4 +1,6 @@
 import type { ClaimSignal } from './claim-signal.js';
+import * as settings from '../settings.js';
+import { geniusAccessToken } from './genius-token.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { open } from './db.js';
@@ -32,9 +34,10 @@ export const AUTOPILOT_RESEARCH_QUEUE_CAP = 10;
 /** With no confirmed listener, let active research drain before collecting fresh autopilot tracks. */
 function hasActiveResearchJobsInDatabase(db: Database.Database): boolean {
   return !!(db.prepare(`SELECT 1 FROM sleeve_research_jobs job
-    WHERE job.state IN ('queued', 'retry-at', 'running')
-      OR EXISTS (SELECT 1 FROM sleeve_wikipedia_rescan_requests request WHERE request.job_id = job.id)
-    LIMIT 1`).get());
+    WHERE (job.state IN ('queued', 'retry-at', 'running')
+      OR EXISTS (SELECT 1 FROM sleeve_wikipedia_rescan_requests request WHERE request.job_id = job.id))
+      AND (job.provider <> 'genius' OR ?)
+    LIMIT 1`).get(Number(settings.get().sleeveNotes.providers.genius.enabled && !!geniusAccessToken())));
 }
 
 /** Count active article jobs once per artist or album, reserving two slots for
@@ -48,9 +51,9 @@ export function activeResearchQueueSizeInDatabase(db: Database.Database, exclude
         (provider = 'wikipedia' AND capability IN ('biography', 'release-group-biography'))
         OR (provider = 'researcher' AND capability IN (
           'extract-wikipedia', 'extract-wikipedia-release-group', 'extract-genius-album'))
-        OR (provider = 'genius' AND capability = 'album-biography')
+        OR (provider = 'genius' AND capability = 'album-biography' AND ?)
       ) GROUP BY subject_type, subject_id
-    )`).get() as { count: number }).count;
+    )`).get(Number(settings.get().sleeveNotes.providers.genius.enabled && !!geniusAccessToken())) as { count: number }).count;
   const matchingRow = (excludeMatchingTrackId
     ? db.prepare(`SELECT COUNT(*) AS count FROM sleeve_research_jobs
       WHERE provider = 'musicbrainz' AND capability = 'match'
@@ -394,21 +397,28 @@ function retainSourceDocumentInDatabase(db: Database.Database, input: {
   attribution: string;
 }): string {
   const contentHash = createHash('sha256').update(input.content).digest('hex');
-  db.prepare(`INSERT INTO sleeve_source_documents (id, entity_type, entity_id, provider,
-    source_url, revision_id, content_hash, content_kind, content, attribution, retrieved_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(provider, entity_type, entity_id, source_url, revision_id, content_hash) DO UPDATE SET
-      retrieved_at = excluded.retrieved_at, attribution = excluded.attribution`)
-    .run(randomUUID(), input.entityType, input.entityId, input.provider, input.sourceUrl,
-      input.revisionId, contentHash, input.contentKind, input.content, input.attribution,
-      new Date().toISOString());
-  const row = db.prepare(`SELECT id FROM sleeve_source_documents
-    WHERE provider = ? AND entity_type = ? AND entity_id = ? AND source_url = ?
-      AND revision_id IS ? AND content_hash = ?`)
-    .get(input.provider, input.entityType, input.entityId, input.sourceUrl,
-      input.revisionId, contentHash) as { id: string } | undefined;
-  if (!row) throw new Error('Sleeve Notes source document was not retained');
-  return row.id;
+  return db.transaction(()=>{
+    // SQLite UNIQUE permits repeated NULL revisions. Resolve identity explicitly
+    // so an unchanged article can rehydrate its existing citations after pruning.
+    const existing=db.prepare(`SELECT id,wikipedia_pruned_at AS prunedAt FROM sleeve_source_documents
+      WHERE provider=? AND entity_type=? AND entity_id=? AND source_url=? AND revision_id IS ? AND content_hash=? LIMIT 1`)
+      .get(input.provider,input.entityType,input.entityId,input.sourceUrl,input.revisionId,contentHash) as {id:string;prunedAt:string|null}|undefined;
+    const now=new Date().toISOString();
+    if(existing) {
+      db.prepare(`UPDATE sleeve_source_documents SET content=?,wikipedia_pruned_at=NULL,retrieved_at=?,attribution=? WHERE id=?`)
+        .run(input.content,now,input.attribution,existing.id);
+      if(existing.prunedAt) {
+        db.prepare('DELETE FROM sleeve_wikipedia_scan_progress WHERE source_document_id=?').run(existing.id);
+        db.prepare('DELETE FROM sleeve_wikipedia_scan_chunks WHERE source_document_id=?').run(existing.id);
+      }
+      return existing.id;
+    }
+    const id=randomUUID();
+    db.prepare(`INSERT INTO sleeve_source_documents (id,entity_type,entity_id,provider,source_url,revision_id,
+      content_hash,content_kind,content,attribution,retrieved_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id,input.entityType,input.entityId,input.provider,input.sourceUrl,input.revisionId,contentHash,input.contentKind,input.content,input.attribution,now);
+    return id;
+  }).immediate();
 }
 
 const MUSICBRAINZ_SERIES_REFRESH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -465,9 +475,19 @@ export function retainMusicBrainzSeriesSnapshot(
     const configured = activeSeriesMap(db).get(series.id);
     if (!configured) return { members: snapshot.members.length, claimsEnabled: 0 };
     series = configured;
-    const previous = db.prepare(`SELECT entity_mbid AS entityMbid
-      FROM sleeve_musicbrainz_series_members WHERE series_mbid = ?`).all(series.id) as Array<{ entityMbid: string }>;
+    const previous = db.prepare(`SELECT entity_mbid AS entityMbid, entity_title AS title, rank_value AS rank
+      FROM sleeve_musicbrainz_series_members WHERE series_mbid = ?`).all(series.id) as Array<{ entityMbid: string; title: string; rank: string | null }>;
     const incoming = new Map(snapshot.members.map((member) => [member.id, member]));
+    const fetchedAt = now.toISOString();
+    const nextRefresh = new Date(now.getTime() + MUSICBRAINZ_SERIES_REFRESH_MS).toISOString();
+    db.prepare(`UPDATE sleeve_musicbrainz_series SET fetched_at = ?, next_refresh_at = ?,
+      attempts = 0, last_error = NULL, updated_at = ? WHERE series_mbid = ?`)
+      .run(fetchedAt, nextRefresh, fetchedAt, series.id);
+    // A successful check of an unchanged list does not invalidate saved matches.
+    if (configured.fetchedAt && previous.length === incoming.size && previous.every(member => {
+      const next = incoming.get(member.entityMbid);
+      return next && next.title === member.title && next.rank === member.rank;
+    })) return { members: snapshot.members.length, claimsEnabled: 0 };
     const affected = new Set([...previous.map((member) => member.entityMbid), ...incoming.keys()]);
 
     db.prepare('DELETE FROM sleeve_musicbrainz_series_members WHERE series_mbid = ?').run(series.id);
@@ -498,11 +518,6 @@ export function retainMusicBrainzSeriesSnapshot(
       }
     }
 
-    const fetchedAt = now.toISOString();
-    const nextRefresh = new Date(now.getTime() + MUSICBRAINZ_SERIES_REFRESH_MS).toISOString();
-    db.prepare(`UPDATE sleeve_musicbrainz_series SET fetched_at = ?, next_refresh_at = ?,
-      attempts = 0, last_error = NULL, updated_at = ? WHERE series_mbid = ?`)
-      .run(fetchedAt, nextRefresh, fetchedAt, series.id);
     return { members: snapshot.members.length, claimsEnabled };
   }).immediate();
 }
@@ -617,6 +632,32 @@ function retainSeriesRecognitionClaim(
   return claim.id;
 }
 
+/** Share the existing catalogue scan; only changed albums need Series matching. */
+export function observeSeriesLibraryAlbum(
+  db: Database.Database,
+  album: { id: string; name?: string; musicBrainzId?: string },
+  songs: ReadonlyArray<{ id: string; musicBrainzId?: string }>,
+  matched = false,
+  generation: string | null = null,
+): void {
+  const fingerprint = createHash('sha256').update(JSON.stringify([
+    album.name ?? '', (album.musicBrainzId ?? '').trim().toLowerCase(),
+    songs.map(song => [String(song.id), (song.musicBrainzId ?? '').trim().toLowerCase()])
+      .sort((a, b) => a[0].localeCompare(b[0])),
+  ])).digest('hex');
+  db.prepare(`INSERT INTO sleeve_series_library_albums(local_album_id, fingerprint, pending, scan_generation)
+    VALUES (?, ?, ?, ?) ON CONFLICT(local_album_id) DO UPDATE SET
+      fingerprint = excluded.fingerprint,
+      scan_generation = COALESCE(excluded.scan_generation, scan_generation),
+      pending = CASE WHEN ? THEN 0 WHEN fingerprint <> excluded.fingerprint THEN 1 ELSE pending END`)
+    .run(album.id, fingerprint, matched ? 0 : 1, generation, Number(matched));
+}
+
+export function pendingSeriesLibraryAlbums(limit = 25): string[] {
+  return (open().prepare(`SELECT local_album_id AS id FROM sleeve_series_library_albums
+    WHERE pending = 1 ORDER BY local_album_id LIMIT ?`).all(limit) as Array<{ id: string }>).map(row => row.id);
+}
+
 /** A resumable, quiet-time sweep; no station link waits for Navidrome or MusicBrainz. */
 export function dueSeriesLibraryScanOffset(now = new Date()): number | null {
   const db = open();
@@ -630,7 +671,7 @@ export function dueSeriesLibraryScanOffset(now = new Date()): number | null {
 
 export function advanceSeriesLibraryScan(nextOffset: number | null, now = new Date()): void {
   const nextScan = nextOffset == null
-    ? new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+    ? '9999-12-31T23:59:59.999Z'
     : now.toISOString();
   open().prepare(`UPDATE sleeve_series_library_scan SET album_offset = ?,
     next_scan_at = ?, updated_at = ? WHERE id = 1`)
@@ -970,6 +1011,7 @@ export interface SourceDocumentForResearch {
   sourceUrl: string;
   revisionId: string | null;
   content: string;
+  wikipediaPrunedAt?: string | null;
 }
 
 export function latestSourceDocumentForResearch(entityType: 'artist' | 'recording' | 'release' | 'release-group', entityId: string, provider: string): SourceDocumentForResearch | null {
@@ -982,7 +1024,7 @@ export function latestSourceDocumentForResearch(entityType: 'artist' | 'recordin
       ELSE NULL
     END AS entityName,
     source.provider, source.source_url AS sourceUrl,
-    source.revision_id AS revisionId, source.content FROM sleeve_source_documents source
+    source.revision_id AS revisionId, source.content, source.wikipedia_pruned_at AS wikipediaPrunedAt FROM sleeve_source_documents source
     WHERE source.entity_type = ? AND source.entity_id = ? AND source.provider = ?
     ORDER BY source.retrieved_at DESC LIMIT 1`).get(entityType, entityId, provider) as SourceDocumentForResearch | undefined;
   return row ?? null;
@@ -1473,6 +1515,7 @@ function enqueueResearchJobInDatabase(db: Database.Database, input: {
   now: string;
   originLocalTrackId?: string | null;
 }): void {
+  if (input.provider === 'genius' && !settings.get().sleeveNotes.providers.genius.enabled) return;
   db.prepare(`INSERT INTO sleeve_research_jobs (
     id, provider, subject_type, subject_id, capability, state, priority,
     attempts, run_after, created_at, updated_at, origin_local_track_id
@@ -1565,7 +1608,24 @@ function enqueueResearchJobInDatabase(db: Database.Database, input: {
 }
 
 export function enqueueResearchJob(input: Omit<Parameters<typeof enqueueResearchJobInDatabase>[1], 'now'>): void {
+  if (input.provider === 'genius' && !settings.get().sleeveNotes.providers.genius.enabled) return;
   enqueueResearchJobInDatabase(open(), { ...input, now: new Date().toISOString() });
+}
+
+/** Reacquire a cleared article through normal provider pacing before any extraction. */
+export function requestWikipediaArticleRefetch(job:PendingResearchJob):void {
+  const db=open(),now=new Date().toISOString();
+  db.transaction(()=>{
+    const capability=job.subjectType==='artist'?'biography':'release-group-biography';
+    enqueueResearchJobInDatabase(db,{provider:'wikipedia',subjectType:job.subjectType,subjectId:job.subjectId,
+      capability,priority:job.priority,originLocalTrackId:job.originLocalTrackId,now});
+    db.prepare(`UPDATE sleeve_research_jobs SET state='queued',run_after=NULL,completed_at=NULL,
+      operator_requested=MAX(operator_requested,?),updated_at=?
+      WHERE provider='wikipedia' AND subject_type=? AND subject_id=? AND capability=?`)
+      .run((db.prepare('SELECT operator_requested AS requested FROM sleeve_research_jobs WHERE id=?').get(job.id) as {requested:number}|undefined)?.requested??0,now,job.subjectType,job.subjectId,capability);
+    db.prepare(`UPDATE sleeve_research_jobs SET state='retry-at',run_after=?,updated_at=? WHERE id=?`)
+      .run(new Date(Date.now()+60_000).toISOString(),now,job.id);
+  }).immediate();
 }
 
 /** Preserve explicit operator intent across source lookup and extraction stages. */
@@ -1628,6 +1688,7 @@ export interface GeniusAlbumPilotSource {
 
 /** One album job per previously encountered group; cap the initial pilot. */
 export function enqueueGeniusAlbumPilotJobs(limit = 20): number {
+  if (!settings.get().sleeveNotes.providers.genius.enabled) return 0;
   const db = open();
   const now = new Date().toISOString();
   return db.transaction(() => {

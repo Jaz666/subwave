@@ -1,5 +1,7 @@
 'use client';
 
+import { V3AlertDialog } from '../ui/alert-dialog';
+
 import Link from 'next/link';
 import NotesHelp from './NotesHelp';
 import {formatNotesDate} from './sleeve-notes-view';
@@ -21,6 +23,7 @@ const LABELS:Record<string,string>={queued:'Queued for review',running:'Reviewin
 export default function AiringReviews({adminFetch,timezone}:{adminFetch:AdminFetch;timezone?:string}) {
   const [status,setStatus]=useState('active'),[offset,setOffset]=useState(0);
   const [drafts,setDrafts]=useState<Record<string,Correction>>({});
+  const [deleteReview, setDeleteReview] = useState<string|null>(null);
   const shelf=useAdminQuery<{items:Review[];total:number;readOnly:boolean}>({
     key:['sleeve-notes','airing-reviews',status,offset],adminFetch,
     request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/airing-reviews?status=${status}&offset=${offset}`,undefined,signal),
@@ -83,7 +86,7 @@ export default function AiringReviews({adminFetch,timezone}:{adminFetch:AdminFet
           <Btn sm title="Keep the current fact and close this review. Withdrawn facts stay withdrawn." disabled={decide.isPending} onClick={()=>decide.mutate({id:item.id,action:'resolve'})}>{fact?(withdrawn?'Keep withdrawn and resolve':'Keep fact and resolve'):'Keep Sparks and resolve'}</Btn>
           <Btn sm title="Set this finding aside without changing the fact, guidance or availability." disabled={decide.isPending} onClick={()=>decide.mutate({id:item.id,action:'dismiss'})}>Dismiss finding</Btn>
           {withdrawn&&<Btn sm title="Make this unchanged fact available to the DJ again and close the review." disabled={decide.isPending} onClick={()=>decide.mutate({id:item.id,action:'restore-fact'})}>Restore unchanged and resolve</Btn>}
-          {fact&&spark?.operatorState!=='deleted'&&<Btn sm tone="danger" title="Delete this fact from future DJ use and close the review. Airing history is kept." disabled={decide.isPending} onClick={()=>{if(window.confirm('Delete this fact and resolve its review? Saved airing history is kept.')) decide.mutate({id:item.id,action:'delete-fact'});}}>Delete fact and resolve</Btn>}
+          {fact&&spark?.operatorState!=='deleted'&&<Btn sm tone="danger" title="Delete this fact from future DJ use and close the review. Airing history is kept." disabled={decide.isPending} onClick={()=>setDeleteReview(item.id)}>Delete fact and resolve</Btn>}
           {item.result.proposedGuidance&&<Btn sm tone="solid" title="Save this advice for future Sleeve Notes speech and reviews, then close this review." disabled={decide.isPending} onClick={()=>decide.mutate({id:item.id,action:'apply-guidance'})}>Apply guidance and resolve</Btn>}
           {item.result.sparkCorrection&&<Btn sm tone="solid" title="Save the wording and supporting passage shown above, restore DJ availability and close the review." disabled={decide.isPending} onClick={()=>decide.mutate({id:item.id,action:'apply-correction',correction:draft??undefined})}>{fact?'Correct and restore':'Apply Spark correction and resolve'}</Btn>}
         </div>}
@@ -94,5 +97,9 @@ export default function AiringReviews({adminFetch,timezone}:{adminFetch:AdminFet
     {shelf.data&&<div className="mt-4 flex flex-wrap items-center gap-3 text-xs"><span>{shelf.data.total?`${offset+1}–${Math.min(offset+20,shelf.data.total)} of ${shelf.data.total} reviews`:'0 reviews'}</span>
       <Btn sm disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-20))}>Previous</Btn>
       <Btn sm disabled={offset+20>=shelf.data.total} onClick={()=>setOffset(offset+20)}>Next</Btn></div>}
+    <V3AlertDialog open={!!deleteReview && !shelf.data?.readOnly} onOpenChange={open=>{if(!open) setDeleteReview(null);}}
+      title="Delete fact and resolve review?" description="The fact will no longer be available to the DJ and its review will be resolved. Saved airing history is kept."
+      confirmLabel="Delete fact and resolve" cancelLabel="Cancel" danger
+      onConfirm={()=>{if(deleteReview && !decide.isPending && !shelf.data?.readOnly) decide.mutate({id:deleteReview,action:'delete-fact'});}} />
   </Card>;
 }

@@ -6,6 +6,7 @@ import type Database from 'better-sqlite3';
 import * as settings from '../settings.js';
 import * as subsonic from '../music/subsonic.js';
 import { open } from './db.js';
+import { observeSeriesLibraryAlbum } from './research-repository.js';
 import { cacheConnectionLibraryTracks, connectionRevision } from './library-connections.js';
 import { reconcileConnectionsInBackground } from './connection-compute.js';
 import type { QuietGate } from './musicbrainz-worker.js';
@@ -83,6 +84,7 @@ export class ConnectionLibraryWorker {
             SELECT local_track_id FROM sleeve_connection_library_tracks WHERE scan_generation <> ?)`)
             .run(scan!.generation);
           database.prepare('DELETE FROM sleeve_connection_library_tracks WHERE scan_generation <> ?').run(scan!.generation);
+          database.prepare('DELETE FROM sleeve_series_library_albums WHERE scan_generation IS NOT ?').run(scan!.generation);
           database.prepare(`UPDATE sleeve_connection_library_scan SET album_offset = 0, completed_at = ?, run_after = ?
             WHERE id = 1`).run(new Date(nowMs).toISOString(), new Date(nowMs + SWEEP_INTERVAL_MS).toISOString());
         })();
@@ -98,6 +100,7 @@ export class ConnectionLibraryWorker {
         if (!detail || !Array.isArray(detail.songs)) throw new Error(`Incomplete connection library album: ${id}`);
         if (detail.songs.some((song) => !song?.id || !song?.title)) throw new Error(`Malformed connection library tracks: ${id}`);
         database.transaction(() => {
+          observeSeriesLibraryAlbum(database, { ...detail.album, id }, detail.songs, false, scan!.generation);
           cacheConnectionLibraryTracks(database, detail.songs.map((song) => ({
             id: String(song.id), title: String(song.title), artist: String(song.artist ?? ''),
             album: typeof song.album === 'string' ? song.album : null,

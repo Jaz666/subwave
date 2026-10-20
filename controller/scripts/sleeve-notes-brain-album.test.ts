@@ -56,7 +56,7 @@ test('schema 50 recovers stranded manual requests without restarting completed r
  const request=db.prepare(`INSERT INTO sleeve_brain_album_requests(local_album_id,local_track_id,title,release_group_id,state,requested_at) VALUES (?,?,'Album',?,'resolved',?)`);
  request.run('manual','local','group',now);request.run('finished-album','finished-track','finished-group',now);
  db.pragma('user_version=49');migrate(db);
- assert.equal(db.pragma('user_version',{simple:true}),57);
+ assert.equal(db.pragma('user_version',{simple:true}),59);
  assert.deepEqual(db.prepare("SELECT operator_requested AS requested,priority,state,run_after AS next FROM sleeve_research_jobs WHERE id='stranded'").get(),{requested:1,priority:500,state:'retry-at',next:'2099-01-01'});
  assert.equal((db.prepare("SELECT SUM(operator_requested) AS n FROM sleeve_research_jobs WHERE id<>'stranded'").get() as {n:number}).n,0);
  db.prepare("UPDATE sleeve_research_jobs SET operator_requested=0 WHERE id='stranded'").run();migrate(db);

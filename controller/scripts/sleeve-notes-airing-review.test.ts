@@ -30,12 +30,12 @@ const result={finding:'presentation',summary:'The link adds an unsupported emoti
   explanation:'The Spark gives a death and reunion chronology. Closure is the DJ’s invented interpretation.',
   suggestedSpeech:'After Raven’s death in 2007, the four founding members reunited the following year.',
   proposedGuidance:'Preserve date context and do not invent emotional conclusions.',sparkCorrection:null};
-function model(t:TestContext,answer:unknown,onCall=()=>{}) {
+function model(t:TestContext,answer:unknown,onCall: (request:unknown)=>void=()=>{}) {
   let calls=0;
   t.mock.method(globalThis,'fetch',async()=>{throw new Error('Real network forbidden');});
   const leg=primaryLeg();
-  for(const engine of new Set([leg.model,leg.noThinkModel]))t.mock.method(engine,'doGenerate',async()=>{
-    calls++;onCall();
+  for(const engine of new Set([leg.model,leg.noThinkModel]))t.mock.method(engine,'doGenerate',async(request:unknown)=>{
+    calls++;onCall(request);
     return {content:[{type:'text',text:JSON.stringify(answer)}],finishReason:{unified:'stop',raw:'stop'},
       usage:{inputTokens:{total:1000,noCache:1000,cacheRead:0,cacheWrite:0},outputTokens:{total:200,text:200,reasoning:0}},warnings:[]};
   });
@@ -194,6 +194,55 @@ test('saved facts use the same AI queue; withdrawal survives dismissal and retry
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM sleeve_claim_uses WHERE claim_id='fact-review'").get() as {n:number}).n,0);
   setClaimAvailability('fact-review','withdraw');
   assert.equal(flagStoredClaim('fact-review').state,'queued','a closed saved-fact review can be explicitly requested again');
+});
+
+test('punctuation review receives minimal-edit instructions and preserves the full fact until approval',async t=>{
+  const original=', In 2007 and 2008, they played gigs and festivals across the UK and Europe, and signed to a new management company in 2008.';
+  const corrected=original.slice(2);
+  db.prepare(`INSERT INTO sleeve_source_documents(id,entity_type,entity_id,provider,source_url,content_hash,content_kind,content,attribution,retrieved_at)
+    VALUES ('punctuation-source','artist','artist','wikipedia','https://example.test/punctuation','punctuation-hash','bounded-text',?,'Source',?)`).run(original,at);
+  db.prepare(`INSERT INTO sleeve_claims(id,entity_type,entity_id,category,topic,wording,source_document_id,evidence,created_at,updated_at)
+    VALUES ('punctuation-claim','artist','artist','artist-stories','touring',?,'punctuation-source',?,?,?)`).run(original,original,at,at);
+  const flag=flagStoredClaim('punctuation-claim');
+  const calls=model(t,{...result,finding:'spark',summary:'Remove the stray leading comma.',
+    explanation:'The punctuation is defective; the factual details stay unchanged.',suggestedSpeech:'',proposedGuidance:null,
+    sparkCorrection:{claimId:'punctuation-claim',wording:corrected,evidence:original}},request=>{
+      const sent=JSON.stringify(request);
+      assert.match(sent,/Check the stored Spark for punctuation, grammar and extraction artefacts/);
+      assert.match(sent,/For punctuation-only fixes, preserve all dates, names, places and factual clauses/);
+      assert.match(sent,/supplied source explicitly contradicts that particular fact/);
+      assert.match(sent,/Check that the proposed correction actually removes the diagnosed defect/);
+      assert.ok(sent.includes(original),'review receives the unchanged saved wording and evidence');
+    });
+  await runAiringReview(jobFor(flag.id),{isQuiet:()=>true});
+  assert.equal(calls(),1);
+  assert.equal(listAiringReviews().items.find(item=>item.id===flag.id)?.result?.sparkCorrection?.wording,corrected);
+  assert.equal((db.prepare("SELECT wording FROM sleeve_claims WHERE id='punctuation-claim'").get() as {wording:string}).wording,original);
+  decideAiringReview(flag.id,'apply-correction');
+  assert.equal((db.prepare("SELECT wording FROM sleeve_claims WHERE id='punctuation-claim'").get() as {wording:string}).wording,corrected);
+});
+
+test('saved-fact review can restore a relative date from preceding source context',async t=>{
+  const original="The following month, it was confirmed that the band would play Open’er Festival in Poland.";
+  const source='In January 2010, the band announced a tour. '+original;
+  const corrected="In February 2010, it was confirmed that the band would play Open’er Festival in Poland.";
+  db.prepare(`INSERT INTO sleeve_source_documents(id,entity_type,entity_id,provider,source_url,content_hash,content_kind,content,attribution,retrieved_at)
+    VALUES ('date-source','artist','artist','wikipedia','https://example.test/date','date-hash','bounded-text',?,'Source',?)`).run(source,at);
+  db.prepare(`INSERT INTO sleeve_claims(id,entity_type,entity_id,category,topic,wording,source_document_id,evidence,created_at,updated_at)
+    VALUES ('date-claim','artist','artist','artist-stories','festival',?,'date-source',?,?,?)`).run(original,original,at,at);
+  const flag=flagStoredClaim('date-claim');
+  model(t,{...result,finding:'spark',summary:'Restore the missing date context.',explanation:'The preceding January 2010 reference places the announcement in February 2010.',
+    suggestedSpeech:'',proposedGuidance:null,sparkCorrection:{claimId:'date-claim',wording:corrected,evidence:source}},request=>{
+      const sent=JSON.stringify(request);
+      assert.match(sent,/Restoring a missing time anchor is a context repair/);
+      assert.match(sent,/Distinguish the date of an announcement from the date of the performance or release/);
+      assert.match(sent,/choose unclear rather than guessing a date/);
+      assert.ok(sent.includes(source),'review includes the preceding source sentence');
+    });
+  await runAiringReview(jobFor(flag.id),{isQuiet:()=>true});
+  assert.equal(listAiringReviews().items.find(item=>item.id===flag.id)?.result?.sparkCorrection?.wording,corrected);
+  decideAiringReview(flag.id,'apply-correction');
+  assert.equal((db.prepare("SELECT wording FROM sleeve_claims WHERE id='date-claim'").get() as {wording:string}).wording,corrected);
 });
 
 test('correct and restore is explicit, while deleting a withdrawn fact keeps replay suppression',async t=>{

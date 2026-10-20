@@ -1,4 +1,6 @@
 'use client';
+
+import { V3AlertDialog } from '../ui/alert-dialog';
 import { useDebounceValue } from 'usehooks-ts';
 import NotesHelp from './NotesHelp';
 import { formatNotesDate } from './sleeve-notes-view';
@@ -24,6 +26,7 @@ import { useSettingsMutation, useSettingsQuery } from './settings/queries';
 import type { SettingsData } from './settings/shared';
 import ConnectionsVisualizer from './connections/ConnectionsVisualizer';
 import ExternalDiscoveries from './connections/ExternalDiscoveries';
+import GeniusCaptureNotice from './connections/GeniusCaptureNotice';
 import AiringReviews from './AiringReviews';
 import MusicBrainzLists from './MusicBrainzLists';
 
@@ -206,6 +209,7 @@ function ReadoutTable({
 }
 
 export function ClaimCard({ claim, adminFetch, readOnly = false }: { claim: NotesReadout['claims'][number]; adminFetch: AdminFetch; readOnly?: boolean }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const review = useAdminMutation<{ id: string;state:string }, void>({ adminFetch,
     request: (_value, fetcher) => adminJson(fetcher, `/sleeve-notes/claims/${encodeURIComponent(claim.id)}/review`, { method: 'POST' }),
     onDone: async (_data, _vars, client) => {
@@ -252,13 +256,17 @@ export function ClaimCard({ claim, adminFetch, readOnly = false }: { claim: Note
         <div className="mt-2 flex flex-wrap gap-3">
           <Btn sm title="Keep this fact saved, but change whether the DJ can use it." disabled={availability.isPending} onClick={()=>availability.mutate(claim.enabled===0?'restore':'withdraw')}
            >{claim.enabled===0?'Restore unchanged':'Withdraw from DJ use'}</Btn>
-          {claim.enabled===0&&<Btn sm tone="danger" title="Delete this withdrawn fact from future use. Saved airing history is kept." disabled={availability.isPending} onClick={()=>{if(window.confirm('Delete this fact? It will no longer be available to the DJ. Saved airing history is kept.')) availability.mutate('deleted');}}
+          {claim.enabled===0&&<Btn sm tone="danger" title="Delete this withdrawn fact from future use. Saved airing history is kept." disabled={availability.isPending} onClick={()=>setConfirmDelete(true)}
            >Delete fact</Btn>}
         </div>
         <p className="mt-1 text-[11px] text-muted">{claim.enabled===0?'Withdrawn from DJ use. Dismissing a review will not restore it.':'Flagging requests an AI review and keeps this fact available. Withdraw it separately to stop DJ use immediately.'}</p>
         {availability.error&&<p role="alert" className="mt-1 text-xs text-vermilion">{availability.error.message}</p>}
         {review.error && <p role="alert" className="mt-1 text-xs text-vermilion">{review.error.message}</p>}
       </div>}
+      <V3AlertDialog open={confirmDelete && !readOnly} onOpenChange={setConfirmDelete}
+        title="Delete this fact?" description="It will no longer be available to the DJ. Saved airing history is kept."
+        confirmLabel="Delete fact" cancelLabel="Cancel" danger
+        onConfirm={()=>{if(!readOnly && !availability.isPending && claim.enabled===0) availability.mutate('deleted');}} />
     </article>
   );
 }
@@ -326,6 +334,7 @@ export default function NotesPanel() {
   const [wikiPromptDraft, setWikiPromptDraft] = useState('');
   const [configMessage, setConfigMessage] = useState('');
   const [wikiRefreshBusy, setWikiRefreshBusy] = useState(false);
+  const [wikiRefreshConfirmation, setWikiRefreshConfirmation] = useState<{mode:'clear'|'replace';description:string}|null>(null);
   const [wikiRefreshMessage, setWikiRefreshMessage] = useState('');
   const collection=useAdminQuery<{claims:NotesReadout['claims'];total:number;categories:string[]}>({
     key:['sleeve-notes','stories',debouncedSearch,category,storiesMode,storyOffset],adminFetch,
@@ -344,7 +353,8 @@ export default function NotesPanel() {
     router.replace(`${pathname ?? '/admin/notes'}?${params.toString()}`, { scroll: false });
   }
 
-  async function refreshWikipedia(mode: 'clear' | 'replace') {
+  async function prepareWikipediaRefresh(mode: 'clear' | 'replace') {
+    if (wikiRefreshBusy || wikiRefreshConfirmation) return;
     setWikiRefreshBusy(true);
     setWikiRefreshMessage('');
     try {
@@ -355,7 +365,19 @@ export default function NotesPanel() {
       const description = mode === 'clear'
         ? `Disable ${preview.claims} automatic Wikipedia facts for ${preview.artists} artists and ${preview.albums} albums now, then research them again on their next encounter?`
         : `Mark ${preview.artists} artists and ${preview.albums} albums for refresh when each is next played? Existing facts stay available until that entity's full scan succeeds, and only encountered entities enter the research queue.`;
-      if (!window.confirm(description)) return;
+      setWikiRefreshConfirmation({mode,description});
+    } catch (error) {
+      setWikiRefreshMessage(error instanceof Error ? error.message : 'Could not preview Wikipedia refresh.');
+    } finally {
+      setWikiRefreshBusy(false);
+    }
+  }
+
+  async function refreshWikipedia(mode: 'clear' | 'replace') {
+    if (wikiRefreshBusy) return;
+    setWikiRefreshBusy(true);
+    setWikiRefreshMessage('');
+    try {
       const result = await adminJson<{ artists: number; albums: number; claimsCleared: number }>(
         adminFetch, '/sleeve-notes/wikipedia-refresh', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }),
@@ -395,6 +417,12 @@ export default function NotesPanel() {
 
   return (
     <div className={`mx-auto w-full space-y-5 ${tab === 'connections' ? 'max-w-none' : 'max-w-6xl'}`}>
+      <V3AlertDialog open={!!wikiRefreshConfirmation} onOpenChange={open=>{if(!open) setWikiRefreshConfirmation(null);}}
+        title={wikiRefreshConfirmation?.mode==='clear'?'Disable automatic facts and refresh?':'Refresh Wikipedia facts on next play?'}
+        description={wikiRefreshConfirmation?.description}
+        confirmLabel={wikiRefreshConfirmation?.mode==='clear'?'Disable facts and refresh':'Refresh on next play'} cancelLabel="Cancel"
+        danger={wikiRefreshConfirmation?.mode==='clear'}
+        onConfirm={()=>{if(wikiRefreshConfirmation) void refreshWikipedia(wikiRefreshConfirmation.mode);}} />
       <section className="card">
         <div className="border-b border-ink p-4">
           <Eyebrow className="text-vermilion">Programming</Eyebrow>
@@ -434,7 +462,7 @@ export default function NotesPanel() {
           onSave={(patch, success) => void saveConfig(patch, success)}
           wikiRefreshBusy={wikiRefreshBusy}
           wikiRefreshMessage={wikiRefreshMessage}
-          onWikiRefresh={(mode) => void refreshWikipedia(mode)}
+          onWikiRefresh={(mode) => void prepareWikipediaRefresh(mode)}
           adminFetch={adminFetch}
           hydrated={hydrated}
         />
@@ -504,7 +532,8 @@ export default function NotesPanel() {
       {hydrated && tab === 'heard' && <HeardOnAir adminFetch={adminFetch} timezone={status.data?.timezone} />}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'browse' && <ExploreView adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
       {tab==='connections'&&<Seg aria-label="Station Brain sections" value={brainView} options={[{id:'map',label:'Map'},{id:'discoveries',label:'Stats & Discoveries'}]} onChange={value=>{const params=new URLSearchParams(searchParams.toString());params.set('brainView',value);router.replace(`${pathname??'/admin/notes'}?${params}`,{scroll:false});}} />}
-      {hydrated&&tab==='connections'&&brainView==='discoveries'&&<ExternalDiscoveries adminFetch={adminFetch} timezone={status.data?.timezone}/>}
+      {hydrated&&tab==='connections'&&<GeniusCaptureNotice state={status.data ? {enabled:status.data.providerEnabled,configured:status.data.providerConfigured} : undefined} />}
+      {hydrated&&tab==='connections'&&brainView==='discoveries'&&<ExternalDiscoveries adminFetch={adminFetch} timezone={status.data?.timezone} genius={status.data ? {enabled:status.data.providerEnabled,configured:status.data.providerConfigured} : undefined}/>}
       {hydrated && tab === 'connections' && brainView==='map' && <ConnectionsVisualizer adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} timezone={status.data?.timezone} />}
 
     </div>
@@ -568,6 +597,8 @@ function OverviewView({
 export function ResearchActivity({ data, status }: { data: NotesReadout; status: NotesStatus }) {
   const [expanded,setExpanded] = useState<Record<string,boolean>>({});
   const jobs = (data.workQueueItems ?? []).filter(job => job.phase !== 'unavailable');
+  const geniusEnabled=status.providerEnabled ?? data.geniusQueue?.enabled;
+  const geniusConfigured=status.providerConfigured ?? data.geniusQueue?.configured;
   const taskNames: Record<string, string> = {
     match: 'MusicBrainz track match', 'release-context': 'MusicBrainz album details',
     connections: 'Genius track connections', 'album-biography': 'Genius album biography',
@@ -578,6 +609,10 @@ export function ResearchActivity({ data, status }: { data: NotesReadout; status:
     'review-flagged-speech': 'Review flagged speech',
   };
   const phaseText = (job: NonNullable<NotesReadout['workQueueItems']>[number], detailed = false) => {
+    if (job.provider === 'genius') {
+      if (geniusEnabled===false) return 'Paused — Genius capture is off';
+      if (geniusConfigured===false) return 'Waiting for a Genius API key';
+    }
     if (job.phase === 'running') return 'Researching';
     if (job.phase === 'ready') return 'Ready';
     if (job.phase === 'first-play') return 'Needs first play';
@@ -594,13 +629,14 @@ export function ResearchActivity({ data, status }: { data: NotesReadout; status:
       {[{ name: 'Controller Research', llm: false, help: 'Collects source information and finds connections. Genius requests share Subwave’s rolling allowance and yield to broadcast work.' },
         { name: 'LLM Research', llm: true, help: 'Turns collected material into Sparks and reviews flagged speech. It waits behind broadcast and interactive work.' }].map(section => {
         const queue = jobs.filter(job => (job.provider === 'researcher') === section.llm).sort((a,b) =>
-          Number(b.phase === 'running') - Number(a.phase === 'running')
+          Number(a.provider==='genius' && (geniusEnabled===false || geniusConfigured===false)) - Number(b.provider==='genius' && (geniusEnabled===false || geniusConfigured===false))
+          || Number(b.phase === 'running') - Number(a.phase === 'running')
           || Number(b.phase === 'ready') - Number(a.phase === 'ready') || b.priority - a.priority);
         const current = queue[0];
         const state = !status.enabled ? 'Research is off' : status.collectionPaused ? 'Collection paused'
           : data.researchPausedByBudget ? 'Waiting for station budget'
-            : current?.provider === 'genius' && genius && !genius.enabled ? 'Genius research is off'
-              : current?.provider === 'genius' && genius && !genius.configured ? 'Genius access token needed'
+            : current?.provider === 'genius' && geniusEnabled===false ? 'Paused — Genius capture is off'
+              : current?.provider === 'genius' && geniusConfigured===false ? 'Waiting for a Genius API key'
                 : current?.phase === 'running' ? 'Researching'
               : current?.phase === 'ready' && genius?.worker?.quiet === false ? 'Yielding to broadcast work'
                 : current?.provider === 'genius' && current.phase === 'ready' && current.capability !== 'expand-samples' && genius?.waitReason

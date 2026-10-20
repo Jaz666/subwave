@@ -25,4 +25,23 @@ test('legacy and malformed master settings load safely; both switches survive sa
  }
 });
 
+test('Genius credentials stay redacted and survive settings round trips without altering unrelated settings',async()=>{
+ const token='synthetic-genius-test-token';
+ const before=settings.get();
+ await settings.update({sleeveNotes:{providers:{genius:{enabled:true,accessToken:token}}}});
+ const redacted=store.getRedacted();
+ assert.equal(redacted.sleeveNotes.providers.genius.accessToken,'set');
+ assert.equal(settings.get().sleeveNotes.providers.genius.accessToken,token,'redaction must not mutate the stored token');
+ await settings.update({djBehaviour:{extendedSleeveNotes:true},sleeveNotes:{providers:{genius:{accessToken:'set'}}}});
+ store.setCache(null);await settings.load();
+ assert.equal(settings.get().sleeveNotes.providers.genius.accessToken,token,'saving a redacted settings form must preserve the credential');
+ assert.deepEqual(settings.get().tts,before.tts);
+ assert.equal(settings.get().crossfadeDuration,before.crossfadeDuration);
+ assert.equal(settings.get().djBehaviour.showWelcome,before.djBehaviour.showWelcome);
+ await settings.update({sleeveNotes:{providers:{genius:{accessToken:''}}}});
+ store.setCache(null);await settings.load();
+ assert.equal(settings.get().sleeveNotes.providers.genius.accessToken,'');
+ assert.equal(store.getRedacted().sleeveNotes.providers.genius.accessToken,'');
+});
+
 test.after(()=>rmSync(root,{recursive:true,force:true}));

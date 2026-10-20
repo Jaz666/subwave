@@ -1,5 +1,7 @@
 'use client';
 
+import { V3AlertDialog } from '../ui/alert-dialog';
+
 import NotesHelp from './NotesHelp';
 import type { QueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -48,6 +50,7 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
   const [preview, setPreview] = useState<CheckedList | null>(null);
   const [ranked, setRanked] = useState(false);
   const [message, setMessage] = useState('');
+  const [removeList, setRemoveList] = useState<SeriesList|null>(null);
   const busy = configure.isPending || add.isPending || check.isPending;
   const family = lists.data?.lists.filter((item) => item.editionGroup === '1001-albums') ?? [];
 
@@ -76,9 +79,7 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
         </div>
         {item.origin === 'custom' && <>
           <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={item.ranked} disabled={busy} onChange={(event) => void change({ ids: [item.id], ranked: event.target.checked })} />Use positions as rankings</label>
-          <button type="button" disabled={busy} onClick={() => {
-            if (window.confirm(`Remove ${item.label}? Its facts will stop being offered. Cached material and air history are kept.`)) void change({ ids: [item.id], removed: true });
-          }} className="text-xs text-primary hover:underline disabled:opacity-50">Remove custom list</button>
+          <button type="button" disabled={busy} onClick={() => setRemoveList(item)} className="text-xs text-primary hover:underline disabled:opacity-50">Remove custom list</button>
         </>}
       </div>
       {item.origin === 'custom' && <p className="mt-2 text-xs text-muted">Example Spark wording: “{item.entityType === 'recording' ? 'This track' : 'This album'} {item.ranked ? 'was ranked number 12 in' : 'was included in'} {item.label}.” {item.ranked && 'Only an explicit numeric position is used.'}</p>}
@@ -127,6 +128,10 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
         }} className="mt-3 bg-ink px-3 py-2 text-xs font-semibold text-bg disabled:opacity-50">Add list</button>
       </div>}
     </div>
+    <V3AlertDialog open={!!removeList} onOpenChange={open=>{if(!open) setRemoveList(null);}}
+      title="Remove custom list?" description={removeList ? `Remove ${removeList.label}? Its facts will stop being offered. Cached material and air history are kept.` : ''}
+      confirmLabel="Remove list" cancelLabel="Cancel" danger
+      onConfirm={()=>{if(removeList && !busy) void change({ids:[removeList.id],removed:true});}} />
     {message && <p role="status" className="mt-3 text-[13px]">{message}</p>}
     {(configure.error || check.error || add.error) && <p role="alert" className="mt-3 text-[13px]">{(configure.error || check.error || add.error)?.message}</p>}
   </Card>;

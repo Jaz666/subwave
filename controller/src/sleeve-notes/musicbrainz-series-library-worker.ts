@@ -1,4 +1,4 @@
-import { runResearchDatabaseWork } from './db.js';
+import { open, runResearchDatabaseWork } from './db.js';
 // Quiet-time, resumable Navidrome sweep for all cached MusicBrainz Series.
 // Exact recording and release-group MBIDs attach claims without making the DJ
 // wait for provider calls or bulk-enqueueing unrelated biography research.
@@ -19,20 +19,26 @@ function titleKey(value: unknown): string {
 
 export class MusicBrainzSeriesLibraryWorker {
   private running = false;
+  private retryAfter = 0;
 
-  constructor(private readonly quietGate: QuietGate) {}
+  constructor(
+    private readonly quietGate: QuietGate,
+    private readonly catalogue: Pick<typeof subsonic, 'getAlbumList' | 'getAlbumWithSongs'> = subsonic,
+  ) {}
 
   async runOnce(): Promise<boolean> {
     return runResearchDatabaseWork(()=>this.runOnceInner());
   }
   private async runOnceInner(): Promise<boolean> {
-    if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
+    if (this.running || Date.now() < this.retryAfter || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
     if (!repository.hasCachedSeriesMembers()) return false;
     const offset = repository.dueSeriesLibraryScanOffset();
-    if (offset == null) return false;
+    const pending = offset == null ? repository.pendingSeriesLibraryAlbums(ALBUMS_PER_PASS) : [];
+    if (offset == null && !pending.length) return false;
     this.running = true;
     try {
-      const albums = await subsonic.getAlbumList(offset, ALBUMS_PER_PASS);
+      const albums: Array<{ id?: string; name?: string; musicBrainzId?: string }> = offset == null ? pending.map(id => ({ id }))
+        : await this.catalogue.getAlbumList(offset, ALBUMS_PER_PASS, { requireComplete: true });
       if (!albums.length) {
         repository.advanceSeriesLibraryScan(null);
         console.log('[sleeve-notes] MusicBrainz Series library sweep complete');
@@ -45,8 +51,8 @@ export class MusicBrainzSeriesLibraryWorker {
         if (!this.quietGate.isQuiet()) break;
         const localAlbumId = String(album?.id ?? '').trim();
         if (!localAlbumId) { processed++; continue; }
-        const detail = await subsonic.getAlbumWithSongs(localAlbumId);
-        if (!detail) { processed++; continue; }
+        const detail = await this.catalogue.getAlbumWithSongs(localAlbumId, { requireComplete: true });
+        if (!detail) throw new Error(`Incomplete Series library album: ${localAlbumId}`);
         const songs = detail.songs.map((song) => ({
           id: String(song?.id ?? '').trim(),
           musicBrainzId: typeof song?.musicBrainzId === 'string' ? song.musicBrainzId.trim().toLowerCase() : null,
@@ -65,15 +71,18 @@ export class MusicBrainzSeriesLibraryWorker {
           }
         }
         linked += repository.retainLibrarySeriesClaims({ localAlbumId, releaseGroupMbid, songs });
+        repository.observeSeriesLibraryAlbum(open(), { ...detail.album, id: localAlbumId }, detail.songs, true);
         processed++;
+        // Persist each completed album so an error later in the page does not replay it.
+        if (offset != null) repository.advanceSeriesLibraryScan(offset + processed);
       }
-      repository.advanceSeriesLibraryScan(offset + processed);
-      if (linked) console.log(`[sleeve-notes] MusicBrainz Series library sweep attached ${linked} local claim link${linked === 1 ? '' : 's'} (albums ${offset + 1}–${offset + processed})`);
+      if (linked) console.log(`[sleeve-notes] MusicBrainz Series library sweep attached ${linked} local claim link${linked === 1 ? '' : 's'} (${processed} albums)`);
       return true;
     } catch (error) {
-      // Keep the cursor on this page. Successfully processed albums are safe to
-      // revisit; no skipped page is silently treated as complete.
-      repository.deferSeriesLibraryScan(RETRY_INTERVAL_MS);
+      // The cursor already records completed albums. A changed-album retry
+      // must not wake an otherwise completed full sweep.
+      this.retryAfter = Date.now() + RETRY_INTERVAL_MS;
+      if (offset != null) repository.deferSeriesLibraryScan(RETRY_INTERVAL_MS);
       console.warn(`[sleeve-notes] MusicBrainz Series library sweep deferred: ${error instanceof Error ? error.message : String(error)}`);
       return true;
     } finally {

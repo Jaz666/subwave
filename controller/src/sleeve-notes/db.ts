@@ -8,7 +8,7 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 57;
+export const SCHEMA_VERSION = 59;
 
 let db: Database.Database | null = null;
 const cachedReads = new AsyncLocalStorage<Database.Database>();
@@ -1321,6 +1321,25 @@ export function migrate(d: Database.Database): void {
       AFTER ${operation} ON sleeve_genius_library_seeds BEGIN
       UPDATE sleeve_connection_revisions SET facts=facts+1,overview=overview+1 WHERE id=1; END;`);
     d.pragma('user_version = 57');
+  }
+
+  if (version < 58) {
+    if (!(d.prepare('PRAGMA table_info(sleeve_source_documents)').all() as Array<{name:string}>).some(column=>column.name==='wikipedia_pruned_at')) {
+      d.exec('ALTER TABLE sleeve_source_documents ADD COLUMN wikipedia_pruned_at TEXT');
+    }
+    d.exec('CREATE INDEX IF NOT EXISTS idx_sleeve_claims_source ON sleeve_claims(source_document_id)');
+    d.pragma('user_version = 58');
+  }
+
+  if (version < 59) {
+    d.exec(`CREATE TABLE IF NOT EXISTS sleeve_series_library_albums (
+      local_album_id TEXT PRIMARY KEY,
+      fingerprint TEXT NOT NULL,
+      scan_generation TEXT,
+      pending INTEGER NOT NULL DEFAULT 1
+    ); CREATE INDEX IF NOT EXISTS idx_sleeve_series_pending_albums
+      ON sleeve_series_library_albums(pending, local_album_id);`);
+    d.pragma('user_version = 59');
   }
 
 }

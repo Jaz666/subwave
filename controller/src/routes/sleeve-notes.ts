@@ -446,6 +446,7 @@ router.post('/sleeve-notes/wikipedia-prompt-preview', requireAdmin, async (req, 
   }
   const source = latestSourceDocumentForResearch(entityType, entityId, 'wikipedia');
   if (!source) return res.status(404).json({ error: `No cached Wikipedia article is available for this ${entityType === 'artist' ? 'artist' : 'album'}` });
+  if (source.wikipediaPrunedAt) return res.status(409).json({ error: 'Full article text was cleared after research. Request research again from Station Brain, then retry this preview once the article has been fetched.' });
   const profileHash = wikipediaCalibrationProfileHash(prompt);
   const chunks = planWikipediaChunks(source.content, adaptiveWikipediaChunkCharacters(
     profileHash, entityType === 'artist' ? 'artist' : 'release',

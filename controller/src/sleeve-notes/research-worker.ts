@@ -1,3 +1,4 @@
+import { pruneCompletedWikipediaArticlesInDatabase } from './wikipedia-retention.js';
 import { nextAiringReview, runAiringReview } from './airing-review.js';
 import { runResearchDatabaseWork } from './db.js';
 import { createHash } from 'node:crypto';
@@ -977,6 +978,10 @@ export class ResearchWorker {
     const sourceProvider = geniusAlbumJob ? 'genius' : 'wikipedia';
     const source = repository.latestSourceDocumentForResearch(entityType, queued.subjectId, sourceProvider);
     if (!source) { repository.finishResearchJob(queued.id, 'failed'); return true; }
+    if(sourceProvider==='wikipedia'&&source.wikipediaPrunedAt) {
+      repository.requestWikipediaArticleRefetch(queued);
+      return true;
+    }
     if (queued.capability === 'extract-wikipedia'
       || queued.capability === 'extract-wikipedia-release-group') {
       return this.processWikipediaChunk(queued, source);
@@ -1155,6 +1160,7 @@ export function startResearchWorker(quietGate: QuietGate): void {
     if (!settings.get().djBehaviour.extendedSleeveNotes || !quietGate.isQuiet()) return;
     void runResearchDatabaseWork(async () => {
       expireRecycleBin();
+      pruneCompletedWikipediaArticlesInDatabase(open());
       return true;
     }).catch(error => console.warn('[sleeve-notes] Recycle Bin cleanup deferred:', error instanceof Error ? error.message : String(error)));
   }, 60 * 60 * 1000);

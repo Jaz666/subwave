@@ -6,23 +6,46 @@ export default function ExtendedSleeveNotes() {
     <ManualPage
       eyebrow="MANUAL · 17"
       title="Extended Sleeve Notes."
-      intro="The stories behind the records, gathered as your station plays. Extended Sleeve Notes builds a collection of music knowledge around your library, gives the DJ something interesting to say, and lets you explore the connections yourself."
+      intro="Give your DJ stories to tell about the music you play. Extended Sleeve Notes gathers background, credits and musical connections, saves the sources, and makes that research available for on-air links and conversations."
       current="/manual/sleeve-notes"
     >
       <section className="bs-section">
         <p className="bs-eyebrow">BEHIND THE MUSIC</p>
         <h2>Give the DJ more to talk about.</h2>
         <p>
-          SUB/WAVE already knows what is playing and who is at the microphone. Extended
-          Sleeve Notes adds context: how an album came together, a turning point in an
-          artist&rsquo;s career, who produced a recording, or the older record sampled by
-          the track you are hearing. A useful discovery can become a short remark between
-          songs or part of a longer conversation between DJs.
+          Your DJ already uses track details, its persona and the LLM&rsquo;s general
+          knowledge to write links. That knowledge can be broad, but it may miss a
+          lesser-known artist, confuse two recordings or return to the same familiar
+          observation whenever a song comes round.
         </p>
         <p>
-          It is optional. You can run the station without it, or enable it to build a
-          collection that grows over time. The same saved knowledge is available to you
-          in the admin console, with sources you can inspect.
+          Extended Sleeve Notes gives it something more specific to work with: saved
+          research about the music in your library, with sources you can check.
+          That might be how an album came together, who produced a recording or which
+          older record a track sampled. The model still writes in the DJ&rsquo;s own
+          voice; the research gives it a reason to say something particular about
+          this record. It can also give co-hosts a shared subject to explore.
+        </p>
+        <div className="bs-callout">
+          <p className="bs-eyebrow">WHAT YOU MIGHT HEAR</p>
+          <p>
+            These invented examples show how saved research could shape a link.
+            They illustrate the idea; they are not facts about particular records
+            or scripts your DJ is guaranteed to use.
+          </p>
+          <ul className="bs-list">
+            <li><strong>A recording story:</strong> A saved studio detail could turn a general introduction such as &ldquo;Another classic from the band&rdquo; into &ldquo;They kept the first take of that piano part. You can hear why &mdash; it has a lovely looseness to it.&rdquo;</li>
+            <li><strong>A sample connection:</strong> If research connects two recordings, the DJ might say: &ldquo;That guitar phrase started life on a soul record. Listen to how it has been reshaped here.&rdquo;</li>
+            <li><strong>A shared producer:</strong> A saved credit could start a conversation: &ldquo;We heard another of this producer&rsquo;s records earlier. What do you make of the drums on this one?&rdquo; Mentioning an earlier play also needs the station&rsquo;s record of what actually aired.</li>
+          </ul>
+        </div>
+        <p>
+          The aim is a DJ with more to notice and talk about, from a brief detail
+          between songs to a longer conversation. Research gives it material beyond
+          what the model happens to remember; it does not replace the model or make
+          every statement correct. You can inspect the saved material and its sources
+          in the admin console. The feature is optional, and your station can keep
+          playing and talking without it.
         </p>
       </section>
 
@@ -55,8 +78,42 @@ export default function ExtendedSleeveNotes() {
         <p>
           Switching the master setting off hides the Notes workspace, Dash card and
           manual segment control, and stops new feature activity. Saved knowledge and
-          queued jobs are retained for when you enable it again. Audio already committed
-          to the broadcast finishes safely.
+          queued jobs are retained for when you enable it again. Speech already handed to the broadcast is allowed to finish.
+        </p>
+      </section>
+
+      <section className="bs-section">
+        <p className="bs-eyebrow">THE FIRST FEW PLAYS</p>
+        <h2>What to expect after enabling the feature.</h2>
+        <p>
+          An empty collection is a normal starting point. Let your station play:
+          as it encounters artists and albums, SUB/WAVE gathers source material and
+          queues it for the LLM to turn into stories. The <strong>LLM Research</strong>{' '}
+          queue in Notes Overview may grow at first, especially while the station
+          plays a succession of artists it has not researched before. A growing
+          queue does not, on its own, mean something is wrong.
+        </p>
+        <p>
+          As those artists come round for a second or later play, their saved research
+          can be reused. There is less new work to add, giving the waiting research
+          time to catch up. The queue should generally shrink and can reach zero
+          once collection has caught up. New artists, different albums, refreshes and
+          flagged reviews can add work again; the pace also depends on your model,
+          available sources and how much time the broadcast leaves for research.
+        </p>
+        <p>
+          A DJ link may already have been written by the time new stories arrive.
+          That material is still useful to you: the Dash&rsquo;s <strong>Sleeve Notes</strong>{' '}
+          ticker starts filling with saved facts as they become available, so you can
+          read about the music while it plays even if the DJ did not mention the story.
+          Saved facts are also available in Notes for you to inspect.
+        </p>
+        <p>
+          Once enough suitable material is saved, a Sleeve Notes segment can become
+          eligible for a scheduled speaking opportunity. Research finishing does not
+          trigger speech immediately: the usual timing, settings and repetition checks
+          still apply. You do not need to wait for the whole queue to clear before
+          stories can be used on air.
         </p>
       </section>
 
@@ -65,21 +122,35 @@ export default function ExtendedSleeveNotes() {
         <h2>A collection that grows with your library.</h2>
         <p>
           Research starts from music the station encounters and also works through
-          unexamined library tracks when there is room. MusicBrainz helps identify
+          library tracks it has not researched yet when the station has time. MusicBrainz helps identify
           artists and releases; Wikipedia supplies artist and album background; optional
           Genius research adds recording credits, sample relationships and other music
           context. Coverage depends on what those sources contain and which sources you
           have enabled.
         </p>
         <p>
-          Sample connections can lead research beyond the first recording and into
-          other known library artists. This is discovery around your existing music:
-          it does not download songs or add outside recordings to the playable library.
+          Connections can also introduce you to artists outside your library. In
+          <strong> Station Brain &rarr; Stats &amp; Discoveries</strong>, the
+          <strong> Most connected</strong> list highlights outside artists who have
+          links to several different artists you already play. It is a starting point
+          for exploring music you might want to add to your library in future.
           Lyrics are not collected or used as Sleeve Notes material.
         </p>
         <p>
+          MusicBrainz lists change slowly, so Subwave normally checks them once a
+          month. After matching the library, this work settles down. New or changed
+          albums and changes to your enabled lists can give it more to do.
+        </p>
+        <p>
+          Full Wikipedia articles are kept while research is in progress and normally
+          cleared after a day once the scan has finished successfully. Saved facts,
+          supporting passages, nearby context and source links are kept. Pending
+          research or reviews can keep an article for longer. A later refresh may
+          need to fetch the article again before research can continue.
+        </p>
+        <p>
           Broadcast work takes priority. Research waits while the station is busy
-          choosing tracks, preparing speech or handing work to the broadcast. Provider
+          choosing tracks or preparing speech. Provider
           limits, temporary failures and the station&rsquo;s token budget can also make
           it wait. The Overview separates <strong>Controller Research</strong>, which
           collects and connects information, from <strong>LLM Research</strong>, which
@@ -88,9 +159,8 @@ export default function ExtendedSleeveNotes() {
         <p>
           Check <strong>Research while the station is empty</strong> in Notes settings
           if you want collection without listeners; other station settings still affect
-          when work can run. A newly enabled station may have little to show at first.
-          Leave it time to build useful coverage rather than expecting every artist to
-          have a story immediately.
+          when work can run. Leave collection time to build useful coverage; some
+          artists will have more source material than others.
         </p>
         <p>
           To stop collecting while keeping saved knowledge available to the DJ, choose
@@ -101,8 +171,34 @@ export default function ExtendedSleeveNotes() {
       </section>
 
       <section className="bs-section">
-        <p className="bs-eyebrow">THE WORDS IN THE WORKSPACE</p>
-        <h2>Saved facts become Story Sparks.</h2>
+        <p className="bs-eyebrow">RESEARCH PACE</p>
+        <h2>Can I speed research up?</h2>
+        <p>
+          Research is deliberately paced. MusicBrainz, Wikipedia and Genius are shared
+          services: SUB/WAVE needs to respect their API request limits and bandwidth.
+          Sending more requests at once can lead to throttling or temporary blocks,
+          making collection slower rather than faster.
+        </p>
+        <p>
+          Your broadcast also comes first. Research waits while SUB/WAVE chooses
+          tracks, prepares speech or handles other work needed to keep the station
+          running smoothly. A faster LLM may finish an individual research task sooner,
+          but it does not remove source limits or give research priority over the
+          broadcast. Increasing the token budget will not bypass those safeguards.
+        </p>
+        <p>
+          To give collection more opportunities, keep the station running, check that
+          collection is not paused and, if it suits your setup, enable
+          <strong> Research while the station is empty</strong>. Other station settings
+          and your token budget still apply. The Overview shows why work is waiting.
+          Let the queue build your collection gradually; there is no need to research
+          the whole library before the DJ can use the stories already saved.
+        </p>
+      </section>
+
+      <section className="bs-section">
+        <p className="bs-eyebrow">FINDING YOUR WAY AROUND</p>
+        <h2>What is a Story Spark?</h2>
         <ul className="bs-list">
           <li><strong>Stories</strong> are researched talking points about artists, albums or tracks: an anecdote, a recording detail or a notable achievement.</li>
           <li><strong>Connections</strong> describe musical relationships, such as one recording sampling or covering another.</li>
@@ -119,14 +215,45 @@ export default function ExtendedSleeveNotes() {
       </section>
 
       <section className="bs-section">
+        <p className="bs-eyebrow">ON THE MICROPHONE</p>
+        <h2>A passing remark, or a conversation.</h2>
+        <p>
+          In an ordinary spoken link, the DJ can receive a relevant saved Spark and
+          turn it into a natural remark. It may leave the Spark out when the timing or
+          subject does not fit. The station does not wait for fresh research before it
+          can speak: without suitable saved material, the normal link still works.
+        </p>
+        <p>
+          A dedicated <strong>Sleeve Notes segment</strong> gives the material more room.
+          When the schedule calls for automatic Banter, SUB/WAVE first tries Sleeve
+          Notes if there is enough suitable material. This also applies during
+          Produced Episodes. Otherwise, it uses ordinary Banter. Choosing Banter
+          yourself still requests Banter.
+        </p>
+        <p>
+          Use the manual Sleeve Notes segment control on the Dash when you want to
+          request one yourself, and check Notes settings for segment controls. A manual
+          request still needs suitable saved material and safe broadcast timing; it
+          cannot create a researched conversation from an empty collection.
+        </p>
+        <p>
+          The DJ spaces out repeated stories, topics and connections, so a saved story
+          may wait for a suitable moment. After a story from a MusicBrainz series
+          (such as a curated list of notable albums) is detected in aired speech,
+          other stories from that series wait six hours. A manual segment can reuse
+          aired stories without waiting for these cooldowns.
+        </p>
+      </section>
+
+      <section className="bs-section">
         <p className="bs-eyebrow">STATION BRAIN</p>
         <h2>Follow the connections yourself.</h2>
         <p>
           Open <strong>Station Brain</strong> in Notes and search for an artist, album
           or track. The <strong>Map</strong> view lets you move through those layers,
           select an item and inspect its saved knowledge and relationships. Fullscreen
-          gives a larger graph more room. A known item can have an empty dossier if
-          research has not saved any material for it yet.
+          gives a larger graph more room. An item can appear on the map before any stories have been saved about it.
+          Its details panel may therefore have little to show at first.
         </p>
         <p>
           Artist, album and track links in the Overview&rsquo;s On Air and Next Up
@@ -138,10 +265,17 @@ export default function ExtendedSleeveNotes() {
         <p>
           Switch to <strong>Stats &amp; Discoveries</strong> for a broader view of the
           saved network. <strong>Most connected</strong> highlights external names
-          connected to distinct library artists; <strong>Sample sources</strong> and
+          linked to several different artists in your library; <strong>Sample sources</strong> and
           <strong> Sample users</strong> explore the two directions of sample relationships.
           These views use saved research. Use Refresh to update the view as the
           collection grows; opening it does not launch a new external search.
+        </p>
+        <p>
+          Genius is optional. With capture off, you can still browse your library,
+          read Wikipedia stories and queue music. New sample, cover and contributor
+          connections are not collected, so discovery lists may be empty on a fresh
+          station. Previously saved connections remain visible. Station Brain shows
+          whether capture is off or needs an API key, with a link to Notes Settings.
         </p>
       </section>
 
@@ -155,40 +289,9 @@ export default function ExtendedSleeveNotes() {
           The Station Brain header link opens the current on-air library artist.
         </p>
         <p>
-          Reading a card does not make the DJ say it, reserve it for a segment or count
-          it as used on air. If a saved Spark needs attention, use its review flag.
+          Reading a card does not make the DJ say it, request a segment or count
+          the story as used on air. If a saved Spark needs attention, use its review flag.
           Connections and credits do not carry that same card-level flag.
-        </p>
-      </section>
-
-      <section className="bs-section">
-        <p className="bs-eyebrow">ON THE MICROPHONE</p>
-        <h2>A passing remark, or a conversation.</h2>
-        <p>
-          In an ordinary spoken link, the DJ can receive a relevant saved Spark and
-          turn it into a natural remark. It may leave the Spark out when the timing or
-          subject does not fit. The station does not wait for fresh research before it
-          can speak: without suitable saved material, the normal link still works.
-        </p>
-        <p>
-          A dedicated <strong>Sleeve Notes segment</strong> gives the material more room.
-          When an automatic Banter slot is eligible, Sleeve Notes gets the first chance
-          if there is enough suitable material, including during Produced Episodes.
-          Ordinary Banter is the fallback. An explicit manual Banter action still
-          requests Banter.
-        </p>
-        <p>
-          Use the manual Sleeve Notes segment control on the Dash when you want to
-          request one yourself, and check Notes settings for segment controls. A manual
-          request still needs suitable saved material and safe broadcast timing; it
-          cannot create a researched conversation from an empty collection.
-        </p>
-        <p>
-          Repetition protections space out stories, topics and relationships. A story
-          being saved is therefore not a guarantee it will be used next. Recognition
-          stories from the same MusicBrainz series also share a six-hour cooldown after
-          detected use in confirmed aired speech. Manual segments retain the
-          operator&rsquo;s override of aired-story cooldowns.
         </p>
       </section>
 
@@ -202,17 +305,16 @@ export default function ExtendedSleeveNotes() {
           Overview also shows recent exchanges from that view.
         </p>
         <p>
-          A segment reaching the air and a wording detector finding a particular Spark
-          are separate things. The DJ can paraphrase a fact in a way the detector misses.
+          SUB/WAVE records whether a segment aired and separately checks whether its
+          words used a saved Spark. The DJ can paraphrase a fact in a way the detector misses.
           Use the <strong>Use detected</strong>, <strong>Use not detected</strong> and
           <strong> All aired exchanges</strong> filters to investigate. An ordinary
           greeting that was offered a Spark but did not use it is not automatically a
           Sleeve Notes exchange in the default view.
         </p>
         <p>
-          Flag an exchange when its spoken content needs review. This preserves the
-          distinction between a problem in a saved fact and a problem in how the DJ
-          expressed it. Correcting saved material does not rewrite the historical
+          Flag an exchange when its spoken content needs review. Flag the saved fact instead if the research itself is wrong.
+          This helps you address the source of the problem. Correcting saved material does not rewrite the historical
           transcript of what aired.
         </p>
       </section>
@@ -235,7 +337,7 @@ export default function ExtendedSleeveNotes() {
           asks for attention; it is not itself a published correction.
         </p>
         <p>
-          Keep factual selection and delivery in mind separately. Asking for warmer,
+          You can change what the DJ knows and how it sounds separately. Asking for warmer,
           shorter or less formal speech changes presentation; it does not supply
           evidence for a new claim. Inspect the supporting source when the underlying
           fact is in doubt. See <Link href="/manual/dj" className="bs-link">How the DJ Works</Link>
@@ -259,7 +361,7 @@ export default function ExtendedSleeveNotes() {
           Start with the defaults and a few familiar artists. Check the sources, listen
           to how the DJ uses them, and adjust the editorial instructions once you know
           what suits your station. Research coverage and on-air opportunities vary;
-          neither a particular discovery nor a particular broadcast is guaranteed.
+          the collection becomes more useful as it grows.
         </p>
       </section>
     </ManualPage>

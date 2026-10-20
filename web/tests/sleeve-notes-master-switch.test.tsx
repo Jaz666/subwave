@@ -4,7 +4,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import type {ComponentProps} from 'react';
 import {DjBehaviourSection} from '../components/admin/settings/DjBehaviourSection';
 import {settingsForm} from '../components/admin/settings/form-state';
-test('master switch is visible outside Advanced and explains additional tokens and data retention',()=>{
+test('master switch is visible before Advanced and explains additional tokens and data retention',()=>{
  const props:ComponentProps<typeof DjBehaviourSection>={data:{},form:settingsForm({}),setForm:()=>{},busy:false,saveSettings:async()=>true,fieldErrors:{}};
  const html=renderToStaticMarkup(<DjBehaviourSection {...props}/>);
  assert.match(html,/Enable Extended Sleeve Notes/);
@@ -12,5 +12,8 @@ test('master switch is visible outside Advanced and explains additional tokens a
  assert.match(html,/paid LLM Provider/);
  assert.match(html,/Saved research is retained/);
  assert.doesNotMatch(html,/Open Sleeve Notes Settings/);
- assert.ok(html.lastIndexOf('data-card="extended-sleeve-notes"')>html.lastIndexOf('</details>'));
+ const cardIndex=html.indexOf('data-card="extended-sleeve-notes"');
+ const advancedIndex=html.indexOf('>Advanced</span>');
+ assert.ok(cardIndex>=0 && advancedIndex>cardIndex);
+ assert.doesNotMatch(html,/prompt memory and extended notes/);
 });

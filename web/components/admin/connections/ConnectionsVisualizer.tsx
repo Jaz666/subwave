@@ -471,7 +471,7 @@ export default function ConnectionsVisualizer({
             {map.error && <p role="status" className="mb-3 text-xs text-muted">The map could not refresh. Showing the last loaded connections.</p>}
             {map.data && (
               <>
-                {map.data.nodes.length === 0 ? <p className="py-16 text-center text-[13px] text-muted">{visibleGraph.active ? 'Artists appear here as the library scan and Sleeve Notes research gather your musical connections.' : 'No saved map yet. Enable Sleeve Notes in Settings to gather connections.'}</p> :
+                {map.data.nodes.length === 0 ? <p className="py-16 text-center text-[13px] text-muted">{visibleGraph.active ? 'Your library’s artists appear here as the library scan completes. Saved research adds stories and connections when available.' : 'No saved map yet. Enable Sleeve Notes in Settings to gather connections.'}</p> :
                   <ConnectionsGraph
                     data={coveredMap ?? map.data} visibleData={visibleGraph} fullscreen={fullscreen} onToggleFullscreen={() => changeFullscreen(!fullscreen)} selectedNode={selectedNodeId} selectedEdge={selectedEdgeId}
                     focusRequest={focusRequest} zoomToSelection={zoomToSelection}

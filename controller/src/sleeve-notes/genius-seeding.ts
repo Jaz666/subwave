@@ -1,10 +1,12 @@
 // Fill spare Genius capacity from the cached catalogue, never from a fake play
 // or a MusicBrainz job. One seed at a time, bounded artist scans per turn.
+import * as settings from '../settings.js';
 import { randomUUID } from 'node:crypto';
 import { open } from './db.js';
 import { enqueueResearchJob, type RecordingForGenius } from './research-repository.js';
 
 export function enqueueNextGeniusLibrarySeed(): boolean {
+  if (!settings.get().sleeveNotes.providers.genius.enabled) return false;
   const db = open();
   if (!db.prepare('SELECT 1 FROM sleeve_connection_artist_population WHERE id=1').get()
     || !db.prepare('SELECT 1 FROM sleeve_connection_library_scan WHERE completed_at IS NOT NULL').get()) return false;
