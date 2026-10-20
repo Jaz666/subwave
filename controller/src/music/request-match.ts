@@ -94,7 +94,19 @@ export function requestName(value: unknown): string {
 
 const QUOTED_NAMES = /"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}])'[^'\n]+'(?![\p{L}\p{N}])/gu;
 
-// Replace quoted spans and whole names in the listener's text with `token`.
+// The framing before a name: "could you play", "please put on".
+const REQUEST_LEAD = /^\s*(?:(?:please\s+)?(?:can|could|would)\s+you\s+)?(?:(?:please\s+)?(?:play|put on|queue|request)\s+)?/i;
+
+// The name quoted right after the request's framing, without whatever follows
+// its closing quote: `play "X" for my mum` names X.
+function leadingQuotedName(text: string): string | null {
+  const head = text.replace(REQUEST_LEAD, '');
+  const span = head.match(QUOTED_NAMES)?.[0];
+  return span && head.startsWith(span) ? span.slice(1, -1).trim() || null : null;
+}
+
+// Replace whole names in the listener's text with `token`, and every quoted
+// span too unless `quoted` is false (an occurrence of the names themselves).
 function maskNames(text: string, names: Array<string | null | undefined>, token: string, quoted = true): string {
   let prose = (quoted ? text.replace(QUOTED_NAMES, token) : text)
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘']/g, '');
@@ -262,8 +274,7 @@ export function requestTitleMatches(want: unknown, got: unknown): boolean {
 }
 
 export function modelFreeRequest(text: string): RequestMatch {
-  const cleaned = text.replace(/^\s*(?:please\s+)?(?:can|could|would)\s+you\s+/i, '')
-    .replace(/^\s*(?:please\s+)?(?:play|put on|queue|request)\s+/i, '').replace(/\s+please[.!?]*$/i, '').trim();
+  const cleaned = text.replace(REQUEST_LEAD, '').replace(/\s+please[.!?]*$/i, '').trim();
   const unquote = (s: string) => s.replace(/^["'“‘]|["'”’][.!?]*$/g, '').trim();
   // A trailing language condition stays explicit even without interpretation.
   const languageHint = cleaned.match(/\s+in\s+([\p{L}][\p{L} -]*?)[.!?]*$/iu);
@@ -301,13 +312,13 @@ export function modelFreeRequest(text: string): RequestMatch {
 export function repairRequestMatch(match: RequestMatch, text: string): RequestMatch {
   if (match.kind === 'chat') return match;
   const literal = modelFreeRequest(text);
-  // A bare quoted song is explicit even if the model supplies a different
-  // search term. Require request framing and an opening quote at the name,
-  // not a quotation elsewhere (lyrics, a dedication or a self-introduction).
-  if (!match.title && !match.album && match.scope !== 'album' && literal.title && !literal.artist
-    && /^(?:(?:please\s+)?(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:(?:play|put on|queue|request)\s+)?["“‘']/i.test(text.trim())
-    && !requestArtistMatches(literal.title, { id: 'literal', artist: match.artist || '' })
-    && namedInRequest(text, literal.title, [match.artist])) return { ...match, title: literal.title };
+  // A song quoted right after the request's framing is explicit even if the
+  // model supplies a different search term. Only the quoted span is the name,
+  // never the words after its closing quote, and a quotation elsewhere
+  // (lyrics, a dedication or a self-introduction) is no such evidence.
+  const quoted = leadingQuotedName(text);
+  if (quoted && !match.title && !match.album && match.scope !== 'album' && !literal.artist
+    && !requestArtistMatches(quoted, { id: 'literal', artist: match.artist || '' })) return { ...match, title: quoted };
   if (!literal.artist || !literal.title) return match;
   if (!match.unsupported?.length
     && ![match.title, match.album, match.artist, match.genre, match.language, match.mood, ...(match.search_terms || [])].some(Boolean)) {

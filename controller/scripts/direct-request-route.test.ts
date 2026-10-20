@@ -676,6 +676,35 @@ test('a missing quoted title produces an honest alternative', async () => {
   assert.match(result.ack, /alternative/);
 });
 
+// Words after the closing quote are not part of the name. Reading everything
+// after the opening quote as the title lost each of these songs.
+const oneCrowdedHour = { id: 'one-crowded-hour', title: 'One Crowded Hour', artist: 'Augie March', album: 'Moo, You Bloody Choir', duration: 300 };
+const coldAcre = { id: 'cold-acre', title: 'The Cold Acre', artist: 'Augie March', album: 'Moo, You Bloody Choir', duration: 240 };
+for (const [text, song] of [
+  ['Play "Bohemian Rhapsody" next', exact], ['Play "Bohemian Rhapsody" for my mum', exact], ['Play "Bohemian Rhapsody" again', exact],
+  ['play "Bohemian Rhapsody" from Queen', exact], ['play "One Crowded Hour" from Augie March', oneCrowdedHour],
+] as const) {
+  for (const artist of [song.artist, null]) {
+    test(`a quoted title followed by other words keeps the named song (artist ${artist ?? 'null'}): ${text}`, async () => {
+      catalogueSongs = [filler, killerQueen, coldAcre, song];
+      artistSongs = song === exact ? [killerQueen] : [coldAcre];
+      modelOutput = { kind: 'track', title: null, artist, search_terms: [song.title], scope: 'song' };
+      const result = await submit(text);
+      assert.equal(result.outcome, 'matched');
+      assert.equal(queue.upcoming[0].track.id, song.id);
+    });
+  }
+}
+
+test('a quoted title followed by a dedication still outranks an unrelated search term', async () => {
+  catalogueSongs = [exact, killerQueen];
+  artistSongs = [killerQueen];
+  modelOutput = { title: null, artist: 'Queen', genre: 'rock', mood: 'celebratory', search_terms: ['Killer Queen'] };
+  const result = await submit('Play "Bohemian Rhapsody" for my mum');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, exact.id);
+});
+
 
 for (const [title, artist, text] of [
   ['Touched by the Hand of God', 'New Order', 'Play "Touched by the Hand of God" by New Order'],

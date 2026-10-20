@@ -530,6 +530,15 @@ test('quoted spans cannot prove an unrelated title and search-term order cannot 
     'Play Bohemian Rhapsody'), 'Bohemian Rhapsody');
 });
 
+test('a quoted title is the quoted span alone, never the words after it', () => {
+  const plan = { title: null, artist: 'Queen', search_terms: ['Killer Queen'] };
+  for (const text of ['Play "Bohemian Rhapsody" next', 'Play “Bohemian Rhapsody” for my mum', 'could you play ‘Bohemian Rhapsody’ again',
+    'play "Bohemian Rhapsody" from Queen', '"Bohemian Rhapsody" please DJ']) {
+    assert.equal(repairRequestMatch(plan, text).title, 'Bohemian Rhapsody', text);
+  }
+  assert.equal(repairRequestMatch(plan, 'Play ""').title, null);
+});
+
 test('quoted artist names, lyrics and self-introductions are not repaired into song titles', () => {
   const plan = { title: null, artist: 'Queen', genre: 'rock', search_terms: ['Queen'] };
   for (const text of ['Play "Queen"', 'Play the song with the lyrics "a fictional line"', 'I am "Mara Vale", play Queen']) {
