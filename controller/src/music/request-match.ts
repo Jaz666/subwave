@@ -1,5 +1,7 @@
 // Direct requests: interpret once, then resolve identity and eligibility in code.
 // No model tools or station/session state belong in this module.
+import { artistNameKey, artistParticipantKeys } from './recency.js';
+
 export interface RequestMatch {
   kind?: string;
   title?: string | null;
@@ -175,16 +177,22 @@ export async function resolveRequestGenre(catalog: RequestCatalog, name: string)
   return genre && requestGenreMatches(name, genre) ? genre : null;
 }
 
+// Credits key through recency's shared name fold and split only on
+// feat./ft./featuring, the blocklist's rule: "&", "+" and commas sit inside
+// real band names, so "Fire" never names "Earth, Wind & Fire". A collaboration
+// names each act through the server's per-artist credits instead. The
+// listener's spelling is then compared without accents, punctuation or a
+// leading "The".
+function artistIdentityKey(value: unknown): string {
+  return requestName(artistNameKey(value)).replace(/^the (?=\S)/, '');
+}
+
 export function requestArtistMatches(want: unknown, song: RequestSong): boolean {
-  const artist = requestName(want);
+  const artist = artistIdentityKey(want);
   if (!artist) return true;
   const credits = [song.artist, ...(Array.isArray(song.artists) ? song.artists.map(a => (a as { name?: string })?.name) : [])];
-  return credits.some(credit => {
-    if (requestName(credit) === artist) return true;
-    // A complete credited name, never an isolated shared word such as "The".
-    return String(credit ?? '').split(/\s+(?:feat\.?|featuring|ft\.?)\s+|\s+[&]\s+|;\s*/i)
-      .some(part => requestName(part) === artist);
-  });
+  return credits.some(credit => [artistNameKey(credit), ...artistParticipantKeys(String(credit ?? ''))]
+    .some(key => artistIdentityKey(key) === artist));
 }
 
 export function requestedTitle(match: RequestMatch, text?: string): string | null {

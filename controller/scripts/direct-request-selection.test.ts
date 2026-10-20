@@ -425,8 +425,17 @@ for (const [want, got, matches] of [
   ['The Beatles', 'The Gathering', false], ['Beyonce', 'Beyoncé', true],
   ['宇多田ヒカル', '宇多田ヒカル', true], ['Queen', 'Queen Latifah', false],
   ['Queen', 'Queen feat. David Bowie', true], ["Guns N’ Roses", "Guns N' Roses", true],
-  ['क', 'की', false],
+  ['क', 'की', false], ['Beatles', 'The Beatles', true], ['Queen', 'Queen (feat. David Bowie)', true],
+  ['Fire', 'Earth, Wind & Fire', false], ['Sons', 'Mumford & Sons', false], ['Machine', 'Florence + the Machine', false],
+  ['David Bowie', 'Queen & David Bowie', false],
 ] as const) test(`artist identity ${want} / ${got}`, () => assert.equal(requestArtistMatches(want, { id: 't', artist: got }), matches));
+
+test('a collaboration names each act through the per-artist credits, never by splitting on "&"', () => {
+  const song = { id: 't', artist: 'Queen & David Bowie', artists: [{ name: 'Queen' }, { name: 'David Bowie' }] };
+  assert.ok(requestArtistMatches('David Bowie', song));
+  assert.ok(requestArtistMatches('Queen', song));
+  assert.ok(requestArtistMatches('Queen & David Bowie', song));
+});
 
 for (const text of ['Queen, Bohemian Rhapsody', 'Please play Bohemian Rhapsody by Queen', 'Could you play Bohemian Rhapsody by Queen?']) {
   test(`model-free recovery: ${text}`, () => {
