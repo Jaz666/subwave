@@ -478,3 +478,63 @@ test('review: shortcut intro failures also have their own diagnostic', async () 
   assert.equal(requestLog.snapshot(1)[0].guard, null);
   assert.ok(!queue.djLog.some((line: any) => /intro echoed request text/.test(line.message)));
 });
+
+
+for (const [text, language] of [
+  ['Joue Bohemian Rhapsody de Queen en français', 'French'],
+  ['Toca Bohemian Rhapsody de Queen en francés', 'French'],
+  ['Play Bohemian Rhapsody by Queen in español', 'Spanish'],
+]) {
+  test(`translated language remains a hard requirement: ${text}`, async () => {
+    catalogueSongs = [exact];
+    modelOutput = { title: exact.title, artist: 'Queen', language };
+    const result = await submit(text);
+    assert.equal(result.outcome, 'no-match');
+    assert.equal(queue.upcoming.length, 0);
+  });
+}
+
+test('translated language selects the eligible recording rather than merely refusing', async () => {
+  const french = { ...exact, id: 'french-recording', language: 'French' };
+  catalogueSongs = [exact, french];
+  modelOutput = { title: exact.title, artist: 'Queen', language: 'French' };
+  const result = await submit('Joue Bohemian Rhapsody de Queen en français');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.id, french.id);
+});
+
+for (const [text, genre] of [['Play some hiphop', 'Hip Hop'], ['Play some hip hop', 'HipHop']]) {
+  test(`canonical genre spelling cannot relax an explicit requirement: ${text}`, async () => {
+    modelOutput = { genre, title: null, artist: null, search_terms: [] };
+    const result = await submit(text);
+    assert.equal(result.outcome, 'no-match');
+    assert.equal(queue.upcoming.length, 0);
+  });
+}
+
+for (const field of ['title', 'artist', 'album']) {
+  test(`an unverified model ${field} cannot conceal an exclusion`, async () => {
+    catalogueSongs = [exact];
+    modelOutput = { [field]: 'anything except Queen', search_terms: [] };
+    const result = await submit('Play anything except Queen');
+    assert.equal(result.outcome, 'unsupported');
+    assert.equal(queue.upcoming.length, 0);
+    assert.deepEqual(requestLog.snapshot(1)[0].unsupported, ['exclusions']);
+  });
+}
+
+test('an unverified model name cannot conceal a recording condition', async () => {
+  catalogueSongs = [exact];
+  modelOutput = { title: 'instrumental music', search_terms: [] };
+  const result = await submit('Play instrumental music');
+  assert.equal(result.outcome, 'unsupported');
+  assert.equal(queue.upcoming.length, 0);
+});
+
+test('a genuine condition-like artist name is verified before it may hide condition words', async () => {
+  catalogueSongs = [{ ...exact, artist: 'Everything but the Girl', title: 'Missing' }];
+  modelOutput = { artist: 'Everything but the Girl', title: null };
+  const result = await submit('Play something by Everything but the Girl');
+  assert.equal(result.outcome, 'matched');
+  assert.equal(queue.upcoming[0].track.artist, 'Everything but the Girl');
+});

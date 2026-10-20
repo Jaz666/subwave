@@ -1,5 +1,7 @@
-// End-to-end Direct evaluation: real interpretation, production selection,
-// synthetic catalogue. Never queues music or contacts a station/library.
+// First-attempt interpretation + selection against a synthetic catalogue.
+// Excludes route-level literal recovery, queue admission and intro generation;
+// schema/transport failures are benchmark failures, not recovered-route results.
+// Never queues music or contacts a station/library.
 import { matchRequest } from '../../src/llm/dj.js';
 import { directRequestUnsupported, requestName, resolveDirectRequest,
   type RequestMatch, type RequestSong, type RequestSelection, type RequestCatalog } from '../../src/music/request-match.js';
@@ -11,6 +13,7 @@ const songs: RequestSong[] = [
   { id: 'queen-french', title: 'Bohemian Rhapsody', artist: 'Queen', album: 'Language Fixture', genre: 'Rock', language: 'French', moods: ['energetic'] },
   { id: 'something', title: 'Something', artist: 'The Beatles', album: 'Abbey Road', genre: 'Rock', language: 'English', moods: ['calm'] },
   { id: 'jazz', title: 'Jazz Example', artist: 'Fixture Trio', album: 'Fixture Jazz', genre: 'Jazz', language: 'English', moods: ['calm'] },
+  { id: 'hiphop', title: 'Rhythm Example', artist: 'Fixture Duo', album: 'Fixture Beats', genre: 'Hip Hop', language: 'English' },
   { id: 'energetic', title: 'Fast Example', artist: 'Fixture Band', album: 'Fixture Energy', genre: 'Rock', language: 'English', moods: ['energetic'] },
   { id: 'named-live', title: 'Example Song (Live)', artist: 'Fixture Band', album: 'Fixture Energy', genre: 'Rock', language: 'English', moods: ['energetic'] },
 ];
@@ -33,6 +36,8 @@ export const directRequestCases: DirectRequestCase[] = [
   { name: 'artist-mood', text: 'Play something calm by Queen', ids: ['queen-calm'], outcome: 'matched', fields: { artist: 'Queen', mood: 'calm', title: null } },
   { name: 'mood-compromise', text: 'Play something calm by Fixture Band', ids: ['energetic', 'named-live'], outcome: 'matched', fields: { artist: 'Fixture Band', mood: 'calm', title: null } },
   { name: 'named-song-language', text: 'Play Bohemian Rhapsody by Queen in French', ids: ['queen-french'], outcome: 'matched', fields: { title: 'Bohemian Rhapsody', language: 'French' } },
+  { name: 'translated-language', text: 'Joue Bohemian Rhapsody de Queen en français', ids: ['queen-french'], outcome: 'matched', fields: { title: 'Bohemian Rhapsody', language: 'French' } },
+  { name: 'canonical-genre', text: 'Play some hiphop', ids: ['hiphop'], outcome: 'matched', fields: { genre: 'Hip Hop', title: null } },
   { name: 'unavailable-language', text: 'Play Bohemian Rhapsody by Queen in German', outcome: 'no-match', fields: { title: 'Bohemian Rhapsody', language: 'German' } },
   { name: 'named-version', text: 'Play "Example Song (Live)" by Fixture Band', ids: ['named-live'], outcome: 'matched', fields: { title: 'Example Song (Live)' } },
   { name: 'exclusion', text: 'Play anything except Queen', outcome: 'unsupported' },
@@ -57,6 +62,7 @@ const catalog: RequestCatalog = {
   getAlbum: async id => songs.filter(song => song.album === id),
   getTopSongs: async name => songs.filter(song => requestName(song.artist) === requestName(name)),
   resolveGenreName: async name => songs.find(song => requestName(song.genre) === requestName(name))?.genre || null,
+  getGenres: async () => [...new Set(songs.map(song => song.genre!))].map(value => ({ value })),
   getSongsByGenreSampled: async genre => songs.filter(song => requestName(song.genre) === requestName(genre)),
 };
 
@@ -76,14 +82,12 @@ export async function runDirectRequestCase(c: DirectRequestCase, interpret: (tex
 
 export function checkDirectRequestCase(c: DirectRequestCase, out: Awaited<ReturnType<typeof runDirectRequestCase>>): string[] {
   const violations: string[] = [];
-  if (out.selection.outcome !== c.outcome) violations.push(`outcome:${out.selection.outcome}`);
-  if (c.ids ? !c.ids.includes(out.selection.track?.id || '') : out.selection.track !== null) violations.push('wrong-track');
+  if (out.selection.outcome !== c.outcome) violations.push(`selection:outcome:${out.selection.outcome}`);
+  if (c.ids ? !c.ids.includes(out.selection.track?.id || '') : out.selection.track !== null) violations.push('selection:wrong-track');
   for (const [field, expected] of Object.entries(c.fields || {})) {
     if (requestName(out.plan[field as keyof RequestMatch]) !== requestName(expected)) violations.push(`interpretation:${field}`);
   }
-  // Unsupported requests must decline correctly even when a weak model calls
-  // them chat. The production backstop runs before the chat escape as well.
-  if (c.outcome !== 'unsupported' && out.plan.kind === 'chat') violations.push('music-classified-as-chat');
+  if (out.plan.kind === 'chat') violations.push('interpretation:music-classified-as-chat');
   return violations;
 }
 

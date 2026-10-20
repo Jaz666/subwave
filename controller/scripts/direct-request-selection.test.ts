@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  directRequestUnsupported, modelFreeRequest, requestArtistMatches, requestReleaseRank, requestTitleMatches,
+  directRequestUnsupported, explicitRequestAttribute, modelFreeRequest, requestArtistMatches, requestReleaseRank, requestTitleMatches,
   resolveDirectRequest, type RequestCatalog, type RequestMatch, type RequestSong,
 } from '../src/music/request-match.js';
 
@@ -9,6 +9,51 @@ const exact: RequestSong = { id: 'exact', title: 'Bohemian Rhapsody', artist: 'Q
 const other: RequestSong = { id: 'other', title: 'Another Song', artist: 'Queen', album: 'Other Album', genre: 'Jazz' };
 const filler: RequestSong = { id: 'filler', title: 'Fatigue', artist: 'The Gathering', genre: 'Rock' };
 const songRequest: RequestMatch = { title: exact.title, artist: 'Queen', search_terms: [exact.title!, 'Queen'], scope: 'song' };
+
+for (const [language, term] of [['French', 'français'], ['French', 'francés'], ['Spanish', 'español'], ['German', 'Deutsch'], ['Punjabi', 'ਪੰਜਾਬੀ']]) {
+  test(`a translated ${language} requirement is recognised outside names: ${term}`, () => {
+    const match = { ...songRequest, language };
+    assert.ok(explicitRequestAttribute(`Play Bohemian Rhapsody by Queen in ${term}`, match, language));
+    assert.equal(explicitRequestAttribute(`Play ${term} by Queen`, { ...match, title: term }, language), false);
+  });
+}
+
+test('attribute evidence tolerates spacing but never substrings or language-code prepositions', () => {
+  assert.ok(explicitRequestAttribute('Play hiphop', { genre: 'Hip Hop' }, 'Hip Hop'));
+  assert.ok(explicitRequestAttribute('Play hip hop', { genre: 'HipHop' }, 'HipHop'));
+  assert.equal(explicitRequestAttribute('Play trap', { genre: 'Rap' }, 'Rap'), false);
+  assert.equal(explicitRequestAttribute('Joue un morceau en français', { language: 'English' }, 'English'), false);
+  assert.equal(explicitRequestAttribute('Joue un morceau de Queen', { language: 'German' }, 'German'), false);
+});
+
+test('a translated word in a title does not harden an inferred language', async () => {
+  const named = { ...exact, title: 'Français', language: 'English' };
+  const f = fixture({ searchPage: async () => ({ songs: [named], rawCount: 1 }) });
+  const r = await resolveDirectRequest({ title: named.title, artist: 'Queen', language: 'French' },
+    { ...f.deps, text: 'Play Français by Queen' });
+  assert.equal(r.track?.id, named.id);
+  assert.equal(r.outcome, 'matched');
+});
+
+test('a fuzzy artist resolution cannot prove a name hiding an exclusion', async () => {
+  const f = fixture();
+  const r = await resolveDirectRequest({ artist: 'anything except Queen' },
+    { ...f.deps, text: 'Play anything except Queen' });
+  assert.equal(r.outcome, 'unsupported');
+  assert.equal(r.track, null);
+  assert.deepEqual(f.albums, []);
+  assert.equal(f.fallbackCalls(), 0);
+});
+
+test('catalogue proof of a condition-like title still preserves its cooldown refusal', async () => {
+  const named = { ...exact, title: 'Anything But Love' };
+  const f = fixture({ searchPage: async () => ({ songs: [named], rawCount: 1 }) });
+  f.deps.recentIds.add(named.id);
+  const r = await resolveDirectRequest({ title: named.title, artist: 'Queen' },
+    { ...f.deps, text: 'Play Anything But Love by Queen' });
+  assert.equal(r.outcome, 'cooldown');
+  assert.equal(r.track?.id, named.id);
+});
 
 test('unsupported plans stop before any catalogue or preference lookup', async () => {
   const f = fixture({ searchPage: async () => { throw Error('must not search'); } });

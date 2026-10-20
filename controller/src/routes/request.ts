@@ -399,9 +399,6 @@ async function resolveRequest(entry) {
     }
   }
   const unsupported = directRequestUnsupported(text, matched);
-  if (matched.literal) {
-    matched.unverifiedConditions = [...new Set([...(matched.unverifiedConditions || []), ...directRequestUnsupported(text)])];
-  }
   if (unsupported.length) {
     entry.path = 'cascade';
     entry.pickSource = 'unsupported';
@@ -507,7 +504,7 @@ async function resolveRequest(entry) {
   if (!pick) {
     entry.pickSource = pickSource;
     if (selection.outcome === 'unsupported') {
-      entry.unsupported = matched.unverifiedConditions || [];
+      entry.unsupported = selection.unsupported || [];
       return failed(`I couldn't reliably check all the conditions in that request. Try naming a song, artist, album, genre or simple mood.`);
     }
     return failed(explicitRequestAttribute(text, matched, matched.language) || explicitRequestAttribute(text, matched, matched.genre)

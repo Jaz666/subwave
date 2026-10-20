@@ -129,6 +129,7 @@ async function main() {
 
   const totalCells = specs.reduce((n, k) => n + k.scenarios.length, 0);
   console.log(`\nllm-bench: ${models.length} model(s) × ${specs.length} kind(s) (${totalCells} scenario cells) × ${iterations} iteration(s)\n`);
+  if (specs.includes(directRequestSpec)) console.log('directRequestResolution scores first-attempt interpretation and catalogue selection separately; excludes route recovery, queue admission and intros.\n');
 
   for (const m of models) {
     for (const reasoning of reasoningVariants) {

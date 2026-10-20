@@ -16,7 +16,7 @@ export interface RequestMatch {
   unsupported?: string[];
   // Controller-owned marker; never part of the model's interpretation schema.
   literal?: boolean;
-  // Literal names need catalogue proof before they may hide condition words.
+  // Names need catalogue proof before they may hide condition words.
   unverifiedConditions?: string[];
 }
 
@@ -53,6 +53,7 @@ export interface RequestSelection {
   outcome: 'matched' | 'substituted' | 'cooldown' | 'already-queued' | 'no-match' | 'unsupported';
   errors: string[];
   unmetPreferences?: string[];
+  unsupported?: string[];
 }
 
 // Backstop for common conditions a small model can silently omit. Quoted
@@ -91,9 +92,41 @@ function requestConditionProse(text: string, match: RequestMatch): string {
   return prose;
 }
 
+// ICU supplies translated names for the languages recognised by literal
+// recovery. Never treat short ISO codes such as "en" or "de" as request
+// evidence: they are ordinary prepositions in other languages.
+const requestLanguageCodes = ['en', 'fr', 'de', 'es', 'it', 'pt', 'pa', 'hi', 'ur', 'tr', 'ar', 'ja', 'ko', 'zh', 'yue', 'ru', 'pl', 'nl', 'bn', 'ta', 'te', 'mr'];
+const englishLanguageNames = new Intl.DisplayNames(['en'], { type: 'language' });
+const translatedLanguageNames = new Map<string, string[]>();
+
+function requestLanguageCode(name: string): string | undefined {
+  const term = requestName(name);
+  return requestLanguageCodes.find(code => requestName(englishLanguageNames.of(code)) === term)
+    || (term === 'mandarin' ? 'zh' : undefined);
+}
+
+function requestLanguageTerms(name: string): string[] {
+  const term = requestName(name);
+  const code = requestLanguageCode(name);
+  if (!code) return [term];
+  // Cache only the fixed set of language codes, never arbitrary model strings.
+  if (!translatedLanguageNames.has(code)) {
+    translatedLanguageNames.set(code, [...new Set(requestLanguageCodes.map(locale =>
+      requestName(new Intl.DisplayNames([locale], { type: 'language' }).of(code))))]);
+  }
+  return [term, ...translatedLanguageNames.get(code)!];
+}
+
 export function explicitRequestAttribute(text: string, match: RequestMatch, value: string | null | undefined): boolean {
-  const term = requestName(value);
-  return !!term && ` ${requestName(requestConditionProse(text, match))} `.includes(` ${term} `);
+  if (!value) return false;
+  const prose = requestName(requestConditionProse(text, match));
+  const terms = value === match.language ? requestLanguageTerms(value) : [requestName(value)];
+  return terms.some(term => {
+    // Spacing/punctuation may change during canonicalisation (hiphop/hip hop),
+    // but a shared substring inside a different word (rap/trap) is no evidence.
+    const letters = [...term.replace(/ /g, '')].join(' *');
+    return !!letters && new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${letters}(?![\\p{L}\\p{N}\\p{M}])`, 'u').test(prose);
+  });
 }
 
 function requestGenreMatches(want: string, got: string): boolean {
@@ -159,7 +192,7 @@ export function modelFreeRequest(text: string): RequestMatch {
   // Other "in" phrases stay in the literal name and need catalogue proof;
   // e.g. A Day in the Life and Explosions in the Sky are names, not languages.
   const language = languageHint && /\sby\s|,\s|\s[-–—]\s/i.test(cleaned.slice(0, languageHint.index))
-    && /^(?:English|French|German|Spanish|Italian|Portuguese|Punjabi|Hindi|Urdu|Turkish|Arabic|Japanese|Korean|Chinese|Mandarin|Cantonese|Russian|Polish|Dutch|Bengali|Tamil|Telugu|Marathi)$/i.test(languageHint[1]) ? languageHint : null;
+    && requestLanguageCode(languageHint[1]) ? languageHint : null;
   const unverifiedConditions = languageHint && !language ? ['unparsed language condition'] : [];
   const query = language ? cleaned.slice(0, language.index) : cleaned;
   const by = query.match(/^(.+?)\s+by\s+(.+?)[.!?]*$/i);
@@ -199,7 +232,13 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
 }): Promise<RequestSelection> {
   const { catalog, recentIds, queuedIds, currentId } = deps;
   const errors: string[] = [];
-  if (match.unsupported?.some(reason => reason.trim())) return { track: null, source: 'unsupported', outcome: 'unsupported', errors };
+  const unsupported = deps.text === undefined ? match.unsupported || [] : directRequestUnsupported(deps.text, match);
+  if (unsupported.length) return { track: null, source: 'unsupported', outcome: 'unsupported', errors, unsupported };
+  // Model-supplied names can hide instructions just as literal names can.
+  // Defer those raw cues until an actual catalogue identity proves the name;
+  // otherwise refuse before any stand-in pool is tried.
+  const unverifiedConditions = [...new Set([...(match.unverifiedConditions || []),
+    ...(deps.text === undefined || match.kind === 'chat' ? [] : directRequestUnsupported(deps.text))])];
   const safe = async <T>(source: string, run: () => Promise<T>, fallback: T): Promise<T> => {
     try { return await run(); } catch (err) { errors.push(`${source}: ${err instanceof Error ? err.message : String(err)}`); return fallback; }
   };
@@ -290,7 +329,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
       if (result) return result;
     }
     const artist = await safe('artist resolution', () => catalog.resolveArtist(artistName!), null);
-    if (artist && (!match.literal || requestArtistMatches(artistName, { id: artist.id, artist: artist.name }))) {
+    if (artist && ((!match.literal && !unverifiedConditions.length) || requestArtistMatches(artistName, { id: artist.id, artist: artist.name }))) {
       resolvedArtistName = artist.name || artistName;
       const full = await safe('artist albums', () => catalog.getArtist(artist.id), null);
       let albums = full?.album || [];
@@ -347,7 +386,7 @@ export async function resolveDirectRequest(match: RequestMatch, deps: {
   }
   const identityRefusal = refusal();
   if (identityRefusal) return identityRefusal;
-  if (match.unverifiedConditions?.length) return { track: null, source: 'unsupported', outcome: 'unsupported', errors };
+  if (unverifiedConditions.length) return { track: null, source: 'unsupported', outcome: 'unsupported', errors, unsupported: unverifiedConditions };
 
   if (!title && !match.album) {
     if (genre) {
