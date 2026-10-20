@@ -44,6 +44,30 @@ Make competing outcomes possible. An empty alternative pool cannot prove that th
 
 Useful test names describe the promise: “an inferred mood does not turn an exact recording into a substitute” or “a late result cannot update the new station session.” Source-text assertions can check wiring conventions, but cannot establish runtime behaviour alone.
 
+### Anonymise station-specific examples
+
+Use invented names for examples taken from a real station. This applies to
+presenters, personas, listeners, stations, shows and biographies in code,
+fixtures, filenames, test names, prompts, benchmarks, screenshots and
+documentation. For example, use a fictional presenter such as “Mara Vale”
+at a fictional “Willow FM”, rather than copying the operator's station roster.
+
+- Choose synthetic names once and keep them stable in committed fixtures;
+  generating new names on every test run adds unnecessary variability.
+- Replace identifying details consistently across inputs, expected output,
+  snapshots and filenames. Use synthetic IDs and example domains rather
+  than real station identifiers, URLs or local paths.
+- Preserve the property that reproduces the bug: accents, Unicode,
+  punctuation, word boundaries, conflicting preferences or similar names.
+  Anonymisation must not remove the difficult case or weaken its assertions.
+- Keep public artist and recording names when their exact spelling is the
+  regression input. Those catalogue examples differ from private station
+  identities. Maintainer attribution and review-source links also remain.
+- Review the staged diff for copied station names and identifying details
+  before committing. Check that logic works with a second synthetic example
+  where wording or identity could accidentally influence the result; avoid
+  production rules fitted to one station's biography or persona names.
+
 ## 4. Choose additional tests by the surface changed
 
 ### Music interpretation and selection
@@ -136,13 +160,14 @@ Before submitting or marking ready:
 - [ ] Unchanged supported cases still pass against the baseline.
 - [ ] Shared callers, defaults and relevant clients have been checked.
 - [ ] Tests exercise meaningful competing outcomes and failure paths.
+- [ ] Station-specific examples use stable synthetic names and details, while preserving the regression trigger.
 - [ ] The final diff, documentation and validation claims agree.
 - [ ] Independent changes are separated or explicitly justified.
 - [ ] The PR targets `develop`; publishing remains subject to the user's instruction.
 
 ## Reusable task brief
 
-> Read the current SUB/WAVE contribution instructions and relevant internals. Define the failing behaviour and the supported behaviour to preserve. Check upstream overlap and shared callers before editing. For replacement features, inventory what the old route provides. Add a failing reproduction and unchanged compatibility cases; exercise the production entry point with external services isolated. Check model validation, migration symmetry, bounded failure costs and cancellation where relevant. Audit merge resolutions for lost upstream fixes and assertions. Compare relevant fixtures against develop, run the affected suites and required gates, and document exact validation and limitations. Keep independent provider, timing, default and release changes separate. Use explanatory commit bodies. Do not submit a PR until I ask.
+> Read the current SUB/WAVE contribution instructions and relevant internals. Define the failing behaviour and the supported behaviour to preserve. Check upstream overlap and shared callers before editing. For replacement features, inventory what the old route provides. Add a failing reproduction and unchanged compatibility cases; exercise the production entry point with external services isolated. Anonymise station-specific examples with stable synthetic names and details while preserving the regression trigger. Check model validation, migration symmetry, bounded failure costs and cancellation where relevant. Audit merge resolutions for lost upstream fixes and assertions. Compare relevant fixtures against develop, run the affected suites and required gates, and document exact validation and limitations. Keep independent provider, timing, default and release changes separate. Use explanatory commit bodies. Do not submit a PR until I ask.
 
 ## Additional lessons from PR #1687
 
