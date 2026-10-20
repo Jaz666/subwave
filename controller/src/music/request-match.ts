@@ -164,7 +164,7 @@ function headsLiteral(literal: string, term: string): boolean {
 // The search terms that can be names: never the reading's own artist in any
 // spelling ("Beatles" for The Beatles), nor a term carrying its mood, genre or
 // language word ("calm Queen songs").
-function nameSearchTerms(match: RequestMatch): string[] {
+export function nameSearchTerms(match: RequestMatch): string[] {
   const artist = artistIdentityKey(match.artist);
   const attributes = [match.genre, match.language, match.mood].map(requestName).filter(Boolean);
   return (match.search_terms || []).filter(term => {

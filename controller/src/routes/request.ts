@@ -27,7 +27,7 @@ import {
 } from '../middleware/ratelimit.js';
 import { validatePublicBody } from '../middleware/validate.js';
 import { listenerRequestSchema } from '../schemas/request.js';
-import { directRequestUnsupported, isRefusedOutcome, modelFreeRequest, repairRequestMatch, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
+import { directRequestUnsupported, isRefusedOutcome, modelFreeRequest, nameSearchTerms, repairRequestMatch, requestArtistMatches, resolveDirectRequest } from '../music/request-match.js';
 import { requestWaitClause } from '../broadcast/queue/pure.js';
 import { matchedRequestLookups, matchedRequestStandIn } from '../util/request-claim.js';
 import { ARTIST_VARIETY_WINDOW, drawRequestCandidate } from '../broadcast/dj-agent/artist-guard.js';
@@ -434,10 +434,9 @@ async function resolveRequest(entry) {
   entry.searchTerms = matched.search_terms || null;
 
   // Preserve upstream stand-in spacing after the resolver applies identity,
-  // hard constraints and cooldowns. Named matches remain exempt.
-  const terms = (matched.search_terms || []).filter(term => term &&
-    ![matched.mood, matched.genre, matched.language].some(value => value && value.toLowerCase() === term.toLowerCase()));
-  const named = matched.literal ? [] : [matched.artist, matched.title, ...terms];
+  // hard constraints and cooldowns. Named matches remain exempt, and the
+  // resolver says which search terms are names.
+  const named = matched.literal ? [] : [matched.artist, matched.title, ...nameSearchTerms(matched)];
   const searches: Array<{ term: string; hits: any[] }> = [];
   const varietyWindow = settings.get().llm?.artistVarietyWindow ?? ARTIST_VARIETY_WINDOW;
   const cdMin = Number(settings.get().requests.repeatCooldownMin ?? 120);
