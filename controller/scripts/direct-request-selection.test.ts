@@ -533,7 +533,8 @@ test('quoted spans cannot prove an unrelated title and search-term order cannot 
 test('a quoted title is the quoted span alone, never the words after it', () => {
   const plan = { title: null, artist: 'Queen', search_terms: ['Killer Queen'] };
   for (const text of ['Play "Bohemian Rhapsody" next', 'Play “Bohemian Rhapsody” for my mum', 'could you play ‘Bohemian Rhapsody’ again',
-    'play "Bohemian Rhapsody" from Queen', '"Bohemian Rhapsody" please DJ']) {
+    'play "Bohemian Rhapsody" from Queen', '"Bohemian Rhapsody" please DJ', 'please "Bohemian Rhapsody" now',
+    'can you please "Bohemian Rhapsody"']) {
     assert.equal(repairRequestMatch(plan, text).title, 'Bohemian Rhapsody', text);
   }
   assert.equal(repairRequestMatch(plan, 'Play ""').title, null);

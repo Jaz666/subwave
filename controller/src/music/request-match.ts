@@ -98,9 +98,10 @@ const QUOTED_NAMES = /"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![\p{L}\p{N}]
 const REQUEST_LEAD = /^\s*(?:(?:please\s+)?(?:can|could|would)\s+you\s+)?(?:(?:please\s+)?(?:play|put on|queue|request)\s+)?/i;
 
 // The name quoted right after the request's framing, without whatever follows
-// its closing quote: `play "X" for my mum` names X.
+// its closing quote: `play "X" for my mum` names X. A bare "please" frames a
+// quote too (`please "X"`), though never an unquoted name ("Please Please Me").
 function leadingQuotedName(text: string): string | null {
-  const head = text.replace(REQUEST_LEAD, '');
+  const head = text.replace(REQUEST_LEAD, '').replace(/^please\s+/i, '');
   const span = head.match(QUOTED_NAMES)?.[0];
   return span && head.startsWith(span) ? span.slice(1, -1).trim() || null : null;
 }
