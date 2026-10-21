@@ -13,8 +13,9 @@
 // anything new.
 //
 // STATE_DIR comes in two layers. This header is the one place they are
-// explained; CLAUDE.md, test-utils/state-dir.ts, test-state-isolation.test.ts
-// and web/scripts/run-tests.mjs point here.
+// explained; CLAUDE.md, test-utils/state-dir.ts, test-state-isolation.test.ts,
+// package-scripts.test.ts, test-headers.test.ts and web/scripts/run-tests.mjs
+// point here.
 //
 //   1. The run. This runner hands every file one fresh temp STATE_DIR,
 //      overriding whatever the calling shell exports, so an exported STATE_DIR
