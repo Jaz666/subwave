@@ -3,6 +3,8 @@
 import { V3AlertDialog } from '../ui/alert-dialog';
 
 import NotesHelp from './NotesHelp';
+import NotesSettingsSaveBar from './NotesSettingsSaveBar';
+import { countLeafDiffs } from './settings/form-diff';
 import type { QueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Card, Pill, Seg } from './ui';
@@ -51,18 +53,57 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
   const [ranked, setRanked] = useState(false);
   const [message, setMessage] = useState('');
   const [removeList, setRemoveList] = useState<SeriesList|null>(null);
-  const busy = configure.isPending || add.isPending || check.isPending;
-  const family = lists.data?.lists.filter((item) => item.editionGroup === '1001-albums') ?? [];
+  const [savingChoices,setSavingChoices] = useState(false);
+  const busy = savingChoices || configure.isPending || add.isPending || check.isPending;
+  type Choice = Pick<SeriesList, 'enabled'|'ranked'>;
+  const [drafts,setDrafts] = useState<Record<string,{baseline:Choice;value:Choice}>>({});
+  const displayed = (lists.data?.lists ?? []).map(item=>({...item,...drafts[item.id]?.value}));
+  const changedCount = Object.values(drafts).reduce((n,entry)=>n+countLeafDiffs(entry.baseline,entry.value),0);
+  function stage(patch:ListPatch) {
+    setMessage('');
+    setDrafts(previous=>{
+      const next={...previous};
+      for(const id of patch.ids) {
+        const item=lists.data?.lists.find(item=>item.id===id);
+        if(!item)continue;
+        const baseline=next[id]?.baseline??{enabled:item.enabled,ranked:item.ranked};
+        const value={...(next[id]?.value??baseline),
+          ...(patch.enabled===undefined?{}:{enabled:patch.enabled}),
+          ...(patch.ranked===undefined?{}:{ranked:patch.ranked})};
+        if(countLeafDiffs(baseline,value))next[id]={baseline,value};else delete next[id];
+      }
+      return next;
+    });
+  }
+  async function saveChoices() {
+    if(busy)return;
+    setSavingChoices(true);
+    setMessage('');
+    try {
+      for(const [id,{baseline,value}] of Object.entries(drafts)) {
+        try {
+          await configure.mutateAsync({ids:[id],
+            ...(baseline.enabled===value.enabled?{}:{enabled:value.enabled}),
+            ...(baseline.ranked===value.ranked?{}:{ranked:value.ranked})});
+          setDrafts(previous=>{const next={...previous};delete next[id];return next;});
+        } catch {setMessage('Some list settings were not saved. Your remaining changes are kept; try saving again.');return;}
+      }
+      setMessage('MusicBrainz list settings saved.');
+    } finally {setSavingChoices(false);}
+  }
+  const family = displayed.filter((item) => item.editionGroup === '1001-albums');
 
   async function change(patch: ListPatch) {
     setMessage('');
     try {
       await configure.mutateAsync(patch);
+      if(patch.removed)setDrafts(previous=>Object.fromEntries(Object.entries(previous).filter(([id])=>!patch.ids.includes(id))));
       setMessage(patch.removed ? 'Custom list removed. Saved history is kept.' : 'List settings saved.');
     } catch { /* The mutation renders the controller's error below. */ }
   }
 
   function row(item: SeriesList) {
+    item={...item,...drafts[item.id]?.value};
     const status = !item.enabled ? 'Disabled' : item.lastError ? 'Needs attention'
       : !lists.data?.enabled ? 'Collection paused' : item.fetchedAt ? 'Cached' : 'Waiting for collection';
     return <article id={`mbseries-${item.id}`} key={item.id} className="border border-border/70 p-3">
@@ -75,10 +116,10 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <div role="group" aria-label={`Enable ${item.label}${item.editionYear ? ` ${item.editionYear}` : ''}`}>
-          <Seg value={item.enabled ? 'on' : 'off'} disabled={busy} options={[{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }]} onChange={(value) => void change({ ids: [item.id], enabled: value === 'on' })} />
+          <Seg value={item.enabled ? 'on' : 'off'} disabled={busy} options={[{ id: 'off', label: 'Off' }, { id: 'on', label: 'On' }]} onChange={(value) => stage({ ids: [item.id], enabled: value === 'on' })} />
         </div>
         {item.origin === 'custom' && <>
-          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={item.ranked} disabled={busy} onChange={(event) => void change({ ids: [item.id], ranked: event.target.checked })} />Use positions as rankings</label>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={item.ranked} disabled={busy} onChange={(event) => stage({ ids: [item.id], ranked: event.target.checked })} />Use positions as rankings</label>
           <button type="button" disabled={busy} onClick={() => setRemoveList(item)} className="text-xs text-primary hover:underline disabled:opacity-50">Remove custom list</button>
         </>}
       </div>
@@ -87,20 +128,22 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
     </article>;
   }
 
-  return <Card headingLevel={2} title="MusicBrainz Lists" right={<NotesHelp text="These lists add facts about recordings and albums in published selections. Turning a list off stops using its facts but keeps saved history. Use rankings only when the list supplies meaningful positions." />} sub="Enable supplied lists or add your own · switches save immediately">
+  return <div className="space-y-3">
+    <NotesSettingsSaveBar count={changedCount} section="MusicBrainz Lists" busy={busy} onSave={()=>void saveChoices()} onDiscard={()=>{setDrafts({});configure.reset();setMessage('');}} />
+    <Card headingLevel={2} title="MusicBrainz Lists" right={<NotesHelp text="These lists add facts about recordings and albums in published selections. Turning a list off stops using its facts but keeps saved history. Use rankings only when the list supplies meaningful positions." />} sub="Save or discard changes to enabled lists and rankings">
     <p className="mb-4 text-[13px] leading-[1.55] text-muted">Enabled lists supply source-backed facts about tracks and albums in your library. Disabling stops refreshes and Story Spark offers; cached material and air history are kept.</p>
     {lists.data && !lists.data.enabled && <p className="mb-4 text-xs text-muted">Sleeve Notes is off. You can manage lists here; background collection waits until it is enabled.</p>}
     {lists.isLoading && <p role="status" className="text-[13px] text-muted">Loading lists…</p>}
     {lists.error && <div role="alert" className="text-[13px]"><p>{lists.error instanceof Error ? lists.error.message : 'Could not load lists'}</p><button type="button" onClick={() => void lists.refetch()} className="mt-2 text-primary hover:underline">Retry lists</button></div>}
     <div className="space-y-3">
-      {lists.data?.lists.filter((item) => item.origin === 'custom').map(row)}
-      <details className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Supplied lists · {lists.data?.lists.filter((item) => item.origin === 'supplied' && item.enabled).length ?? 0} enabled</summary><div className="mt-3 space-y-3">
-      {lists.data?.lists.filter((item) => item.origin === 'supplied' && item.editionGroup !== '1001-albums').map(row)}
+      {displayed.filter((item) => item.origin === 'custom').map(row)}
+      <details className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Supplied lists · {displayed.filter((item) => item.origin === 'supplied' && item.enabled).length} enabled</summary><div className="mt-3 space-y-3">
+      {displayed.filter((item) => item.origin === 'supplied' && item.editionGroup !== '1001-albums').map(row)}
       {!!family.length && <details className="border border-border p-3">
         <summary className="cursor-pointer text-[13px] font-medium">1001 Albums You Must Hear Before You Die · {family.filter((item) => item.enabled).length} of {family.length} editions enabled</summary>
         <div className="mt-3 flex flex-wrap gap-3 text-xs">
-          <button type="button" disabled={busy} onClick={() => void change({ ids: family.map((item) => item.id), enabled: true })} className="text-primary hover:underline disabled:opacity-50">Enable all editions</button>
-          <button type="button" disabled={busy} onClick={() => void change({ ids: family.map((item) => item.id), enabled: false })} className="text-primary hover:underline disabled:opacity-50">Disable all editions</button>
+          <button type="button" disabled={busy} onClick={() => stage({ ids: family.map((item) => item.id), enabled: true })} className="text-primary hover:underline disabled:opacity-50">Enable all editions</button>
+          <button type="button" disabled={busy} onClick={() => stage({ ids: family.map((item) => item.id), enabled: false })} className="text-primary hover:underline disabled:opacity-50">Disable all editions</button>
         </div>
         <div className="mt-3 space-y-3">{family.map(row)}</div>
       </details>}
@@ -117,7 +160,7 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
       {preview?.existing && <div className="mt-3 text-[13px]"><p>This list is already supplied or added: {preview.existing.label}.</p><a href={`#mbseries-${preview.existing.id}`} className="mt-2 inline-block text-primary hover:underline" onClick={() => {
         let ancestor = document.getElementById(`mbseries-${preview.existing?.id}`)?.parentElement;
         while (ancestor) { if (ancestor.tagName === 'DETAILS') ancestor.setAttribute('open', ''); ancestor = ancestor.parentElement; }
-      }}>Open existing list</a>{!preview.existing.enabled && <button type="button" disabled={busy} onClick={() => void change({ ids: [preview.existing!.id], enabled: true })} className="ml-3 text-primary hover:underline">Re-enable list</button>}</div>}
+      }}>Open existing list</a>{!preview.existing.enabled && <button type="button" disabled={busy} onClick={() => stage({ ids: [preview.existing!.id], enabled: true })} className="ml-3 text-primary hover:underline">Re-enable list</button>}</div>}
       {preview?.checkId && <div className="mt-3 border border-border p-3 text-[13px]">
         <p className="font-semibold">{preview.name}</p><p className="mt-1 text-xs text-muted">{preview.entityType === 'recording' ? 'Tracks' : 'Albums'} · {preview.members} members</p>
         <ul className="mt-2 list-disc pl-5 text-xs">{preview.sample?.map((item) => <li key={item.id}>{item.title}</li>)}</ul>
@@ -134,5 +177,5 @@ export default function MusicBrainzLists({ adminFetch, hydrated }: { adminFetch:
       onConfirm={()=>{if(removeList && !busy) void change({ids:[removeList.id],removed:true});}} />
     {message && <p role="status" className="mt-3 text-[13px]">{message}</p>}
     {(configure.error || check.error || add.error) && <p role="alert" className="mt-3 text-[13px]">{(configure.error || check.error || add.error)?.message}</p>}
-  </Card>;
+  </Card></div>;
 }

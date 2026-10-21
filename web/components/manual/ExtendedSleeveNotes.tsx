@@ -56,7 +56,7 @@ export default function ExtendedSleeveNotes() {
           <li>Sign in to the admin console and open <strong>Settings &rarr; DJ Behaviour</strong>.</li>
           <li>Enable <strong>Extended Sleeve Notes</strong> and save the setting.</li>
           <li>Open <strong>Notes</strong> in the admin navigation. Its Overview shows research activity and saved knowledge.</li>
-          <li>In the Notes <strong>Settings</strong> tab, check collection preferences and optionally configure Genius access for credits and musical connections.</li>
+          <li>In the Notes <strong>Settings</strong> tab, check collection preferences and optionally configure Genius access for credits and musical connections. Choose <strong>Save Sleeve Notes settings</strong> to apply your changes, or <strong>Discard</strong> to keep the saved values. MusicBrainz Lists has its own Save and Discard controls.</li>
           <li>Let the station play. Return later to see what it has learned.</li>
         </ol>
         <p>
@@ -174,7 +174,7 @@ export default function ExtendedSleeveNotes() {
         </p>
         <p>
           To stop collecting while keeping saved knowledge available to the DJ, choose
-          <strong> Pause collection</strong> in Notes settings. This keeps queued work
+          <strong> Pause collection</strong> in Notes settings, then save. This keeps queued work
           for later. It is different from turning the master switch off, which also
           stops the feature&rsquo;s on-air use and hides its interface.
         </p>

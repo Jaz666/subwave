@@ -2,27 +2,26 @@
 import { useId } from 'react';
 import NotesHelp from './NotesHelp';
 import { Controller } from 'react-hook-form';
-import { useZodForm, fieldAria } from '../../lib/form';
+import { fieldAria } from '../../lib/form';
 import { TextField, SwitchField } from '../../lib/form-fields';
-import { sleeveNotesSegmentSchema, DEFAULT_SLEEVE_NOTES_SEGMENT, type SleeveNotesSegmentConfig } from '../../lib/schemas.generated';
+import type { UseFormReturn } from 'react-hook-form';
+import type { NotesSettingsForm } from './notes-settings';
 import { FieldError } from '../ui/field';
-import { Card, Btn, Pill } from './ui';
+import { Card, Pill } from './ui';
 
-export default function SleeveNotesSegmentSettings({config,personas,busy,onSave}:{
-  config?:SleeveNotesSegmentConfig;personas:Array<{id:string;name:string}>;busy:boolean;
-  onSave:(config:SleeveNotesSegmentConfig)=>void;
+export default function SleeveNotesSegmentSettings({form,personas,busy}:{
+  form:UseFormReturn<NotesSettingsForm>;personas:Array<{id:string;name:string}>;busy:boolean;
 }) {
   const uid=useId();
-  const form=useZodForm(sleeveNotesSegmentSchema,{...DEFAULT_SLEEVE_NOTES_SEGMENT,...config});
   return <Card headingLevel={2} title="Sleeve Notes segment" right={<NotesHelp text="A segment is a longer solo story or a discussion with guests. Automatic segments use the normal broadcast slots; the selected host DJs can run them when enough suitable Sparks are available." />} sub="A longer observation or discussion from saved Story Sparks">
-    <form className="space-y-4" onSubmit={form.handleSubmit(onSave)}>
-      <SwitchField control={form.control} name="enabled" label="Enable Sleeve Notes segment" disabled={busy}
+    <div className="space-y-4">
+      <SwitchField control={form.control} name="segment.enabled" label="Enable Sleeve Notes segment" disabled={busy}
         description="Shares the existing segment slots with DJ skills. It waits for at least two usable Sparks about a track that has aired, its album or artist." />
-      <TextField control={form.control} name="cooldownMinutes" label="Cooldown time (minutes)" numeric min={5} max={1440} step={1} disabled={busy}
+      <TextField control={form.control} name="segment.cooldownMinutes" label="Cooldown time (minutes)" numeric min={5} max={1440} step={1} disabled={busy}
         description="Minimum time between Sleeve Notes segments. The station’s speech frequency and placement settings still apply." />
-      <SwitchField control={form.control} name="cohosts" label="Co-hosted discussion" disabled={busy}
+      <SwitchField control={form.control} name="segment.cohosts" label="Co-hosted discussion" disabled={busy}
         description="When the show has guests, let them discuss the stories with the host. Otherwise the host speaks alone." />
-      <Controller control={form.control} name="personaIds" render={({field,fieldState})=>{
+      <Controller control={form.control} name="segment.personaIds" render={({field,fieldState})=>{
         const aria=fieldAria(`${uid}-djs`,fieldState.error,{hasDescription:true});
         const selected=field.value??personas.map(p=>p.id);
         return <div className="space-y-2">
@@ -42,7 +41,6 @@ export default function SleeveNotesSegmentSettings({config,personas,busy,onSave}
           <FieldError {...aria.errorProps} errors={fieldState.error?[fieldState.error]:undefined} />
         </div>;
       }} />
-      <Btn type="submit" disabled={busy||!form.formState.isDirty}>{busy?'Saving…':'Save segment settings'}</Btn>
-    </form>
+    </div>
   </Card>;
 }

@@ -1,4 +1,9 @@
 'use client';
+import NotesSettingsSaveBar from './NotesSettingsSaveBar';
+import { notesSettingsDefaults, notesSettingsPatch, notesSettingsSchema, type NotesSettingsForm } from './notes-settings';
+import { useZodForm } from '../../lib/form';
+import { TextField } from '../../lib/form-fields';
+import { countLeafDiffs } from './settings/form-diff';
 
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { useDebounceValue } from 'usehooks-ts';
@@ -8,7 +13,7 @@ import SleeveNotesSegmentSettings from './SleeveNotesSegmentSettings';
 
 import Link from 'next/link';
 import type { FormEvent, ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, ExternalLink, GitBranch, Search } from 'lucide-react';
 import { Card, Btn, Eyebrow, Pill, Seg } from './ui';
@@ -337,9 +342,9 @@ export default function NotesPanel() {
   useEffect(()=>{setCategory(categoryQuery);setStoryOffset(0);},[categoryQuery]);
   const storyQuery=searchParams.get('q')??'';
   useEffect(()=>{setSearch(storyQuery);setStoryOffset(0);if(fromBrain){setStoriesMode('all');setCategory('all');}},[storyQuery,fromBrain]);
-  const [tokenDraft, setTokenDraft] = useState('');
-  const [wikiPromptDraft, setWikiPromptDraft] = useState('');
   const [configMessage, setConfigMessage] = useState('');
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSaveFailed, setConfigSaveFailed] = useState(false);
   const [wikiRefreshBusy, setWikiRefreshBusy] = useState(false);
   const [wikiRefreshConfirmation, setWikiRefreshConfirmation] = useState<{mode:'clear'|'replace';description:string}|null>(null);
   const [wikiRefreshMessage, setWikiRefreshMessage] = useState('');
@@ -402,6 +407,8 @@ export default function NotesPanel() {
   }
 
   async function saveConfig(patch: Record<string, unknown>, success: string) {
+    setConfigSaving(true);
+    setConfigSaveFailed(false);
     setConfigMessage('');
     try {
       const receipt = await settingsSave.mutateAsync(patch);
@@ -409,12 +416,12 @@ export default function NotesPanel() {
       setConfigMessage(receipt.refreshError
         ? `Saved, but settings could not be refreshed: ${receipt.refreshError}`
         : success);
-      const accessToken = (patch.sleeveNotes as { providers?: { genius?: { accessToken?: unknown } } } | undefined)
-        ?.providers?.genius?.accessToken;
-      if (typeof accessToken === 'string') setTokenDraft('');
+      return true;
     } catch (error) {
+      setConfigSaveFailed(true);
       setConfigMessage(error instanceof Error ? error.message : 'Could not save Sleeve Notes settings.');
-    }
+      return false;
+    } finally {setConfigSaving(false);}
   }
 
   if(!enabled)return <Card headingLevel={2} title="Extended Sleeve Notes">
@@ -454,26 +461,24 @@ export default function NotesPanel() {
         />
       )}
 
-      {tab === 'config' && (
+      <div hidden={tab !== 'config'}>
         <ConfigView
           status={status.data}
           values={settingsQuery.data?.values}
           loading={settingsQuery.isLoading || !hydrated}
           settingsError={settingsQuery.error instanceof Error ? settingsQuery.error.message : null}
-          busy={settingsSave.isPending}
-          tokenDraft={tokenDraft}
-          onTokenDraft={setTokenDraft}
-          wikiPromptDraft={wikiPromptDraft}
-          onWikiPromptDraft={setWikiPromptDraft}
+          busy={configSaving || settingsSave.isPending}
           message={configMessage}
-          onSave={(patch, success) => void saveConfig(patch, success)}
+          saveError={configSaveFailed}
+          onDiscard={()=>{setConfigMessage('');setConfigSaveFailed(false);}}
+          onSave={saveConfig}
           wikiRefreshBusy={wikiRefreshBusy}
           wikiRefreshMessage={wikiRefreshMessage}
           onWikiRefresh={(mode) => void prepareWikipediaRefresh(mode)}
           adminFetch={adminFetch}
-          hydrated={hydrated}
+          hydrated={hydrated && tab === 'config'}
         />
-      )}
+      </div>
 
       {tab !== 'overview' && tab !== 'config' && !hydrated && (
         <Card headingLevel={2} title="Loading collection status"><p className="text-[13px] text-muted">Connecting to the station…</p></Card>
@@ -973,8 +978,8 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
 }
 
 function ConfigView({
-  status, values, loading, settingsError, busy, tokenDraft, onTokenDraft, message, onSave,
-  wikiRefreshBusy, wikiRefreshMessage, onWikiRefresh, wikiPromptDraft, onWikiPromptDraft,
+  status, values, loading, settingsError, busy, message, saveError, onSave, onDiscard,
+  wikiRefreshBusy, wikiRefreshMessage, onWikiRefresh,
   adminFetch, hydrated,
 }: {
   status: NotesStatus | undefined;
@@ -982,30 +987,40 @@ function ConfigView({
   loading: boolean;
   settingsError: string | null;
   busy: boolean;
-  tokenDraft: string;
-  onTokenDraft: (value: string) => void;
   message: string;
-  onSave: (patch: Record<string, unknown>, success: string) => void;
+  saveError: boolean;
+  onDiscard: () => void;
+  onSave: (patch: Record<string, unknown>, success: string) => Promise<boolean>;
   wikiRefreshBusy: boolean;
   wikiRefreshMessage: string;
   onWikiRefresh: (mode: 'clear' | 'replace') => void;
-  wikiPromptDraft: string;
-  onWikiPromptDraft: (value: string) => void;
   adminFetch: (path: string, init?: RequestInit) => Promise<Response>;
   hydrated: boolean;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const geniusEnabled = values?.sleeveNotes?.providers?.genius?.enabled ?? status?.providerEnabled ?? true;
-  const researchWhenEmpty = values?.djBehaviour?.sleeveNotesMaintenanceWhenEmpty === true;
-  const artistClaimLimit = values?.sleeveNotes?.wikipedia?.artistClaimLimit ?? 20;
-  const albumClaimLimit = values?.sleeveNotes?.wikipedia?.albumClaimLimit ?? 5;
-  const [artistClaimDraft, setArtistClaimDraft] = useState(String(artistClaimLimit));
-  const [albumClaimDraft, setAlbumClaimDraft] = useState(String(albumClaimLimit));
-  useEffect(() => { setArtistClaimDraft(String(artistClaimLimit)); }, [artistClaimLimit]);
-  useEffect(() => { setAlbumClaimDraft(String(albumClaimLimit)); }, [albumClaimLimit]);
+  const form = useZodForm(notesSettingsSchema, notesSettingsDefaults(values, status?.wikipediaDefaultPrompt));
+  const draft = form.watch();
+  const baseline = form.formState.defaultValues as NotesSettingsForm;
+  const dirtyCount = countLeafDiffs(draft, baseline);
+  const incoming = JSON.stringify(notesSettingsDefaults(values, status?.wikipediaDefaultPrompt));
+  const loaded = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !values || loaded.current === incoming) return;
+    loaded.current = incoming;
+    if (!form.formState.isDirty) form.reset(JSON.parse(incoming));
+  }, [incoming, loading, values, form]);
+  const set = <K extends keyof NotesSettingsForm>(key: K, value: NotesSettingsForm[K]) => {
+    form.setValue(key, value as never, {shouldDirty: true, shouldValidate: true});
+  };
+  const {geniusEnabled,researchWhenEmpty,token:tokenDraft,prompt:wikiPromptDraft} = draft;
   const savedInSettings = status?.providerTokenSource === 'settings';
   const prompt = values?.sleeveNotes?.wikipedia?.extractPrompt ?? '';
   const effectivePrompt = wikiPromptDraft.trim() || status?.wikipediaDefaultPrompt || '';
+  const save = form.handleSubmit(async submitted => {
+    if (await onSave(notesSettingsPatch(submitted, baseline, status?.wikipediaDefaultPrompt), 'Sleeve Notes settings saved.')) {
+      form.reset({...submitted, token: '', clearToken: false});
+    }
+  });
   const previewArtists = useAdminQuery<{ artists: Array<{ id: string; name: string; hasCachedArticle: boolean }> }>({
     key: ['sleeve-notes', 'wikipedia-preview-artists'],
     adminFetch,
@@ -1029,8 +1044,6 @@ function ConfigView({
     entityType: 'artist' | 'release-group'; subject: string | null;
     section: string; output: string; elapsedMs: number; inputCharacters: number; wikiNumber: number;
   } | null>(null);
-  useEffect(() => { onWikiPromptDraft(prompt || status?.wikipediaDefaultPrompt || ''); },
-    [onWikiPromptDraft, prompt, status?.wikipediaDefaultPrompt]);
 
   async function previewWikipediaPrompt() {
     if (!previewArtistId) return;
@@ -1055,22 +1068,24 @@ function ConfigView({
 
   return (
     <div className="space-y-5">
+      <NotesSettingsSaveBar count={dirtyCount} section="Sleeve Notes" busy={busy} invalid={loading || !!settingsError || !notesSettingsSchema.safeParse(draft).success} onSave={()=>void save()} onDiscard={()=>{form.reset();setPreviewOutput(null);setPreviewError('');onDiscard();}} />
+      {message && (!dirtyCount || saveError) && <p role={saveError?'alert':'status'} className="text-[13px] text-muted">{message}</p>}
       <Card headingLevel={2} title="Feature switch">
         <p className="text-[13px] text-muted">Manage the master switch in Settings → DJ Behaviour. Turning it off hides Sleeve Notes and stops processing while keeping saved research.</p>
         <Link href="/admin/settings?section=behaviour#extended-sleeve-notes" className="mt-3 inline-block text-[13px] text-primary hover:underline">Open DJ Behaviour settings →</Link>
       </Card>
       <Card headingLevel={2} title="Background collection" right={<NotesHelp text="Pause research without stopping the DJ from using stories already saved. Resume it here when you want collection to continue." />} sub="Keep saved Sparks on air while research is paused">
-        <Seg aria-label="Background collection" value={values?.djBehaviour?.sleeveNotesCollectionPaused?'paused':'running'} disabled={busy||loading||!!settingsError} options={[{id:'running',label:'Collect stories'},{id:'paused',label:'Pause collection'}]} onChange={value=>onSave({djBehaviour:{sleeveNotesCollectionPaused:value==='paused'}},value==='paused'?'Collection paused. Saved Sparks remain available.':'Collection resumed.')} />
+        <Seg aria-label="Background collection" value={draft.collectionPaused?'paused':'running'} disabled={busy||loading||!!settingsError} options={[{id:'running',label:'Collect stories'},{id:'paused',label:'Pause collection'}]} onChange={value=>set('collectionPaused',value==='paused')} />
         <p className="mt-3 text-[13px] text-muted">Pauses background matching, source collection and extraction. Saved jobs are kept for resumption. On-air links and segments retain access to cached Sparks while Sleeve Notes is enabled.</p>
       </Card>
-      <SleeveNotesSegmentSettings key={JSON.stringify(values?.sleeveNotes?.segment)} config={values?.sleeveNotes?.segment} personas={values?.personas??[]} busy={busy||loading||!!settingsError} onSave={segment=>onSave({sleeveNotes:{segment}},'Sleeve Notes segment settings saved.')} />
+      <SleeveNotesSegmentSettings form={form} personas={values?.personas??[]} busy={busy||loading||!!settingsError} />
             <Card headingLevel={2} title="Genius connections (optional)" right={<NotesHelp text="Genius adds credits and connections between recordings. It needs a Client Access Token; Subwave does not collect lyrics." />} sub={savedInSettings ? 'saved in Settings' : status?.providerConfigured ? 'using a server environment token' : 'not configured'}>
             <div className="field">
               <Label>Genius metadata collection</Label>
               <Seg aria-label="Genius metadata collection" value={geniusEnabled ? 'on' : 'off'} options={[
                 { id: 'off', label: 'Off', title: 'Do not queue Genius metadata research' },
                 { id: 'on', label: 'On', title: 'Collect Genius recording credits and musical connections when configured' },
-              ]} disabled={busy || loading || !!settingsError} onChange={(value) => onSave({ sleeveNotes: { providers: { genius: { enabled: value === 'on' } } } }, `Genius metadata collection ${value === 'on' ? 'enabled' : 'disabled'}.`)} />
+              ]} disabled={busy || loading || !!settingsError} onChange={value=>set('geniusEnabled',value==='on')} />
               <p className="mt-2 text-[13px] leading-[1.55] text-muted">Collect structured producer, writer and musical connection metadata only. Lyrics are not fetched or retained. The station-wide master switch must also be on.</p>
             </div>
         <p className="max-w-4xl text-[13px] leading-[1.55] text-muted">Create a Genius API client, then generate its Client Access Token. The saved token is masked and never returned to the browser. Saving one here makes it the station’s Settings-backed token.</p>
@@ -1079,17 +1094,18 @@ function ConfigView({
         </a>
         <div className="mt-4 max-w-2xl">
           <Label htmlFor="genius-access-token">Genius Client Access Token</Label>
-          <Input id="genius-access-token" type="password" autoComplete="new-password" value={tokenDraft} onChange={(event) => onTokenDraft(event.target.value)} placeholder={savedInSettings ? 'Saved token is hidden; enter a replacement' : 'Paste Client Access Token'} />
+          <Input id="genius-access-token" type="password" autoComplete="new-password" value={tokenDraft} disabled={busy||loading||!!settingsError} onChange={event=>{set('token',event.target.value);set('clearToken',false);}} placeholder={savedInSettings ? 'Saved token is hidden; enter a replacement' : 'Paste Client Access Token'} />
         </div>
         <div className="mt-3 flex flex-wrap gap-2 [&>button]:max-w-full [&>button]:text-left [&>button]:whitespace-normal">
-          <Btn tone="solid" type="button" disabled={busy || loading || !!settingsError || !tokenDraft.trim()} onClick={() => onSave({ sleeveNotes: { providers: { genius: { accessToken: tokenDraft.trim() } } } }, 'Genius token saved.')}>Save token</Btn>
-          {savedInSettings && <Btn type="button" disabled={busy || loading || !!settingsError} onClick={() => onSave({ sleeveNotes: { providers: { genius: { accessToken: '' } } } }, 'Saved Genius token cleared.')}>Clear saved token</Btn>}
+          {savedInSettings && <Btn type="button" disabled={busy || loading || !!settingsError} onClick={()=>{set('token','');set('clearToken',!draft.clearToken);}}>{draft.clearToken?'Keep saved token':'Clear saved token'}</Btn>}
+          {draft.clearToken && <p className="text-xs text-muted">The saved token will be cleared when you save.</p>}
+
         </div>
         {status?.providerTokenSource === 'environment' && <p className="mt-3 text-xs text-muted">A server environment token is currently available. A token saved here takes priority over it.</p>}
 
       </Card>
       <MusicBrainzLists adminFetch={adminFetch} hydrated={hydrated} />
-      <Card headingLevel={2} title="Collection preferences" right={<NotesHelp text="Allow research when the station has no listeners. Broadcast and other higher-priority work still come first." />} sub="Switches save immediately · token, prompt and limits have their own Save buttons">
+      <Card headingLevel={2} title="Collection preferences" right={<NotesHelp text="Allow research when the station has no listeners. Broadcast and other higher-priority work still come first." />} sub="Save or discard pending changes above">
         {loading ? <p className="text-[13px] text-muted">Loading Settings…</p> : settingsError ? (
           <p className="text-[13px] text-muted">Could not read saved settings: {settingsError}</p>
         ) : (
@@ -1099,7 +1115,7 @@ function ConfigView({
               <Seg aria-label="Research while the station is empty" value={researchWhenEmpty ? 'on' : 'off'} options={[
                 { id: 'off', label: 'Off', title: 'Pause non-airing Sleeve Notes research while the station is empty' },
                 { id: 'on', label: 'On', title: 'Allow low-priority backfill while Icecast confirms zero listeners' },
-              ]} disabled={busy || loading || !!settingsError} onChange={(value) => onSave({ djBehaviour: { sleeveNotesMaintenanceWhenEmpty: value === 'on' } }, `Empty-station research ${value === 'on' ? 'enabled' : 'disabled'}.`)} />
+              ]} disabled={busy || loading || !!settingsError} onChange={value=>set('researchWhenEmpty',value==='on')} />
               <p className="mt-2 text-[13px] leading-[1.55] text-muted">This controls background research only. It does not resume DJ speech or picks, and work still yields to higher-priority station tasks.</p>
             </div>
           </div>
@@ -1108,23 +1124,22 @@ function ConfigView({
       <details onToggle={(event) => setAdvancedOpen(event.currentTarget.open)} className="border border-border p-3"><summary className="cursor-pointer text-[13px] font-medium">Advanced · research prompt and limits</summary><div className="mt-3"><Card headingLevel={2} title="Wikipedia research prompt" right={<NotesHelp text="These instructions tell the model which facts to save from source articles. Save changes to use them for future research. Preview tests the draft without saving any facts." />} sub={status?.wikipediaPromptIsCustom ? 'custom prompt active' : 'default prompt active'}>
         <p className="mb-3 max-w-4xl text-[13px] leading-[1.55] text-muted">Set the instructions used to choose and rank facts. Use <code>{'{wikiNumber}'}</code> where the prompt should state how many facts this article section may return. The code shares your Artist or Album limit across sections according to their text length; source checks may retain fewer. A refresh uses the saved Wikipedia text.</p>
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          <label className="field"><span className="text-[13px] font-medium">Facts per artist article</span><Input type="number" min={1} max={20} step={1} value={artistClaimDraft} onChange={(event) => setArtistClaimDraft(event.target.value)} className="mt-1 w-28" /></label>
-          <label className="field"><span className="text-[13px] font-medium">Facts per album article</span><Input type="number" min={1} max={20} step={1} value={albumClaimDraft} onChange={(event) => setAlbumClaimDraft(event.target.value)} className="mt-1 w-28" /></label>
-          <Btn type="button" disabled={busy || loading || !!settingsError || !/^([1-9]|1\d|20)$/u.test(artistClaimDraft) || !/^([1-9]|1\d|20)$/u.test(albumClaimDraft) || (Number(artistClaimDraft) === artistClaimLimit && Number(albumClaimDraft) === albumClaimLimit)} onClick={() => onSave({ sleeveNotes: { wikipedia: { artistClaimLimit: Number(artistClaimDraft), albumClaimLimit: Number(albumClaimDraft) } } }, 'Wikipedia fact limits saved.')}>Save fact limits</Btn>
+          <TextField control={form.control} name="artistClaimLimit" label="Facts per artist article" numeric min={1} max={20} step={1} disabled={busy||loading||!!settingsError} />
+          <TextField control={form.control} name="albumClaimLimit" label="Facts per album article" numeric min={1} max={20} step={1} disabled={busy||loading||!!settingsError} />
         </div>
         <textarea
           aria-label="Wikipedia research prompt"
           maxLength={8000}
+          disabled={busy || loading || !!settingsError}
           value={wikiPromptDraft}
-          onChange={(event) => { onWikiPromptDraft(event.target.value); setPreviewOutput(null); setPreviewError(''); }}
+          onChange={(event) => { set('prompt',event.target.value); setPreviewOutput(null); setPreviewError(''); }}
           className="min-h-48 w-full border border-border bg-bg p-3 text-[13px] leading-[1.55]"
           placeholder={status?.wikipediaDefaultPrompt}
         />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
           <span>{wikiPromptDraft.length.toLocaleString('en-GB')} / 8,000 characters · {wikiPromptDraft === (status?.wikipediaDefaultPrompt ?? '') && !prompt ? 'Default prompt is active.' : 'Custom instructions are active after saving.'}</span>
           <div className="flex gap-2">
-            <Btn tone="solid" type="button" disabled={busy || loading || !!settingsError || wikiPromptDraft === (prompt || status?.wikipediaDefaultPrompt || '')} onClick={() => onSave({ sleeveNotes: { wikipedia: { extractPrompt: wikiPromptDraft } } }, 'Wikipedia research prompt saved.')}>Save prompt</Btn>
-            <Btn type="button" disabled={busy || !prompt} onClick={() => { onWikiPromptDraft(''); onSave({ sleeveNotes: { wikipedia: { extractPrompt: '' } } }, 'Default Wikipedia research prompt restored.'); }}>Restore default</Btn>
+            <Btn type="button" disabled={busy || loading || !!settingsError || wikiPromptDraft === status?.wikipediaDefaultPrompt} onClick={()=>{set('prompt',status?.wikipediaDefaultPrompt ?? '');setPreviewOutput(null);setPreviewError('');}}>Restore default</Btn>
           </div>
         </div>
         {effectivePrompt && <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Preview active prompt</summary><pre className="mt-2 bg-muted/20 p-3 text-xs leading-[1.5] whitespace-pre-wrap">{effectivePrompt}</pre></details>}
@@ -1175,7 +1190,6 @@ function ConfigView({
       </Card>
 
       </div></details>
-      {message && <p role="status" className="text-[13px] text-muted">{message}</p>}
     </div>
   );
 }
