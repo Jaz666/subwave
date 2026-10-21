@@ -36,12 +36,14 @@ export default function AiringReviews({adminFetch,timezone}:{adminFetch:AdminFet
   });
   return <Card headingLevel={2} title="Flagged reviews" right={<NotesHelp text="Flagging asks the model to investigate. Keep leaves the fact unchanged; dismiss sets the finding aside. Apply saves the proposal you approve. Withdrawal stops DJ use without deleting the fact." />} sub="Saved facts, aired DJ links and Sleeve Notes segments">
     <p className="mb-3 text-[13px] text-muted">Reviews wait behind ready research jobs and use the same quiet-time checks and token budget. Flagging leaves availability unchanged. Withdrawn facts stay off air until you explicitly restore them. Suggestions change nothing until you approve them.</p>
+    <div className="flex flex-wrap items-center gap-3">
     <Seg aria-label="Review status" value={status} options={[{id:'active',label:'Needs review'},{id:'resolved',label:'Resolved'},{id:'dismissed',label:'Dismissed'}]}
       onChange={value=>{setStatus(value);setOffset(0);}} />
+    <Link href="/admin/notes?tab=stories&storiesView=withdrawn" className="ml-auto shrink-0 text-xs text-primary hover:underline">Manage withdrawn facts</Link>
+    </div>
     {shelf.isLoading&&<p role="status" className="mt-3 text-sm">Loading reviews…</p>}
     {shelf.error&&<p role="alert" className="mt-3 text-sm">{shelf.error.message}</p>}
     {shelf.data?.items.length===0&&<p className="mt-3 text-sm text-muted">No {status==='active'?'pending':status} reviews. Flag a fact in Stories or an exchange in Heard on Air to request one.</p>}
-    <Link href="/admin/notes?tab=stories&storiesView=withdrawn" className="mt-3 inline-block text-xs text-primary hover:underline">Manage withdrawn facts</Link>
     <div className="mt-4 space-y-4">{shelf.data?.items.map(item=>{
       const pending=decide.isPending&&decide.variables?.id===item.id;
       const action=decide.variables?.id===item.id?decide.variables.action:null;
