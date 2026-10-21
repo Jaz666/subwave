@@ -1,7 +1,7 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { Fraunces, Plus_Jakarta_Sans, JetBrains_Mono, Doto, Space_Grotesk, Instrument_Serif, IBM_Plex_Mono, Space_Mono, Fira_Code, Anton, Chakra_Petch, Saira_Stencil, Courier_Prime, Overpass_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { GoogleAnalytics } from '@next/third-parties/google';
 import { THEME_INIT_SCRIPT } from '@/lib/theme';
 import { LITE_INIT_SCRIPT } from '@/lib/lite';
@@ -17,104 +17,132 @@ import { Toaster } from '@/components/ui/toaster';
 // gtag.js only loads when a Measurement ID is configured (lib/ga, resolved from
 // the runtime env), so dev and un-instrumented deploys stay analytics-free.
 
+// Bundle fonts locally so builds do not depend on Google Fonts responses.
+// Sources and licenses are recorded in app/fonts/.
 // Fraunces is the display serif (its opsz axis self-tunes contrast). Plus
 // Jakarta Sans carries body/UI, JetBrains Mono is data.
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  axes: ['opsz'],
+const fraunces = localFont({
+  src: './fonts/fraunces/Fraunces.woff2',
+  weight: '100 900',
+  style: 'normal',
   display: 'swap',
+  adjustFontFallback: 'Times New Roman',
   variable: '--font-fraunces',
 });
 
 // Curated display faces a theme can select via the --display-font token (see
 // lib/theme FONT_STACKS). Loaded globally; kept small to bound bundle weight.
-const doto = Doto({
-  subsets: ['latin'],
-  weight: 'variable',
+const doto = localFont({
+  src: './fonts/doto/Doto.woff2',
+  weight: '100 900',
+  style: 'normal',
   display: 'swap',
   variable: '--font-doto',
 });
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
+const spaceGrotesk = localFont({
+  src: './fonts/spacegrotesk/SpaceGrotesk.woff2',
+  weight: '300 700',
+  style: 'normal',
   display: 'swap',
   variable: '--font-space-grotesk',
 });
 
-const instrumentSerif = Instrument_Serif({
-  subsets: ['latin'],
+const instrumentSerif = localFont({
+  src: './fonts/instrumentserif/InstrumentSerif-Regular.woff2',
   weight: '400',
+  style: 'normal',
   display: 'swap',
+  adjustFontFallback: 'Times New Roman',
   variable: '--font-instrument-serif',
 });
 
-const anton = Anton({
-  subsets: ['latin'],
+const anton = localFont({
+  src: './fonts/anton/Anton-Regular.woff2',
   weight: '400',
+  style: 'normal',
   display: 'swap',
   variable: '--font-anton',
 });
 
-const chakraPetch = Chakra_Petch({
-  subsets: ['latin'],
-  weight: ['400', '700'],
+const chakraPetch = localFont({
+  src: [
+    { path: './fonts/chakrapetch/ChakraPetch-Regular.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/chakrapetch/ChakraPetch-Bold.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-chakra-petch',
 });
 
-const sairaStencilOne = Saira_Stencil({
-  subsets: ['latin'],
+const sairaStencilOne = localFont({
+  src: './fonts/sairastencil/SairaStencil.woff2',
   weight: '400',
+  style: 'normal',
   display: 'swap',
   adjustFontFallback: false,
   variable: '--font-saira-stencil-one',
 });
 
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
+const plusJakarta = localFont({
+  src: './fonts/plusjakartasans/PlusJakartaSans.woff2',
+  weight: '200 800',
+  style: 'normal',
   display: 'swap',
   variable: '--font-sans',
 });
 
 // The default data face. Its next/font variable is --font-jetbrains, NOT
 // --font-mono: the `font-mono` utility follows the themeable --mono-font token.
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['300', '400', '500', '700', '800'],
+const jetbrainsMono = localFont({
+  src: './fonts/jetbrainsmono/JetBrainsMono.woff2',
+  weight: '100 800',
+  style: 'normal',
   display: 'swap',
   variable: '--font-jetbrains',
 });
 
 // Curated monospace faces a theme can select via the --mono-font token.
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+const ibmPlexMono = localFont({
+  src: [
+    { path: './fonts/ibmplexmono/IBMPlexMono-Regular.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/ibmplexmono/IBMPlexMono-Medium.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/ibmplexmono/IBMPlexMono-SemiBold.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/ibmplexmono/IBMPlexMono-Bold.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-ibm-plex-mono',
 });
 
-const spaceMono = Space_Mono({
-  subsets: ['latin'],
-  weight: ['400', '700'],
+const spaceMono = localFont({
+  src: [
+    { path: './fonts/spacemono/SpaceMono-Regular.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/spacemono/SpaceMono-Bold.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-space-mono',
 });
 
-const firaCode = Fira_Code({
-  subsets: ['latin'],
+const firaCode = localFont({
+  src: './fonts/firacode/FiraCode.woff2',
+  weight: '300 700',
+  style: 'normal',
   display: 'swap',
   variable: '--font-fira-code',
 });
 
-const courierPrime = Courier_Prime({
-  subsets: ['latin'],
-  weight: ['400', '700'],
+const courierPrime = localFont({
+  src: [
+    { path: './fonts/courierprime/CourierPrime-Regular.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/courierprime/CourierPrime-Bold.woff2', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-courier-prime',
 });
 
-const overpassMono = Overpass_Mono({
-  subsets: ['latin'],
+const overpassMono = localFont({
+  src: './fonts/overpassmono/OverpassMono.woff2',
+  weight: '300 700',
+  style: 'normal',
   display: 'swap',
   variable: '--font-overpass-mono',
 });
