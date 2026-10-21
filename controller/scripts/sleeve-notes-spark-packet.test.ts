@@ -28,6 +28,14 @@ test('the natural introduction is the task and the single researched claim stays
   assert.match(prompt, /supported detail and track identification cannot both fit naturally, pass on the Spark/);
 });
 
+test('a dated historical Spark retains its time framing in the link instructions', () => {
+  const wording='Suede were honoured with the Inspiration Award at the 2010 Q Awards.';
+  const prompt=linkPrompt({current:{artist:'Suede',title:'Lazy'},extendedSleeveNote:{...note,wording,fullWording:wording}});
+  assert.match(prompt,/retain past-tense wording and any explicit date/);
+  assert.match(prompt,/Do not recast a historical event as a recent development/);
+  assert.ok(prompt.includes(`Supported fact: ${wording}`));
+});
+
 test('matching release and recording scopes identify the real subject', () => {
   assert.match(storySparkPacket({ ...note, airtimeScope: 'matching-release-only', matchingReleaseTitle: 'Another Album' }, null),
     /About: the album Another Album/);

@@ -367,6 +367,7 @@ export function linkPrompt({
       : 'Output only the words to be spoken on air.',
     'The named track is already playing. Give a natural introduction in the presenter’s voice that identifies the supplied artist and track title, keeping their roles distinct. Focus on this track and do not refer to the previous track.',
     'FACTUAL GROUNDING: Music facts are limited to the supplied Verified Facts, Sleeve Notes, Story Spark and episode source data. Use no remembered artist, recording, album, release, chart, reputation, influence or history information. Preserve meaning, relationships, attribution and qualifiers when paraphrasing; never add causes, intent, chronology or other unsupported detail.',
+    'Preserve the time framing of supplied facts. If a fact describes a past event, retain past-tense wording and any explicit date. Do not recast a historical event as a recent development.',
     '“First station play” is not a premiere or a world premiere. An album fact never means the album belongs to the station or presenter.',
     'The supplied day of week is for accuracy, not generic atmosphere. Mention it only when it adds something specific and natural.',
     'Do not describe instrumentation, production, lyrics or other audio properties unless explicitly supplied. A subjective in-character response is welcome without implying an observed audio property.',
