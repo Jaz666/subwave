@@ -55,10 +55,12 @@ test('one click snapshots the whole segment once, keeps Sparks active and accept
   await assert.rejects(flagAiredUse('missing'),/No confirmed/);
 });
 
-test('ready research takes priority; an idle pacing slot runs one review and approval controls guidance',async t=>{
+test('explicitly promoted research takes priority; the next pacing slot runs the review',async t=>{
   const calls=model(t,result),worker=new ResearchWorker({isQuiet:()=>true});
   db.prepare(`INSERT INTO sleeve_research_jobs(id,provider,subject_type,subject_id,capability,state,operator_requested,created_at,updated_at)
     VALUES ('research-first','researcher','artist','missing','extract-wikipedia','queued',1,?,?)`).run(at,at);
+  const {manageQueuedJob}=await import('../src/sleeve-notes/queue-actions.js');
+  manageQueuedJob(db,'research-first','top');
   assert.equal(await worker.runOnce(),true);assert.equal(calls(),0);assert.equal(listAiringReviews().items[0].state,'queued');
   assert.equal(await worker.runOnce(),true);assert.equal(calls(),1);
   const review=listAiringReviews().items[0];assert.equal(review.state,'ready');assert.deepEqual(review.result,result);assert.equal(reviewReadyCount(),1);
@@ -66,6 +68,25 @@ test('ready research takes priority; an idle pacing slot runs one review and app
   decideAiringReview(review.id,'apply-guidance');assert.match(approvedAiringGuidance(),/Preserve date context/);
   assert.equal(listAiringReviews().total,0);assert.equal(listAiringReviews('resolved').total,1);assert.equal(reviewReadyCount(),0);
   decideAiringReview(review.id,'revoke-guidance');assert.equal(approvedAiringGuidance(),'');
+});
+
+test('requested reviews take a normal pacing slot ahead of unpromoted background research',async t=>{
+ use('priority-review');const flag=await flagAiredUse('priority-review');
+ const calls=model(t,result);db.prepare('DELETE FROM sleeve_research_pacing').run();
+ db.prepare(`INSERT INTO sleeve_research_jobs(id,provider,subject_type,subject_id,capability,state,operator_requested,created_at,updated_at)
+ VALUES ('background-behind-review','researcher','artist','background-missing','extract-wikipedia','queued',1,?,?)`).run(at,at);
+ assert.equal(await new ResearchWorker({isQuiet:()=>true}).runOnce(),true);
+ assert.equal(calls(),1);
+ assert.equal((db.prepare("SELECT state FROM sleeve_research_jobs WHERE id='background-behind-review'").get() as {state:string}).state,'queued');
+ assert.equal((db.prepare('SELECT last_slot_kind AS kind FROM sleeve_research_pacing WHERE id=1').get() as {kind:string}).kind,'review');
+ use('second-priority-review');const second=await flagAiredUse('second-priority-review');
+ db.prepare("UPDATE sleeve_research_pacing SET next_pair_at='2000-01-01' WHERE id=1").run();
+ assert.equal(await new ResearchWorker({isQuiet:()=>true}).runOnce(),true);
+ assert.equal(calls(),1,'a new worker should select background research before another ordinary review');
+ assert.equal((db.prepare('SELECT state FROM sleeve_airing_reviews WHERE id=?').get(second.id) as {state:string}).state,'queued');
+ db.prepare('DELETE FROM sleeve_airing_reviews WHERE id=?').run(second.id);
+ db.prepare("DELETE FROM sleeve_research_jobs WHERE id='background-behind-review'").run();
+ db.prepare('DELETE FROM sleeve_airing_reviews WHERE id=?').run(flag.id);
 });
 
 test('interruptions retry durably, and the shared pacing gate prevents immediate repeated calls',async t=>{

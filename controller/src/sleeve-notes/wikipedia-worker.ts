@@ -35,7 +35,7 @@ export class WikipediaWorker {
     const artistJob = releaseGroupJob ? null : repository.nextPendingResearchJob('wikipedia', {
       subjectType: 'artist', capability: ARTIST_CAPABILITY,
     });
-    const job = releaseGroupJob ?? artistJob;
+    const job = repository.nextPendingResearchJob('wikipedia',{promotedOnly:true}) ?? releaseGroupJob ?? artistJob;
     if (!job) return false;
     return job.subjectType === 'release'
       ? this.fetchReleaseGroup(job)

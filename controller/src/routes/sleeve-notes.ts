@@ -1,3 +1,4 @@
+import { manageQueuedJob } from '../sleeve-notes/queue-actions.js';
 import {loadExtendedSleeveNoteCandidatesInDatabase} from '../sleeve-notes/link-selection.js';
 import {getPlaybackMeta} from '../music/library.js';
 import { researchAllowed } from '../broadcast/dj-budget.js';
@@ -258,6 +259,13 @@ router.post('/sleeve-notes/moderation/:id/:action', requireAdmin, async (req, re
   }
 });
 
+router.post('/sleeve-notes/queue/:id/:action', requireAdmin, async (req,res)=>{
+  const action=String(req.params.action),id=String(req.params.id);
+  if(!['top','cancel'].includes(action)||!id||id.length>300)return res.status(400).json({error:'Choose a queued job and supported action'});
+  try{manageQueuedJob(openSleeveNotesDb(),id,action as 'top'|'cancel');return res.json({ok:true});}
+  catch(error){return res.status(409).json({error:error instanceof Error?error.message:'Could not update queued job'});}
+});
+
 router.post('/sleeve-notes/claims/:id/review', requireAdmin, async (req, res) => {
   await settings.load();
   if (settings.get().djBehaviour.extendedSleeveNotes !== true) return res.status(409).json({ error: 'Extended Sleeve Notes is disabled' });
@@ -514,6 +522,7 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
     subjectType: 'recording', subjectTitle: review.title ?? 'Flagged speech', subjectArtist: review.artist,
     priority: 0, attempts: 0, runAfter: null, wikiNextChunk: 0, researchNextSection: 0 })));
 
+  const promotions=new Map((openSleeveNotesDb().prepare('SELECT job_id,requested_at FROM sleeve_queue_promotions').all() as Array<{job_id:string;requested_at:string}>).map(row=>[row.job_id,row.requested_at]));
   const queueCounts = new Map<string, { provider: string; capability: string; phase: string; jobs: number }>();
   for (const item of workQueueItems) {
     const key = `${item.provider}\u0000${item.capability}\u0000${item.phase}`;
@@ -532,7 +541,7 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
     readAt: Date.now(),
     ...researchStoreReadout(),
     workQueue: [...queueCounts.values()],
-    workQueueItems,
+    workQueueItems: workQueueItems.map(job=>({...job,promotedAt:promotions.get(job.id)??null})),
     wikipediaArtistChunkCharacterTarget: adaptiveWikipediaChunkCharacters(undefined, 'artist'),
     wikipediaAlbumChunkCharacterTarget: adaptiveWikipediaChunkCharacters(undefined, 'release'),
     wikipediaExtractAverageLatencyMs,

@@ -119,6 +119,7 @@ test('upgrade restores saved extraction rank and leaves original claims and word
   // string item as well as diagnostics so old cache formats cannot abort boot.
   db.exec(`CREATE TABLE sleeve_encounters (id TEXT PRIMARY KEY);
     CREATE TABLE sleeve_musicbrainz_series (series_mbid TEXT PRIMARY KEY);
+    CREATE TABLE sleeve_research_pacing (id INTEGER PRIMARY KEY,next_pair_at TEXT,last_pair_at TEXT,pair_interval_ms INTEGER,empty_station_interval_ms INTEGER);
     CREATE TABLE sleeve_claim_uses (id TEXT PRIMARY KEY, aired_at TEXT);
     CREATE TABLE sleeve_research_jobs (id TEXT PRIMARY KEY,provider TEXT,subject_type TEXT,subject_id TEXT,
       capability TEXT,state TEXT,priority INTEGER,completed_at TEXT,updated_at TEXT);
@@ -138,7 +139,7 @@ test('upgrade restores saved extraction rank and leaves original claims and word
     extraction_rank: 2, extraction_section: 3, feedback_hold: 0,
   });
   migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }),60);
+  assert.equal(db.pragma('user_version', { simple: true }),61);
   db.close();
 });
 

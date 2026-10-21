@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 60;
+export const SCHEMA_VERSION = 61;
 
 let db: Database.Database | null = null;
 let libraryFingerprint: string | null = null;
@@ -1368,6 +1368,14 @@ export function migrate(d: Database.Database): void {
       WHERE provider='wikipedia' AND wikipedia_completed_at IS NULL;`);
     d.exec('CREATE TABLE IF NOT EXISTS sleeve_library_source (id INTEGER PRIMARY KEY CHECK(id=1), fingerprint TEXT NOT NULL)');
     d.pragma('user_version = 60');
+  }
+
+  if (version < 61) {
+    if (!(d.prepare('PRAGMA table_info(sleeve_research_pacing)').all() as Array<{name:string}>).some(column=>column.name==='last_slot_kind')) {
+      d.exec("ALTER TABLE sleeve_research_pacing ADD COLUMN last_slot_kind TEXT NOT NULL DEFAULT 'research' CHECK(last_slot_kind IN ('research','review'))");
+    }
+    d.exec('CREATE TABLE IF NOT EXISTS sleeve_queue_promotions (job_id TEXT PRIMARY KEY, requested_at TEXT NOT NULL)');
+    d.pragma('user_version = 61');
   }
 
 }

@@ -157,6 +157,16 @@ export default function ExtendedSleeveNotes() {
           turns source material into usable talking points and handles reviews.
         </p>
         <p>
+          Expand <strong>Show queue</strong> in the Overview&rsquo;s Research activity
+          box to use <strong>Send to top</strong> or <strong>Cancel job</strong>.
+          Prioritising moves eligible work ahead in its worker queue; it still waits
+          for broadcast work, source limits, retry delays and any required play.
+          Reviews and background research share LLM slots so neither waits for the entire other queue.
+          Running jobs finish their current step before these controls become available.
+          Cancelling keeps saved facts and progress. Automatic collection or a later
+          request may queue research again; cancelling a queued review dismisses it.
+        </p>
+        <p>
           Check <strong>Research while the station is empty</strong> in Notes settings
           if you want collection without listeners; other station settings still affect
           when work can run. Leave collection time to build useful coverage; some

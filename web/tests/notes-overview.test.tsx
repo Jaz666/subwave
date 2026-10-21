@@ -9,7 +9,7 @@ import {SectionTabs} from '../components/admin/SectionTabs';
 import ReviewCount from '../components/admin/ReviewCount';
 import {Card} from '../components/admin/ui';
 import type {ComponentProps} from 'react';
-import {OverviewView,ResearchActivity,ResearchDetailsView} from '../components/admin/NotesPanel';
+import {OverviewView,ResearchActivity,ResearchDetailsView,ResearchQueueActions} from '../components/admin/NotesPanel';
 
 const fetcher=async()=>{throw new Error('No network in render checks');};
 
@@ -132,5 +132,20 @@ test('Saved knowledge links Stories to its facts and connections and credits to 
  assert.match(html,/>2<!-- --> Library connections|>2 Library connections/);
  assert.doesNotMatch(html,/900/);
  assert.match(html,/Each relationship is counted once/);
+ client.clear();
+});
+
+
+test('queue actions are absent when Show queue is closed; running jobs cannot be changed',()=>{
+ const client=new QueryClient();
+ const data={workQueueItems:[{id:'job',provider:'researcher',capability:'extract-wikipedia',phase:'ready',priority:1,subjectTitle:'Artist'}]} as ComponentProps<typeof ResearchActivity>['data'];
+ const status={enabled:true} as ComponentProps<typeof ResearchActivity>['status'];
+ const html=renderToStaticMarkup(<QueryClientProvider client={client}><ResearchActivity data={data} status={status} adminFetch={fetcher}/></QueryClientProvider>);
+ assert.match(html,/Show queue/);assert.doesNotMatch(html,/Send to top|Cancel job/);
+ for(const running of [false,true]){
+  const actions=renderToStaticMarkup(<QueryClientProvider client={client}><ResearchQueueActions id="job" running={running} enabled adminFetch={fetcher}/></QueryClientProvider>);
+  assert.match(actions,/Send to top/);assert.match(actions,/Cancel job/);
+  assert.equal((actions.match(/disabled=""/g)||[]).length,running?2:0);
+ }
  client.clear();
 });

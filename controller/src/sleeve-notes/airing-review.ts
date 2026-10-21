@@ -182,7 +182,7 @@ export function listAiringReviews(status='active',offset=0): {items:AiringReview
 export function nextAiringReview(): {id:string;context:string}|null {
   return open().prepare(`SELECT id,context_json AS context FROM sleeve_airing_reviews
     WHERE state='queued' OR (state='running' AND julianday(updated_at)<julianday('now','-2 minutes'))
-    ORDER BY created_at,id LIMIT 1`).get() as {id:string;context:string}|undefined ?? null;
+    ORDER BY (SELECT requested_at FROM sleeve_queue_promotions WHERE job_id='review:'||sleeve_airing_reviews.id) DESC,created_at,id LIMIT 1`).get() as {id:string;context:string}|undefined ?? null;
 }
 
 export async function runAiringReview(job:{id:string;context:string},quietGate:QuietGate):Promise<boolean> {
@@ -193,6 +193,7 @@ export async function runAiringReview(job:{id:string;context:string},quietGate:Q
     WHERE id=? AND (state='queued' OR (state='running' AND julianday(updated_at)<julianday('now','-2 minutes')))`)
     .run(token,new Date().toISOString(),job.id).changes;
   if (!claimed) return false;
+  open().prepare('DELETE FROM sleeve_queue_promotions WHERE job_id=?').run(`review:${job.id}`);
   const timeout=setTimeout(()=>controller.abort(),75_000);
   const monitor=setInterval(()=>{
     if (!researchAllowed() || !quietGate.isQuiet() || !settings.get().djBehaviour.extendedSleeveNotes

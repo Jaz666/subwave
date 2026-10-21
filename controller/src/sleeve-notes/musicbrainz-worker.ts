@@ -35,7 +35,8 @@ export class MusicBrainzMatchWorker {
   }
   private async runOnceInner(): Promise<boolean> {
     if (this.running || settings.get().djBehaviour.extendedSleeveNotes !== true || settings.get().djBehaviour.sleeveNotesCollectionPaused === true || !this.quietGate.isQuiet()) return false;
-    const job = repository.nextPendingResearchJob('musicbrainz', { subjectType: 'local-track', capability: 'match' })
+    const job = repository.nextPendingResearchJob('musicbrainz', {promotedOnly:true})
+      ?? repository.nextPendingResearchJob('musicbrainz', { subjectType: 'local-track', capability: 'match' })
       ?? repository.nextPendingResearchJob('musicbrainz', { subjectType: 'release', capability: 'release-context' });
     if (!job) return false;
     if (job.subjectType === 'release') return this.retainReleaseContext(job);

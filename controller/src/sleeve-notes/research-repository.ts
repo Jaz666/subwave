@@ -225,6 +225,7 @@ export interface PendingResearchJob {
 export function nextPendingResearchJob(provider: string, filter?: {
   subjectType?: PendingResearchJob['subjectType'];
   capability?: string;
+  promotedOnly?: boolean;
 }): PendingResearchJob | null {
   return nextPendingResearchJobInDatabase(open(), provider, filter);
 }
@@ -232,16 +233,18 @@ export function nextPendingResearchJob(provider: string, filter?: {
 export function nextPendingResearchJobInDatabase(db: Database.Database, provider: string, filter?: {
   subjectType?: PendingResearchJob['subjectType'];
   capability?: string;
+  promotedOnly?: boolean;
 }): PendingResearchJob | null {
   const clauses = ['provider = ?', "state IN ('queued', 'retry-at')", '(run_after IS NULL OR run_after <= ?)'];
   const values: Array<string> = [provider, new Date().toISOString()];
+  if (filter?.promotedOnly) clauses.push('id IN (SELECT job_id FROM sleeve_queue_promotions)');
   if (filter?.subjectType) { clauses.push('subject_type = ?'); values.push(filter.subjectType); }
   if (filter?.capability) { clauses.push('capability = ?'); values.push(filter.capability); }
   const row = db.prepare(`SELECT id, provider, subject_type AS subjectType,
       subject_id AS subjectId, capability, priority, attempts,
       origin_local_track_id AS originLocalTrackId
     FROM sleeve_research_jobs
-    WHERE ${clauses.join(' AND ')} ORDER BY priority DESC, created_at ASC LIMIT 1`)
+    WHERE ${clauses.join(' AND ')} ORDER BY (SELECT requested_at FROM sleeve_queue_promotions WHERE job_id=sleeve_research_jobs.id) DESC, priority DESC, created_at ASC LIMIT 1`)
     .get(...values) as PendingResearchJob | undefined;
   return row ?? null;
 }
@@ -1177,11 +1180,13 @@ export function applyReviewedWikipediaReplay(input: {
 }
 
 export function markResearchJobRunning(id: string): void {
+  open().prepare('DELETE FROM sleeve_queue_promotions WHERE job_id=?').run(id);
   open().prepare(`UPDATE sleeve_research_jobs SET state = 'running', attempts = attempts + 1,
     updated_at = ? WHERE id = ?`).run(new Date().toISOString(), id);
 }
 
 export function finishResearchJob(id: string, state: 'complete' | 'failed'): void {
+  open().prepare('DELETE FROM sleeve_queue_promotions WHERE job_id=?').run(id);
   const now = new Date().toISOString();
   open().prepare(`UPDATE sleeve_research_jobs
     SET state = ?, operator_requested = 0, updated_at = ?, completed_at = CASE WHEN ? = 'complete' THEN ? ELSE NULL END

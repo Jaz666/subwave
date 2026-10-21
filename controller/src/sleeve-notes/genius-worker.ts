@@ -55,7 +55,8 @@ export class GeniusResearchWorker {
       if (queued) console.log(`[sleeve-notes] Queued ${queued} encountered albums for the Genius biography pilot`);
       this.pilotQueued = true;
     }
-    let job = repository.nextPendingResearchJob('genius', { subjectType: 'local-track', capability: 'connections' })
+    let job = repository.nextPendingResearchJob('genius', {promotedOnly:true})
+      ?? repository.nextPendingResearchJob('genius', { subjectType: 'local-track', capability: 'connections' })
       ?? repository.nextPendingResearchJob('genius', { subjectType: 'recording', capability: 'connections' })
       ?? repository.nextPendingResearchJob('genius', { subjectType: 'release', capability: 'album-biography' })
       ?? repository.nextPendingResearchJob('genius', { capability: 'expand-samples' })

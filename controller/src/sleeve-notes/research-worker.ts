@@ -1,3 +1,4 @@
+import { queuePromotion } from './queue-actions.js';
 import { pruneCompletedWikipediaArticlesInDatabase } from './wikipedia-retention.js';
 import { nextAiringReview, runAiringReview } from './airing-review.js';
 import { runResearchDatabaseWork } from './db.js';
@@ -527,7 +528,7 @@ function nextPlayDrivenResearchJob(allowIdleRescans: boolean): repository.Pendin
       'extract-wikipedia', 'extract-wikipedia-release-group', 'extract-genius-album')
       AND (state IN ('queued', 'retry-at') OR rescan.job_id IS NOT NULL)
       AND (rescan.job_id IS NOT NULL OR run_after IS NULL OR run_after <= ?)
-    ORDER BY CASE WHEN rescan.job_id IS NOT NULL THEN 0
+    ORDER BY (SELECT requested_at FROM sleeve_queue_promotions WHERE job_id=job.id) DESC, CASE WHEN rescan.job_id IS NOT NULL THEN 0
       WHEN job.capability IN ('extract-wikipedia', 'extract-wikipedia-release-group')
         THEN COALESCE(wiki.next_chunk, 0)
       ELSE COALESCE(progress.next_section, 0) END ASC,
@@ -673,12 +674,13 @@ export class ResearchWorker {
       ? emptyStationResearchPairIntervalMs() : RESEARCH_PAIR_INTERVAL_MS;
   }
 
-  private reservePacedResearchSlot(): string | null {
+  private reservePacedResearchSlot(kind:'research'|'review'='research'): string | null {
     const emptyMaintenance = this.quietGate.isEmptyMaintenanceAllowed?.() === true;
     const intervalMs = emptyMaintenance
       ? emptyStationResearchPairIntervalMs() : RESEARCH_PAIR_INTERVAL_MS;
     alignResearchPacing(intervalMs);
     const nextPairAt = reserveResearchPair(intervalMs);
+    if(nextPairAt)open().prepare('UPDATE sleeve_research_pacing SET last_slot_kind=? WHERE id=1').run(kind);
     // The pacing row may not exist until the first research slot is reserved.
     // Persist the selected idle mode then so the hysteresis band survives a
     // listener mode change or controller restart.
@@ -967,12 +969,19 @@ export class ResearchWorker {
     const allowIdleRescans = this.quietGate.isEmptyMaintenanceAllowed?.() === true;
     alignResearchPacing(this.researchPairIntervalMs());
     const queued = nextPlayDrivenResearchJob(allowIdleRescans);
-    if (!queued) {
-      const review=nextAiringReview();
-      if (!review || !this.reservePacedResearchSlot()) return false;
+    const review=nextAiringReview();
+    const reviewPriority=review?queuePromotion(open(),`review:${review.id}`):'';
+    const researchPriority=queued?queuePromotion(open(),queued.id):'';
+    const lastSlot=open().prepare('SELECT last_slot_kind AS kind FROM sleeve_research_pacing WHERE id=1').get() as {kind:string}|undefined;
+    // Alternate normal slots under contention so neither reviews nor a long
+    // article refresh can starve the other. Explicit promotions win ties.
+    if (review && (!queued || reviewPriority>researchPriority
+      || reviewPriority===researchPriority && (!!reviewPriority || lastSlot?.kind!=='review'))) {
+      if (!this.reservePacedResearchSlot('review')) return false;
       this.running=true;
       try {return await runAiringReview(review,this.quietGate);} finally {this.running=false;}
     }
+    if (!queued) return false;
     const geniusAlbumJob = queued.capability === 'extract-genius-album';
     const albumJob = queued.subjectType === 'release';
     const entityType = albumJob ? 'release-group' : 'artist';

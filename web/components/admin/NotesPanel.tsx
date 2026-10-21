@@ -115,7 +115,7 @@ type NotesReadout = {
     id: string; provider: string; capability: string;
     phase: 'ready' | 'first-play' | 'next-play' | 'time-delay' | 'running' | 'unavailable';
     subjectType: string; subjectTitle: string; subjectArtist: string | null;
-    priority: number; attempts: number; runAfter: string | null;
+    priority: number; attempts: number; runAfter: string | null; promotedAt?:string|null;
     wikiNextChunk: number; researchNextSection: number;
   }>;
   providerSummary: Array<{ provider: string; capability: string; outcome: string; status: number | null; requests: number; lastRequestedAt: string }>;
@@ -588,7 +588,7 @@ export function OverviewView({
     </div>
     <NotesLiveSummary adminFetch={adminFetch} enabled={enabled}>
       <NotesRecentlyAired adminFetch={adminFetch} timezone={status.timezone} />
-      {readout ? <ResearchActivity data={readout} status={status} /> : <Card headingLevel={2} title="Research activity"><p className="text-[13px] text-muted">Loading research queue…</p></Card>}
+      {readout ? <ResearchActivity data={readout} status={status} adminFetch={adminFetch} /> : <Card headingLevel={2} title="Research activity"><p className="text-[13px] text-muted">Loading research queue…</p></Card>}
     </NotesLiveSummary>
     {enabled && status.providerEnabled && !status.providerConfigured && <Card headingLevel={2} title="Needs attention">
       <p className="text-[13px] text-muted">Genius connections are enabled but need an access token.</p>
@@ -601,7 +601,23 @@ export function OverviewView({
   </div>;
 }
 
-export function ResearchActivity({ data, status }: { data: NotesReadout; status: NotesStatus }) {
+export function ResearchQueueActions({id,running,enabled,adminFetch}:{id:string;running:boolean;enabled:boolean;adminFetch:AdminFetch}) {
+  const [confirmCancel,setConfirmCancel]=useState(false);
+  const action=useAdminMutation<{ok:boolean},'top'|'cancel'>({adminFetch,
+    request:(value,fetcher)=>adminJson(fetcher,`/sleeve-notes/queue/${encodeURIComponent(id)}/${value}`,{method:'POST'}),
+    onDone:async(_data,value,client)=>{setConfirmCancel(false);notify.ok(value==='top'?'Job prioritised. Eligibility and broadcast checks still apply.':'Queued job cancelled. Saved knowledge is kept.');await client.invalidateQueries({queryKey:['sleeve-notes']});},
+  });
+  const disabled=!enabled||running||action.isPending;
+  return <div className="flex flex-wrap gap-2">
+    <Btn sm disabled={disabled} title={running?'Wait for the current step to finish':'Move ahead of eligible work in this worker queue; retry and first-play waits still apply'} onClick={()=>action.mutate('top')}>Send to top</Btn>
+    <Btn sm tone="danger" disabled={disabled} title={running?'Wait for the current step to finish':'Cancel queued work without deleting saved knowledge'} onClick={()=>setConfirmCancel(true)}>Cancel job</Btn>
+    <V3AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel} title="Cancel this queued job?"
+      description={id.startsWith('review:')?'This dismisses the queued review. The saved fact and its availability stay unchanged.':'Saved facts and progress are kept. Automatic collection or a later research request may queue this subject again.'}
+      confirmLabel="Cancel job" cancelLabel="Keep queued" danger onConfirm={()=>{if(!disabled)action.mutate('cancel');}}/>
+  </div>;
+}
+
+export function ResearchActivity({ data, status, adminFetch }: { data: NotesReadout; status: NotesStatus;adminFetch?:AdminFetch }) {
   const [expanded,setExpanded] = useState<Record<string,boolean>>({});
   const jobs = (data.workQueueItems ?? []).filter(job => job.phase !== 'unavailable');
   const geniusEnabled=status.providerEnabled ?? data.geniusQueue?.enabled;
@@ -638,7 +654,9 @@ export function ResearchActivity({ data, status }: { data: NotesReadout; status:
         const queue = jobs.filter(job => (job.provider === 'researcher') === section.llm).sort((a,b) =>
           Number(a.provider==='genius' && (geniusEnabled===false || geniusConfigured===false)) - Number(b.provider==='genius' && (geniusEnabled===false || geniusConfigured===false))
           || Number(b.phase === 'running') - Number(a.phase === 'running')
-          || Number(b.phase === 'ready') - Number(a.phase === 'ready') || b.priority - a.priority);
+          || Number(b.phase === 'ready') - Number(a.phase === 'ready')
+          || (b.promotedAt??'').localeCompare(a.promotedAt??'')
+          || Number(b.capability==='review-flagged-speech')-Number(a.capability==='review-flagged-speech') || b.priority - a.priority);
         const current = queue[0];
         const state = !status.enabled ? 'Research is off' : status.collectionPaused ? 'Collection paused'
           : data.researchPausedByBudget ? 'Waiting for station budget'
@@ -657,13 +675,16 @@ export function ResearchActivity({ data, status }: { data: NotesReadout; status:
             <p className="truncate text-[13px] font-medium" title={[current.subjectArtist,current.subjectTitle].filter(Boolean).join(' · ')}>{[current.subjectArtist,current.subjectTitle].filter(Boolean).join(' · ')}</p>
             <p className="text-xs text-muted">{taskNames[current.capability] ?? current.capability.replaceAll('-',' ')}</p>
           </div>}
-          {(queue.length > 1 || current?.phase === 'time-delay') && <details className="text-xs" onToggle={event => {
+          {queue.length > 0 && <details className="text-xs" onToggle={event => {
             const open = event.currentTarget.open;
             setExpanded(previous => ({...previous,[section.name]:open}));
           }}><summary className="cursor-pointer text-primary">Show queue</summary>
             {expanded[section.name] && <div className="mt-2 divide-y divide-border/60">{queue.map(job => <div key={job.id} className="space-y-1 py-2">
               <p className="font-medium break-words">{[job.subjectArtist,job.subjectTitle].filter(Boolean).join(' · ')}</p>
               <p className="text-muted">{taskNames[job.capability] ?? job.capability.replaceAll('-',' ')} · {phaseText(job,true)}</p>
+              {job.promotedAt&&<p className="text-primary">Prioritised · eligibility checks still apply</p>}
+              {adminFetch&&<ResearchQueueActions id={job.id} running={job.phase==='running'} enabled={status.enabled} adminFetch={adminFetch}/>}
+
             </div>)}</div>}
           </details>}
         </section>;
