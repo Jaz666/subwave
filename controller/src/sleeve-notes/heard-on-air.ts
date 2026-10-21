@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { open } from './db.js';
@@ -11,8 +12,7 @@ type AiredUse=Record<string,unknown>&{id:string;segmentId:string|null;spokenText
 // Only actual rendered-and-aired speech belongs here. Wording detection is information, never eligibility.
 const ELIGIBLE = `u.aired_at IS NOT NULL AND u.tts_rendered_at IS NOT NULL AND u.tts_text IS NOT NULL`;
 
-export function heardOnAir(limit = 20, offset = 0, groupConversations = false, filters: {search?: string; kind?: string; period?: string; usage?: string} = {}) {
-  const db = open();
+export function heardOnAir(limit = 20, offset = 0, groupConversations = false, filters: {search?: string; kind?: string; period?: string; usage?: string} = {}, db: Database.Database = open()) {
   const columns = new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map(row => row.name));
   const empty = { items: [], total: 0, conversationTotal: 0, limit, offset, feedbackTotals: { story: [], delivery: [] } };
   if (!columns.has('speech_signal') || !columns.has('tts_rendered_at')) return empty;

@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { queuePromotion } from './queue-actions.js';
 import { pruneCompletedWikipediaArticlesInDatabase } from './wikipedia-retention.js';
 import { nextAiringReview, runAiringReview } from './airing-review.js';
@@ -169,8 +170,7 @@ function deferResearchSection(jobId: string, sourceDocumentId: string,
   }).immediate();
 }
 
-function playedEncounterCount(job: repository.PendingResearchJob, since?: string): number {
-  const db = open();
+function playedEncounterCount(job: repository.PendingResearchJob, since?: string, db: Database.Database = open()): number {
   const condition = job.subjectType === 'artist'
     ? 'recording.artist_id = ?'
     : 'release.musicbrainz_release_group_id = ?';
@@ -441,13 +441,12 @@ export type ResearchQueuePhase = 'ready' | 'first-play' | 'next-play'
   | 'time-delay' | 'running' | 'unavailable';
 
 /** Individual queue rows for the admin Overview, using the same phase rules. */
-export function researchQueueDetails(now = new Date(), allowIdleRescans = false): Array<{
+export function researchQueueDetails(now = new Date(), allowIdleRescans = false, db: Database.Database = open()): Array<{
   id: string; provider: string; capability: string; phase: ResearchQueuePhase;
   subjectType: string; subjectTitle: string; subjectArtist: string | null;
   priority: number; attempts: number; runAfter: string | null;
   wikiNextChunk: number; researchNextSection: number;
 }> {
-  const db = open();
   const jobs = db.prepare(`SELECT job.id, job.provider, job.subject_type AS subjectType,
       job.subject_id AS subjectId, job.capability, job.priority, job.attempts,
       job.origin_local_track_id AS originLocalTrackId,
@@ -489,14 +488,14 @@ export function researchQueueDetails(now = new Date(), allowIdleRescans = false)
     if (job.state === 'running') phase = 'running';
     else if (job.state === 'failed') phase = 'unavailable';
     else if (job.rescanAfterEncounters != null) {
-      phase = playedEncounterCount(job) > job.rescanAfterEncounters || allowIdleRescans || job.operatorRequested ? 'ready' : 'next-play';
+      phase = playedEncounterCount(job, undefined, db) > job.rescanAfterEncounters || allowIdleRescans || job.operatorRequested ? 'ready' : 'next-play';
     } else if (job.provider === 'researcher' && ['extract-wikipedia', 'extract-wikipedia-release-group',
       'extract-genius-album'].includes(job.capability)) {
       const firstAlbumWiki = (job.capability === 'extract-wikipedia'
         || job.capability === 'extract-wikipedia-release-group') && job.subjectType === 'release'
-        && job.wikiNextChunk === 0 && !job.wikipediaRefreshMode && playedEncounterCount(job) < 1;
+        && job.wikiNextChunk === 0 && !job.wikipediaRefreshMode && playedEncounterCount(job, undefined, db) < 1;
       const firstGeniusAlbum = job.capability === 'extract-genius-album'
-        && job.playsConsumed === 0 && playedEncounterCount(job) < 1;
+        && job.playsConsumed === 0 && playedEncounterCount(job, undefined, db) < 1;
       phase = (firstAlbumWiki || firstGeniusAlbum) && !job.operatorRequested ? 'first-play'
         : job.runAfter && Date.parse(job.runAfter) > now.getTime() ? 'time-delay' : 'ready';
     } else {
@@ -1169,8 +1168,14 @@ export function startResearchWorker(quietGate: QuietGate): void {
   const expiryTimer = setInterval(() => {
     if (!settings.get().djBehaviour.extendedSleeveNotes || !quietGate.isQuiet()) return;
     void runResearchDatabaseWork(async () => {
-      expireRecycleBin();
-      pruneCompletedWikipediaArticlesInDatabase(open());
+      const started = performance.now();
+      try {
+        expireRecycleBin();
+        pruneCompletedWikipediaArticlesInDatabase(open());
+      } finally {
+        const elapsed = Math.round(performance.now() - started);
+        if (elapsed >= 1_000) console.warn(`[sleeve-notes] Slow database housekeeping: ${elapsed}ms (controller)`);
+      }
       return true;
     }).catch(error => console.warn('[sleeve-notes] Recycle Bin cleanup deferred:', error instanceof Error ? error.message : String(error)));
   }, 60 * 60 * 1000);

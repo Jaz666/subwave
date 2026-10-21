@@ -963,8 +963,7 @@ export function geniusRequestAllowance(db: Database.Database, now = new Date()) 
     retryAt: reason ? new Date(Math.max(nowMs + 1_000, until)).toISOString() : null };
 }
 
-export function geniusQueueReadout(now = new Date()) {
-  const db = open();
+export function geniusQueueReadout(now = new Date(), db: Database.Database = open()) {
   const rows = db.prepare(`SELECT capability,state,COUNT(*) AS jobs,
     SUM(CASE WHEN run_after IS NULL OR run_after<=? THEN 1 ELSE 0 END) AS ready,
     MIN(CASE WHEN run_after IS NULL OR run_after<=? THEN created_at END) AS oldestReadyAt
@@ -2048,11 +2047,11 @@ export function researchStoreReadoutInDatabase(db: Database.Database, limit = 80
   const capped = Math.max(1, Math.min(200, Math.trunc(limit)));
   const summary = researchStoreSummaryInDatabase(db);
   const artists = db.prepare(`SELECT a.name, a.musicbrainz_id AS musicbrainzId,
-    COUNT(DISTINCT s.id) AS sources, COUNT(DISTINCT c.id) AS claims
-    FROM sleeve_artists a
-    LEFT JOIN sleeve_source_documents s ON s.entity_type = 'artist' AND s.entity_id = a.id
-    LEFT JOIN sleeve_claims c ON c.entity_type = 'artist' AND c.entity_id = a.id AND c.enabled = 1
-    GROUP BY a.id ORDER BY claims DESC, sources DESC, a.name LIMIT ?`).all(capped) as ResearchStoreReadout['artists'];
+    (SELECT COUNT(*) FROM sleeve_source_documents s
+      WHERE s.entity_type = 'artist' AND s.entity_id = a.id) AS sources,
+    (SELECT COUNT(*) FROM sleeve_claims c
+      WHERE c.entity_type = 'artist' AND c.entity_id = a.id AND c.enabled = 1) AS claims
+    FROM sleeve_artists a ORDER BY claims DESC, sources DESC, a.name LIMIT ?`).all(capped) as ResearchStoreReadout['artists'];
   const claims = searchResearchStoriesInDatabase(db, {limit:capped}).claims;
   const signalColumns = new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map((row) => row.name));
   const signalColumn = (name: string) => signalColumns.has(name) ? `spark.${name}` : 'NULL';

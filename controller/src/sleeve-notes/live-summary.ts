@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { countExtendedSleeveNoteCandidatesInDatabase } from './link-selection.js';
 import { open } from './db.js';
 
@@ -6,8 +7,7 @@ export type LiveNotesItem = { track: Track; sleeveClaimUseId?: string | null; in
 
 /** A read-only view of the actual queue item and its exact Spark reservation.
  * Never match an earlier play by artist/title, and never select or reserve a Spark. */
-export function liveNotesSummary(nowPlaying: Track | null, current: LiveNotesItem | null, next: LiveNotesItem | null) {
-  const db = open();
+export function liveNotesSummary(nowPlaying: Track | null, current: LiveNotesItem | null, next: LiveNotesItem | null, db: Database.Database = open()) {
   const hasUses = !!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_claim_uses'").get();
   const columns = hasUses ? new Set((db.prepare('PRAGMA table_info(sleeve_claim_uses)').all() as Array<{ name: string }>).map(row => row.name)) : new Set<string>();
   const optional = (name: string) => columns.has(name) ? `u.${name}` : 'NULL';

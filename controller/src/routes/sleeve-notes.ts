@@ -7,13 +7,12 @@ import { researchAllowed } from '../broadcast/dj-budget.js';
 import express from 'express';
 import { getStationTimezone } from '../time.js';
 import { brainAlbumCoverageInDatabase, queueBrainAlbumInDatabase, queueBrainLibraryAlbumInDatabase, type BrainAlbumType } from '../sleeve-notes/brain-album-research.js';
-import { liveNotesSummary } from '../sleeve-notes/live-summary.js';
 import { addLegacySegmentConversations } from '../sleeve-notes/legacy-segment-transcripts.js';
 import { brainCoverageInDatabase, queueBrainArtistInDatabase, queueBrainLibrarySeedInDatabase } from '../sleeve-notes/brain-coverage.js';
 import { randomUUID } from 'node:crypto';
 import { seriesCheckSchema } from '../schemas/sleeve-notes-series.js';
 import { sparkFeedbackSchema } from '../schemas/sleeve-notes-feedback.js';
-import { heardOnAir, saveSparkFeedback } from '../sleeve-notes/heard-on-air.js';
+import { saveSparkFeedback } from '../sleeve-notes/heard-on-air.js';
 import { lookupMusicBrainzSeries, type MusicBrainzSeriesSnapshot } from '../music/musicbrainz.js';
 import { seriesCatalogInDatabase, parseSeriesId, seedSuppliedSeries, updateSeriesInDatabase } from '../sleeve-notes/series-catalog-store.js';
 import * as settings from '../settings.js';
@@ -21,16 +20,15 @@ import { recentCalls } from '../llm/log.js';
 import { gatedListenerCount } from '../broadcast/listeners.js';
 import { activeWikipediaExtractPrompt, DEFAULT_WIKIPEDIA_EXTRACT_PROMPT } from '../sleeve-notes/wikipedia-prompt.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { geniusQueueReadout } from '../sleeve-notes/research-repository.js';
 import { geniusWorkerStatus } from '../sleeve-notes/genius-worker.js';
 import { geniusAccessToken } from '../sleeve-notes/genius-token.js';
 import { libraryConnectionsForRecording } from '../sleeve-notes/library-connections.js';
 import { researchConnectionsOverviewInDatabase } from '../sleeve-notes/connections-overview.js';
-import { cachedConnectionsOverview, libraryConnectionStoriesInBackground } from '../sleeve-notes/connection-compute.js';
+import { cachedDashboardRead, cachedConnectionsOverview, libraryConnectionStoriesInBackground } from '../sleeve-notes/connection-compute.js';
 import { brainLibraryResearchSeed, brainLibraryAlbumResearchSeed, brainLibraryGraph, cachedBrainLibraryGraph, localBrainArtistId, populateBrainArtists, searchBrainArtists } from '../sleeve-notes/brain-library.js';
 import { runResearchDatabaseWork, withCachedRead, open as openSleeveNotesDb } from '../sleeve-notes/db.js';
 import {
-  adaptiveWikipediaChunkCharacters, requestWikipediaRefresh, researchQueueDetails,
+  adaptiveWikipediaChunkCharacters, requestWikipediaRefresh,
   wikipediaCalibrationProfileHash, type WikipediaRefreshMode,
 } from '../sleeve-notes/research-worker.js';
 import { LlmResearcher } from '../sleeve-notes/llm-researcher.js';
@@ -46,7 +44,6 @@ import {
   resolveConnectionLocalTrack,
   researchStoreCoverage,
   researchStoreExplore,
-  researchStoreReadout,
   searchResearchStoriesInDatabase,
   reconcileConfiguredSeries,
   researchStoreSummary,
@@ -72,10 +69,10 @@ router.get('/sleeve-notes/heard-on-air', requireAdmin, async (req, res) => {
   await settings.load();
   const offset = Math.max(0, Math.min(100_000, Number.parseInt(String(req.query.offset), 10) || 0));
   const enabled = settings.get().djBehaviour.extendedSleeveNotes === true;
-  const read = () => ({ ...heardOnAir(20, offset, true, {
+  const read = () => cachedDashboardRead({kind: 'heard-on-air', offset, filters: {
     search: String(req.query.search ?? ''), kind: String(req.query.kind ?? ''), period: String(req.query.period ?? ''), usage: String(req.query.usage ?? ''),
-  }), readOnly: !enabled });
-  const shelf=await addLegacySegmentConversations(enabled ? read() : withCachedRead(read));
+  }});
+  const shelf=await addLegacySegmentConversations({...JSON.parse(await (enabled ? read() : withCachedRead(read))), readOnly: !enabled});
   const attach=()=>{
     const db=openSleeveNotesDb();
     const keys=[...new Set(shelf.items.map(airingReviewKey))];
@@ -330,7 +327,8 @@ router.get('/sleeve-notes/live-summary', requireAdmin, async (_req, res) => {
   const nextId=typeof next?.track.subsonic_id==='string'?next.track.subsonic_id:next?.track.id;
   const nextMetadata=nextId?getPlaybackMeta(nextId):null;
   const upcoming=next?{...next,track:{...next.track,artistId:nextMetadata?.artistId??(typeof next.track.artistId==='string'?next.track.artistId:null),albumId:nextMetadata?.albumId??(typeof next.track.albumId==='string'?next.track.albumId:null)}}:null;
-  return res.json(withCachedRead(() => liveNotesSummary(playing, queue.current, upcoming)));
+  const json = await withCachedRead(() => cachedDashboardRead({kind: 'live-summary', args: [playing, queue.current, upcoming]}));
+  return res.type('json').send(json);
 });
 
 router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
@@ -500,7 +498,7 @@ router.post('/sleeve-notes/wikipedia-prompt-preview', requireAdmin, async (req, 
 router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
   await settings.load();
   if (settings.get().djBehaviour.extendedSleeveNotes !== true) {
-    if (req.query.cached === '1') return res.json(withCachedRead(() => ({ active: false, cached: true, readAt: Date.now(), ...researchStoreReadout() })));
+    if (req.query.cached === '1') return res.json({ active: false, cached: true, readAt: Date.now(), ...JSON.parse(await withCachedRead(() => cachedDashboardRead({kind: 'readout'}))) });
     return res.json({ active: false, artists: [], claims: [], jobs: [] });
   }
   const wikipediaCalls = recentCalls.filter((call) => call.kind === 'sleeveNotesWikipediaExtract'
@@ -510,19 +508,19 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
     : null;
   const allowIdleRescans = settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true
     && gatedListenerCount() === 0;
-  const workQueueItems = researchQueueDetails(new Date(), allowIdleRescans);
-  const reviews = openSleeveNotesDb().prepare(`SELECT id,state,
-    CASE WHEN json_valid(context_json) THEN json_extract(context_json,'$.artist') END AS artist,
-    CASE WHEN json_valid(context_json) THEN json_extract(context_json,'$.title') END AS title
-    FROM sleeve_airing_reviews WHERE state IN ('queued','running') ORDER BY created_at,id`).all() as Array<{
-      id: string; state: string; artist: string | null; title: string | null;
-    }>;
+  const {activity, ...stored} = JSON.parse(await cachedDashboardRead({kind: 'readout', queue: allowIdleRescans}));
+  const workQueueItems = activity.items as Array<{
+    id: string; provider: string; capability: string; phase: string; subjectType: string;
+    subjectTitle: string; subjectArtist: string | null; priority: number; attempts: number;
+    runAfter: string | null; wikiNextChunk: number; researchNextSection: number;
+  }>;
+  const reviews = activity.reviews as Array<{id: string; state: string; artist: string | null; title: string | null}>;
   workQueueItems.push(...reviews.map(review => ({ id: `review:${review.id}`, provider: 'researcher',
     capability: 'review-flagged-speech', phase: review.state === 'running' ? 'running' as const : 'ready' as const,
     subjectType: 'recording', subjectTitle: review.title ?? 'Flagged speech', subjectArtist: review.artist,
     priority: 0, attempts: 0, runAfter: null, wikiNextChunk: 0, researchNextSection: 0 })));
 
-  const promotions=new Map((openSleeveNotesDb().prepare('SELECT job_id,requested_at FROM sleeve_queue_promotions').all() as Array<{job_id:string;requested_at:string}>).map(row=>[row.job_id,row.requested_at]));
+  const promotions=new Map((activity.promotions as Array<{job_id:string;requested_at:string}>).map(row=>[row.job_id,row.requested_at]));
   const queueCounts = new Map<string, { provider: string; capability: string; phase: string; jobs: number }>();
   for (const item of workQueueItems) {
     const key = `${item.provider}\u0000${item.capability}\u0000${item.phase}`;
@@ -536,10 +534,10 @@ router.get('/sleeve-notes/readout', requireAdmin, async (req, res) => {
     active: true,
     researchPausedByBudget: !researchAllowed(),
     collectionPaused: settings.get().djBehaviour.sleeveNotesCollectionPaused === true,
-    geniusQueue: { ...geniusQueueReadout(), worker: geniusWorkerStatus(),
+    geniusQueue: { ...activity.genius, worker: geniusWorkerStatus(),
       enabled: settings.get().sleeveNotes.providers.genius.enabled === true, configured: !!geniusAccessToken() },
     readAt: Date.now(),
-    ...researchStoreReadout(),
+    ...stored,
     workQueue: [...queueCounts.values()],
     workQueueItems: workQueueItems.map(job=>({...job,promotedAt:promotions.get(job.id)??null})),
     wikipediaArtistChunkCharacterTarget: adaptiveWikipediaChunkCharacters(undefined, 'artist'),

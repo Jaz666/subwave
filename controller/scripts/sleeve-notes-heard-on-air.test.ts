@@ -13,6 +13,7 @@ const { open, close, withCachedRead } = await import('../src/sleeve-notes/db.js'
 const settings = await import('../src/settings.js');
 const store = await import('../src/settings/store.js');
 const { heardOnAir } = await import('../src/sleeve-notes/heard-on-air.js');
+const { stopConnectionCompute } = await import('../src/sleeve-notes/connection-compute.js');
 const { router } = await import('../src/routes/sleeve-notes.js');
 const { expireRecycleBin, moderateCandidate, moderateExistingClaim } = await import('../src/sleeve-notes/moderation.js');
 const { retainResearchClaims } = await import('../src/sleeve-notes/research-repository.js');
@@ -199,4 +200,4 @@ test('cached shelf handles absent and pre-speech stores without creating a file'
   const check = new Database(oldPath, { readonly: true }); assert.equal(check.pragma('user_version', { simple: true }), 42); check.close();
 });
 
-test.after(async () => { await new Promise<void>(resolve => server.close(() => resolve())); close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { stopConnectionCompute(); await new Promise<void>(resolve => server.close(() => resolve())); close(); rmSync(root, { recursive: true, force: true }); });

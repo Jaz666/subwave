@@ -12,6 +12,7 @@ const settings=await import('../src/settings.js');
 const {manageQueuedJob,queuePromotion}=await import('../src/sleeve-notes/queue-actions.js');
 const repo=await import('../src/sleeve-notes/research-repository.js');
 const {nextAiringReview}=await import('../src/sleeve-notes/airing-review.js');
+const { stopConnectionCompute } = await import('../src/sleeve-notes/connection-compute.js');
 const {router}=await import('../src/routes/sleeve-notes.js');
 const {listen}=await import('./test-utils/http.js');
 const app=express();app.use(router);const {server,url}=await listen(app);server.unref();
@@ -22,7 +23,7 @@ function job(id:string,state='queued'){
 }
 function review(id:string){notes.open().prepare(`INSERT INTO sleeve_airing_reviews(id,airing_key,state,context_json,created_at,updated_at) VALUES (?,?,'queued','{}',?,?)`).run(id,id,at,at);}
 beforeEach(async()=>{notes.open().exec('DELETE FROM sleeve_wikipedia_rescan_requests;DELETE FROM sleeve_queue_promotions;DELETE FROM sleeve_research_jobs;DELETE FROM sleeve_airing_reviews;');await settings.update({djBehaviour:{extendedSleeveNotes:true}});});
-after(async()=>{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));notes.close();await removeTempDir(root);});
+after(async()=>{stopConnectionCompute();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));notes.close();await removeTempDir(root);});
 
 test('promotion reorders eligible work, survives reopen, retains retry gates and is consumed on start',()=>{
  job('a');job('b');const db=notes.open();
