@@ -9,7 +9,7 @@ import type { SleeveRelationshipType } from '../src/sleeve-notes/provider.js';
 const root = mkdtempSync(join(tmpdir(), 'subwave-library-connections-'));
 process.env.STATE_DIR = root;
 const { migrate, close } = await import('../src/sleeve-notes/db.js');
-const { cacheConnectionLibraryTracks, reconcileLibraryConnections, libraryConnectionsInDatabase } = await import('../src/sleeve-notes/library-connections.js');
+const { cacheConnectionLibraryTracks, reconcileLibraryConnections, libraryConnectionsInDatabase, connectionRevision } = await import('../src/sleeve-notes/library-connections.js');
 const { ConnectionLibraryWorker } = await import('../src/sleeve-notes/connection-library-worker.js');
 const { loadExtendedSleeveNoteCandidatesInDatabase, selectMostSpecificEligibleClaim } = await import('../src/sleeve-notes/link-selection.js');
 const { researchConnectionsGraphInDatabase, replaceAutomaticWikipediaClaimsInDatabase } = await import('../src/sleeve-notes/research-repository.js');
@@ -440,4 +440,59 @@ test('an unknown scan status cannot authorise deleting unseen cached tracks',asy
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_connection_library_tracks').get() as {n:number}).n,2);
   assert.equal((db.prepare('SELECT completed_at FROM sleeve_connection_library_scan').get() as {completed_at:null}).completed_at,null);
  } finally {db.close();}
+});
+
+test('matching batches continuing research for five minutes, waits for quiet time and skips unchanged revisions',async()=>{
+  const db=fixture();let calls=0,quiet=true;
+  const at=Date.parse(now);
+  try {
+    db.prepare(`INSERT INTO sleeve_connection_library_scan(id,generation,album_offset,run_after)
+      VALUES(1,'parked',0,?)`).run(new Date(at+24*60*60_000).toISOString());
+    relation(db,'initial','samples');
+    const {reconcileConnectionsInBackground}=await import('../src/sleeve-notes/connection-compute.js');
+    const worker=new ConnectionLibraryWorker({isQuiet:()=>quiet},{
+      getAlbumList:async()=>{throw new Error('Catalogue is not due');},
+      getAlbumWithSongs:async()=>{throw new Error('Catalogue is not due');},getScanStatus:async()=>false,
+    },()=>db,()=>true,async database=>{calls++;return reconcileConnectionsInBackground(database);});
+    await worker.runOnce(at);
+    assert.equal(calls,1);
+    for(let n=1;n<10;n++) {
+      relation(db,`pending-${n}`,'samples');
+      await worker.runOnce(at+n*30_000);
+      assert.equal(calls,1,'new facts must not restart the full calculation every timer tick');
+    }
+    assert.equal(libraryConnectionsInDatabase(db,'source').length,1);
+    quiet=false;await worker.runOnce(at+5*60_000);assert.equal(calls,1);
+    quiet=true;await worker.runOnce(at+5*60_000+30_000);
+    assert.equal(calls,2);
+    assert.equal(libraryConnectionsInDatabase(db,'source').length,10,'all accumulated facts must be published together');
+    await worker.runOnce(at+11*60_000);assert.equal(calls,2,'an elapsed interval alone must not trigger unchanged work');
+    relation(db,'later','samples');await worker.runOnce(at+11*60_000+30_000);
+    assert.equal(calls,3,'unchanged checks must not keep moving the deadline forward');
+  } finally {db.close();}
+});
+
+test('stale matching attempts are batched too; failures retain ten-minute backoff and pending revisions',async()=>{
+  const db=fixture();let calls=0,enabled=true;
+  const at=Date.parse(now);
+  try {
+    db.prepare(`INSERT INTO sleeve_connection_library_scan(id,generation,album_offset,run_after)
+      VALUES(1,'parked',0,?)`).run(new Date(at+24*60*60_000).toISOString());
+    const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
+      getAlbumList:async()=>[],getAlbumWithSongs:async()=>null,getScanStatus:async()=>false,
+    },()=>db,()=>enabled,async database=>{
+      calls++;
+      if(calls===1)return null; // A source change invalidated the calculated snapshot.
+      if(calls===2)throw new Error('Matching temporarily unavailable');
+      return connectionRevision(database,'facts');
+    });
+    await worker.runOnce(at);assert.equal(calls,1);
+    relation(db,'pending','samples');
+    await worker.runOnce(at+30_000);assert.equal(calls,1);
+    await worker.runOnce(at+5*60_000);assert.equal(calls,2);
+    await worker.runOnce(at+15*60_000-1);assert.equal(calls,2);
+    enabled=false;await worker.runOnce(at+15*60_000);assert.equal(calls,2);
+    enabled=true;await worker.runOnce(at+15*60_000+30_000);assert.equal(calls,3);
+    await worker.runOnce(at+21*60_000);assert.equal(calls,3,'the eventual successful revision must be remembered');
+  } finally {db.close();}
 });
