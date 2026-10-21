@@ -1,6 +1,6 @@
 # Extended Sleeve Notes: integration review map
 
-Most feature code is contained in `controller/src/sleeve-notes/` and its admin views. Review the shared boundaries below alongside the [feature internals](enriched-sleeve-notes.md). The feature is opt-in, but switching it off does not revert shared LLM, timing, telemetry or font changes in this branch.
+Most feature code is contained in `controller/src/sleeve-notes/` and its admin views. Review the shared boundaries below alongside the [feature internals](enriched-sleeve-notes.md). The feature is opt-in, but switching it off does not revert shared LLM, timing or telemetry changes in this branch.
 
 ## Shared boundaries
 
@@ -16,7 +16,7 @@ Paths are repository-relative. Test names refer to `controller/scripts/` unless 
 | Music identity and library state: `music/library-db/tracks.ts`, `music/subsonic.ts`, `music/musicbrainz.ts` | Metadata/server changes invalidate local bindings and late responses. Catalogue matching must yield during scans/broadcast work and must not treat a failed empty response as library deletion. | `sleeve-notes-local-identity.test.ts`, `sleeve-notes-library-connections.test.ts`, `sleeve-notes-no-genius.test.ts`, `brain-queue.test.ts` |
 | Backup and restore: `backup/zip.ts`, `routes/backup.ts` | Research is an optional WAL-safe archive entry. Refuse unsafe/future/corrupt restores before changing state; coordinate active research, restore queued jobs and clear display caches. | `sleeve-notes-backup.test.ts`, `sleeve-notes-upgrade.test.ts` |
 | HTTP/admin integration: `routes/sleeve-notes.ts`, `routes/debug.ts`, Dash and Notes components | Auth/master gates apply to writes. Cached reads remain read-only. Correct/edit/restore/delete require explicit actions and current-version/source checks. Expensive display queries run in the read-only worker. | `sleeve-notes-cached-browsing.test.ts`, `sleeve-notes-manual-review.test.ts`, `sleeve-notes-dashboard-worker.test.ts`, `sleeve-notes-queue-actions.test.ts`, `web/tests/airing-reviews.test.tsx`, `web/tests/notes-overview.test.tsx` |
-| Presentation and manual | Review the manual/sidebar/tab integration and bundled fonts as shared UI changes, including responsive layouts and theme behaviour. | `web/tests/bundled-fonts.test.mjs`, `web/tests/sleeve-notes-master-switch.test.tsx`, admin-query audit |
+| Presentation and manual | Review the manual/sidebar/tab integration as shared UI changes, including responsive layouts and theme behaviour. | `web/tests/sleeve-notes-master-switch.test.tsx`, admin-query audit |
 
 ## Reproducing checks
 
