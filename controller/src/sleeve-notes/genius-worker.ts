@@ -1,3 +1,4 @@
+import { librarySourceKey } from './local-identity.js';
 import { runResearchDatabaseWork } from './db.js';
 import { enqueueNextGeniusLibrarySeed, librarySeedRecording, associateCachedLibrarySeed } from './genius-seeding.js';
 import { cachedGeniusSong, expandGeniusSamples, registerGeniusTraversal,
@@ -122,6 +123,7 @@ export class GeniusResearchWorker {
           console.log(`[sleeve-notes] Genius album biography skipped: ${albumSource.artist} — ${albumSource.title} (${lookup.reason})`);
         }
       } else if (recording) {
+        const sourceKey=librarySourceKey();
         const localAtStart = job.subjectType === 'local-track' ? repository.localAttachmentForMatch(job.subjectId) : null;
         const entity = { kind: 'track' as const, title: recording.title, artist: recording.artist ?? undefined };
         const cached = cachedGeniusSong(recording);
@@ -131,8 +133,9 @@ export class GeniusResearchWorker {
           : await provider.fetch(entity, controller.signal));
         if (job.subjectType === 'local-track') {
           const current = repository.localAttachmentForMatch(job.subjectId);
-          if (!current || current.title !== localAtStart?.title || current.artist !== localAtStart?.artist) {
-            repository.requeueResearchJob(job.id);
+          if (sourceKey!==librarySourceKey() || !current || current.title !== localAtStart?.title || current.artist !== localAtStart?.artist
+            || current.musicbrainzRecordingId !== localAtStart?.musicbrainzRecordingId) {
+            if(sourceKey===librarySourceKey())repository.requeueResearchJob(job.id);
             return true;
           }
         }

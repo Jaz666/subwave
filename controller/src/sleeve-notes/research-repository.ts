@@ -1,3 +1,4 @@
+import { invalidateChangedLocalIdentity } from './local-identity.js';
 import { LIBRARY_RELATIONSHIP_CLAIMS_SQL } from './library-relationship-claims.js';
 import type { ClaimSignal } from './claim-signal.js';
 import * as settings from '../settings.js';
@@ -85,6 +86,9 @@ export function admitLocalEncounterInDatabase(db: Database.Database, input: Loca
     const alreadyKnown = !!db.prepare('SELECT 1 FROM sleeve_local_attachments WHERE local_track_id = ?')
       .get(input.localTrackId);
     if (input.autopilot && !input.listenerPresent && !alreadyKnown && hasActiveResearchJobsInDatabase(db)) return;
+    invalidateChangedLocalIdentity(db,input.localTrackId,{
+      title:input.title,artist:input.artist,album:input.releaseTitle,mbid:input.musicbrainzRecordingId,
+    });
     db.prepare(`INSERT INTO sleeve_local_attachments (
       local_track_id, recording_id, title, artist, release_title,
       musicbrainz_recording_id, match_state, first_encountered_at,
@@ -92,8 +96,8 @@ export function admitLocalEncounterInDatabase(db: Database.Database, input: Loca
     ) VALUES (?, NULL, ?, ?, ?, ?, 'unmatched', ?, ?, ?)
     ON CONFLICT(local_track_id) DO UPDATE SET
       title = excluded.title,
-      artist = excluded.artist,
-      release_title = excluded.release_title,
+      artist = COALESCE(excluded.artist, sleeve_local_attachments.artist),
+      release_title = COALESCE(excluded.release_title, sleeve_local_attachments.release_title),
       musicbrainz_recording_id = COALESCE(excluded.musicbrainz_recording_id, sleeve_local_attachments.musicbrainz_recording_id),
       last_encountered_at = excluded.last_encountered_at,
       updated_at = excluded.updated_at`)
@@ -406,7 +410,7 @@ function retainSourceDocumentInDatabase(db: Database.Database, input: {
       .get(input.provider,input.entityType,input.entityId,input.sourceUrl,input.revisionId,contentHash) as {id:string;prunedAt:string|null}|undefined;
     const now=new Date().toISOString();
     if(existing) {
-      db.prepare(`UPDATE sleeve_source_documents SET content=?,wikipedia_pruned_at=NULL,retrieved_at=?,attribution=? WHERE id=?`)
+      db.prepare(`UPDATE sleeve_source_documents SET content=?,wikipedia_pruned_at=NULL,wikipedia_completed_at=NULL,retrieved_at=?,attribution=? WHERE id=?`)
         .run(input.content,now,input.attribution,existing.id);
       if(existing.prunedAt) {
         db.prepare('DELETE FROM sleeve_wikipedia_scan_progress WHERE source_document_id=?').run(existing.id);

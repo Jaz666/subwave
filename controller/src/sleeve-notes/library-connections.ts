@@ -1,3 +1,4 @@
+import { invalidateChangedLocalIdentity } from './local-identity.js';
 // Cached provider facts resolved against a separate, periodically refreshed
 // Navidrome catalogue. This module performs no provider or LLM calls.
 import type Database from 'better-sqlite3';
@@ -88,6 +89,7 @@ export function cacheConnectionLibraryTracks(
       if (!track.id || !connectionNameKey(track.title) || !connectionNameKey(track.artist)) continue;
       const mbid = typeof track.musicbrainzId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(track.musicbrainzId.trim())
         ? track.musicbrainzId.trim().toLowerCase() : null;
+      invalidateChangedLocalIdentity(db,track.id,{title:track.title,artist:track.artist,album:track.album,mbid});
       insert.run(track.id, track.title, track.artist, track.album ?? null, mbid,
         connectionNameKey(track.title), connectionNameKey(track.artist), generation);
     }

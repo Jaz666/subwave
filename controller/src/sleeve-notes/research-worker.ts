@@ -882,6 +882,7 @@ export class ResearchWorker {
               sourceDocumentId: source.id, candidates, now,
             });
           }
+          db.prepare('UPDATE sleeve_source_documents SET wikipedia_completed_at=? WHERE id=?').run(now,source.id);
           db.prepare('DELETE FROM sleeve_research_progress WHERE job_id = ?').run(job.id);
           db.prepare(`UPDATE sleeve_research_jobs SET state = 'complete', run_after = NULL, wikipedia_refresh_mode = NULL, operator_requested = 0,
             updated_at = ?, completed_at = ? WHERE id = ?`).run(now, now, job.id);

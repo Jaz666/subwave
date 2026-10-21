@@ -1,3 +1,4 @@
+import { librarySourceKey } from './local-identity.js';
 import { runResearchDatabaseWork } from './db.js';
 // Bounded recurring catalogue reconciliation. New tracks can resolve old
 // connections without queuing biography research or querying Genius again.
@@ -48,6 +49,8 @@ export class ConnectionLibraryWorker {
     this.running = true;
     let db: Database.Database | null = null;
     try {
+      const sourceKey=librarySourceKey();
+      const assertSource=()=>{if(sourceKey!==librarySourceKey())throw new Error('Music library changed; catalogue scan will restart');};
       const database = this.database();
       db = database;
       let scan = database.prepare(`SELECT generation, album_offset AS albumOffset, run_after AS runAfter
@@ -70,6 +73,7 @@ export class ConnectionLibraryWorker {
         throw new Error('Navidrome is still scanning; connection library sweep deferred');
       }
       const albums = await this.catalogue.getAlbumList(scan.albumOffset, ALBUMS_PER_PASS, { requireComplete: true });
+      assertSource();
       if (!albums.length) {
         const seen = (database.prepare(`SELECT COUNT(*) AS count FROM sleeve_connection_library_tracks
           WHERE scan_generation = ?`).get(scan.generation) as { count: number }).count;
@@ -79,6 +83,7 @@ export class ConnectionLibraryWorker {
           database.prepare('UPDATE sleeve_connection_library_scan SET album_offset = 0 WHERE id = 1').run();
           throw new Error('Navidrome scan began during the connection sweep');
         }
+        assertSource();
         database.transaction(() => {
           database.prepare(`DELETE FROM sleeve_connection_library_matches WHERE local_track_id IN (
             SELECT local_track_id FROM sleeve_connection_library_tracks WHERE scan_generation <> ?)`)
@@ -97,8 +102,10 @@ export class ConnectionLibraryWorker {
         const id = typeof album?.id === 'string' ? album.id.trim() : '';
         if (!id) throw new Error('Malformed album in connection library sweep');
         const detail = await this.catalogue.getAlbumWithSongs(id, { requireComplete: true });
+        assertSource();
         if (!detail || !Array.isArray(detail.songs)) throw new Error(`Incomplete connection library album: ${id}`);
         if (detail.songs.some((song) => !song?.id || !song?.title)) throw new Error(`Malformed connection library tracks: ${id}`);
+        assertSource();
         database.transaction(() => {
           observeSeriesLibraryAlbum(database, { ...detail.album, id }, detail.songs, false, scan!.generation);
           cacheConnectionLibraryTracks(database, detail.songs.map((song) => ({

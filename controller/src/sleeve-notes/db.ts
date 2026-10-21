@@ -1,3 +1,4 @@
+import { alignLibrarySource, librarySourceKey } from './local-identity.js';
 // Sleeve Notes owns a small sidecar database. It never writes to Navidrome or
 // to the existing library index: provider knowledge has a separate lifecycle.
 import Database from 'better-sqlite3';
@@ -8,9 +9,10 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 59;
+export const SCHEMA_VERSION = 60;
 
 let db: Database.Database | null = null;
+let libraryFingerprint: string | null = null;
 const cachedReads = new AsyncLocalStorage<Database.Database>();
 
 /** Run synchronous cache reads without creating or migrating the station DB. */
@@ -24,12 +26,21 @@ export function withCachedRead<T>(read: () => T, path = DB_PATH): T {
 export function open(): Database.Database {
   const cached = cachedReads.getStore();
   if (cached) return cached;
-  if (db) return db;
-  mkdirSync(dirname(DB_PATH), { recursive: true });
-  db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-  migrate(db);
+  if (!db) {
+    mkdirSync(dirname(DB_PATH), { recursive: true });
+    const opening = new Database(DB_PATH);
+    try {
+      opening.pragma('journal_mode = WAL');
+      opening.pragma('synchronous = NORMAL');
+      migrate(opening);
+      db = opening;
+    } catch (error) { opening.close(); throw error; }
+  }
+  const fingerprint=librarySourceKey();
+  if(libraryFingerprint!==fingerprint) {
+    alignLibrarySource(db,fingerprint);
+    libraryFingerprint=fingerprint;
+  }
   return db;
 }
 
@@ -38,6 +49,7 @@ export function close(): void {
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch {}
   db.close();
   db = null;
+  libraryFingerprint = null;
 }
 
 let activeResearchWork=0;
@@ -1340,6 +1352,22 @@ export function migrate(d: Database.Database): void {
     ); CREATE INDEX IF NOT EXISTS idx_sleeve_series_pending_albums
       ON sleeve_series_library_albums(pending, local_album_id);`);
     d.pragma('user_version = 59');
+  }
+
+  if (version < 60) {
+    if (!(d.prepare('PRAGMA table_info(sleeve_source_documents)').all() as Array<{name:string}>).some(column=>column.name==='wikipedia_completed_at')) {
+      d.exec('ALTER TABLE sleeve_source_documents ADD COLUMN wikipedia_completed_at TEXT');
+    }
+    // Only an intact, completed checkpoint proves an older source was scanned.
+    // Archived chunks alone cannot establish that every chunk finished.
+    d.exec(`UPDATE sleeve_source_documents SET wikipedia_completed_at=(
+      SELECT job.completed_at FROM sleeve_wikipedia_scan_progress scan
+      JOIN sleeve_research_jobs job ON job.id=scan.job_id
+      WHERE scan.source_document_id=sleeve_source_documents.id AND job.state='complete'
+        AND scan.next_chunk>=scan.chunk_count AND job.completed_at IS NOT NULL LIMIT 1)
+      WHERE provider='wikipedia' AND wikipedia_completed_at IS NULL;`);
+    d.exec('CREATE TABLE IF NOT EXISTS sleeve_library_source (id INTEGER PRIMARY KEY CHECK(id=1), fingerprint TEXT NOT NULL)');
+    d.pragma('user_version = 60');
   }
 
 }

@@ -1,3 +1,4 @@
+import { librarySourceKey } from './local-identity.js';
 import { open, runResearchDatabaseWork } from './db.js';
 // Quiet-time, resumable Navidrome sweep for all cached MusicBrainz Series.
 // Exact recording and release-group MBIDs attach claims without making the DJ
@@ -35,10 +36,12 @@ export class MusicBrainzSeriesLibraryWorker {
     const offset = repository.dueSeriesLibraryScanOffset();
     const pending = offset == null ? repository.pendingSeriesLibraryAlbums(ALBUMS_PER_PASS) : [];
     if (offset == null && !pending.length) return false;
+    const sourceKey=librarySourceKey();
     this.running = true;
     try {
       const albums: Array<{ id?: string; name?: string; musicBrainzId?: string }> = offset == null ? pending.map(id => ({ id }))
         : await this.catalogue.getAlbumList(offset, ALBUMS_PER_PASS, { requireComplete: true });
+      if(sourceKey!==librarySourceKey())return false;
       if (!albums.length) {
         repository.advanceSeriesLibraryScan(null);
         console.log('[sleeve-notes] MusicBrainz Series library sweep complete');
@@ -70,6 +73,7 @@ export class MusicBrainzSeriesLibraryWorker {
             repository.cacheSeriesReleaseGroupForRelease(albumMbid, releaseGroupMbid);
           }
         }
+        if(sourceKey!==librarySourceKey())return false;
         linked += repository.retainLibrarySeriesClaims({ localAlbumId, releaseGroupMbid, songs });
         repository.observeSeriesLibraryAlbum(open(), { ...detail.album, id: localAlbumId }, detail.songs, true);
         processed++;

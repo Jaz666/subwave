@@ -1,3 +1,4 @@
+import { librarySourceKey } from './local-identity.js';
 import { runResearchDatabaseWork } from './db.js';
 // Quiet-time Stage 2 matching. This intentionally has no timer or server
 // wiring yet: the caller must supply the station's playback-critical quiet
@@ -43,6 +44,7 @@ export class MusicBrainzMatchWorker {
       repository.finishResearchJob(job.id, 'failed');
       return true;
     }
+    const sourceKey=librarySourceKey();
     this.running = true;
     try {
       console.log(`[sleeve-notes] MusicBrainz match: ${attachment.artist ? `${attachment.artist} — ` : ''}${attachment.title}`);
@@ -52,6 +54,13 @@ export class MusicBrainzMatchWorker {
         const result = await this.lookup.lookup({
           title: attachment.title, artist: attachment.artist, mbid: attachment.musicbrainzRecordingId,
         });
+        const current = repository.localAttachmentForMatch(job.subjectId);
+        if (sourceKey!==librarySourceKey() || !current || current.title !== attachment.title || current.artist !== attachment.artist
+          || current.musicbrainzRecordingId !== attachment.musicbrainzRecordingId) {
+          repository.finishProviderRequest(requestId, result ? 'ready' : 'no-match');
+          if (current && sourceKey===librarySourceKey()) repository.requeueResearchJob(job.id);
+          return true;
+        }
         if (!result) {
           finishBrainAlbumMatchesInDatabase(open(), attachment.localTrackId, false);
           repository.finishProviderRequest(requestId, 'no-match');

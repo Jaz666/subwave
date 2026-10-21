@@ -126,6 +126,7 @@ test('upgrade restores saved extraction rank and leaves original claims and word
     CREATE TABLE sleeve_moderation_candidates (id TEXT PRIMARY KEY,source_document_id TEXT,status TEXT,reviewed_at TEXT,reviewed_by TEXT,updated_at TEXT);
     CREATE TABLE sleeve_source_documents (id TEXT PRIMARY KEY, provider TEXT);
     CREATE TABLE sleeve_wikipedia_scan_chunks (source_document_id TEXT, items_json TEXT, created_at TEXT, chunk_index INTEGER);
+    CREATE TABLE sleeve_wikipedia_scan_progress (job_id TEXT,source_document_id TEXT,chunk_count INTEGER,next_chunk INTEGER);
     INSERT INTO sleeve_source_documents VALUES ('source', 'wikipedia');
     INSERT INTO sleeve_claims VALUES ('claim', 'source', 'Ranked fact.', 1);
     PRAGMA user_version = 38;`);
@@ -137,7 +138,7 @@ test('upgrade restores saved extraction rank and leaves original claims and word
     extraction_rank: 2, extraction_section: 3, feedback_hold: 0,
   });
   migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }),59);
+  assert.equal(db.pragma('user_version', { simple: true }),60);
   db.close();
 });
 

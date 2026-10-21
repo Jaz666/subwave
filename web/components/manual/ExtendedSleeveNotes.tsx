@@ -142,10 +142,10 @@ export default function ExtendedSleeveNotes() {
           albums and changes to your enabled lists can give it more to do.
         </p>
         <p>
-          Full Wikipedia articles are kept while research is in progress and normally
-          cleared after a day once the scan has finished successfully. Saved facts,
+          Full Wikipedia articles are kept while research is in progress and become
+          eligible for cleanup a day after the scan finishes successfully. Saved facts,
           supporting passages, nearby context and source links are kept. Pending
-          research or reviews can keep an article for longer. A later refresh may
+          research, reviews or a cleanup backlog can keep an article for longer. A later refresh may
           need to fetch the article again before research can continue.
         </p>
         <p>

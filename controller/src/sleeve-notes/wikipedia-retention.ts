@@ -34,10 +34,13 @@ export function pruneCompletedWikipediaArticlesInDatabase(db:Database.Database,l
     const rows=db.prepare(`SELECT source.id,source.content FROM sleeve_source_documents source
       WHERE source.provider='wikipedia' AND source.wikipedia_pruned_at IS NULL
         AND (? IS NULL OR source.id=?)
-        AND EXISTS (SELECT 1 FROM sleeve_wikipedia_scan_progress scan
+        AND (source.wikipedia_completed_at<=? OR EXISTS (
+          SELECT 1 FROM sleeve_wikipedia_scan_progress scan
           JOIN sleeve_research_jobs job ON job.id=scan.job_id
           WHERE scan.source_document_id=source.id AND job.state='complete'
-            AND scan.next_chunk>=scan.chunk_count AND job.completed_at<=?)
+            AND scan.next_chunk>=scan.chunk_count AND job.completed_at<=?))
+        AND NOT EXISTS (SELECT 1 FROM sleeve_wikipedia_scan_progress scan
+          WHERE scan.source_document_id=source.id AND scan.next_chunk<scan.chunk_count)
         AND NOT EXISTS (SELECT 1 FROM sleeve_research_jobs job
           WHERE job.subject_id=source.entity_id AND job.subject_type=CASE source.entity_type WHEN 'artist' THEN 'artist' ELSE 'release' END
             AND job.provider IN ('researcher','wikipedia') AND job.state IN ('queued','retry-at','running','failed'))
@@ -56,7 +59,7 @@ export function pruneCompletedWikipediaArticlesInDatabase(db:Database.Database,l
         AND NOT EXISTS (SELECT 1 FROM sleeve_airing_reviews review,json_each(review.context_json,'$.sparks') spark
           JOIN sleeve_claims claim ON claim.id=json_extract(spark.value,'$.claimId')
           WHERE review.state IN ('queued','running','ready') AND claim.source_document_id=source.id)
-      ORDER BY source.retrieved_at,source.id LIMIT ?`).all(sourceId??null,sourceId??null,new Date(now.getTime()-WIKIPEDIA_ARTICLE_RETENTION_MS).toISOString(),Math.max(1,Math.min(10,limit))) as Array<{id:string;content:string}>;
+      ORDER BY source.retrieved_at,source.id LIMIT ?`).all(sourceId??null,sourceId??null,new Date(now.getTime()-WIKIPEDIA_ARTICLE_RETENTION_MS).toISOString(),new Date(now.getTime()-WIKIPEDIA_ARTICLE_RETENTION_MS).toISOString(),Math.max(1,Math.min(10,limit))) as Array<{id:string;content:string}>;
     let cleared=0;
     for(const source of rows) {
       const evidence=db.prepare(`SELECT evidence FROM sleeve_claims WHERE source_document_id=?

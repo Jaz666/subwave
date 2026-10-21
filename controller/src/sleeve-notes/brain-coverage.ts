@@ -1,3 +1,4 @@
+import { invalidateChangedLocalIdentity } from './local-identity.js';
 // Coverage is a local read. Explicit queueing uses the same quiet-time workers
 // as encountered tracks, without creating a playback encounter.
 import { randomUUID } from 'node:crypto';
@@ -139,6 +140,7 @@ export function queueBrainArtistInDatabase(db: Database.Database, artistId: stri
 export interface BrainLibrarySeed { id: string; title: string; artist: string; album: string | null; mbid: string | null; }
 export function queueBrainLibrarySeedInDatabase(db: Database.Database, seed: BrainLibrarySeed, now = new Date()): { queued: boolean; state: 'queued' | 'researching' } {
   return db.transaction(() => {
+    invalidateChangedLocalIdentity(db,seed.id,{title:seed.title,artist:seed.artist,album:seed.album,mbid:seed.mbid});
     const matched = db.prepare(`SELECT recording.artist_id AS id FROM sleeve_local_attachments local
       JOIN sleeve_recordings recording ON recording.id = local.recording_id WHERE local.local_track_id = ? AND local.match_state = 'matched'`).get(seed.id) as { id: string | null } | undefined;
     if (matched?.id) return queueBrainArtistInDatabase(db, matched.id, now);

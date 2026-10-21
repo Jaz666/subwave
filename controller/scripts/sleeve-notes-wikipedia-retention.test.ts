@@ -133,6 +133,7 @@ test('refresh of cleared text schedules the paced source worker without an LLM c
  }
  assert.equal(sawFullArticle,true);
  assert.equal((db.prepare("SELECT state FROM sleeve_research_jobs WHERE id='job'").get() as {state:string}).state,'complete');
+ assert.ok((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string|null}).at,'the worker records source completion independently of the job checkpoint');
  assert.equal(prune(db),0,'a newly completed refresh gets its own 24-hour preview window');
 });
 
@@ -180,4 +181,31 @@ test('a missing article body produces a clear preview response without contactin
   const response=await fetch(url+'/sleeve-notes/wikipedia-prompt-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityType:'artist',entityId:'artist',prompt:'Find stories.'})});
   assert.equal(response.status,409);assert.match((await response.json() as {error:string}).error,/cleared after research/);
  } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+
+
+test('a v59 completed source stays eligible when a refresh replaces its checkpoint',()=>{
+ const {db,source}=fixture();
+ db.pragma('user_version=59');notes.migrate(db);
+ assert.equal((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string}).at,old);
+ const replacement=repo.retainSourceDocument({...input,revisionId:'2',content:article+' A new paragraph.'});
+ db.prepare("UPDATE sleeve_wikipedia_scan_progress SET source_document_id=? WHERE job_id='job'").run(replacement);
+ const facts=db.prepare('SELECT * FROM sleeve_claims').all();
+ assert.equal(prune(db,10,source),1);
+ assert.deepEqual(db.prepare('SELECT * FROM sleeve_claims').all(),facts);
+ assert.ok((db.prepare('SELECT wikipedia_pruned_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string}).at);
+ assert.equal((db.prepare('SELECT wikipedia_pruned_at AS at FROM sleeve_source_documents WHERE id=?').get(replacement) as {at:string|null}).at,null);
+ assert.equal(repo.retainSourceDocument(input),source);
+ assert.equal((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string|null}).at,null,'refetch requires a fresh successful scan');
+});
+
+test('migration does not invent completion for an unfinished or orphaned article',()=>{
+ const {db,source}=fixture();
+ db.prepare('UPDATE sleeve_wikipedia_scan_progress SET next_chunk=0').run();
+ db.pragma('user_version=59');notes.migrate(db);
+ assert.equal((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string|null}).at,null);
+ db.prepare('DELETE FROM sleeve_wikipedia_scan_progress').run();
+ db.pragma('user_version=59');notes.migrate(db);
+ assert.equal(prune(db,10,source),0);
+ assert.equal(repo.latestSourceDocumentForResearch('artist','artist','wikipedia')!.content,article);
 });

@@ -1,3 +1,4 @@
+import { librarySourceKey } from './local-identity.js';
 // Display-only Navidrome metadata. This never inserts encounters, claims or
 // research jobs. The artist index is a complete, persisted snapshot; albums
 // and tracks are read only when their neighbourhood is explicitly opened.
@@ -15,10 +16,11 @@ let population: Promise<{ artists: number }> | null = null;
 export function populateBrainArtists(quietGate?: QuietGate): Promise<{ artists: number }> {
   if (population) return population;
   population = (async () => {
+    const sourceKey=librarySourceKey();
     let count = 0;
     let interrupted = false;
     const assertAllowed = () => {
-      if (interrupted || !settings.get().djBehaviour.extendedSleeveNotes || (quietGate && !quietGate.isQuiet())) {
+      if (sourceKey!==librarySourceKey() || interrupted || !settings.get().djBehaviour.extendedSleeveNotes || (quietGate && !quietGate.isQuiet())) {
         throw new Error('Artist population interrupted; waiting for another enabled quiet slot');
       }
     };

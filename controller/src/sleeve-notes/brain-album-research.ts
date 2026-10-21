@@ -1,3 +1,4 @@
+import { invalidateChangedLocalIdentity } from './local-identity.js';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { BRAIN_RESEARCH_PRIORITY, type BrainCoverage, type BrainLibrarySeed } from './brain-coverage.js';
@@ -53,6 +54,7 @@ export function queueBrainAlbumInDatabase(db: Database.Database, type: 'release'
 
 export function queueBrainLibraryAlbumInDatabase(db: Database.Database, seed: BrainAlbumSeed, now=new Date()): {queued:boolean;state:'queued'|'researching'} {
   return db.transaction(()=>{
+    invalidateChangedLocalIdentity(db,seed.track.id,{title:seed.track.title,artist:seed.track.artist,album:seed.title,mbid:seed.track.mbid});
     const group=brainAlbumGroupForTrackInDatabase(db,seed);
     if(group){
       const result=queueBrainAlbumInDatabase(db,'release-group',group,now);
