@@ -578,8 +578,8 @@ export function OverviewView({
           <p className="mb-1 text-xs text-muted">Saved knowledge</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link href="/admin/notes?tab=stories&category=stories-only" title="Saved anecdotes and background about the music. Track relevance and cooldowns determine what the DJ can use now.">{readout?.storyClaims?.toLocaleString() ?? '—'} Stories</Link>
-            <Link href="/admin/notes?tab=stories&category=library-connections" title="Unique sample and cover relationships between recordings matched to your current library. Each relationship is counted once, including when saved from both directions.">{readout?.libraryConnections?.toLocaleString() ?? '—'} Library connections</Link>
-            <Link href="/admin/notes?tab=stories&category=credits" title="Saved writer, producer and performer details. Credits provide context and are not standalone DJ stories.">{readout?.creditClaims?.toLocaleString() ?? '—'} Credits</Link>
+            <Link href="/admin/notes?tab=connections" title="Unique sample and cover relationships between recordings matched to your current library. Each relationship is counted once, including when saved from both directions.">{readout?.libraryConnections?.toLocaleString() ?? '—'} Library connections</Link>
+            <Link href="/admin/notes?tab=connections" title="Saved writer, producer and performer details. Credits provide context and are not standalone DJ stories.">{readout?.creditClaims?.toLocaleString() ?? '—'} Credits</Link>
           </div>
         </div>
         <Link href="/admin/notes?tab=moderation">{status.reviewReady?.toLocaleString() ?? '—'} ready for Review</Link>

@@ -121,12 +121,14 @@ test('paused Genius work is explained and does not take the visible slot from ru
 });
 
 
-test('Saved knowledge links its library-only count to the matching filter',()=>{
+test('Saved knowledge links Stories to its facts and connections and credits to Station Brain',()=>{
  const client=new QueryClient();
  const readout={storyClaims:12,libraryConnections:2,connectionClaims:900,creditClaims:7,musicBrainzSeries:[],providerSummary:[],workQueueItems:[]} as unknown as ComponentProps<typeof OverviewView>['readout'];
  const status={enabled:true,reviewReady:0} as ComponentProps<typeof OverviewView>['status'];
  const html=renderToStaticMarkup(<QueryClientProvider client={client}><OverviewView enabled status={status} statusLoading={false} statusError={false} readout={readout} onRetryStatus={()=>{}} adminFetch={fetcher}/></QueryClientProvider>);
- assert.match(html,/category=library-connections/);
+ assert.match(html,/href="\/admin\/notes\?tab=stories&amp;category=stories-only"/);
+ assert.equal((html.match(/href="\/admin\/notes\?tab=connections"/g)??[]).length,2);
+ assert.doesNotMatch(html,/href="[^"]*category=(?:library-connections|credits)"/);
  assert.match(html,/>2<!-- --> Library connections|>2 Library connections/);
  assert.doesNotMatch(html,/900/);
  assert.match(html,/Each relationship is counted once/);

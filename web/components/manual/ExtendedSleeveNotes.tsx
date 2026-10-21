@@ -209,8 +209,8 @@ export default function ExtendedSleeveNotes() {
         <p>
           On Overview, <strong>Library connections</strong> counts unique sample and
           cover relationships between recordings matched to your current library.
-          Seeing the same relationship from both recordings counts once. Select the
-          number to browse those connections. In Station Brain&rsquo;s
+          Seeing the same relationship from both recordings counts once. The
+          Library connections and Credits numbers open Station Brain. In Station Brain&rsquo;s
           <strong> Stats &amp; Discoveries</strong>, <strong>All saved relationships</strong>{' '}
           includes the wider collection, with recordings outside your library and
           facts saved from either direction. Shared writers and producers stay
