@@ -38,7 +38,9 @@ Genius contributes structured credits, samples and covers, never lyrics. Turning
 
 Station Brain distinguishes local library entities from outside discoveries. The saved-knowledge connection count folds inverse/duplicate sample and cover descriptions into unique connections within the playable library; credits remain a separate category. External discoveries are research leads rather than playable additions.
 
-Local track metadata and music-server identity changes invalidate bindings and queued work before old responses can publish. A completed catalogue sweep can remove stale local matches; an unconfirmed empty response cannot clear the catalogue. Series library sweeps checkpoint their progress and settle after completion. Unchanged Series refreshes do not recreate facts or restart a completed sweep.
+Local track metadata and music-server identity changes invalidate bindings and queued work before old responses can publish. Connection matching runs initially in quiet time, then batches changed inputs with at least five minutes between full attempts. Unchanged inputs do not trigger a rebuild. Rejected stale snapshots keep the same interval; failures keep a ten-minute retry delay. Collection continues between passes, so new connection counts, graph matches and connection Sparks can lag behind research (longer while busy or retrying). The deadline is in memory, so a controller restart permits one initial attempt again. The lightweight catalogue timer remains separate from the expensive matching interval.
+
+A completed catalogue sweep can remove stale local matches; an unconfirmed empty response cannot clear the catalogue. Series library sweeps checkpoint their progress and settle after completion. Unchanged Series refreshes do not recreate facts or restart a completed sweep.
 
 ## Offering and airing a Spark
 

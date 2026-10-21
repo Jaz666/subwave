@@ -15,6 +15,7 @@ import type { QuietGate } from './musicbrainz-worker.js';
 const ALBUMS_PER_PASS = 10;
 const PASS_INTERVAL_MS = 30_000;
 const SWEEP_INTERVAL_MS = 15 * 60_000;
+const MATCH_INTERVAL_MS = 5 * 60_000;
 const RETRY_INTERVAL_MS = 10 * 60_000;
 interface Catalogue {
   getAlbumList: typeof subsonic.getAlbumList;
@@ -25,20 +26,24 @@ interface Catalogue {
 export class ConnectionLibraryWorker {
   private running = false;
   private lastFactsRevision = -1;
-  private matchRetryAfter = 0;
+  private matchRunAfter = 0;
   constructor(
     private readonly quietGate: QuietGate,
     private readonly catalogue: Catalogue = subsonic,
     private readonly database: () => Database.Database = open,
     private readonly enabled = () => settings.get().djBehaviour.extendedSleeveNotes === true && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true,
+    private readonly reconcile = reconcileConnectionsInBackground,
   ) {}
 
   private async reconcileIfChanged(db: Database.Database, nowMs: number): Promise<void> {
-    if (!this.quietGate.isQuiet() || nowMs < this.matchRetryAfter || connectionRevision(db, 'facts') === this.lastFactsRevision) return;
+    if (!this.quietGate.isQuiet() || nowMs < this.matchRunAfter || connectionRevision(db, 'facts') === this.lastFactsRevision) return;
+    // Batch non-critical index changes. Reserve before starting so a rejected
+    // stale snapshot cannot cause another full rebuild on the next 30s tick.
+    this.matchRunAfter = nowMs + MATCH_INTERVAL_MS;
     try {
-      const published = await reconcileConnectionsInBackground(db);
+      const published = await this.reconcile(db);
       if (published !== null) this.lastFactsRevision = published;
-    } catch (error) { this.matchRetryAfter = nowMs + RETRY_INTERVAL_MS; throw error; }
+    } catch (error) { this.matchRunAfter = nowMs + RETRY_INTERVAL_MS; throw error; }
   }
 
   async runOnce(nowMs = Date.now()): Promise<boolean> {
