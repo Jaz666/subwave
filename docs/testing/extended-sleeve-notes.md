@@ -52,6 +52,16 @@ Full Wikipedia article text is temporary. Successfully completed sources normall
 
 Space freed inside SQLite can be reused without reducing the file's apparent size. Compaction is a separate maintenance operation. Record database/backup growth over the trial, alongside counts of artists, facts and completed research; do not interpret file size alone as duplicate data.
 
+## Accidental actions worth testing
+
+On a disposable installation, remove a previously observed incorrect recording MBID without changing the other tags. Check that the next catalogue update or explicit Station Brain research clears the old match before rematching. Also check a tagless track that was matched automatically: ordinary rescans must keep its match. Removing artist tags should remove the track's old local bindings rather than quietly retain them.
+
+Pause collection, disable the feature, or make broadcast work busy while a library request is pending. That late catalogue response should not be published. Start a Navidrome scan during an album fetch: the sweep should defer and restart. Then repeat bulk moves/deletions until a stable sweep finishes; check that library membership converges. An unknown scan status must not delete unseen cached tracks. An entirely empty library deliberately retains the old cache for now, because it cannot safely be distinguished from temporary loss of access by that response alone; do not interpret this as verified current membership.
+
+Use two browser tabs to flag/review the same story, change it in one, then try the old decision in the other. The old decision must be refused. Legacy clients calling the retired direct story-edit/delete endpoints receive HTTP 410; use the review workflow instead. Withdrawal and restoration remain separate supported actions.
+
+Disk-full, permission and clock-change experiments belong only on a separate installation. Record whether ordinary audio continues, whether the problem is visible, and whether research recovers when the environment is repaired. A passing mocked test is not a substitute for these checks. When restoring a pre-feature archive, expect current research to be retained if the archive contains no research database.
+
 ## Return to the previous station
 
 Switching the feature off retains the research database and is not a complete rollback of the branch. To return to a pre-test state, use the recorded previous code/images and the matching pre-test backup. Restore through the supported backup workflow or perform an offline state restore with services stopped. Rebuild the prior source if necessary; restarting an image built from this branch does not restore old code. Confirm ordinary playback, requests, DJ links and health after recovery. Do not assume an older feature build can safely write a database upgraded by a newer one.

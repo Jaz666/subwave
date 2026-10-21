@@ -35,7 +35,7 @@ import {
 import { LlmResearcher } from '../sleeve-notes/llm-researcher.js';
 import { wikipediaNoteCategories } from '../sleeve-notes/researcher.js';
 import { allocateWikipediaClaims, planWikipediaChunks } from '../sleeve-notes/wikipedia-extract.js';
-import { listModeration, moderateCandidate, moderateExistingClaim, moderationSource, setClaimAvailability } from '../sleeve-notes/moderation.js';
+import { listModeration, moderateCandidate, moderationSource, setClaimAvailability } from '../sleeve-notes/moderation.js';
 import {
   rebuildWikipediaClaims,
   rebuildWikipediaClaimsForArtist,
@@ -276,15 +276,10 @@ router.post('/sleeve-notes/claims/:id/:action', requireAdmin, async (req, res) =
     try {setClaimAvailability(String(req.params.id),action);return res.json({ok:true});}
     catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not update fact availability'});}
   }
-  if (action !== 'approved' && action !== 'deleted') return res.status(400).json({ error: 'Unsupported decision' });
-  const edit = moderationEdit(req.body);
-  if (action === 'approved' && !edit) return res.status(400).json({ error: 'Complete claim fields are required' });
-  try {
-    moderateExistingClaim(String(req.params.id), action, edit);
-    return res.json({ ok: true });
-  } catch (error) {
-    return res.status(400).json({ error: error instanceof Error ? error.message : 'Could not update claim' });
+  if (action === 'approved' || action === 'deleted') {
+    return res.status(410).json({ error: 'Direct story editing is retired; use the story review workflow so changes are checked before applying a decision' });
   }
+  return res.status(400).json({ error: 'Unsupported decision' });
 });
 
 router.post('/sleeve-notes/segment/run', requireAdmin, async (_req,res)=>{

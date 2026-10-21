@@ -50,7 +50,10 @@ export class ConnectionLibraryWorker {
     let db: Database.Database | null = null;
     try {
       const sourceKey=librarySourceKey();
-      const assertSource=()=>{if(sourceKey!==librarySourceKey())throw new Error('Music library changed; catalogue scan will restart');};
+      const assertAllowed=()=>{
+        if(sourceKey!==librarySourceKey())throw new Error('Music library changed; catalogue scan will restart');
+        if(!this.enabled() || !this.quietGate.isQuiet())throw new Error('Catalogue scan paused for settings or broadcast work');
+      };
       const database = this.database();
       db = database;
       let scan = database.prepare(`SELECT generation, album_offset AS albumOffset, run_after AS runAfter
@@ -72,18 +75,21 @@ export class ConnectionLibraryWorker {
         database.prepare('UPDATE sleeve_connection_library_scan SET album_offset = 0 WHERE id = 1').run();
         throw new Error('Navidrome is still scanning; connection library sweep deferred');
       }
+      assertAllowed();
       const albums = await this.catalogue.getAlbumList(scan.albumOffset, ALBUMS_PER_PASS, { requireComplete: true });
-      assertSource();
+      assertAllowed();
       if (!albums.length) {
         const seen = (database.prepare(`SELECT COUNT(*) AS count FROM sleeve_connection_library_tracks
           WHERE scan_generation = ?`).get(scan.generation) as { count: number }).count;
         const total = (database.prepare('SELECT COUNT(*) AS count FROM sleeve_connection_library_tracks').get() as { count: number }).count;
         if (!seen && total) throw new Error('Empty catalogue sweep cannot replace existing connection matches');
-        if (await this.catalogue.getScanStatus() === true) {
+        const scanning = await this.catalogue.getScanStatus();
+        if (scanning === true) {
           database.prepare('UPDATE sleeve_connection_library_scan SET album_offset = 0 WHERE id = 1').run();
           throw new Error('Navidrome scan began during the connection sweep');
         }
-        assertSource();
+        if (scanning === null && total > seen) throw new Error('Navidrome scan status is unknown; keeping existing connection matches');
+        assertAllowed();
         database.transaction(() => {
           database.prepare(`DELETE FROM sleeve_connection_library_matches WHERE local_track_id IN (
             SELECT local_track_id FROM sleeve_connection_library_tracks WHERE scan_generation <> ?)`)
@@ -102,10 +108,14 @@ export class ConnectionLibraryWorker {
         const id = typeof album?.id === 'string' ? album.id.trim() : '';
         if (!id) throw new Error('Malformed album in connection library sweep');
         const detail = await this.catalogue.getAlbumWithSongs(id, { requireComplete: true });
-        assertSource();
+        assertAllowed();
         if (!detail || !Array.isArray(detail.songs)) throw new Error(`Incomplete connection library album: ${id}`);
         if (detail.songs.some((song) => !song?.id || !song?.title)) throw new Error(`Malformed connection library tracks: ${id}`);
-        assertSource();
+        if (await this.catalogue.getScanStatus() === true) {
+          database.prepare('UPDATE sleeve_connection_library_scan SET album_offset = 0 WHERE id = 1').run();
+          throw new Error('Navidrome scan began during the connection sweep');
+        }
+        assertAllowed();
         database.transaction(() => {
           observeSeriesLibraryAlbum(database, { ...detail.album, id }, detail.songs, false, scan!.generation);
           cacheConnectionLibraryTracks(database, detail.songs.map((song) => ({

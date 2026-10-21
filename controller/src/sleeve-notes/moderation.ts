@@ -427,6 +427,7 @@ export function moderateExistingClaim(id: string, action: Decision, edit: Editab
       FROM sleeve_claims c JOIN sleeve_source_documents s ON s.id = c.source_document_id WHERE c.id = ?`)
       .get(id) as Record<string, unknown> | undefined;
     if (!claim) throw new Error('Claim not found');
+    if (claim.operator_state === 'deleted') throw new Error('This story has already been deleted');
     const now = new Date().toISOString();
     const before = JSON.stringify({ category: claim.category, topic: claim.topic,
       wording: claim.wording, shortWording: claim.short_wording, evidence: claim.evidence,

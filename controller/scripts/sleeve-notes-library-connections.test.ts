@@ -386,3 +386,57 @@ test('the library-only HTTP filter shares its count with pages and respects the 
     await new Promise<void>(resolve=>server.close(()=>resolve()));
   }
 });
+
+
+test('catalogue responses cannot publish after disable, collection pause or broadcast priority changes',async t=>{
+ for(const phase of ['listing','album'] as const) for(const reason of ['settings','broadcast'] as const) {
+  await t.test(`${phase}: ${reason}`,async()=>{
+   const db=fixture();let enabled=true,quiet=true;
+   cacheConnectionLibraryTracks(db,[{id:'old',title:'Old',artist:'Band'}],'old');
+   const before=db.prepare('SELECT * FROM sleeve_connection_library_tracks').all();
+   const interrupt=()=>{if(reason==='settings')enabled=false;else quiet=false;};
+   try {
+    const worker=new ConnectionLibraryWorker({isQuiet:()=>quiet},{
+     getAlbumList:async()=>{if(phase==='listing')interrupt();return [{id:'album'}];},
+     getAlbumWithSongs:async()=>{interrupt();return {album:{id:'album'},songs:[{id:'new',title:'New',artist:'Band'}]};},
+     getScanStatus:async()=>false,
+    },()=>db,()=>enabled);
+    assert.equal(await worker.runOnce(Date.parse(now)),false);
+    assert.deepEqual(db.prepare('SELECT * FROM sleeve_connection_library_tracks').all(),before);
+    assert.equal((db.prepare('SELECT album_offset FROM sleeve_connection_library_scan').get() as {album_offset:number}).album_offset,0);
+   } finally {db.close();}
+  });
+ }
+});
+
+test('a Navidrome scan starting during an album fetch discards that response and restarts the sweep',async()=>{
+ const db=fixture();let scanning=false;
+ try {
+  cacheConnectionLibraryTracks(db,[{id:'old',title:'Old',artist:'Band'}],'old');
+  const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
+   getAlbumList:async()=>[{id:'album'}],
+   getAlbumWithSongs:async()=>{scanning=true;return {album:{id:'album'},songs:[{id:'new',title:'New',artist:'Band'}]};},
+   getScanStatus:async()=>scanning,
+  },()=>db,()=>true);
+  assert.equal(await worker.runOnce(Date.parse(now)),false);
+  assert.deepEqual(db.prepare('SELECT local_track_id FROM sleeve_connection_library_tracks').all(),[{local_track_id:'old'}]);
+  assert.equal((db.prepare('SELECT album_offset FROM sleeve_connection_library_scan').get() as {album_offset:number}).album_offset,0);
+ } finally {db.close();}
+});
+
+test('an unknown scan status cannot authorise deleting unseen cached tracks',async()=>{
+ const db=fixture();let page=0;let scanKnown=true;
+ try {
+  cacheConnectionLibraryTracks(db,[{id:'old',title:'Old',artist:'Band'}],'old');
+  const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
+   getAlbumList:async()=>page++===0?[{id:'album'}]:[],
+   getAlbumWithSongs:async()=>({album:{id:'album'},songs:[{id:'new',title:'New',artist:'Band'}]}),
+   getScanStatus:async()=>scanKnown?false:null,
+  },()=>db,()=>true);
+  assert.equal(await worker.runOnce(Date.parse(now)),true);
+  scanKnown=false;
+  assert.equal(await worker.runOnce(Date.parse(now)+30_000),false);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_connection_library_tracks').get() as {n:number}).n,2);
+  assert.equal((db.prepare('SELECT completed_at FROM sleeve_connection_library_scan').get() as {completed_at:null}).completed_at,null);
+ } finally {db.close();}
+});

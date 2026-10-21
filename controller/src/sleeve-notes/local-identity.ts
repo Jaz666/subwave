@@ -8,16 +8,20 @@ const key = (value: string | null | undefined) => (value ?? '').normalize('NFKC'
  * but never carry local bindings across a changed recording/version. */
 export function invalidateChangedLocalIdentity(db: Database.Database, id: string, incoming: {
   title: string; artist?: string | null; album?: string | null; mbid?: string | null;
-}): boolean {
-  const previous = db.prepare(`SELECT title,artist,release_title AS album,musicbrainz_recording_id AS mbid
+}, authoritative = false): boolean {
+  const cached = authoritative ? db.prepare(`SELECT title,artist,album,musicbrainz_recording_id AS mbid
+    FROM sleeve_connection_library_tracks WHERE local_track_id=?`).get(id) as typeof incoming | undefined : undefined;
+  const previous = cached ?? db.prepare(`SELECT title,artist,release_title AS album,musicbrainz_recording_id AS mbid
     FROM sleeve_local_attachments WHERE local_track_id=?
     UNION ALL SELECT title,artist,album,musicbrainz_recording_id AS mbid
     FROM sleeve_connection_library_tracks WHERE local_track_id=? LIMIT 1`).get(id,id) as typeof incoming | undefined;
   if (!previous) return false;
+  // A catalogue row records actual tags; attachment MBIDs can also come from
+  // automatic matching. Only a previous catalogue tag proves tag removal.
   const changed = key(previous.title) !== key(incoming.title)
-    || (incoming.artist != null && key(previous.artist) !== key(incoming.artist))
-    || (incoming.album != null && previous.album != null && key(previous.album) !== key(incoming.album))
-    || (incoming.mbid != null && key(previous.mbid) !== key(incoming.mbid));
+    || ((authoritative || incoming.artist != null) && key(previous.artist) !== key(incoming.artist))
+    || ((cached !== undefined || incoming.album != null && previous.album != null) && key(previous.album) !== key(incoming.album))
+    || ((cached !== undefined || incoming.mbid != null) && key(previous.mbid) !== key(incoming.mbid));
   if (!changed) return false;
   const now = new Date().toISOString();
   db.prepare(`UPDATE sleeve_local_attachments SET recording_id=NULL,match_state='unmatched',

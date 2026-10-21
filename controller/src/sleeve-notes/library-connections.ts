@@ -86,10 +86,11 @@ export function cacheConnectionLibraryTracks(
       scan_generation = excluded.scan_generation`);
   db.transaction(() => {
     for (const track of tracks) {
-      if (!track.id || !connectionNameKey(track.title) || !connectionNameKey(track.artist)) continue;
+      if (!track.id) continue;
       const mbid = typeof track.musicbrainzId === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(track.musicbrainzId.trim())
         ? track.musicbrainzId.trim().toLowerCase() : null;
-      invalidateChangedLocalIdentity(db,track.id,{title:track.title,artist:track.artist,album:track.album,mbid});
+      invalidateChangedLocalIdentity(db,track.id,{title:track.title,artist:track.artist,album:track.album,mbid},true);
+      if (!connectionNameKey(track.title) || !connectionNameKey(track.artist)) continue;
       insert.run(track.id, track.title, track.artist, track.album ?? null, mbid,
         connectionNameKey(track.title), connectionNameKey(track.artist), generation);
     }

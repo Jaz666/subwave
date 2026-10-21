@@ -54,7 +54,7 @@ export function queueBrainAlbumInDatabase(db: Database.Database, type: 'release'
 
 export function queueBrainLibraryAlbumInDatabase(db: Database.Database, seed: BrainAlbumSeed, now=new Date()): {queued:boolean;state:'queued'|'researching'} {
   return db.transaction(()=>{
-    invalidateChangedLocalIdentity(db,seed.track.id,{title:seed.track.title,artist:seed.track.artist,album:seed.title,mbid:seed.track.mbid});
+    invalidateChangedLocalIdentity(db,seed.track.id,{title:seed.track.title,artist:seed.track.artist,album:seed.title,mbid:seed.track.mbid},true);
     const group=brainAlbumGroupForTrackInDatabase(db,seed);
     if(group){
       const result=queueBrainAlbumInDatabase(db,'release-group',group,now);

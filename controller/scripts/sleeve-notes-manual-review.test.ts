@@ -122,3 +122,17 @@ test('edited AI corrections validate source support, stay bound to their propose
 });
 
 test.after(() => { server.close(); close(); rmSync(root, { recursive: true, force: true }); });
+
+
+test('retired direct-edit API rejects stale writes; deleted facts cannot be reapproved internally',async()=>{
+ configure(true);seed('retired-editor');
+ const headers={Authorization:`Basic ${Buffer.from('operator:secret').toString('base64')}`,'Content-Type':'application/json'};
+ for(const action of ['approved','deleted']) {
+  const response=await fetch(`${base}/claims/retired-editor/${action}`,{method:'POST',headers,body:JSON.stringify({...candidate,shortWording:''})});
+  assert.equal(response.status,410);
+ }
+ assert.deepEqual(db.prepare("SELECT enabled,operator_state FROM sleeve_claims WHERE id='retired-editor'").get(),{enabled:1,operator_state:'auto'});
+ moderateExistingClaim('retired-editor','deleted',null);
+ assert.throws(()=>moderateExistingClaim('retired-editor','approved',candidate),/already been deleted/);
+ assert.deepEqual(db.prepare("SELECT enabled,operator_state FROM sleeve_claims WHERE id='retired-editor'").get(),{enabled:0,operator_state:'deleted'});
+});

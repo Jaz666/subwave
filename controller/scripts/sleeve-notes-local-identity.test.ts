@@ -143,3 +143,41 @@ test('explicit Station Brain artist and album research also discard a stale loca
  assert.equal((db.prepare("SELECT match_state FROM sleeve_local_attachments WHERE local_track_id='track'").get() as {match_state:string}).match_state,'unmatched');
  assert.equal((db.prepare("SELECT state FROM sleeve_brain_album_requests WHERE local_album_id='new-album'").get() as {state:string}).state,'waiting');
 });
+
+
+test('authoritative tag removal clears the bad MBID without rematching inferred tagless recordings',()=>{
+ const db=fixture();
+ // Matching fills attachment MBIDs even when the catalogue has no tag.
+ cacheConnectionLibraryTracks(db,[{id:'track',title:input.title,artist:input.artist,album:input.releaseTitle,musicbrainzId:null}],'unchanged');
+ assert.equal(repo.localAttachmentForMatch('track')?.musicbrainzRecordingId,'old-mbid');
+ assert.equal((db.prepare("SELECT match_state FROM sleeve_local_attachments").get() as {match_state:string}).match_state,'matched');
+ // A previous authoritative catalogue row proves this tag actually existed.
+ const tagged='11111111-1111-4111-8111-111111111111';
+ db.prepare('UPDATE sleeve_connection_library_tracks SET musicbrainz_recording_id=?').run(tagged);
+ db.prepare('UPDATE sleeve_local_attachments SET musicbrainz_recording_id=?').run(tagged);
+ cacheConnectionLibraryTracks(db,[{id:'track',title:input.title,artist:input.artist,album:input.releaseTitle,musicbrainzId:null}],'removed');
+ assert.equal(repo.localAttachmentForMatch('track')?.musicbrainzRecordingId,null);
+ assert.equal((db.prepare('SELECT match_state FROM sleeve_local_attachments').get() as {match_state:string}).match_state,'unmatched');
+ assert.equal((db.prepare("SELECT state FROM sleeve_research_jobs WHERE provider='musicbrainz'").get() as {state:string}).state,'queued');
+ repo.admitLocalEncounterInDatabase(db,{...input,source:'queue'});
+ assert.equal(repo.localAttachmentForMatch('track')?.musicbrainzRecordingId,null,'partial playback must not resurrect the removed tag');
+ assert.deepEqual(loadExtendedSleeveNoteCandidatesInDatabase(db,'track','Old Band'),[]);
+});
+
+test('removing artist metadata invalidates a catalogue row instead of leaving old local matches',()=>{
+ const db=fixture();
+ cacheConnectionLibraryTracks(db,[{id:'track',title:input.title,artist:'',album:input.releaseTitle}],'artist-removed');
+ assert.equal((db.prepare('SELECT match_state FROM sleeve_local_attachments').get() as {match_state:string}).match_state,'unmatched');
+ assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_connection_library_tracks').get() as {n:number}).n,0);
+ assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_genius_local_tracks').get() as {n:number}).n,0);
+});
+
+
+test('explicit Station Brain research notices tag removal before the next catalogue sweep',async()=>{
+ const {queueBrainLibrarySeedInDatabase}=await import('../src/sleeve-notes/brain-coverage.js');
+ const db=fixture();
+ db.prepare("UPDATE sleeve_connection_library_tracks SET musicbrainz_recording_id='11111111-1111-4111-8111-111111111111'").run();
+ queueBrainLibrarySeedInDatabase(db,{id:'track',title:input.title,artist:input.artist,album:input.releaseTitle,mbid:null});
+ assert.equal((db.prepare('SELECT match_state FROM sleeve_local_attachments').get() as {match_state:string}).match_state,'unmatched');
+ assert.equal(repo.localAttachmentForMatch('track')?.musicbrainzRecordingId,null);
+});
