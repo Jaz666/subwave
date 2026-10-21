@@ -258,6 +258,9 @@ test('saved-fact review can restore a relative date from preceding source contex
       assert.match(sent,/Restoring a missing time anchor is a context repair/);
       assert.match(sent,/Distinguish the date of an announcement from the date of the performance or release/);
       assert.match(sent,/choose unclear rather than guessing a date/);
+      assert.match(sent,/An explicit day\/month\/year already anchors an event/);
+      assert.match(sent,/actually provide the replacement wording in sparkCorrection/);
+      assert.match(sent,/If no safe repair is supported, choose unclear/);
       assert.ok(sent.includes(source),'review includes the preceding source sentence');
     });
   await runAiringReview(jobFor(flag.id),{isQuiet:()=>true});

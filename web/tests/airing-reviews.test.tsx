@@ -98,3 +98,20 @@ test('Heard on air defaults to confirmed segments and detected-use links',()=>{
   assert.doesNotMatch(html,/Reset filters/);
   assert.match(html,/<option value="sleeve-notes" selected="">Segments and used Sparks/);client.clear();
 });
+
+test('ready facts without model corrections offer manual editing; resolved and read-only reviews retain the saved correction',()=>{
+  const client=new QueryClient(),key=['sleeve-notes','airing-reviews','active',0];
+  const spark={claimId:'claim',wording:'On 20 March 2026, the band announced a temporary guitarist.',evidence:'On 20 March 2026, the band announced a temporary guitarist.',source:'https://example.test',enabled:1,operatorState:'auto'};
+  const review={id:'manual',state:'ready',guidanceApproved:0,lastError:null,createdAt:'2026-10-21T14:00:00Z',
+    context:{kind:'fact',artist:'Band',title:null,airedAt:null,speech:[],sparks:[spark]},
+    result:{finding:'spark',summary:'A wording issue.',explanation:'No correction was supplied.',suggestedSpeech:'',proposedGuidance:null,sparkCorrection:null}};
+  const render=()=>renderToStaticMarkup(<QueryClientProvider client={client}><AiringReviews adminFetch={fetcher}/></QueryClientProvider>);
+  client.setQueryData(key,{items:[review],total:1,readOnly:false});
+  assert.match(render(),/No replacement wording was suggested/);assert.match(render(),/Edit saved fact/);
+  assert.doesNotMatch(render(),/Save correction and resolve|<textarea/,'manual editing must be explicitly opened');
+  client.setQueryData(key,{items:[review],total:1,readOnly:true});assert.doesNotMatch(render(),/Edit saved fact|<textarea/);
+  const appliedCorrection={claimId:'claim',wording:'The band announced a temporary guitarist on 20 March 2026.',evidence:spark.evidence};
+  client.setQueryData(key,{items:[{...review,state:'resolved',context:{...review.context,appliedCorrection}}],total:1,readOnly:false});
+  assert.match(render(),/Saved Spark correction/);assert.match(render(),/The band announced a temporary guitarist on 20 March 2026/);
+  assert.doesNotMatch(render(),/Edit saved fact|<textarea/);client.clear();
+});

@@ -136,3 +136,26 @@ test('retired direct-edit API rejects stale writes; deleted facts cannot be reap
  assert.throws(()=>moderateExistingClaim('retired-editor','approved',candidate),/already been deleted/);
  assert.deepEqual(db.prepare("SELECT enabled,operator_state FROM sleeve_claims WHERE id='retired-editor'").get(),{enabled:0,operator_state:'deleted'});
 });
+
+test('a ready review without an AI proposal accepts a bound manual edit with the same source and stale-edit guards',async()=>{
+  const {flagStoredClaim}=await import('../src/sleeve-notes/airing-review.js');
+  seed('manual-only');setClaimAvailability('manual-only','withdraw');
+  const review=flagStoredClaim('manual-only');
+  const result={finding:'unclear',summary:'No safe replacement was suggested.',explanation:'The operator can inspect the source.',suggestedSpeech:'',proposedGuidance:null,sparkCorrection:null};
+  db.prepare("UPDATE sleeve_airing_reviews SET state='ready',result_json=? WHERE id=?").run(JSON.stringify(result),review.id);
+  const correction={claimId:'manual-only',wording:'Nick Mason worked with Alan Parsons to recreate the drum sound of Dark Side of the Moon.',evidence:wording};
+  const decide=(body:unknown)=>fetch(`${base}/airing-reviews/${review.id}/decision`,{method:'POST',headers:{
+    Authorization:`Basic ${Buffer.from('operator:secret').toString('base64')}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  assert.equal((await decide({action:'apply-correction'})).status,409,'missing manual text cannot silently apply anything');
+  assert.equal((await decide({action:'apply-correction',correction:{...correction,claimId:'editable'}})).status,409,'manual edits cannot target an unrelated fact');
+  assert.equal((await decide({action:'apply-correction',correction:{...correction,evidence:'An invented passage that does not occur in this source.'}})).status,409);
+  assert.equal((await decide({action:'apply-correction',correction:{...correction,wording:'An unfinished sentence'}})).status,400);
+  assert.deepEqual(db.prepare("SELECT enabled,wording FROM sleeve_claims WHERE id='manual-only'").get(),{enabled:0,wording});
+  db.prepare("UPDATE sleeve_claims SET wording='A later operator change.' WHERE id='manual-only'").run();
+  assert.equal((await decide({action:'apply-correction',correction})).status,409,'a manual correction must not overwrite a newer edit');
+  db.prepare("UPDATE sleeve_claims SET wording=? WHERE id='manual-only'").run(wording);
+  assert.equal((await decide({action:'apply-correction',correction})).status,200);
+  assert.deepEqual(db.prepare("SELECT enabled,wording,evidence FROM sleeve_claims WHERE id='manual-only'").get(),{enabled:1,wording:correction.wording,evidence:wording});
+  const saved=db.prepare('SELECT state,context_json AS context FROM sleeve_airing_reviews WHERE id=?').get(review.id) as {state:string;context:string};
+  assert.equal(saved.state,'resolved');assert.deepEqual(JSON.parse(saved.context).appliedCorrection,correction);
+});

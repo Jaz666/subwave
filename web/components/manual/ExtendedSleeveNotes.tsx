@@ -354,7 +354,10 @@ export default function ExtendedSleeveNotes() {
           Browse existing material in Stories and use the available correction,
           withdrawal and review controls where needed. The <strong>Review</strong> tab
           lets you inspect findings and decide which proposed changes to apply. A flag
-          asks for attention; it is not itself a published correction.
+          asks for attention; it is not itself a published correction. If no replacement
+          wording is suggested, choose <strong>Edit saved fact</strong> to write your
+          own correction. Keep the supporting passage as an exact excerpt from the
+          saved source, then explicitly save the correction to apply it.
         </p>
         <p>
           You can change what the DJ knows and how it sounds separately. Asking for warmer,
