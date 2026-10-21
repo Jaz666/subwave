@@ -8,6 +8,7 @@ import type { StationApi } from '@/lib/api';
 import { pollAsync } from '@/lib/poll';
 import { DEFAULT_STATION_LOCALE, type StationLocale } from '@/lib/format';
 import { MAX_LEAD_SECONDS, splitAudibleTurns } from '@/lib/sessionFeed';
+import { trackElapsedSeconds } from '@/lib/track-progress';
 import type {
   ActiveShow,
   DjState,
@@ -51,7 +52,7 @@ export interface StationFeed {
   locale: StationLocale;
 }
 
-const EMPTY_STATE: StationState = { upcoming: [], history: [], djLog: [] };
+const EMPTY_STATE: StationState = { upcoming: [], history: [] };
 const EMPTY_SESSION: SessionPayload = { session: null, messages: [] };
 // Consecutive offline polls required before believing it (#463/#466) —
 // PlayerScreen stops playback on offline, so a transient blip must not count.
@@ -292,7 +293,7 @@ export function useStationFeed(
       if (trackStartRef.current) {
         // Clamped at 0: trackStartRef is listener-time and sits in the future
         // while the track is still inside the buffer.
-        setElapsed(Math.max(0, Math.floor((Date.now() - trackStartRef.current) / 1000)));
+        setElapsed(trackElapsedSeconds(trackStartRef.current));
       }
     };
     update(); // catch up immediately on foreground
