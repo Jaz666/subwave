@@ -656,11 +656,10 @@ export function ResearchActivity({ data, status, adminFetch }: { data: NotesRead
     return minutes > 0 ? `Retry in ${minutes} min` : 'Retry shortly';
   };
   const genius = data.geniusQueue;
-  return <Card headingLevel={2} title="Research activity">
-    <div className="mb-3 border-b border-border/60 pb-3">
-      <NotesResearchProgress progress={data.progress} reason={status.collectionBlockedReason}
+  return <Card headingLevel={2} title="Research activity" right={<NotesHelp text="Research activity status and progress">
+      <NotesResearchProgress tooltip progress={data.progress} reason={status.collectionBlockedReason}
         ready={jobs.some(job=>job.phase==='ready' && (job.provider!=='genius' || (geniusEnabled && geniusConfigured)))} now={data.readAt??0} timezone={status.timezone} />
-    </div>
+    </NotesHelp>}>
     <div className="divide-y divide-border/60">
       {[{ name: 'Controller Research', llm: false, help: 'Collects source information and finds connections. Genius requests share Subwave’s rolling allowance and yield to broadcast work.' },
         { name: 'LLM Research', llm: true, help: 'Turns collected material into Sparks and reviews flagged speech. It waits behind broadcast and interactive work.' }].map(section => {
