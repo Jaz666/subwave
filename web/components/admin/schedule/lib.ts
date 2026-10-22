@@ -15,6 +15,7 @@ export interface ScheduleShow {
   id: string;
   name: string;
   personaId: string;
+  guestPersonaIds?: string[];
   moods: string[];
   energies: string[];
   generation?: ShowGenerationConfig;
@@ -34,6 +35,31 @@ export const GENERATED_SHOW_COLORS: Record<GeneratedTemplateId, string> = {
   'dj-choice': 'color-mix(in oklab, #c24824 75%, var(--bg))',
   'deep-discovery': 'color-mix(in oklab, #167978 75%, var(--bg))',
 };
+
+export function generatedShowColor(template: string): string {
+  return GENERATED_SHOW_COLORS[template as GeneratedTemplateId]
+    ?? 'color-mix(in oklab, #7b6a23 75%, var(--bg))';
+}
+
+export function generatedShowLabel(
+  show: Pick<ScheduleShow, 'generation' | 'personaId' | 'guestPersonaIds'>,
+  personas: readonly { id: string; name?: string }[],
+): string {
+  const generation = show.generation;
+  const template = GENERATED_SHOW_TEMPLATES.find(item => item.id === generation?.template)?.label ?? 'Template show';
+  const host = generation?.hostMode === 'random'
+    ? 'Random host'
+    : personas.find(persona => persona.id === show.personaId)?.name || 'Fixed host';
+  const guests = generation?.guestMode === 'none'
+    ? 'No guests'
+    : generation?.guestMode === 'random'
+      ? `Random guests (${generation.guestCount.min}–${generation.guestCount.max})`
+      : (show.guestPersonaIds ?? [])
+        .map(id => personas.find(persona => persona.id === id)?.name)
+        .filter((name): name is string => Boolean(name))
+        .join(', ') || 'No guests';
+  return `${template} · ${host} · ${guests}`;
+}
 
 /** One contiguous run of hours on one day. `showId` null = silent hours. */
 export interface Block {

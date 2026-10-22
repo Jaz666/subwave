@@ -34,7 +34,7 @@ import type {
 } from './lib';
 import {
   DAYS, GENERATED_SHOW_COLORS, GENERATED_SHOW_TEMPLATES, HOURS,
-  applyRunDrag, blockKeys, dayBlocks, hh, planRunDrag, resizedRun,
+  applyRunDrag, blockKeys, dayBlocks, generatedShowColor, generatedShowLabel, hh, planRunDrag, resizedRun,
 } from './lib';
 
 const DND_TYPE = 'text/x-subwave-show';
@@ -81,6 +81,7 @@ function activationClientY(event: Event): number | null {
 export interface BoardProps {
   schedule: Schedule;
   shows: ScheduleShow[];
+  personas: { id: string; name?: string }[];
   folded: Record<number, boolean>;
   onToggleFold: (day: number) => void;
   todayKey: number;
@@ -110,14 +111,17 @@ export interface BoardProps {
 }
 
 export default function Board({
-  schedule, shows, folded, onToggleFold, todayKey, nowMinute,
+  schedule, shows, personas, folded, onToggleFold, todayKey, nowMinute,
   colorOf, hoursOf, onPick, onRemove, onResize, onDropShow, onDropTemplate, onDragRun,
   armedShowId, armedTemplateId, onArmShow, onArmTemplate, onFillDay, onFillHour,
   density, hourPx, onDensity,
 }: BoardProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   useDynamicStyle(gridRef, { '--hour-px': `${hourPx}px` });
-  const armedName = shows.find(s => s.id === armedShowId)?.name
+  const armedShow = shows.find(s => s.id === armedShowId);
+  const armedName = (armedShow?.generation?.mode === 'generated'
+    ? generatedShowLabel(armedShow, personas)
+    : armedShow?.name)
     ?? GENERATED_SHOW_TEMPLATES.find(template => template.id === armedTemplateId)?.label
     ?? null;
 
@@ -356,36 +360,60 @@ export default function Board({
           })}
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-separator-soft px-3 py-2">
-          <span className="eyebrow mr-1 flex-none text-ink">Generated templates</span>
-          {GENERATED_SHOW_TEMPLATES.map(template => {
-            const generatedShow = shows.find(show =>
-              show.generation?.mode === 'generated' && show.generation.template === template.id,
-            );
-            const armed = generatedShow
-              ? generatedShow.id === armedShowId
-              : armedTemplateId === template.id;
-            const color = GENERATED_SHOW_COLORS[template.id];
+          <span className="eyebrow mr-1 flex-none text-ink">Template shows</span>
+          {shows.filter(show => show.generation?.mode === 'generated').map(show => {
+            const templateId = show.generation!.template;
+            const label = generatedShowLabel(show, personas);
+            const armed = show.id === armedShowId;
             return (
               <button
-                key={template.id}
+                key={show.id}
                 type="button"
                 draggable
                 aria-pressed={armed}
                 onDragStart={e => {
-                  if (generatedShow) {
-                    e.dataTransfer.setData(DND_TYPE, generatedShow.id);
-                    e.dataTransfer.setData('text/plain', generatedShow.id);
-                  } else {
-                    e.dataTransfer.setData(DND_TEMPLATE_TYPE, template.id);
-                  }
+                  e.dataTransfer.setData(DND_TYPE, show.id);
+                  e.dataTransfer.setData('text/plain', show.id);
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
-                onClick={() => generatedShow ? onArmShow(generatedShow.id) : onArmTemplate(template.id)}
-                title={generatedShow
-                  ? `Click to arm “${template.label}” or drag it onto the board`
-                  : `Click to arm or drag “${template.label}” onto a silent hour`}
+                onClick={() => onArmShow(show.id)}
+                title={armed
+                  ? `“${label}” is armed — click hours on the board to book it`
+                  : `Click to arm or drag “${label}” onto the board`}
                 className={cn(
-                  'flex min-h-9 flex-none cursor-grab items-center gap-1.5 border px-2.5 py-1.5 active:cursor-grabbing sm:min-h-0',
+                  'flex min-h-9 max-w-full flex-none cursor-grab items-center gap-1.5 border px-2.5 py-1.5 active:cursor-grabbing sm:min-h-0',
+                  armed
+                    ? 'border-ink outline-2 -outline-offset-2 outline-[var(--accent)]'
+                    : 'border-separator-strong hover:border-ink',
+                  templateId === 'dj-choice'
+                    ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#c24824_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
+                    : templateId === 'deep-discovery'
+                      ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#167978_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
+                      : 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#7b6a23_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+                )}
+              >
+                <ColorChip color={generatedShowColor(templateId)} />
+                <span className="max-w-[32ch] overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] font-semibold text-ink">{label}</span>
+                <Mu className="text-[8px]">{hoursOf(show.id)}h</Mu>
+              </button>
+            );
+          })}
+          {GENERATED_SHOW_TEMPLATES.map(template => {
+            const armed = armedTemplateId === template.id;
+            return (
+              <button
+                key={`new-${template.id}`}
+                type="button"
+                draggable
+                aria-pressed={armed}
+                onDragStart={e => {
+                  e.dataTransfer.setData(DND_TEMPLATE_TYPE, template.id);
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                onClick={() => onArmTemplate(template.id)}
+                title={`Create a new ${template.label} variant on the board`}
+                className={cn(
+                  'flex min-h-9 flex-none cursor-grab items-center gap-1.5 border border-dashed px-2.5 py-1.5 active:cursor-grabbing sm:min-h-0',
                   armed
                     ? 'border-ink outline-2 -outline-offset-2 outline-[var(--accent)]'
                     : 'border-separator-strong hover:border-ink',
@@ -394,9 +422,8 @@ export default function Board({
                     : 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#167978_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
                 )}
               >
-                <ColorChip color={color} />
-                <span className="text-[11.5px] font-semibold whitespace-nowrap text-ink">{template.label}</span>
-                {generatedShow && <Mu className="text-[8px]">{hoursOf(generatedShow.id)}h</Mu>}
+                <ColorChip color={GENERATED_SHOW_COLORS[template.id]} />
+                <span className="text-[11.5px] font-semibold whitespace-nowrap text-ink">+ {template.label}</span>
               </button>
             );
           })}
@@ -456,6 +483,7 @@ export default function Board({
                 blocks={dayBlocks(preview && d.key === dragDay ? preview.week : schedule, d.key)}
                 colorOf={colorOf}
                 shows={shows}
+                personas={personas}
                 density={density}
                 hourPx={hourPx}
                 armedShowId={armedShowId}
@@ -495,6 +523,7 @@ export default function Board({
 
 function DayColumn({
   label, name, today, nowMinute, blocks, colorOf, shows, density, hourPx, armedShowId, armedName,
+  personas,
   armedTemplateId, onToggleFold, onFillDay, onPick, onRemove, onResize, onDropShow, onDropTemplate,
   templates,
   dragRun, dragStart, domOrder,
@@ -508,6 +537,7 @@ function DayColumn({
   blocks: Block[];
   colorOf: (id: string | null | undefined) => string;
   shows: ScheduleShow[];
+  personas: { id: string; name?: string }[];
   density: BoardDensity;
   hourPx: number;
   armedShowId: string | null;
@@ -551,13 +581,17 @@ function DayColumn({
       <div className="flex h-[38px] items-stretch border-b border-solid border-b-ink">
         <button
           type="button"
-          onClick={armedShowId ? onFillDay : onToggleFold}
+          aria-disabled={Boolean(armedTemplateId)}
+          onClick={armedTemplateId ? undefined : armedShowId ? onFillDay : onToggleFold}
           title={armedTemplateId
             ? `Place “${armedName}” in one silent slot first`
             : armedName
             ? `Put “${armedName}” on all of ${name} (again to clear it)`
             : `Fold ${name} out of the way`}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 border-0 bg-transparent px-2.5 hover:bg-[var(--ink-soft)]"
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent px-2.5',
+            armedTemplateId ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--ink-soft)]',
+          )}
         >
           <span
             aria-hidden="true"
@@ -591,8 +625,11 @@ function DayColumn({
                 key={key}
                 runKey={key}
                 block={b}
-                name={showById(b.showId)?.name ?? 'unknown show'}
+                name={showById(b.showId)?.generation?.mode === 'generated'
+                  ? generatedShowLabel(showById(b.showId)!, personas)
+                  : showById(b.showId)?.name ?? 'unknown show'}
                 color={colorOf(b.showId)}
+                striped={showById(b.showId)?.generation?.mode === 'generated'}
                 density={density}
                 hourPx={hourPx}
                 previewing={dragStart != null && b.start === dragStart}
@@ -612,6 +649,7 @@ function DayColumn({
                 key={key}
                 block={b}
                 shows={shows}
+                personas={personas}
                 colorOf={colorOf}
                 armedShowId={armedShowId}
                 armedTemplateId={armedTemplateId}
@@ -678,7 +716,7 @@ function FoldedRail({
 // per step would remount the handle holding the pointer capture and kill the
 // gesture.
 function BoardCard({
-  runKey, block, name, color, density, hourPx, previewing, dragOriginStart, runDragging,
+  runKey, block, name, color, striped, density, hourPx, previewing, dragOriginStart, runDragging,
   onPick, onRemove, onResize, onDropShow, onRunNudge,
   onDropTemplate,
 }: {
@@ -686,6 +724,7 @@ function BoardCard({
   block: Block;
   name: string;
   color: string;
+  striped: boolean;
   density: BoardDensity;
   hourPx: number;
   previewing: boolean;
@@ -722,7 +761,9 @@ function BoardCard({
     // feedback loop where dnd-kit's layout compensation erases finger delta.
     top: `calc(var(--hour-px) * ${visualStart})`,
     height: `calc(var(--hour-px) * ${span} - 4px)`,
-    background: color,
+    background: striped
+      ? `repeating-linear-gradient(135deg, color-mix(in oklab, var(--bg) 24%, transparent) 0 5px, transparent 5px 10px), ${color}`
+      : color,
     transform: CSS.Translate.toString(transform),
   });
 
@@ -899,11 +940,12 @@ function ResizeHandle({
 // One silent run as a hatched slot. With a show armed the click books it; with
 // nothing armed it opens a picker. Same write either way, and the same a drop makes.
 function DropSlot({
-  block, shows, colorOf, armedShowId, armedTemplateId, armedName, runDragging,
+  block, shows, personas, colorOf, armedShowId, armedTemplateId, armedName, runDragging,
   onDropShow, onDropTemplate, templates,
 }: {
   block: Block;
   shows: ScheduleShow[];
+  personas: { id: string; name?: string }[];
   colorOf: (id: string | null | undefined) => string;
   armedShowId: string | null;
   armedTemplateId: GeneratedTemplateId | null;
@@ -976,6 +1018,12 @@ function DropSlot({
             <DropdownMenuItem key={s.id} onClick={() => onDropShow(block, s.id)}>
               <ColorChip color={colorOf(s.id)} />
               {s.name}
+            </DropdownMenuItem>
+          ))}
+          {shows.filter(show => show.generation?.mode === 'generated').map(show => (
+            <DropdownMenuItem key={show.id} onClick={() => onDropShow(block, show.id)}>
+              <ColorChip color={generatedShowColor(show.generation!.template)} />
+              {generatedShowLabel(show, personas)}
             </DropdownMenuItem>
           ))}
           {templates.map(template => (
