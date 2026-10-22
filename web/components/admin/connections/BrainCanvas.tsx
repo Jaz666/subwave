@@ -10,6 +10,9 @@ import { reconcileBrainNetwork, type BrainNetwork } from './brain-network';
 import { useBrainKeySetting } from './key-preferences';
 import BrainPanel from './BrainPanel';
 import { COVERAGE_LABELS } from './coverage';
+import { createColorProbe, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
+import { brainPalette } from './palette';
+import styles from './Brain.module.css';
 
 export interface BrainCanvasProps {
   fullscreen: boolean;
@@ -69,8 +72,13 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
   const background = palette.bg || 'transparent';
   const muted = palette.muted || ink;
   useEffect(() => {
+    const probe = createColorProbe();
     const update = () => {
       if (!container.current) return;
+      if (probe) {
+        const colours = brainPalette(readThemeRgb(container.current, probe));
+        for (const [name, value] of Object.entries(colours)) container.current.style.setProperty(`--${name}`, value);
+      }
       const style = getComputedStyle(container.current);
       setPalette(Object.fromEntries(['bg', 'ink', 'muted',
         'brain-artist', 'brain-recording', 'brain-release', 'brain-contributor', 'brain-series', 'brain-external-recording',
@@ -78,12 +86,9 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
       ].map(name => [name, style.getPropertyValue(`--${name}`).trim()]).concat([['font', style.fontFamily]])));
       setLite(document.documentElement.classList.contains('lite'));
     };
-    const observer = new MutationObserver(update);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    media.addEventListener('change', update);
+    const stop = watchTheme(update);
     update();
-    return () => { observer.disconnect(); media.removeEventListener('change', update); };
+    return stop;
   }, []);
   function linkColor(type: ConnectionEdge['type']): string {
     if (type === 'samples' || type === 'sampled-in') return palette['brain-artist'] || ink;
@@ -481,7 +486,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
           else if (pendingFit.current) fit();
         }}
       />}
-      <BrainPanel label="Layout" className="absolute top-3 left-3 max-w-[calc(100%-9rem)] border border-border bg-card p-1 text-ink">
+      <BrainPanel label="Layout" className={`${styles.glass} absolute top-3 left-3 max-w-[calc(100%-9rem)] p-1 text-ink`}>
         <div className="flex flex-wrap items-center gap-1">
         <button type="button" aria-label="Force layout" aria-pressed={layoutMode === 'force'} onClick={() => applyLayout('force')} title="Arrange by connected forces"
           className={`flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay md:min-h-8 ${layoutMode === 'force' ? 'bg-overlay' : ''}`}><Network className="size-3.5" />Force</button>
@@ -497,7 +502,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
           className="flex min-h-11 items-center gap-1 px-2 text-[11px] hover:bg-overlay md:min-h-8">{density === 'compact' ? 'Spread' : 'Compact'}</button>}
         </div>
       </BrainPanel>
-      <BrainPanel label="Map controls" className="absolute top-3 right-3 border border-border bg-card p-1 text-ink">
+      <BrainPanel label="Map controls" className={`${styles.glass} absolute top-3 right-3 p-1 text-ink`}>
         <div className="flex justify-center gap-1">
           <button type="button" aria-label="Zoom in" className="flex size-11 items-center justify-center hover:bg-overlay md:size-8" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) * 1.35, reducedMotion ? 0 : 250); }}><Plus className="size-4" /></button>
           <button type="button" aria-label="Zoom out" className="flex size-11 items-center justify-center hover:bg-overlay md:size-8" onClick={() => { pendingFit.current = false; pendingReturnCenter.current = null; graph.current?.zoom((graph.current.zoom() ?? 1) / 1.35, reducedMotion ? 0 : 250); }}><Minus className="size-4" /></button>
@@ -511,7 +516,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
             className="flex min-h-11 items-center justify-center gap-1 px-1.5 text-[10px] hover:bg-overlay disabled:cursor-default disabled:opacity-40 md:min-h-8"><ChevronDown className="size-3" aria-hidden="true" />Layer Down</button>
         </div>
       </BrainPanel>
-      <BrainPanel label="Key" className="absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] border border-border bg-card px-3 py-2 text-[10px] text-ink">
+      <BrainPanel label="Key" className={`${styles.glass} absolute bottom-3 left-3 max-w-[calc(100%-1.5rem)] px-3 py-2 text-[10px] text-ink`}>
         {followPathways && pathways.orderedEdges.length > 0 && <div className="mb-2 flex max-w-72 min-w-48 flex-col gap-1 border-b border-border/60 pb-2">
           <span className="flex items-center justify-between gap-4"><span>Neural links highlighted</span>
             <output className="text-ink tabular-nums">{highlightedPathways.edges.size} / {pathways.orderedEdges.length}</output></span>
