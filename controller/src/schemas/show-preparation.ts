@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// 30 days of a densely programmed 168-slot week plus a small takeover buffer.
+export const GENERATED_SHOW_RECORDS_MAX = 1024;
+
 export const preparationResultSchema = z.discriminatedUnion('available', [
   z.object({ available: z.literal(false), reason: z.string().max(500).optional() }),
   z.object({
@@ -67,7 +70,7 @@ export const preparationRecordSchema = z.discriminatedUnion('kind', [
 const preparationStoreV2Schema = z.object({
   version: z.literal(2),
   records: z.array(preparationRecordSchema).max(256),
-  generated: z.array(generatedShowRecordSchema).max(256).default([]),
+  generated: z.array(generatedShowRecordSchema).max(GENERATED_SHOW_RECORDS_MAX).default([]),
 });
 
 export const preparationStoreSchema = z.preprocess((raw) => {

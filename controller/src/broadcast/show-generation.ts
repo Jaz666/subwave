@@ -26,6 +26,8 @@ export interface GeneratedShowInput {
   occurrence: { id: string; startsAt: number; endsAt: number };
   template: string;
   planningPrompt: string;
+  nameMode?: 'random' | 'custom';
+  customName?: string;
   minimumCoverage?: number | null;
   coverageCorrection?: string;
   cast: GeneratedShowCast;
@@ -85,8 +87,9 @@ export function resolveGeneratedShowCast({ show, occurrence, personas }: {
   const config = show.generation;
   if (!config || config.mode !== 'generated') return null;
   const eligible = new Map<string, any>(personas.filter(p => p && typeof p.id === 'string').map(p => [p.id, p] as const));
+  const subShows = settings.get().subShows;
   const hostIds = config.hostMode === 'random'
-    ? config.eligibleHostPersonaIds.filter((id: string) => eligible.has(id))
+    ? (subShows?.eligibleHostPersonaIds ?? [...eligible.keys()]).filter((id: string) => eligible.has(id))
     : [show.personaId].filter((id: string) => eligible.has(id));
   if (!hostIds.length) return null;
   const hostPersonaId = hostIds[stableIndex(occurrence.id, hostIds.length)]!;
@@ -94,7 +97,8 @@ export function resolveGeneratedShowCast({ show, occurrence, personas }: {
     ? []
     : config.guestMode === 'fixed'
       ? (show.guestPersonaIds ?? []).filter((id: string) => id !== hostPersonaId && eligible.has(id))
-      : stableOrder<string>(config.eligibleGuestPersonaIds.filter((id: string) => id !== hostPersonaId && eligible.has(id)), occurrence.id)
+      : stableOrder<string>((subShows?.eligibleGuestPersonaIds ?? [...eligible.keys()])
+        .filter((id: string) => id !== hostPersonaId && eligible.has(id)), occurrence.id)
         .slice(0, config.guestCount.min + stableIndex(`${occurrence.id}:guest-count`, config.guestCount.max - config.guestCount.min + 1));
   return { hostPersonaId, guestPersonaIds: [...new Set(guestIds)].slice(0, 3) };
 }
@@ -223,17 +227,25 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     input.template === 'deep-discovery'
       ? 'For Deep Discovery, keep the concept rooted in the host’s taste and open to finding less-represented library genres in the music-settings step. Do not make the brief a list of genres.'
       : null,
-    `Write a concise, concrete brief that gives the show a clear reason to exist and could inspire a real episode. A different genre list alone does not make the premise fresh. Avoid generic genre journeys and do not invent facts about songs, artists, listeners or prior airplay. Write the brief first, then derive a memorable episode name from it; never use the recurring template name as the episode title. Return exactly: name and topic.`,
+    `Write a concise, concrete brief that gives the show a clear reason to exist and could inspire a real episode. A different genre list alone does not make the premise fresh. Avoid generic genre journeys and do not invent facts about songs, artists, listeners or prior airplay. ${input.nameMode === 'custom' ? 'The operator has supplied the episode name; write only the brief.' : 'Write the brief first, then derive a memorable episode name from it; never use the recurring template name as the episode title.'} Return exactly: ${input.nameMode === 'custom' ? 'topic' : 'name and topic'}.`,
   ].filter(Boolean).join('\n\n');
   const { planSchema, genreByKey } = allowedPlanSchema(moodNames, choiceGenres);
+  const usesCustomName = input.nameMode === 'custom';
+  const conceptSchema = usesCustomName
+    ? generatedShowPlanSchema.pick({ topic: true })
+    : showConceptSchema;
   const concept = await djObject({
-    system: 'You create distinct, concrete show ideas for a personal radio station. Ground the premise in the host’s stated Soul and optional Musical Leanings, taking current shows into account. Familiar genres may return in the music palette, but they must not make this another version of an existing show. Do not invent the host’s personal history. Avoid generic genre shows and stock formats. Name the brief after writing it; guests are secondary. Follow operator direction within station limits.',
+    system: usesCustomName
+      ? 'You create distinct, concrete show briefs for a personal radio station. Ground the premise in the host’s stated Soul and optional Musical Leanings, taking current shows into account. Familiar genres may return in the music palette, but they must not make this another version of an existing show. Do not invent the host’s personal history. Avoid generic genre shows and stock formats. The operator supplied the episode name; guests are secondary. Follow operator direction within station limits.'
+      : 'You create distinct, concrete show ideas for a personal radio station. Ground the premise in the host’s stated Soul and optional Musical Leanings, taking current shows into account. Familiar genres may return in the music palette, but they must not make this another version of an existing show. Do not invent the host’s personal history. Avoid generic genre shows and stock formats. Name the brief after writing it; guests are secondary. Follow operator direction within station limits.',
     prompt: conceptPrompt,
-    schema: showConceptSchema,
+    schema: conceptSchema,
     temperature: 0.9,
     kind: 'generateShowPlan.concept',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
-  }) as z.infer<typeof showConceptSchema>;
+  }) as z.infer<typeof showConceptSchema> | z.infer<typeof conceptSchema>;
+  const conceptName = usesCustomName ? String(input.customName || '').trim()
+    : 'name' in concept ? concept.name : '';
   const existingSettingsPrompt = existingShows.length
     ? input.template === 'deep-discovery'
       ? `Music settings already used by this host's current shows:\n<existing-show-settings>${existingShowSettings}</existing-show-settings>. Use these to understand the host's taste, then prioritize the less-represented candidates that fit the brief.`
@@ -248,7 +260,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       : 'Choose suitable settings that follow from the brief and available library coverage.';
   const settingsPrompt = [
     `The show idea is final. Choose settings that follow from it without changing its premise.`,
-    `Show name: ${concept.name}`,
+    `Show name: ${conceptName}`,
     `Show brief: <show-brief>${concept.topic}</show-brief>`,
     input.planningPrompt ? `Operator music direction:\n<operator-direction>${input.planningPrompt}</operator-direction>` : null,
     `Available moods: ${moodNames.join(', ')}`,
@@ -279,7 +291,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     kind: 'generateShowPlan.musicSettings',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
   }) as z.infer<typeof planSchema>;
-  const plan: GeneratedShowPlan = { ...concept, ...musicSettings };
+  const plan: GeneratedShowPlan = { ...concept, name: conceptName, ...musicSettings };
   return {
     ...plan,
     genres: [...new Set(plan.genres.map(genre => genreByKey.get(normGenre(genre))!).filter(Boolean))],

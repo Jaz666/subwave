@@ -13,7 +13,7 @@ import { getSession, rememberOpeningOccurrence, rememberEpisodeEditorial, type S
 import { resolveArtistEpisodeSource, type ArtistEpisodeSource } from '../music/episode-source.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import {
-  generatedShowPlanSchema, preparationResultSchema, preparationStoreSchema,
+  GENERATED_SHOW_RECORDS_MAX, generatedShowPlanSchema, preparationResultSchema, preparationStoreSchema,
   type AcceptedPreparation, type GeneratedShowRecord, type GeneratedShowPlan, type PreparationOccurrence,
   type PreparationRecord, type PreparationStatus, type PreparationTrack,
 } from '../schemas/show-preparation.js';
@@ -31,6 +31,8 @@ export interface GeneratedShowSnapshot {
   configuration: string;
   template: string;
   planningPrompt: string;
+  nameMode?: 'random' | 'custom';
+  customName?: string;
   minimumCoverage: number | null;
   coverageCorrection?: string;
   cast: GeneratedShowCast;
@@ -45,6 +47,7 @@ export interface EpisodeView {
 }
 const ordinary = (): EpisodeView => ({ status: { kind: 'unconfigured' }, music: null, editorial: '' });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const GENERATED_SHOW_HISTORY_MS = 30 * 24 * 60 * 60_000;
 const capabilityReady = (cap: LoadedCapability | undefined): boolean => {
   try { return cap?.ready ? !!cap.ready() : true; }
   catch { return false; }
@@ -83,12 +86,19 @@ export function createShowPreparation(deps: PreparationDeps) {
   const pending = new Map<string, Promise<EpisodeView>>();
   let writing: Promise<void> = Promise.resolve();
   let recovered: Promise<void> | null = null;
+  const newestGenerated = (items: Iterable<GeneratedShowRecord>) => [...items]
+    .filter(record => record.occurrence.endsAt + GENERATED_SHOW_HISTORY_MS > now())
+    .sort((a, b) => b.occurrence.startsAt - a.occurrence.startsAt)
+    .slice(0, GENERATED_SHOW_RECORDS_MAX)
+    // The configuration fingerprint contains the host's Soul and context. It
+    // is needed while an airing can still be refreshed, but not in history.
+    .map(record => record.occurrence.endsAt <= now() ? { ...record, configuration: '' } : record);
   const recover = () => recovered ??= (async () => {
     try {
       const raw: unknown = JSON.parse(await readFile(deps.file, 'utf8'));
       const stored = preparationStoreSchema.parse(raw);
       records = new Map(stored.records.filter(r => r.occurrence.endsAt + 600_000 > now()).map(r => [r.occurrence.id, r]));
-      generated = new Map(stored.generated.filter(r => r.occurrence.endsAt + 600_000 > now()).map(r => [r.occurrence.id, r]));
+      generated = new Map(newestGenerated(stored.generated).map(r => [r.occurrence.id, r]));
       restoreGeneratedShows([...generated.values()]);
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) logEvent('show.preparation', { error: errorMessage(error), stage: 'recovery' });
@@ -97,13 +107,14 @@ export function createShowPreparation(deps: PreparationDeps) {
   const persist = async (update: (nextRecords: Map<string, PreparationRecord>, nextGenerated: Map<string, GeneratedShowRecord>) => void) => {
     const operation = writing.catch(() => {}).then(async () => {
       const next = new Map([...records].filter(([, r]) => r.occurrence.endsAt + 600_000 > now()));
-      const nextGenerated = new Map([...generated].filter(([, r]) => r.occurrence.endsAt + 600_000 > now()));
+      const nextGenerated = new Map(newestGenerated(generated.values()).map(r => [r.occurrence.id, r]));
       update(next, nextGenerated);
-      if (next.size > 256 || nextGenerated.size > 256) throw new Error('Too many pending show preparation records');
+      const retainedGenerated = new Map(newestGenerated(nextGenerated.values()).map(r => [r.occurrence.id, r]));
+      if (next.size > 256) throw new Error('Too many pending show preparation records');
       await mkdir(dirname(deps.file), { recursive: true });
-      await writeFileAtomic(deps.file, JSON.stringify({ version: 2, records: [...next.values()], generated: [...nextGenerated.values()] }));
+      await writeFileAtomic(deps.file, JSON.stringify({ version: 2, records: [...next.values()], generated: [...retainedGenerated.values()] }));
       records = next;
-      generated = nextGenerated;
+      generated = retainedGenerated;
       restoreGeneratedShows([...generated.values()]);
       for (const id of views.keys()) if (!next.has(id)) views.delete(id);
     });
@@ -293,7 +304,12 @@ export function createShowPreparation(deps: PreparationDeps) {
     return ensure({ context });
   };
   const occurrence = ({ context }: { context: SessionContext }) => deps.snapshot(context)?.occurrence ?? null;
-  return { recover, read, ensure, retry, occurrence, ensureGenerated };
+  const generatedRecords = async () => {
+    await recover();
+    await writing;
+    return newestGenerated(generated.values());
+  };
+  return { recover, read, ensure, retry, occurrence, ensureGenerated, generatedRecords };
 }
 
 const occurrenceCache: Array<{ key: string; occurrence: PreparationOccurrence }> = [];
@@ -366,7 +382,8 @@ function buildGeneratedSnapshot(show: Show | undefined, occurrence: PreparationO
   ]);
   return {
     occurrence, configuration, template: config.template,
-    planningPrompt: config.planningPrompt, minimumCoverage: config.minimumCoverage, cast,
+    planningPrompt: config.planningPrompt, nameMode: config.nameMode, customName: config.customName,
+    minimumCoverage: config.minimumCoverage, cast,
     existingShows,
     show: {
       id: show.id, name: show.name, topic: show.topic,

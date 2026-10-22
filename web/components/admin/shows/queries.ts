@@ -1,6 +1,6 @@
 'use client';
 
-import { preparationStatusSchema } from '@/lib/schemas.generated';
+import { preparationStatusSchema, type GeneratedShowPlan } from '@/lib/schemas.generated';
 import { z } from 'zod';
 import type { QueryClient } from '@tanstack/react-query';
 import { adminJson, type AdminFetch } from '@/lib/admin-query';
@@ -31,6 +31,7 @@ export const showKeys = {
   playlists: () => ['shows', 'playlists'] as const,
   community: () => ['shows', 'community'] as const,
   preparation: () => ['shows', 'preparation'] as const,
+  generated: () => ['shows', 'generated'] as const,
   blocklist: () => ['shows', 'blocklist'] as const,
   playlistPosition: (showId: string) => ['shows', 'playlist-position', showId] as const,
 };
@@ -67,6 +68,34 @@ export function useShowSkillsQuery(adminFetch: AdminFetch, enabled: boolean) {
         fetcher, '/dj/skills', undefined, signal,
       );
       return showSkillsOf(body.skills);
+    },
+    toastOnError: false,
+  });
+}
+
+export interface GeneratedEpisodeHistory {
+  occurrence: { id: string; showId: string; source: 'scheduled' | 'takeover'; startsAt: number; endsAt: number };
+  template: string;
+  hostPersonaId: string;
+  guestPersonaIds: string[];
+  status: 'ready' | 'failed';
+  plan?: GeneratedShowPlan;
+  generatedAt?: number;
+  reason?: string;
+  attempts?: number;
+}
+
+export function useGeneratedEpisodeHistoryQuery(adminFetch: AdminFetch, enabled: boolean) {
+  return useAdminQuery<GeneratedEpisodeHistory[]>({
+    key: showKeys.generated(),
+    adminFetch,
+    enabled,
+    refetchInterval: 30_000,
+    request: async (fetcher, signal) => {
+      const body = await adminJson<{ episodes?: GeneratedEpisodeHistory[] }>(
+        fetcher, '/shows/generated?limit=50', undefined, signal,
+      );
+      return Array.isArray(body.episodes) ? body.episodes : [];
     },
     toastOnError: false,
   });

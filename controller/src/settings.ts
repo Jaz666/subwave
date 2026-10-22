@@ -136,6 +136,7 @@ import {
   normalizeSchedule,
   normalizeScheduleOverride,
   normalizeShows,
+  normalizeSubShowsSettings,
   normalizeWebhooks,
 } from './settings/normalize.js';
 import {
@@ -427,6 +428,7 @@ export async function load() {
   djPrompt = djPrompts.find(p => p.id === activeDjPromptId)?.text ?? '';
 
   const shows = normalizeShows(stored.shows, personaIds);
+  const subShows = normalizeSubShowsSettings(stored.subShows, personaIds);
   const schedule = normalizeSchedule(
     stored.schedule,
     shows.map(s => s.id),
@@ -799,6 +801,7 @@ export async function load() {
           : DEFAULTS.requests.onePendingPerIp,
     },
     personas,
+    subShows,
     activePersonaId,
     shows,
     schedule,
@@ -1648,7 +1651,7 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
   const moodNames = (next.moods || []).map((m: any) => m.name);
   // The mood family needs only the vocabulary; `showIds: null` says this branch
   // is not in a position to check roster membership — shows are validated below.
-  const moodCtx = { moodNames, showIds: null };
+  const moodCtx = { moodNames, showIds: null, personaIds: null };
   if ('moodSchedule' in patch) {
     next.moodSchedule = parseSettingsPatchKey('moodSchedule', patch.moodSchedule, moodCtx);
   }
@@ -1764,6 +1767,16 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
   }
   if ('personas' in patch) {
     next.personas = validatePersonasStrict(patch.personas);
+    next.subShows = normalizeSubShowsSettings(
+      next.subShows,
+      next.personas.map((persona: { id: string }) => persona.id),
+    );
+  }
+  if ('subShows' in patch) {
+    next.subShows = parseSettingsPatchKey('subShows', patch.subShows, {
+      ...moodCtx,
+      personaIds: (next.personas || []).map((persona: { id: string }) => persona.id),
+    });
   }
   if ('shows' in patch) {
     // Snapshot the theme registry once so the validator can stay sync.

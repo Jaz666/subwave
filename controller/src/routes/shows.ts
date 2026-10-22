@@ -19,7 +19,7 @@ import { readCommunityShow } from '../shows/community.js';
 import { SLUG_RE } from '../skills/loader.js';
 import { queue } from '../broadcast/queue.js';
 import { rollSessionNow } from '../broadcast/scheduler.js';
-import { prepareGeneratedShowAt, prepareUpcomingGeneratedShows } from '../broadcast/show-preparation.js';
+import { prepareGeneratedShowAt, prepareUpcomingGeneratedShows, showPreparation } from '../broadcast/show-preparation.js';
 import { resolveTakeoverWindowNow } from '../broadcast/takeover-window.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import { isInOrderShow } from '../music/playlist-order.js';
@@ -45,6 +45,30 @@ async function showPostContext() {
 router.post('/shows/candidates', requireAdmin, validateBodyAsync(showPostContext), async (req, res) => {
   try { res.json(await diagnoseShowCandidates(req.body.show)); }
   catch (err: any) { queue.log('error', 'POST /shows/candidates failed: ' + err.message); res.status(500).json({ error: err.message }); }
+});
+
+// Generated episode history deliberately omits the saved configuration string,
+// which carries persona prompt material used to decide the plan.
+router.get('/shows/generated', requireAdmin, async (req, res) => {
+  try {
+    await settings.load();
+    const requested = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const limit = Number.isFinite(requested) ? Math.min(100, Math.max(1, requested)) : 50;
+    const episodes = (await showPreparation.generatedRecords()).slice(0, limit).map(record => ({
+      occurrence: record.occurrence,
+      template: record.template,
+      hostPersonaId: record.hostPersonaId,
+      guestPersonaIds: record.guestPersonaIds,
+      status: record.kind,
+      ...(record.kind === 'ready'
+        ? { plan: record.plan, generatedAt: record.generatedAt }
+        : { reason: record.reason, attempts: record.attempts }),
+    }));
+    res.json({ episodes });
+  } catch (err: any) {
+    queue.log('error', `GET /shows/generated failed: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/shows/community/:slug/install', requireAdmin, async (req, res) => {

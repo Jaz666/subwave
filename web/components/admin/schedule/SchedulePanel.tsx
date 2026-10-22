@@ -14,6 +14,7 @@ import { useDynamicStyle } from '../../../hooks/useDynamicStyle';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { cn } from '../../../lib/cn';
 import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Modal } from '../../ui/modal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
@@ -328,6 +329,8 @@ export default function SchedulePanel() {
       mode: 'generated',
       template: templateId,
       planningPrompt: '',
+      nameMode: 'random',
+      customName: '',
       hostMode: 'random',
       eligibleHostPersonaIds: personaIds,
       guestMode: 'random',
@@ -340,6 +343,7 @@ export default function SchedulePanel() {
       name: template.label,
       topic: '',
       personaId: personaIds[0]!,
+      programme: true,
       generation,
     });
   };
@@ -534,9 +538,13 @@ export default function SchedulePanel() {
   };
   const applyGeneratedOptions = () => {
     if (!generatedOptionsDraft) return;
+    if (generatedOptionsDraft.generation?.nameMode === 'custom' && !generatedOptionsDraft.generation.customName.trim()) {
+      notify.err('Enter a custom episode name before applying these options.');
+      return;
+    }
     setShows(current => current.map(show => show.id === generatedOptionsDraft.id ? generatedOptionsDraft : show));
     setGeneratedOptionsDraft(null);
-    notify.ok('Host and guest options updated — save the week to keep them.');
+    notify.ok('Episode name, host and guest options updated — save the week to keep them.');
   };
 
   const suggestions: Suggestion[] = useMemo(() => {
@@ -831,7 +839,7 @@ export default function SchedulePanel() {
         open={generatedOptionsDraft !== null}
         onOpenChange={open => { if (!open) setGeneratedOptionsDraft(null); }}
         title={generatedOptionsDraft?.name ?? 'Template show'}
-        sub="Host and guest options · saved with the week"
+        sub="Host, guest and episode name · saved with the week"
         width={520}
         footer={(
           <div className="flex w-full items-center gap-2">
@@ -876,6 +884,8 @@ export default function SchedulePanel() {
                     }
                 : current);
             }}
+            onNameModeChange={value => updateGeneratedDraft({ nameMode: value })}
+            onCustomNameChange={value => updateGeneratedDraft({ customName: value })}
             onGuestModeChange={value => {
               if (value === 'none') {
                 setGeneratedOptionsDraft(current => current?.generation
@@ -1100,6 +1110,8 @@ function GeneratedShowOptions({
   show,
   personas,
   apiBase,
+  onNameModeChange,
+  onCustomNameChange,
   onHostChange,
   onGuestModeChange,
   onGuestsChange,
@@ -1108,6 +1120,8 @@ function GeneratedShowOptions({
   show: Show;
   personas: Persona[];
   apiBase: string;
+  onNameModeChange: (value: 'random' | 'custom') => void;
+  onCustomNameChange: (value: string) => void;
   onHostChange: (value: string) => void;
   onGuestModeChange: (value: string) => void;
   onGuestsChange: (ids: string[]) => void;
@@ -1118,9 +1132,28 @@ function GeneratedShowOptions({
   return (
     <div className="grid gap-5">
       <p className="text-[13px] leading-[1.6] text-ink">
-        Choose who leads the show and how many guests can join. Random picks draw from the station roster.
+        Choose the episode name, host and guest count. Random DJs draw from the pools in Sub/Shows settings.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid content-start gap-2">
+          <Label htmlFor="generated-show-name-mode">Episode name</Label>
+          <Select value={generation.nameMode} onValueChange={value => onNameModeChange(value as 'random' | 'custom')}>
+            <SelectTrigger id="generated-show-name-mode"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="random">Random show name</SelectItem>
+              <SelectItem value="custom">Use a custom name</SelectItem>
+            </SelectContent>
+          </Select>
+          {generation.nameMode === 'custom' && (
+            <Input
+              aria-label="Custom episode name"
+              value={generation.customName}
+              onChange={event => onCustomNameChange(event.target.value)}
+              maxLength={60}
+              placeholder="Episode name"
+            />
+          )}
+        </div>
         <div className="grid content-start gap-2">
           <Label htmlFor="generated-show-host">Host</Label>
           <Select
