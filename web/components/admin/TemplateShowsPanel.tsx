@@ -291,7 +291,7 @@ function EligibilityPicker({
   const descriptionId = `sub-shows-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-description`;
   return (
     <fieldset aria-describedby={descriptionId} className="grid min-w-0 gap-0 border-b border-separator-soft py-4 first:pt-0 last:border-0 last:pb-0">
-      <legend className="text-[11px] font-bold uppercase tracking-[0.22em] text-ink">{title}</legend>
+      <legend className="text-[11px] font-bold tracking-[0.22em] text-ink uppercase">{title}</legend>
       <div className="mt-3 flex flex-wrap gap-2.5">
         {items.length ? items.map(item => {
           const isSelected = selected === null || selected.includes(item.id);

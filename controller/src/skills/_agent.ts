@@ -1,7 +1,7 @@
 import {captureSpeechBudget} from '../broadcast/speech-timing.js';
 import { prepareSleeveNotesSegment, runSleeveNotesSegment, sleeveNotesSegmentWinsSlot, type SleeveNotesSegmentBrief } from '../sleeve-notes/segment.js';
 import { preparationSkillAt, prepareEpisodeContext } from '../broadcast/show-preparation.js';
-// Segment-director agent. agenticTick() (the 5-minute scheduler.skillsTick)
+// Segment-director agent. agenticTick() (the talk table's 5-minute segment row)
 // hands a tool-loop agent a snapshot of the moment plus real-world data tools
 // (llm/segment-tools.js) and asks whether anything is worth saying between
 // tracks; it writes ONE spoken line or stays silent. It is deliberately NOT
