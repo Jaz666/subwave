@@ -3,6 +3,7 @@ import {
   SCHEDULE_DAYS,
   SCHEDULE_HOURS,
   emptyWeek as emptyScheduleWeek,
+  type ShowGenerationConfig,
 } from '@/lib/schemas.generated';
 
 export interface Schedule {
@@ -16,7 +17,23 @@ export interface ScheduleShow {
   personaId: string;
   moods: string[];
   energies: string[];
+  generation?: ShowGenerationConfig;
 }
+
+export type GeneratedTemplateId = 'dj-choice' | 'deep-discovery';
+
+export const GENERATED_SHOW_TEMPLATES: {
+  id: GeneratedTemplateId;
+  label: string;
+}[] = [
+  { id: 'dj-choice', label: "DJ's Choice" },
+  { id: 'deep-discovery', label: 'Deep Discovery' },
+];
+
+export const GENERATED_SHOW_COLORS: Record<GeneratedTemplateId, string> = {
+  'dj-choice': 'color-mix(in oklab, #c24824 75%, var(--bg))',
+  'deep-discovery': 'color-mix(in oklab, #167978 75%, var(--bg))',
+};
 
 /** One contiguous run of hours on one day. `showId` null = silent hours. */
 export interface Block {

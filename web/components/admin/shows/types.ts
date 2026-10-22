@@ -93,7 +93,7 @@ export interface Show {
    *  Only used with programme on. */
   segmentSkill: string;
   preparationSkill: string;
-  /** Present only for generated-show slots; managed in the show editor. */
+  /** Present only for generated shows; managed from the schedule. */
   generation?: ShowGenerationConfig;
   /** Operator organisation tags. They filter and group this list and nothing
    *  else -- picker, DJ agent and public routes are blind to them. */
