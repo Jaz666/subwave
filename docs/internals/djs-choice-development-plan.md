@@ -1,8 +1,11 @@
 # DJ’s Choice development plan
 
 Prepared: 22 October 2026 (Europe/London).
-Status: implementation proposal. This commit adds documentation only; no running
-station changes or deployment are authorised by the plan.
+Status: implementation in progress. This plan remains the target; the current
+branch contains a first slice for generated-show settings, host-led planning,
+bounded coverage correction and occurrence persistence. Daily preparation,
+recent airing history, episode editing and permanent-copy workflow remain future
+phases.
 
 Product scope: [djs-choice.md](djs-choice.md).
 Source inspected: `feat/dj's-choice` at
@@ -92,10 +95,16 @@ show.
 2. Add a structured planning prompt through the established LLM SDK/barrels.
    Inputs: host Soul and Musical Leanings, guest context, local slot time and
    duration, editable template direction, library coverage and bounded recent
-   episode summaries. Do not expose private prompts on public endpoints.
+   episode summaries. The resolved host's Soul and available Musical Leanings
+   lead the creative direction; guest influence is secondary. Do not expose
+   private prompts on public endpoints.
 3. Return a title, `topic`, `moods`, `genres`, `eras`, `energies`, `filtersStrict`
-   and a short operator-facing rationale. Validate fields and reject unknown
-   mood names/invalid eras rather than silently accepting an unusable plan.
+   and a short operator-facing rationale. Have the model write `topic` first,
+   derive the title from that brief, then choose the music settings to express
+   the brief. These are the generated music settings; the existing show `tags`
+   field remains operator-owned organization metadata. Validate fields and
+   reject unknown mood names/invalid eras rather than silently accepting an
+   unusable plan.
 4. Reuse cached genre coverage for prompt context; do not add catalogue-wide
    counting to ordinary schedule reads. For proposed configurations, reuse show
    filtering and eligibility semantics to calculate unique playable coverage.

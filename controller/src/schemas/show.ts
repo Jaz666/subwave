@@ -19,6 +19,12 @@ export const SHOWS_LIMIT = 64;
 export const SHOW_NAME_MAX = 60;
 export const SHOW_TOPIC_MAX = 2000;
 export const GUESTS_PER_SHOW = 3;
+// Keep this in step with schemas/persona.ts's PERSONA_LIMIT. A show may choose
+// from the full roster, but the stored candidate list still needs a hard cap.
+export const SHOW_GENERATION_CANDIDATES_MAX = 48;
+export const SHOW_GENERATION_PROMPT_MAX = SHOW_TOPIC_MAX;
+export const SHOW_GENERATION_TEMPLATES = ['dj-choice', 'deep-discovery', 'forgotten-favourites'] as const;
+export const SHOW_GENERATION_MODES = ['fixed', 'generated'] as const;
 export const PLAYLISTS_PER_SHOW = 10;
 export const EXCLUDED_PLAYLISTS_PER_SHOW = 10;
 // Per-attribute ceiling on the multi-value music filters (#929).
@@ -273,6 +279,7 @@ function showObjectSchema(ctx: ShowSchemaContext) {
           .default(''),
       ),
       preparationSkill: z.preprocess(nullToUndefined, z.string().trim().max(SHOW_SEGMENT_SKILL_MAX).default('')),
+      generation: showGenerationSchema(ctx).optional(),
       // Empty means "Any": the autonomous dominantMood chain applies on air.
       moods: showStringList({
         max: SHOW_FILTER_VALUES_MAX,
@@ -412,6 +419,14 @@ function showObjectSchema(ctx: ShowSchemaContext) {
       if (c.value.preparationSkill && c.value.preparationSkill === c.value.segmentSkill) {
         c.issues.push({ code: 'custom', input: c.value.segmentSkill, path: ['segmentSkill'], message: 'must differ from the show preparation skill' });
       }
+      if (c.value.generation?.mode === 'generated' && c.value.preparationSkill) {
+        c.issues.push({ code: 'custom', input: c.value.preparationSkill, path: ['preparationSkill'], message: 'cannot be combined with generated show planning yet' });
+      }
+      if (c.value.generation?.mode === 'generated'
+        && c.value.generation.hostMode === 'fixed'
+        && c.value.generation.eligibleGuestPersonaIds.includes(c.value.personaId)) {
+        c.issues.push({ code: 'custom', input: c.value.generation.eligibleGuestPersonaIds, path: ['generation', 'eligibleGuestPersonaIds'], message: "must not include the show's fixed host" });
+      }
       if (c.value.guestPersonaIds.includes(c.value.personaId)) {
         c.issues.push({
           code: 'custom',
@@ -427,8 +442,65 @@ function showObjectSchema(ctx: ShowSchemaContext) {
     }));
 }
 
+const generationGuestCountSchema = z.object({
+  min: z.number().int().min(0).max(GUESTS_PER_SHOW).default(0),
+  max: z.number().int().min(0).max(GUESTS_PER_SHOW).default(0),
+}).check((c) => {
+  if (c.value.min > c.value.max) {
+    c.issues.push({ code: 'custom', input: c.value.min, path: ['min'], message: 'must be less than or equal to max' });
+  }
+});
+
+function showPersonaCandidates(ctx: ShowSchemaContext) {
+  return z.preprocess(
+    nullToUndefined,
+    z.array(
+      z.string().regex(SHOW_ID_RE, 'must be a valid persona id').refine(
+        (id) => ctx.personaIds == null || ctx.personaIds.includes(id),
+        'must reference existing personas',
+      ),
+    )
+      .max(SHOW_GENERATION_CANDIDATES_MAX, `must have at most ${SHOW_GENERATION_CANDIDATES_MAX} entries`)
+      .default([])
+      .transform((ids) => [...new Set(ids)]),
+  );
+}
+
+function showGenerationSchema(ctx: ShowSchemaContext) {
+  return z.object({
+    // Missing generation config is a legacy/ordinary fixed show.
+    mode: z.enum(SHOW_GENERATION_MODES).default('fixed'),
+    template: z.enum(SHOW_GENERATION_TEMPLATES).default('dj-choice'),
+    planningPrompt: z.preprocess(
+      nullToUndefined,
+      z.string().trim().max(SHOW_GENERATION_PROMPT_MAX, `must be ${SHOW_GENERATION_PROMPT_MAX} characters or fewer`).default(''),
+    ),
+    // Fixed uses the show-level personaId; random draws from this saved roster.
+    hostMode: z.enum(['fixed', 'random']).default('fixed'),
+    eligibleHostPersonaIds: showPersonaCandidates(ctx),
+    // Fixed uses guestPersonaIds; random draws a bounded count from this roster.
+    guestMode: z.enum(['none', 'fixed', 'random']).default('fixed'),
+    eligibleGuestPersonaIds: showPersonaCandidates(ctx),
+    guestCount: generationGuestCountSchema.default({}),
+    // null means no minimum. No numeric default was agreed in the proposal.
+    minimumCoverage: z.preprocess(
+      nullToUndefined,
+      z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().default(null),
+    ),
+  }).check((c) => {
+    if (c.value.mode !== 'generated') return;
+    if (c.value.hostMode === 'random' && c.value.eligibleHostPersonaIds.length === 0) {
+      c.issues.push({ code: 'custom', input: c.value.eligibleHostPersonaIds, path: ['eligibleHostPersonaIds'], message: 'choose at least one eligible host' });
+    }
+    if (c.value.guestMode === 'random' && c.value.guestCount.max > 0 && c.value.eligibleGuestPersonaIds.length === 0) {
+      c.issues.push({ code: 'custom', input: c.value.eligibleGuestPersonaIds, path: ['eligibleGuestPersonaIds'], message: 'choose at least one eligible guest' });
+    }
+  });
+}
+
 export type ShowParsed = z.output<ReturnType<typeof showSchema>>;
 export type Show = ShowParsed & { id: string };
+export type ShowGenerationConfig = z.output<ReturnType<typeof showGenerationSchema>>;
 
 export function showsSchema(ctx: ShowSchemaContext) {
   // Explicit array-level error, phrased WITHOUT the key because both callers
@@ -499,6 +571,47 @@ export function repairShowTags(raw: unknown): string[] | undefined {
   return out;
 }
 
+/** Repair generated-show settings without losing the ordinary show on load. */
+function repairShowGeneration(raw: unknown, personaIds: string[] | null, hostId: string, hasPreparationSkill: boolean): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const value = raw as Record<string, unknown>;
+  const candidates = (candidateRaw: unknown): string[] => {
+    if (!Array.isArray(candidateRaw)) return [];
+    return [...new Set(candidateRaw.filter((id): id is string =>
+      typeof id === 'string' && SHOW_ID_RE.test(id) && (personaIds == null || personaIds.includes(id))))]
+      .slice(0, SHOW_GENERATION_CANDIDATES_MAX);
+  };
+  const eligibleHostPersonaIds = candidates(value.eligibleHostPersonaIds);
+  const rawHostMode = value.hostMode === 'random' && eligibleHostPersonaIds.length > 0 ? 'random' : 'fixed';
+  const eligibleGuestPersonaIds = candidates(value.eligibleGuestPersonaIds)
+    .filter((id) => rawHostMode === 'random' || id !== hostId);
+  const rawCount = value.guestCount && typeof value.guestCount === 'object'
+    ? value.guestCount as Record<string, unknown>
+    : {};
+  const min = rawCount.min;
+  const max = rawCount.max;
+  const validCount = Number.isInteger(min) && Number.isInteger(max)
+    && Number(min) >= 0 && Number(max) <= GUESTS_PER_SHOW && Number(min) <= Number(max);
+  const minimumCoverage = value.minimumCoverage;
+  const guestMode = value.guestMode === 'none' || value.guestMode === 'random' ? value.guestMode : 'fixed';
+  const safeGuestMode = guestMode === 'random' && Number(max) > 0 && eligibleGuestPersonaIds.length === 0
+    ? 'fixed'
+    : guestMode;
+  return {
+    // Artist preparation is not composable with generated planning yet, so a
+    // malformed stored combination keeps the show in its ordinary mode.
+    mode: hasPreparationSkill ? 'fixed' : SHOW_GENERATION_MODES.includes(value.mode as typeof SHOW_GENERATION_MODES[number]) ? value.mode : 'fixed',
+    template: SHOW_GENERATION_TEMPLATES.includes(value.template as typeof SHOW_GENERATION_TEMPLATES[number]) ? value.template : 'dj-choice',
+    planningPrompt: typeof value.planningPrompt === 'string' ? value.planningPrompt.slice(0, SHOW_GENERATION_PROMPT_MAX) : '',
+    hostMode: rawHostMode,
+    eligibleHostPersonaIds,
+    guestMode: safeGuestMode,
+    eligibleGuestPersonaIds,
+    guestCount: validCount ? { min: Number(min), max: Number(max) } : { min: 0, max: 0 },
+    minimumCoverage: Number.isSafeInteger(minimumCoverage) && Number(minimumCoverage) >= 0 ? Number(minimumCoverage) : null,
+  };
+}
+
 /**
  * Every per-field repair the load path applies before parsing. `undefined` lets
  * the schema's own default apply; each repair lands on a value the strict path
@@ -522,6 +635,8 @@ export function repairShowForLoad(
       ? raw.segmentSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX)
       : undefined,
     preparationSkill: typeof raw.preparationSkill === 'string' ? raw.preparationSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX) : undefined,
+    generation: repairShowGeneration(raw.generation, personaIds, host,
+      typeof raw.preparationSkill === 'string' && !!raw.preparationSkill.trim()),
     themeId: typeof raw.themeId === 'string'
       ? raw.themeId.trim().slice(0, SHOW_THEME_ID_MAX)
       : undefined,

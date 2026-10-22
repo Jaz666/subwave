@@ -1,6 +1,6 @@
 # DJ’s Choice and Auto DJ shows
 
-Discussed: 13–22 October 2026. Status: product proposal, not implemented by these documents.
+Discussed: 13–22 October 2026. Status: product proposal with implementation in progress on the feature branch.
 
 Development plan: [djs-choice-development-plan.md](djs-choice-development-plan.md).
 
@@ -37,7 +37,15 @@ combination or a disjoint track list.
 
 ## Generated episode
 
-The planner produces a title and these existing show controls:
+Generation is led by the resolved host's editorial voice, not by a preset list
+of filters. Resolve the host before planning. The prompt uses that DJ's Soul and,
+when present, Musical Leanings as its primary creative input; guest identities
+can influence the result secondarily. The LLM writes the show brief first, names
+the show from that brief, then chooses music settings that express the brief.
+Template direction, station restrictions and playable library coverage guide
+that work without replacing the host's taste.
+
+The planner returns a title, a brief and these existing show controls:
 
 | Operator-facing field | Current source field |
 | --- | --- |
@@ -48,10 +56,16 @@ The planner produces a title and these existing show controls:
 | Energy | `energies` |
 | Strict Filter on/off | `filtersStrict` |
 
-The generated title becomes the episode’s display name; the recurring slot
-retains its DJ’s Choice or Auto DJ template identity. Other settings, including
-programme structure, voices, skills, playlist restrictions and duration, stay
-under operator control unless explicitly added to the feature’s scope later.
+The generated title follows from the brief and becomes the episode’s display
+name; the recurring slot retains its DJ’s Choice or Auto DJ template identity.
+Other settings, including programme structure, voices, skills, playlist
+restrictions and duration, stay under operator control unless explicitly added
+to the feature’s scope later.
+
+Here, “tags” means the generated music settings: `moods`, `genres`, `eras`,
+`energies` and `filtersStrict`. They must fit the brief and eligible library.
+These are distinct from the existing show `tags` field, which remains an
+operator organization feature and is not generated.
 
 Example: DJ’s Choice → Mara → “After the Last Train”: nocturnal soul, dub and
 spacious electronic music, with a reflective brief and moderate energy.

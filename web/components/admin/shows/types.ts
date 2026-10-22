@@ -15,6 +15,7 @@ import {
   SHOW_YEAR_MIN,
   TAGS_PER_SHOW_LIMIT,
   validEraYear,
+  type ShowGenerationConfig,
 } from '@/lib/schemas.generated';
 
 export const NAME_MAX = SHOW_NAME_MAX;
@@ -92,6 +93,8 @@ export interface Show {
    *  Only used with programme on. */
   segmentSkill: string;
   preparationSkill: string;
+  /** Present only for generated-show slots; managed in the show editor. */
+  generation?: ShowGenerationConfig;
   /** Operator organisation tags. They filter and group this list and nothing
    *  else -- picker, DJ agent and public routes are blind to them. */
   tags: string[];

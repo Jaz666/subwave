@@ -131,6 +131,7 @@ async function fillPlan(
   { generateProgrammePlan = dj.generateProgrammePlan }: PlanDeps = {},
 ): Promise<void> {
   ctx = await prepareEpisodeContext(ctx);
+  show = settings.resolveActiveShow(now) ?? show;
   if (!programmeIsOwned(prog)) return;
   const occurrence = showPreparation.occurrence({ context: ctx });
   if (occurrence) {
