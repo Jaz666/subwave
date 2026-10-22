@@ -131,12 +131,24 @@ extension. Choose the initial shipped set during implementation planning.
 
 ### Deep Discovery and playable coverage
 
-Subwave already exposes genre track counts. For Deep Discovery, offer a
-shortlist from the lower-count end of the supplied genres and ask the LLM to
-prefer suitable genres from it while keeping the show tied to the host’s Soul
-and Musical Leanings. The shortlist is a discovery cue, not a demand to choose
-an unrelated genre. Smaller library genres and neglected airplay are different
-signals: the first uses catalogue counts, the second needs history.
+Deep Discovery scans the entire indexed genre catalogue before building a bounded
+list of up to 80 smaller genres with plausible repertoire for the slot. The cue
+is the operator's minimum coverage when supplied, otherwise an editorial estimate
+of one record per four minutes of slot time. This is shortlist guidance, not a
+new hard playback restriction or a default for the optional minimum coverage
+setting. If no genre reaches the estimate, offer the largest available small
+genres so the LLM can combine them. Never truncate to the most common genres
+before ranking rarity: doing that excluded the real long tail. The music-settings
+pass also receives the host's Soul, Musical Leanings, final brief and duration.
+The LLM builds a coherent palette around related styles; a one-track genre cannot
+carry an entire show. Deep Discovery counts use the playback genre-matching
+rules: Indie also counts Indie Rock, and a multi-tagged recording counts once
+per matching genre. A broad tag with few exact-label assignments therefore
+cannot masquerade as rare. Counts still overlap between genres and precede
+the final show filters and exclusions, so are not an eligible-track guarantee.
+Smaller library genres and neglected airplay are different signals:
+the first uses catalogue counts, the second needs history. The brief must not
+invent a personal record collection or drift into Forgotten Favourites.
 
 Do not add genre counts blindly. Count unique eligible recordings using the
 actual show-filter semantics after generated eras, moods, energy and strictness
@@ -160,6 +172,17 @@ already on air remain fixed. Choosing a generated show
 for a takeover starts preparation for that takeover occurrence immediately.
 The normal on-air preparation path remains a final fallback. All timing uses
 the station timezone and must handle daylight-saving changes.
+
+The Sub/Shows page separates upcoming, currently airing and past episodes. Its
+host, guest and skill eligibility controls start collapsed. Upcoming episodes
+have a regenerate action (`POST /shows/generated/regenerate`, with an
+`occurrenceId`). It reruns the planner for that occurrence with its current
+casting rules, bypasses the accepted-plan cache and retry cooldown, and shares
+any request already running for that occurrence. An accepted plan is replaced
+only after success; model failures retain it. Requests for missing, changed,
+already airing or past slots are rejected, and a result arriving after airtime
+or a schedule edit is discarded. Past episodes show a disabled Save button;
+copying an episode into a permanent show remains deferred.
 
 An optional “Coming Up” DJ skill reads the remaining schedule for the day and
 its accepted episode titles, casts and briefs. It must not generate episodes or

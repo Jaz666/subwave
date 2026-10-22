@@ -93,11 +93,26 @@ export function useGeneratedEpisodeHistoryQuery(adminFetch: AdminFetch, enabled:
     refetchInterval: 30_000,
     request: async (fetcher, signal) => {
       const body = await adminJson<{ episodes?: GeneratedEpisodeHistory[] }>(
-        fetcher, '/shows/generated?limit=50', undefined, signal,
+        fetcher, '/shows/generated?limit=100', undefined, signal,
       );
       return Array.isArray(body.episodes) ? body.episodes : [];
     },
     toastOnError: false,
+  });
+}
+
+export function useRegenerateGeneratedEpisodeMutation(adminFetch: AdminFetch) {
+  return useAdminMutation<{ ok: boolean }, string>({
+    adminFetch,
+    request: (occurrenceId, fetcher) => adminJson<{ ok: boolean }>(fetcher, '/shows/generated/regenerate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ occurrenceId }),
+    }),
+    onDone: async (_data, _id, client) => {
+      await client.cancelQueries({ queryKey: showKeys.generated(), exact: true });
+      await client.invalidateQueries({ queryKey: showKeys.generated(), exact: true });
+    },
   });
 }
 

@@ -53,6 +53,10 @@ const capabilityReady = (cap: LoadedCapability | undefined): boolean => {
   catch { return false; }
 };
 
+export class GeneratedShowRegenerationError extends Error {
+  constructor(message: string, readonly code: 'not-found' | 'conflict') { super(message); }
+}
+
 export function preparationGrounding(result: AcceptedPreparation, music: 'restricted' | 'ordinary' | 'degraded', tracks: readonly PreparationTrack[] = []): string {
   const libraryRecords = tracks.slice(0, 12).map(track => ({
     title: track.title.slice(0, 160), artist: track.artist.slice(0, 160),
@@ -236,17 +240,24 @@ export function createShowPreparation(deps: PreparationDeps) {
   async function prepareGenerated(
     snapshot: GeneratedShowSnapshot,
     latestSnapshot: () => GeneratedShowSnapshot | null,
+    regenerate = false,
   ): Promise<GeneratedShowRecord | null> {
     await recover();
     let record = generated.get(snapshot.occurrence.id);
-    if (record?.kind === 'ready' && (record.configuration === snapshot.configuration || now() >= record.occurrence.startsAt)) return record;
-    if (record?.kind === 'failed' && record.configuration === snapshot.configuration
+    if (!regenerate && record?.kind === 'ready' && ((record.configuration === snapshot.configuration
+      && record.occurrence.endsAt === snapshot.occurrence.endsAt) || now() >= record.occurrence.startsAt)) return record;
+    if (!regenerate && record?.kind === 'failed' && record.configuration === snapshot.configuration
       && (record.retryAt == null || record.retryAt > now())) return record;
     const attempts = record?.kind === 'failed' && record.configuration === snapshot.configuration
       ? record.attempts + 1
       : 1;
-    const current = () => now() < snapshot.occurrence.endsAt
-      && latestSnapshot()?.configuration === snapshot.configuration;
+    const current = () => {
+      const latest = latestSnapshot();
+      return now() < (regenerate ? snapshot.occurrence.startsAt : snapshot.occurrence.endsAt)
+        && latest?.occurrence.id === snapshot.occurrence.id
+        && latest.occurrence.endsAt === snapshot.occurrence.endsAt
+        && latest.configuration === snapshot.configuration;
+    };
     try {
       const plan = await generateAcceptedPlan(snapshot);
       if (!current()) return null;
@@ -262,6 +273,8 @@ export function createShowPreparation(deps: PreparationDeps) {
     } catch (error) {
       if (!current()) return null;
       const reason = errorMessage(error).slice(0, 500);
+      // A manual reroll replaces an accepted plan only after success.
+      if (regenerate && record?.kind === 'ready') throw error;
       record = {
         kind: 'failed', occurrence: snapshot.occurrence, configuration: snapshot.configuration,
         template: snapshot.template, hostPersonaId: snapshot.cast.hostPersonaId,
@@ -274,21 +287,26 @@ export function createShowPreparation(deps: PreparationDeps) {
       return record;
     }
   }
-  const ensureGenerated = ({ context, source = 'active' }: {
+  const ensureGenerated = ({ context, source = 'active', regenerateOccurrenceId }: {
     context: SessionContext;
     source?: 'active' | 'scheduled';
+    regenerateOccurrenceId?: string;
   }): Promise<GeneratedShowRecord | null> => {
     const snapshotForContext = source === 'scheduled' ? deps.scheduledGeneratedSnapshot : deps.generatedSnapshot;
     const snapshot = snapshotForContext?.(context);
+    if (regenerateOccurrenceId && (!snapshot || snapshot.occurrence.id !== regenerateOccurrenceId
+      || snapshot.occurrence.startsAt <= now())) {
+      throw new GeneratedShowRegenerationError('This slot has started or its schedule has changed. Refresh the episode list.', 'conflict');
+    }
     if (!snapshot) return Promise.resolve(null);
     const running = pendingGenerated.get(snapshot.occurrence.id);
     if (running) return running.then(record => {
       const latest = snapshotForContext?.(context);
-      return latest && latest.configuration !== snapshot.configuration
-        ? ensureGenerated({ context, source })
+      return latest && (latest.configuration !== snapshot.configuration || latest.occurrence.endsAt !== snapshot.occurrence.endsAt)
+        ? ensureGenerated({ context, source, regenerateOccurrenceId })
         : record;
     });
-    const operation = prepareGenerated(snapshot, () => snapshotForContext?.(context) ?? null)
+    const operation = prepareGenerated(snapshot, () => snapshotForContext?.(context) ?? null, !!regenerateOccurrenceId)
       .finally(() => pendingGenerated.delete(snapshot.occurrence.id));
     pendingGenerated.set(snapshot.occurrence.id, operation);
     return operation;
@@ -309,7 +327,17 @@ export function createShowPreparation(deps: PreparationDeps) {
     await writing;
     return newestGenerated(generated.values());
   };
-  return { recover, read, ensure, retry, occurrence, ensureGenerated, generatedRecords };
+  const regenerateGenerated = async (occurrenceId: string) => {
+    await recover();
+    const record = generated.get(occurrenceId);
+    if (!record) throw new GeneratedShowRegenerationError('This episode is no longer available. Refresh the episode list.', 'not-found');
+    return ensureGenerated({
+      context: { at: new Date(record.occurrence.startsAt).toISOString() } as SessionContext,
+      source: record.occurrence.source === 'scheduled' ? 'scheduled' : 'active',
+      regenerateOccurrenceId: occurrenceId,
+    });
+  };
+  return { recover, read, ensure, retry, occurrence, ensureGenerated, generatedRecords, regenerateGenerated };
 }
 
 const occurrenceCache: Array<{ key: string; occurrence: PreparationOccurrence }> = [];
