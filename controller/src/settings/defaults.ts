@@ -293,6 +293,12 @@ export const DEFAULTS = {
   // One persona is active at a time; a scheduled show can override who is on air.
   personas: SEED_PERSONAS,
   activePersonaId: SEED_PERSONAS[0].id,
+  // null means every current persona / skill is eligible for generated shows.
+  subShows: {
+    eligibleHostPersonaIds: null,
+    eligibleGuestPersonaIds: null,
+    eligibleSkillNames: null,
+  },
   shows: [],
   // 7-day x 24-hour grid of showId|null. An empty hour = run autonomously.
   schedule: emptyWeek(),

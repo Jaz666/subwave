@@ -83,7 +83,7 @@ import {
   personasSchema,
 } from '../schemas/persona.js';
 import { scheduleOverrideSchema, scheduleSchema } from '../schemas/schedule.js';
-import { SHOW_MAX_TRACK_SECONDS, showsSchema } from '../schemas/show.js';
+import { SHOW_MAX_TRACK_SECONDS, showsSchema, subShowsSettingsSchema } from '../schemas/show.js';
 import { webhooksSchema } from '../schemas/webhook.js';
 
 // Mirrors settings/defaults.ts's BOUNDS.maxTrackSeconds, which reads its ceiling
@@ -142,6 +142,7 @@ export const SETTINGS_PATCH_KEYS = [
   'pauseTalkMinSeconds',
   'fadeAtShowEnd',
   'personas',
+  'subShows',
   'shows',
   'schedule',
   'scheduleOverride',
@@ -188,11 +189,14 @@ export interface SettingsPatchContext {
    *  show" rule. Null for the same reason as moodNames: `shows` may ride in the
    *  same body, and only update() has applied it by the time this is judged. */
   showIds: string[] | null;
+  /** The effective persona roster when a Sub/Shows eligibility patch is applied. */
+  personaIds: string[] | null;
 }
 
 export const SETTINGS_PATCH_SHAPE_ONLY: SettingsPatchContext = {
   moodNames: null,
   showIds: null,
+  personaIds: null,
 };
 
 type SettingsPatchEntry = ZodType | ((ctx: SettingsPatchContext) => ZodType);
@@ -255,6 +259,7 @@ export const SETTINGS_PATCH_SCHEMAS: Readonly<Partial<Record<SettingsPatchKey, S
   // gives the Personas panel its `fieldErrors` channel; the strict validators
   // stay the authoritative chokepoint, and both run one implementation.
   personas: personasSchema,
+  subShows: (ctx) => subShowsSettingsSchema(ctx.personaIds),
   djPrompts: djPromptsSchema,
   // Shape and bounds only — each of these keeps a genuinely stateful half in
   // update(), named on its schema: theme's async "does this id exist" fallback,
@@ -370,6 +375,7 @@ function flatten(err: ZodError): string {
 const SETTINGS_PATCH_ROOTED_KEYS: ReadonlySet<string> = new Set<SettingsPatchKey>([
   'personas',
   'djPrompts',
+  'subShows',
   // A nested object rather than an array, but the same reason: its messages
   // ('must be a show id', 'must be an object') are phrased WITHOUT the key,
   // because validateScheduleOverrideStrict has always rooted them here. Adding

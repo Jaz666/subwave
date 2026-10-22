@@ -16,6 +16,7 @@ import {
   TAGS_PER_SHOW_LIMIT,
   validEraYear,
   type ShowGenerationConfig,
+  type SubShowsSettings,
 } from '@/lib/schemas.generated';
 
 export const NAME_MAX = SHOW_NAME_MAX;
@@ -245,6 +246,8 @@ export interface SettingsResponse {
     shows?: Array<Partial<Show>>;
     schedule?: Schedule;
     personas?: Persona[];
+    subShows?: SubShowsSettings;
+    timezone?: string;
     /** Crossfade-relative floor for a non-zero per-show cap or minimum track
      *  length (server-computed). */
     minTrackSeconds?: number;

@@ -30,6 +30,7 @@ import { skillCatalog } from '../../skills/_agent.js';
 import { planLlmSwap, LlmSwapError } from '../../settings/llm-swap.js';
 import { llmSwapFit } from '../../settings/llm-swap-fit.js';
 import { recentCalls } from '../../llm/log.js';
+import { prepareUpcomingGeneratedShows } from '../../broadcast/show-preparation.js';
 
 // Mounted onto the parent settings router in ../settings.ts.
 export const router = express.Router();
@@ -122,6 +123,7 @@ router.get('/settings', requireAdmin, async (req, res) => {
         activeDjPromptId: s.activeDjPromptId,
         djHouseRules: s.djHouseRules,
         personas: s.personas,
+        subShows: s.subShows,
         activePersonaId: s.activePersonaId,
         shows: s.shows,
         schedule: s.schedule,
@@ -244,6 +246,13 @@ export async function logCompatDetection(): Promise<void> {
 router.post('/settings', requireAdmin, validateSettingsBody(), async (req, res) => {
   try {
     const result = await settings.update(req.body || {});
+    if (req.body?.subShows && (
+      'eligibleHostPersonaIds' in req.body.subShows
+      || 'eligibleGuestPersonaIds' in req.body.subShows
+    )) {
+      void prepareUpcomingGeneratedShows()
+        .catch(err => queue.log('error', `[shows] generated show preparation failed after Sub/Shows settings change: ${err.message}`));
+    }
     // context.ts reads the live settings cache, so the update already applies;
     // the route only owns the operator-facing log.
     if ('weather' in (req.body || {})) {
