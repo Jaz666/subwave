@@ -13,7 +13,7 @@ const { loadSecretsIntoEnv } = await import('../src/setup/secrets.js');
 await loadSecretsIntoEnv().catch(() => {});
 
 const settings = await import('../src/settings.js');
-const { generateShowPlan } = await import('../src/broadcast/show-generation.js');
+const { generateShowPlan, scheduledShowsForHost } = await import('../src/broadcast/show-generation.js');
 
 async function main() {
   const [hostId, requestedTemplate, ...direction] = process.argv.slice(2);
@@ -46,6 +46,7 @@ async function main() {
 
   const startsAt = Date.now();
   const endsAt = startsAt + 60 * 60 * 1000;
+  const existingShows = scheduledShowsForHost(host.id, 'show-plan-preview');
   const originalLog = console.log;
   let plan: Awaited<ReturnType<typeof generateShowPlan>>;
   try {
@@ -56,6 +57,7 @@ async function main() {
       planningPrompt: direction.join(' '),
       minimumCoverage: null,
       cast: { hostPersonaId: host.id, guestPersonaIds: [] },
+      existingShows,
       show: { id: 'show-plan-preview' },
     });
   } finally {
@@ -67,6 +69,7 @@ async function main() {
     host: { id: host.id, name: host.name, hasMusicalLeanings: !!String(host.musicLean || '').trim() },
     template,
     model: stationSettings.llm.model,
+    existingShows,
     plan,
   }, null, 2)}\n`);
 }
