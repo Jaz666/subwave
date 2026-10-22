@@ -96,8 +96,12 @@ show.
    Inputs: host Soul and Musical Leanings, guest context, local slot time and
    duration, editable template direction, library coverage and bounded recent
    episode summaries. The resolved host's Soul and available Musical Leanings
-   lead the creative direction; guest influence is secondary. Do not expose
-   private prompts on public endpoints.
+   lead the creative direction; guest influence is secondary. For DJ’s Choice,
+   existing shows gently shape the DJ’s Choice angle and show its familiar
+   genres; DJ’s Choice can add related genres up to the 15-genre limit. Deep
+   Discovery should first form a host-led concept, then favor lower-coverage
+   library genres in its settings.
+   Do not expose private prompts on public endpoints.
 3. Return a title, `topic`, `moods`, `genres`, `eras`, `energies`, `filtersStrict`
    and a short operator-facing rationale. Have the model write `topic` first,
    derive the title from that brief, then choose the music settings to express
@@ -113,10 +117,9 @@ show.
    unavailable providers. Respect automatic-generation budgets and slow local
    models; never block live audio waiting for generation. Persist a clear failed
    or fallback result with a retry policy instead of retrying on every read.
-6. Provide DJ’s Choice and the agreed Auto DJ examples. Forgotten Favourites
-   must name its evidence source; do not describe arbitrary unplayed music as
-   previously loved. If evidence is insufficient, report it and use a documented
-   fallback rather than fabricate popularity.
+6. Provide DJ’s Choice and Deep Discovery. Defer Forgotten Favourites until
+   play-history evidence can influence track selection; do not describe
+   arbitrary unplayed music as previously loved.
 
 Acceptance: overlapping genres are deduplicated; additional restrictions cannot
 hide a pool below X; blocklists remain absolute; failed/empty generation keeps

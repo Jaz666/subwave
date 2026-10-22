@@ -34,9 +34,9 @@ export interface GeneratedShowInput {
 }
 
 const TEMPLATE_DIRECTIONS: Record<string, string> = {
-  'dj-choice': 'Open-ended discovery: invent a host-specific show idea that differs from their existing programmes. The host’s Soul supplies the point of view; Musical Leanings are inspiration, not a genre default.',
-  'deep-discovery': 'Find a less obvious path through the host’s taste and current shows. The music-settings step will check the catalogue for coverage; do not choose obscurity for its own sake.',
-  'forgotten-favourites': 'Give the show a warm return-to-the-collection feeling. No track-level play-history evidence is supplied, so do not claim that a song was popular, loved, forgotten, or previously played.',
+  'dj-choice': 'Catch-all discovery: let the host’s Soul and optional Musical Leanings define a broad, recognizable genre palette. Include a few familiar genres from the host’s existing shows, then reach into related genres they play less often. Vary the editorial angle without banning familiar topics or genres.',
+  'deep-discovery': 'Use the host’s Soul and optional Musical Leanings to shape the show idea. Then favor less-represented genres from the library when choosing music settings, while keeping the brief coherent and playable.',
+  'forgotten-favourites': 'Deferred direction. No track-level play-history evidence is supplied, so do not claim that a song was popular, loved, forgotten, or previously played.',
 };
 
 function stableIndex(key: string, length: number): number {
@@ -120,10 +120,13 @@ function showTime(input: GeneratedShowInput): string {
 function allowedPlanSchema(moods: readonly string[], genres: readonly string[]) {
   const moodSet = new Set(moods);
   const genreByKey = new Map(genres.map(genre => [normGenre(genre), genre]));
+  const genreSchema = genres.length
+    ? z.enum(genres as [string, ...string[]])
+    : z.string().refine(value => genreByKey.has(normGenre(value)), 'no library genres are available');
   const planSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
     moods: z.array(z.string().refine(value => moodSet.has(value), `must be one of: ${moods.join(', ')}`)).max(15)
       .describe(`music moods, chosen only from: ${moods.join(', ')}`),
-    genres: z.array(z.string().refine(value => genreByKey.has(normGenre(value)), `must be a genre tag in the supplied library list`)).max(15)
+    genres: z.array(genreSchema).max(15)
       .describe(`genre tags copied exactly from the supplied library list: ${genres.join(', ')}`),
   }).check((c) => {
     if (c.value.filtersStrict && !(
@@ -151,7 +154,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     .sort((a, b) => b[1] - a[1])
     .slice(0, 80)
     .map(([name, count]) => ({ name, tracks: count }));
-  const genres = genreCounts.map(row => row.name);
+  const lessRepresentedGenres = genreCounts.slice(Math.floor(genreCounts.length * 0.75));
+  const useDeepDiscoveryShortlist = input.template === 'deep-discovery'
+    && lessRepresentedGenres.length > 0 && !input.coverageCorrection;
+  const genreChoices = useDeepDiscoveryShortlist
+    ? lessRepresentedGenres
+    : genreCounts;
+  const choiceGenres = genreChoices.map(row => row.name);
   const template = TEMPLATE_DIRECTIONS[input.template] || TEMPLATE_DIRECTIONS['dj-choice']!;
   const hostPersona = personas.find((p: any) => p.id === input.cast.hostPersonaId);
   if (!hostPersona) throw new Error('The selected host is no longer available');
@@ -165,10 +174,10 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   };
   const existingShows = input.existingShows ?? scheduledShowsForHost(hostPersona.id, input.show?.id);
   const existingShowContext = existingShows.map(show =>
-    `- ${show.name}: ${JSON.stringify({ moods: show.moods, genres: show.genres, eras: show.eras, energies: show.energies, filtersStrict: show.filtersStrict })}`,
+    `- ${show.name}: ${JSON.stringify({ topic: show.topic, moods: show.moods, genres: show.genres, eras: show.eras, energies: show.energies, filtersStrict: show.filtersStrict })}`,
   ).join('\n');
-  const existingShowBriefs = existingShows.map(show =>
-    `- ${show.name}: ${JSON.stringify({ topic: show.topic, moods: show.moods, genres: show.genres, eras: show.eras, energies: show.energies })}`,
+  const existingShowSettings = existingShows.map(show =>
+    `- ${show.name}: ${JSON.stringify({ moods: show.moods, genres: show.genres, eras: show.eras, energies: show.energies, filtersStrict: show.filtersStrict })}`,
   ).join('\n');
   const guestContext = guests.map((guest: any) => ({
     name: String(guest.name || 'Guest DJ'),
@@ -176,66 +185,72 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }));
   const conceptPrompt = [
     `Recurring template: ${input.template}.`,
-    `Primary objective: solve the operator's blank page with a specific show concept that listeners will not mistake for this host's existing programmes.`,
+    `Primary objective: help the operator past a blank page with an appealing, specific show idea that sounds like this host.`,
     `Local slot: ${showTime(input)}.`,
     `Host: ${host.name}. This host leads the creative direction.`,
     `Host DJ Soul: <host-soul>${host.soul}</host-soul>`,
     host.musicLean ? `Host Musical Leanings: <host-leanings>${host.musicLean}</host-leanings>` : 'Host Musical Leanings: (not specified)',
     existingShows.length
-      ? `Other current weekly shows led by this host (already offered to listeners; use titles and settings only as contrast, not as creative templates):\n<existing-shows>${existingShowContext}</existing-shows>`
-      : 'No other current weekly shows for this host are available as contrast references.',
+      ? `Other current weekly shows led by this host (use these to understand their familiar repertoire and current editorial territory):\n<existing-shows>${existingShowContext}</existing-shows>`
+      : 'No other current weekly shows for this host are available as context.',
     guestContext.length ? `Guests, as secondary influence only:\n${guestContext.map(g => `- ${g.name}${g.musicLean ? ` — Musical Leanings: ${g.musicLean}` : ''}`).join('\n')}` : 'Guests: none.',
     `Template direction: ${template}`,
     input.planningPrompt ? `Operator planning direction:\n<operator-direction>${input.planningPrompt}</operator-direction>` : null,
-    `Use the host's Soul for point of view and personality; Musical Leanings are inspiration, not a genre format or limit. Mine a distinctive detail from the Soul and make a fresh editorial angle from it, rather than defaulting to the genres in the existing-show settings. A different title, adjacent subgenre, or "same show but deeper/rarer" is not enough.`,
-    `The brief must state a concrete editorial question and a recurring way the host will answer it: a selection rule, listening challenge, comparison, or other clear format. A broad subject such as a genre, instrument, vocal style or historical period is not enough. A generic "journey through [genre]", "lesser-known side of [genre]" or "deep dive into [genre]" is not a show idea by itself. Use a distinctive host trait that is absent from the current show briefs, so the concept could not be assigned unchanged to another DJ. Consider several genuinely different concepts and choose the most distinctive.`,
-    `First write the show brief as an editorial concept the host can carry through the slot, not as a music-filter list. Then derive a memorable name from that brief.`,
-    `Do not invent facts about songs, artists, listeners or prior airplay. This is a creative brief, not evidence. Return exactly: name and topic.`,
+    `Let the host’s Soul and optional Musical Leanings shape the point of view. Give the new show a different central promise or recurring format from the host’s existing shows; do not just rename or lightly rework one. Their genres can still be part of the new palette.`,
+    input.template === 'dj-choice'
+      ? 'For DJ’s Choice, vary the editorial angle while keeping familiar topics or genres available where they fit.'
+      : null,
+    `When the host’s obvious genre or musical interests are already covered by regular shows, mine the less-used personality details, relationships, habits or point of view in their Soul for a different hook. Keep the concept and genre palette separate: the premise should vary, while familiar genres can still be included later.`,
+    `Stock ideas such as “hidden gems,” “forgotten favourites,” or “stories behind the albums” are not fresh by themselves; avoid them when the existing shows already cover that territory.`,
+    input.template === 'deep-discovery'
+      ? 'For Deep Discovery, keep the concept rooted in the host’s taste and open to finding less-represented library genres in the music-settings step. Do not make the brief a list of genres.'
+      : null,
+    `Write a concise, concrete brief that gives the show a clear reason to exist and could inspire a real episode. A different genre list alone does not make the premise fresh. Avoid generic genre journeys and do not invent facts about songs, artists, listeners or prior airplay. Write the brief first, then derive a memorable episode name from it; never use the recurring template name as the episode title. Return exactly: name and topic.`,
   ].filter(Boolean).join('\n\n');
-  const { planSchema, genreByKey } = allowedPlanSchema(moodNames, genres);
+  const { planSchema, genreByKey } = allowedPlanSchema(moodNames, choiceGenres);
   const concept = await djObject({
-    system: 'You are a creative show ideator for a personal radio station. Your job is to give the operator one distinctive, discovery-led premise—not a familiar genre show with a new name. The host’s Soul supplies the point of view; Musical Leanings are inspiration, not a genre default or limit. Existing scheduled shows are offers to avoid repeating. Guests are secondary. Follow the operator’s planning direction within station limits.',
+    system: 'You are a creative show ideator for a personal radio station. Use the selected host’s DJ Soul and optional Musical Leanings to create a specific show idea, brief it first, then name it. Make the central promise and recurring format meaningfully different from the host’s current shows; their genres can still be used in the music palette. If regular shows already cover the host’s obvious genre interests, mine less-used personality details, relationships, habits or points of view in the Soul for another hook. Avoid stock ideas such as “hidden gems,” “forgotten favourites,” or album stories when those overlap the current shows. Never use the recurring template name as the episode title. Give the operator a useful starting point rather than a generic genre show. Guests are secondary. Follow the operator’s planning direction within station limits.',
     prompt: conceptPrompt,
     schema: showConceptSchema,
     temperature: 0.9,
     kind: 'generateShowPlan',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template },
   }) as z.infer<typeof showConceptSchema>;
-  const reviewedConcept = await djObject({
-    system: 'You are an independent commissioning editor for a personal radio station. Your job is to invent a more distinctive alternative to the draft, rooted in the host’s personality and suited to the collection. Never simply approve or rename the draft.',
-    prompt: [
-      `Draft to replace (do not reuse its central subject, hook, or wording): ${concept.name} — "${concept.topic}"`,
-      `Host DJ Soul: <host-soul>${host.soul}</host-soul>`,
-      host.musicLean ? `Host Musical Leanings: <host-leanings>${host.musicLean}</host-leanings>` : 'Host Musical Leanings: (not specified)',
-      existingShows.length
-        ? `The host's current weekly shows:\n<existing-show-briefs>${existingShowBriefs}</existing-show-briefs>`
-        : 'The host has no other current weekly shows to compare against.',
-      `Use the current show briefs as hard exclusions, judging their meaning rather than their wording: a history of a genre still overlaps a regular show about that genre. Do not build a new show around any subject or musical detail already named there, or around a small variation of one. The regular music settings show which part of the collection is already served; when they cluster in one genre family, move the new premise towards a different family if the host's Soul allows. Musical Leanings are not a boundary. Find an unused trait, contradiction, exception or point of view in the host's Soul, then invent a new episode-long question and concrete selection rule around it. The result must give listeners a different reason to tune in and lead to a different part of the collection. A broad subject area alone is not a show idea. Keep it concise, concrete, and specific to this host. Do not invent facts about songs, artists, listeners or prior airplay. Do not include prompt delimiters in the output. Return exactly: name and topic.`,
-    ].join('\n\n'),
-    schema: showConceptSchema,
-    temperature: 0.9,
-    kind: 'generateShowPlan',
-    telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template },
-  }) as z.infer<typeof showConceptSchema>;
+  const existingSettingsPrompt = existingShows.length
+    ? input.template === 'deep-discovery'
+      ? `Music settings already used by this host's current shows:\n<existing-show-settings>${existingShowSettings}</existing-show-settings>. Use these to understand the host's taste, then prioritize the less-represented candidates that fit the brief.`
+      : input.template === 'dj-choice'
+        ? `Music settings already used by this host's current shows:\n<existing-show-settings>${existingShowSettings}</existing-show-settings>. These show which genres make the host recognizable; use a few that fit the brief, then broaden into related genres from the library list.`
+        : `Music settings already used by this host's current shows:\n<existing-show-settings>${existingShowSettings}</existing-show-settings>. Use these as context when choosing suitable settings for the brief.`
+    : null;
+  const templateMusicDirection = input.template === 'deep-discovery'
+    ? 'For Deep Discovery, actively favor suitable lower-count genres from the provided candidates. Connect each choice to the host’s taste and brief; do not pick genres only because their counts are low.'
+    : input.template === 'dj-choice'
+      ? 'For DJ’s Choice, build a broad palette of host-related genres: include a few familiar genres from their existing shows, then add related genres that reach beyond their usual palette. Use as many suitable genres as help the show, up to the 15-genre limit. Each choice should have a clear connection to the host’s Soul, Musical Leanings or an adjacent musical style.'
+      : 'Choose suitable settings that follow from the brief and available library coverage.';
   const settingsPrompt = [
-    `The final show idea has been reviewed. Choose settings that follow from it without changing its premise.`,
-    `Show name: ${reviewedConcept.name}`,
-    `Show brief: <show-brief>${reviewedConcept.topic}</show-brief>`,
+    `The show idea is final. Choose settings that follow from it without changing its premise.`,
+    `Show name: ${concept.name}`,
+    `Show brief: <show-brief>${concept.topic}</show-brief>`,
     input.planningPrompt ? `Operator music direction:\n<operator-direction>${input.planningPrompt}</operator-direction>` : null,
     `Available moods: ${moodNames.join(', ')}`,
-    existingShows.length
-      ? `Music settings already used by this host's current shows:\n<existing-show-settings>${existingShowContext}</existing-show-settings>. Treat these as contrast, not as the new palette. Choose settings that lead to a different part of the collection where the brief allows. A broad umbrella genre is not new if it covers an existing subgenre (for example, generic Rock still overlaps with Hard Rock or Alternative Rock). When at least two suitable library genres exist outside this cluster, use at least two of them and keep the existing cluster as a bridge only when the brief calls for it.`
-      : null,
-    `Available library genres with indexed track counts (choose only from this list): ${genreCounts.length
-      ? genreCounts.map(g => `${g.name} (${g.tracks})`).join('; ')
+    existingSettingsPrompt,
+    `${input.template === 'deep-discovery' ? 'Deep Discovery genre candidates' : 'Available library genres'} with indexed track counts (choose only from this list): ${genreChoices.length
+      ? genreChoices.map(g => `${g.name} (${g.tracks})`).join('; ')
       : '(library coverage unavailable; leave genres empty)'}`,
-    'Use genre counts only to check that an idea has library coverage; their order and size are not creative recommendations or exact counts for the final filters.',
+    useDeepDiscoveryShortlist
+      ? 'These candidates are the lower-count quarter of the bounded library genre list. Deep Discovery should choose one or more that make sense for the host and brief. Connect them with the host’s Soul or Musical Leanings; do not choose a genre only because its count is low.'
+      : input.template === 'deep-discovery' && input.coverageCorrection
+        ? 'The lower-count candidates did not meet required playable coverage. Choose from this broader library list and preserve the Deep Discovery intent where possible.'
+        : input.template === 'deep-discovery'
+          ? 'No library genre shortlist is available; leave genres empty.'
+      : 'Use genre counts as coverage context, not as creative recommendations or exact counts for the final filters.',
     `Library size: ${libraryStats?.mirrorTotal ?? 'unknown'} indexed tracks.`,
     libraryStats?.updatedAt ? `Library tags last updated: ${libraryStats.updatedAt}.` : null,
     input.minimumCoverage != null ? `The operator requires at least ${input.minimumCoverage} unique eligible tracks after all show filters and exclusions.` : null,
     input.coverageCorrection || null,
     `Operator-owned controls remain fixed: playlist anchors, excluded playlists, track limits, programme settings, voices and skills. These are not part of the generated output.`,
-    `After reviewing the premise, choose moods, genres, era windows and energy settings that follow from it. Treat library genre counts as coverage information, not creative suggestions. Prefer settings that open a different part of the collection when they fit the idea, but do not force unrelated genres or tags just to avoid overlap. Use strict filters only when the concept needs them and available coverage can support them. Leave fields empty when they would weaken the idea or make the pool too narrow.`,
+    `Choose moods, genres, era windows and energy settings that follow from the brief. ${templateMusicDirection} Use strict filters only when the concept needs them and available coverage can support them. Leave fields empty when they would weaken the idea or make the pool too narrow.`,
     `Do not invent facts about songs, artists, listeners or prior airplay. Do not claim strict filters improve quality or guarantee coverage. Return a short operator-facing rationale explaining how the music settings follow from the brief. Return exactly: moods, genres, eras, energies, filtersStrict and rationale.`,
   ].filter(Boolean).join('\n\n');
   const musicSettings = await djObject({
@@ -246,7 +261,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     kind: 'generateShowPlan',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template },
   }) as z.infer<typeof planSchema>;
-  const plan: GeneratedShowPlan = { ...reviewedConcept, ...musicSettings };
+  const plan: GeneratedShowPlan = { ...concept, ...musicSettings };
   return {
     ...plan,
     genres: [...new Set(plan.genres.map(genre => genreByKey.get(normGenre(genre))!).filter(Boolean))],
