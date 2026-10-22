@@ -34,7 +34,7 @@ export interface GeneratedShowInput {
 }
 
 const TEMPLATE_DIRECTIONS: Record<string, string> = {
-  'dj-choice': 'Catch-all discovery: let the host’s Soul and optional Musical Leanings define a broad, recognizable genre palette. Include a few familiar genres from the host’s existing shows, then reach into related genres they play less often. Vary the editorial angle without banning familiar topics or genres.',
+  'dj-choice': 'Catch-all discovery: keep a few familiar genres from the host’s regular shows in the music palette, then reach into related styles they play less often. Keep the show idea distinct from existing shows; do not make a broad genre journey the premise.',
   'deep-discovery': 'Use the host’s Soul and optional Musical Leanings to shape the show idea. Then favor less-represented genres from the library when choosing music settings, while keeping the brief coherent and playable.',
   'forgotten-favourites': 'Deferred direction. No track-level play-history evidence is supplied, so do not claim that a song was popular, loved, forgotten, or previously played.',
 };
@@ -140,7 +140,25 @@ function allowedPlanSchema(moods: readonly string[], genres: readonly string[]) 
 
 const showConceptSchema = generatedShowPlanSchema.pick({ name: true, topic: true });
 
+function mergeEraWindows(eras: GeneratedShowPlan['eras']): GeneratedShowPlan['eras'] {
+  const sorted = [...eras].sort((a, b) => (a.fromYear ?? -Infinity) - (b.fromYear ?? -Infinity));
+  const merged: GeneratedShowPlan['eras'] = [];
+  for (const era of sorted) {
+    const previous = merged.at(-1);
+    if (!previous || (previous.toYear != null && era.fromYear != null && era.fromYear > previous.toYear + 1)) {
+      merged.push({ ...era });
+      continue;
+    }
+    previous.fromYear = previous.fromYear == null || era.fromYear == null
+      ? null : Math.min(previous.fromYear, era.fromYear);
+    previous.toYear = previous.toYear == null || era.toYear == null
+      ? null : Math.max(previous.toYear, era.toYear);
+  }
+  return merged;
+}
+
 export async function generateShowPlan(input: GeneratedShowInput): Promise<GeneratedShowPlan> {
+  const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
   let libraryStats: ReturnType<typeof library.stats> | null = null;
   try {
     await library.load();
@@ -198,10 +216,10 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     input.planningPrompt ? `Operator planning direction:\n<operator-direction>${input.planningPrompt}</operator-direction>` : null,
     `Let the host’s Soul and optional Musical Leanings shape the point of view. Give the new show a different central promise or recurring format from the host’s existing shows; do not just rename or lightly rework one. Their genres can still be part of the new palette.`,
     input.template === 'dj-choice'
-      ? 'For DJ’s Choice, vary the editorial angle while keeping familiar topics or genres available where they fit.'
+      ? 'For DJ’s Choice, genres are a music palette, not the show premise. If current weekly shows already cover the host’s obvious genre interests, do not pitch another generic journey through that genre. Keep a few familiar styles available for the music settings and build the premise around a distinct, explicit detail from the host’s Soul or Musical Leanings.'
       : null,
-    `When the host’s obvious genre or musical interests are already covered by regular shows, mine the less-used personality details, relationships, habits or point of view in their Soul for a different hook. Keep the concept and genre palette separate: the premise should vary, while familiar genres can still be included later.`,
-    `Stock ideas such as “hidden gems,” “forgotten favourites,” or “stories behind the albums” are not fresh by themselves; avoid them when the existing shows already cover that territory.`,
+    `Use only details explicitly stated in the host’s Soul, Musical Leanings or existing show information. Do not invent personal history, hometowns, experiences, venues, festivals or relationships.`,
+    `Avoid generic frames such as “a journey through [genre],” “hidden gems,” or “stories behind the albums” unless the supplied host details support a specific new format that is clearly different from current shows.`,
     input.template === 'deep-discovery'
       ? 'For Deep Discovery, keep the concept rooted in the host’s taste and open to finding less-represented library genres in the music-settings step. Do not make the brief a list of genres.'
       : null,
@@ -209,12 +227,12 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   ].filter(Boolean).join('\n\n');
   const { planSchema, genreByKey } = allowedPlanSchema(moodNames, choiceGenres);
   const concept = await djObject({
-    system: 'You are a creative show ideator for a personal radio station. Use the selected host’s DJ Soul and optional Musical Leanings to create a specific show idea, brief it first, then name it. Make the central promise and recurring format meaningfully different from the host’s current shows; their genres can still be used in the music palette. If regular shows already cover the host’s obvious genre interests, mine less-used personality details, relationships, habits or points of view in the Soul for another hook. Avoid stock ideas such as “hidden gems,” “forgotten favourites,” or album stories when those overlap the current shows. Never use the recurring template name as the episode title. Give the operator a useful starting point rather than a generic genre show. Guests are secondary. Follow the operator’s planning direction within station limits.',
+    system: 'You create distinct, concrete show ideas for a personal radio station. Ground the premise in the host’s stated Soul and optional Musical Leanings, taking current shows into account. Familiar genres may return in the music palette, but they must not make this another version of an existing show. Do not invent the host’s personal history. Avoid generic genre shows and stock formats. Name the brief after writing it; guests are secondary. Follow operator direction within station limits.',
     prompt: conceptPrompt,
     schema: showConceptSchema,
     temperature: 0.9,
-    kind: 'generateShowPlan',
-    telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template },
+    kind: 'generateShowPlan.concept',
+    telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
   }) as z.infer<typeof showConceptSchema>;
   const existingSettingsPrompt = existingShows.length
     ? input.template === 'deep-discovery'
@@ -226,7 +244,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const templateMusicDirection = input.template === 'deep-discovery'
     ? 'For Deep Discovery, actively favor suitable lower-count genres from the provided candidates. Connect each choice to the host’s taste and brief; do not pick genres only because their counts are low.'
     : input.template === 'dj-choice'
-      ? 'For DJ’s Choice, build a broad palette of host-related genres: include a few familiar genres from their existing shows, then add related genres that reach beyond their usual palette. Use as many suitable genres as help the show, up to the 15-genre limit. Each choice should have a clear connection to the host’s Soul, Musical Leanings or an adjacent musical style.'
+      ? 'For DJ’s Choice, choose a coherent, selective palette, usually about 4–8 genres. Include a few familiar genres from existing shows, then a few related stretch genres that fit the host and brief. The 15-genre limit is an absolute ceiling, not a target: never pad the list. Omit genres that cannot be clearly connected to the host’s Soul, Musical Leanings or the brief.'
       : 'Choose suitable settings that follow from the brief and available library coverage.';
   const settingsPrompt = [
     `The show idea is final. Choose settings that follow from it without changing its premise.`,
@@ -251,15 +269,15 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     input.coverageCorrection || null,
     `Operator-owned controls remain fixed: playlist anchors, excluded playlists, track limits, programme settings, voices and skills. These are not part of the generated output.`,
     `Choose moods, genres, era windows and energy settings that follow from the brief. ${templateMusicDirection} Use strict filters only when the concept needs them and available coverage can support them. Leave fields empty when they would weaken the idea or make the pool too narrow.`,
-    `Do not invent facts about songs, artists, listeners or prior airplay. Do not claim strict filters improve quality or guarantee coverage. Return a short operator-facing rationale explaining how the music settings follow from the brief. Return exactly: moods, genres, eras, energies, filtersStrict and rationale.`,
+    `Do not invent facts about songs, artists, listeners, prior airplay or the host’s personal history. Do not claim strict filters improve quality or guarantee coverage. For DJ’s Choice, briefly identify the familiar anchor genres and explain the connection of the stretch genres to supplied host details or the brief. Return exactly: moods, genres, eras, energies, filtersStrict and rationale.`,
   ].filter(Boolean).join('\n\n');
   const musicSettings = await djObject({
     system: 'You are a music editor. The show name and editorial brief are final. Choose only settings that express that brief. Use only the supplied moods and library genres, and preserve the operator’s fixed controls.',
     prompt: settingsPrompt,
     schema: planSchema,
     temperature: 0.55,
-    kind: 'generateShowPlan',
-    telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template },
+    kind: 'generateShowPlan.musicSettings',
+    telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
   }) as z.infer<typeof planSchema>;
   const plan: GeneratedShowPlan = { ...concept, ...musicSettings };
   return {
@@ -267,6 +285,6 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     genres: [...new Set(plan.genres.map(genre => genreByKey.get(normGenre(genre))!).filter(Boolean))],
     moods: [...new Set(plan.moods)],
     energies: [...new Set(plan.energies)],
-    eras: plan.eras.filter((era, i, all) => all.findIndex(other => other.fromYear === era.fromYear && other.toYear === era.toYear) === i),
+    eras: mergeEraWindows(plan.eras),
   };
 }
