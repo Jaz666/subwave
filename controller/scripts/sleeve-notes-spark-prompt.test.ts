@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-spark-prompt-'));
+const root = createTempDir(join(tmpdir(), 'subwave-spark-prompt-'));
 process.env.STATE_DIR = root;
 const settings = await import('../src/settings.js');
 const store = await import('../src/settings/store.js');
@@ -13,7 +13,7 @@ const { primaryLeg } = await import('../src/llm/internal/provider/legs.js');
 const { generateLink, linkPrompt } = await import('../src/llm/internal/prompts/scripts.js');
 const { inspectExtendedSleeveNote,recordExtendedSleeveNoteTtsRequest } = await import('../src/sleeve-notes/link-selection.js');
 const { connectionDirectionGuidance } = await import('../src/sleeve-notes/library-connections.js');
-test.after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { close(); await removeTempDir(root); });
 
 test('production link generation honors Spark suppression and a short vocal runway', async (t) => {
   const defaults = settings.getDefaults();
@@ -59,7 +59,7 @@ test('production link generation honors Spark suppression and a short vocal runw
   await generateLink({ ...args, current: { ...args.current, vocalRanges: [{ startMs: 500, endMs: 1_000 }] } });
   assert.doesNotMatch(prompts.at(-1)!, /Story Spark — optional research material/);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as { n: number }).n, 1);
-  const first = db.prepare('SELECT final_text, dj_context_pass_reason, dj_quality_rejection_reason FROM sleeve_claim_uses').get() as any;
+  const first = db.prepare('SELECT final_text, dj_context_pass_reason, dj_quality_rejection_reason FROM sleeve_claim_uses').get() as Record<string, string | null>;
   assert.equal(first.final_text, 'This is Band with Song.');
   assert.equal(first.dj_context_pass_reason, reply.reason);
   assert.equal(first.dj_quality_rejection_reason, null, 'a timing pass is not a quality rejection');
@@ -73,13 +73,13 @@ test('production link generation honors Spark suppression and a short vocal runw
   release();
   reply = { speech: 'This is Band with Song. They recorded in a converted barn.', sparkDecision: 'pass', reason: 'Contradictory private verdict.' };
   assert.equal(await generateLink(args), reply.speech);
-  const expressed = db.prepare('SELECT detection_status, dj_context_pass_reason FROM sleeve_claim_uses WHERE final_text = ?').get(reply.speech) as any;
+  const expressed = db.prepare('SELECT detection_status, dj_context_pass_reason FROM sleeve_claim_uses WHERE final_text = ?').get(reply.speech) as Record<string, string | null>;
   assert.equal(expressed.detection_status, 'detected');
   assert.equal(expressed.dj_context_pass_reason, null, 'a private pass never overrides a clear spoken claim');
   release();
   reply = { speech: '', sparkDecision: 'pass', reason: 'No complete spoken thought fits.' };
   assert.equal(await generateLink(args), '');
-  const silent = db.prepare('SELECT released_at, dj_context_pass_reason FROM sleeve_claim_uses WHERE final_text = ?').get('') as any;
+  const silent = db.prepare('SELECT released_at, dj_context_pass_reason FROM sleeve_claim_uses WHERE final_text = ?').get('') as Record<string, string | null>;
   assert.ok(silent.released_at);
   assert.equal(silent.dj_context_pass_reason, reply.reason);
   assert.equal(prompts.length, 6);
@@ -103,8 +103,7 @@ test('production link generation honors Spark suppression and a short vocal runw
 test('connection prompt states the direction and refuses unsupported sample details or playback promises', () => {
   const prompt = linkPrompt({ current: { title: 'Song', artist: 'Band' }, extendedSleeveNote: {
     wording: 'Related Song samples Song by Band.', category: 'musical-connections', attribution: 'Genius',
-    connection: { type: 'sampled_in' },
-  } });
+    connection: { type: 'sampled_in' }} });
   assert.match(prompt, /The linked song samples the current track/);
   assert.match(prompt, /Do not infer which musical or lyrical passage/);
   assert.match(prompt, /Do not claim the linked track has played or will play/);

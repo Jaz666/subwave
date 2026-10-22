@@ -1,11 +1,12 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, {after,beforeEach,type TestContext} from 'node:test';
-import {mkdtempSync,rmSync,existsSync} from 'node:fs';
+import {rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import type {AddressInfo} from 'node:net';
 
-const state=mkdtempSync(join(tmpdir(),'subwave-brain-queue-'));
+const state=createTempDir(join(tmpdir(),'subwave-brain-queue-'));
 process.env.STATE_DIR=state;
 process.env.NAVIDROME_URL='http://brain-library.invalid';
 delete process.env.ADMIN_USER;delete process.env.ADMIN_PASS;
@@ -49,7 +50,7 @@ beforeEach(async context=>{
     return Response.json({'subsonic-response':{status:'ok',version:'1.16.1',...body}});
   });
 });
-after(()=>{server.close();library.shutdown();sleeveDb.close();rmSync(state,{recursive:true,force:true});});
+after(async ()=>{server.close();library.shutdown();sleeveDb.close();await removeTempDir(state);});
 async function submit(selection:unknown){
   const response=await realFetch(`${base}/dj/queue-track`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({selection})});
   return {status:response.status,body:await response.json()};
@@ -83,6 +84,7 @@ test('hourly cleanup must not create a research database while disabled',async t
     store.setCache({...current,djBehaviour:{...current.djBehaviour,extendedSleeveNotes:true}});quiet=true;
     cleanup();assert.deepEqual(readFileSync(sleeveDb.DB_PATH),before,'restore must prevent maintenance from opening the cache');
   }finally{restored();}
+  rmSync(sleeveDb.DB_PATH, {force:true});
 });
 test('different Japanese recording titles must not match',async()=>{
   const {selectGeniusSearchHit}=await import('../src/sleeve-notes/genius.js');

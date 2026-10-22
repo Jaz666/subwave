@@ -1,10 +1,11 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import {mkdtempSync,rmSync,writeFileSync,mkdirSync} from 'node:fs';
+import {writeFileSync,mkdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-transcript-history-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-transcript-history-'));process.env.STATE_DIR=root;
 const {migrate,open,close}=await import('../src/sleeve-notes/db.js');
 const {recoverLegacySegmentConversations,addLegacySegmentConversations}=await import('../src/sleeve-notes/legacy-segment-transcripts.js');
 const at='2026-10-15T20:11:00.000Z',aired='2026-10-15T20:12:00.000Z';
@@ -57,4 +58,4 @@ test('read-only compatibility can recover from a saved current session or its ar
  assert.deepEqual(db.prepare('SELECT * FROM sleeve_claim_uses').all(),before);
 });
 
-test.after(()=>{close();rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{close();await removeTempDir(root);});

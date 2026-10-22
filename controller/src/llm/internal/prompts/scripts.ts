@@ -4,6 +4,7 @@
 // djText. Provider-agnostic; the model is resolved downstream.
 
 import * as settings from '../../../settings.js';
+import type {Track} from '../../../broadcast/queue/types.js';
 import { djObject } from '../strategy/object.js';
 import { stripThinking } from '../core/pure.js';
 import { storySparkPacket, sparkSpeechWordBudget, sparkLinkSchema } from './story-spark.js';
@@ -92,7 +93,12 @@ export const REQUESTER_GREETING_CLAUSE = ' When the request comes with a name, s
   + ' — greet them by name once, naturally, as part of the line rather than tacked on.';
 
 
-function verifiedContextPacket(context: any, current: any = null, clockIsAirTime = false, includeSleeves = true): string {
+function verifiedContextPacket(context: {
+  date?: {dayLabel?: string; iso?: string};
+  clock?: {hhmm?: string; display?: string};
+  activeShow?: {name?: string};
+  showHandover?: {phase?: string; nextShow?: {name?: string; presenter?: string; startsAt?: string}};
+} | null | undefined, current: Track | null = null, clockIsAirTime = false, includeSleeves = true): string {
   const moment: string[] = [];
   const day = String(context?.date?.dayLabel || "").trim();
   if (day) moment.push("Day: " + day + ".");
@@ -102,7 +108,7 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
   if (showName) moment.push("Current show: \"" + showName + "\".");
   const handover = context?.showHandover;
   const hasFollowingShow = handover?.phase === "final-quarter-hour" && handover?.nextShow?.name && handover?.nextShow?.presenter;
-  if (hasFollowingShow) {
+  if (hasFollowingShow && handover?.nextShow) {
     moment.push("Current show is approaching its scheduled close.");
     const startsAt = clockIsAirTime ? String(handover.nextShow.startsAt || "").trim() : "";
     moment.push("Following show: " + String(handover.nextShow.presenter).trim() + " presents \"" + String(handover.nextShow.name).trim() + "\"" + (startsAt ? ", starting " + startsAt : "") + ".");
@@ -111,7 +117,7 @@ function verifiedContextPacket(context: any, current: any = null, clockIsAirTime
   // timezone. Anchor the year-based first-play window to that date, not the
   // controller host's clock; noon avoids any UTC date-boundary shift.
   const stationDate = /^\d{4}-\d{2}-\d{2}$/.test(String(context?.date?.iso ?? ''))
-    ? Date.parse(`${context.date.iso}T12:00:00.000Z`)
+    ? Date.parse(`${context?.date?.iso}T12:00:00.000Z`)
     : Date.now();
   const stationHistoryNote = current
     ? stationHistoryNoteFor(current, library.lastAiredInfo(), stationDate)

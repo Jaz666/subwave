@@ -1,14 +1,14 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-genius-identity-'));
+const root = createTempDir(join(tmpdir(), 'subwave-genius-identity-'));
 process.env.STATE_DIR = root;
 const { open, close } = await import('../src/sleeve-notes/db.js');
 const { recordingForGenius, retainSourceDocument } = await import('../src/sleeve-notes/research-repository.js');
-after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+after(async () => { close(); await removeTempDir(root); });
 
 test('Genius lookup reuses the latest retained song ID and tolerates malformed cache identities', () => {
   const db = open();

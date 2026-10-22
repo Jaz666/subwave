@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ResearchCandidate, Researcher } from '../src/sleeve-notes/researcher.js';
-const root = mkdtempSync(join(tmpdir(), 'subwave-selective-review-'));
+const root = createTempDir(join(tmpdir(), 'subwave-selective-review-'));
 process.env.STATE_DIR = root;
 const settings = await import('../src/settings.js');
 const { open, close } = await import('../src/sleeve-notes/db.js');
@@ -56,4 +56,4 @@ test('the production queue admits at most two nominated repairs, and routine dis
   const discardWorker = new ResearchWorker({ isQuiet: () => true }, { extract: async () => [fact('studio')], reviewForAirtime: async () => [{ claimId: 'C001', decision: 'bin', reason: 'Not interesting enough for a link' }] });
   await run(discardWorker); assert.equal(count('sleeve_moderation_candidates', discarded), 0);
 });
-test.after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { close(); await removeTempDir(root); });

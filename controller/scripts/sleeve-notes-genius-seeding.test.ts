@@ -1,9 +1,9 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-genius-seeding-'));
+const root = createTempDir(join(tmpdir(), 'subwave-genius-seeding-'));
 process.env.STATE_DIR = root;
 globalThis.fetch = async () => { throw new Error('Network forbidden during seeding checks'); };
 const { open, close } = await import('../src/sleeve-notes/db.js');
@@ -11,7 +11,7 @@ const { cacheConnectionLibraryTracks, reconcileLibraryConnections } = await impo
 const { enqueueNextGeniusLibrarySeed, librarySeedRecording } = await import('../src/sleeve-notes/genius-seeding.js');
 const { retainGeniusResult } = await import('../src/sleeve-notes/research-repository.js');
 const { loadExtendedSleeveNoteCandidatesInDatabase } = await import('../src/sleeve-notes/link-selection.js');
-after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+after(async () => { close(); await removeTempDir(root); });
 const now = new Date().toISOString();
 function completeSeed() { open().prepare(`UPDATE sleeve_research_jobs SET state='complete' WHERE capability='library-seed'`).run(); }
 function latestSeed() { return open().prepare(`SELECT seed.local_track_id AS trackId,seed.recording_id AS recordingId

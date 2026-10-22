@@ -1,6 +1,6 @@
-import {captureSpeechBudget} from './speech-timing.js';
-import {fitsSpeechBudget} from './speech-budget.js';
-import {spokenWordCount} from '../audio/tts-measurements.js';
+import { captureSpeechBudget } from './speech-timing.js';
+import { fitsSpeechBudget } from './speech-budget.js';
+import { spokenWordCount } from '../audio/tts-measurements.js';
 import { prepareEpisodeContext, prepareUpcomingGeneratedShows, showPreparation, onPreparationChange, preparationIdentity, preparationSkillAt } from './show-preparation.js';
 import { autoPlaylistShowKey } from './auto-playlist-show.js';
 // Scheduler: the auto-playlist refresh, the per-minute talk tick over
@@ -792,24 +792,50 @@ export async function runBanter({ automatic = false } = {}) {
     }
     if (automatic) {
       try {
-        if (await runAutomaticSleeveNotesSegment()) return 'Sleeve Notes segment queued in place of banter';
+        if (await runAutomaticSleeveNotesSegment())
+          return 'Sleeve Notes segment queued in place of banter';
       } catch (error) {
-        queue.log('error', `Sleeve Notes replacement failed — falling back to banter: ${(error as Error).message}`);
+        queue.log(
+          'error',
+          `Sleeve Notes replacement failed — falling back to banter: ${(error as Error).message}`,
+        );
       }
     }
-    const speechBudget=captureSpeechBudget([host,...guests]);
-    if(speechBudget&&speechBudget.maxWords<speechBudget.minWords)return 'Banter skipped — not enough track time remains';
+    const speechBudget = automatic ? captureSpeechBudget([host, ...guests]) : null;
+    if (speechBudget && speechBudget.maxWords < speechBudget.minWords) {
+      queue.log('scheduler', 'Banter skipped — not enough track time remains');
+      return null;
+    }
     const ctx = await prepareEpisodeContext(await getFullContext());
     const lines = await dj.generateBanter({
-      host, guests, show, speechBudget,
+      host,
+      guests,
+      show,
+      speechBudget,
       current: queue.current?.track || null,
       context: ctx,
       recap: queue.getDjRecap(),
       recentOpeners: queue.getRecentOpeners(),
     });
     if (!lines) throw new Error('banter generation returned no usable exchange');
-    if(speechBudget&&!fitsSpeechBudget(speechBudget,lines.reduce((sum,line)=>sum+spokenWordCount(line.text),0),lines.length))return 'Banter skipped — the exchange no longer fits the remaining track time';
-    const ok = await queue.announceExchange(lines, 'banter', { castNames: [host, ...guests].map(p => p.name),speechDeadline:speechBudget });
+    if (
+      speechBudget &&
+      !fitsSpeechBudget(
+        speechBudget,
+        lines.reduce((sum, line) => sum + spokenWordCount(line.text), 0),
+        lines.length,
+      )
+    ) {
+      queue.log(
+        'scheduler',
+        'Banter skipped — the exchange no longer fits the remaining track time',
+      );
+      return null;
+    }
+    const ok = await queue.announceExchange(lines, 'banter', {
+      castNames: [host, ...guests].map(p => p.name),
+      speechDeadline: speechBudget,
+    });
     if (!ok) throw new Error('banter exchange failed to render');
     return lines.map(l => `${l.persona.name}: ${l.text}`).join('\n');
   });

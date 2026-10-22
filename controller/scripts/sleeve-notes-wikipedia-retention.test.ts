@@ -1,10 +1,11 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test,{beforeEach,after} from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-const root=mkdtempSync(join(tmpdir(),'subwave-wiki-retention-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-wiki-retention-'));process.env.STATE_DIR=root;
 delete process.env.ADMIN_USER;delete process.env.ADMIN_PASS;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
@@ -35,7 +36,7 @@ beforeEach(()=>{
  notes.close();for(const suffix of ['','-wal','-shm'])rmSync(notes.DB_PATH+suffix,{force:true});
  store.setCache(saved);
 });
-after(()=>{notes.close();store.setCache(null);rmSync(root,{recursive:true,force:true});});
+after(async ()=>{notes.close();store.setCache(null);await removeTempDir(root);});
 
 test('completed old article becomes evidence with context while corrections, identity and source hash remain unchanged',async()=>{
  const {db,source}=fixture();
@@ -137,11 +138,10 @@ test('refresh of cleared text schedules the paced source worker without an LLM c
  assert.equal(prune(db),0,'a newly completed refresh gets its own 24-hour preview window');
 });
 
-test('a reconstructed v57 file upgrades without clearing article text or changing operator facts',async()=>{
+test('cold reopen keeps article text and operator facts intact',async()=>{
  const {db,source}=fixture();
  const before=db.prepare('SELECT wording,evidence,operator_state FROM sleeve_claims').all();
- db.exec('DROP INDEX idx_sleeve_claims_source;ALTER TABLE sleeve_source_documents DROP COLUMN wikipedia_pruned_at');
- db.pragma('user_version=57');notes.close();
+ notes.close();
  const Database=(await import('better-sqlite3')).default;
  const reopened=new Database(notes.DB_PATH);
  try {
@@ -184,10 +184,9 @@ test('a missing article body produces a clear preview response without contactin
 });
 
 
-test('a v59 completed source stays eligible when a refresh replaces its checkpoint',()=>{
+test('a completed source stays eligible when a refresh replaces its checkpoint',()=>{
  const {db,source}=fixture();
- db.pragma('user_version=59');notes.migrate(db);
- assert.equal((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string}).at,old);
+ db.prepare('UPDATE sleeve_source_documents SET wikipedia_completed_at=? WHERE id=?').run(old,source);
  const replacement=repo.retainSourceDocument({...input,revisionId:'2',content:article+' A new paragraph.'});
  db.prepare("UPDATE sleeve_wikipedia_scan_progress SET source_document_id=? WHERE job_id='job'").run(replacement);
  const facts=db.prepare('SELECT * FROM sleeve_claims').all();
@@ -199,13 +198,13 @@ test('a v59 completed source stays eligible when a refresh replaces its checkpoi
  assert.equal((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string|null}).at,null,'refetch requires a fresh successful scan');
 });
 
-test('migration does not invent completion for an unfinished or orphaned article',()=>{
+test('maintenance does not invent completion for an unfinished or orphaned article',()=>{
  const {db,source}=fixture();
  db.prepare('UPDATE sleeve_wikipedia_scan_progress SET next_chunk=0').run();
- db.pragma('user_version=59');notes.migrate(db);
+ notes.migrate(db);
  assert.equal((db.prepare('SELECT wikipedia_completed_at AS at FROM sleeve_source_documents WHERE id=?').get(source) as {at:string|null}).at,null);
  db.prepare('DELETE FROM sleeve_wikipedia_scan_progress').run();
- db.pragma('user_version=59');notes.migrate(db);
+ notes.migrate(db);
  assert.equal(prune(db,10,source),0);
  assert.equal(repo.latestSourceDocumentForResearch('artist','artist','wikipedia')!.content,article);
 });

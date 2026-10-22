@@ -357,3 +357,53 @@ Station handoff: fast-forward station source to this local candidate; previous s
 Reused upstream theme-rgb colour reading, OKLab mixing and theme watching for the map. Relationship hues retain separate identities and are adjusted to at least 3:1 against the map background on all shipped themes; the in-map key and coverage rings share the same palette. Floating controls use booth glass tokens with a translucent surface and sheen, without live backdrop blur over the moving graph. Lite/reduced-motion surfaces are opaque. Layout, Map controls and Key can fold on desktop, with independent preferences saved per browser; mobile expansion remains independent and starts closed. Updated the manual.
 
 Verification: 17 connections tests pass, including all eight built-in theme palettes; targeted ESLint and web type-check pass. Isolated browser fixture renders the actual BrainCanvas component with synthetic data: desktop/mobile checks cover remembered folding after reload, independent mobile expansion, live Phosphor/Riso theme changes, no horizontal overflow or browser errors, and reduced-motion controls. Inspected desktop/mobile screenshots. Mechanical UI detector returned no findings. No live station data or containers were touched. Source is handed to the station for operator web rebuild; previous source rollback is 4fd6b515. Keep local pending station acceptance.
+
+### Early-review correction candidate — 22 October 2026
+
+Clean upstream worktree `/home/jaz666/codex/subwave-upstream-review-20261021`
+contains local commit `9684f128`, addressing all three blockers and the bounded
+cleanup from Kanrei's review at b579ca45. Nothing has been pushed. The separate
+station candidate is `/home/jaz666/codex/subwave-review-fixes-20261022`, branch
+`codex/review-fixes-20261022`, based on current station `963bf785`. Scheduler import
+resolution retains `prepareUpcomingGeneratedShows` and all Sub/Shows behaviour;
+private historical documentation remains on the fork.
+
+Fixes: outstanding intro renders track promises independently of invalidation and
+transfer; automatic Banter alone gets the speech budget and logs skipped speech;
+disabled single-voice Sleeve Notes releases reservations before/after TTS; saved
+read-only GET views use an explicit master-switch allowlist, and asynchronous
+cached reads hold their readonly DB until completion. Library-only story browsing
+now uses that same boundary. Restore upstream `next build` and remove the extra
+AdminShell settings poll. Shared integration functions are formatted; Sleeve Notes
+tests use the common directory lifecycle helpers and fixture HTTP shutdown closes
+connections. All 29 added explicit-any warnings are removed (controller warnings
+now 1733, matching upstream). Settings-registry counts are corrected.
+
+Schema: consolidate the 61 experimental revisions into one initial public schema
+v1, marked with application id SWN1 to distinguish it from experimental v1. All 145
+tables/indexes/triggers and the initial revision row match the previous final
+schema. Initialisation is transactional. Experimental and future databases are
+refused unchanged; they are not erased or upgraded automatically. Public tester
+docs describe a controlled reset of ONLY sleeve-notes.db and its companions, with
+the controller stopped, plus rollback using the old source and complete old DB set.
+No live reset, source deployment, build, container restart or state change has been
+performed. Station source remains 963bf785. Do not fast-forward the candidate into
+the station until ready to coordinate the accepted reset and rebuild.
+
+Verified on the clean submission branch: full controller suite 5403/5403; web
+464/464; all four packages lint/types; generated schema/theme mirrors no drift;
+admin-query audit; default Turbopack production build. Targeted post-cleanup speech
+label tests 17/17 and brain queue 10/10 also pass. The build required an actual local
+web/node_modules directory: Turbopack refuses the external dependency symlink used
+by earlier dev checkouts. No product workaround remains. The previously reported
+ECONNRESET was not reproduced; no blanket retries were added. Station candidate controller/web type checks pass and all 32 segment tests pass.
+The 59 mirrored source paths differ only in scheduler and AdminShell, retaining
+the existing generated-show preparation and Sub/Shows navigation respectively.
+The existing two Sub/Shows settings-test issues are outside this upstream change.
+
+Next: operator accepts a backed-up research-only reset; stop controller, move the
+old sidecar/WAL/SHM together outside state, fast-forward the reviewed station
+candidate, rebuild controller and web, and observe first collection, ordinary
+links/manual Banter, host changes, saved-data reads while disabled, optional Genius,
+and review queue recovery. Previous rollback source remains 963bf785 with its saved
+experimental database. Keep this operational record out of the upstream PR.

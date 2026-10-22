@@ -1,9 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-notes-settings-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-notes-settings-'));process.env.STATE_DIR=root;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
 await settings.load();const defaults=settings.get();
@@ -44,4 +45,4 @@ test('Genius credentials stay redacted and survive settings round trips without 
  assert.equal(store.getRedacted().sleeveNotes.providers.genius.accessToken,'');
 });
 
-test.after(()=>rmSync(root,{recursive:true,force:true}));
+test.after(async ()=>await removeTempDir(root));

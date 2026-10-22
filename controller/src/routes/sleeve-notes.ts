@@ -59,9 +59,21 @@ import { airingReviewKey, flagAiredUse, listAiringReviews, decideAiringReview, r
 
 export const router = express.Router();
 
+// Only explicitly read-only views may bypass the master switch. Their handlers
+// use withCachedRead, which neither creates nor upgrades the on-disk database.
+const CACHED_VIEWS = new Set([
+  '/readout', '/stories', '/explore', '/heard-on-air', '/airing-reviews', '/series',
+  '/moderation', '/live-summary', '/connections/search',
+  '/connections/coverage', '/connections/album-coverage', '/connections/discoveries',
+  '/connections/overview', '/connections/graph',
+]);
 router.use('/sleeve-notes', requireAdmin, async (req,res,next)=>{
   await settings.load();
-  if(['/status','/dash-stories'].includes(req.path)||settings.get().djBehaviour.extendedSleeveNotes===true)return next();
+  if (['/status', '/dash-stories'].includes(req.path) || settings.get().djBehaviour.extendedSleeveNotes === true) return next();
+  if (req.method === 'GET' && (CACHED_VIEWS.has(req.path)
+    || /^\/dossier\/[^/]+\/[^/]+$/.test(req.path)
+    || /^\/moderation\/source\/[^/]+$/.test(req.path)
+    || /^\/connections\/resolve\/[^/]+$/.test(req.path))) return next();
   return res.status(409).json({error:'Enable Extended Sleeve Notes in Settings → DJ Behaviour to use this feature'});
 });
 
@@ -555,10 +567,13 @@ router.get('/sleeve-notes/stories', requireAdmin, async (req,res) => {
   const input={search:typeof req.query.search==='string'?req.query.search.slice(0,120):'',
     category:typeof req.query.category==='string'?req.query.category.slice(0,100):'',recent:req.query.recent==='1',withdrawn:req.query.withdrawn==='1',
     limit:Math.max(1,Math.min(100,number(req.query.limit,30))),offset:Math.max(0,number(req.query.offset,0))};
-  if (input.category==='library-connections') {
-    const result=await libraryConnectionStoriesInBackground(openSleeveNotesDb(),input);
-    const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));
-    return res.json({...result,claims:result.claims.map(claim=>({...claim,review:reviews[claim.id]??null}))});
+  if (input.category === 'library-connections') {
+    const read = async () => {
+      const result = await libraryConnectionStoriesInBackground(openSleeveNotesDb(), input);
+      const reviews = storedClaimReviews(result.claims.map(claim => claim.id));
+      return {...result, claims: result.claims.map(claim => ({...claim, review: reviews[claim.id] ?? null}))};
+    };
+    return res.json(await (settings.get().djBehaviour.extendedSleeveNotes === true ? read() : withCachedRead(read)));
   }
   const read=()=>{
     const result=searchResearchStoriesInDatabase(openSleeveNotesDb(),input);

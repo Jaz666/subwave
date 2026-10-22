@@ -247,7 +247,11 @@ async function speakWith(engine: string, text: string, opts: any, personaTts: an
   }
 }
 
-async function speakWithEngine(engine: string, text: string, opts: any, personaTts: any) {
+async function speakWithEngine(engine: string, text: string, opts: {
+  lang?: string; cloudModel?: string; geminiModel?: string; voiceStyle?: string;
+  cloudVoiceSettings?: Record<string, unknown>; fishSettings?: Record<string, unknown>;
+  [key: string]: unknown;
+}, personaTts: {engine?: string; voice?: string; cloudProvider?: string} | null) {
   if (engine === 'kokoro') {
     const voice = (personaTts && personaTts.engine === 'kokoro' && personaTts.voice)
       ? personaTts.voice

@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-series-config-'));
+const root = createTempDir(join(tmpdir(), 'subwave-series-config-'));
 process.env.STATE_DIR = root;
 delete process.env.ADMIN_USER; delete process.env.ADMIN_PASS;
 const { open, close } = await import('../src/sleeve-notes/db.js');
@@ -38,8 +38,7 @@ globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestIni
 }) as typeof fetch;
 const request = async (path: string, body?: unknown, status = 200) => {
   const response = await fetch(`${base}/sleeve-notes/series${path}`, body === undefined ? undefined : {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)});
   assert.equal(response.status, status, await response.clone().text());
   return await response.json() as { lists: Array<{ id: string; enabled: boolean }>; checkId: string; existing?: { id: string }; error?: string };
 };
@@ -125,5 +124,5 @@ test('series cooldown finds confirmed airings on another recording through retai
 test.after(async () => {
   globalThis.fetch = originalFetch;
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  close(); rmSync(root, { recursive: true, force: true });
+  close(); await removeTempDir(root);
 });

@@ -176,12 +176,12 @@ test('Spark fit checking preserves the original script for the single enqueue la
     return raw;
   });
   assert.equal(generated.link, raw);
-  let queued: any;
-  const fakeQueue = { push: async (item: any) => { queued = item; return 1; }, log: () => {} };
+  let queued: Parameters<typeof queue.push>[0] | undefined;
+  const fakeQueue = { push: async (item: Parameters<typeof queue.push>[0]) => { queued = item; return 1; }, log: () => {} };
   await enqueuePick(fakeQueue, song, 'tests', 'tests', generated.link, null, {}, generated);
-  assert.equal(queued.introScript, 'Iris: a title with a colon.');
-  assert.equal(queued.introLabelChecked, true);
-  assert.equal(queued.sleeveClaimUseId, 'spark-use');
+  assert.equal(queued!.introScript, 'Iris: a title with a colon.');
+  assert.equal(queued!.introLabelChecked, true);
+  assert.equal(queued!.sleeveClaimUseId, 'spark-use');
 });
 
 test('a recovered unchecked script is cleaned before the render identity is captured', async () => {

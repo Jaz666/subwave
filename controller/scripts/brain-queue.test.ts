@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test, {after,beforeEach,type TestContext} from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import type {AddressInfo} from 'node:net';
 
-const state=mkdtempSync(join(tmpdir(),'subwave-brain-queue-'));
+const state=createTempDir(join(tmpdir(),'subwave-brain-queue-'));
 process.env.STATE_DIR=state;
 process.env.NAVIDROME_URL='http://brain-library.invalid';
 delete process.env.ADMIN_USER;delete process.env.ADMIN_PASS;
@@ -25,8 +25,7 @@ const realFetch=globalThis.fetch;
 const slow={id:'slow',title:'Slow song',artist:'Pink Floyd',artistId:'floyd',album:'Album',albumId:'album',bpm:70,duration:200,isDir:false};
 const fast={...slow,id:'fast',title:'Fast song',bpm:155};
 let songs=[slow,fast];
-(queue as any).persist=()=>{};
-(queue as any).drainToLiquidsoap=async()=>{};
+Object.assign(queue, {persist: () => {}, drainToLiquidsoap: async () => {}});
 
 beforeEach(async context=>{
   const t=context as TestContext;
@@ -36,7 +35,7 @@ beforeEach(async context=>{
   queue.upcoming=[];queue.history=[];queue.current={track:{...fast,id:'on-air'}} as never;
   songs=[slow,fast];
   library.set(slow.id,{...slow,moods:[]});library.set(fast.id,{...fast,moods:[]});
-  t.mock.method(globalThis,'fetch',async(input:any,init?:RequestInit)=>{
+  t.mock.method(globalThis,'fetch',async(input:Parameters<typeof fetch>[0],init?:RequestInit)=>{
     const url=new URL(String(input instanceof Request?input.url:input));
     if(url.origin===base)return realFetch(input,init);
     if(url.hostname!=='brain-library.invalid')throw new Error('No live network in queue tests');
@@ -47,10 +46,10 @@ beforeEach(async context=>{
     return Response.json({'subsonic-response':{status:'ok',version:'1.16.1',...body}});
   });
 });
-after(()=>{server.close();library.shutdown();sleeveDb.close();rmSync(state,{recursive:true,force:true});});
+after(async()=>{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));library.shutdown();sleeveDb.close();await removeTempDir(state);});
 async function submit(selection:unknown){
   const response=await realFetch(`${base}/dj/queue-track`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({selection})});
-  return {status:response.status,body:await response.json() as any};
+  return {status:response.status,body:await response.json() as {track: typeof slow; reason: string}};
 }
 
 test('an exact track uses the operator path even if already queued and recently played',async()=>{

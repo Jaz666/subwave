@@ -102,9 +102,9 @@ export async function djObject({
               const message = parseErr instanceof SyntaxError
                 ? 'object recovery reply was not valid JSON'
                 : 'object recovery reply was valid JSON but did not match the required schema';
-              const err: any = new Error(message, { cause: parseErr });
-              err.text = result.text || '';
-              err.finishReason = result.finishReason;
+              const err = Object.assign(new Error(message, { cause: parseErr }), {
+                text: result.text || '', finishReason: result.finishReason,
+              });
               throw err;
             }
             perf = perfOf(result);

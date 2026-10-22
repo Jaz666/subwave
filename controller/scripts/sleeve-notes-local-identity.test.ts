@@ -1,9 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, {after,beforeEach} from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-local-identity-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-local-identity-'));process.env.STATE_DIR=root;
 const notes=await import('../src/sleeve-notes/db.js');
 const repo=await import('../src/sleeve-notes/research-repository.js');
 const settings=await import('../src/settings.js');
@@ -18,7 +19,7 @@ beforeEach(async()=>{
  notes.close();for(const suffix of ['','-wal','-shm'])rmSync(notes.DB_PATH+suffix,{force:true});
  await settings.update({djBehaviour:{extendedSleeveNotes:true,sleeveNotesCollectionPaused:false}});
 });
-after(()=>{notes.close();rmSync(root,{recursive:true,force:true});});
+after(async ()=>{notes.close();await removeTempDir(root);});
 function fixture(){
  const db=notes.open();repo.admitLocalEncounterInDatabase(db,input);repo.retainCanonicalMusicBrainzMatchInDatabase(db,input.localTrackId,canonical);
  const row=db.prepare("SELECT recording_id AS id FROM sleeve_local_attachments WHERE local_track_id='track'").get() as {id:string};
@@ -124,8 +125,7 @@ test('an old catalogue response cannot populate the cache after a source change'
   const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
    getScanStatus:async()=>false,
    getAlbumList:async()=>[{id:'album'}],
-   getAlbumWithSongs:async()=>{config.navidrome.url='http://other-library.test';return {album:{id:'album',name:'Old album'},songs:[{id:'old-track',title:'Old Song',artist:'Old Band'}]};},
-  });
+   getAlbumWithSongs:async()=>{config.navidrome.url='http://other-library.test';return {album:{id:'album',name:'Old album'},songs:[{id:'old-track',title:'Old Song',artist:'Old Band'}]};}});
   assert.equal(await worker.runOnce(),false);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_connection_library_tracks').get() as {n:number}).n,0);
  } finally {notes.close();Object.assign(config.navidrome,previous);}

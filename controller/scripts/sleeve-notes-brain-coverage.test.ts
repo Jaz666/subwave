@@ -1,11 +1,11 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import express from 'express';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-brain-coverage-'));
+const root = createTempDir(join(tmpdir(), 'subwave-brain-coverage-'));
 process.env.STATE_DIR = root;
 process.env.ADMIN_USER = 'brain-test'; process.env.ADMIN_PASS = 'brain-password';
 const { migrate, open, close, withCachedRead } = await import('../src/sleeve-notes/db.js');
@@ -103,11 +103,9 @@ test('library seed lookup validates the selected identity and rejects another ar
   t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0]) => {
     const url = new URL(String(input));
     if (url.pathname.endsWith('/getArtist')) return Response.json({ 'subsonic-response': { status: 'ok', artist: {
-      id: incorrectIdentity ? 'different-library' : 'verified-library', name: 'Verified Band', album: [{ id: 'verified-album', name: 'Album' }],
-    } } });
+      id: incorrectIdentity ? 'different-library' : 'verified-library', name: 'Verified Band', album: [{ id: 'verified-album', name: 'Album' }]} } });
     if (url.pathname.endsWith('/getAlbum')) return Response.json({ 'subsonic-response': { status: 'ok', album: {
-      id: 'verified-album', name: 'Album', song: [{ id: 'verified-song', title: 'Song', artist: 'Verified Band', artistId: mismatched ? 'different-artist' : 'verified-library' }],
-    } } });
+      id: 'verified-album', name: 'Album', song: [{ id: 'verified-song', title: 'Song', artist: 'Verified Band', artistId: mismatched ? 'different-artist' : 'verified-library' }]} } });
     throw new Error('Unexpected provider access');
   });
   assert.equal((await brainLibraryResearchSeed('verified-library')).id, 'verified-song');
@@ -127,8 +125,7 @@ test('explicit library matching hands off to artist research even when the autom
   for (let i = 0; i < 12; i++) job(db, 'queued', `backlog-${i}`, `backlog-artist-${i}`, 'wikipedia');
   const { MusicBrainzMatchWorker } = await import('../src/sleeve-notes/musicbrainz-worker.js');
   const worker = new MusicBrainzMatchWorker({ isQuiet: () => true }, { lookup: async () => ({
-    id: 'handoff-recording', title: 'Song', artist: { id: 'handoff-artist', name: 'Canonical Name' }, releases: [],
-  }) });
+    id: 'handoff-recording', title: 'Song', artist: { id: 'handoff-artist', name: 'Canonical Name' }, releases: []}) });
   assert.equal(await worker.runOnce(), true);
   const attachment = db.prepare(`SELECT recording.artist_id AS id FROM sleeve_local_attachments local
     JOIN sleeve_recordings recording ON recording.id = local.recording_id WHERE local.local_track_id = 'handoff-track'`).get() as { id: string };
@@ -152,7 +149,7 @@ test('API enforces admin access, validates targets and keeps disabled reads read
   assert.equal((await post({ entityType: 'artist', entityId: 'manual' })).status, 200);
   assert.equal(((await (await post({ entityType: 'artist', entityId: 'manual' })).json()) as { queued: boolean }).queued, false);
   await settings.update({ djBehaviour: { extendedSleeveNotes: false } }); assert.equal((await post({ entityType: 'artist', entityId: 'manual' })).status, 409);
-  const read = await fetch(`${url}/sleeve-notes/connections/coverage?cached=1`, { headers: { Authorization: auth } }); assert.equal(read.status, 409);
+  const read = await fetch(`${url}/sleeve-notes/connections/coverage?cached=1`, { headers: { Authorization: auth } }); assert.equal(read.status, 200);
   assert.doesNotThrow(() => withCachedRead(() => brainCoverageInDatabase(open())));
 });
-test.after(async () => { await new Promise<void>(resolve => server.close(() => resolve())); close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { await new Promise<void>(resolve => server.close(() => resolve())); close(); await removeTempDir(root); });

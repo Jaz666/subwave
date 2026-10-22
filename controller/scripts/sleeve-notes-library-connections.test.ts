@@ -1,19 +1,20 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SleeveRelationshipType } from '../src/sleeve-notes/provider.js';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-library-connections-'));
+const root = createTempDir(join(tmpdir(), 'subwave-library-connections-'));
 process.env.STATE_DIR = root;
 const { migrate, close } = await import('../src/sleeve-notes/db.js');
 const { cacheConnectionLibraryTracks, reconcileLibraryConnections, libraryConnectionsInDatabase, connectionRevision } = await import('../src/sleeve-notes/library-connections.js');
 const { ConnectionLibraryWorker } = await import('../src/sleeve-notes/connection-library-worker.js');
 const { loadExtendedSleeveNoteCandidatesInDatabase, selectMostSpecificEligibleClaim } = await import('../src/sleeve-notes/link-selection.js');
 const { researchConnectionsGraphInDatabase, replaceAutomaticWikipediaClaimsInDatabase } = await import('../src/sleeve-notes/research-repository.js');
-test.after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { close(); await removeTempDir(root); });
 
 const now = '2026-10-12T10:00:00.000Z';
 function fixture() {
@@ -44,13 +45,11 @@ function claim(db: Database.Database, id: string, recordingId: string, category:
 }
 function relation(db: Database.Database, id: string, type: SleeveRelationshipType, title = 'Target', artist = 'Target Band') {
   claim(db, id, 'source', 'musical-connections', {
-    type, target: { providerId: '2', title, artist, canonicalUrl: 'https://genius.test/target' },
-  });
+    type, target: { providerId: '2', title, artist, canonicalUrl: 'https://genius.test/target' }});
 }
 function credit(db: Database.Database, id: string, recordingId: string, providerId = 'person', role = 'Producer') {
   claim(db, id, recordingId, 'credits', {
-    role, names: ['Person'], contributors: [{ providerId, name: 'Person' }],
-  });
+    role, names: ['Person'], contributors: [{ providerId, name: 'Person' }]});
 }
 
 test('a stored cover becomes selectable and Graph-local when its target is added, then loses that match on removal', () => {
@@ -113,36 +112,6 @@ test('copies on different albums resolve when their recording MBID proves they a
   db.close();
 });
 
-test('upgrade restores saved extraction rank and leaves original claims and wording intact', () => {
-  const db = new Database(':memory:');
-  // The v38 tables consumed by the additive migrations. Include a legacy
-  // string item as well as diagnostics so old cache formats cannot abort boot.
-  db.exec(`CREATE TABLE sleeve_encounters (id TEXT PRIMARY KEY);
-    CREATE TABLE sleeve_musicbrainz_series (series_mbid TEXT PRIMARY KEY);
-    CREATE TABLE sleeve_research_pacing (id INTEGER PRIMARY KEY,next_pair_at TEXT,last_pair_at TEXT,pair_interval_ms INTEGER,empty_station_interval_ms INTEGER);
-    CREATE TABLE sleeve_claim_uses (id TEXT PRIMARY KEY, aired_at TEXT);
-    CREATE TABLE sleeve_research_jobs (id TEXT PRIMARY KEY,provider TEXT,subject_type TEXT,subject_id TEXT,
-      capability TEXT,state TEXT,priority INTEGER,completed_at TEXT,updated_at TEXT);
-    CREATE TABLE sleeve_claims (id TEXT PRIMARY KEY, source_document_id TEXT, wording TEXT, enabled INTEGER);
-    CREATE TABLE sleeve_moderation_candidates (id TEXT PRIMARY KEY,source_document_id TEXT,status TEXT,reviewed_at TEXT,reviewed_by TEXT,updated_at TEXT);
-    CREATE TABLE sleeve_source_documents (id TEXT PRIMARY KEY, provider TEXT);
-    CREATE TABLE sleeve_wikipedia_scan_chunks (source_document_id TEXT, items_json TEXT, created_at TEXT, chunk_index INTEGER);
-    CREATE TABLE sleeve_wikipedia_scan_progress (job_id TEXT,source_document_id TEXT,chunk_count INTEGER,next_chunk INTEGER);
-    INSERT INTO sleeve_source_documents VALUES ('source', 'wikipedia');
-    INSERT INTO sleeve_claims VALUES ('claim', 'source', 'Ranked fact.', 1);
-    PRAGMA user_version = 38;`);
-  db.prepare('INSERT INTO sleeve_wikipedia_scan_chunks VALUES (?, ?, ?, ?)')
-    .run('source', JSON.stringify(['Legacy fact', { wording: 'Ranked fact.' }]), now, 2);
-  migrate(db);
-  assert.deepEqual(db.prepare('SELECT * FROM sleeve_claims').get(), {
-    id: 'claim', source_document_id: 'source', wording: 'Ranked fact.', enabled: 1,
-    extraction_rank: 2, extraction_section: 3, feedback_hold: 0,
-  });
-  migrate(db);
-  assert.equal(db.pragma('user_version', { simple: true }),61);
-  db.close();
-});
-
 test('a shared contributor ID and role connects local peer recordings and boosts the credit Spark', () => {
   const db = fixture();
   recording(db, 'peer', 'Peer', '3');
@@ -175,8 +144,7 @@ test('a shared contributor ID and role connects local peer recordings and boosts
 test('a missing contributor ID cannot shift the next person identity onto the wrong credit name', () => {
   const db = fixture();
   claim(db, 'mixed-credit', 'source', 'credits', {
-    role: 'Writer', names: ['Unidentified', 'Person'], contributors: [{ providerId: 'person', name: 'Person' }],
-  });
+    role: 'Writer', names: ['Unidentified', 'Person'], contributors: [{ providerId: 'person', name: 'Person' }]});
   reconcileLibraryConnections(db);
   const graph = researchConnectionsGraphInDatabase(db, { entityType: 'recording', entityId: 'source' });
   const identified = graph?.nodes.find((node) => node.kind === 'contributor' && node.entityId === 'person');
@@ -221,8 +189,7 @@ test('worker checkpoints pages, retries a failed album, and only prunes after a 
       if (fail) throw new Error('temporary album failure');
       return { album: { id: 'album' }, songs: [{ id: 'target', title: 'Target', artist: 'Target Band' }] };
     },
-    getScanStatus: async () => false,
-  }, () => db, () => true);
+    getScanStatus: async () => false}, () => db, () => true);
   const at = Date.parse(now);
   assert.equal(await worker.runOnce(at), false);
   assert.equal((db.prepare('SELECT album_offset FROM sleeve_connection_library_scan').get() as { album_offset: number }).album_offset, 0);
@@ -242,8 +209,7 @@ test('a transient empty catalogue leaves the cached tracks and connections intac
   cacheConnectionLibraryTracks(db, [{ id: 'target', title: 'Target', artist: 'Target Band' }], 'previous');
   reconcileLibraryConnections(db, now); // The failure must preserve an index that already exists.
   const worker = new ConnectionLibraryWorker({ isQuiet: () => true }, {
-    getAlbumList: async () => [], getAlbumWithSongs: async () => null, getScanStatus: async () => false,
-  }, () => db, () => true);
+    getAlbumList: async () => [], getAlbumWithSongs: async () => null, getScanStatus: async () => false}, () => db, () => true);
   assert.equal(await worker.runOnce(Date.parse(now)), false);
   assert.equal(libraryConnectionsInDatabase(db, 'source')[0].tracks[0].id, 'target');
   assert.ok(db.prepare("SELECT 1 FROM sleeve_connection_library_tracks WHERE local_track_id = 'target'").get());
@@ -368,13 +334,13 @@ test('the library-only HTTP filter shares its count with pages and respects the 
   const address=server.address();if(!address||typeof address==='string')throw Error('No port');
   const url=`http://127.0.0.1:${address.port}/sleeve-notes/stories?category=library-connections&cached=1`;
   try {
-    const absent=await fetch(url+'&limit=1');assert.equal(absent.status,409);
+    const absent=await fetch(url+'&limit=1');assert.equal(absent.status,200);
     assert.equal(existsSync(notes.DB_PATH),false,'disabled reads cannot create the station cache');
     const fixtureDb=fixture();relation(fixtureDb,'sample','samples','Target','Band');
     cacheConnectionLibraryTracks(fixtureDb,[{id:'local-source',title:'Source',artist:'Band'},{id:'target-local',title:'Target',artist:'Band'}],'scan');
     reconcileLibraryConnections(fixtureDb,now);await fixtureDb.backup(notes.DB_PATH);fixtureDb.close();
     const bytes=readFileSync(notes.DB_PATH);
-    const cached=await fetch(url);assert.equal(cached.status,409,'cached=1 cannot bypass the master switch');
+    const cached=await fetch(url);assert.equal(cached.status,200,'cached browsing bypasses the master switch without writes');
     assert.deepEqual(readFileSync(notes.DB_PATH),bytes);
     settingsStore.setCache({...previous,djBehaviour:{...previous.djBehaviour,extendedSleeveNotes:true}});
     const count=await fetch(url+'&limit=1');assert.equal(count.status,200);
@@ -400,8 +366,7 @@ test('catalogue responses cannot publish after disable, collection pause or broa
     const worker=new ConnectionLibraryWorker({isQuiet:()=>quiet},{
      getAlbumList:async()=>{if(phase==='listing')interrupt();return [{id:'album'}];},
      getAlbumWithSongs:async()=>{interrupt();return {album:{id:'album'},songs:[{id:'new',title:'New',artist:'Band'}]};},
-     getScanStatus:async()=>false,
-    },()=>db,()=>enabled);
+     getScanStatus:async()=>false},()=>db,()=>enabled);
     assert.equal(await worker.runOnce(Date.parse(now)),false);
     assert.deepEqual(db.prepare('SELECT * FROM sleeve_connection_library_tracks').all(),before);
     assert.equal((db.prepare('SELECT album_offset FROM sleeve_connection_library_scan').get() as {album_offset:number}).album_offset,0);
@@ -417,8 +382,7 @@ test('a Navidrome scan starting during an album fetch discards that response and
   const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
    getAlbumList:async()=>[{id:'album'}],
    getAlbumWithSongs:async()=>{scanning=true;return {album:{id:'album'},songs:[{id:'new',title:'New',artist:'Band'}]};},
-   getScanStatus:async()=>scanning,
-  },()=>db,()=>true);
+   getScanStatus:async()=>scanning},()=>db,()=>true);
   assert.equal(await worker.runOnce(Date.parse(now)),false);
   assert.deepEqual(db.prepare('SELECT local_track_id FROM sleeve_connection_library_tracks').all(),[{local_track_id:'old'}]);
   assert.equal((db.prepare('SELECT album_offset FROM sleeve_connection_library_scan').get() as {album_offset:number}).album_offset,0);
@@ -432,8 +396,7 @@ test('an unknown scan status cannot authorise deleting unseen cached tracks',asy
   const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
    getAlbumList:async()=>page++===0?[{id:'album'}]:[],
    getAlbumWithSongs:async()=>({album:{id:'album'},songs:[{id:'new',title:'New',artist:'Band'}]}),
-   getScanStatus:async()=>scanKnown?false:null,
-  },()=>db,()=>true);
+   getScanStatus:async()=>scanKnown?false:null},()=>db,()=>true);
   assert.equal(await worker.runOnce(Date.parse(now)),true);
   scanKnown=false;
   assert.equal(await worker.runOnce(Date.parse(now)+30_000),false);
@@ -452,8 +415,7 @@ test('matching batches continuing research for five minutes, waits for quiet tim
     const {reconcileConnectionsInBackground}=await import('../src/sleeve-notes/connection-compute.js');
     const worker=new ConnectionLibraryWorker({isQuiet:()=>quiet},{
       getAlbumList:async()=>{throw new Error('Catalogue is not due');},
-      getAlbumWithSongs:async()=>{throw new Error('Catalogue is not due');},getScanStatus:async()=>false,
-    },()=>db,()=>true,async database=>{calls++;return reconcileConnectionsInBackground(database);});
+      getAlbumWithSongs:async()=>{throw new Error('Catalogue is not due');},getScanStatus:async()=>false},()=>db,()=>true,async database=>{calls++;return reconcileConnectionsInBackground(database);});
     await worker.runOnce(at);
     assert.equal(calls,1);
     for(let n=1;n<10;n++) {
@@ -479,8 +441,7 @@ test('stale matching attempts are batched too; failures retain ten-minute backof
     db.prepare(`INSERT INTO sleeve_connection_library_scan(id,generation,album_offset,run_after)
       VALUES(1,'parked',0,?)`).run(new Date(at+24*60*60_000).toISOString());
     const worker=new ConnectionLibraryWorker({isQuiet:()=>true},{
-      getAlbumList:async()=>[],getAlbumWithSongs:async()=>null,getScanStatus:async()=>false,
-    },()=>db,()=>enabled,async database=>{
+      getAlbumList:async()=>[],getAlbumWithSongs:async()=>null,getScanStatus:async()=>false},()=>db,()=>enabled,async database=>{
       calls++;
       if(calls===1)return null; // A source change invalidated the calculated snapshot.
       if(calls===2)throw new Error('Matching temporarily unavailable');

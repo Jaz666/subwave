@@ -1,11 +1,12 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
 import Database from 'better-sqlite3';
-const root = mkdtempSync(join(tmpdir(), 'subwave-cached-notes-'));
+const root = createTempDir(join(tmpdir(), 'subwave-cached-notes-'));
 process.env.STATE_DIR = root;
 delete process.env.ADMIN_USER;
 delete process.env.ADMIN_PASS;
@@ -37,10 +38,10 @@ const get = async (endpoint: string) => {
     entities: Array<{ title: string }>; nodes: Array<{ title: string }>;
   };
 };
-test('the disabled API exposes status but blocks cached browsing without creating the station cache', async () => {
+test('the disabled API exposes saved read-only views without creating the station cache', async () => {
   assert.equal((await get('status')).enabled, false);
   for (const endpoint of ['readout?cached=1','explore?cached=1','connections/overview?cached=1','moderation']) {
-    assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`)).status,409);
+    assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`)).status,200);
   }
   assert.equal(existsSync(path), false);
 });
@@ -68,20 +69,21 @@ test('cached Stories, history, Review and Brain read v42 without migration or wr
   assert.equal(withCachedRead(() => researchEntityDossier('artist','a'))!.claims.length, 1);
   assert.equal(withCachedRead(() => researchConnectionsGraph({entityType:'artist',entityId:'a'}))!.nodes[0].title, 'Example Band');
   for (const endpoint of ['connections/search?q=Example&cached=1','connections/overview?cached=1','moderation']) {
-    assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`)).status,409);
+    assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`)).status,200);
   }
   assert.throws(() => withCachedRead(() => open().exec("UPDATE sleeve_artists SET name = 'Bad'")), /readonly/);
   assert.deepEqual(readFileSync(path), before);
   assert.equal(existsSync(`${path}-wal`), false);
 });
-test('internal library snapshots remain readable while disabled API access is refused', async () => {
+test('saved library snapshots remain readable over HTTP while disabled writes are refused', async () => {
+  rmSync(path, {force:true});
   const db = new Database(path);
   migrate(db);
   const graph = { focusId: 'library-artist:local', nodes: [{ id: 'library-artist:local', title: 'Example Band' }], edges: [], truncated: false };
   db.prepare('INSERT INTO sleeve_brain_layers VALUES (?, ?, ?)').run('library-artist', 'local', JSON.stringify(graph));
   db.close();
   assert.equal(withCachedRead(() => cachedBrainLibraryGraph('library-artist','local'))!.nodes[0].title, 'Example Band');
-  assert.equal((await fetch(`${base}/sleeve-notes/connections/graph?entityType=library-album&entityId=missing&cached=1`)).status, 409);
+  assert.equal((await fetch(`${base}/sleeve-notes/connections/graph?entityType=library-album&entityId=missing&cached=1`)).status, 404);
   for (const endpoint of ['connections/populate', 'wikipedia-refresh', 'wikipedia-prompt-preview']) {
     assert.equal((await fetch(`${base}/sleeve-notes/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 409);
   }
@@ -95,18 +97,15 @@ test('opening a library layer saves its display snapshot without creating resear
   const guardedFetch = globalThis.fetch;
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     if (String(input).includes('/rest/getArtist')) return new Response(JSON.stringify({
-      'subsonic-response': { status: 'ok', artist: { id: 'local', name: 'Example Band', album: [{ id: 'album', name: 'First Album' }] } },
-    }), { headers: { 'Content-Type': 'application/json' } });
+      'subsonic-response': { status: 'ok', artist: { id: 'local', name: 'Example Band', album: [{ id: 'album', name: 'First Album' }] } }}), { headers: { 'Content-Type': 'application/json' } });
     if (String(input).includes('/rest/getAlbum')) return new Response(JSON.stringify({
-      'subsonic-response': { status: 'ok', album: { id: 'album', name: 'First Album', artistId: 'local', song: [{ id: 'song', title: 'First Song' }] } },
-    }), { headers: { 'Content-Type': 'application/json' } });
+      'subsonic-response': { status: 'ok', album: { id: 'album', name: 'First Album', artistId: 'local', song: [{ id: 'song', title: 'First Song' }] } }}), { headers: { 'Content-Type': 'application/json' } });
     return guardedFetch(input, init);
   }) as typeof fetch;
   try {
     const artist = await brainLibraryGraph('library-artist', 'local', undefined, {
       id: 'artist:a', entityType: 'artist', entityId: 'a', kind: 'artist', title: 'Example Band',
-      subtitle: null, local: true, expandable: true, sourceUrl: null,
-    });
+      subtitle: null, local: true, expandable: true, sourceUrl: null});
     assert.equal(artist.focusId, 'artist:a');
     const saved = withCachedRead(() => cachedBrainLibraryGraph('library-artist', 'local'))!;
     assert.equal(saved.focusId, 'library-artist:local');
@@ -121,6 +120,7 @@ test.after(async () => {
   globalThis.fetch = originalFetch;
   stopConnectionCompute();
   close();
+  server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  rmSync(root, { recursive: true, force: true });
+  await removeTempDir(root);
 });

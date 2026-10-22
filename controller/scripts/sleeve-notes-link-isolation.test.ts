@@ -1,11 +1,12 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {existsSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {existsSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import Database from 'better-sqlite3';
 
-const root=mkdtempSync(join(tmpdir(),'subwave-link-isolation-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-link-isolation-'));process.env.STATE_DIR=root;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
 const notes=await import('../src/sleeve-notes/db.js');
@@ -31,6 +32,7 @@ test('ordinary link metadata with master off cannot migrate or write an older re
  assert.deepEqual(sleeveNotesFor(track),expected);
  assert.deepEqual(readFileSync(notes.DB_PATH),before);
  assert.equal(existsSync(notes.DB_PATH+'-wal'),false);
+ rmSync(notes.DB_PATH, {force:true});
 });
 
 test('canonical enrichment works when enabled and is ignored after disabling without losing library facts',async()=>{
@@ -51,4 +53,4 @@ test('canonical enrichment works when enabled and is ignored after disabling wit
  assert.deepEqual(readFileSync(notes.DB_PATH),before,'disable must not modify retained canonical research');
 });
 
-test.after(()=>{notes.close();store.setCache(saved);rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{notes.close();store.setCache(saved);await removeTempDir(root);});

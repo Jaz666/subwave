@@ -1,6 +1,7 @@
 // defineAgent groups system/schema/tool/loop configuration. Resolve persona and
 // tools per run; tool extras return caller state such as the picker's seen map.
 
+import type {ModelMessage} from 'ai';
 import { djAgent } from './strategy/agent.js';
 import { timePhase } from '../../observability/events.js';
 import { withAgentActivity, type AgentActivityPriority } from '../agent-activity.js';
@@ -54,7 +55,7 @@ export interface DjAgentInstance<TArgs = Record<string, any>, TExtras = any> {
   readonly temperature: number | undefined;
   readonly maxOutputTokens: number | undefined;
   readonly providerDiscoveryBudget: boolean;
-  run(args: TArgs & { messages: any[]; telemetry?: Record<string, unknown>; activityPriority?: AgentActivityPriority }): Promise<AgentRunResult<TExtras>>;
+  run(args: TArgs & { messages: ModelMessage[]; telemetry?: Record<string, unknown>; activityPriority?: AgentActivityPriority }): Promise<AgentRunResult<TExtras>>;
 }
 
 function resolveTimeout(t: number | (() => number) | undefined): number | undefined {
@@ -111,7 +112,7 @@ export function defineAgent<TArgs = Record<string, any>, TExtras = any>(
           providerDiscoveryBudget: def.providerDiscoveryBudget === true,
           ...(def.settledWithoutTools ? { settledWithoutTools: def.settledWithoutTools } : {}),
           ...(def.validateObject
-            ? { validate: (object: any) => def.validateObject!(object, extras) }
+            ? { validate: (object: unknown) => def.validateObject!(object, extras) }
             : {}),
         });
         return {

@@ -98,7 +98,10 @@ function recordSuccess({ kind, started, via, model, sampling, usage, contextPeak
   });
 }
 
-function recordFailure({ kind, started, via, model, error, cause, signal, extra = {} }: any) {
+function recordFailure({ kind, started, via, model, error, cause, signal, extra = {} }: {
+  kind: string; started: number; via: string; model: string; error?: string;
+  cause: unknown; signal?: AbortSignal; extra?: Record<string, unknown>;
+}) {
   const deferredReason = researchDeferral(cause, signal);
   record({
     kind,

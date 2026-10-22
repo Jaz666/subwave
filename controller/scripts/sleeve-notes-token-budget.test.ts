@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import type {ResearchJob,ResearchCandidate} from '../src/sleeve-notes/researcher.js';
-const root=mkdtempSync(join(tmpdir(),'notes-budget-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'notes-budget-'));process.env.STATE_DIR=root;
 const settings=await import('../src/settings.js');const store=await import('../src/settings/store.js');
 const {addDailyUsage}=await import('../src/llm/internal/telemetry/budget.js');
 const {researchAllowed}=await import('../src/broadcast/dj-budget.js');
@@ -40,4 +40,4 @@ test('a blocked worker preserves queued work and attempts for later resumption',
  assert.deepEqual(db.prepare('SELECT * FROM sleeve_research_jobs').all(),before);
 });
 
-test.after(()=>{store.setCache(saved);close();rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{store.setCache(saved);close();await removeTempDir(root);});

@@ -1,12 +1,13 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-heard-'));
+const root = createTempDir(join(tmpdir(), 'subwave-heard-'));
 process.env.STATE_DIR = root;
 delete process.env.ADMIN_USER; delete process.env.ADMIN_PASS;
 const { open, close, withCachedRead } = await import('../src/sleeve-notes/db.js');
@@ -171,10 +172,10 @@ test('historical feedback does not reopen a claim explicitly removed by the oper
   assert.equal(heardOnAir().total, 4);
 });
 
-test('disabled API blocks browsing and writes while retained v45 cache remains readable without migration', async () => {
+test('disabled API permits read-only browsing and blocks writes without migrating a retained v45 cache', async () => {
   configure(false);
   assert.equal((await post('aired', { story: 'good', delivery: null, note: '' })).status, 409);
-  const response = await fetch(base); assert.equal(response.status,409);
+  const response = await fetch(base); assert.equal(response.status,200);
   const path = join(root, 'old-cache.db');
   await db.backup(path);
   const snapshot = new Database(path);
@@ -200,4 +201,4 @@ test('cached shelf handles absent and pre-speech stores without creating a file'
   const check = new Database(oldPath, { readonly: true }); assert.equal(check.pragma('user_version', { simple: true }), 42); check.close();
 });
 
-test.after(async () => { stopConnectionCompute(); await new Promise<void>(resolve => server.close(() => resolve())); close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { stopConnectionCompute(); await new Promise<void>(resolve => server.close(() => resolve())); close(); await removeTempDir(root); });

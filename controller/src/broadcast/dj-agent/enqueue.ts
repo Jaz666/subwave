@@ -4,7 +4,7 @@
 import * as settings from '../../settings.js';
 import * as session from '../session.js';
 import type { HostSpeechStamp } from '../session.js';
-import type { Persona } from '../queue/types.js';
+import type { Persona, Track } from '../queue/types.js';
 import * as subsonic from '../../music/subsonic.js';
 import * as dj from '../../llm/dj.js';
 import { stripThinking } from '../../llm/sdk.js';
@@ -32,7 +32,7 @@ export async function generatePickLink(
 ): Promise<GeneratedHostLink> {
   const hostSpeech = session.captureHostSpeech();
   const introPersona = session.onAirPersona();
-  const current = (args as any).current;
+  const current = args.current as Track | undefined;
   const run = async (suppressExtendedSleeveNote = false) => {
     let sleeveClaimUseId: string | null = null;
     const generated = await generate({

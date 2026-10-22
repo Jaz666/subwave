@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SleeveProviderResult, ProviderRelationship } from '../src/sleeve-notes/provider.js';
-const root = mkdtempSync(join(tmpdir(), 'subwave-genius-traversal-'));
+const root = createTempDir(join(tmpdir(), 'subwave-genius-traversal-'));
 process.env.STATE_DIR = root;
 globalThis.fetch = async () => { throw new Error('Network forbidden in traversal checks'); };
 const { open, close } = await import('../src/sleeve-notes/db.js');
@@ -12,7 +12,7 @@ const { retainGeniusResult, admitLocalEncounter } = await import('../src/sleeve-
 const { cachedGeniusSong, knownGeniusSongId, associateCachedGeniusSong, registerGeniusTraversal,
   expandGeniusSamples, traversalRecording, traversalHasSource } = await import('../src/sleeve-notes/genius-traversal.js');
 const db = open();
-after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+after(async () => { close(); await removeTempDir(root); });
 const now = new Date().toISOString();
 db.prepare('INSERT INTO sleeve_connection_artist_population VALUES (1,?)').run(now);
 db.prepare(`INSERT INTO sleeve_connection_library_artists VALUES ('known','Known Band','known band')`).run();

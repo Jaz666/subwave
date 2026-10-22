@@ -1,9 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-live-notes-'));
+const root = createTempDir(join(tmpdir(), 'subwave-live-notes-'));
 process.env.STATE_DIR = root;
 const { open, close, withCachedRead, DB_PATH } = await import('../src/sleeve-notes/db.js');
 const { liveNotesSummary } = await import('../src/sleeve-notes/live-summary.js');
@@ -67,7 +68,7 @@ test('cached summaries remain read-only and never select or reserve another stor
   assert.deepEqual(summary.onAir?.availability,{matchingCount:3,availableCount:1}); assert.deepEqual(readFileSync(DB_PATH),before);
   const counts = withCachedRead(() => open().prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get()); assert.deepEqual(counts,{n:4});
 });
-test.after(() => { close(); rmSync(root,{recursive:true,force:true}); });
+test.after(async () => { close(); await removeTempDir(root); });
 
 
 test('live summary retains library navigation IDs without borrowing outgoing metadata',()=>{

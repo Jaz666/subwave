@@ -892,3 +892,21 @@ uses the same artist rules. Recording titles retain their existing strict
 matching, including version/remix/live qualifiers. Retained provider evidence
 is not rewritten, and this adds no MusicBrainz requests. Connection matches
 using an artist variant are labelled `exact-title-and-artist-variant`.
+
+
+### Public-schema candidate: current review corrections
+
+The historical schema checkpoints above describe the experiments before public schema consolidation. Experimental sidecars require the deliberate reset in `docs/testing/extended-sleeve-notes.md`.
+
+The initial public schema is version 1 with application id `SWN1`, so it cannot be
+mistaken for the earlier experimental version 1. Initialisation is transactional;
+unknown, future and experimental files are rejected without erasing their data.
+See the tester guide for the deliberate research-only reset and rollback procedure.
+
+Intro-render quiet-time accounting follows outstanding TTS promises, including
+renders detached by invalidation or moved between queue items. Settlement releases
+the busy state independently of those item identities. Manual Banter retains its
+operator override; automatic Banter budgets log a scheduler skip and return no
+spoken text. Disabling Sleeve Notes before/during speech generation releases its
+reservation before rejection. Cached admin views have an explicit GET allowlist;
+provider previews, research and all writes remain gated while disabled.

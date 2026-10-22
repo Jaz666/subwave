@@ -49,7 +49,7 @@ export async function selectBrainQueueTrack(selection: z.infer<typeof brainQueue
     if (!seed || !song?.albumId || connectionNameKey(song.album)!==connectionNameKey(seed.title)) throw fail('No confirmed library album was found. Open its library album layer.');
     id=song.albumId;expectedAlbum=seed.title;
   }
-  let songs:any[];
+  let songs: Awaited<ReturnType<typeof subsonic.getAlbum>>;
   if (entityType==='library-artist'||entityType==='artist') {
     const artist=await subsonic.getArtist(id);
     if (!artist || artist.id!==id) throw fail('This artist is no longer available in the library.');

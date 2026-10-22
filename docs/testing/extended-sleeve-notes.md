@@ -48,7 +48,7 @@ A small library, a large library, non-English names and a slower local LLM are u
 
 Facts, supporting evidence, operator corrections and airing/review history are retained. This draft also keeps research/provider diagnostic history; it does not promise a fixed database ceiling or silently expire that history.
 
-Full Wikipedia article text is temporary. Successfully completed sources normally become eligible after 24 hours, but maintenance processes at most ten per hour and yields to broadcast activity, collection pause, pending work and reviews. A backlog can therefore take days to clear. Superseded revisions retain their own completion timestamp in schema v60. The upgrade backfills only completion that can be proven from an intact checkpoint; an older orphaned article without that proof remains untouched for a separate audit.
+Full Wikipedia article text is temporary. Successfully completed sources normally become eligible after 24 hours, but maintenance processes at most ten per hour and yields to broadcast activity, collection pause, pending work and reviews. A backlog can therefore take days to clear. Superseded revisions retain their own completion timestamp. Articles without proof of completed research remain untouched.
 
 Space freed inside SQLite can be reused without reducing the file's apparent size. Compaction is a separate maintenance operation. Record database/backup growth over the trial, alongside counts of artists, facts and completed research; do not interpret file size alone as duplicate data.
 
@@ -71,3 +71,12 @@ Switching the feature off retains the research database and is not a complete ro
 Include the tested commit, fresh-install/upgrade status, library size, enabled source switches, LLM provider/model, steps, expected/actual behaviour and approximate event time. For wrong music identity, include the library artist/title/version and the source's displayed identity. For wrong stories, include the saved wording, supporting passage and source URL. For timing problems, say what was actually audible and whether it was a link, Banter or Sleeve Notes segment.
 
 Exclude credentials, full settings exports and your database from a public issue. Sanitised screenshots and the relevant short log excerpt are enough to start triage.
+
+
+### Reset required for experimental databases
+
+This draft now uses one initial public schema. Earlier experimental databases (including schema 61) are deliberately not upgraded or erased automatically. A database from an earlier build must be reset before enabling this version. An old backup containing that experimental database cannot be imported into this build.
+
+Before testing, export a station backup with the old build and retain the old source/images for rollback. With the controller stopped, move **only** `state/sleeve-notes.db` and its `-wal`/`-shm` companions to a backup directory outside the state directory. Keep all companion files together; do not remove a WAL while the controller is running. Leave settings, credentials, library databases, session history, media and other state untouched. Start the rebuilt controller to collect research again. Operator corrections, reviews, cooldowns and research history in the moved sidecar will no longer be present in the fresh collection.
+
+To roll back, stop the controller, restore the previous source/images and the complete saved sidecar set, then start again. Do not open the new public-schema database with an older experimental build.
