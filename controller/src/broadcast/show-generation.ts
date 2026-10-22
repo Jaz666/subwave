@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import * as settings from '../settings.js';
 import * as library from '../music/library.js';
-import { normGenre } from '../music/genre-fold.js';
+import { genreRuns, normGenre } from '../music/genre-fold.js';
 import { zonedParts } from '../time.js';
 import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show-preparation.js';
 import { djObject } from '../llm/sdk.js';
@@ -131,7 +131,7 @@ function allowedPlanSchema(moods: readonly string[], genres: readonly string[]) 
     moods: z.array(z.string().refine(value => moodSet.has(value), `must be one of: ${moods.join(', ')}`)).max(15)
       .describe(`music moods, chosen only from: ${moods.join(', ')}`),
     genres: z.array(genreSchema).max(15)
-      .describe(`genre tags copied exactly from the supplied library list: ${genres.join(', ')}`),
+      .describe('genre tags copied exactly from the supplied library list'),
   }).check((c) => {
     if (c.value.filtersStrict && !(
       c.value.moods.length || c.value.genres.length || c.value.eras.length || c.value.energies.length
@@ -161,6 +161,55 @@ function mergeEraWindows(eras: GeneratedShowPlan['eras']): GeneratedShowPlan['er
   return merged;
 }
 
+export function discoveryGenreCounts(names: string[], tracks: readonly { genres?: readonly string[] | null; genre?: string | null }[]): Record<string, number> {
+  const counts = new Map(names.map(name => [normGenre(name), 0]));
+  const runsByTag = new Map<string, string[]>();
+  for (const track of tracks) {
+    const matches = new Set<string>();
+    for (const tag of track.genres ?? (track.genre ? [track.genre] : [])) {
+      let runs = runsByTag.get(tag);
+      if (!runs) {
+        runs = genreRuns(tag).filter(key => counts.has(key));
+        runsByTag.set(tag, runs);
+      }
+      for (const key of runs) matches.add(key);
+    }
+    for (const key of matches) counts.set(key, counts.get(key)! + 1);
+  }
+  return Object.fromEntries(names.map(name => [name, counts.get(normGenre(name)) ?? 0]));
+}
+
+export function showGenreChoices(byGenre: Record<string, number>, template: string, repertoireEstimate = 1) {
+  const genres = Object.entries(byGenre)
+    .filter(([name, count]) => name && count > 0)
+    .map(([name, tracks]) => ({ name, tracks }));
+  if (template === 'deep-discovery') {
+    // Scan the whole catalogue before bounding the prompt. A duration-based
+    // repertoire cue avoids offering only singleton tags to the small model;
+    // it is not an operator minimum or a unique eligible-track guarantee.
+    const viable = genres.filter(genre => genre.tracks >= repertoireEstimate);
+    if (viable.length) return viable.sort((a, b) => a.tracks - b.tracks || a.name.localeCompare(b.name)).slice(0, 80);
+  }
+  return genres.sort((a, b) => b.tracks - a.tracks || a.name.localeCompare(b.name)).slice(0, 80);
+}
+
+export function normalizeGeneratedMusicSettings(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const value = { ...raw } as Record<string, unknown>;
+  if (typeof value.rationale === 'string') value.rationale = value.rationale.trim().slice(0, 500);
+  if (Array.isArray(value.eras)) value.eras = value.eras.flatMap(era => {
+    if (!era || typeof era !== 'object' || Array.isArray(era)) return [era];
+    const window = { ...era } as Record<string, unknown>;
+    for (const key of ['fromYear', 'toYear']) {
+      const year = window[key];
+      if (Array.isArray(year) && year.length === 1 && typeof year[0] === 'number') window[key] = year[0];
+    }
+    // An all-open window means no era restriction; [] expresses that already.
+    return window.fromYear === null && window.toYear === null ? [] : [window];
+  });
+  return value;
+}
+
 export async function generateShowPlan(input: GeneratedShowInput): Promise<GeneratedShowPlan> {
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
   let libraryStats: ReturnType<typeof library.stats> | null = null;
@@ -170,18 +219,12 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   } catch { /* A show can still be planned without local coverage data. */ }
   const personas = settings.get().personas ?? [];
   const moodNames = settings.moodVocab();
-  const byGenre = libraryStats?.byGenre as Record<string, number> | undefined;
-  const genreCounts = Object.entries(byGenre ?? {})
-    .filter(([name, count]) => name && count > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 80)
-    .map(([name, count]) => ({ name, tracks: count }));
-  const lessRepresentedGenres = genreCounts.slice(Math.floor(genreCounts.length * 0.75));
-  const useDeepDiscoveryShortlist = input.template === 'deep-discovery'
-    && lessRepresentedGenres.length > 0 && !input.coverageCorrection;
-  const genreChoices = useDeepDiscoveryShortlist
-    ? lessRepresentedGenres
-    : genreCounts;
+  const indexedGenreCounts = libraryStats?.byGenre as Record<string, number> | undefined;
+  const byGenre = input.template === 'deep-discovery' && libraryStats
+    ? discoveryGenreCounts(Object.keys(indexedGenreCounts ?? {}), library.candidateFilterTracks())
+    : indexedGenreCounts;
+  const repertoireEstimate = input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
+  const genreChoices = showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
   const choiceGenres = genreChoices.map(row => row.name);
   const template = TEMPLATE_DIRECTIONS[input.template] || TEMPLATE_DIRECTIONS['dj-choice']!;
   const hostPersona = personas.find((p: any) => p.id === input.cast.hostPersonaId);
@@ -225,7 +268,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     `Use only details explicitly stated in the host’s Soul, Musical Leanings or existing show information. Do not invent personal history, hometowns, experiences, venues, festivals or relationships.`,
     `Avoid generic frames such as “a journey through [genre],” “hidden gems,” or “stories behind the albums” unless the supplied host details support a specific new format that is clearly different from current shows.`,
     input.template === 'deep-discovery'
-      ? 'For Deep Discovery, keep the concept rooted in the host’s taste and open to finding less-represented library genres in the music-settings step. Do not make the brief a list of genres.'
+      ? 'For Deep Discovery, give this episode one specific musical question, contrast or listening angle rooted in the host’s stated tastes, flexible enough to explore less-represented library genres later. Work from the station library, never an invented personal playlist or record collection. Do not frame this as forgotten favourites, neglected airplay, or a generic hunt for hidden gems: no listening-history evidence is supplied. Do not make the brief a list of genres.'
       : null,
     `Write a concise, concrete brief that gives the show a clear reason to exist and could inspire a real episode. A different genre list alone does not make the premise fresh. Avoid generic genre journeys and do not invent facts about songs, artists, listeners or prior airplay. ${input.nameMode === 'custom' ? 'The operator has supplied the episode name; write only the brief.' : 'Write the brief first, then derive a memorable episode name from it; never use the recurring template name as the episode title.'} Return exactly: ${input.nameMode === 'custom' ? 'topic' : 'name and topic'}.`,
   ].filter(Boolean).join('\n\n');
@@ -254,7 +297,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         : `Music settings already used by this host's current shows:\n<existing-show-settings>${existingShowSettings}</existing-show-settings>. Use these as context when choosing suitable settings for the brief.`
     : null;
   const templateMusicDirection = input.template === 'deep-discovery'
-    ? 'For Deep Discovery, actively favor suitable lower-count genres from the provided candidates. Connect each choice to the host’s taste and brief; do not pick genres only because their counts are low.'
+    ? 'For Deep Discovery, choose usually 3–6 related genres from one coherent musical neighbourhood of the host’s stated tastes and brief. Broad or flexible tastes alone do not justify an unrelated genre. Make smaller styles with tens of records the core; tags with just one or two tracks can be secondary accents, never the whole palette. Include moderately represented related styles when needed to sustain the slot. Avoid familiar broad categories when a smaller related style can do the job. Briefly give the chosen counts and musical connection. Do not invent the host’s musical background or personal collection.'
     : input.template === 'dj-choice'
       ? 'For DJ’s Choice, choose a coherent, selective palette, usually about 4–8 genres. Include a few familiar genres from existing shows, then a few related stretch genres that fit the host and brief. The 15-genre limit is an absolute ceiling, not a target: never pad the list. Omit genres that cannot be clearly connected to the host’s Soul, Musical Leanings or the brief.'
       : 'Choose suitable settings that follow from the brief and available library coverage.';
@@ -262,18 +305,21 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     `The show idea is final. Choose settings that follow from it without changing its premise.`,
     `Show name: ${conceptName}`,
     `Show brief: <show-brief>${concept.topic}</show-brief>`,
+    `Host: ${host.name}.`,
+    `Host DJ Soul: <host-soul>${host.soul}</host-soul>`,
+    host.musicLean ? `Host Musical Leanings: <host-leanings>${host.musicLean}</host-leanings>` : 'Host Musical Leanings: (not specified)',
+    `Local slot: ${showTime(input)}.`,
+    input.template === 'deep-discovery'
+      ? `Pacing guide: this ${Math.round((input.occurrence.endsAt - input.occurrence.startsAt) / 60_000)}-minute slot would typically need roughly ${Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000)} different records at four minutes per record. This is an editorial estimate, not an operator minimum or a coverage guarantee. Select a palette with plausible repertoire for that duration; a handful of tiny tags is insufficient. Avoid adding era, mood or energy restrictions without a clear reason in the brief.`
+      : null,
     input.planningPrompt ? `Operator music direction:\n<operator-direction>${input.planningPrompt}</operator-direction>` : null,
     `Available moods: ${moodNames.join(', ')}`,
     existingSettingsPrompt,
-    `${input.template === 'deep-discovery' ? 'Deep Discovery genre candidates' : 'Available library genres'} with indexed track counts (choose only from this list): ${genreChoices.length
+    `${input.template === 'deep-discovery' ? 'Deep Discovery genre candidates with unique indexed matching-track counts, including finer genre tags' : 'Available library genres with indexed track counts'} (choose only from this list): ${genreChoices.length
       ? genreChoices.map(g => `${g.name} (${g.tracks})`).join('; ')
       : '(library coverage unavailable; leave genres empty)'}`,
-    useDeepDiscoveryShortlist
-      ? 'These candidates are the lower-count quarter of the bounded library genre list. Deep Discovery should choose one or more that make sense for the host and brief. Connect them with the host’s Soul or Musical Leanings; do not choose a genre only because its count is low.'
-      : input.template === 'deep-discovery' && input.coverageCorrection
-        ? 'The lower-count candidates did not meet required playable coverage. Choose from this broader library list and preserve the Deep Discovery intent where possible.'
-        : input.template === 'deep-discovery'
-          ? 'No library genre shortlist is available; leave genres empty.'
+    input.template === 'deep-discovery'
+      ? 'These candidates come from a scan of the entire indexed catalogue: the smallest genres with plausible raw repertoire for this slot, ordered by ascending count. If none can individually support the estimate, the largest available genres are offered so they can be combined. Counts describe catalogue coverage, not airplay or popularity. They overlap across tags and cannot be summed as a unique-track total. Keep the choices musically related to the host and brief; avoid extra era, mood or energy constraints that undermine discovery.'
       : 'Use genre counts as coverage context, not as creative recommendations or exact counts for the final filters.',
     `Library size: ${libraryStats?.mirrorTotal ?? 'unknown'} indexed tracks.`,
     libraryStats?.updatedAt ? `Library tags last updated: ${libraryStats.updatedAt}.` : null,
@@ -282,15 +328,27 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     `Operator-owned controls remain fixed: playlist anchors, excluded playlists, track limits, programme settings, voices and skills. These are not part of the generated output.`,
     `Choose moods, genres, era windows and energy settings that follow from the brief. ${templateMusicDirection} Use strict filters only when the concept needs them and available coverage can support them. Leave fields empty when they would weaken the idea or make the pool too narrow.`,
     `Do not invent facts about songs, artists, listeners, prior airplay or the host’s personal history. Do not claim strict filters improve quality or guarantee coverage. For DJ’s Choice, briefly identify the familiar anchor genres and explain the connection of the stretch genres to supplied host details or the brief. Return exactly: moods, genres, eras, energies, filtersStrict and rationale.`,
+    'Format reminder: use eras: [] for any era; never emit a window with both years null. Keep rationale under 500 characters, in one or two short sentences.',
   ].filter(Boolean).join('\n\n');
-  const musicSettings = await djObject({
-    system: 'You are a music editor. The show name and editorial brief are final. Choose only settings that express that brief. Use only the supplied moods and library genres, and preserve the operator’s fixed controls.',
-    prompt: settingsPrompt,
-    schema: planSchema,
-    temperature: 0.55,
-    kind: 'generateShowPlan.musicSettings',
-    telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
-  }) as z.infer<typeof planSchema>;
+  let musicSettings: z.infer<typeof planSchema>;
+  try {
+    musicSettings = await djObject({
+      system: 'You are a music editor. The show name and editorial brief are final. Choose only settings that express that brief. Use only the supplied moods and library genres, and preserve the operator’s fixed controls.',
+      prompt: settingsPrompt,
+      schema: planSchema,
+      temperature: input.template === 'deep-discovery' ? 0.3 : 0.55,
+      kind: 'generateShowPlan.musicSettings',
+      telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
+    }) as z.infer<typeof planSchema>;
+  } catch (error) {
+    // The small local model sometimes returns singleton year arrays, all-open
+    // eras or a long explanation even after SDK recovery. Repair only these
+    // representations, then reapply every genre, mood and range constraint.
+    try {
+      if (!error || typeof error !== 'object' || !('text' in error) || typeof error.text !== 'string') throw error;
+      musicSettings = planSchema.parse(normalizeGeneratedMusicSettings(JSON.parse(error.text)));
+    } catch { throw error; }
+  }
   const plan: GeneratedShowPlan = { ...concept, name: conceptName, ...musicSettings };
   return {
     ...plan,

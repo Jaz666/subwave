@@ -1,6 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { ChevronDown, RefreshCw, Save } from 'lucide-react';
+import type { AdminFetch } from '@/lib/admin-query';
+import { fieldAria } from '@/lib/form';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { errorMessage, notify } from '../../lib/notify';
@@ -10,18 +13,16 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/skeleton';
 import { Card, MetaChip, Pill } from './ui';
-import { ColorChip } from './schedule/bits';
 import {
-  GENERATED_SHOW_COLORS,
   GENERATED_SHOW_TEMPLATES,
   generatedShowColor,
-  generatedShowLabel,
 } from './schedule/lib';
 import { hydrateShow, joinNames } from './shows/lib';
 import { ShowAvatar } from './shows/ShowAvatar';
 import type { SettingsResponse } from './shows/types';
 import {
   useGeneratedEpisodeHistoryQuery,
+  useRegenerateGeneratedEpisodeMutation,
   useShowSkillsQuery,
 } from './shows/queries';
 import type { GeneratedEpisodeHistory } from './shows/queries';
@@ -34,6 +35,7 @@ import type { SubShowsSettings } from '@/lib/schemas.generated';
 
 type PoolKey = 'eligibleHostPersonaIds' | 'eligibleGuestPersonaIds' | 'eligibleSkillNames';
 type PoolItem = { id: string; label: string };
+type EpisodePhase = 'upcoming' | 'live' | 'past';
 
 export default function TemplateShowsPanel() {
   const { adminFetch, needsAuth, hydrated } = useAdminAuth();
@@ -50,7 +52,6 @@ export default function TemplateShowsPanel() {
       .filter(show => show.generation?.mode === 'generated'),
     [data?.values?.shows],
   );
-  const schedule = data?.values?.schedule ?? {};
   const [draft, setDraft] = useState<SubShowsSettings | null>(null);
 
   useEffect(() => {
@@ -69,10 +70,15 @@ export default function TemplateShowsPanel() {
     .filter(skill => skill.enabled !== false && skill.ready !== false && skill.name)
     .map(skill => ({ id: skill.name!, label: skill.label || skill.name! }));
 
-  const hoursOf = (showId: string) => Object.values(schedule)
-    .flat()
-    .filter(id => id === showId)
-    .length;
+  const now = history.dataUpdatedAt;
+  const episodes = history.data ?? [];
+  const episodeGroups: Array<{ title: string; phase: EpisodePhase; episodes: GeneratedEpisodeHistory[] }> = [
+    { title: 'On air', phase: 'live', episodes: episodes.filter(ep => ep.occurrence.startsAt <= now && ep.occurrence.endsAt > now) },
+    { title: 'Upcoming shows', phase: 'upcoming', episodes: episodes.filter(ep => ep.occurrence.startsAt > now)
+      .sort((a, b) => a.occurrence.startsAt - b.occurrence.startsAt) },
+    { title: 'Past shows', phase: 'past', episodes: episodes.filter(ep => ep.occurrence.endsAt <= now)
+      .sort((a, b) => b.occurrence.startsAt - a.occurrence.startsAt) },
+  ];
 
   const setPool = (key: PoolKey, selected: string[] | null) => {
     if (!draft) return;
@@ -137,9 +143,8 @@ export default function TemplateShowsPanel() {
           <div>
             <h1 className="text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
-              Each entry is a saved DJ’s Choice or Deep Discovery variant with its own host, guest and episode-name rules.
-              Reuse a variant across schedule slots, or create another for a different setup. Changes apply to every slot
-              that uses it. Click a scheduled block to edit its options.
+              Plan fresh episodes from your DJs’ personalities and musical tastes. Add DJ’s Choice or Deep Discovery
+              from the schedule shelf, then click a scheduled block to choose its host, guests and episode-name rules.
             </p>
           </div>
           <Button asChild variant="accent" size="sm" className="min-h-9">
@@ -195,76 +200,42 @@ export default function TemplateShowsPanel() {
         )}
       </Card>
 
-      {GENERATED_SHOW_TEMPLATES.map(template => {
-        const rows = variants.filter(show => show.generation?.template === template.id);
-        return (
-          <Card
-            key={template.id}
-            title={template.label}
-            sub={`${rows.length} variant${rows.length === 1 ? '' : 's'}`}
-            bodyClass="p-0"
-          >
-            {rows.length === 0 ? (
-              <EmptyState
-                compact
-                title="No variants yet"
-                description={`Create a ${template.label} variant by dragging it from the Sub/Shows section of the schedule shelf.`}
-              />
-            ) : (
-              <div className="divide-y divide-separator-soft">
-                {rows.map(show => {
-                  const hours = hoursOf(show.id);
-                  return (
-                    <div key={show.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <ColorChip color={GENERATED_SHOW_COLORS[template.id]} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12px] font-semibold text-ink">
-                          {generatedShowLabel(show, personas)}
-                        </div>
-                        <div className="mt-1 text-[10px] text-muted">
-              {hours} scheduled hour{hours === 1 ? '' : 's'} · {show.generation?.nameMode === 'custom'
-                            ? `Custom episode name: ${show.generation.customName}`
-                : 'Random episode name'} · Programme features enabled
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-        );
-      })}
-
-      <Card
-        title="Generated episode plans"
-        sub="Recent and upcoming · kept for 30 days"
-        bodyClass="p-0"
-      >
-        {history.error && !history.data ? (
+      {history.error && !history.data ? (
+        <Card title="Episode plans">
           <ErrorState error={errorMessage(history.error)} onRetry={() => history.refetch()} retrying={history.isFetching} />
-        ) : !history.data ? (
-          <div className="p-4"><SkeletonRows rows={3} /></div>
-        ) : history.data.length === 0 ? (
-          <EmptyState
-            compact
-            title="No generated episodes yet"
-            description="A plan appears here after its scheduled Sub/Show has been prepared."
-          />
-        ) : (
-          <div className="grid gap-3 p-3">
-            {history.data.slice(0, 12).map(episode => (
-              <GeneratedEpisodeRow
-                key={episode.occurrence.id}
-                episode={episode}
-                personas={personas}
-                timezone={data.values?.timezone}
-                apiBase={apiBase}
-              />
-            ))}
+        </Card>
+      ) : !history.data ? (
+        <Card title="Episode plans"><SkeletonRows rows={3} /></Card>
+      ) : episodeGroups.filter(group => group.phase !== 'live' || group.episodes.length > 0).map(group => (
+        <section key={group.phase} className="grid gap-3" aria-label={group.title}>
+          <div className="flex items-baseline justify-between gap-3 px-1 pt-2">
+            <h2 className="text-[16px] font-extrabold text-ink">{group.title}</h2>
+            <span className="text-[10px] text-muted">
+              {group.episodes.length} episode{group.episodes.length === 1 ? '' : 's'}
+              {group.phase === 'past' ? ' · kept for 30 days' : ''}
+            </span>
           </div>
-        )}
-      </Card>
+          {group.episodes.length ? group.episodes.map(episode => (
+            <GeneratedEpisodeRow
+              key={episode.occurrence.id}
+              episode={episode}
+              personas={personas}
+              timezone={data.values?.timezone}
+              apiBase={apiBase}
+              adminFetch={adminFetch}
+              phase={group.phase}
+            />
+          )) : (
+            <EmptyState
+              compact
+              title={group.phase === 'past' ? 'No past episodes yet' : 'No upcoming episodes prepared'}
+              description={group.phase === 'past'
+                ? 'Episodes move here after their scheduled slot finishes.'
+                : 'Plans appear here when upcoming Sub/Shows are prepared.'}
+            />
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -288,53 +259,70 @@ function EligibilityPicker({
   onNone: () => void;
   empty?: string;
 }) {
-  const descriptionId = `sub-shows-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-description`;
+  const aria = fieldAria(`sub-shows-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, undefined, { hasDescription: true });
+  const selectedCount = items.filter(item => selected === null || selected.includes(item.id)).length;
   return (
-    <fieldset aria-describedby={descriptionId} className="grid min-w-0 gap-0 border-b border-separator-soft py-4 first:pt-0 last:border-0 last:pb-0">
-      <legend className="text-[11px] font-bold tracking-[0.22em] text-ink uppercase">{title}</legend>
-      <div className="mt-3 flex flex-wrap gap-2.5">
-        {items.length ? items.map(item => {
-          const isSelected = selected === null || selected.includes(item.id);
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={isSelected}
-              onClick={() => onChange(item.id, !isSelected)}
-              className={`inline-flex min-h-10 cursor-pointer items-center gap-2.5 border px-3.5 py-2 text-[13px] transition-colors ${
-                isSelected
-                  ? 'border-ink bg-ink font-semibold text-bg'
-                  : 'border-separator-strong bg-transparent font-medium text-muted hover:border-ink hover:text-ink'
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className={`size-[9px] shrink-0 border ${
-                  isSelected ? 'border-vermilion bg-vermilion' : 'border-ink/40 bg-transparent'
+    <details className="group min-w-0 border-b border-separator-soft last:border-0">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 py-3 focus-visible:outline-2 focus-visible:outline-vermilion [&::-webkit-details-marker]:hidden">
+        <span {...aria.labelledByProps} className="flex-1 text-[11px] font-bold tracking-[0.22em] text-ink uppercase">{title}</span>
+        <span className="text-[11px] text-muted">{selectedCount} / {items.length} selected</span>
+        <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+      </summary>
+      <fieldset {...aria.groupProps} className="min-w-0 pb-4">
+        <legend className="sr-only">{title}</legend>
+        <div className="mt-1 flex flex-wrap gap-2.5">
+          {items.length ? items.map(item => {
+            const isSelected = selected === null || selected.includes(item.id);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => onChange(item.id, !isSelected)}
+                className={`inline-flex min-h-10 cursor-pointer items-center gap-2.5 border px-3.5 py-2 text-[13px] transition-colors ${
+                  isSelected
+                    ? 'border-ink bg-ink font-semibold text-bg'
+                    : 'border-separator-strong bg-transparent font-medium text-muted hover:border-ink hover:text-ink'
                 }`}
-              />
-              <span>{item.label}</span>
-            </button>
-          );
-        }) : <span className="py-2 text-[10px] text-muted">{empty}</span>}
-      </div>
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <p id={descriptionId} className="max-w-[78ch] text-[12px] leading-[1.6] text-muted">{description}</p>
-        <div className="flex shrink-0 gap-3 text-[10px]">
-          <button type="button" className="text-accent hover:underline" onClick={onAll}>Everyone</button>
-          <button type="button" className="text-muted hover:underline" onClick={onNone}>Clear</button>
+              >
+                <span
+                  aria-hidden="true"
+                  className={`size-[9px] shrink-0 border ${
+                    isSelected ? 'border-vermilion bg-vermilion' : 'border-ink/40 bg-transparent'
+                  }`}
+                />
+                <span>{item.label}</span>
+              </button>
+            );
+          }) : <span className="py-2 text-[10px] text-muted">{empty}</span>}
         </div>
-      </div>
-    </fieldset>
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <p {...aria.descriptionProps} className="max-w-[78ch] text-[12px] leading-[1.6] text-muted">{description}</p>
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" size="sm" className="min-h-8" onClick={onAll}>Everyone</Button>
+            <Button type="button" size="sm" className="min-h-8" onClick={onNone}>Clear</Button>
+          </div>
+        </div>
+      </fieldset>
+    </details>
   );
 }
 
-function GeneratedEpisodeRow({ episode, personas, timezone, apiBase }: {
+function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch, phase }: {
   episode: GeneratedEpisodeHistory;
   personas: Persona[];
   timezone?: string;
   apiBase: string;
+  adminFetch: AdminFetch;
+  phase: EpisodePhase;
 }) {
+  const regenerate = useRegenerateGeneratedEpisodeMutation(adminFetch);
+  const reroll = async () => {
+    try {
+      await regenerate.mutateAsync(episode.occurrence.id);
+      notify.ok('Episode plan regenerated.');
+    } catch { /* The mutation reports the failure; the accepted plan stays visible. */ }
+  };
   const spineRef = useRef<HTMLSpanElement>(null);
   useDynamicStyle(spineRef, { background: generatedShowColor(episode.template) });
 
@@ -352,7 +340,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase }: {
   const plan = episode.plan;
 
   return (
-    <article className="card group relative">
+    <article className="card group relative" aria-busy={regenerate.isPending}>
       <span ref={spineRef} aria-hidden="true" className="absolute inset-y-0 left-0 w-1" />
       <div className="card-body flex gap-3.5">
         <div className="flex flex-none flex-col items-center">
@@ -373,8 +361,8 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase }: {
         </div>
 
         <div className="grid min-w-0 flex-1 gap-2.5">
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
+          <div className="flex flex-col items-start gap-3 sm:flex-row">
+            <div className="w-full min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <Pill tone="solid" dot>Programme</Pill>
                 <Pill>{template}</Pill>
@@ -388,11 +376,32 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase }: {
               </div>
             </div>
 
-            <div className="flex flex-none flex-col items-end gap-1.5 text-right">
-              <time dateTime={startsAt.toISOString()} className="text-[11px] font-semibold text-ink">{when}</time>
-              <Pill tone={episode.status === 'failed' ? 'accent' : 'ink'}>
-                {episode.status === 'failed' ? 'Generation failed' : 'Ready'}
-              </Pill>
+            <div className="flex flex-none flex-wrap items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5 sm:text-right">
+              <div className="flex items-center gap-2">
+                <time dateTime={startsAt.toISOString()} className="text-[11px] font-semibold text-ink">{when}</time>
+                {phase === 'upcoming' && (
+                  <Button
+                    type="button" variant="ghost" size="icon"
+                    aria-label={`Regenerate ${plan?.name || template}`}
+                    title="Regenerate this episode"
+                    disabled={regenerate.isPending}
+                    onClick={() => void reroll()}
+                  >
+                    <RefreshCw aria-hidden="true" className={regenerate.isPending ? 'animate-spin motion-reduce:animate-none' : ''} />
+                  </Button>
+                )}
+                {phase === 'past' && (
+                  <span title="Saving as a permanent show is coming later">
+                    <Button type="button" size="sm" disabled><Save aria-hidden="true" />Save</Button>
+                  </span>
+                )}
+              </div>
+              <span role="status">
+                <Pill tone={episode.status === 'failed' ? 'accent' : 'ink'}>
+                  {regenerate.isPending ? 'Regenerating…' : episode.status === 'failed' ? 'Generation failed'
+                    : phase === 'live' ? 'On air' : phase === 'past' ? 'Past slot' : 'Ready'}
+                </Pill>
+              </span>
               <span className="caption uppercase">{episode.occurrence.source}</span>
             </div>
           </div>

@@ -3,6 +3,7 @@
 // GET/POST /settings, and settings.update() stays the validation chokepoint.
 
 import express from 'express';
+import { z } from 'zod';
 import * as settings from '../settings.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { validateBody, validateBodyAsync } from '../middleware/validate.js';
@@ -19,7 +20,7 @@ import { readCommunityShow } from '../shows/community.js';
 import { SLUG_RE } from '../skills/loader.js';
 import { queue } from '../broadcast/queue.js';
 import { rollSessionNow } from '../broadcast/scheduler.js';
-import { prepareGeneratedShowAt, prepareUpcomingGeneratedShows, showPreparation } from '../broadcast/show-preparation.js';
+import { GeneratedShowRegenerationError, prepareGeneratedShowAt, prepareUpcomingGeneratedShows, showPreparation } from '../broadcast/show-preparation.js';
 import { resolveTakeoverWindowNow } from '../broadcast/takeover-window.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import { isInOrderShow } from '../music/playlist-order.js';
@@ -68,6 +69,25 @@ router.get('/shows/generated', requireAdmin, async (req, res) => {
   } catch (err: any) {
     queue.log('error', `GET /shows/generated failed: ${err.message}`);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/shows/generated/regenerate', requireAdmin, validateBody(z.object({
+  occurrenceId: z.string().min(1).max(200),
+})), async (req, res) => {
+  try {
+    await settings.load();
+    const record = await showPreparation.regenerateGenerated(req.body.occurrenceId);
+    if (!record) return res.status(409).json({ error: 'The slot started or changed while generating. Refresh the episode list.' });
+    if (record.kind === 'failed') return res.status(502).json({ error: record.reason });
+    res.json({ ok: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = err instanceof GeneratedShowRegenerationError
+      ? err.code === 'not-found' ? 404 : 409
+      : 502;
+    queue.log('error', `POST /shows/generated/regenerate failed: ${message}`);
+    res.status(status).json({ error: message });
   }
 });
 
