@@ -17,7 +17,7 @@ import {
   type AcceptedPreparation, type GeneratedShowRecord, type GeneratedShowPlan, type PreparationOccurrence,
   type PreparationRecord, type PreparationStatus, type PreparationTrack,
 } from '../schemas/show-preparation.js';
-import { generateShowPlan, resolveGeneratedShowCast, type GeneratedShowCast } from './show-generation.js';
+import { generateShowPlan, resolveGeneratedShowCast, scheduledShowsForHost, type ExistingScheduledShow, type GeneratedShowCast } from './show-generation.js';
 import { restoreGeneratedShows } from './generated-show-registry.js';
 
 export interface PreparationSnapshot {
@@ -34,6 +34,7 @@ export interface GeneratedShowSnapshot {
   coverageCorrection?: string;
   cast: GeneratedShowCast;
   show: any;
+  existingShows?: ExistingScheduledShow[];
 }
 export type { PreparationStatus } from '../schemas/show-preparation.js';
 export interface EpisodeView {
@@ -319,12 +320,13 @@ function generatedSnapshot(context: SessionContext): GeneratedShowSnapshot | nul
   const personas = settings.get().personas ?? [];
   const cast = resolveGeneratedShowCast({ show, occurrence, personas });
   if (!cast) return null;
+  const existingShows = scheduledShowsForHost(cast.hostPersonaId, show.id);
   const personaInput = [cast.hostPersonaId, ...cast.guestPersonaIds].map(id => {
     const persona = personas.find((item: any) => item.id === id);
     return persona ? [persona.id, persona.name, persona.soul, persona.musicLean] : [id, null];
   });
   const configuration = JSON.stringify([
-    config, cast, personaInput, settings.get().timezone, settings.get().locale, settings.moodVocab(),
+    config, cast, personaInput, existingShows, settings.get().timezone, settings.get().locale, settings.moodVocab(),
     show.playlistIds, show.playlistStrict, show.excludedPlaylistIds,
     show.maxTrackSeconds, show.minTrackLengthSeconds,
     show.vocals,
@@ -332,6 +334,7 @@ function generatedSnapshot(context: SessionContext): GeneratedShowSnapshot | nul
   return {
     occurrence, configuration, template: config.template,
     planningPrompt: config.planningPrompt, minimumCoverage: config.minimumCoverage, cast,
+    existingShows,
     show: {
       id: show.id, name: show.name, topic: show.topic,
       playlistIds: show.playlistIds, playlistStrict: show.playlistStrict,

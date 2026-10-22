@@ -32,8 +32,9 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-“Fresh” means varied editorial choices, not a guarantee of a never-repeated
-combination or a disjoint track list.
+“Fresh” means a specific premise that is clearly distinct from the host’s other
+regularly scheduled shows. It does not guarantee a never-repeated combination
+or a disjoint track list.
 
 ## Generated episode
 
@@ -71,11 +72,17 @@ Example: DJ’s Choice → Mara → “After the Last Train”: nocturnal soul, 
 spacious electronic music, with a reflective brief and moderate energy.
 
 Preparation inputs should include the selected host’s Soul and Musical
-Leanings, guest identities, slot duration and station-local time, template
+Leanings, the names, briefs and music settings of their other regularly
+scheduled shows, guest identities, slot duration and station-local time, template
 instructions, bounded library coverage, and summaries of recent episodes.
-The host supplies the main musical direction; guest influence is a proposed
-secondary input. Recent choices by both this host and other hosts can encourage
-variety without forcing unsuitable music.
+Existing shows are contrast references: the planner should find a new editorial
+angle rather than turning the host’s usual programme into a renamed episode.
+The brief and name come before music tags, which should follow from the idea
+without forcing unrelated genres for the sake of difference. The host supplies
+the main point of view; Musical Leanings are
+inspiration, not a genre limit. Guest influence is secondary. Recent choices
+by this host and other hosts can encourage variety without forcing unsuitable
+music.
 
 The planner chooses an editorial configuration, not a complete fixed playlist.
 Normal track selection and broadcast controls remain responsible for playback.
