@@ -1,4 +1,6 @@
 'use client';
+
+import NotesStorage, {NotesResearchProgress, type ResearchProgress} from './NotesResearchHealth';
 import NotesSettingsSaveBar from './NotesSettingsSaveBar';
 import { notesSettingsDefaults, notesSettingsPatch, notesSettingsSchema, type NotesSettingsForm } from './notes-settings';
 import { useZodForm } from '../../lib/form';
@@ -61,6 +63,7 @@ type NotesReadout = {
     ready: number; readyRequests: number; deferred: number; running: number; oldestReadyAt: string | null; oldestReadyAgeSeconds: number | null;
     enabled: boolean; configured: boolean; worker: { running: boolean; quiet: boolean } | null;
   };
+  progress?: ResearchProgress;
   researchPausedByBudget?: boolean;
   active: boolean;
   readAt?: number;
@@ -593,8 +596,11 @@ export function OverviewView({
     </div>
     <NotesLiveSummary adminFetch={adminFetch} enabled={enabled}>
       <NotesRecentlyAired adminFetch={adminFetch} timezone={status.timezone} />
+      <NotesResearchProgress progress={readout?.progress} reason={status.collectionBlockedReason}
+        ready={readout?.workQueueItems?.some(job=>job.phase==='ready' && (job.provider!=='genius' || (status.providerEnabled && status.providerConfigured)))??false} now={readout?.readAt??0} timezone={status.timezone} />
       {readout ? <ResearchActivity data={readout} status={status} adminFetch={adminFetch} /> : <Card headingLevel={2} title="Research activity"><p className="text-[13px] text-muted">Loading research queue…</p></Card>}
     </NotesLiveSummary>
+    <NotesStorage adminFetch={adminFetch} timezone={status.timezone} />
     {enabled && status.providerEnabled && !status.providerConfigured && <Card headingLevel={2} title="Needs attention">
       <p className="text-[13px] text-muted">Genius connections are enabled but need an access token.</p>
       <Link href="/admin/notes?tab=config" className="mt-2 inline-block text-sm text-primary">Open Settings →</Link>

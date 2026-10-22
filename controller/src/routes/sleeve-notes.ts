@@ -1,9 +1,10 @@
+import {researchBlockReason} from '../sleeve-notes/research-availability.js';
 import { manageQueuedJob } from '../sleeve-notes/queue-actions.js';
 import {loadExtendedSleeveNoteCandidatesInDatabase} from '../sleeve-notes/link-selection.js';
 import {getPlaybackMeta} from '../music/library.js';
 import { researchAllowed } from '../broadcast/dj-budget.js';
-// Feature routes are admin-only and require the master switch. Status and
-// Dash gating remain available while off; internal cached reads stay read-only.
+// Feature routes require admin authentication. While off, only the explicit
+// saved-data GET allowlist is available; research and writes remain gated.
 import express from 'express';
 import { getStationTimezone } from '../time.js';
 import { brainAlbumCoverageInDatabase, queueBrainAlbumInDatabase, queueBrainLibraryAlbumInDatabase, type BrainAlbumType } from '../sleeve-notes/brain-album-research.js';
@@ -63,7 +64,7 @@ export const router = express.Router();
 // use withCachedRead, which neither creates nor upgrades the on-disk database.
 const CACHED_VIEWS = new Set([
   '/readout', '/stories', '/explore', '/heard-on-air', '/airing-reviews', '/series',
-  '/moderation', '/live-summary', '/connections/search',
+  '/moderation', '/live-summary', '/storage', '/connections/search',
   '/connections/coverage', '/connections/album-coverage', '/connections/discoveries',
   '/connections/overview', '/connections/graph',
 ]);
@@ -343,6 +344,13 @@ router.get('/sleeve-notes/live-summary', requireAdmin, async (_req, res) => {
   return res.type('json').send(json);
 });
 
+router.get('/sleeve-notes/storage', requireAdmin, async (_req,res) => {
+  await settings.load();
+  const read = () => cachedDashboardRead({kind:'storage'});
+  const result = settings.get().djBehaviour.extendedSleeveNotes ? await read() : await withCachedRead(read);
+  return res.type('json').send(result);
+});
+
 router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   await settings.load();
   const value = settings.get();
@@ -354,7 +362,8 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
   const providerConfigured = !!geniusAccessToken();
   const providerTokenSource = savedToken ? 'settings' : environmentToken ? 'environment' : 'missing';
   const collectionPaused = value.djBehaviour.sleeveNotesCollectionPaused === true;
-  const collectionRunning = enabled && !collectionPaused && researchAllowed();
+  const blockedReason = researchBlockReason();
+  const collectionRunning = blockedReason === null;
   res.json({
     enabled,
     timezone: getStationTimezone(),
@@ -368,7 +377,7 @@ router.get('/sleeve-notes/status', requireAdmin, async (_req, res) => {
     collectionRunning,
     reviewReady: enabled ? reviewReadyCount() : withCachedRead(reviewReadyCount),
     collectionPaused,
-    collectionBlockedReason: !enabled ? 'disabled' : collectionPaused ? 'operator-paused' : !researchAllowed() ? 'token-budget' : null,
+    collectionBlockedReason: blockedReason,
     coverage: enabled ? researchStoreCoverage() : {},
     // Temporary development readout for the live MusicBrainz → Wikipedia → LLM
     // path. It remains read-only and deliberately does not expose notes on air.

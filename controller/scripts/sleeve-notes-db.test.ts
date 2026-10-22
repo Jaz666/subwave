@@ -22,7 +22,7 @@ test('Sleeve Notes migration creates its isolated durable model', () => {
 });
 
 test('experimental and future schemas are refused without altering existing records', () => {
-  for (const version of [0, 1, 4, 42, 55, 56, 61, 999]) {
+  for (const version of [0, 1, 2, 4, 42, 55, 56, 61, 999]) {
     const db = new Database(':memory:');
     db.exec("CREATE TABLE sentinel (value TEXT); INSERT INTO sentinel VALUES ('preserve me')");
     db.pragma(`user_version = ${version}`);

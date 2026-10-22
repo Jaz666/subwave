@@ -267,6 +267,13 @@ export default function ExtendedSleeveNotes() {
 
       <section className="bs-section">
         <p className="bs-eyebrow">STATION BRAIN</p>
+        <p>
+          Overview explains why research is waiting and shows when a source was last
+          collected and research last completed. Normal broadcast, listener and source
+          limits can pause progress. Use <strong>Inspect storage</strong> to see a
+          snapshot of database space and retained text by source; it runs only when
+          requested, and a later inspection can show how the file has grown.
+        </p>
         <h2>Follow the connections yourself.</h2>
         <p>
           Open <strong>Station Brain</strong> in Notes and search for an artist, album

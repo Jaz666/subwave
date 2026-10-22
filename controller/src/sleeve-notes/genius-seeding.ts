@@ -1,3 +1,4 @@
+import {libraryArtistIdentity} from './artist-identity.js';
 // Fill spare Genius capacity from the cached catalogue, never from a fake play
 // or a MusicBrainz job. One seed at a time, bounded artist scans per turn.
 import * as settings from '../settings.js';
@@ -33,8 +34,9 @@ export function enqueueNextGeniusLibrarySeed(): boolean {
           id: string; title: string; artist: string; titleKey: string;
         } | undefined;
       if (!track) continue;
-      const now = new Date().toISOString(), artistId = randomUUID(), recordingId = randomUUID();
-      db.prepare('INSERT INTO sleeve_artists(id,name,created_at,updated_at) VALUES (?,?,?,?)').run(artistId, track.artist, now, now);
+      const now = new Date().toISOString(), recordingId = randomUUID();
+      const artistId = libraryArtistIdentity(db, track.artist, now);
+      if (!artistId) continue;
       db.prepare(`INSERT INTO sleeve_recordings(id,title,artist_id,match_state,created_at,updated_at)
         VALUES (?,?,?,'unmatched',?,?)`).run(recordingId, track.title, artistId, now, now);
       db.prepare('INSERT INTO sleeve_genius_library_seeds VALUES (?,?,?,?)').run(track.id, recordingId, track.titleKey, artist.key);

@@ -69,3 +69,57 @@ Controller ESLint has 1,733 existing warnings, matching the reviewed upstream
 baseline. The consolidated schema was compared against the previous schema: all
 145 tables/indexes/triggers and the initial revision row match. These checks do
 not replace the pending real-station reset, provider research and on-air checks.
+
+## Upstream compatibility checklist
+
+For each upstream release, compare the feature branch against both the release tag
+and develop. Keep a copy of the prior station source/images and a compatible backup.
+Review overlapping behaviour even when Git merges without conflicts:
+
+- Queue/voice: render invalidation, host changes, track replacement, reservations,
+  timing, publication and manual Banter must retain their established behaviour.
+- Research/settings: off, pause, provider opt-out, token redaction, save/discard and
+  library/server replacement must preserve operator intent and stop late results.
+- Persistence: initialise a fresh store, reopen a populated store, upgrade the last
+  public schema, reject future/experimental backups and test an interrupted job.
+- Admin/theme: shared navigation, Skip controls, cached reads, responsive layouts,
+  light/dark themes and Lite/reduced-motion behaviour need explicit review.
+- Run the focused boundary workflow plus lint/type and generated-mirror checks.
+  Run broader suites when shared behaviour changes. Build with upstream's default
+  bundler, then test on a backed-up station before publishing.
+
+Record observed live results separately from synthetic checks. On 22 October the
+operator reported a multi-host Sleeve Notes segment within an hour of starting a
+fresh research database, using recently collected Wikipedia material. This is an
+observed first-run result, not a promised collection time for every station.
+
+## Identity and diagnostics follow-up
+
+All three provisional Genius entry points (encountered tracks, library seeds and
+sample traversal) use the shared unambiguous-library artist resolver. A bounded,
+rotating catalogue-worker pass reconciles old provisional children, even when
+Genius capture is off. It preserves recording ids/evidence, skips artist-level
+research and separate canonical identities, and keeps historical artist rows.
+Browse/dossier local-match labels now use actual library associations or the
+existing unambiguous cached-library identity, rather than merely having an MBID.
+Public schema 1 upgrades to 2 by adding indexes only; no reset is needed.
+
+Progress explanations use the same policy as the worker gate. Indexed timestamps
+show source collection, completed research and the next retry. A page-only warning
+covers ready work with no progress for six hours while excluding deliberate pause,
+listener and budget gates. Explicit storage inspection runs in the existing
+read-only worker; it never polls or contacts a provider. Browser-local snapshots
+support file-size comparisons. A focused CI workflow covers broadcast/off-state,
+recovery and identity boundaries; the compatibility checklist above covers upstream
+integration and live acceptance.
+
+Validation: 365 Sleeve Notes checks and 466 web tests pass. Follow-up intro-render,
+library-matching, traversal, seeding and no-Genius suites pass. Controller/web
+lint/types, generated mirrors and admin-query audit pass; controller warnings stay
+at the existing 1733. The default production build passes. Isolated desktop/mobile
+browser checks verify explicit-only storage requests, table rendering, theme
+switches, no page overflow and no browser errors; UI detector reports no findings.
+An isolated current-station database snapshot reduced seven visible 2Pac entries to
+one without changing its 1022 recordings, 5294 facts or 658 sources, and with zero
+foreign-key errors. This was not a live data repair or a substitute for station
+acceptance. Live containers remain for the operator to rebuild.

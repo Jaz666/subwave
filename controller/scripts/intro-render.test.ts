@@ -94,3 +94,20 @@ test('transfers over another active render track both promises through settlemen
   finishSecond('/tmp/second.wav'); await second;
   assert.equal(tracker.busy(), false);
 });
+
+
+test('research gate resumes after an invalidated render settles, including the identity handoff', async () => {
+  const {researchRunAllowed} = await import('../src/sleeve-notes/research-policy.js');
+  const tracker = new IntroRenderTracker<object>();
+  const original = {}, current = {};
+  let finish!: (wav: string) => void;
+  const task = tracker.start(original, () => new Promise<string>(resolve => {finish = resolve;}));
+  await Promise.resolve();
+  const allowed = () => researchRunAllowed({playbackCriticalBusy:tracker.busy(),agentWorkActive:false,
+    djCallsAllowed:true,pauseWhenEmpty:false,maintenanceWhenEmpty:false,listenerCount:1});
+  assert.equal(allowed(),false);
+  tracker.transfer(original,current);tracker.invalidate(current);
+  assert.equal(allowed(),false);
+  finish('/tmp/settled.wav');await task;
+  assert.equal(allowed(),true);
+});

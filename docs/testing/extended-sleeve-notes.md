@@ -74,8 +74,28 @@ Exclude credentials, full settings exports and your database from a public issue
 
 ### Reset required for experimental databases
 
-This draft now uses one initial public schema. Earlier experimental databases (including schema 61) are deliberately not upgraded or erased automatically. A database from an earlier build must be reset before enabling this version. An old backup containing that experimental database cannot be imported into this build.
+This draft now uses one initial public schema. Earlier experimental databases (including schema 61) are deliberately not upgraded or erased automatically. Only experimental databases require this reset. Public schema 1 is supported and upgrades without a reset. An old backup containing that experimental database cannot be imported into this build.
 
 Before testing, export a station backup with the old build and retain the old source/images for rollback. With the controller stopped, move **only** `state/sleeve-notes.db` and its `-wal`/`-shm` companions to a backup directory outside the state directory. Keep all companion files together; do not remove a WAL while the controller is running. Leave settings, credentials, library databases, session history, media and other state untouched. Start the rebuilt controller to collect research again. Operator corrections, reviews, cooldowns and research history in the moved sidecar will no longer be present in the fresh collection.
 
 To roll back, stop the controller, restore the previous source/images and the complete saved sidecar set, then start again. Do not open the new public-schema database with an older experimental build.
+
+
+### Follow-up acceptance: identity, progress and storage
+
+Public schema 1 upgrades to schema 2 by adding indexes only. Do not reset research
+for this update. During quiet catalogue turns, duplicate provisional artist names
+are checked in batches of five, at most once every five minutes. Confirm that a
+previously repeated artist becomes one Browse Library entry, its recordings and
+saved facts remain available, and unrelated same-name artists stay separate.
+Artist-level research can deliberately prevent automatic reconciliation.
+
+Overview now names the current pause reason, shows the latest successful source
+collection/research completion and the next scheduled retry. Normal broadcast,
+listener, budget and operator pauses should explain themselves. A long absence
+of progress with ready work should show a diagnostic, not an automatic restart.
+
+Inspect storage explicitly to read database, write-log, reusable-space and source
+text sizes; repeat later to compare file growth in the same browser. There is no
+automatic polling. Source text sizes omit other tables and indexes. Observe the
+fresh collection over several days before changing retention policy.

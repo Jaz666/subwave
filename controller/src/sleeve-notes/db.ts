@@ -9,8 +9,14 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 const APPLICATION_ID = 0x53574e31; // SWN1: distinguishes public v1 from old experiments.
+
+const RESEARCH_INDEXES = `
+  CREATE INDEX IF NOT EXISTS idx_sleeve_artist_name ON sleeve_artists(lower(name));
+  CREATE INDEX IF NOT EXISTS idx_sleeve_research_completion ON sleeve_research_jobs(state,completed_at);
+  CREATE INDEX IF NOT EXISTS idx_sleeve_provider_success ON sleeve_provider_requests(outcome,requested_at);
+`;
 
 let db: Database.Database | null = null;
 let libraryFingerprint: string | null = null;
@@ -163,6 +169,14 @@ export function restorePreparedBackup(path: string): void {
 /** Initialise the first public schema; never rewrite an experimental database. */
 export function migrate(d: Database.Database): void {
   const version = Number(d.pragma('user_version', { simple: true }));
+  // Public v1 is supported without resetting research or operator decisions.
+  if (version === 1 && Number(d.pragma('application_id', { simple: true })) === APPLICATION_ID) {
+    d.transaction(() => {
+      d.exec(RESEARCH_INDEXES);
+      d.pragma(`user_version = ${SCHEMA_VERSION}`);
+    })();
+    return;
+  }
   if (
     version === SCHEMA_VERSION &&
     Number(d.pragma('application_id', { simple: true })) === APPLICATION_ID
@@ -182,6 +196,7 @@ export function migrate(d: Database.Database): void {
   }
   d.transaction(() => {
     d.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+    d.exec(RESEARCH_INDEXES);
     d.pragma(`application_id = ${APPLICATION_ID}`);
     d.pragma(`user_version = ${SCHEMA_VERSION}`);
   })();
