@@ -416,3 +416,13 @@ The station source has now fast-forwarded to candidate 96dadf40. Containers were
 not stopped/rebuilt and no research files were moved by the agent. A second
 controller-stopped sidecar move and controller/web rebuild is required before
 schema-1 acceptance can begin. The station's earlier backup remains its rollback.
+
+Post-rebuild verification: controller and web are running and `/api/health` reports
+on-air. Running controller hashes for db.ts, intro-render.ts and scheduler.ts match
+the prepared station source. schema.sql is present; the fresh sidecar reports
+user_version 1 and application_id 0x53574e31 (SWN1). At inspection it contained zero
+saved facts and no research jobs, appropriate before first artist admission. The
+recent controller log shows a successful background MusicBrainz series refresh.
+Fresh artist/Wikipedia collection after confirmed plays and live review/Banter
+acceptance remain to observe. No credentials, settings or live data were changed
+by these read-only checks; upstream fixes remain local and unpushed.
