@@ -375,7 +375,7 @@ export function rejectBlockedAt<T extends { id?: string | null; title?: string |
   const ctx = { month, day, activeShowId: showId };
   const active = compiledRules.filter(cr => ruleActive(cr.rule, ctx));
   return (arr || []).filter(song => !matchOf(song)
-    && !active.some(cr => ruleMatches(cr, song, playlistMembers)));
+    && !active.some(cr => ruleMatches(cr, { ...song, id: song.id ?? undefined }, playlistMembers)));
 }
 
 // The admin-listing opposite of rejectBlocked: keep every row and stamp what

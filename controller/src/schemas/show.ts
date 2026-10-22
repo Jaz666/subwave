@@ -481,7 +481,7 @@ function showGenerationSchema(ctx: ShowSchemaContext) {
     // Fixed uses guestPersonaIds; random draws a bounded count from this roster.
     guestMode: z.enum(['none', 'fixed', 'random']).default('fixed'),
     eligibleGuestPersonaIds: showPersonaCandidates(ctx),
-    guestCount: generationGuestCountSchema.default({}),
+    guestCount: generationGuestCountSchema.default({ min: 0, max: 0 }),
     // null means no minimum. No numeric default was agreed in the proposal.
     minimumCoverage: z.preprocess(
       nullToUndefined,

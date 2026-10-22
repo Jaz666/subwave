@@ -49,17 +49,17 @@ export function resolveGeneratedShowCast({ show, occurrence, personas }: {
 }): GeneratedShowCast | null {
   const config = show.generation;
   if (!config || config.mode !== 'generated') return null;
-  const eligible = new Map(personas.filter(p => p && typeof p.id === 'string').map(p => [p.id, p]));
+  const eligible = new Map<string, any>(personas.filter(p => p && typeof p.id === 'string').map(p => [p.id, p] as const));
   const hostIds = config.hostMode === 'random'
     ? config.eligibleHostPersonaIds.filter((id: string) => eligible.has(id))
     : [show.personaId].filter((id: string) => eligible.has(id));
   if (!hostIds.length) return null;
   const hostPersonaId = hostIds[stableIndex(occurrence.id, hostIds.length)]!;
-  const guestIds = config.guestMode === 'none'
+  const guestIds: string[] = config.guestMode === 'none'
     ? []
     : config.guestMode === 'fixed'
       ? (show.guestPersonaIds ?? []).filter((id: string) => id !== hostPersonaId && eligible.has(id))
-      : stableOrder(config.eligibleGuestPersonaIds.filter((id: string) => id !== hostPersonaId && eligible.has(id)), occurrence.id)
+      : stableOrder<string>(config.eligibleGuestPersonaIds.filter((id: string) => id !== hostPersonaId && eligible.has(id)), occurrence.id)
         .slice(0, config.guestCount.min + stableIndex(`${occurrence.id}:guest-count`, config.guestCount.max - config.guestCount.min + 1));
   return { hostPersonaId, guestPersonaIds: [...new Set(guestIds)].slice(0, 3) };
 }
@@ -108,7 +108,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   } catch { /* A show can still be planned without local coverage data. */ }
   const personas = settings.get().personas ?? [];
   const moodNames = settings.moodVocab();
-  const genreCounts = Object.entries(libraryStats?.byGenre ?? {})
+  const byGenre = libraryStats?.byGenre as Record<string, number> | undefined;
+  const genreCounts = Object.entries(byGenre ?? {})
     .filter(([name, count]) => name && count > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 80)
