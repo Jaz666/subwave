@@ -596,8 +596,6 @@ export function OverviewView({
     </div>
     <NotesLiveSummary adminFetch={adminFetch} enabled={enabled}>
       <NotesRecentlyAired adminFetch={adminFetch} timezone={status.timezone} />
-      <NotesResearchProgress progress={readout?.progress} reason={status.collectionBlockedReason}
-        ready={readout?.workQueueItems?.some(job=>job.phase==='ready' && (job.provider!=='genius' || (status.providerEnabled && status.providerConfigured)))??false} now={readout?.readAt??0} timezone={status.timezone} />
       {readout ? <ResearchActivity data={readout} status={status} adminFetch={adminFetch} /> : <Card headingLevel={2} title="Research activity"><p className="text-[13px] text-muted">Loading research queue…</p></Card>}
     </NotesLiveSummary>
     <NotesStorage adminFetch={adminFetch} timezone={status.timezone} />
@@ -659,6 +657,10 @@ export function ResearchActivity({ data, status, adminFetch }: { data: NotesRead
   };
   const genius = data.geniusQueue;
   return <Card headingLevel={2} title="Research activity">
+    <div className="mb-3 border-b border-border/60 pb-3">
+      <NotesResearchProgress progress={data.progress} reason={status.collectionBlockedReason}
+        ready={jobs.some(job=>job.phase==='ready' && (job.provider!=='genius' || (geniusEnabled && geniusConfigured)))} now={data.readAt??0} timezone={status.timezone} />
+    </div>
     <div className="divide-y divide-border/60">
       {[{ name: 'Controller Research', llm: false, help: 'Collects source information and finds connections. Genius requests share Subwave’s rolling allowance and yield to broadcast work.' },
         { name: 'LLM Research', llm: true, help: 'Turns collected material into Sparks and reviews flagged speech. It waits behind broadcast and interactive work.' }].map(section => {
