@@ -1,22 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { errorMessage, notify } from '../../lib/notify';
+import { useDynamicStyle } from '../../hooks/useDynamicStyle';
 import { Button } from '../ui/button';
-import { Checkbox } from '../ui/checkbox';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/skeleton';
-import { Card } from './ui';
+import { Card, MetaChip, Pill } from './ui';
 import { ColorChip } from './schedule/bits';
 import {
   GENERATED_SHOW_COLORS,
   GENERATED_SHOW_TEMPLATES,
+  generatedShowColor,
   generatedShowLabel,
 } from './schedule/lib';
-import { hydrateShow } from './shows/lib';
+import { hydrateShow, joinNames } from './shows/lib';
+import { ShowAvatar } from './shows/ShowAvatar';
 import type { SettingsResponse } from './shows/types';
 import {
   useGeneratedEpisodeHistoryQuery,
@@ -36,6 +38,7 @@ type PoolItem = { id: string; label: string };
 export default function TemplateShowsPanel() {
   const { adminFetch, needsAuth, hydrated } = useAdminAuth();
   const enabled = hydrated && !needsAuth;
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL as string | undefined) || '/api';
   const query = useSettingsQuery<SettingsResponse>({ adminFetch, enabled });
   const history = useGeneratedEpisodeHistoryQuery(adminFetch, enabled);
   const skillsQuery = useShowSkillsQuery(adminFetch, enabled);
@@ -155,7 +158,7 @@ export default function TemplateShowsPanel() {
         )}
       >
         {draft && (
-          <div className="grid gap-5 xl:grid-cols-3">
+          <div className="grid gap-0">
             <EligibilityPicker
               title="Random hosts"
               description="DJs available when a slot uses Random Host. Everyone is selected by default."
@@ -249,13 +252,14 @@ export default function TemplateShowsPanel() {
             description="A plan appears here after its scheduled Sub/Show has been prepared."
           />
         ) : (
-          <div className="divide-y divide-separator-soft">
+          <div className="grid gap-3 p-3">
             {history.data.slice(0, 12).map(episode => (
               <GeneratedEpisodeRow
                 key={episode.occurrence.id}
                 episode={episode}
                 personas={personas}
                 timezone={data.values?.timezone}
+                apiBase={apiBase}
               />
             ))}
           </div>
@@ -284,88 +288,140 @@ function EligibilityPicker({
   onNone: () => void;
   empty?: string;
 }) {
+  const descriptionId = `sub-shows-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-description`;
   return (
-    <fieldset className="grid min-w-0 content-start gap-2">
-      <legend className="text-[12px] font-semibold text-ink">{title}</legend>
-      <p className="min-h-8 text-[10px] leading-[1.5] text-muted">{description}</p>
-      <div className="flex gap-2 text-[10px]">
-        <button type="button" className="text-accent hover:underline" onClick={onAll}>Everyone</button>
-        <button type="button" className="text-muted hover:underline" onClick={onNone}>Clear</button>
+    <fieldset aria-describedby={descriptionId} className="grid min-w-0 gap-0 border-b border-separator-soft py-4 first:pt-0 last:border-0 last:pb-0">
+      <legend className="text-[11px] font-bold uppercase tracking-[0.22em] text-ink">{title}</legend>
+      <div className="mt-3 flex flex-wrap gap-2.5">
+        {items.length ? items.map(item => {
+          const isSelected = selected === null || selected.includes(item.id);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => onChange(item.id, !isSelected)}
+              className={`inline-flex min-h-10 cursor-pointer items-center gap-2.5 border px-3.5 py-2 text-[13px] transition-colors ${
+                isSelected
+                  ? 'border-ink bg-ink font-semibold text-bg'
+                  : 'border-separator-strong bg-transparent font-medium text-muted hover:border-ink hover:text-ink'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`size-[9px] shrink-0 border ${
+                  isSelected ? 'border-vermilion bg-vermilion' : 'border-ink/40 bg-transparent'
+                }`}
+              />
+              <span>{item.label}</span>
+            </button>
+          );
+        }) : <span className="py-2 text-[10px] text-muted">{empty}</span>}
       </div>
-      <div className="grid max-h-52 gap-1 overflow-y-auto rounded border border-separator-soft p-2">
-        {items.length ? items.map(item => (
-          <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[11px] text-ink hover:bg-panel-soft">
-            <Checkbox
-              checked={selected === null || selected.includes(item.id)}
-              onCheckedChange={value => onChange(item.id, value === true)}
-              aria-label={item.label}
-            />
-            <span className="truncate">{item.label}</span>
-          </label>
-        )) : <span className="py-2 text-[10px] text-muted">{empty}</span>}
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <p id={descriptionId} className="max-w-[78ch] text-[12px] leading-[1.6] text-muted">{description}</p>
+        <div className="flex shrink-0 gap-3 text-[10px]">
+          <button type="button" className="text-accent hover:underline" onClick={onAll}>Everyone</button>
+          <button type="button" className="text-muted hover:underline" onClick={onNone}>Clear</button>
+        </div>
       </div>
     </fieldset>
   );
 }
 
-function GeneratedEpisodeRow({ episode, personas, timezone }: {
+function GeneratedEpisodeRow({ episode, personas, timezone, apiBase }: {
   episode: GeneratedEpisodeHistory;
   personas: Persona[];
   timezone?: string;
+  apiBase: string;
 }) {
-  const host = personas.find(persona => persona.id === episode.hostPersonaId)?.name || 'Unknown DJ';
-  const guests = episode.guestPersonaIds
-    .map(id => personas.find(persona => persona.id === id)?.name || 'Unknown DJ');
+  const spineRef = useRef<HTMLSpanElement>(null);
+  useDynamicStyle(spineRef, { background: generatedShowColor(episode.template) });
+
+  const hostPersona = personas.find(persona => persona.id === episode.hostPersonaId) ?? null;
+  const guestPersonas = episode.guestPersonaIds
+    .map(id => personas.find(persona => persona.id === id) ?? null);
+  const host = hostPersona?.name?.trim() || 'Unknown DJ';
+  const guests = guestPersonas.map(persona => persona?.name?.trim() || 'Unknown DJ');
   const template = GENERATED_SHOW_TEMPLATES.find(item => item.id === episode.template)?.label || episode.template;
+  const startsAt = new Date(episode.occurrence.startsAt);
   const when = new Intl.DateTimeFormat(undefined, {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
     ...(timezone ? { timeZone: timezone } : {}),
-  }).format(new Date(episode.occurrence.startsAt));
+  }).format(startsAt);
   const plan = episode.plan;
-  const label = episode.status === 'failed'
-    ? 'Generation failed'
-    : episode.occurrence.startsAt > Date.now()
-      ? 'Upcoming'
-      : episode.occurrence.endsAt > Date.now()
-        ? 'In scheduled slot'
-        : 'Past slot';
 
   return (
-    <article className="grid gap-2 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-[12px] font-semibold text-ink">
-          {plan?.name || (episode.status === 'failed' ? 'Plan generation failed' : template)}
-        </span>
-        <span className="text-[10px] text-muted">{when} · {template}</span>
-        <span className={`ml-auto text-[9px] uppercase tracking-wide ${episode.status === 'ready' ? 'text-accent' : 'text-muted'}`}>
-          {label}
-        </span>
-      </div>
-      <p className="text-[10px] text-muted">{host}{guests.length ? ` with ${guests.join(', ')}` : ''}</p>
-      {plan ? (
-        <>
-          <p className="max-w-[90ch] text-[11px] leading-[1.55] text-ink">{plan.topic}</p>
-          <div className="flex flex-wrap gap-1">
-            {[...plan.genres, ...plan.moods, ...plan.energies].map((tag, index) => (
-              <span key={`${tag}-${index}`} className="rounded border border-separator-soft px-1.5 py-0.5 text-[9px] text-muted">{tag}</span>
-            ))}
-            {plan.eras.map((era, index) => (
-              <span key={`era-${index}`} className="rounded border border-separator-soft px-1.5 py-0.5 text-[9px] text-muted">
-                {era.fromYear ?? 'Earlier'}–{era.toYear ?? 'Now'}
-              </span>
-            ))}
-            <span className="rounded border border-separator-soft px-1.5 py-0.5 text-[9px] text-muted">
-              {plan.filtersStrict ? 'Strict filters' : 'Soft filters'}
-            </span>
-          </div>
-          {plan.rationale && (
-            <details className="text-[10px] text-muted">
-              <summary className="w-fit cursor-pointer hover:text-ink">Why these settings</summary>
-              <p className="mt-1 max-w-[90ch] leading-[1.5]">{plan.rationale}</p>
-            </details>
+    <article className="card group relative">
+      <span ref={spineRef} aria-hidden="true" className="absolute inset-y-0 left-0 w-1" />
+      <div className="card-body flex gap-3.5">
+        <div className="flex flex-none flex-col items-center">
+          <ShowAvatar persona={hostPersona} apiBase={apiBase} size="lg" />
+          {guestPersonas.length > 0 && (
+            <div className="mt-1 flex">
+              {guestPersonas.map((persona, index) => (
+                <ShowAvatar
+                  key={episode.guestPersonaIds[index]}
+                  persona={persona}
+                  apiBase={apiBase}
+                  size="sm"
+                  className={index > 0 ? '-ml-2 ring-2 ring-[var(--card-bg)]' : ''}
+                />
+              ))}
+            </div>
           )}
-        </>
-      ) : <p className="text-[10px] text-muted">{episode.reason || 'The plan has not been generated yet.'}</p>}
+        </div>
+
+        <div className="grid min-w-0 flex-1 gap-2.5">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                <Pill tone="solid" dot>Programme</Pill>
+                <Pill>{template}</Pill>
+              </div>
+              <div className="truncate text-[17px] font-extrabold tracking-[-0.01em] text-ink">
+                {plan?.name || (episode.status === 'failed' ? 'Plan generation failed' : template)}
+              </div>
+              <div className="mt-0.5 truncate text-[12px] text-muted">
+                host · <span className="font-semibold text-ink">{host}</span>
+                {guests.length > 0 && <> · with {joinNames(guests)}</>}
+              </div>
+            </div>
+
+            <div className="flex flex-none flex-col items-end gap-1.5 text-right">
+              <time dateTime={startsAt.toISOString()} className="text-[11px] font-semibold text-ink">{when}</time>
+              <Pill tone={episode.status === 'failed' ? 'accent' : 'ink'}>
+                {episode.status === 'failed' ? 'Generation failed' : 'Ready'}
+              </Pill>
+              <span className="caption uppercase">{episode.occurrence.source}</span>
+            </div>
+          </div>
+          {plan ? (
+            <>
+              <div className="flex flex-wrap gap-1">
+                {[...plan.moods, ...plan.genres, ...plan.energies].map((tag, index) => (
+                  <MetaChip key={`${tag}-${index}`}>{tag}</MetaChip>
+                ))}
+                {plan.eras.map((era, index) => (
+                  <MetaChip key={`era-${index}`}>
+                    {era.fromYear ?? 'Earlier'}–{era.toYear ?? 'Now'}
+                  </MetaChip>
+                ))}
+                <MetaChip accent={plan.filtersStrict}>
+                  {plan.filtersStrict ? 'Strict filters' : 'Soft filters'}
+                </MetaChip>
+              </div>
+              <p className="line-clamp-2 max-w-[90ch] text-[12px] leading-[1.55] text-muted italic">{plan.topic}</p>
+              {plan.rationale && (
+                <details className="text-[10px] text-muted">
+                  <summary className="w-fit cursor-pointer hover:text-ink">Why these settings</summary>
+                  <p className="mt-1 max-w-[90ch] leading-[1.5]">{plan.rationale}</p>
+                </details>
+              )}
+            </>
+          ) : <p className="text-[10px] text-muted">{episode.reason || 'The plan has not been generated yet.'}</p>}
+        </div>
+      </div>
     </article>
   );
 }
