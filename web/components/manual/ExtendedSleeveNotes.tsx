@@ -276,6 +276,13 @@ export default function ExtendedSleeveNotes() {
           Its details panel may therefore have little to show at first.
         </p>
         <p>
+          The map follows your selected theme while keeping its relationship colours
+          distinct. Click the <strong>Layout</strong>, <strong>Map controls</strong> or
+          <strong> Key</strong> heading to fold that group away and give the map more
+          room. Desktop choices are remembered in this browser. On a phone, these
+          groups start closed and open when you tap their heading.
+        </p>
+        <p>
           Artist, album and track links in the Overview&rsquo;s On Air and Next Up
           panels take you into the relevant library context. Where queue controls are
           available, you can queue music from your library as an operator action.
