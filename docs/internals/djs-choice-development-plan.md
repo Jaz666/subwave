@@ -1,11 +1,11 @@
 # DJ’s Choice development plan
 
 Prepared: 22 October 2026 (Europe/London).
-Status: implementation in progress. This plan remains the target; the current
-branch contains a first slice for generated-show settings, host-led planning,
-bounded coverage correction and occurrence persistence. Daily preparation,
-recent airing history, episode editing and permanent-copy workflow remain future
-phases.
+Status: implementation in progress. The current branch includes generated-show
+settings, host-led planning, bounded coverage correction, occurrence
+persistence, schedule variants and pre-air generation triggers. Episode
+history, prepared-episode editing and permanent-copy workflow remain future
+work.
 
 Product scope: [djs-choice.md](djs-choice.md).
 Source inspected: `feat/dj's-choice` at
@@ -128,19 +128,25 @@ broadcasting; repeat input reads do not produce repeat LLM calls.
 ## Phase 3 — prepare the upcoming lineup
 
 1. Add a daily preparation task using existing scheduling infrastructure and the
-   station timezone. Proposed default: morning; choose the time in configuration.
+   station timezone. The current default is 05:00 local time; expose a setting
+   later if operators need to change it.
 2. Enumerate upcoming occurrences far enough ahead to cover early next-day
    slots before selection look-ahead. Reuse the occurrence resolver; test DST
    gaps/repeated hours, midnight runs and contiguous multi-hour shows.
-3. Add startup catch-up and prompt preparation for late additions. Bound work
-   and concurrency, prioritising earliest starts. Only one job may prepare a
-   given occurrence/revision; explicit regeneration creates a new revision.
+3. Catch up on startup and start preparation promptly after schedule saves and
+   generated-show host/guest edits. The daily run, startup catch-up and these
+   schedule edits prepare scheduled occurrences in the next 48 hours; a
+   generated-show takeover prepares its own occurrence. Process scheduled
+   occurrences earliest first and coalesce concurrent requests for the same
+   occurrence. Explicit regeneration creates a new revision.
 4. Invalidate uncommitted work when bookings, cast or prompts change. Drop late
    results for cancelled/moved occurrences. A committed occurrence remains
    stable; late operator edits need an explicit outcome.
 5. Resolve fallback once when preparation cannot finish in time, and record what
    actually runs. A silent station or zero listeners must not prevent tomorrow’s
-   lineup being prepared; generation budgets still apply.
+   lineup being prepared. The 48-hour look-ahead with a daily run gives booked
+   shows about a day of preparation before the final handover and tease window;
+   schedule and cast edits start preparation immediately.
 
 Acceptance: daily task, startup catch-up and first-selection checks cannot race
 into different shows; an early slot is ready before its first pick; outages do

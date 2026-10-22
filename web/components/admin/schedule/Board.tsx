@@ -360,7 +360,7 @@ export default function Board({
           })}
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-separator-soft px-3 py-2">
-          <span className="eyebrow mr-1 flex-none text-ink">Template shows</span>
+          <span className="eyebrow mr-1 flex-none text-ink">Sub/Shows</span>
           {shows.filter(show => show.generation?.mode === 'generated').map(show => {
             const templateId = show.generation!.template;
             const label = generatedShowLabel(show, personas);
@@ -393,7 +393,7 @@ export default function Board({
                 )}
               >
                 <ColorChip color={generatedShowColor(templateId)} />
-                <span className="max-w-[32ch] overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] font-semibold text-ink">{label}</span>
+                <span className="max-w-[32ch] overflow-hidden text-[11.5px] font-semibold text-ellipsis whitespace-nowrap text-ink">{label}</span>
                 <Mu className="text-[8px]">{hoursOf(show.id)}h</Mu>
               </button>
             );

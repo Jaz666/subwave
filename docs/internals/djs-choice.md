@@ -151,12 +151,15 @@ usable fallback. The minimum X is configurable; no numeric default was agreed.
 
 ## Daily preparation and promotion
 
-A configurable daily preparation time, morning by default, was suggested.
-Use station-local dates and time, including daylight-saving changes. Prepare
-before incoming track selection begins, not merely before the displayed start.
-Slots added after the daily run should be prepared promptly. Scheduling across
-midnight must not leave early shows unprepared; the exact look-ahead horizon
-is an implementation decision.
+Generated shows are prepared before airtime so the DJ can tease the next show
+and hand over with its accepted title and brief. The controller prepares the
+next 48 hours at 05:00 station time and catches up on startup. Saving the weekly
+schedule or editing a generated show's host/guest settings also starts
+preparation for its upcoming occurrences in the next 48 hours. Accepted plans
+already on air remain fixed. Choosing a generated show
+for a takeover starts preparation for that takeover occurrence immediately.
+The normal on-air preparation path remains a final fallback. All timing uses
+the station timezone and must handle daylight-saving changes.
 
 An optional “Coming Up” DJ skill reads the remaining schedule for the day and
 its accepted episode titles, casts and briefs. It must not generate episodes or

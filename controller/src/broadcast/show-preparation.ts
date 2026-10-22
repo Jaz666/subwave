@@ -17,6 +17,7 @@ import {
   type AcceptedPreparation, type GeneratedShowRecord, type GeneratedShowPlan, type PreparationOccurrence,
   type PreparationRecord, type PreparationStatus, type PreparationTrack,
 } from '../schemas/show-preparation.js';
+import type { Show } from '../schemas/show.js';
 import { generateShowPlan, resolveGeneratedShowCast, scheduledShowsForHost, type ExistingScheduledShow, type GeneratedShowCast } from './show-generation.js';
 import { restoreGeneratedShows } from './generated-show-registry.js';
 
@@ -68,6 +69,7 @@ interface PreparationDeps {
   execute: (snapshot: PreparationSnapshot, context: SessionContext) => Promise<unknown>;
   source: (result: AcceptedPreparation, snapshot: PreparationSnapshot, context: SessionContext) => Promise<ArtistEpisodeSource | null>;
   generatedSnapshot?: (context: SessionContext) => GeneratedShowSnapshot | null;
+  scheduledGeneratedSnapshot?: (context: SessionContext) => GeneratedShowSnapshot | null;
   generate?: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan>;
   now?: () => number;
   changed?: () => void;
@@ -220,17 +222,20 @@ export function createShowPreparation(deps: PreparationDeps) {
     }
     return plan;
   };
-  async function prepareGenerated(snapshot: GeneratedShowSnapshot, context: SessionContext): Promise<GeneratedShowRecord | null> {
+  async function prepareGenerated(
+    snapshot: GeneratedShowSnapshot,
+    latestSnapshot: () => GeneratedShowSnapshot | null,
+  ): Promise<GeneratedShowRecord | null> {
     await recover();
     let record = generated.get(snapshot.occurrence.id);
-    if (record?.kind === 'ready' && record.configuration === snapshot.configuration) return record;
+    if (record?.kind === 'ready' && (record.configuration === snapshot.configuration || now() >= record.occurrence.startsAt)) return record;
     if (record?.kind === 'failed' && record.configuration === snapshot.configuration
       && (record.retryAt == null || record.retryAt > now())) return record;
     const attempts = record?.kind === 'failed' && record.configuration === snapshot.configuration
       ? record.attempts + 1
       : 1;
     const current = () => now() < snapshot.occurrence.endsAt
-      && deps.generatedSnapshot?.(context)?.configuration === snapshot.configuration;
+      && latestSnapshot()?.configuration === snapshot.configuration;
     try {
       const plan = await generateAcceptedPlan(snapshot);
       if (!current()) return null;
@@ -258,12 +263,22 @@ export function createShowPreparation(deps: PreparationDeps) {
       return record;
     }
   }
-  const ensureGenerated = ({ context }: { context: SessionContext }): Promise<GeneratedShowRecord | null> => {
-    const snapshot = deps.generatedSnapshot?.(context);
+  const ensureGenerated = ({ context, source = 'active' }: {
+    context: SessionContext;
+    source?: 'active' | 'scheduled';
+  }): Promise<GeneratedShowRecord | null> => {
+    const snapshotForContext = source === 'scheduled' ? deps.scheduledGeneratedSnapshot : deps.generatedSnapshot;
+    const snapshot = snapshotForContext?.(context);
     if (!snapshot) return Promise.resolve(null);
     const running = pendingGenerated.get(snapshot.occurrence.id);
-    if (running) return running;
-    const operation = prepareGenerated(snapshot, context).finally(() => pendingGenerated.delete(snapshot.occurrence.id));
+    if (running) return running.then(record => {
+      const latest = snapshotForContext?.(context);
+      return latest && latest.configuration !== snapshot.configuration
+        ? ensureGenerated({ context, source })
+        : record;
+    });
+    const operation = prepareGenerated(snapshot, () => snapshotForContext?.(context) ?? null)
+      .finally(() => pendingGenerated.delete(snapshot.occurrence.id));
     pendingGenerated.set(snapshot.occurrence.id, operation);
     return operation;
   };
@@ -313,10 +328,28 @@ function generatedSnapshot(context: SessionContext): GeneratedShowSnapshot | nul
   const active = settings.resolveActiveShow(at);
   if (!active) return null;
   const show = settings.get().shows?.find((item: any) => item.id === active.id);
-  const config = show?.generation;
-  if (!show || config?.mode !== 'generated') return null;
+  if (!show) return null;
   const occurrence = occurrenceFor(at, show.id);
-  if (!occurrence) return null;
+  return buildGeneratedSnapshot(show, occurrence);
+}
+
+function scheduledGeneratedSnapshot(context: SessionContext): GeneratedShowSnapshot | null {
+  const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
+  const station = settings.get();
+  const { dow, hour } = zonedParts(at);
+  const showId = station.schedule?.[dow]?.[hour];
+  if (!showId) return null;
+  const show = station.shows?.find((item: any) => item.id === showId);
+  const occurrence = resolveShowOccurrence({
+    at: at.getTime(), showId, schedule: station.schedule, override: null,
+    parts: ms => zonedParts(new Date(ms)),
+  });
+  return buildGeneratedSnapshot(show, occurrence);
+}
+
+function buildGeneratedSnapshot(show: Show | undefined, occurrence: PreparationOccurrence | null): GeneratedShowSnapshot | null {
+  const config = show?.generation;
+  if (!show || config?.mode !== 'generated' || !occurrence) return null;
   const personas = settings.get().personas ?? [];
   const cast = resolveGeneratedShowCast({ show, occurrence, personas });
   if (!cast) return null;
@@ -351,6 +384,7 @@ export const onPreparationChange = (listener: () => void) => { changed.add(liste
 export const showPreparation = createShowPreparation({
   file: `${config.stateDir}/show-preparations.json`, snapshot,
   generatedSnapshot,
+  scheduledGeneratedSnapshot,
   generate: generateShowPlan,
   execute: async (snap, context) => {
     const cap = loadedCapabilities().find(c => c.skill === snap.skill);
@@ -379,6 +413,52 @@ export const showPreparation = createShowPreparation({
   },
   changed: () => { for (const fn of changed) { try { fn(); } catch { /* observers cannot change the saved choice */ } } },
 });
+
+const SHOW_PREPARATION_HORIZON_MS = 48 * 60 * 60_000;
+
+/** Prepare scheduled generated shows in the next 48 hours, earliest airing first. */
+export async function prepareUpcomingGeneratedShows({ from = Date.now(), horizonMs = SHOW_PREPARATION_HORIZON_MS, showId }: {
+  from?: number;
+  horizonMs?: number;
+  showId?: string;
+} = {}): Promise<number> {
+  const until = from + horizonMs;
+  const station = settings.get();
+  const schedule = station.schedule;
+  const shows = new Map<string, Show>((station.shows ?? []).map((show: Show) => [show.id, show] as const));
+  const candidates = new Map<string, number>();
+
+  // Schedule slots are hourly, but minute stepping naturally handles the
+  // repeated or missing local hour at daylight-saving changes.
+  for (let at = from; at < until; at += 60_000) {
+    const parts = zonedParts(new Date(at));
+    if (at !== from && parts.minute !== 0) continue;
+    const id = schedule?.[parts.dow]?.[parts.hour];
+    const show = typeof id === 'string' ? shows.get(id) : null;
+    if (!show || (showId && id !== showId) || show.generation?.mode !== 'generated') continue;
+    const occurrence = resolveShowOccurrence({ at, showId: id, schedule, override: null, parts: ms => zonedParts(new Date(ms)) });
+    // Leave preparation time for the next airing; an already-airing show uses
+    // the normal on-air path and should not delay the incoming show's handover.
+    if (occurrence && occurrence.startsAt > from && !candidates.has(occurrence.id)) candidates.set(occurrence.id, at);
+  }
+
+  for (const [occurrenceId, at] of [...candidates].sort((a, b) => a[1] - b[1])) {
+    try {
+      await showPreparation.ensureGenerated({
+        context: { at: new Date(at).toISOString() } as SessionContext,
+        source: 'scheduled',
+      });
+    } catch (error) {
+      logEvent('show.generation', { stage: 'scheduled-preparation', occurrence: occurrenceId, error: errorMessage(error) });
+    }
+  }
+  return candidates.size;
+}
+
+/** Prepare the active scheduled or takeover occurrence at the supplied time. */
+export function prepareGeneratedShowAt(at: number): Promise<GeneratedShowRecord | null> {
+  return showPreparation.ensureGenerated({ context: { at: new Date(at).toISOString() } as SessionContext });
+}
 
 export function preparationSkillAt(context: SessionContext): string | null {
   const status = showPreparation.read({ context }).status;
