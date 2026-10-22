@@ -320,8 +320,8 @@ app.listen(config.server.port, async (err?: Error) => {
   // Open or resume the DJ session before the watcher dispatches track changes —
   // the queue and scheduler append turns into it.
   try {
-    const ctx = await getFullContext();
     await showPreparation.recover();
+    const ctx = await getFullContext();
     const s = await session.recover(ctx);
     console.log(`[session] ${s.id} (${s.kind}/${s.key})`);
   } catch (err) {

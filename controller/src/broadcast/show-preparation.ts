@@ -11,15 +11,29 @@ import { logEvent } from '../observability/events.js';
 import { resolveShowOccurrence } from './show-occurrence.js';
 import { getSession, rememberOpeningOccurrence, rememberEpisodeEditorial, type SessionContext } from './session.js';
 import { resolveArtistEpisodeSource, type ArtistEpisodeSource } from '../music/episode-source.js';
+import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import {
-  preparationResultSchema, preparationStoreSchema,
-  type AcceptedPreparation, type PreparationOccurrence, type PreparationRecord, type PreparationStatus, type PreparationTrack,
+  generatedShowPlanSchema, preparationResultSchema, preparationStoreSchema,
+  type AcceptedPreparation, type GeneratedShowRecord, type GeneratedShowPlan, type PreparationOccurrence,
+  type PreparationRecord, type PreparationStatus, type PreparationTrack,
 } from '../schemas/show-preparation.js';
+import { generateShowPlan, resolveGeneratedShowCast, type GeneratedShowCast } from './show-generation.js';
+import { restoreGeneratedShows } from './generated-show-registry.js';
 
 export interface PreparationSnapshot {
   occurrence: PreparationOccurrence;
   skill: string;
   configuration: string;
+}
+export interface GeneratedShowSnapshot {
+  occurrence: PreparationOccurrence;
+  configuration: string;
+  template: string;
+  planningPrompt: string;
+  minimumCoverage: number | null;
+  coverageCorrection?: string;
+  cast: GeneratedShowCast;
+  show: any;
 }
 export type { PreparationStatus } from '../schemas/show-preparation.js';
 export interface EpisodeView {
@@ -52,6 +66,8 @@ interface PreparationDeps {
   snapshot: (context: SessionContext) => PreparationSnapshot | null;
   execute: (snapshot: PreparationSnapshot, context: SessionContext) => Promise<unknown>;
   source: (result: AcceptedPreparation, snapshot: PreparationSnapshot, context: SessionContext) => Promise<ArtistEpisodeSource | null>;
+  generatedSnapshot?: (context: SessionContext) => GeneratedShowSnapshot | null;
+  generate?: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan>;
   now?: () => number;
   changed?: () => void;
 }
@@ -59,6 +75,7 @@ interface PreparationDeps {
 export function createShowPreparation(deps: PreparationDeps) {
   const now = deps.now ?? Date.now;
   let records = new Map<string, PreparationRecord>();
+  let generated = new Map<string, GeneratedShowRecord>();
   const views = new Map<string, EpisodeView>();
   const pending = new Map<string, Promise<EpisodeView>>();
   let writing: Promise<void> = Promise.resolve();
@@ -68,23 +85,30 @@ export function createShowPreparation(deps: PreparationDeps) {
       const raw: unknown = JSON.parse(await readFile(deps.file, 'utf8'));
       const stored = preparationStoreSchema.parse(raw);
       records = new Map(stored.records.filter(r => r.occurrence.endsAt + 600_000 > now()).map(r => [r.occurrence.id, r]));
+      generated = new Map(stored.generated.filter(r => r.occurrence.endsAt + 600_000 > now()).map(r => [r.occurrence.id, r]));
+      restoreGeneratedShows([...generated.values()]);
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) logEvent('show.preparation', { error: errorMessage(error), stage: 'recovery' });
     }
   })();
-  const save = async (record: PreparationRecord) => {
+  const persist = async (update: (nextRecords: Map<string, PreparationRecord>, nextGenerated: Map<string, GeneratedShowRecord>) => void) => {
     const operation = writing.catch(() => {}).then(async () => {
       const next = new Map([...records].filter(([, r]) => r.occurrence.endsAt + 600_000 > now()));
-      next.set(record.occurrence.id, record);
-      if (next.size > 256) throw new Error('Too many pending show preparation records');
+      const nextGenerated = new Map([...generated].filter(([, r]) => r.occurrence.endsAt + 600_000 > now()));
+      update(next, nextGenerated);
+      if (next.size > 256 || nextGenerated.size > 256) throw new Error('Too many pending show preparation records');
       await mkdir(dirname(deps.file), { recursive: true });
-      await writeFileAtomic(deps.file, JSON.stringify({ version: 1, records: [...next.values()] }));
+      await writeFileAtomic(deps.file, JSON.stringify({ version: 2, records: [...next.values()], generated: [...nextGenerated.values()] }));
       records = next;
+      generated = nextGenerated;
+      restoreGeneratedShows([...generated.values()]);
       for (const id of views.keys()) if (!next.has(id)) views.delete(id);
     });
     writing = operation;
     await operation;
   };
+  const save = (record: PreparationRecord) => persist((next) => { next.set(record.occurrence.id, record); });
+  const saveGenerated = (record: GeneratedShowRecord) => persist((_, next) => { next.set(record.occurrence.id, record); });
   const read = ({ context }: { context: SessionContext }): EpisodeView => {
     const snapshot = deps.snapshot(context);
     if (!snapshot) return ordinary();
@@ -171,6 +195,77 @@ export function createShowPreparation(deps: PreparationDeps) {
     pending.set(snapshot.occurrence.id, operation);
     return operation;
   };
+  const pendingGenerated = new Map<string, Promise<GeneratedShowRecord | null>>();
+  const generateAcceptedPlan = async (snapshot: GeneratedShowSnapshot): Promise<GeneratedShowPlan> => {
+    const generate = deps.generate ?? generateShowPlan;
+    const validateCoverage = async (plan: GeneratedShowPlan) => {
+      const diagnostic = await diagnoseShowCandidates({
+        ...snapshot.show, moods: plan.moods, genres: plan.genres, eras: plan.eras,
+        energies: plan.energies, filtersStrict: plan.filtersStrict,
+      }, { at: snapshot.occurrence.startsAt, showId: snapshot.occurrence.showId });
+      return { count: diagnostic.library.effective, warnings: diagnostic.warnings };
+    };
+    let plan = generatedShowPlanSchema.parse(await generate(snapshot));
+    if (snapshot.minimumCoverage == null) return plan;
+    let coverage = await validateCoverage(plan);
+    if (coverage.count >= snapshot.minimumCoverage) return plan;
+    plan = generatedShowPlanSchema.parse(await generate({
+      ...snapshot,
+      coverageCorrection: `The previous settings leave ${coverage.count} unique eligible tracks, below the required ${snapshot.minimumCoverage}. Broaden or simplify the music settings and try again. Diagnostic: ${coverage.warnings.join(' ')}`,
+    }));
+    coverage = await validateCoverage(plan);
+    if (coverage.count < snapshot.minimumCoverage) {
+      throw new Error(`Generated settings cover ${coverage.count} unique eligible tracks; ${snapshot.minimumCoverage} are required`);
+    }
+    return plan;
+  };
+  async function prepareGenerated(snapshot: GeneratedShowSnapshot, context: SessionContext): Promise<GeneratedShowRecord | null> {
+    await recover();
+    let record = generated.get(snapshot.occurrence.id);
+    if (record?.kind === 'ready' && record.configuration === snapshot.configuration) return record;
+    if (record?.kind === 'failed' && record.configuration === snapshot.configuration
+      && (record.retryAt == null || record.retryAt > now())) return record;
+    const attempts = record?.kind === 'failed' && record.configuration === snapshot.configuration
+      ? record.attempts + 1
+      : 1;
+    const current = () => now() < snapshot.occurrence.endsAt
+      && deps.generatedSnapshot?.(context)?.configuration === snapshot.configuration;
+    try {
+      const plan = await generateAcceptedPlan(snapshot);
+      if (!current()) return null;
+      record = {
+        kind: 'ready', occurrence: snapshot.occurrence, configuration: snapshot.configuration,
+        template: snapshot.template, hostPersonaId: snapshot.cast.hostPersonaId,
+        guestPersonaIds: snapshot.cast.guestPersonaIds, plan, generatedAt: now(),
+      };
+      await saveGenerated(record);
+      logEvent('show.generation', { show: snapshot.occurrence.showId, occurrence: snapshot.occurrence.id, template: snapshot.template, title: plan.name });
+      deps.changed?.();
+      return record;
+    } catch (error) {
+      if (!current()) return null;
+      const reason = errorMessage(error).slice(0, 500);
+      record = {
+        kind: 'failed', occurrence: snapshot.occurrence, configuration: snapshot.configuration,
+        template: snapshot.template, hostPersonaId: snapshot.cast.hostPersonaId,
+        guestPersonaIds: snapshot.cast.guestPersonaIds, reason, attempts,
+        retryAt: attempts < 2 ? now() + 60_000 : null,
+      };
+      await saveGenerated(record);
+      logEvent('show.generation', { show: snapshot.occurrence.showId, occurrence: snapshot.occurrence.id, template: snapshot.template, reason });
+      deps.changed?.();
+      return record;
+    }
+  }
+  const ensureGenerated = ({ context }: { context: SessionContext }): Promise<GeneratedShowRecord | null> => {
+    const snapshot = deps.generatedSnapshot?.(context);
+    if (!snapshot) return Promise.resolve(null);
+    const running = pendingGenerated.get(snapshot.occurrence.id);
+    if (running) return running;
+    const operation = prepareGenerated(snapshot, context).finally(() => pendingGenerated.delete(snapshot.occurrence.id));
+    pendingGenerated.set(snapshot.occurrence.id, operation);
+    return operation;
+  };
   const retry = async ({ context }: { context: SessionContext }) => {
     await recover();
     const snapshot = deps.snapshot(context);
@@ -182,34 +277,78 @@ export function createShowPreparation(deps: PreparationDeps) {
     return ensure({ context });
   };
   const occurrence = ({ context }: { context: SessionContext }) => deps.snapshot(context)?.occurrence ?? null;
-  return { recover, read, ensure, retry, occurrence };
+  return { recover, read, ensure, retry, occurrence, ensureGenerated };
 }
 
 const occurrenceCache: Array<{ key: string; occurrence: PreparationOccurrence }> = [];
-function snapshot(context: SessionContext): PreparationSnapshot | null {
-  const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
-  const show = settings.resolveActiveShow(at);
-  if (!show) return null;
+function occurrenceFor(at: Date, showId: string): PreparationOccurrence | null {
   const ov = settings.getScheduleOverride(at.getTime());
   const scheduleKey = JSON.stringify([settings.get().schedule, settings.get().timezone, ov]);
-  let occurrence: PreparationOccurrence | null | undefined = occurrenceCache.find(entry => entry.key === scheduleKey && entry.occurrence.showId === show.id && at.getTime() >= entry.occurrence.startsAt && at.getTime() < entry.occurrence.endsAt)?.occurrence;
-  occurrence ??= resolveShowOccurrence({ at: at.getTime(), showId: show.id, schedule: settings.get().schedule,
+  let occurrence: PreparationOccurrence | null | undefined = occurrenceCache.find(entry => entry.key === scheduleKey && entry.occurrence.showId === showId && at.getTime() >= entry.occurrence.startsAt && at.getTime() < entry.occurrence.endsAt)?.occurrence;
+  occurrence ??= resolveShowOccurrence({ at: at.getTime(), showId, schedule: settings.get().schedule,
     override: ov ? { showId: takeoverShowId(ov), startedAt: ov.startedAt, expiresAt: ov.expiresAt } : null,
     parts: ms => zonedParts(new Date(ms)) });
   if (!occurrence) return null;
   occurrenceCache.push({ key: scheduleKey, occurrence });
   if (occurrenceCache.length > 16) occurrenceCache.shift();
+  return occurrence;
+}
+
+function snapshot(context: SessionContext): PreparationSnapshot | null {
+  const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
+  const show = settings.resolveActiveShow(at);
+  if (!show) return null;
+  const occurrence = occurrenceFor(at, show.id);
+  if (!occurrence) return null;
   const host = settings.getEffectivePersona(at);
   const cap = loadedCapabilities().find(c => c.skill === show.preparationSkill);
   const enabled = settings.get().skills?.enabled ?? {};
   return { occurrence, skill: show.preparationSkill || '',
     configuration: JSON.stringify([show.preparationSkill, enabled[show.preparationSkill], host?.id, host?.skills, !!cap?.toolFn, capabilityReady(cap), cap?.config]) };
 }
+
+function generatedSnapshot(context: SessionContext): GeneratedShowSnapshot | null {
+  const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
+  const active = settings.resolveActiveShow(at);
+  if (!active) return null;
+  const show = settings.get().shows?.find((item: any) => item.id === active.id);
+  const config = show?.generation;
+  if (!show || config?.mode !== 'generated') return null;
+  const occurrence = occurrenceFor(at, show.id);
+  if (!occurrence) return null;
+  const personas = settings.get().personas ?? [];
+  const cast = resolveGeneratedShowCast({ show, occurrence, personas });
+  if (!cast) return null;
+  const personaInput = [cast.hostPersonaId, ...cast.guestPersonaIds].map(id => {
+    const persona = personas.find((item: any) => item.id === id);
+    return persona ? [persona.id, persona.name, persona.soul, persona.musicLean] : [id, null];
+  });
+  const configuration = JSON.stringify([
+    config, cast, personaInput, settings.get().timezone, settings.get().locale, settings.moodVocab(),
+    show.playlistIds, show.playlistStrict, show.excludedPlaylistIds,
+    show.maxTrackSeconds, show.minTrackLengthSeconds,
+    show.vocals,
+  ]);
+  return {
+    occurrence, configuration, template: config.template,
+    planningPrompt: config.planningPrompt, minimumCoverage: config.minimumCoverage, cast,
+    show: {
+      id: show.id, name: show.name, topic: show.topic,
+      playlistIds: show.playlistIds, playlistStrict: show.playlistStrict,
+      excludedPlaylistIds: show.excludedPlaylistIds,
+      maxTrackSeconds: show.maxTrackSeconds,
+      minTrackLengthSeconds: show.minTrackLengthSeconds,
+      vocals: show.vocals,
+    },
+  };
+}
 const changed = new Set<() => void>();
 export const onPreparationChange = (listener: () => void) => { changed.add(listener); };
 
 export const showPreparation = createShowPreparation({
   file: `${config.stateDir}/show-preparations.json`, snapshot,
+  generatedSnapshot,
+  generate: generateShowPlan,
   execute: async (snap, context) => {
     const cap = loadedCapabilities().find(c => c.skill === snap.skill);
     if (!cap || typeof cap.toolFn !== 'function') throw new Error('The preparation skill has no loaded data tool');
@@ -251,13 +390,24 @@ export function preparationIdentity(context: SessionContext): string {
 export async function prepareEpisodeContext(context: SessionContext): Promise<SessionContext> {
   try {
     const view = await showPreparation.ensure({ context });
+    await showPreparation.ensureGenerated({ context });
     const occurrence = showPreparation.occurrence({ context });
     const owner = getSession();
     if (owner && (!owner.episodeOccurrenceId || (owner.programme && !owner.programme.preparationOccurrence))) {
       const opening = showPreparation.occurrence({ context: { ...context, at: owner.ctxAt ?? owner.startedAt } });
       if (opening && opening.showId === owner.show?.id) rememberOpeningOccurrence({ id: opening.id, endsAt: opening.endsAt });
     }
-    const prepared = { ...context, episodeEditorial: view.editorial, episodeOccurrenceId: occurrence?.id ?? null };
+    const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
+    const activeShow = settings.resolveActiveShow(at);
+    const dominantMood = activeShow?.moods?.[0]
+      || context.festival?.mood || context.weather?.mood || context.time?.mood || context.dominantMood;
+    const prepared = {
+      ...context,
+      ...(context.activeShow !== undefined ? { activeShow } : {}),
+      dominantMood,
+      episodeEditorial: view.editorial,
+      episodeOccurrenceId: occurrence?.id ?? null,
+    };
     const live = showPreparation.occurrence({ context: { ...context, at: new Date(Date.now()).toISOString() } });
     if (occurrence?.id === live?.id) rememberEpisodeEditorial(prepared);
     return prepared;
