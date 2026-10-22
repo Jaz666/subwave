@@ -19,11 +19,17 @@ ordinary show.
 ## Agreed direction
 
 - DJ’s Choice is a distinct show type available to drag into a free schedule slot.
-- DJ’s Choice is the open-ended, “anything goes” option, guided by the host’s
-  identity and taste within station restrictions and available music.
-- Auto DJ templates supply a specific editorial direction using the same
-  generation process. Deep Discovery and Forgotten Favourites were explicit
-  examples; the additional templates below remain suggestions.
+- DJ’s Choice is the open-ended catch-all, guided by the host’s identity and
+  taste within station restrictions and available music. Existing shows should
+  gently steer its editorial angle, without becoming hard exclusions. Its
+  genre palette should include a few familiar choices plus related genres the
+  DJ plays less often, up to the 15-genre show limit.
+- Deep Discovery uses the host’s Soul and optional Musical Leanings to shape the
+  show idea, then deliberately favors less-represented library genres in its
+  music settings when they fit and have enough playable coverage.
+- Forgotten Favourites is deferred. It needs listening history to influence
+  track selection before the station can make credible claims about what was
+  previously popular or loved.
 - A custom, editable LLM planning prompt generates the normal show settings.
 - Preparation happens ahead of airtime, at a suitable point in the day, and
   generates a show name as well as its configuration.
@@ -32,9 +38,12 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-“Fresh” means a specific premise that is clearly distinct from the host’s other
-regularly scheduled shows. It does not guarantee a never-repeated combination
-or a disjoint track list.
+For DJ’s Choice, “fresh” means a specific premise that naturally offers some
+variety from the host’s other regularly scheduled shows. Existing shows help
+identify familiar genres and angles; they are not forbidden subjects or genres.
+The music palette can keep some recognizable favourites while reaching into
+related genres. It does not guarantee a never-repeated combination or a disjoint
+track list.
 
 ## Generated episode
 
@@ -75,14 +84,16 @@ Preparation inputs should include the selected host’s Soul and Musical
 Leanings, the names, briefs and music settings of their other regularly
 scheduled shows, guest identities, slot duration and station-local time, template
 instructions, bounded library coverage, and summaries of recent episodes.
-Existing shows are contrast references: the planner should find a new editorial
-angle rather than turning the host’s usual programme into a renamed episode.
-The brief and name come before music tags, which should follow from the idea
-without forcing unrelated genres for the sake of difference. The host supplies
-the main point of view; Musical Leanings are
-inspiration, not a genre limit. Guest influence is secondary. Recent choices
-by this host and other hosts can encourage variety without forcing unsuitable
-music.
+Existing shows are soft context: DJ’s Choice should vary its editorial angle,
+but their topics and genres are not hard exclusions. Its palette can retain a
+few of the host’s familiar genres and add related choices from the wider library
+up to the 15-genre limit. The brief and name come before music tags, which
+should follow from the idea without forcing unrelated genres. Deep Discovery
+uses the same host-led concept step, then favors lower-count library genres
+that fit the brief and have enough playable coverage. The host supplies the
+main point of view; Musical Leanings are inspiration, not a genre limit. Guest
+influence is secondary. Recent choices by this host and other hosts can
+encourage variety without forcing unsuitable music.
 
 The planner chooses an editorial configuration, not a complete fixed playlist.
 Normal track selection and broadcast controls remain responsible for playback.
@@ -105,9 +116,9 @@ suggested default rather than a strict promise when the roster is small.
 
 | Template | Direction | Status |
 | --- | --- | --- |
-| DJ’s Choice | Host chooses freely within station constraints | Agreed |
-| Auto DJ – Deep Discovery | Connect smaller genres with enough playable tracks | Agreed example |
-| Auto DJ – Forgotten Favourites | Revisit formerly popular music absent from recent airplay | Agreed example; favourite signal needs definition |
+| DJ’s Choice | Catch-all led by the host, with a gentle preference for variety from their existing shows | Active |
+| Auto DJ – Deep Discovery | Start from the host’s taste, then favor less-represented library genres with playable coverage | Active |
+| Auto DJ – Forgotten Favourites | Revisit music based on listening history that can also shape track selection | Deferred until that evidence is available |
 | Auto DJ – Hidden Gems | Explore tracks with little or no airplay | Suggested |
 | Auto DJ – Fresh Arrivals | Explore recent additions with familiar connections | Suggested |
 | Auto DJ – Across the Decades | Follow a musical thread across eras | Suggested |
@@ -120,10 +131,12 @@ extension. Choose the initial shipped set during implementation planning.
 
 ### Deep Discovery and playable coverage
 
-Subwave already exposes genre track counts. Give the DJ those counts and ask
-it to choose a coherent mixture near the lower end whose combined pool exceeds
-an operator-set minimum X. Smaller library genres and neglected airplay are
-different signals: the first uses catalogue counts, the second needs history.
+Subwave already exposes genre track counts. For Deep Discovery, offer a
+shortlist from the lower-count end of the supplied genres and ask the LLM to
+prefer suitable genres from it while keeping the show tied to the host’s Soul
+and Musical Leanings. The shortlist is a discovery cue, not a demand to choose
+an unrelated genre. Smaller library genres and neglected airplay are different
+signals: the first uses catalogue counts, the second needs history.
 
 Do not add genre counts blindly. Count unique eligible recordings using the
 actual show-filter semantics after generated eras, moods, energy and strictness
