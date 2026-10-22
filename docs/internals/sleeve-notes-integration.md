@@ -407,3 +407,12 @@ candidate, rebuild controller and web, and observe first collection, ordinary
 links/manual Banter, host changes, saved-data reads while disabled, optional Genius,
 and review queue recovery. Previous rollback source remains 963bf785 with its saved
 experimental database. Keep this operational record out of the upstream PR.
+
+Station handoff correction: the operator backed up/reset research and rebuilt on
+22 October, but the integration checkout still pointed at 963bf785. Read-only
+inspection confirmed healthy on-air containers running schema 61 without the new
+promise tracker or schema.sql, and the old build had recreated sleeve-notes.db.
+The station source has now fast-forwarded to candidate 96dadf40. Containers were
+not stopped/rebuilt and no research files were moved by the agent. A second
+controller-stopped sidecar move and controller/web rebuild is required before
+schema-1 acceptance can begin. The station's earlier backup remains its rollback.
