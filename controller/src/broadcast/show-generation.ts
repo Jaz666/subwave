@@ -163,7 +163,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     kind: 'generateShowPlan',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template },
   });
-  const plan = out.value as GeneratedShowPlan;
+  const plan = out as GeneratedShowPlan;
   return {
     ...plan,
     genres: [...new Set(plan.genres.map(genre => genreByKey.get(normGenre(genre))!).filter(Boolean))],
