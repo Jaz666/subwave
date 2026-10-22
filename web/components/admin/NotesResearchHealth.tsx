@@ -40,15 +40,17 @@ export function NotesResearchProgress({
   ready,
   now,
   timezone,
+  tooltip = false,
 }: {
   progress?: ResearchProgress;
   reason: string | null;
   ready: boolean;
   now: number;
   timezone?: string;
+  tooltip?: boolean;
 }) {
   return (
-    <div className="space-y-1 text-xs text-muted">
+    <div className={`space-y-1 text-xs ${tooltip ? 'text-inherit' : 'text-muted'}`}>
       <p>
         {reason
           ? (RESEARCH_PAUSE_LABELS[reason] ?? 'Research is waiting.')
@@ -71,7 +73,7 @@ export function NotesResearchProgress({
             </p>
           )}
           {researchLooksStalled(progress, reason, ready, now) && (
-            <p role="status" className="text-ink">
+            <p role="status" className={tooltip ? 'font-semibold' : 'text-ink'}>
               No research progress for over six hours while work is waiting. Check Show queue and
               the controller log.
             </p>
