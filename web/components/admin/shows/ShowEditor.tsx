@@ -12,7 +12,6 @@ import { useId, useMemo, useState } from 'react';
 import { useController, type Control, type FieldErrors, type UseFormTrigger } from 'react-hook-form';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
-import { Switch } from '../../ui/switch';
 import { Field, FieldTitle, FieldDescription, FieldError } from '../../ui/field';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup } from '../../ui/select';
 import { Btn, Eyebrow } from '../ui';
@@ -25,7 +24,6 @@ import { GuestPersonaPicker, ThemePicker, PlaylistPicker } from './ShowPickers';
 import { cn } from '../../../lib/cn';
 import { fieldAria } from '@/lib/form';
 import { SelectField, SwitchField, TextField, TextareaField, ToggleGroupField } from '@/lib/form-fields';
-import type { ShowGenerationConfig } from '@/lib/schemas.generated';
 import {
   ANY_SENTINEL,
   INHERIT_SENTINEL,
@@ -64,7 +62,6 @@ const FIELD_LABELS: Record<string, string> = {
   fadeAtShowEnd: 'fade at show end',
   segmentSkill: 'feature skill',
   preparationSkill: 'episode preparation skill',
-  generation: 'generated show',
   playlistIds: 'playlists',
   excludedPlaylistIds: 'excluded playlists',
 };
@@ -186,7 +183,6 @@ export function ShowEditor({
   const minTrackLengthSecondsCtl = useController({ control, name: path('minTrackLengthSeconds') });
   const fadeAtShowEndCtl = useController({ control, name: path('fadeAtShowEnd') });
   const tagsCtl = useController({ control, name: path('tags') });
-  const generationCtl = useController({ control, name: path('generation') });
 
   const candidateKey = JSON.stringify(showPayload(show));
   const [candidateBusy, setCandidateBusy] = useState(false);
@@ -260,22 +256,6 @@ export function ShowEditor({
   const scopedRuleCount = (blocklistQuery.data || []).filter(rule => rule.showIds?.includes(show.id)).length;
 
   const guestIds: string[] = guestsCtl.field.value ?? [];
-  const generation: ShowGenerationConfig = generationCtl.field.value ?? {
-    mode: 'fixed',
-    template: 'dj-choice',
-    planningPrompt: '',
-    hostMode: 'fixed',
-    eligibleHostPersonaIds: [],
-    guestMode: 'fixed',
-    eligibleGuestPersonaIds: [],
-    guestCount: { min: 0, max: 0 },
-    minimumCoverage: null,
-  };
-  const isGenerated = generation.mode === 'generated';
-  const setGeneration = (patch: Partial<ShowGenerationConfig>) =>
-    generationCtl.field.onChange({ ...generation, ...patch });
-  const setGuestCount = (patch: Partial<ShowGenerationConfig['guestCount']>) =>
-    setGeneration({ guestCount: { ...generation.guestCount, ...patch } });
   const eras: EraWindow[] = erasCtl.field.value ?? [];
   // Windows matching no decade preset. The decade row caps on what IT has
   // selected, so hand it the REMAINING budget or the schema refuses a save the
@@ -383,7 +363,7 @@ export function ShowEditor({
               <TextField
                 control={control}
                 name={path('name')}
-                label={isGenerated ? 'fallback show name' : 'show name'}
+                label="show name"
                 placeholder="e.g. The Late Shift"
                 maxLength={NAME_MAX}
               />
@@ -489,174 +469,15 @@ export function ShowEditor({
           <TextareaField
             control={control}
             name={path('topic')}
-            label={isGenerated ? 'Fallback show brief' : 'Show brief'}
+            label="Show brief"
             rows={5}
             placeholder="e.g. Slow ambient, modern classical and downtempo for the late shift. Think Nils Frahm, Hammock, Bonobo's quieter side, nothing with a hard beat. Keep the host calm and unhurried, like a friend talking you down at 1am."
-            description={isGenerated
-              ? 'Used for song picks and spoken links if episode planning fails. A successful plan writes a fresh brief from the selected host’s Soul and optional Musical Leanings.'
-              : 'Describe the music, the listener and how the host should sound. The DJ uses this brief for song picks and spoken links.'}
+            description="Describe the music, the listener and how the host should sound. The DJ uses this brief for song picks and spoken links."
             maxLength={TOPIC_MAX}
           />
           <span className="field-hint -mt-2">
             {show.topic.trim().length}/{TOPIC_MAX}
           </span>
-
-          <Field orientation="horizontal" data-invalid={generationCtl.fieldState.invalid || undefined}>
-            <Switch
-              id={`${uid}-generated-show`}
-              checked={isGenerated}
-              onCheckedChange={checked => setGeneration({ mode: checked ? 'generated' : 'fixed' })}
-              aria-describedby={`${uid}-generated-show-description`}
-              disabled={busy}
-            />
-            <div className="grid gap-1">
-              <Label htmlFor={`${uid}-generated-show`}>Generate each episode</Label>
-              <FieldDescription id={`${uid}-generated-show-description`}>
-                At each airing, the host’s Soul and optional Musical Leanings shape a fresh brief first, then a name and music settings.
-              </FieldDescription>
-            </div>
-          </Field>
-
-          {isGenerated && (
-            <div className="grid gap-5 border-t border-separator-strong pt-5">
-              <p className="max-w-[72ch] text-xs leading-relaxed text-muted">
-                Each airing gets a generated brief, name, moods, genres, eras and energies. The saved name, brief and
-                Music settings are the fallback if planning fails. Show tags above stay as filing labels.
-              </p>
-
-              <SelectField
-                control={control}
-                name={`${path('generation')}.template` as `shows.${number}.generation.template`}
-                label="show template"
-                options={[
-                  { value: 'dj-choice', label: "DJ's choice" },
-                  { value: 'deep-discovery', label: 'Deep discovery' },
-                  { value: 'forgotten-favourites', label: 'Forgotten favourites' },
-                ]}
-                description="A starting direction for the host, not a fixed playlist or track-history claim."
-              />
-
-              <TextareaField
-                control={control}
-                name={`${path('generation')}.planningPrompt` as `shows.${number}.generation.planningPrompt`}
-                label="Additional planning direction"
-                rows={3}
-                placeholder="Optional notes for this show's recurring episodes"
-                maxLength={TOPIC_MAX}
-                description="The host's taste remains the main influence."
-              />
-
-              <div className="grid items-start gap-6 xl:grid-cols-2">
-                <div className="grid content-start gap-3">
-                  <SelectField
-                    control={control}
-                    name={`${path('generation')}.hostMode` as `shows.${number}.generation.hostMode`}
-                    label="host selection"
-                    options={[
-                      { value: 'fixed', label: `Always ${personas.find(p => p.id === show.personaId)?.name || 'selected host'}` },
-                      { value: 'random', label: 'Choose from an eligible roster' },
-                    ]}
-                    description={generation.hostMode === 'fixed'
-                      ? 'Uses the host selected above.'
-                      : 'A host is chosen consistently for each scheduled airing from the roster below.'}
-                  />
-                  {generation.hostMode === 'random' && (
-                    <Field>
-                      <FieldTitle>eligible hosts</FieldTitle>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {personas.map(persona => (
-                          <label key={persona.id} className="flex min-h-10 items-center gap-2 border border-separator-strong px-3 py-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={generation.eligibleHostPersonaIds.includes(persona.id)}
-                              onChange={event => setGeneration({
-                                eligibleHostPersonaIds: event.target.checked
-                                  ? [...generation.eligibleHostPersonaIds, persona.id]
-                                  : generation.eligibleHostPersonaIds.filter(id => id !== persona.id),
-                              })}
-                            />
-                            <span>{persona.name?.trim() || 'Unnamed'}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <FieldDescription>Choose one or more hosts whose Soul should lead the episode.</FieldDescription>
-                      <FieldError errors={generationCtl.fieldState.error ? [generationCtl.fieldState.error] : undefined} />
-                    </Field>
-                  )}
-                </div>
-
-                <div className="grid content-start gap-3">
-                  <SelectField
-                    control={control}
-                    name={`${path('generation')}.guestMode` as `shows.${number}.generation.guestMode`}
-                    label="guest selection"
-                    options={[
-                      { value: 'none', label: 'No guests' },
-                      { value: 'fixed', label: 'Use selected guests' },
-                      { value: 'random', label: 'Choose from an eligible roster' },
-                    ]}
-                    description="Guests add a secondary influence to the host's musical direction."
-                  />
-                  {generation.guestMode === 'random' && (
-                    <>
-                      <Field>
-                        <FieldTitle>eligible guests</FieldTitle>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {personas.filter(persona => generation.hostMode !== 'fixed' || persona.id !== show.personaId).map(persona => (
-                            <label key={persona.id} className="flex min-h-10 items-center gap-2 border border-separator-strong px-3 py-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={generation.eligibleGuestPersonaIds.includes(persona.id)}
-                                onChange={event => setGeneration({
-                                  eligibleGuestPersonaIds: event.target.checked
-                                    ? [...generation.eligibleGuestPersonaIds, persona.id]
-                                    : generation.eligibleGuestPersonaIds.filter(id => id !== persona.id),
-                                })}
-                              />
-                              <span>{persona.name?.trim() || 'Unnamed'}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <FieldDescription>Guests matching the chosen host are skipped automatically.</FieldDescription>
-                        <FieldError errors={generationCtl.fieldState.error ? [generationCtl.fieldState.error] : undefined} />
-                      </Field>
-                      <div className="grid grid-cols-2 gap-3">
-                        {(['min', 'max'] as const).map(bound => (
-                          <Field key={bound}>
-                            <Label htmlFor={`${uid}-guest-count-${bound}`}>{bound === 'min' ? 'minimum guests' : 'maximum guests'}</Label>
-                            <Input
-                              id={`${uid}-guest-count-${bound}`}
-                              type="number"
-                              min={0}
-                              max={GUESTS_MAX}
-                              value={generation.guestCount[bound]}
-                              onChange={event => setGuestCount({ [bound]: Math.max(0, Math.min(GUESTS_MAX, Number(event.target.value) || 0)) })}
-                            />
-                          </Field>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {generation.guestMode === 'fixed' && (
-                    <p className="text-xs leading-relaxed text-muted">Uses the guest co-hosts selected above.</p>
-                  )}
-                </div>
-              </div>
-
-              <Field>
-                <Label htmlFor={`${uid}-minimum-coverage`}>minimum eligible tracks (optional)</Label>
-                <Input
-                  id={`${uid}-minimum-coverage`}
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={generation.minimumCoverage ?? ''}
-                  onChange={event => setGeneration({ minimumCoverage: event.target.value === '' ? null : Math.max(0, Number(event.target.value) || 0) })}
-                />
-                <FieldDescription>When set, the planner revises the music settings once if they leave too few eligible tracks.</FieldDescription>
-              </Field>
-            </div>
-          )}
 
           <div className="grid items-start gap-6 xl:grid-cols-2">
             <ShowPreparationField
@@ -724,9 +545,7 @@ export function ShowEditor({
         <ShowEditorSection
           section="music"
           title="Music"
-          description={isGenerated
-            ? 'Fallback moods, genres, eras and energy used if episode planning fails; successful plans choose these for each airing.'
-            : 'Set the sound with broad leans or strict filters.'}
+          description="Set the sound with broad leans or strict filters."
         >
           <div className="grid items-start gap-6 xl:grid-cols-2">
             <div className="grid gap-5">
