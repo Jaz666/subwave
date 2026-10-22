@@ -110,6 +110,15 @@ test('MB-free traversal uses the library artist name and reuses provider spellin
  assert.equal(knownGeniusSongId({id:'different',title:'Song 99002',artist:'Run.DMC'}),null);
 });
 
+test('repeated long sample branches reuse one artist rather than one artist per song',()=>{
+ db.prepare("DELETE FROM sleeve_connection_library_artists WHERE local_artist_id<>'known'").run();
+ const root=save('88000',Array.from({length:45},(_,i)=>relationship(String(88001+i))));
+ while(!expandGeniusSamples(root.id)) { /* bounded turns exercise the durable cursor */ }
+ const artists=db.prepare(`SELECT COUNT(DISTINCT r.artist_id) n FROM sleeve_genius_traversal t
+  JOIN sleeve_recordings r ON r.id=t.recording_id WHERE CAST(t.song_id AS INTEGER) BETWEEN 88000 AND 88045`).get() as {n:number};
+ assert.equal(artists.n,1);
+});
+
 test('expansion resumes from the durable cursor after database reopen', () => {
   const recording = save('5000', Array.from({ length: 25 }, (_, i) => relationship(String(5001 + i))));
   assert.equal(expandGeniusSamples(recording.id), false);

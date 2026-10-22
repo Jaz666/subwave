@@ -910,3 +910,20 @@ operator override; automatic Banter budgets log a scheduler skip and return no
 spoken text. Disabling Sleeve Notes before/during speech generation releases its
 reservation before rejection. Cached admin views have an explicit GET allowlist;
 provider previews, research and all writes remain gated while disabled.
+
+
+Public schema 2 adds indexes to the existing public schema 1 in a transaction; no
+research reset is needed. Provisional Genius recordings share an unambiguous
+library artist. The quiet-time catalogue worker checks at most five duplicate names
+every five minutes, relocating only provisional Genius children with no direct
+artist research. Recording ids, source evidence and operator artist-level work are
+retained. Distinct canonical artist identities and ambiguous library names are
+never folded together. Empty historical artist rows are retained for references.
+
+Overview explains the same pause reason used by the worker gate and displays
+indexed source/research progress and the next scheduled retry. A six-hour absence
+of progress with ready work is a visible diagnostic, not an automatic restart or
+operator alarm. Storage inspection is an explicit action in the read-only child
+process, without polling or source API requests. It reports file/WAL/reusable space,
+retained text by source and derived connection space where SQLite supports it.
+The previous inspection is remembered locally in the browser for comparison.

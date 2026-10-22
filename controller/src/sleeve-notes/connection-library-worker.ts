@@ -1,3 +1,4 @@
+import {reconcileProvisionalArtists} from './artist-identity.js';
 import { librarySourceKey } from './local-identity.js';
 import { runResearchDatabaseWork } from './db.js';
 // Bounded recurring catalogue reconciliation. New tracks can resolve old
@@ -27,6 +28,8 @@ export class ConnectionLibraryWorker {
   private running = false;
   private lastFactsRevision = -1;
   private matchRunAfter = 0;
+  private nextArtistRepair = 0;
+  private artistRepairCursor = '';
   constructor(
     private readonly quietGate: QuietGate,
     private readonly catalogue: Catalogue = subsonic,
@@ -61,6 +64,10 @@ export class ConnectionLibraryWorker {
       };
       const database = this.database();
       db = database;
+      if (nowMs >= this.nextArtistRepair) {
+        this.nextArtistRepair = nowMs + MATCH_INTERVAL_MS;
+        this.artistRepairCursor = reconcileProvisionalArtists(database, this.artistRepairCursor);
+      }
       let scan = database.prepare(`SELECT generation, album_offset AS albumOffset, run_after AS runAfter
         FROM sleeve_connection_library_scan WHERE id = 1`).get() as {
           generation: string; albumOffset: number; runAfter: string | null;

@@ -426,3 +426,48 @@ recent controller log shows a successful background MusicBrainz series refresh.
 Fresh artist/Wikipedia collection after confirmed plays and live review/Banter
 acceptance remain to observe. No credentials, settings or live data were changed
 by these read-only checks; upstream fixes remain local and unpushed.
+
+### Artist identity and research diagnostics — 22 October 2026
+
+Mirrored clean upstream candidate c59b41d9 into this station branch. All 22 changed
+controller/web paths match except server.ts's pre-existing Sub/Shows session
+recovery ordering, which is preserved. Station controller/web type checks and the
+four identity tests pass. The live station has not been rebuilt or its data edited.
+After this source handoff the operator rebuilds controller and web; schema 1 upgrades
+to 2 by adding indexes only. No further research reset is required. Previous station
+source is 78ae17ef; retain the usual compatible backup for rollback.
+
+Genius artist identity is shared across traversal, seeding and encountered songs.
+The common catalogue worker repairs five duplicate names at most per five-minute
+quiet interval, using a rotating cursor so protected names cannot starve later
+ones. Repair also runs with Genius capture off. It reassigns only provisional
+Genius children with no direct artist-level research, preserves recording ids,
+facts and evidence, and never merges distinct canonical identities or ambiguous
+library artists. Historical empty artist rows remain for references. Browse and
+dossier local-match labels use actual library associations or the existing
+unambiguous cached-library identity.
+
+Overview now explains the actual worker gate, records last successful source and
+research timestamps, names the next scheduled retry and flags unexplained six-hour
+stalls with ready work. Storage inspection is explicit and read-only, in the child
+process, with file/WAL/reusable space, source text sizes and derived-index size.
+The previous manual snapshot is browser-local; no extra periodic scan is added.
+Focused CI covers shared boundaries and progress messages. The clean contributor
+review map contains the upstream compatibility checklist and the operator's
+reported first multi-host segment within an hour of a fresh collection.
+
+Verified: 365 feature checks and 466 web tests; intro-render 6, library connections
+23, traversal 7 and no-Genius 6; controller/web lint/types, mirrors, admin-query audit,
+workflow YAML parsing and default Turbopack build. Existing controller warnings stay
+1733. Isolated desktop/mobile fixtures verify explicit-only requests, table/scroll
+behaviour, Phosphor/Riso, no page overflow or browser errors; UI detector is clear.
+An isolated snapshot of current research showed seven visible 2Pac rows become one,
+while keeping all 1022 recordings, 5294 facts and 658 sources, with zero foreign-key
+errors. This was an offline copy; no live repair has yet been observed.
+
+The build emitted a verified upstream Next.js 16.4.0 dependency advisory; the normal
+retry passed. Next.js 16.4.1 is patched per GHSA-2464-fhr4-w9xw. Dependencies were kept
+unchanged in this feature candidate; handle the security update separately. Nothing
+has been pushed to either draft PR in this pass. Next: operator rebuild, verify
+schema 2, inspect progress/storage and confirm duplicate consolidation after a
+quiet catalogue turn, then publish the accepted feature/review fixes.

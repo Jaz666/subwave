@@ -1,3 +1,5 @@
+import {connectionArtistNames} from './library-connections.js';
+import {libraryArtistIdentity, artistIsLocal} from './artist-identity.js';
 import { invalidateChangedLocalIdentity } from './local-identity.js';
 import { LIBRARY_RELATIONSHIP_CLAIMS_SQL } from './library-relationship-claims.js';
 import type { ClaimSignal } from './claim-signal.js';
@@ -361,9 +363,9 @@ export function localRecordingForGenius(localTrackId: string): RecordingForGeniu
     let id = sameMetadata ? saved.id : undefined;
     if (!id) {
       const now = new Date().toISOString();
-      const artistId = randomUUID();
+      const artistId = local.artist ? libraryArtistIdentity(db, local.artist, now) ?? randomUUID() : randomUUID();
       id = randomUUID();
-      db.prepare(`INSERT INTO sleeve_artists(id,name,created_at,updated_at) VALUES (?,?,?,?)`)
+      db.prepare(`INSERT OR IGNORE INTO sleeve_artists(id,name,created_at,updated_at) VALUES (?,?,?,?)`)
         .run(artistId, local.artist, now, now);
       db.prepare(`INSERT INTO sleeve_recordings(id,title,artist_id,match_state,created_at,updated_at)
         VALUES (?,?,?,'unmatched',?,?)`).run(id, local.title, artistId, now, now);
@@ -2365,7 +2367,8 @@ export function researchStoreExploreInDatabase(db: Database.Database, input: {
     WHERE ${artistHasClaims} AND ${artistFilter}
     ORDER BY COALESCE(artist_row.sort_name, artist_row.name) COLLATE NOCASE ASC LIMIT ? OFFSET ?`)
     .all(search, pattern, pattern, letter, letter, limit, offset) as ResearchExploreSqlRow[];
-  return { entities: normalizeExploreRows(rows), total: rows[0]?.total ?? 0, limit, offset };
+  const localNames = connectionArtistNames(db);
+  return { entities: normalizeExploreRows(rows).map(row => ({...row, localMatch: artistIsLocal(db, row.entityId, localNames)})), total: rows[0]?.total ?? 0, limit, offset };
 }
 
 export function researchEntityDossier(entityType: ResearchEntityType, entityId: string): ResearchEntityDossier | null {
@@ -2399,7 +2402,7 @@ export function researchEntityDossierInDatabase(
   if (entityType === 'artist') {
     const row = db.prepare(`SELECT name AS title, musicbrainz_id AS musicbrainzId
       FROM sleeve_artists WHERE id = ?`).get(entityId) as { title: string; musicbrainzId: string | null } | undefined;
-    if (row) { found = true; title = row.title; localMatch = !!row.musicbrainzId; }
+    if (row) { found = true; title = row.title; localMatch = artistIsLocal(db, entityId); }
   } else if (entityType === 'recording') {
     const row = db.prepare(`SELECT recording.title, artist.name AS artist, recording.match_state AS matchState
       FROM sleeve_recordings recording LEFT JOIN sleeve_artists artist ON artist.id = recording.artist_id

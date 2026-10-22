@@ -14,8 +14,20 @@ export interface ResearchRunPolicyInput {
  * while Icecast has confirmed that the station is empty; unknown counts stay
  * on the normal fail-open DJ path and never activate the maintenance exception.
  */
+export function researchRunBlockReason(
+  input: ResearchRunPolicyInput,
+): 'token-budget' | 'broadcast' | 'interactive' | 'listeners' | null {
+  if (input.researchBudgetAllowed === false) return 'token-budget';
+  if (input.playbackCriticalBusy) return 'broadcast';
+  if (input.agentWorkActive) return 'interactive';
+  if (
+    input.djCallsAllowed ||
+    (input.pauseWhenEmpty && input.maintenanceWhenEmpty && input.listenerCount === 0)
+  )
+    return null;
+  return 'listeners';
+}
+
 export function researchRunAllowed(input: ResearchRunPolicyInput): boolean {
-  if (input.researchBudgetAllowed === false || input.playbackCriticalBusy || input.agentWorkActive) return false;
-  if (input.djCallsAllowed) return true;
-  return input.pauseWhenEmpty && input.maintenanceWhenEmpty && input.listenerCount === 0;
+  return researchRunBlockReason(input) === null;
 }

@@ -1,3 +1,4 @@
+import {libraryArtistIdentity} from './artist-identity.js';
 // Durable sample frontier. All network work stays in the existing Genius worker.
 import { randomUUID } from 'node:crypto';
 import { open } from './db.js';
@@ -106,9 +107,10 @@ export function expandGeniusSamples(recordingId: string): boolean {
       if (!/^\d+$/.test(target.providerId) || !target.artist?.trim()) continue;
       if (!artistNames.libraryName(target.artist)) continue; // Unknown or ambiguous library artist: stop this branch.
       if (db.prepare('SELECT 1 FROM sleeve_genius_traversal WHERE song_id=?').get(target.providerId)) continue;
-      const now = new Date().toISOString(), artistId = randomUUID(), id = randomUUID();
-      db.prepare('INSERT INTO sleeve_artists(id,name,created_at,updated_at) VALUES (?,?,?,?)')
-        .run(artistId, artistNames.libraryName(target.artist)!, now, now);
+      const now = new Date().toISOString(), id = randomUUID();
+      const artistId = libraryArtistIdentity(db, target.artist, now, artistNames);
+      if (!artistId) continue;
+
       db.prepare(`INSERT INTO sleeve_recordings(id,title,artist_id,match_state,created_at,updated_at)
         VALUES (?,?,?,'unmatched',?,?)`).run(id, target.title, artistId, now, now);
       db.prepare(`INSERT INTO sleeve_genius_traversal(song_id,recording_id,title_key,artist_key) VALUES (?,?,?,?)`)

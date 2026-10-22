@@ -24,7 +24,7 @@ import { resumeIntoAnotherShow } from './broadcast/resume-show.js';
 import { autoPlaylistReady, skipTrack } from './broadcast/liquidsoap-control.js';
 import * as geminiTts from './audio/gemini.js';
 import * as geminiLibrary from './audio/gemini-library.js';
-import { djCallsAllowed, gatedListenerCount, startListenerMonitor } from './broadcast/listeners.js';
+import { gatedListenerCount, startListenerMonitor } from './broadcast/listeners.js';
 import { startStreamIdleMonitor } from './broadcast/stream-idle.js';
 import { startAudienceMonitor } from './broadcast/audience.js';
 import * as likes from './broadcast/likes.js';
@@ -73,9 +73,7 @@ import { startGeniusResearchWorker } from './sleeve-notes/genius-worker.js';
 import { startConnectionLibraryWorker } from './sleeve-notes/connection-library-worker.js';
 import { stopConnectionCompute } from './sleeve-notes/connection-compute.js';
 import { startBrainArtistPopulation } from './sleeve-notes/brain-library.js';
-import { researchAllowed } from './broadcast/dj-budget.js';
-import { researchRunAllowed } from './sleeve-notes/research-policy.js';
-import { interactiveAgentWorkActive } from './llm/agent.js';
+import {researchBlockReason} from './sleeve-notes/research-availability.js';
 import { loadSecretsIntoEnv } from './setup/secrets.js';
 import { loadNavidromeConfig } from './setup/config.js';
 import { getSetupStatus } from './setup/firstRun.js';
@@ -374,15 +372,7 @@ app.listen(config.server.port, async (err?: Error) => {
   // permits deliberate empty-station catch-up, but its default keeps the
   // backlog stable until a listener returns.
   const sleeveNotesQuietGate = {
-    isQuiet: () => researchRunAllowed({
-      researchBudgetAllowed: settings.get().djBehaviour.extendedSleeveNotes === true && researchAllowed() && settings.get().djBehaviour.sleeveNotesCollectionPaused !== true,
-      playbackCriticalBusy: queue.playbackCriticalBusy(),
-      agentWorkActive: interactiveAgentWorkActive(),
-      djCallsAllowed: djCallsAllowed(),
-      pauseWhenEmpty: settings.get().llm.pauseWhenEmpty === true,
-      maintenanceWhenEmpty: settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true,
-      listenerCount: gatedListenerCount(),
-    }),
+    isQuiet: () => researchBlockReason() === null,
     isEmptyMaintenanceAllowed: () => gatedListenerCount() === 0
       && settings.get().djBehaviour.sleeveNotesMaintenanceWhenEmpty === true,
   };

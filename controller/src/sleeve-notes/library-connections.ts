@@ -65,9 +65,13 @@ export function connectionArtistNames(db: Database.Database) {
       return variant&&(local.get(variant)?.size??0)<=1&&(identified.get(variant)?.size??0)<=1
         ? variant : connectionNameKey(value);
     },
+    canonicalName(value:unknown):string|null {
+      const group=identified.get(connectionArtistVariantKey(value));
+      return group?.size===1 ? [...group.values()][0] : null;
+    },
     libraryName(value:unknown):string|null {
       const group=local.get(connectionArtistVariantKey(value));
-      if(group?.size!==1)return null;
+      if(group?.size!==1 || (identified.get(connectionArtistVariantKey(value))?.size ?? 0)>1)return null;
       return [...group.values()][0];
     },
 
