@@ -41,7 +41,7 @@ export default function TemplateShowsPanel() {
   if (query.error && !data) {
     return (
       <div className="grid gap-4">
-        <Card title="Template shows">
+        <Card title="Sub/Shows">
           <ErrorState error={errorMessage(query.error)} onRetry={() => query.refetch()} retrying={query.isFetching} />
         </Card>
       </div>
@@ -51,7 +51,7 @@ export default function TemplateShowsPanel() {
   if (!data) {
     return (
       <div className="grid gap-4">
-        <Card title="Template shows">
+        <Card title="Sub/Shows">
           <SkeletonRows rows={4} />
         </Card>
       </div>
@@ -63,11 +63,11 @@ export default function TemplateShowsPanel() {
       <section className="card">
         <div className="stack-mobile grid grid-cols-[1fr_auto] items-center gap-4 p-4">
           <div>
-            <h1 className="text-[22px] font-extrabold tracking-[-0.02em]">Template shows</h1>
+            <h1 className="text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
-              Each entry is a saved variant with its own host and guest rules. Reuse one variant across
-              several schedule slots, or create another for a different setup. Changes to a variant
-              apply to every slot that uses it. Click any scheduled block to edit its host and guest rules.
+              Each entry is a saved DJ’s Choice or Deep Discovery variant with its own host and guest rules.
+              Reuse one variant across schedule slots, or create another for a different setup. Changes
+              apply to every slot that uses it. Click a scheduled block to edit its host and guest rules.
             </p>
           </div>
           <Button asChild variant="accent" size="sm" className="min-h-9">
@@ -89,7 +89,7 @@ export default function TemplateShowsPanel() {
               <EmptyState
                 compact
                 title="No variants yet"
-                description={`Create a ${template.label} variant by dragging it from the Template shows section of the schedule shelf.`}
+                description={`Create a ${template.label} variant by dragging it from the Sub/Shows section of the schedule shelf.`}
               />
             ) : (
               <div className="divide-y divide-separator-soft">

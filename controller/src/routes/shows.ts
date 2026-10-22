@@ -19,6 +19,7 @@ import { readCommunityShow } from '../shows/community.js';
 import { SLUG_RE } from '../skills/loader.js';
 import { queue } from '../broadcast/queue.js';
 import { rollSessionNow } from '../broadcast/scheduler.js';
+import { prepareGeneratedShowAt, prepareUpcomingGeneratedShows } from '../broadcast/show-preparation.js';
 import { resolveTakeoverWindowNow } from '../broadcast/takeover-window.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import { isInOrderShow } from '../music/playlist-order.js';
@@ -210,6 +211,10 @@ router.post('/shows', requireAdmin, validateBodyAsync(showPostContext), async (r
     const next = settings.get().shows || [];
     const saved = (id && next.find((s: any) => s.id === id)) || next[next.length - 1] || null;
     queue.log('scheduler', `[shows] "${saved?.id || id}" ${idx >= 0 ? 'edited' : 'added'} via admin editor`);
+    if (saved?.generation?.mode === 'generated') {
+      void prepareUpcomingGeneratedShows({ showId: saved.id })
+        .catch(err => queue.log('error', `[shows] generated show preparation failed after edit: ${err.message}`));
+    }
     res.json({ shows: next, show: saved });
   } catch (err: any) {
     queue.log('error', `POST /shows failed: ${err.message}`);
@@ -278,6 +283,11 @@ router.post('/schedule/override', requireAdmin, validateBody(scheduleOverrideReq
         ? `[takeover] "${show.name}" pinned for ${windowMinutes} min${reason} via admin UI`
         : `[takeover] Default programming selected for ${windowMinutes} min${reason} via admin UI`,
     );
+    if (show?.generation?.mode === 'generated') {
+      void prepareGeneratedShowAt(startedAt).then(record => {
+        if (record?.kind === 'failed') queue.log('error', `[takeover] generated show preparation failed: ${record.reason}`);
+      }).catch(err => queue.log('error', `[takeover] generated show preparation failed: ${err.message}`));
+    }
     void rollSessionNow({ manual: true, reason: 'takeover started' });
     res.json({ override });
   } catch (err: any) {
@@ -316,6 +326,8 @@ router.put('/schedule', requireAdmin, validateBody(scheduleSaveSchema), async (r
   try {
     await settings.update({ schedule });
     queue.log('scheduler', `[shows] schedule saved via admin editor${dropped ? ` (${dropped} orphan slot(s) dropped)` : ''}`);
+    void prepareUpcomingGeneratedShows()
+      .catch(err => queue.log('error', `[shows] generated show preparation failed after schedule save: ${err.message}`));
     res.json({ schedule: settings.get().schedule, dropped });
   } catch (err: any) {
     queue.log('error', `PUT /schedule failed: ${err.message}`);

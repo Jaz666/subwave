@@ -432,7 +432,7 @@ export default function ShowsPanel() {
               <Link href="/admin/shows/schedule">Open the schedule →</Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="min-h-9 sm:min-h-0">
-              <Link href="/admin/shows/templates">Template shows</Link>
+              <Link href="/admin/shows/templates">Sub/Shows</Link>
             </Button>
           </div>
         </div>
@@ -512,10 +512,10 @@ export default function ShowsPanel() {
         <EmptyState
           art="calendar"
           title="No regular shows"
-          description="Template shows are managed separately."
+          description="DJ’s Choice and Deep Discovery variants are managed in Sub/Shows."
           action={(
             <Button asChild variant="outline" size="sm">
-              <Link href="/admin/shows/templates">View template shows</Link>
+              <Link href="/admin/shows/templates">Open Sub/Shows</Link>
             </Button>
           )}
         />
