@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-notes-segment-'));
+const root=createTempDir(join(tmpdir(),'subwave-notes-segment-'));
 process.env.STATE_DIR=root;
 process.env.ADMIN_USER='operator';process.env.ADMIN_PASS='secret';
 const settings=await import('../src/settings.js');
@@ -268,7 +268,7 @@ test('station-local day boundaries handle daylight saving and half-hour offsets'
  } finally {setStationTimezone(settings.get().timezone);}
 });
 
-test('play admission snapshots attribution and migration preserves legacy plays with an unknown host',()=>{
+test('play admission snapshots host attribution while queued encounters keep an unknown host',()=>{
  const db=fixture();
  const input={localTrackId:'local',title:'Song',artist:'Band',releaseTitle:'Album',musicbrainzRecordingId:null,
   priority:1,source:'played' as const,host:{id:'earlier-dj',name:'Earlier DJ'},encounteredAt:'2026-10-15T07:00:00.000Z'};
@@ -277,11 +277,7 @@ test('play admission snapshots attribution and migration preserves legacy plays 
   {host_id:'earlier-dj',host_name:'Earlier DJ',encountered_at:input.encounteredAt});
  admitLocalEncounterInDatabase(db,{...input,source:'queue'});
  assert.deepEqual(db.prepare("SELECT host_id,host_name FROM sleeve_encounters WHERE source='queue'").get(),{host_id:null,host_name:null});
- db.exec('ALTER TABLE sleeve_encounters DROP COLUMN host_id; ALTER TABLE sleeve_encounters DROP COLUMN host_name; PRAGMA user_version=51;');
- migrate(db);migrate(db);
- assert.equal(db.pragma('user_version',{simple:true}),61);
- assert.deepEqual(db.prepare("SELECT host_id,host_name,encountered_at FROM sleeve_encounters WHERE source='played'").get(),
-  {host_id:null,host_name:null,encountered_at:input.encounteredAt});db.close();
+ db.close();
 });
 
 test('publication failure releases reservations; confirmed air alone populates the shelf and persistent cooldown',async()=>{
@@ -629,6 +625,20 @@ test('automatic banter prefers Sleeve Notes in a produced episode and falls back
    {...active,sleeveNotes:{...active.sleeveNotes,segment:{...config,personaIds:[]}}},
   ]) {reset();store.setCache(patch);await run();assert.deepEqual(calls,['banter']);}
   store.setCache(active);reset();await runBanter();assert.deepEqual(calls,['banter'],'manual Banter remains an explicit Banter request');
+  const priorCurrent = queue.current;
+  const shortTrack = t.mock.method(queue, 'remainingSecOnAir', () => 0);
+  const oldLog = queue.djLog;
+  try {
+   store.setCache({...active, djBehaviour: {...active.djBehaviour, extendedSleeveNotes: false}});
+   queue.current = {...priorCurrent, track: {id: 'short-track'}, startedAt: new Date().toISOString()} as typeof queue.current;
+   queue.djLog = [];
+   reset();
+   assert.equal(await runBanter({automatic: true}), null);
+   assert.deepEqual(calls, [], 'automatic Banter skips before spending LLM tokens');
+   assert.ok(queue.djLog.some(entry => entry.message.includes('Banter skipped')));
+   await runBanter();
+   assert.deepEqual(calls, ['banter'], 'manual Banter bypasses the automatic speech budget');
+  } finally { queue.current = priorCurrent; queue.djLog = oldLog; shortTrack.mock.restore(); store.setCache(active); }
   assert.ok(exchange.mock.callCount()>0);
   const logs=queue.djLog;
   try {queue.djLog=[];queue.log('sleeve-notes','Confirmed exchange');assert.equal(queue.getLastTalkBreakAt(),Date.parse(queue.djLog[0].t));}
@@ -670,7 +680,7 @@ test('timing targets enter the prompt and slow writing stands down before reserv
  assert.equal(calls,1,'a known insufficient window never calls the writer');
 });
 
-test.after(()=>{close();rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{close();await removeTempDir(root);});
 
 test('disable during generation cancels late output without reservations or publication',async()=>{
  const saved=settings.get();const db=open();db.prepare('DELETE FROM sleeve_claim_uses').run();
@@ -688,4 +698,33 @@ test('disable during generation cancels late output without reservations or publ
   release();assert.equal(await running,false);
   assert.equal(published,false);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_claim_uses').get() as {n:number}).n,0);
  }finally{release();store.setCache(saved);}
+});
+
+
+test('disabling Sleeve Notes before or during TTS releases reservations without publishing', async t => {
+ const {queue} = await import('../src/broadcast/queue.js');
+ const saved = settings.get();
+ const db = open();
+ const speechQueue = queue as unknown as {_speak: () => Promise<string>; _airVoice: () => Promise<never>};
+ const speak = t.mock.method(speechQueue, '_speak', async () => '/tmp/not-aired.wav');
+ const air = t.mock.method(speechQueue, '_airVoice', async () => {throw new Error('Disabled speech must not air');});
+ try {
+  for (const duringRender of [false, true]) {
+   db.prepare('DELETE FROM sleeve_claim_uses').run();
+   store.setCache({...saved, djBehaviour: {...saved.djBehaviour, extendedSleeveNotes: true}});
+   const note = prepare(db)!.notes[0]!;
+   const id = recordExtendedSleeveNoteSupplied(note, first, 'sleeveNotesSegment');
+   if (duringRender) speak.mock.mockImplementation(async () => {
+    store.setCache({...saved, djBehaviour: {...saved.djBehaviour, extendedSleeveNotes: false}});
+    return '/tmp/not-aired.wav';
+   });
+   else store.setCache({...saved, djBehaviour: {...saved.djBehaviour, extendedSleeveNotes: false}});
+   const before = speak.mock.callCount();
+   const outcome = await queue.announce(first, 'sleeve-notes', {sleeveClaimUseId: id});
+   assert.equal(outcome.accepted, false);
+   assert.equal(speak.mock.callCount() - before, duringRender ? 1 : 0);
+   assert.equal(air.mock.callCount(), 0);
+   assert.ok((db.prepare('SELECT released_at FROM sleeve_claim_uses WHERE id=?').get(id) as {released_at: string|null}).released_at);
+  }
+ } finally {store.setCache(saved);}
 });

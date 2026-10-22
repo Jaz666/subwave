@@ -1,11 +1,12 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import express from 'express';
-import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-brain-album-'));
+const root=createTempDir(join(tmpdir(),'subwave-brain-album-'));
 process.env.STATE_DIR=root;process.env.ADMIN_USER='album-test';process.env.ADMIN_PASS='album-password';
 const {open,close,migrate,withCachedRead,DB_PATH}=await import('../src/sleeve-notes/db.js');
 const {queueBrainAlbumInDatabase,queueBrainLibraryAlbumInDatabase,brainAlbumCoverageInDatabase,finishBrainAlbumMatchesInDatabase}=await import('../src/sleeve-notes/brain-album-research.js');
@@ -42,25 +43,6 @@ test('manual queueing promotes an existing automatic extraction without resettin
  assert.deepEqual(db.prepare("SELECT operator_requested AS requested,priority,attempts,state,run_after AS next FROM sleeve_research_jobs WHERE id='automatic'").get(),
  {requested:1,priority:500,attempts:2,state:'retry-at',next:'2099-01-01'});
  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_research_jobs').get() as {n:number}).n,1);db.close();
-});
-
-test('schema 50 recovers stranded manual requests without restarting completed research or promoting automatic work',()=>{
- const db=fixture();
- const job=db.prepare(`INSERT INTO sleeve_research_jobs(id,provider,subject_type,subject_id,capability,state,priority,run_after,completed_at,created_at,updated_at)
- VALUES (?,'researcher','release',?,'extract-wikipedia-release-group',?,350,?,?,?,?)`);
- job.run('stranded','group','retry-at','2099-01-01',null,now,now);
- job.run('automatic','auto-group','queued',null,null,now,now);
- job.run('finished','finished-group','complete',null,now,now,now);
- db.prepare(`INSERT INTO sleeve_research_jobs(id,provider,subject_type,subject_id,capability,state,priority,created_at,updated_at)
- VALUES ('later-automatic','wikipedia','release','finished-group','release-group-biography','queued',350,?,?)`).run(now,now);
- const request=db.prepare(`INSERT INTO sleeve_brain_album_requests(local_album_id,local_track_id,title,release_group_id,state,requested_at) VALUES (?,?,'Album',?,'resolved',?)`);
- request.run('manual','local','group',now);request.run('finished-album','finished-track','finished-group',now);
- db.pragma('user_version=49');migrate(db);
- assert.equal(db.pragma('user_version',{simple:true}),61);
- assert.deepEqual(db.prepare("SELECT operator_requested AS requested,priority,state,run_after AS next FROM sleeve_research_jobs WHERE id='stranded'").get(),{requested:1,priority:500,state:'retry-at',next:'2099-01-01'});
- assert.equal((db.prepare("SELECT SUM(operator_requested) AS n FROM sleeve_research_jobs WHERE id<>'stranded'").get() as {n:number}).n,0);
- db.prepare("UPDATE sleeve_research_jobs SET operator_requested=0 WHERE id='stranded'").run();migrate(db);
- assert.equal((db.prepare("SELECT operator_requested AS n FROM sleeve_research_jobs WHERE id='stranded'").get() as {n:number}).n,0);db.close();
 });
 
 test('cached album rescan preserves existing facts and operator holds',()=>{
@@ -146,13 +128,13 @@ test('explicit fallback handoff restarts completed work but preserves an active 
 const app=express();app.use(express.json(),router);const server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));
 const address=server.address();if(!address||typeof address==='string')throw new Error('Missing address');
 const base=`http://127.0.0.1:${address.port}/sleeve-notes/connections`,auth=`Basic ${Buffer.from('album-test:album-password').toString('base64')}`;
-test('album API requires admin access, blocks disabled access and preserves the older internal cache',async()=>{
+test('album API requires admin access, blocks disabled writes and permits read-only cached coverage',async()=>{
  const post=(headers:Record<string,string>={Authorization:auth})=>fetch(`${base}/research`,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({entityType:'release-group',entityId:'new-group'})});
  assert.equal((await post({})).status,401);assert.equal((await post()).status,200);
  await settings.update({djBehaviour:{extendedSleeveNotes:false}});assert.equal((await post()).status,409);
  open().pragma('user_version=48');close();const before=readFileSync(DB_PATH);
  const response=await fetch(`${base}/album-coverage?entityType=release-group&entityId=new-group`,{headers:{Authorization:auth}});
- assert.equal(response.status,409);assert.deepEqual(readFileSync(DB_PATH),before);
+ assert.equal(response.status,200);assert.deepEqual(readFileSync(DB_PATH),before);
  assert.equal(withCachedRead(()=>open().pragma('user_version',{simple:true})),48);
 });
-test.after(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));close();rmSync(root,{recursive:true,force:true});});
+test.after(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));close();await removeTempDir(root);});

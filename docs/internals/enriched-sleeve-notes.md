@@ -60,10 +60,23 @@ Settings use pending drafts with Save/Discard. MusicBrainz list choices have the
 
 ## Storage, recovery and responsiveness
 
-Migrations are additive and preserve evidence, decisions and history. Station backups include a WAL-safe snapshot of the research database and coordinate with active research during restore. Disabled cached browsing must not create or migrate a file. Legacy schemas and retired research records remain readable where supported.
+The first public schema is created in one transaction. Experimental pre-release schemas are refused without modification and require a deliberate sidecar reset before enabling this build. Current public-schema databases reopen without rewriting facts, evidence, decisions or history. Station backups include a WAL-safe snapshot of the research database and coordinate with active research during restore. Disabled cached browsing must not create or migrate a file. Legacy schemas and retired research records remain readable where supported.
 
 Raw completed Wikipedia articles can be compacted after the retention delay, keeping source identity and supporting passages/context. Incomplete research, pending moderation/reviews and refresh intent protect the article. Compaction is bounded to ten eligible articles per maintenance pass; finding those articles can still be expensive. SQLite may reuse internal space without shrinking the file on disk. There is no automatic history deletion or live VACUUM policy.
 
 Station Brain calculations, Overview readout/queue details, live-summary candidate counts and Heard on Air database reads use a read-only child process. Display reads share in-flight work and a bounded short-lived cache; broadcast selection and action validation use current state. Same-connection writes invalidate the display cache immediately; other changes expire with its three-second lifetime. Restore clears display caches. Worker reads over two seconds and controller housekeeping over one second log timings. Write-side maintenance and legacy session JSON processing still need observation under large collections and host contention.
 
 Use the normal isolated test runners. Never execute a controller test directly against station state. See the [integration map](sleeve-notes-integration.md) for focused checks and the [tester guide](../testing/extended-sleeve-notes.md) for real-station acceptance and reporting limits.
+
+The initial public schema is version 1 with application id `SWN1`, so it cannot be
+mistaken for the earlier experimental version 1. Initialisation is transactional;
+unknown, future and experimental files are rejected without erasing their data.
+See the tester guide for the deliberate research-only reset and rollback procedure.
+
+Intro-render quiet-time accounting follows outstanding TTS promises, including
+renders detached by invalidation or moved between queue items. Settlement releases
+the busy state independently of those item identities. Manual Banter retains its
+operator override; automatic Banter budgets log a scheduler skip and return no
+spoken text. Disabling Sleeve Notes before/during speech generation releases its
+reservation before rejection. Cached admin views have an explicit GET allowlist;
+provider previews, research and all writes remain gated while disabled.

@@ -1,10 +1,10 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-spark-speech-'));
+const root = createTempDir(join(tmpdir(), 'subwave-spark-speech-'));
 process.env.STATE_DIR = root;
 const { open, close } = await import('../src/sleeve-notes/db.js');
 const sleeves = await import('../src/sleeve-notes/link-selection.js');
@@ -31,11 +31,11 @@ const note = { claimId: 'claim', entityType: 'artist' as const, entityId: 'a', c
   wording: 'Example Band formed in Cardiff in 1993.', fullWording: 'Example Band formed in Cardiff in 1993.',
   shortWording: null, provider: 'wikipedia', attribution: 'Wikipedia', sourceUrl: 'https://example.test',
   relationshipKey: null, localTrackId: 'song' };
-const read = (id: string) => db.prepare('SELECT * FROM sleeve_claim_uses WHERE id = ?').get(id) as any;
+const read = (id: string) => db.prepare('SELECT * FROM sleeve_claim_uses WHERE id = ?').get(id) as Record<string, string | null>;
 
 test('generated evidence, attempted speech, successful render and confirmed air are independent', async () => {
   const id = sleeves.recordExtendedSleeveNoteSupplied(note, 'They formed in Cardiff. Here is Song.');
-  assert.equal(JSON.parse(read(id).generated_signal).status, 'detected');
+  assert.equal(JSON.parse(read(id).generated_signal!).status, 'detected');
   assert.equal(read(id).tts_requested_at, null);
   sleeves.recordExtendedSleeveNoteTtsRequest(id, 'Here is Example Band with Song.', 'primary');
   assert.equal(read(id).detection_status, 'not-detected', 'trimmed speech overrides generated evidence for cooldowns');
@@ -49,8 +49,8 @@ test('generated evidence, attempted speech, successful render and confirmed air 
   assert.ok(read(id).tts_rendered_at);
   assert.equal(read(id).aired_at, null);
   const aired = Date.now();
-  await queue.onSpoken({ aired: Promise.resolve(aired) } as any,
-    { kind: 'link', channel: 'intro', text: 'They formed in Cardiff.', sleeveClaimUseId: id } as any);
+  await queue.onSpoken({ aired: Promise.resolve(aired) } as Parameters<typeof queue.onSpoken>[0],
+    { kind: 'link', channel: 'intro', text: 'They formed in Cardiff.', sleeveClaimUseId: id } as Parameters<typeof queue.onSpoken>[1]);
   assert.equal(read(id).aired_at, new Date(aired).toISOString());
   const spark = researchStoreReadoutInDatabase(db).recentSparks.find(r => r.id === id)!;
   assert.equal(spark.generatedSignal?.status, 'detected');
@@ -60,25 +60,25 @@ test('generated evidence, attempted speech, successful render and confirmed air 
 
 test('a legacy/unconfirmed handoff never stamps a Spark as aired', async () => {
   const id = sleeves.recordExtendedSleeveNoteSupplied(note, 'They formed in Cardiff.');
-  await queue.onSpoken({ aired: Promise.resolve(null) } as any,
-    { kind: 'link', channel: 'intro', text: 'They formed in Cardiff.', sleeveClaimUseId: id } as any);
+  await queue.onSpoken({ aired: Promise.resolve(null) } as Parameters<typeof queue.onSpoken>[0],
+    { kind: 'link', channel: 'intro', text: 'They formed in Cardiff.', sleeveClaimUseId: id } as Parameters<typeof queue.onSpoken>[1]);
   assert.equal(read(id).aired_at, null);
 });
 
 test('a Spark survives generation and enqueue, and a queue collision releases its reservation', async () => {
   await settings.load();
-  session.start({ at: now, time: { period: 'day', vibe: 'day', mood: 'calm' }, weather: null, festival: null } as any);
+  session.start({ at: now, time: { period: 'day', vibe: 'day', mood: 'calm' }, weather: null, festival: null } as Parameters<typeof session.start>[0]);
   const song = { id: 'song', title: 'Song', artist: 'Example Band', duration: 240 };
   const generated = await generatePickLink({ current: song }, async args => {
     const id = sleeves.recordExtendedSleeveNoteSupplied(note, 'They formed in Cardiff.');
     (args.onSleeveNoteUse as (id: string) => void)(id);
     return 'They formed in Cardiff.';
   });
-  let entry: any;
-  const fakeQueue = { push: async (item: any) => { entry = item; return 1; }, log: () => {} };
+  let entry: Parameters<typeof queue.push>[0] | undefined;
+  const fakeQueue = { push: async (item: Parameters<typeof queue.push>[0]) => { entry = item; return 1; }, log: () => {} };
   await enqueuePick(fakeQueue, song, 'test', 'agent', generated.link, null, {}, generated);
-  assert.equal(entry.sleeveClaimUseId, generated.sleeveClaimUseId);
-  assert.ok(entry.sleeveClaimUseId);
+  assert.equal(entry!.sleeveClaimUseId, generated.sleeveClaimUseId);
+  assert.ok(entry!.sleeveClaimUseId);
   const collision = { push: async () => -1, log: () => {} };
   await enqueuePick(collision, song, 'test', 'pool', generated.link, null, {}, generated);
   assert.ok(read(generated.sleeveClaimUseId!).released_at);
@@ -88,5 +88,5 @@ test.after(async () => {
   close();
   // Speech logging is best-effort and asynchronous.
   await new Promise(resolve => setTimeout(resolve, 100));
-  rmSync(root, { recursive: true, force: true });
+  await removeTempDir(root);
 });

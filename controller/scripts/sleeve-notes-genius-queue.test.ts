@@ -1,13 +1,13 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-genius-queue-'));
+const root = createTempDir(join(tmpdir(), 'subwave-genius-queue-'));
 process.env.STATE_DIR = root;
 const { open, close } = await import('../src/sleeve-notes/db.js');
 const { geniusQueueReadout, geniusRequestAllowance, reserveGeniusProviderRequest } = await import('../src/sleeve-notes/research-repository.js');
-after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+after(async () => { close(); await removeTempDir(root); });
 const now = new Date('2026-10-18T13:00:00.000Z');
 
 test('queue readout separates due work from retry delays and reports the age of the oldest due job', () => {

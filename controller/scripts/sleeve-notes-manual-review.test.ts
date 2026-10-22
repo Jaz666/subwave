@@ -1,11 +1,11 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-manual-review-'));
+const root = createTempDir(join(tmpdir(), 'subwave-manual-review-'));
 process.env.STATE_DIR = root;
 process.env.ADMIN_USER = 'operator'; process.env.ADMIN_PASS = 'secret';
 const { open, close } = await import('../src/sleeve-notes/db.js');
@@ -102,8 +102,7 @@ test('edited AI corrections validate source support, stay bound to their propose
   const proposed='Nick Mason and Alan Parsons recreated the drum sound of Dark Side of the Moon.';
   db.prepare("UPDATE sleeve_airing_reviews SET state='ready',result_json=? WHERE id=?").run(JSON.stringify({
     finding:'spark',summary:'The wording needs a correction.',explanation:'A revised sentence is proposed.',suggestedSpeech:'',proposedGuidance:null,
-    sparkCorrection:{claimId:'editable',wording:proposed,evidence:wording},
-  }),review.id);
+    sparkCorrection:{claimId:'editable',wording:proposed,evidence:wording}}),review.id);
   const correction={claimId:'editable',wording:'Nick Mason worked with Alan Parsons to recreate the drum sound of Dark Side of the Moon.',evidence:wording};
   const decide=(body:unknown)=>fetch(`${base}/airing-reviews/${review.id}/decision`,{method:'POST',headers:{
     Authorization:`Basic ${Buffer.from('operator:secret').toString('base64')}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -121,7 +120,7 @@ test('edited AI corrections validate source support, stay bound to their propose
   assert.equal(JSON.parse(saved.result).sparkCorrection.wording,proposed,'retain the original model proposal separately');
 });
 
-test.after(() => { server.close(); close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { server.close(); close(); await removeTempDir(root); });
 
 
 test('retired direct-edit API rejects stale writes; deleted facts cannot be reapproved internally',async()=>{

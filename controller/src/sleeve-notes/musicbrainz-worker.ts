@@ -89,8 +89,9 @@ export class MusicBrainzMatchWorker {
           repository.finishResearchJob(job.id, 'complete');
           console.log(`[sleeve-notes] MusicBrainz matched: ${result.artist?.name ?? 'Unknown artist'} — ${result.title}`);
         }
-      } catch (err: any) {
-        const status = Number(String(err?.message ?? '').match(/HTTP\s+(\d{3})/)?.[1]) || null;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+      const status = Number(message.match(/HTTP\s+(\d{3})/)?.[1]) || null;
         repository.finishProviderRequest(requestId, status === 429 ? 'rate-limited' : 'failed', status);
         const delayMs = repository.musicBrainzRetryDelay(job.attempts + 1);
         repository.retryResearchJob(job.id, delayMs);
@@ -99,7 +100,7 @@ export class MusicBrainzMatchWorker {
           const deferred = repository.deferMusicBrainzMatches(outageDelay);
           console.warn(`[sleeve-notes] MusicBrainz ${status}; deferred ${deferred} pending match${deferred === 1 ? '' : 'es'} for ${Math.round(outageDelay / 60_000)}m (attempt ${job.attempts + 1})`);
         } else {
-          console.warn(`[sleeve-notes] MusicBrainz temporarily unavailable; retrying in ${Math.round(delayMs / 60_000)}m (attempt ${job.attempts + 1}): ${err?.message || 'unknown error'}`);
+          console.warn(`[sleeve-notes] MusicBrainz temporarily unavailable; retrying in ${Math.round(delayMs / 60_000)}m (attempt ${job.attempts + 1}): ${message}`);
         }
       }
       return true;

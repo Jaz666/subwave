@@ -1,12 +1,12 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test, { after, type TestContext } from 'node:test';
 import type { ResearchJob } from '../src/sleeve-notes/researcher.js';
 
 const previousStateDir = process.env.STATE_DIR;
-const stateRoot = mkdtempSync(path.join(tmpdir(), 'subwave-wikipedia-llm-'));
+const stateRoot = createTempDir(path.join(tmpdir(), 'subwave-wikipedia-llm-'));
 process.env.STATE_DIR = stateRoot;
 
 const store = await import('../src/settings/store.js');
@@ -18,36 +18,32 @@ const { wikipediaCandidatesFromSparks } = await import('../src/sleeve-notes/wiki
 const { screenResearchCandidates } = await import('../src/sleeve-notes/researcher.js');
 const previousCache = store.peek();
 
-after(() => {
+after(async () => {
   store.setCache(previousCache);
   if (previousStateDir === undefined) delete process.env.STATE_DIR;
   else process.env.STATE_DIR = previousStateDir;
-  rmSync(stateRoot, { recursive: true, force: true });
+  await removeTempDir(stateRoot);
 });
 
 const artistClaim = {
   wording: 'Example Band recorded the album Bright Days in a converted barn.',
   category: 'release-stories', airtimeScope: 'matching-release-only',
-  matchingReleaseTitle: 'Bright Days',
-};
+  matchingReleaseTitle: 'Bright Days'};
 const job: ResearchJob = {
   id: 'wiki-extract-test', subjectKind: 'artist',
   document: {
     id: 'source-test', entityId: 'artist-test', entityName: 'Example Band',
     provider: 'wikipedia', sourceUrl: 'https://en.wikipedia.org/wiki/Example_Band',
-    revisionId: '1', text: artistClaim.wording,
-  },
+    revisionId: '1', text: artistClaim.wording},
   categories: ['artist-stories', 'release-stories', 'track-stories', 'musical-connections', 'milestones', 'recognition'],
-  maxCandidates: 20, wikiNumber: 2,
-};
+  maxCandidates: 20, wikiNumber: 2};
 
 type Options = { tools?: Array<{ name: string }> };
 function configure(t: TestContext, provider: string, answer: unknown, recovery = false, inspect: (options: Options)=>void = ()=>{}) {
   const defaults = settings.getDefaults();
   store.setCache({ ...defaults, llm: {
     ...defaults.llm, provider, model: 'wikipedia-test', baseUrl: 'http://wikipedia-test.invalid/v1',
-    fallback: { ...defaults.llm.fallback, enabled: false },
-  } });
+    fallback: { ...defaults.llm.fallback, enabled: false }} });
   recentCalls.length = 0;
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('unexpected provider traffic'); });
   const leg = primaryLeg();
@@ -65,10 +61,8 @@ function configure(t: TestContext, provider: string, answer: unknown, recovery =
         finishReason: { unified: emit ? 'tool-calls' : 'stop', raw: emit ? 'tool_calls' : 'stop' },
         usage: {
           inputTokens: { total: 2400, noCache: 2400, cacheRead: 0, cacheWrite: 0 },
-          outputTokens: { total: 100, text: 100, reasoning: 0 },
-        },
-        warnings: [],
-      };
+          outputTokens: { total: 100, text: 100, reasoning: 0 }},
+        warnings: []};
     });
   }
   return () => calls;

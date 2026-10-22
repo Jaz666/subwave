@@ -49,15 +49,16 @@ export class MusicBrainzSeriesWorker {
       repository.finishProviderRequest(requestId, 'ready');
       console.log(`[sleeve-notes] MusicBrainz Series cached: ${series.label} (${result.members} members; ${result.claimsEnabled} local recognition claims)`);
       return true;
-    } catch (err: any) {
-      const status = Number(String(err?.message ?? '').match(/HTTP\s+(\d{3})/)?.[1]) || null;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = Number(message.match(/HTTP\s+(\d{3})/)?.[1]) || null;
       if (requestId) repository.finishProviderRequest(requestId, status === 429 ? 'rate-limited' : 'failed', status);
       const attempts = series.attempts;
       const delayMs = status === 429 || status === 503
         ? repository.musicBrainzOutageDelay(attempts)
         : repository.musicBrainzRetryDelay(attempts);
-      repository.deferMusicBrainzSeriesRefresh(series.id, err?.message || 'unknown error', delayMs);
-      console.warn(`[sleeve-notes] MusicBrainz Series refresh deferred for ${Math.round(delayMs / 60_000)}m: ${series.label} (${err?.message || 'unknown error'})`);
+      repository.deferMusicBrainzSeriesRefresh(series.id, message, delayMs);
+      console.warn(`[sleeve-notes] MusicBrainz Series refresh deferred for ${Math.round(delayMs / 60_000)}m: ${series.label} (${message})`);
       return true;
     } finally {
       this.running = false;

@@ -1,9 +1,9 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-spark-packet-'));
+const root = createTempDir(join(tmpdir(), 'subwave-spark-packet-'));
 process.env.STATE_DIR = root;
 const { storySparkPacket, sparkSpeechWordBudget, sparkLinkSchema } = await import('../src/llm/internal/prompts/story-spark.js');
 const { linkPrompt } = await import('../src/llm/internal/prompts/scripts.js');
@@ -59,13 +59,11 @@ test('a short vocal runway budgets the whole line without truncating the supplie
 
 test('the audited identity and biography failures have explicit, correctly labelled subjects', () => {
   const james = linkPrompt({ current: { artist: 'James', title: 'Hey' }, extendedSleeveNote: {
-    ...note, wording: 'James are an English rock band from Manchester, formed in 1982.',
-  } });
+    ...note, wording: 'James are an English rock band from Manchester, formed in 1982.'} });
   assert.match(james, /Track identification: Artist: "James"; title: "Hey"/);
   assert.match(james, /a track title is not a band name/);
   const van = linkPrompt({ current: { artist: 'Van Morrison', title: 'Cyprus Avenue' }, extendedSleeveNote: {
-    ...note, wording: 'Van Morrison started performing as a teenager.',
-  } });
+    ...note, wording: 'Van Morrison started performing as a teenager.'} });
   assert.match(van, /Supported fact: Van Morrison started performing as a teenager/);
   assert.match(van, /Keep artist biography about the artist/);
   assert.match(van, /does not establish that they performed this particular song then/);
@@ -75,8 +73,7 @@ test('the audited identity and biography failures have explicit, correctly label
 test('a limited one-liner reserves identification and does not instruct a fact-only or forced link', () => {
   const prompt = linkPrompt({ current: { artist: 'Wolf Alice', title: 'Safe in the World', vocalRanges: [{ startMs: 4000, endMs: 5000 }] },
     persona: { scriptLength: 'one-liner' }, extendedSleeveNote: {
-      ...note, wording: 'Wolf Alice were formed in 2010 by singer Ellie Rowsell and guitarist Joff Oddie.',
-    } });
+      ...note, wording: 'Wolf Alice were formed in 2010 by singer Ellie Rowsell and guitarist Joff Oddie.'} });
   assert.match(prompt, /Reserve room for the supplied artist and track title/);
   assert.match(prompt, /Never spend the whole link on the fact alone/);
   assert.match(prompt, /One-liner: Combine identification.*only if both fit/);
@@ -96,4 +93,4 @@ test('the output contract isolates private reasons from speech and requires mean
   assert.doesNotMatch(prompt, /Output only the words to be spoken on air/);
 });
 
-test.after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { close(); await removeTempDir(root); });

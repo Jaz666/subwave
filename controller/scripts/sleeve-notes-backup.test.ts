@@ -1,12 +1,13 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync,readFileSync,writeFileSync,existsSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import express from 'express';
 import AdmZip from 'adm-zip';
 import Database from 'better-sqlite3';
-const root=mkdtempSync(join(tmpdir(),'notes-backup-'));
+const root=createTempDir(join(tmpdir(),'notes-backup-'));
 process.env.STATE_DIR=root;delete process.env.ADMIN_USER;delete process.env.ADMIN_PASS;
 const notes=await import('../src/sleeve-notes/db.js');
 const {buildBackupZip,BACKUP_FORMAT,BACKUP_VERSION}=await import('../src/backup/zip.js');
@@ -94,7 +95,7 @@ test('exporting an older disabled cache never migrates the source database',asyn
  const unchanged=new Database(notes.DB_PATH,{readonly:true});
  assert.equal(unchanged.pragma('user_version',{simple:true}),52);
  assert.equal(unchanged.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_segment_lines'").get(),undefined);unchanged.close();
- assert.equal((await restore(zip)).status,200);assert.equal(notes.schemaVersion(),61);
+ assert.equal((await restore(zip)).status,400, 'an experimental export is preserved but cannot be restored into the public schema');
 });
 
-test.after(()=>{server.closeAllConnections();server.close();notes.close();rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{server.closeAllConnections();server.close();notes.close();await removeTempDir(root);});

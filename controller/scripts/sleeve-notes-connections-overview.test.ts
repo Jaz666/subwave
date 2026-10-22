@@ -1,17 +1,17 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const root = mkdtempSync(join(tmpdir(), 'subwave-brain-'));
+const root = createTempDir(join(tmpdir(), 'subwave-brain-'));
 process.env.STATE_DIR = root;
 const { migrate, close } = await import('../src/sleeve-notes/db.js');
 const { researchConnectionsOverviewInDatabase: overview } = await import('../src/sleeve-notes/connections-overview.js');
 const { cacheConnectionLibraryTracks, reconcileLibraryConnections } = await import('../src/sleeve-notes/library-connections.js');
 const { researchConnectionsGraphInDatabase, resolveConnectionLocalTrackInDatabase, searchConnectionsInDatabase, researchEntityDossierInDatabase } = await import('../src/sleeve-notes/research-repository.js');
-test.after(() => { close(); rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { close(); await removeTempDir(root); });
 const now = '2026-10-12T12:00:00.000Z';
 
 function fixture() {
@@ -101,8 +101,7 @@ test('an ambiguous target and an edited claim never inherit an obsolete library 
   assert.equal(graph.nodes.find((node) => node.id === graph.edges[0].target)?.local, false);
   assert.equal(graph.edges[0].target, 'external-artist:label:beta');
   db.prepare("UPDATE sleeve_claims SET evidence = ? WHERE id = 'target'").run(JSON.stringify({
-    type: 'cover_of', target: { providerId: 'new-id', title: 'Other', artist: 'Beta' },
-  }));
+    type: 'cover_of', target: { providerId: 'new-id', title: 'Other', artist: 'Beta' }}));
   graph = overview(db);
   assert.equal(graph.edges[0].target, 'external-artist:label:beta');
   assert.equal(graph.edges[0].type, 'cover-of');

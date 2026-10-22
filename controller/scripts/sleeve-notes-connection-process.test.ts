@@ -1,9 +1,9 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-connection-process-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-connection-process-'));process.env.STATE_DIR=root;
 const {open,close}=await import('../src/sleeve-notes/db.js');
 const {cachedConnectionsOverview,clearConnectionComputeCache,stopConnectionCompute,reconcileConnectionsInBackground}=await import('../src/sleeve-notes/connection-compute.js');
 const {buildConnectionLibraryPatch,publishConnectionLibraryPatch}=await import('../src/sleeve-notes/library-connections.js');
@@ -43,4 +43,4 @@ test('a patch calculated before a facts change cannot overwrite current matches'
  assert.equal(typeof await reconcileConnectionsInBackground(db),'number');
 });
 
-test.after(()=>{clearConnectionComputeCache();close();rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{clearConnectionComputeCache();close();await removeTempDir(root);});

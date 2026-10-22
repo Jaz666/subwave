@@ -40,3 +40,32 @@ Also exercise the existing shared suites relevant to a proposed change: pause-ta
 Use the [tester guide](../testing/extended-sleeve-notes.md) for source builds, backup/recovery, first enable, optional Genius, normal playback and UI checks. In particular, observe the broadcast with research and multiple admin tabs active, test the actual LLM/provider configuration, and inspect the factual quality of retained stories.
 
 Further early-review targets include bulk catalogue edits and confirmed-empty libraries, source outages/backoff, disk-full/permission recovery, changed clocks, indistinguishable replacement music servers, interrupted upgrades/restores, large collections and remaining synchronous maintenance. A catalogue scan that starts and finishes between checks cannot always be detected. Passing synthetic tests does not establish uninterrupted audio, provider coverage, model compliance or a fixed cost per track. No live destructive fault-injection result is claimed.
+
+## Early-review corrections
+
+The render tracker now counts outstanding promises independently of queue-item
+addresses. Regression coverage includes invalidation, failed renders, replacement,
+identity transfer and transfer over another active render. Banter timing limits
+apply to automatic slots; skipped automatic exchanges enter the scheduler log
+without being reported as speech. Feature-disable checks guard both sides of TTS
+and release story reservations on rejection.
+
+Disabled cached browsing is explicitly limited to saved-data GET views. Its
+asynchronous read-only handle remains open through completion, and library-only
+stories use the same boundary. Tests cover absent caches, retained snapshots,
+authentication, rejected writes and unchanged on-disk data. Test directories use
+the shared lifecycle helpers; HTTP fixture shutdown closes connections before
+removing state. A previously reported isolated connection-reset flake has not been
+reproduced in the verified full run; this is not a guarantee against future flakes.
+
+The web production build uses upstream's default `next build`. Initial database
+creation is one public schema, with a distinct application id and explicit refusal
+of pre-release experiments; the reset instructions are in the tester guide.
+
+Validation for this correction pass: 5,403 controller tests and 464 web tests pass;
+controller/web/app/MCP lint and types pass; generated schema/theme mirrors show no
+drift; admin-query audit passes; the default Turbopack production build succeeds.
+Controller ESLint has 1,733 existing warnings, matching the reviewed upstream
+baseline. The consolidated schema was compared against the previous schema: all
+145 tables/indexes/triggers and the initial revision row match. These checks do
+not replace the pending real-station reset, provider research and on-air checks.

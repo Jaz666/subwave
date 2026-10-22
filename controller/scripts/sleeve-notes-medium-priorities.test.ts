@@ -1,9 +1,9 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-const root=mkdtempSync(join(tmpdir(),'subwave-notes-medium-'));
+const root=createTempDir(join(tmpdir(),'subwave-notes-medium-'));
 process.env.STATE_DIR=root;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
@@ -86,4 +86,4 @@ test('collection pause survives a cold load, blocks workers and leaves on-air us
  assert.equal(settings.get().djBehaviour.sleeveNotesCollectionPaused,false);
 });
 
-test.after(()=>{close();rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{close();await removeTempDir(root);});

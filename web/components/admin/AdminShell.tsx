@@ -445,7 +445,7 @@ function AdminSidebar({
   onSignOut: () => void;
   adminFetch: (path: string, init?: RequestInit) => Promise<Response>;
 }) {
-  const settingsQuery=useSettingsQuery<SettingsData>({adminFetch,enabled:true,refetchInterval:30_000});
+  const settingsQuery=useSettingsQuery<SettingsData>({adminFetch,enabled:true});
   const sleeveEnabled=settingsQuery.data?.values?.djBehaviour?.extendedSleeveNotes===true;
   const notesStatus = useAdminQuery<{ reviewReady?: number }>({
     key: ['sleeve-notes', 'status'], adminFetch, enabled: sleeveEnabled,

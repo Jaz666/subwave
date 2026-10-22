@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import test,{beforeEach,after} from 'node:test';
-import {mkdtempSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import express from 'express';
-import {removeTempDir} from './test-utils/temp-dir.js';
-const root=mkdtempSync(join(tmpdir(),'subwave-queue-actions-'));process.env.STATE_DIR=root;
+import {removeTempDir, createTempDir} from './test-utils/temp-dir.js';
+const root=createTempDir(join(tmpdir(),'subwave-queue-actions-'));process.env.STATE_DIR=root;
 process.env.ADMIN_USER='operator';process.env.ADMIN_PASS='test-secret';
 const notes=await import('../src/sleeve-notes/db.js');
 const settings=await import('../src/settings.js');

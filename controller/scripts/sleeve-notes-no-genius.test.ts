@@ -1,9 +1,9 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const root=mkdtempSync(join(tmpdir(),'subwave-no-genius-'));process.env.STATE_DIR=root;
+const root=createTempDir(join(tmpdir(),'subwave-no-genius-'));process.env.STATE_DIR=root;
 delete process.env.GENIUS_ACCESS_TOKEN;
 const settings=await import('../src/settings.js');
 const store=await import('../src/settings/store.js');
@@ -119,4 +119,4 @@ test('turning capture off preserves saved Genius sources and connection facts',a
  assert.deepEqual(sources(),beforeSources);assert.deepEqual(facts(),beforeFacts);
 });
 
-test.after(()=>{notes.close();store.setCache(saved);rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{notes.close();store.setCache(saved);await removeTempDir(root);});

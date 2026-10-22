@@ -1,13 +1,13 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const root = mkdtempSync(join(tmpdir(), 'subwave-research-broadcast-gate-'));
+const root = createTempDir(join(tmpdir(), 'subwave-research-broadcast-gate-'));
 process.env.STATE_DIR = root;
 const { queue } = await import('../src/broadcast/queue.js');
 const { researchRunAllowed } = await import('../src/sleeve-notes/research-policy.js');
-after(() => rmSync(root, { recursive: true, force: true }));
+after(async () => await removeTempDir(root));
 
 test('rendered speech waiting for a boundary leaves research available while active broadcast work still blocks it', t => {
   // Exercise the real queue methods without starting a watcher, mixer or TTS.

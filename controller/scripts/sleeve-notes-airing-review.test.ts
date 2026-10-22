@@ -1,10 +1,11 @@
+import {createTempDir, removeTempDir} from './test-utils/temp-dir.js';
 import assert from 'node:assert/strict';
 import test, {type TestContext} from 'node:test';
-import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-const root=mkdtempSync(join(tmpdir(),'subwave-airing-review-'));
+const root=createTempDir(join(tmpdir(),'subwave-airing-review-'));
 process.env.STATE_DIR=root;
 delete process.env.ADMIN_USER;delete process.env.ADMIN_PASS;
 const settings=await import('../src/settings.js');
@@ -131,8 +132,7 @@ test('flagging a recovered legacy conversation includes all its offered Sparks',
   db.prepare("UPDATE sleeve_claim_uses SET claim_id='second-claim' WHERE id='legacy-b'").run();
   writeFileSync(join(root,'session.json'),JSON.stringify({messages:['legacy-a','legacy-b'].map(id=>({
     role:'segment',kind:'sleeve-notes',text:'Even in death we can find closure.',
-    meta:{airedAt:at,sleeveNotesSegmentUseIds:[id],personaName:'Host',personaId:'host'},
-  }))}));
+    meta:{airedAt:at,sleeveNotesSegmentUseIds:[id],personaName:'Host',personaId:'host'}}))}));
   const flag=await flagAiredUse('legacy-a');
   assert.deepEqual(await flagAiredUse('legacy-b'),flag);
   assert.equal(listAiringReviews().items.find(item=>item.id===flag.id)?.context.sparks.length,2);
@@ -323,4 +323,4 @@ test('disabled reads do not create or migrate a cache',()=>{
   assert.deepEqual(withCachedRead(()=>storedClaimReviews(['missing']),'nonexistent-airing-review-cache.db'),{});
 });
 
-test.after(()=>{close();store.setCache(null);rmSync(root,{recursive:true,force:true});});
+test.after(async ()=>{close();store.setCache(null);await removeTempDir(root);});
