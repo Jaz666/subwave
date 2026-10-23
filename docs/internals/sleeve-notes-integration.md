@@ -471,3 +471,44 @@ unchanged in this feature candidate; handle the security update separately. Noth
 has been pushed to either draft PR in this pass. Next: operator rebuild, verify
 schema 2, inspect progress/storage and confirm duplicate consolidation after a
 quiet catalogue turn, then publish the accepted feature/review fixes.
+
+
+## Outgoing segment handover ownership
+
+A station check on 22 October found an outgoing-host Sleeve Notes exchange airing
+following the incoming show's handover and hourly check. Background research did
+resume, confirming that the earlier permanent-pause repair worked independently.
+
+Prepared Sleeve Notes briefs now retain the commissioning show/host epoch through
+writing, rendering, deferred delivery and the final speech-file publication check.
+Both manual and automatic requests stand down once a handoff has claimed the
+boundary. A same-presenter show change also invalidates the old editorial context.
+Cancelled publication does not hold the voice serialiser for the unplayed clip's
+duration or create aired bookkeeping; unsuccessful segments release unused fact
+reservations. Already-published audio and committed pause-and-talk delivery retain
+their existing ownership. Ordinary manual Banter and other manual speech keep their
+established overrides.
+
+Regression coverage is in `sleeve-notes-handover.test.ts`, including real speech-file
+waiting, late writing/TTS, same-host show changes and deferred exchanges. The
+focused boundary workflow includes this suite. A new on-air handover check is still
+required after rebuilding the controller; synthetic checks do not establish the
+live audio outcome.
+
+Validation: the feature suite passed 369 checks during development. After the
+final ownership/policy refinements, all 6 handover regressions and 32 segment
+checks pass. Shared voice (122), host-speech (17), handoff (87) and talk-placement
+(4) checks pass. Controller types and focused lint pass with one pre-existing
+explicit-any warning in the untouched capability-selection line. No live LLM
+calls or container changes were made; a new on-air acceptance result is pending.
+
+Station source handoff — 23 October: prepared on
+`codex/sleeve-notes-handover-20261023`, based on station `bd1d1efa`, preserving the
+independent Sub/Shows changes. The clean upstream candidate is `d87ecc85`.
+The six new regressions and controller type check also pass in this station
+candidate. Fast-forward the integration checkout to this branch for an operator
+controller-only rebuild; the prior source rollback is `bd1d1efa`. No schema,
+settings or live research data changes are required. Containers remain unchanged.
+Keep these commits local until station acceptance and an explicit publication
+request. Next: repeat the near-handover request, confirm unused outgoing speech
+stands down, and verify research resumes.

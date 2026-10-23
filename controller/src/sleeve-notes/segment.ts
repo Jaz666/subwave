@@ -1,5 +1,6 @@
 // A code-owned segment using retained research only. It never searches or picks music.
 import { z } from 'zod';
+import * as session from '../broadcast/session.js';
 import { approvedAiringGuidance } from './airing-review.js';
 import {fitsSpeechBudget,speechBudgetPrompt,type SpeechBudget} from '../broadcast/speech-budget.js';
 import {spokenWordCount} from '../audio/tts-measurements.js';
@@ -28,6 +29,7 @@ export interface SleeveNotesSegmentBrief {
   earlierToday: EarlierDayConnection[];
   show: {id:string;name:string;brief:string} | null;
   manual?: boolean;
+  hostSpeech?: session.HostSpeechStamp | null;
   speechBudget?:SpeechBudget;
 }
 export function prepareSleeveNotesSegmentInDatabase(db: Database.Database, track: SegmentTrack,
@@ -63,7 +65,8 @@ export function prepareSleeveNotesSegment(track: SegmentTrack | null, manual = f
   const s=settings.get(), config=s.sleeveNotes.segment;
   if (!track || !s.djBehaviour.extendedSleeveNotes || (!manual && !config.enabled)) return null;
   const {host,guests,show}=settings.getOnAirRoster();
-  return prepareSleeveNotesSegmentInDatabase(open(),track,config,host,guests,Date.now(),manual,show);
+  const brief = prepareSleeveNotesSegmentInDatabase(open(),track,config,host,guests,Date.now(),manual,show);
+  return brief ? { ...brief, hostSpeech: session.captureHostSpeech() } : null;
 }
 
 /** One equal place in the optional pool; an unchosen skill cannot starve it. */
@@ -130,13 +133,17 @@ let segmentRunning = false;
 
 /** Publish through the ordinary queue; the queue's actual air callback owns the ledger. */
 export async function runSleeveNotesSegment(brief: SleeveNotesSegmentBrief,
-  publish:(lines:SleeveNotesSegmentLine[])=>Promise<boolean>,
+  publish:(lines:SleeveNotesSegmentLine[], hostSpeech:session.HostSpeechStamp|null)=>Promise<boolean>,
   runObject:(args:Parameters<typeof djObject>[0])=>Promise<unknown>=djObject,
   onStandDown:(reason:string)=>void=()=>{}): Promise<boolean> {
   const decline=(reason:string)=>{onStandDown(reason);return false;};
   if (!settings.get().djBehaviour.extendedSleeveNotes) return decline('Extended Sleeve Notes is disabled');
+  if (session.handoffInProgress()) return decline('the show handoff has already claimed this boundary');
   if (segmentRunning) return decline('a Sleeve Notes segment is already being prepared');
   if(brief.speechBudget&&brief.speechBudget.maxWords<brief.speechBudget.minWords)return decline('not enough track time remains for a complete Sleeve Notes segment');
+  // Manual timing overrides do not let outgoing-show material cross a handover.
+  const hostSpeech = brief.hostSpeech === undefined ? session.captureHostSpeech() : brief.hostSpeech;
+  if (!session.isHostSpeechCurrent(hostSpeech)) return decline('the show or host changed before the segment was written');
   segmentRunning=true;
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(new Error('Sleeve Notes segment generation timed out')),settings.get().llm.agentTimeoutMs ?? 45_000);
@@ -148,6 +155,8 @@ export async function runSleeveNotesSegment(brief: SleeveNotesSegmentBrief,
     const schema=sleeveNotesSegmentOutputSchema(brief.cast);
     const output=schema.parse(await runObject({...sleeveNotesSegmentPrompt(brief),schema,kind:'generateSleeveNotesSegment',temperature:0.65,maxOutputTokens:2400,signal:controller.signal}));
     if (controller.signal.aborted) return decline(controller.signal.reason instanceof Error ? controller.signal.reason.message : 'Sleeve Notes generation was interrupted');
+    if (session.handoffInProgress()) return decline('the show handoff claimed this boundary while the segment was being written');
+    if (!session.isHostSpeechCurrent(hostSpeech)) return decline('the show or host changed while the segment was being written');
     if (!output.air) return decline(output.reason || 'the DJ found nothing worthwhile to say');
     if(brief.speechBudget&&!fitsSpeechBudget(brief.speechBudget,output.lines.reduce((sum,line)=>sum+spokenWordCount(line.text),0),output.lines.length))
       return decline('the written segment no longer fits the remaining track time');
@@ -175,7 +184,7 @@ export async function runSleeveNotesSegment(brief: SleeveNotesSegmentBrief,
       open().prepare("UPDATE sleeve_claim_uses SET segment_id=? WHERE id=?").run(segmentId,id);
       uses.push(id);line.meta.sleeveNotesSegmentUseIds.push(id);
     }
-    if (await publish(lines)) return true;
+    if (await publish(lines, hostSpeech)) return true;
     for (const id of uses) releaseExtendedSleeveNoteReservation(id);
     return decline('the station could not queue the rendered segment');
   } catch (error) {

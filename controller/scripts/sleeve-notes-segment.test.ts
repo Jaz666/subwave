@@ -458,7 +458,7 @@ test('Run Now route is admin-only, reads the live track, bypasses automatic segm
  playing=true;response=await fetch(url,{method:'POST',headers});assert.equal(response.status,200);
  body=await response.json() as typeof body;assert.equal(body.queued,true);assert.equal(body.deferred,true);assert.equal(modelCalls,1);
  const options=announce.mock.calls[0].arguments[2] as {hostSpeech?:unknown;meta:{sleeveNotesSegmentUseIds:string[]}};
- assert.equal(options.hostSpeech,undefined);assert.equal(options.meta.sleeveNotesSegmentUseIds.length,2);
+ assert.ok('hostSpeech' in options);assert.equal(options.meta.sleeveNotesSegmentUseIds.length,2);
  assert.equal(heardOnAir().total,0);
  db.prepare('DELETE FROM sleeve_claim_uses').run();decline=true;
  response=await fetch(url,{method:'POST',headers});body=await response.json() as typeof body;

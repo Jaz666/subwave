@@ -151,6 +151,7 @@ import type { PendingTalk } from './queue/kinds.js';
 import {
   BED_MARKER_FRESH_MS,
   VOICE_LEADIN_MS,
+  SpeechPublicationCancelled,
   airVoice,
   clipDurationMs,
   speechDurationMs,
@@ -2574,6 +2575,9 @@ class Queue {
         voiceGainDb(kind, persona),
         {
           onQueued: q => this.onQueued(q, seg),
+          beforeWrite: kind === 'sleeve-notes' ? () => session.isHostSpeechCurrent(hostSpeech)
+            && settings.get().djBehaviour.extendedSleeveNotes
+            && !session.handoffInProgress() : undefined,
         },
       );
       // Bookkeeping runs when the words reach the stream, not at handoff
@@ -2584,7 +2588,7 @@ class Queue {
       return { accepted: true, deferred: false, completed };
     } catch (err) {
       releaseSleeveNoteUse(sleeveClaimUseId);
-      this.log('error', `Announce failed: ${(err as Error).message}`);
+      this.log(err instanceof SpeechPublicationCancelled ? 'scheduler' : 'error', `Announce failed: ${(err as Error).message}`);
       return { accepted: false, deferred: false, completed: Promise.resolve(false) };
     }
   }
@@ -2689,7 +2693,16 @@ class Queue {
   // makes the two-voice persona handoff play cleanly). Each line is booth-
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
-  async announceExchange(lines: { persona: Persona; text: string; meta?: TurnMeta }[], kind = 'banter', { castNames = [], speechDeadline = null }: { castNames?: readonly string[];speechDeadline?:SpeechDeadline|null } = {}) {
+  async announceExchange(
+    lines: { persona: Persona; text: string; meta?: TurnMeta }[],
+    kind = 'banter',
+    { castNames = [], speechDeadline = null, hostSpeech = null }: {
+      castNames?: readonly string[];
+      speechDeadline?: SpeechDeadline | null;
+      hostSpeech?: HostSpeechStamp | null;
+    } = {},
+  ) {
+    if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) return false;
     if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return false;
     if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
       this.log('scheduler', `Dropped ${kind} exchange — the show handoff has already claimed this boundary`);
@@ -2703,6 +2716,7 @@ class Queue {
       // Each clip owns its speaker's gain, attribution and live-edge marker.
       // Conversational batching must preserve those before it can air here.
       for (const l of lines) {
+        if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) return false;
         const text = normalizeForDisplay(stripSpeakerLabel(l.text || '', knownNames));
         if (!text) continue;
         const wavPath = await this._speak(text, { kind, persona: l.persona });
@@ -2712,7 +2726,7 @@ class Queue {
       this.log('error', `Exchange render failed: ${(err as Error).message}`);
       return false;
     }
-    if (!rendered.length) return false;
+    if (!rendered.length || (hostSpeech && !session.isHostSpeechCurrent(hostSpeech))) return false;
     // Deferred as one segment, not as N: the exchange keeps its order and its
     // all-or-nothing rendering, and the boundary hears the whole conversation.
     if (currentTalkAir() === 'next-track') {
@@ -2725,7 +2739,7 @@ class Queue {
           meta: l.meta ?? {},
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
         })),
-        { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null },
+        { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null, hostSpeech },
       );
     }
     if(speechDeadline&&!fitsSpeechDeadline(speechDeadline,this.current,rendered.reduce((sum,line)=>sum+speechDurationMs(line.wavPath,line.text),0))) {
@@ -2733,6 +2747,7 @@ class Queue {
       return false;
     }
     for (const [index, l] of rendered.entries()) {
+      if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) return false;
       if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return false;
       if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
         this.log('scheduler', `Dropped ${kind} exchange — the show handoff completed while it rendered`);
@@ -2746,11 +2761,15 @@ class Queue {
         };
         const handoff = await this._airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
           onQueued: q => this.onQueued(q, seg),
+          beforeWrite: kind === 'sleeve-notes' ? () => session.isHostSpeechCurrent(hostSpeech)
+            && settings.get().djBehaviour.extendedSleeveNotes
+            && !session.handoffInProgress() : undefined,
         });
         this.onSpoken(handoff, seg);
       } catch (err) {
         if (kind==='sleeve-notes') releaseSleeveNotesSegment(l.meta ?? {});
-        this.log('error', `Exchange line failed to air: ${(err as Error).message}`);
+        this.log(err instanceof SpeechPublicationCancelled ? 'scheduler' : 'error', `Exchange line failed to air: ${(err as Error).message}`);
+        if (kind === 'sleeve-notes') return false;
       }
     }
     // One webhook for the whole exchange — per-line events would read as five
@@ -3225,6 +3244,9 @@ class Queue {
               track: this.current?.track ?? null, sleeveClaimUseId: clip.sleeveClaimUseId };
         const handoff = await this._airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
           onQueued: q => this.onQueued(q, seg),
+          beforeWrite: p.kind === 'sleeve-notes' ? () => session.isHostSpeechCurrent(p.hostSpeech)
+            && settings.get().djBehaviour.extendedSleeveNotes
+            && !session.handoffInProgress() : undefined,
         });
         completions.push(this.onSpoken(handoff, seg));
         if (!sfxHanded && p.sfx) {
@@ -3232,7 +3254,8 @@ class Queue {
           await this.playSfx(p.sfx, { underVoice: true });
         }
       } catch (err) {
-        this.log('error', `Air pending voice failed: ${(err as Error).message}`);
+        if (p.kind === 'sleeve-notes') releaseSleeveNotesSegment(clip.meta);
+        this.log(err instanceof SpeechPublicationCancelled ? 'scheduler' : 'error', `Air pending voice failed: ${(err as Error).message}`);
       }
     }
     void Promise.all(completions).then(results => p.onCompleted?.(results.some(Boolean)));

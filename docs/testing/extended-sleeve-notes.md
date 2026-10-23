@@ -4,15 +4,14 @@ This is an experimental source build for operators willing to test it on their o
 
 ## Choose the build and keep a recovery route
 
-For a fresh test installation, the current staging branch is:
+For a fresh test installation, the testing branch is:
 
 ```sh
-git clone https://github.com/Jaz666/subwave.git subwave-sleeve-notes-test
+git clone --branch feat/extended-sleeve-notes-testing https://github.com/Jaz666/subwave.git subwave-sleeve-notes-test
 cd subwave-sleeve-notes-test
-git switch codex/series-idle-20261020
 ```
 
-Once the upstream draft is published, its PR checkout instructions should replace the staging branch instructions above. Record the commit you actually test. Fetching or checking out the branch does not update running containers, and the ordinary published `latest` images do not represent this unmerged source.
+The upstream draft PR links to this same branch. Record the commit you actually test. Fetching or checking out the branch does not update running containers, and the ordinary published `latest` images do not represent this unmerged source.
 
 For a fresh installation, complete the normal [source-install setup](../../README.md), including private environment/admin configuration, ports and volume paths, before starting services. A separate test installation needs separate state/IPC paths; do not run two controllers against one station state directory.
 
@@ -40,7 +39,7 @@ Existing installations must include their usual compose files in both commands. 
 6. **Research contention:** listen while the model or a source is slow/unavailable. Music and ordinary DJ work must retain priority. Check the queue's waiting explanation. Research uses the shared token allowance; a paid usage estimate is not a cap or a promise of cost per played track.
 7. **Pause and disable:** collection pause keeps saved Sparks usable. Master disable stops new feature work. Try it during a lookup, generation and pending speech, then re-enable. A voice already committed to a mixer silence must finish safely; uncommitted feature speech must not appear later.
 8. **Restart and restore:** restart the controller during research and confirm work resumes rather than duplicating speech or restarting every Series sweep. On a disposable installation, restore a real older backup and a backup taken after collecting material. Keep the source build and restored state compatible.
-9. **Browser:** check Dash, Settings, Notes, Station Brain and the manual. In Overview → Research activity, expand Show queue: Send to top and Cancel job appear only there, even with a single job. Promote eligible work, confirm delayed work still waits, cancel a queued job and verify saved material remains. Running jobs disable both actions; a stale click must be refused. Cancelled automatic work can be queued again; cancelled reviews are dismissed. Use keyboard navigation and cancel each confirmation. Library connections and Credits in Saved knowledge open Station Brain; Stories opens saved stories. Library connection counts exclude outside recordings and fold inverse sample/cover descriptions.
+9. **Browser:** check Dash, Settings, Notes, Station Brain and the manual. In Overview → Research activity, expand Show queue: Send to top and Cancel job appear only there, even with a single job. Promote eligible work, confirm delayed work still waits, cancel a queued job and verify saved material remains. Running jobs disable both actions; a stale click must be refused. Cancelled automatic work can be queued again; cancelled reviews are dismissed. Use keyboard navigation and cancel each confirmation. Library connections and Credits in Saved knowledge open Station Brain; Stories opens saved stories. Library connection counts exclude outside recordings and fold inverse sample/cover descriptions. Connection matching batches updates with at least five minutes between full calculations; allow for that delay when checking new relationships. Busy periods or retries can delay them further.
 
 A small library, a large library, non-English names and a slower local LLM are useful variations. Report which combinations were actually tried; mocked provider/model tests are not evidence of live service quality.
 
@@ -100,3 +99,14 @@ Inspect storage explicitly to read database, write-log, reusable-space and sourc
 text sizes; repeat later to compare file growth in the same browser. There is no
 automatic polling. Source text sizes omit other tables and indexes. Observe the
 fresh collection over several days before changing retention policy.
+
+
+### Show handover acceptance
+
+A Sleeve Notes conversation belongs to the show that requested it, even when
+started manually. Near a normal show change, request one while it is still being
+written or rendered. Once the handover has claimed the boundary, unused outgoing
+speech should stand down rather than follow the incoming greeting or hourly check.
+The same rule applies when adjacent shows use the same presenter. Speech already
+published to the mixer finishes normally. Check that ordinary playback and research
+resume afterwards; manual Banter retains its existing operator override.
