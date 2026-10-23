@@ -216,6 +216,14 @@ export function createShowPreparation(deps: PreparationDeps) {
   const pendingGenerated = new Map<string, Promise<GeneratedShowRecord | null>>();
   const generateAcceptedPlan = async (snapshot: GeneratedShowSnapshot): Promise<GeneratedShowPlan> => {
     const generate = deps.generate ?? generateShowPlan;
+    const discovery = snapshot.template === 'deep-discovery';
+    const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0, discovery
+      ? Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000) : 0);
+    const accept = (raw: GeneratedShowPlan) => {
+      const plan = generatedShowPlanSchema.parse({ ...raw, ...(discovery ? { filtersStrict: true } : {}) });
+      if (discovery && !plan.genres.length) throw new Error('Deep Discovery requires a genre palette');
+      return plan;
+    };
     const validateCoverage = async (plan: GeneratedShowPlan) => {
       const diagnostic = await diagnoseShowCandidates({
         ...snapshot.show, moods: plan.moods, genres: plan.genres, eras: plan.eras,
@@ -223,17 +231,19 @@ export function createShowPreparation(deps: PreparationDeps) {
       }, { at: snapshot.occurrence.startsAt, showId: snapshot.occurrence.showId });
       return { count: diagnostic.library.effective, warnings: diagnostic.warnings };
     };
-    let plan = generatedShowPlanSchema.parse(await generate(snapshot));
-    if (snapshot.minimumCoverage == null) return plan;
+    let plan = accept(await generate(snapshot));
+    if (!discovery && snapshot.minimumCoverage == null) return plan;
+    const enough = (coverage: Awaited<ReturnType<typeof validateCoverage>>) =>
+      coverage.count >= minimumTracks;
     let coverage = await validateCoverage(plan);
-    if (coverage.count >= snapshot.minimumCoverage) return plan;
-    plan = generatedShowPlanSchema.parse(await generate({
+    if (enough(coverage)) return plan;
+    plan = accept(await generate({
       ...snapshot,
-      coverageCorrection: `The previous settings leave ${coverage.count} unique eligible tracks, below the required ${snapshot.minimumCoverage}. Broaden or simplify the music settings and try again. Diagnostic: ${coverage.warnings.join(' ')}`,
+      coverageCorrection: `Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Deep Discovery). Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions. Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
     }));
     coverage = await validateCoverage(plan);
-    if (coverage.count < snapshot.minimumCoverage) {
-      throw new Error(`Generated settings cover ${coverage.count} unique eligible tracks; ${snapshot.minimumCoverage} are required`);
+    if (!enough(coverage)) {
+      throw new Error(`Generated settings cover ${coverage.count} unique eligible tracks; ${minimumTracks} are required`);
     }
     return plan;
   };
