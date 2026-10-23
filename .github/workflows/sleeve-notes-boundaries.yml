@@ -40,6 +40,8 @@ jobs:
           for suite in intro-render sleeve-notes-link-isolation sleeve-notes-segment sleeve-notes-handover sleeve-notes-lifecycle sleeve-notes-backup sleeve-notes-cached-browsing sleeve-notes-artist-identity sleeve-notes-research-policy sleeve-notes-diagnostics; do
             npm test -- "$suite"
           done
-      - name: Test progress messages
+      - name: Test progress messages and Station Brain
         working-directory: web
-        run: npm test -- notes-research-health
+        run: |
+          npm test -- notes-research-health
+          npm test -- connections

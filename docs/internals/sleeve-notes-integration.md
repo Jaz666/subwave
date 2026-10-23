@@ -199,3 +199,27 @@ These observations support updating the testing draft. Multi-day storage growth,
 additional real LLM/provider combinations and destructive environment/recovery
 experiments remain further testing work. This record does not claim those checks
 were completed or establish uninterrupted audio in every failure scenario.
+
+
+## Final-review verification — 23 October
+
+The operator accepted the light-theme Station Brain refinement after a station web
+rebuild. The final feature code passed the full isolated controller suite (5420
+checks, zero failures or skips) and the full web suite (466 checks). Controller,
+web, native-app and standalone-MCP lint/type gates pass; the controller retains
+1733 existing lint warnings. Schema/theme regeneration has no source drift and
+the admin-query audit passes. The default Turbopack production build passed on
+retry after reporting the inherited upstream Next.js security advisory.
+
+The feature boundary workflow now also runs the Station Brain connection/theme
+checks. Live acceptance includes manual Banter, research resumption after rebuild,
+progressive artist consolidation, progress/storage controls, the library count
+rising to 137, and refusal of a manual Sleeve Notes request during a handoff.
+Writing/rendering/publication races and same-host show changes retain automated
+coverage; no separate live reproduction of every race is claimed.
+
+The inherited Next.js 16.4.0 advisory remains an upstream dependency follow-up;
+a successful build retry does not remediate it. The PR description links the
+advisory and distinguishes supported public-schema upgrades from experimental
+research-only resets. Longer storage, provider and destructive fault/recovery
+trials remain further testing, not claimed completed acceptance.
