@@ -73,6 +73,14 @@ operator direction or a concrete musical need justifies a restriction. Raw genre
 counts do not establish coverage after intersecting those extra restrictions;
 soft filters are not a reason to accept an implausible matching core.
 
+Both passes receive the same bounded genre candidates. The brief may promise a
+few supported genres; the music-settings pass must represent those promises
+using exact supported tags or musically appropriate listed subgenres, explained
+in its rationale. Presentation instructions do not become filters. The concept
+must not copy the Soul’s whole genre list, promise a specific opening artist or
+track, or assert an artistic influence without research. These are prompt
+instructions, not a deterministic semantic consistency validator.
+
 The planner returns a title, a brief and these existing show controls:
 
 | Operator-facing field | Current source field |
