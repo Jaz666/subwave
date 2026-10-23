@@ -483,17 +483,17 @@ export async function runAutomaticSleeveNotesSegment(
   try {
     const accepted = await runSleeveNotesSegment(
       brief,
-      async lines => {
+      async (lines, hostSpeech) => {
         if (lines.length > 1)
           return queue.announceExchange(lines, brief.kind, {
             castNames: brief.cast.map(p => p.name),
+            hostSpeech,
             speechDeadline: brief.speechBudget,
           });
-        const stamp = session.captureAutomaticHostSpeech(lines[0].persona, new Date());
         const outcome = await queue.announce(lines[0].text, brief.kind, {
           persona: lines[0].persona,
           meta: lines[0].meta,
-          hostSpeech: stamp.hostSpeech,
+          hostSpeech,
           pauseTalkEligible: true,
           speechDeadline: brief.speechBudget,
         });
@@ -797,16 +797,18 @@ export async function runSleeveNotesSegmentNow(): Promise<CapabilityRun> {
     reason: string | null = null;
   const accepted = await runSleeveNotesSegment(
     brief,
-    async lines => {
+    async (lines, hostSpeech) => {
       text = lines.map(line => `${line.persona.name}: ${line.text}`).join('\n');
       if (lines.length > 1)
         return queue.announceExchange(lines, brief.kind, {
           castNames: brief.cast.map(persona => persona.name),
+          hostSpeech,
           speechDeadline: brief.speechBudget,
         });
       const delivery = await queue.announce(lines[0].text, brief.kind, {
         persona: lines[0].persona,
         meta: lines[0].meta,
+        hostSpeech,
         pauseTalkEligible: true,
         speechDeadline: brief.speechBudget,
       });

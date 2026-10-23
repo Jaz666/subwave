@@ -99,3 +99,14 @@ Inspect storage explicitly to read database, write-log, reusable-space and sourc
 text sizes; repeat later to compare file growth in the same browser. There is no
 automatic polling. Source text sizes omit other tables and indexes. Observe the
 fresh collection over several days before changing retention policy.
+
+
+### Show handover acceptance
+
+A Sleeve Notes conversation belongs to the show that requested it, even when
+started manually. Near a normal show change, request one while it is still being
+written or rendered. Once the handover has claimed the boundary, unused outgoing
+speech should stand down rather than follow the incoming greeting or hourly check.
+The same rule applies when adjacent shows use the same presenter. Speech already
+published to the mixer finishes normally. Check that ordinary playback and research
+resume afterwards; manual Banter retains its existing operator override.

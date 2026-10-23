@@ -117,6 +117,10 @@ export function airInEstimate(
   return { waitMs, estimatedAirInMs: waitMs + HANDOFF_TO_AIR_MS };
 }
 
+export class SpeechPublicationCancelled extends Error {
+  constructor() { super('Speech cancelled before broadcast publication'); }
+}
+
 export async function airVoice(
   path: string,
   wavPath: string,
@@ -131,12 +135,15 @@ export async function airVoice(
     voiceId: stableVoiceId,
     pauseDeliveryId = null,
     airMarkerPromise,
+    beforeWrite = () => true,
   }:
     {
       onQueued?: (q: QueuedVoice) => void;
       voiceId?: string;
       pauseDeliveryId?: string | null;
       airMarkerPromise?: Promise<number | null>;
+      /** Rechecked after voice/jingle/file waits, immediately before mixer publication. */
+      beforeWrite?: () => boolean;
     } = {},
 ): Promise<VoiceHandoff> {
   // Duration is read from the bare WAV path (header parse), so compute it BEFORE
@@ -167,11 +174,11 @@ export async function airVoice(
       // A jingle stinger may be on air (or inside the cross buffer) right now —
       // it plays outside this serialiser, so wait it out before handing over.
       await waitForJingleClear();
-      return writeHandoff(path, uri);
+      return writeHandoff(path, uri, { beforeWrite });
     });
   // Extend the shared lock until this clip has (about) finished playing.
-  _voiceChain = turn.then(() => sleep(holdMs)).then(() => {}, () => {});
-  await turn;
+  _voiceChain = turn.then(written => written ? sleep(holdMs) : undefined).then(() => {}, () => {});
+  if (!await turn) throw new SpeechPublicationCancelled();
   // Registered AFTER the handoff resolves, so the timeout measures the wait for
   // AIR and not the wait for this clip's turn on the shared voice chain (which
   // can legitimately be a whole segment long). The marker reader keeps a short

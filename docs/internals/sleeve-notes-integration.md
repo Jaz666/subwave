@@ -123,3 +123,33 @@ An isolated current-station database snapshot reduced seven visible 2Pac entries
 one without changing its 1022 recordings, 5294 facts or 658 sources, and with zero
 foreign-key errors. This was not a live data repair or a substitute for station
 acceptance. Live containers remain for the operator to rebuild.
+
+
+## Outgoing segment handover ownership
+
+A station check on 22 October found an outgoing-host Sleeve Notes exchange airing
+following the incoming show's handover and hourly check. Background research did
+resume, confirming that the earlier permanent-pause repair worked independently.
+
+Prepared Sleeve Notes briefs now retain the commissioning show/host epoch through
+writing, rendering, deferred delivery and the final speech-file publication check.
+Both manual and automatic requests stand down once a handoff has claimed the
+boundary. A same-presenter show change also invalidates the old editorial context.
+Cancelled publication does not hold the voice serialiser for the unplayed clip's
+duration or create aired bookkeeping; unsuccessful segments release unused fact
+reservations. Already-published audio and committed pause-and-talk delivery retain
+their existing ownership. Ordinary manual Banter and other manual speech keep their
+established overrides.
+
+Regression coverage is in `sleeve-notes-handover.test.ts`, including real speech-file
+waiting, late writing/TTS, same-host show changes and deferred exchanges. The
+focused boundary workflow includes this suite. A new on-air handover check is still
+required after rebuilding the controller; synthetic checks do not establish the
+live audio outcome.
+
+Validation: the feature suite passed 369 checks during development. After the
+final ownership/policy refinements, all 6 handover regressions and 32 segment
+checks pass. Shared voice (122), host-speech (17), handoff (87) and talk-placement
+(4) checks pass. Controller types and focused lint pass with one pre-existing
+explicit-any warning in the untouched capability-selection line. No live LLM
+calls or container changes were made; a new on-air acceptance result is pending.
