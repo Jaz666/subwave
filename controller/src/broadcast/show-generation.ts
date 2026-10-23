@@ -282,37 +282,35 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const conceptName = usesCustomName ? String(input.customName || '').trim()
     : 'name' in concept ? concept.name : '';
   const templateMusicDirection = input.template === 'deep-discovery'
-    ? 'For Deep Discovery, choose usually 3–6 related genres from one coherent musical neighbourhood of the host’s stated tastes and brief. Broad or flexible tastes alone do not justify an unrelated genre. Make smaller styles with tens of records the core; tags with just one or two tracks can be secondary accents, never the whole palette. Include moderately represented related styles when needed to sustain the slot. Avoid familiar broad categories when a smaller related style can do the job. Explain the specific connection of the chosen genres to musical preferences stated in the Soul or Musical Leanings, and to one another. Do not justify unrelated genres merely by saying the host is curious or broad-minded. Do not invent the host’s musical background or personal collection.'
-    : input.template === 'dj-choice'
-      ? 'For DJ’s Choice, choose a coherent, selective palette, usually about 4–8 genres. Include a few familiar genres from existing shows, then a few related stretch genres that fit the host and brief. The 15-genre limit is an absolute ceiling, not a target: never pad the list. Omit genres that cannot be clearly connected to the host’s Soul, Musical Leanings or the brief.'
-      : 'Choose suitable settings that follow from the brief and available library coverage.';
+    ? 'After covering the brief’s promised styles, favour smaller related genres for discovery. Usually 3–6 genres is enough, but this is not a quota. Never trade a promised musical style for a rarer unrelated one.'
+    : 'After covering the brief’s promised styles, retain a few familiar anchors and add related stretch genres. Usually 4–8 genres is enough; the 15-genre limit is a ceiling, not a target.';
   const settingsPrompt = [
-    `Show name: ${conceptName}`,
-    `Accepted episode brief: <show-brief>${concept.topic}</show-brief>`,
-    `Host: ${host.name}. Soul: <host-soul>${host.soul}</host-soul>`,
-    host.musicLean ? `Optional Musical Leanings: <host-leanings>${host.musicLean}</host-leanings>` : 'Musical Leanings: absent; use musical preferences in the Soul.',
-    `Local slot: ${showTime(input)}.`,
-    `Template music direction: ${templateMusicDirection}`,
-    existingShows.length ? `Familiar repertoire only, not restrictions to copy:\n${existingShowSettings}` : null,
-    input.planningPrompt ? `Operator music direction: <operator-direction>${input.planningPrompt}</operator-direction>` : null,
-    `Supported genre candidates and indexed matching-track counts: ${genreContext}`,
-    `Available moods: ${moodNames.join(', ')}`,
-    'First identify every genre the episode brief explicitly promises to play or explore. Represent each promise in genres using the supplied tags, copied exactly. If a broad promised style is represented by a listed subgenre, use that musically appropriate subgenre and explain the relationship in the rationale. Do not replace a promised style with an unrelated rare genre. Add other genres only when they support the same musical idea. Check the whole brief against the final genre list before returning it.',
-    'The brief’s musical commitments must be reflected in the filters because those filters drive track selection. Its delivery, humour, nostalgia and host/guest interactions are presentation; they must not create era, mood or energy restrictions. Musical Leanings is optional taste guidance and remains a soft influence between candidates at playback, not a genre whitelist.',
-    'Default moods, eras and energies to [] and filtersStrict to false. Add a restriction only for an explicit operator requirement or an essential musical requirement with evidence of playable coverage. Calm delivery does not imply low energy; favourite decades do not require an era window. When uncertain, keep the extra restriction empty. Genres alone is a complete valid configuration.',
-    input.template === 'deep-discovery'
-      ? `These candidates are drawn from the whole indexed catalogue, favouring smaller genres with plausible raw repertoire. For this slot, roughly ${Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000)} different four-minute records is a pacing estimate, not a hard minimum. Counts overlap, cannot be summed as unique tracks, and do not establish coverage after mood, era or energy filters. Do not narrow an otherwise viable palette on speculation. Soft filtering is not a justification for a matching core with few or no records.`
-      : 'Counts are catalogue context, not airplay or popularity. They overlap and do not prove that an added era, mood or energy restriction has enough matching tracks.',
-    `Library size: ${libraryStats?.mirrorTotal ?? 'unknown'} indexed tracks.`,
-    input.minimumCoverage != null ? `Operator minimum: ${input.minimumCoverage} unique eligible tracks after all show filters and exclusions.` : null,
+    'TASK: translate the already-written episode brief into music filters. The creative planning step is finished. Do not invent a second show based on the host’s general interests.',
+    `EPISODE: ${conceptName}\n<show-brief>${concept.topic}</show-brief>`,
+    input.planningPrompt ? `OPERATOR REQUIREMENTS: <operator-direction>${input.planningPrompt}</operator-direction>` : null,
+    `AVAILABLE GENRE TAGS (exact spelling; counts are indexed matching tracks): ${genreContext}`,
+    `AVAILABLE MOODS: ${moodNames.join(', ')}`,
+    'GENRES — apply these rules in order:',
+    '1. Read only the episode brief to identify its promised musical styles. If a promised genre appears in AVAILABLE GENRE TAGS, copy it into genres. Do this before considering rarity, counts, typical palette size or other music the host likes.',
+    '2. For a broader promised style without an exact tag, choose only a listed subgenre that actually belongs to that style. Similar words, a shared mood, “experimental”, “melodic”, or “the host is eclectic” do not establish that relationship.',
+    '3. Cover the remaining promises the same way. Then add a related genre only if it helps the same listening idea. If the brief names no genres, use the Soul and optional Musical Leanings to interpret its musical idea.',
+    '4. Do not silently substitute an unrelated genre for a missing style. If the supplied list cannot represent a promise, state that gap honestly in rationale and choose the supported portion of the idea. Never claim that an unrelated genre fulfils it.',
+    'Example: if the brief promises Glitch and Shoegaze and both tags are available, include both. Post-Bop is not a substitute for Post-Punk because both names start with “Post”. Psychedelic Folk does not represent Shoegaze just because both might sound atmospheric.',
+    `TEMPLATE: ${templateMusicDirection}`,
+    `HOST CONTEXT, only to interpret the idea or choose related additions: ${host.name}. <host-soul>${host.soul}</host-soul>`,
+    host.musicLean ? `Optional Musical Leanings: <host-leanings>${host.musicLean}</host-leanings>` : 'Musical Leanings is absent; musical preferences may be stated in the Soul.',
+    existingShows.length ? `Familiar repertoire, not restrictions or an alternative brief:\n${existingShowSettings}` : null,
+    'MOOD / ERA / ENERGY: start with moods: [], eras: [], energies: [], filtersStrict: false. Keep them unless the operator or the brief explicitly requires a musical property and coverage supports it. Calm conversation is not calm music. Night-time scheduling is not a “night” mood requirement. Favourite decades and nostalgic banter do not require an era window. A rhythm-focused show does not automatically require high energy. Soft filters deliberately leave room for exploration.',
+    `SLOT: ${showTime(input)}. Rough pacing estimate: ${Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000)} four-minute records, not a hard minimum. Library: ${libraryStats?.mirrorTotal ?? 'unknown'} indexed tracks. Genre counts overlap and cover all years, moods and energies; they do not prove coverage after adding restrictions.`,
+    input.minimumCoverage != null ? `OPERATOR MINIMUM: ${input.minimumCoverage} unique eligible tracks after all show filters and exclusions.` : null,
     input.coverageCorrection || null,
-    'Preserve operator-owned playlists, exclusions, track limits, programme settings, voices and skills; do not output or change them. Do not invent personal history, artist influence, previous airplay or coverage guarantees.',
-    'Return exactly moods, genres, eras, energies, filtersStrict and rationale. Use eras: [] for any era, never an all-null era window. In at most 500 characters, explain how the chosen genres fulfil the brief’s musical promises and connect to the DJ’s stated tastes. Do not just repeat the brief.',
+    'FINAL CHECK: compare each musical promise in the brief with your genres. Correct omissions before answering. Explain actual promise-to-tag mappings in rationale; if a promise is unsupported, name it. Do not repeat the brief or claim “these genres fulfil the promise” without a specific mapping. Do not invent genre relationships, artist influence, personal history or airplay.',
+    'Return exactly moods, genres, eras, energies, filtersStrict and rationale. Rationale: at most 500 characters. Any era: eras: [], never an all-null window. Preserve operator-owned playlists, exclusions, track limits, programme settings, voices and skills; they are not output fields.',
   ].filter(Boolean).join('\n\n');
   let musicSettings: z.infer<typeof planSchema>;
   try {
     musicSettings = await djObject({
-      system: 'You translate a radio episode brief into music settings. Honour every explicit genre promise using supported library tags, and keep additional genres coherent with the same idea. Presentation instructions are not music restrictions. Read musical taste from the Soul and optional Musical Leanings; existing show filters indicate familiar repertoire only. Default mood, era and energy arrays to empty. Preserve operator-owned controls.',
+      system: 'You translate an accepted radio episode brief into music settings; you do not plan a new show. Explicit operator requirements come first, then the brief’s musical promises. Copy exact promised genre tags when available; otherwise use only genuine listed subgenres. Host taste and discovery preferences guide related additions after promises are covered. Never justify unrelated substitutions. Default mood, era and energy arrays to empty, and report unsupported promises honestly. Return only the requested JSON.',
       prompt: settingsPrompt,
       schema: planSchema,
       temperature: input.template === 'deep-discovery' ? 0.3 : 0.55,
