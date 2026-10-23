@@ -248,7 +248,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }) as z.infer<typeof conceptSchema>;
   const intended = [...new Set(concept.intendedGenres)];
   const settingsSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
-    ...(discovery ? { moods: z.array(z.enum(moods as [string, ...string[]])).max(2) } : {}),
+    moods: generatedShowPlanSchema.shape.moods.max(discovery ? 2 : 15),
     genres: intended.length
       ? z.array(z.enum(intended as [string, ...string[]])).length(intended.length)
       : z.array(z.never()).max(0),
