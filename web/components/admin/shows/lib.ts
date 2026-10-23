@@ -50,8 +50,6 @@ export function hydrateShow(s: Partial<Show>): Show {
     ...(m.generation ? {
       generation: {
         ...m.generation,
-        eligibleHostPersonaIds: [...m.generation.eligibleHostPersonaIds],
-        eligibleGuestPersonaIds: [...m.generation.eligibleGuestPersonaIds],
         guestCount: { ...m.generation.guestCount },
       },
     } : {}),
