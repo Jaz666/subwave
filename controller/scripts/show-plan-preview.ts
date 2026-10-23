@@ -18,7 +18,7 @@ const { generateShowPlan, scheduledShowsForHost } = await import('../src/broadca
 async function main() {
   const [hostId, requestedTemplate, ...direction] = process.argv.slice(2);
   if (hostId === '--help' || hostId === '-h') {
-    console.error('Usage: npm run show-plan:preview -- [host-persona-id] [dj-choice|deep-discovery|forgotten-favourites] [planning direction...]');
+    console.error('Usage: npm run show-plan:preview -- [host-persona-id] [dj-choice|deep-discovery] [planning direction...]');
     return;
   }
 
@@ -40,7 +40,7 @@ async function main() {
   }
 
   const template = requestedTemplate || 'dj-choice';
-  if (!['dj-choice', 'deep-discovery', 'forgotten-favourites'].includes(template)) {
+  if (!['dj-choice', 'deep-discovery'].includes(template)) {
     throw new Error(`Unknown template ${template}`);
   }
 

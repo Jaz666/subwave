@@ -38,6 +38,13 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
+Only DJ’s Choice and Deep Discovery are accepted template options in saved
+settings and the preview harness. Unsupported legacy template names use the
+existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
+Random casting uses the station-wide Sub/Shows host and guest pools only.
+Legacy per-show candidate lists are ignored and stripped during normalization;
+removing them does not change a slot’s random/fixed host or guest modes.
+
 For DJ’s Choice, “fresh” means a specific premise that naturally offers some
 variety from the host’s other regularly scheduled shows. Existing shows help
 identify familiar genres and angles; they are not forbidden subjects or genres.

@@ -38,7 +38,6 @@ export interface GeneratedShowInput {
 const TEMPLATE_DIRECTIONS: Record<string, string> = {
   'dj-choice': 'Catch-all discovery: keep a few familiar genres from the host’s regular shows in the music palette, then reach into related styles they play less often. Keep the show idea distinct from existing shows; do not make a broad genre journey the premise.',
   'deep-discovery': 'Use the host’s Soul and optional Musical Leanings to shape the show idea. Then favor less-represented genres from the library when choosing music settings, while keeping the brief coherent and playable.',
-  'forgotten-favourites': 'Deferred direction. No track-level play-history evidence is supplied, so do not claim that a song was popular, loved, forgotten, or previously played.',
 };
 
 function stableIndex(key: string, length: number): number {
