@@ -255,3 +255,50 @@ The separate neglected-library report is deferred: recommend changes to existing
 show configurations to cover neglected artists and genres. Optional Driving
 Beat analysis and protected Sub/Flow track groups are separate proposals and
 are not prerequisites for DJ’s Choice.
+
+### Preview-only single-call comparison
+
+`controller/scripts/show-plan-preview.ts` supports `--planner current`, `single`
+and `compare` (default: `current`). The alternate planner lives only in
+`scripts/show-plan-single.ts`; production preparation never imports it. It
+returns the brief, title and filters together, using a compact enum of the
+recommended genres instead of the full catalogue enum. It validates the result
+locally against the catalogue and mood vocabulary; invalid output is reported,
+not saved, silently dropped or automatically retried beyond the shared SDK's
+normal recovery.
+
+From `controller/`, with an isolated copy of station data in `STATE_DIR`:
+
+```bash
+npm run show-plan:preview -- HOST_ID deep-discovery --planner compare --hours 2
+npm run show-plan:preview -- HOST_ID deep-discovery --planner single --guests GUEST_ID --runs 2
+```
+
+Both planners receive the same host, guests, duration and repertoire context.
+`--runs` accepts 1–5 repetitions. JSON output includes each proposal or validation
+error, generation time, per-call telemetry, summed reported input/output tokens
+and candidate diagnostics. SDK usage meters include recovery attempts;
+`usage.complete` is false if any recorded call lacks usage. Diagnostic time is
+excluded from generation time. Unresolved genre warnings mark coverage as
+unreliable. Preview calls still consume model resources and append ordinary
+telemetry in their configured state directory, so use a snapshot for comparisons.
+Default model: `/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf`, endpoint
+`http://qwen-llama-cpp:8080/v1`; environment overrides remain available.
+
+On 23 October 2026, one paired proposal per host used these reported total tokens
+(input plus output, including recovery):
+
+| Host | Current two-call pipeline | Compact single call |
+| --- | ---: | ---: |
+| Maria Ashcroft, two hours | 11,488 | 2,675 |
+| Verity Brooks, one hour | 11,891 | 2,999 |
+| Dante Lindholm, one hour | 7,419 | 2,897 |
+
+The initial free-string draft invented genre names in two of three trials. The
+compact enum avoided vocabulary errors in the next three, but returned oversized
+10–14-genre palettes and continued to mismatch musical promises. These small
+samples support a token-saving opportunity, not a production switch. Keep the
+alternate planner in the harness until editorial coherence improves. Initial
+isolated-container diagnostics had unresolved Navidrome configuration; those
+counts were discarded and checked through the station's read-only diagnostic
+endpoint instead. No accepted episode plans were replaced by the experiment.
