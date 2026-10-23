@@ -13,14 +13,23 @@ export function contrast(a: Rgb, b: Rgb): number {
   const x = luminance(a), y = luminance(b);
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
-/** Keep relationship hues recognisable, with at least 3:1 against the map. */
+export const LIGHT_MAP_LINK_OPACITY = 0.7;
+export function lightBrainTheme(theme: ThemeRgb): boolean {
+  return luminance(theme.bg) > luminance(theme.ink);
+}
+/** Check light-theme contrast after ordinary connection transparency is applied. */
 export function brainPalette(theme: ThemeRgb): Record<string, string> {
   const colours: Record<string, string> = {};
+  const opacity = lightBrainTheme(theme) ? LIGHT_MAP_LINK_OPACITY : 1;
+  const visibleContrast = (rgb: Rgb) => contrast(rgb.map((channel, index) =>
+    Math.round(channel * opacity + theme.bg[index]! * (1 - opacity))) as unknown as Rgb, theme.bg);
   for (const [name, seed] of Object.entries(HUES)) {
     let rgb = mix(seed, theme.ink, 0.15);
-    const target: Rgb = contrast(theme.ink, theme.bg) >= 3 ? theme.ink
-      : luminance(theme.bg) > 0.179 ? [0, 0, 0] : [255, 255, 255];
-    for (let step = 1; contrast(rgb, theme.bg) < 3 && step <= 20; step++) rgb = mix(seed, target, step / 20);
+    // Darken light-map hues neutrally: coloured theme ink would pull every
+    // relationship towards the same colour as contrast increases.
+    const target: Rgb = lightBrainTheme(theme) ? [0, 0, 0]
+      : contrast(theme.ink, theme.bg) >= 3 ? theme.ink : [255, 255, 255];
+    for (let step = 1; visibleContrast(rgb) < 3 && step <= 20; step++) rgb = mix(seed, target, step / 20);
     colours[`brain-${name}`] = `rgb(${rgb.join(',')})`;
   }
   for (const [state, kind] of Object.entries({ ready: 'recording', empty: 'release', queued: 'series', researching: 'series' })) {
