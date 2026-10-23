@@ -361,43 +361,6 @@ export default function Board({
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-separator-soft px-3 py-2">
           <span className="eyebrow mr-1 flex-none text-ink">Sub/Shows</span>
-          {shows.filter(show => show.generation?.mode === 'generated').map(show => {
-            const templateId = show.generation!.template;
-            const label = generatedShowLabel(show, personas);
-            const armed = show.id === armedShowId;
-            return (
-              <button
-                key={show.id}
-                type="button"
-                draggable
-                aria-pressed={armed}
-                onDragStart={e => {
-                  e.dataTransfer.setData(DND_TYPE, show.id);
-                  e.dataTransfer.setData('text/plain', show.id);
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                onClick={() => onArmShow(show.id)}
-                title={armed
-                  ? `“${label}” is armed — click hours on the board to book it`
-                  : `Click to arm or drag “${label}” onto the board`}
-                className={cn(
-                  'flex min-h-9 max-w-full flex-none cursor-grab items-center gap-1.5 border px-2.5 py-1.5 active:cursor-grabbing sm:min-h-0',
-                  armed
-                    ? 'border-ink outline-2 -outline-offset-2 outline-[var(--accent)]'
-                    : 'border-separator-strong hover:border-ink',
-                  templateId === 'dj-choice'
-                    ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#c24824_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
-                    : templateId === 'deep-discovery'
-                      ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#167978_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
-                      : 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#7b6a23_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
-                )}
-              >
-                <ColorChip color={generatedShowColor(templateId)} />
-                <span className="max-w-[32ch] overflow-hidden text-[11.5px] font-semibold text-ellipsis whitespace-nowrap text-ink">{label}</span>
-                <Mu className="text-[8px]">{hoursOf(show.id)}h</Mu>
-              </button>
-            );
-          })}
           {GENERATED_SHOW_TEMPLATES.map(template => {
             const armed = armedTemplateId === template.id;
             return (
