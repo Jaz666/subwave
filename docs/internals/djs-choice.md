@@ -79,7 +79,12 @@ using exact supported tags or musically appropriate listed subgenres, explained
 in its rationale. Presentation instructions do not become filters. The concept
 must not copy the Soul’s whole genre list, promise a specific opening artist or
 track, or assert an artistic influence without research. These are prompt
-instructions, not a deterministic semantic consistency validator.
+instructions, not a deterministic semantic consistency validator. The settings
+pass translates the accepted brief rather than planning a second show: exact
+promised tags take priority over rarity and palette-size guidance, genuine
+subgenres may represent broader promises, and unsupported promises must be
+reported honestly in the rationale rather than rationalized as fulfilled.
+Host taste guides interpretation and related additions after promises are covered.
 
 The planner returns a title, a brief and these existing show controls:
 
