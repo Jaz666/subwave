@@ -189,6 +189,7 @@ CREATE TABLE sleeve_connection_edges (
         claim_id TEXT NOT NULL REFERENCES sleeve_claims(id) ON DELETE CASCADE,
         claim_evidence TEXT NOT NULL,
         source_recording_id TEXT NOT NULL,
+        source_local_track_id TEXT REFERENCES sleeve_connection_library_tracks(local_track_id) ON DELETE SET NULL,
         relationship_type TEXT NOT NULL CHECK (relationship_type IN
           ('samples', 'sampled_in', 'cover_of', 'covered_by', 'writer', 'producer')),
         target_kind TEXT NOT NULL CHECK (target_kind IN ('recording', 'contributor')),
@@ -824,3 +825,5 @@ CREATE TRIGGER sleeve_genius_seed_update
       UPDATE sleeve_connection_revisions SET facts=facts+1,overview=overview+1 WHERE id=1; END;
 
 INSERT INTO sleeve_connection_revisions(id, facts, overview) VALUES (1, 0, 0);
+
+CREATE INDEX idx_sleeve_connection_source_local ON sleeve_connection_edges(source_local_track_id);

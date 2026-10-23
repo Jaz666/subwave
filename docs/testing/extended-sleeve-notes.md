@@ -110,3 +110,14 @@ speech should stand down rather than follow the incoming greeting or hourly chec
 The same rule applies when adjacent shows use the same presenter. Speech already
 published to the mixer finishes normally. Check that ordinary playback and research
 resume afterwards; manual Banter retains its existing operator override.
+
+
+### Library relationship count correction
+
+Public schemas 1 and 2 upgrade automatically to schema 3 without a research reset.
+After a controller rebuild, allow a quiet background matching pass and an Overview
+refresh. Library Connections should include unplayed tracks already present in the
+cached catalogue, while still excluding external endpoints and ambiguous versions.
+Inverse descriptions and compilation copies of the same recording count once.
+Removing or retagging a local recording must clear its old source match. This
+update does not fetch the same Genius sources again to repair the count.

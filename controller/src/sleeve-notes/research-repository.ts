@@ -1,7 +1,7 @@
 import {connectionArtistNames} from './library-connections.js';
 import {libraryArtistIdentity, artistIsLocal} from './artist-identity.js';
 import { invalidateChangedLocalIdentity } from './local-identity.js';
-import { LIBRARY_RELATIONSHIP_CLAIMS_SQL } from './library-relationship-claims.js';
+import { libraryRelationshipClaimsSql } from './library-relationship-claims.js';
 import type { ClaimSignal } from './claim-signal.js';
 import * as settings from '../settings.js';
 import { geniusAccessToken } from './genius-token.js';
@@ -2029,7 +2029,7 @@ export function searchResearchStoriesInDatabase(db:Database.Database,input:{sear
       ORDER BY rr.release_id,rr.recording_id LIMIT 1)
     JOIN sleeve_source_documents s ON s.id = c.source_document_id
     WHERE ${input.withdrawn?"c.enabled=0 AND c.operator_state<>'deleted'":'c.enabled=1'}
-      ${libraryOnly?`AND c.id IN (${LIBRARY_RELATIONSHIP_CLAIMS_SQL})`:''}`;
+      ${libraryOnly?`AND c.id IN (${libraryRelationshipClaimsSql(db)})`:''}`;
   const where=`(? = '' OR instr(lower(COALESCE(artist,'') || ' ' || COALESCE(recording,'') || ' ' || category || ' ' || topic || ' ' || wording),lower(?)) > 0)
     AND (? = '' OR category = ? OR (? = 'stories-only' AND category NOT IN ('credits', 'musical-connections')))`;
   // Recent is a named filter over the latest 80 facts, not the search default.

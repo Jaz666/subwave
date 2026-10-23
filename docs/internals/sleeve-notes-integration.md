@@ -512,3 +512,38 @@ settings or live research data changes are required. Containers remain unchanged
 Keep these commits local until station acceptance and an explicit publication
 request. Next: repeat the near-handover request, confirm unused outgoing speech
 stands down, and verify research resumes.
+
+
+## Library relationship source recognition
+
+The Library Connections summary still counts each directed sample/cover relationship
+once, with both recordings in the current library. Traversed Genius recordings can
+be local without a played-track attachment. Previously the target matcher recognised
+them, while the summary's source-side SQL required an explicit attachment or MBID.
+
+The existing background matcher now resolves a source through the same artist,
+exact-title, recording-identity and duplicate-copy guards used for targets. A
+nullable source local-track reference is published in the revision-checked derived
+edge patch. Public schemas 1 and 2 upgrade transactionally to 3; deletion/metadata
+invalidation clears the reference through an indexed foreign key. The summary uses
+these cached matches without another provider call or matching pass. Disabled
+pre-upgrade cached browsing retains the older query without modifying the store.
+
+Verification: 375 feature checks passed, with final matching, upgrade and identity
+checks covering unplayed sources, inverse/copy deduplication, conflicting recording
+identities, live-version retags, external endpoints, deletion and old-schema cached
+reads. Controller types and focused lint pass. An isolated station snapshot changed
+from 1 to 137 unique library relationships while preserving facts, recordings and
+sources, with no foreign-key errors. This was an offline copy; live collection and
+container rebuilding remain under operator control. The count refreshes after the
+next successful quiet-time background match and normal Overview refresh.
+
+
+Station source candidate — 23 October: this change follows b518004c on
+codex/sleeve-notes-handover-20261023. Public-schema migration adds one derived
+source reference/index without deleting saved facts. Operator rebuilds controller
+only; no live database changes or container operations were performed by the
+agent. Keep a compatible pre-upgrade backup with b518004c for rollback; source
+alone cannot downgrade schema 3. Next: allow a quiet matcher pass and confirm
+Library Connections rises while external recordings stay excluded. Code remains
+local pending explicit PR publication.
