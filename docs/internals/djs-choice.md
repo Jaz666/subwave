@@ -52,6 +52,31 @@ The music palette can keep some recognizable favourites while reaching into
 related genres. It does not guarantee a never-repeated combination or a disjoint
 track list.
 
+## Compact planner station trial — 23 October 2026
+
+The station trial promotes the compact two-call preview: the concept call returns
+the name, brief and 1–6 intended genre tags from the recommended shortlist. The
+music-settings call receives only that proposal, selected genre counts, duration,
+operator direction and mood vocabulary. Its schema and a local set check require
+the same genre palette without omissions, additions, substitutions or duplicates.
+The second call no longer repeats the Soul, guest identities, existing shows or
+full catalogue enum. Reported settings-call totals in the three preview trials
+were approximately 1,000 tokens each. Editorial quality remains an on-air trial;
+mechanical palette preservation does not validate prose or musical connections.
+
+Production telemetry retains `generateShowPlan.concept` and
+`generateShowPlan.musicSettings`. Existing coverage correction, custom names,
+narrow formatting recovery, cast resolution and accepted-plan persistence remain
+in use. No prompt-version marker is added to the configuration fingerprint, so
+this code change alone should not invalidate accepted episodes. Regenerate an
+upcoming episode explicitly to try it; retain Maria’s reviewed episode.
+
+Deployment base: station source `e7df2405`. The previous controller image is
+retained locally as `subwave-controller:before-compact-20261023`
+(`sha256:05c404589cc30498caac93573a98dae8174f3bc7803ceb4e6861e2f9c395b2bf`).
+Rollback is to revert the compact-planner promotion commit and rebuild only the
+controller; the web and broadcast services do not need replacement.
+
 ## Generated episode
 
 Generation is led by the resolved host's editorial voice, not by a preset list
@@ -63,8 +88,9 @@ Template direction, station restrictions and playable library coverage guide
 that work without replacing the host's taste.
 
 The Soul is the primary source of the DJ’s musical preferences as well as their
-identity; Musical Leanings is optional supplementary guidance. Both planning
-passes distinguish those preferences from delivery and interaction instructions.
+identity; Musical Leanings is optional supplementary guidance. The concept
+pass distinguishes those preferences from delivery and interaction instructions;
+the settings pass receives its declared musical intent.
 A calm voice does not imply calm music, and favourite decades do not require an
 era window. The generated brief frames presentation; the show filters drive
 track selection, with Musical Leanings a soft influence between candidates.
@@ -73,12 +99,10 @@ operator direction or a concrete musical need justifies a restriction. Raw genre
 counts do not establish coverage after intersecting those extra restrictions;
 soft filters are not a reason to accept an implausible matching core.
 
-Both passes receive the same bounded recommended genre shortlist. Output genre
-validation uses the full indexed catalogue, not just that shortlist: a familiar
-anchor promised in the brief must not fail merely because it was not among the
-80 discovery recommendations. Deep Discovery still favours the smaller related
-styles; broader catalogue tags may fulfil explicit promises and should be
-explained in the rationale. The brief may promise a
+The concept pass receives the bounded recommended genre shortlist; the settings
+pass receives only the intended genres from its accepted concept. The compact
+trial restricts model output to that declared palette; the previous full-catalogue
+enum is no longer sent to the settings call. The brief may promise a
 few supported genres; the music-settings pass must represent those promises
 using exact supported tags or musically appropriate listed subgenres, explained
 in its rationale. Presentation instructions do not become filters. The concept
