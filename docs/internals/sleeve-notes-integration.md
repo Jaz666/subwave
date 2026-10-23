@@ -153,3 +153,28 @@ checks pass. Shared voice (122), host-speech (17), handoff (87) and talk-placeme
 (4) checks pass. Controller types and focused lint pass with one pre-existing
 explicit-any warning in the untouched capability-selection line. No live LLM
 calls or container changes were made; a new on-air acceptance result is pending.
+
+
+## Library relationship source recognition
+
+The Library Connections summary still counts each directed sample/cover relationship
+once, with both recordings in the current library. Traversed Genius recordings can
+be local without a played-track attachment. Previously the target matcher recognised
+them, while the summary's source-side SQL required an explicit attachment or MBID.
+
+The existing background matcher now resolves a source through the same artist,
+exact-title, recording-identity and duplicate-copy guards used for targets. A
+nullable source local-track reference is published in the revision-checked derived
+edge patch. Public schemas 1 and 2 upgrade transactionally to 3; deletion/metadata
+invalidation clears the reference through an indexed foreign key. The summary uses
+these cached matches without another provider call or matching pass. Disabled
+pre-upgrade cached browsing retains the older query without modifying the store.
+
+Verification: 375 feature checks passed, with final matching, upgrade and identity
+checks covering unplayed sources, inverse/copy deduplication, conflicting recording
+identities, live-version retags, external endpoints, deletion and old-schema cached
+reads. Controller types and focused lint pass. An isolated station snapshot changed
+from 1 to 137 unique library relationships while preserving facts, recordings and
+sources, with no foreign-key errors. This was an offline copy; live collection and
+container rebuilding remain under operator control. The count refreshes after the
+next successful quiet-time background match and normal Overview refresh.

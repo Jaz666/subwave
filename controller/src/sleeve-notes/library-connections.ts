@@ -21,6 +21,7 @@ export interface LibraryConnection {
   id: string;
   claimId: string;
   sourceRecordingId: string;
+  sourceLocalTrackId?: string | null;
   type: LibraryConnectionType;
   targetKind: 'recording' | 'contributor';
   targetProviderId: string;
@@ -181,7 +182,7 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
       const type = string(evidence.type);
       const target = object(evidence.target);
       if (!TYPES.has(type) || !string(target?.providerId) || !string(target?.title)) continue;
-      edges.push({ id: `${row.id}:recording`, claimId: row.id, sourceRecordingId: row.recordingId,
+      edges.push({ id: `${row.id}:recording`, claimId: row.id, sourceRecordingId: row.recordingId, sourceLocalTrackId: null,
         type: type as SleeveRelationshipType, targetKind: 'recording',
         targetProviderId: string(target?.providerId), targetTitle: string(target?.title),
         targetArtist: string(target?.artist) || null, targetUrl: string(target?.canonicalUrl) || null,
@@ -197,7 +198,7 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
         const id = string(contributor?.providerId);
         const name = string(contributor?.name);
         if (!id || !name || !names.has(connectionNameKey(name))) continue;
-        edges.push({ id: `${row.id}:contributor:${id}`, claimId: row.id, sourceRecordingId: row.recordingId,
+        edges.push({ id: `${row.id}:contributor:${id}`, claimId: row.id, sourceRecordingId: row.recordingId, sourceLocalTrackId: null,
           type, targetKind: 'contributor', targetProviderId: id, targetTitle: name,
           targetArtist: null, targetUrl: string(contributor?.canonicalUrl) || null,
           matchState: 'unresolved', tracks: [] });
@@ -256,6 +257,8 @@ function calculateLibraryConnections(db: Database.Database): { edges: LibraryCon
     const sourceRow = claimRows.get(edge.claimId)!;
     const sourceTracks = recordingTracks(edge.sourceRecordingId).length ? recordingTracks(edge.sourceRecordingId)
       : byName.get(key(sourceRow.title, sourceRow.artist)) ?? [];
+    // Resolve both ends through the same identity/version/duplicate-copy guards.
+    edge.sourceLocalTrackId = resolve(sourceTracks, 'source-library-identity', edge.sourceRecordingId)[0]?.id ?? null;
     const sourceTrackIds = new Set(sourceTracks.map((track) => track.id));
     if (edge.targetKind === 'recording') {
       const known = providerRecordings.get(edge.targetProviderId);
@@ -303,7 +306,7 @@ export function buildConnectionLibraryPatch(db: Database.Database): ConnectionLi
   const factsRevision = connectionRevision(db, 'facts');
   const calculated = calculateLibraryConnections(db);
   const existing = db.prepare(`SELECT id, claim_id AS claimId, claim_evidence AS claimEvidence,
-    source_recording_id AS sourceRecordingId, relationship_type AS type, target_kind AS targetKind,
+    source_recording_id AS sourceRecordingId, source_local_track_id AS sourceLocalTrackId, relationship_type AS type, target_kind AS targetKind,
     target_provider_id AS targetProviderId, target_title AS targetTitle, target_artist AS targetArtist,
     target_url AS targetUrl, match_state AS matchState FROM sleeve_connection_edges`).all() as
     Array<LibraryConnection & { claimEvidence: string }>;
@@ -316,7 +319,7 @@ export function buildConnectionLibraryPatch(db: Database.Database): ConnectionLi
     group.push(JSON.stringify([row.trackId, row.recordingId, row.basis])); savedMatches.set(row.edgeId, group);
   }
   const signature = (edge: LibraryConnection & { claimEvidence: string }) => JSON.stringify([
-    edge.claimId, edge.claimEvidence, edge.sourceRecordingId, edge.type, edge.targetKind,
+    edge.claimId, edge.claimEvidence, edge.sourceRecordingId, edge.sourceLocalTrackId, edge.type, edge.targetKind,
     edge.targetProviderId, edge.targetTitle, edge.targetArtist, edge.targetUrl, edge.matchState,
   ]);
   const upsert: ConnectionLibraryPatch['upsert'] = [];
@@ -345,15 +348,15 @@ export function publishConnectionLibraryPatch(db: Database.Database, patch: Conn
     const removeEdge = db.prepare('DELETE FROM sleeve_connection_edges WHERE id = ?');
     for (const id of patch.remove) { removeMatches.run(id); removeEdge.run(id); }
     const insert = db.prepare(`INSERT INTO sleeve_connection_edges
-      (id, claim_id, claim_evidence, source_recording_id, relationship_type, target_kind, target_provider_id,
-        target_title, target_artist, target_url, match_state, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, claim_id, claim_evidence, source_recording_id, source_local_track_id, relationship_type, target_kind, target_provider_id,
+        target_title, target_artist, target_url, match_state, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET claim_id=excluded.claim_id, claim_evidence=excluded.claim_evidence,
-        source_recording_id=excluded.source_recording_id, relationship_type=excluded.relationship_type,
+        source_recording_id=excluded.source_recording_id, source_local_track_id=excluded.source_local_track_id, relationship_type=excluded.relationship_type,
         target_kind=excluded.target_kind, target_provider_id=excluded.target_provider_id,
         target_title=excluded.target_title, target_artist=excluded.target_artist, target_url=excluded.target_url,
         match_state=excluded.match_state, updated_at=excluded.updated_at`);
     for (const edge of patch.upsert) insert.run(edge.id, edge.claimId, edge.claimEvidence, edge.sourceRecordingId,
-      edge.type, edge.targetKind, edge.targetProviderId, edge.targetTitle, edge.targetArtist, edge.targetUrl, edge.matchState, now);
+      edge.sourceLocalTrackId, edge.type, edge.targetKind, edge.targetProviderId, edge.targetTitle, edge.targetArtist, edge.targetUrl, edge.matchState, now);
     const insertMatch = db.prepare(`INSERT INTO sleeve_connection_library_matches
       (edge_id, local_track_id, recording_id, match_basis) VALUES (?, ?, ?, ?)`);
     for (const group of patch.matches) {

@@ -1,6 +1,15 @@
 // Share one representative fact per directed, intra-library sample/cover
 // relationship between the Overview count and its paged facts view.
-export const LIBRARY_RELATIONSHIP_CLAIMS_SQL = `
+import type Database from 'better-sqlite3';
+
+export function libraryRelationshipClaimsSql(db: Database.Database): string {
+  // Disabled cached browsing must also work before the on-disk store is upgraded.
+  const sourceMatches = db.prepare("SELECT 1 FROM pragma_table_info('sleeve_connection_edges') WHERE name='source_local_track_id'").get()
+    ? `UNION SELECT edge.source_local_track_id, edge.source_recording_id
+        FROM sleeve_connection_edges edge JOIN sleeve_claims claim ON claim.id=edge.claim_id
+        WHERE edge.source_local_track_id IS NOT NULL AND claim.enabled=1
+          AND claim.evidence=edge.claim_evidence` : '';
+  return `
 WITH local_recordings AS (
   SELECT local_track_id, recording_id FROM sleeve_local_attachments
     WHERE match_state = 'matched' AND recording_id IS NOT NULL
@@ -8,6 +17,7 @@ WITH local_recordings AS (
   UNION SELECT local_track_id, recording_id FROM sleeve_genius_library_seeds
   UNION SELECT track.local_track_id, recording.id FROM sleeve_connection_library_tracks track
     JOIN sleeve_recordings recording ON recording.musicbrainz_id = track.musicbrainz_recording_id
+  ${sourceMatches}
 ), track_keys AS (
   SELECT track.local_track_id,
     COALESCE(NULLIF(lower(track.musicbrainz_recording_id), ''),
@@ -44,3 +54,4 @@ WITH local_recordings AS (
 )
 SELECT MIN(claim_id) AS claim_id FROM directed GROUP BY kind, from_key, to_key
 `;
+}

@@ -457,3 +457,69 @@ test('stale matching attempts are batched too; failures retain ten-minute backof
     await worker.runOnce(at+21*60_000);assert.equal(calls,3,'the eventual successful revision must be remembered');
   } finally {db.close();}
 });
+
+test('library relationships recognise unplayed Genius sources using the same safe catalogue resolver', async () => {
+  const { searchResearchStoriesInDatabase } = await import('../src/sleeve-notes/research-repository.js');
+  const db = fixture();
+  try {
+    db.prepare('DELETE FROM sleeve_local_attachments').run();
+    recording(db, 'target', 'Target', '2');
+    relation(db, 'forward', 'samples', 'Target', 'Band');
+    claim(db, 'inverse', 'target', 'musical-connections', {
+      type: 'sampled_in', target: { providerId: '1', title: 'Source', artist: 'Band' },
+    });
+    const source = { id: 'unplayed-source', title: 'Source', artist: 'Band', musicbrainzId: '11111111-1111-1111-1111-111111111111' };
+    const target = { id: 'unplayed-target', title: 'Target', artist: 'Band', musicbrainzId: '22222222-2222-2222-2222-222222222222' };
+    const count = () => searchResearchStoriesInDatabase(db, { category: 'library-connections' }).total;
+    cacheConnectionLibraryTracks(db, [source, target, { ...source, id: 'source-copy' }], 'scan');
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 1, 'both directions and compilation copies count as one internal relationship');
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sleeve_local_attachments').get() as {n:number}).n, 0,
+      'recognising library membership must not invent a played-track attachment');
+
+    db.prepare("UPDATE sleeve_connection_library_tracks SET musicbrainz_recording_id='different-version' WHERE local_track_id='source-copy'").run();
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 0, 'same-title recordings with different identities remain ambiguous');
+    db.prepare("DELETE FROM sleeve_connection_library_tracks WHERE local_track_id='source-copy'").run();
+    db.prepare("UPDATE sleeve_recordings SET musicbrainz_id='conflicting-source-mbid' WHERE id='source'").run();
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 0, 'a known conflicting recording identity defeats an exact title match');
+    db.prepare("UPDATE sleeve_recordings SET musicbrainz_id=NULL WHERE id='source'").run();
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 1);
+    cacheConnectionLibraryTracks(db, [{...source, title:'Source (Live)'}], 'scan');
+    assert.equal(count(), 0, 'metadata invalidation clears the old source binding before the next matching pass');
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 0, 'a live version cannot substitute for the named studio recording');
+    cacheConnectionLibraryTracks(db, [source], 'scan');
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 1);
+    db.prepare("DELETE FROM sleeve_connection_library_tracks WHERE local_track_id='unplayed-source'").run();
+    assert.equal(count(), 0, 'external sources do not count even when the target is local');
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 0);
+    cacheConnectionLibraryTracks(db, [source], 'scan');
+    db.prepare("DELETE FROM sleeve_connection_library_tracks WHERE local_track_id='unplayed-target'").run();
+    reconcileLibraryConnections(db, now);
+    assert.equal(count(), 0, 'external targets do not count even when the source is local');
+  } finally { db.close(); }
+});
+
+
+test('pre-upgrade cached library counts remain readable without changing schema', async () => {
+  const { searchResearchStoriesInDatabase } = await import('../src/sleeve-notes/research-repository.js');
+  const db = fixture();
+  try {
+    relation(db, 'forward', 'samples', 'Target', 'Band');
+    cacheConnectionLibraryTracks(db, [
+      { id: 'local-source', title: 'Source', artist: 'Band' },
+      { id: 'local-target', title: 'Target', artist: 'Band' },
+    ], 'scan');
+    reconcileLibraryConnections(db, now);
+    db.exec('DROP INDEX idx_sleeve_connection_source_local; ALTER TABLE sleeve_connection_edges DROP COLUMN source_local_track_id');
+    db.pragma('user_version=2');
+    db.pragma('query_only=ON');
+    assert.equal(searchResearchStoriesInDatabase(db, {category:'library-connections'}).total, 1);
+    assert.equal(db.pragma('user_version', {simple:true}), 2);
+  } finally { db.close(); }
+});
