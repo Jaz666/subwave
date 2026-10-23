@@ -73,7 +73,12 @@ operator direction or a concrete musical need justifies a restriction. Raw genre
 counts do not establish coverage after intersecting those extra restrictions;
 soft filters are not a reason to accept an implausible matching core.
 
-Both passes receive the same bounded genre candidates. The brief may promise a
+Both passes receive the same bounded recommended genre shortlist. Output genre
+validation uses the full indexed catalogue, not just that shortlist: a familiar
+anchor promised in the brief must not fail merely because it was not among the
+80 discovery recommendations. Deep Discovery still favours the smaller related
+styles; broader catalogue tags may fulfil explicit promises and should be
+explained in the rationale. The brief may promise a
 few supported genres; the music-settings pass must represent those promises
 using exact supported tags or musically appropriate listed subgenres, explained
 in its rationale. Presentation instructions do not become filters. The concept
