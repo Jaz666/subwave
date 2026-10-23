@@ -277,6 +277,9 @@ export default function SchedulePanel() {
 
   const pick = (b: Block) => {
     const show = showById(b.showId);
+    setLine({ day: b.day, start: b.start, end: b.start + b.span });
+    setLineDays([b.day]);
+    setLineShowId(b.showId ?? lineShowId ?? shows[0]?.id ?? null);
     if (show?.generation?.mode === 'generated') {
       setGeneratedOptionsDraft({
         ...show,
@@ -287,9 +290,6 @@ export default function SchedulePanel() {
       });
       return;
     }
-    setLine({ day: b.day, start: b.start, end: b.start + b.span });
-    setLineDays([b.day]);
-    setLineShowId(b.showId ?? lineShowId ?? shows[0]?.id ?? null);
     // block: 'nearest' makes this a no-op when the order desk is already visible.
     bandRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
