@@ -11,7 +11,7 @@ import { useBrainKeySetting } from './key-preferences';
 import BrainPanel from './BrainPanel';
 import { COVERAGE_LABELS } from './coverage';
 import { createColorProbe, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
-import { brainPalette } from './palette';
+import { brainPalette, lightBrainTheme, LIGHT_MAP_LINK_OPACITY } from './palette';
 import styles from './Brain.module.css';
 
 export interface BrainCanvasProps {
@@ -67,6 +67,7 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
   const prefersReducedMotion = useReducedMotion();
   const [lite, setLite] = useState(false);
   const reducedMotion = prefersReducedMotion || lite;
+  const [lightMap, setLightMap] = useState(false);
   const [palette, setPalette] = useState<Record<string, string>>({});
   const ink = palette.ink || 'transparent';
   const background = palette.bg || 'transparent';
@@ -76,7 +77,9 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
     const update = () => {
       if (!container.current) return;
       if (probe) {
-        const colours = brainPalette(readThemeRgb(container.current, probe));
+        const theme = readThemeRgb(container.current, probe);
+        const colours = brainPalette(theme);
+        setLightMap(lightBrainTheme(theme));
         for (const [name, value] of Object.entries(colours)) container.current.style.setProperty(`--${name}`, value);
       }
       const style = getComputedStyle(container.current);
@@ -249,18 +252,20 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
   }
   function drawNode(node: BrainNode, ctx: CanvasRenderingContext2D, scale: number) {
     const x = node.x ?? 0, y = node.y ?? 0;
-    const r = radius(node, data.focusId);
-    if (!inViewport(node, r * 6 + 16 / scale)) return;
     const isCurrent = node.id === currentNodeId;
     const edge = selectedEdge ? originalEdges.get(selectedEdge) : null;
     const active = neighbours.has(node.id) || node.id === selectedNode || node.id === data.focusId || isCurrent
       || edge?.source === node.id || edge?.target === node.id;
+    const connected = adjacency.has(node.id);
+    const unexplored = node.kind === 'artist' && node.researched === false && !connected;
+    const r = Math.max(radius(node, data.focusId), (active ? 3 : connected ? 1.6 : 0) / scale);
+    if (!inViewport(node, r * 6 + 16 / scale)) return;
     const dimmed = !!spotlight && !active;
-    const color = node.local || node.kind === 'contributor' ? palette[`brain-${node.kind}`] || ink : muted;
+    const color = unexplored && !active ? palette['brain-external-recording'] || muted : node.local || node.kind === 'contributor' ? palette[`brain-${node.kind}`] || ink : muted;
     ctx.save();
     ctx.globalAlpha = dimmed ? 0.18 : active || node.kind === 'contributor' ? 1
-      : node.local ? Math.min(1, (node.researched === false ? 0.35 : 0.65) + Math.log2(1 + (node.verifiedConnectionCount ?? 0)) * 0.08) : 0.55;
-    if (isCurrent || active || (node.verifiedConnectionCount ?? 0) > 0) {
+      : unexplored ? (lightMap ? 0.6 : 0.35) : lightMap ? 1 : node.local ? Math.min(1, (node.researched === false ? 0.35 : 0.65) + Math.log2(1 + (node.verifiedConnectionCount ?? 0)) * 0.08) : 0.55;
+    if (!lightMap && (isCurrent || active || (node.verifiedConnectionCount ?? 0) > 0)) {
       const pulse = isCurrent && !reducedMotion && !largeMap ? 1 + Math.sin(performance.now() / 650) * 0.18 : 1;
       const glow = ctx.createRadialGradient(x, y, r, x, y, r * 4 * pulse);
       glow.addColorStop(0, color); glow.addColorStop(1, 'transparent');
@@ -300,8 +305,9 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
       if (important || !overlaps) {
         labelBoxes.current.push(box);
         const labelX = (pixelX - transform.e) / transform.a;
+        ctx.globalAlpha = 1;
         ctx.lineWidth = 3 / scale; ctx.strokeStyle = background; ctx.strokeText(label, labelX, y + r + 4 / scale);
-        ctx.fillStyle = active ? ink : muted; ctx.fillText(label, labelX, y + r + 4 / scale);
+        ctx.fillStyle = active || lightMap ? ink : muted; ctx.fillText(label, labelX, y + r + 4 / scale);
       }
     }
     ctx.restore();
@@ -457,8 +463,8 @@ export default function BrainCanvas({ data, visibleData = data, edgeTypes, inclu
             Math.max(radius(node, data.focusId) + 2, 8 / scale), 0, Math.PI * 2); ctx.fill();
         }}
         linkLabel={(link) => { const edge = originalEdges.get(link.id); return tooltip(edge?.evidence ?? link.label); }}
-        linkColor={(link) => `color-mix(in srgb, ${linkColor(link.type)} ${illuminated(link) ? 87 : spotlight ? 8 : 25}%, transparent)`}
-        linkWidth={(link) => illuminated(link) ? 1.8 : Math.min(1.2, 0.35 + Math.log2(link.count ?? 1) * 0.15)}
+        linkColor={(link) => `color-mix(in srgb, ${linkColor(link.type)} ${illuminated(link) ? (lightMap ? 100 : 87) : spotlight ? 8 : lightMap ? LIGHT_MAP_LINK_OPACITY * 100 : 25}%, transparent)`}
+        linkWidth={(link) => illuminated(link) ? 2.2 : Math.min(1.4, (lightMap ? 0.7 : 0.35) + Math.log2(link.count ?? 1) * 0.15)}
         linkCurvature={0.12} linkHoverPrecision={5}
         linkDirectionalArrowLength={(link) => illuminated(link) ? 4 : 0}
         linkDirectionalArrowRelPos={0.85}

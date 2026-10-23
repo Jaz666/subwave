@@ -547,3 +547,22 @@ agent. Keep a compatible pre-upgrade backup with b518004c for rollback; source
 alone cannot downgrade schema 3. Next: allow a quiet matcher pass and confirm
 Library Connections rises while external recordings stay excluded. Code remains
 local pending explicit PR publication.
+
+
+### Light-theme Station Brain readability trial — 23 October
+
+Mirrored clean candidate 28818ab8 after advancing this station development branch
+to 002b77ab, preserving the independent compact show-planning trial. Light-map hues
+now meet 3:1 after ordinary link transparency, darkened towards neutral black so
+coloured theme ink cannot collapse distinct relationships into one hue. Connected
+nodes retain a minimum screen size; unexplored artists are subdued, selected labels
+are opaque and light-map paths stronger. Layout and research/data semantics stay
+unchanged; soft glows remain on dark maps only.
+
+Verified 17 web connection/theme checks, web types and focused lint. Browser fixtures
+cover 5,575 nodes, Classic Light/Riso/Phosphor, selection opacity, mobile overflow,
+reduced motion and no browser errors. Also inspected a 6,000-node offline station
+graph; mechanical UI detection is clear. No live database or container changes.
+Station source handoff is for a user-run web-only rebuild; source rollback is
+002b77ab. Keep local until the operator has evaluated the lighter themes. No PR
+push or description change is authorised by this trial.
