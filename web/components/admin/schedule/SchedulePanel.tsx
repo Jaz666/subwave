@@ -339,7 +339,7 @@ export default function SchedulePanel() {
       name: template.label,
       topic: '',
       personaId: personaIds[0]!,
-      programme: true,
+      programme: false,
       generation,
     });
   };

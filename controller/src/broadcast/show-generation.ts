@@ -230,6 +230,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       input.template === 'deep-discovery'
         ? 'Use a small, coherent neighbourhood of underrepresented styles from the supplied palette. Rarity alone does not connect genres; avoid a generic genre journey or repeating the Soul.'
         : 'Include familiar anchors when available and related wider-reaching choices from the supplied palette.',
+      'Include one concrete, recurring talking point in the brief: a musical question or contrast the DJ can return to naturally between tracks. Treat it as an optional conversational thread, not a scripted programme feature or a claim requiring invented artist history. The thread must fit the intended musical palette.',
       'Write a concise brief and name. Declare 1–6 intendedGenres copied exactly from the available palette, never a catalogue dump. The brief must describe those same styles. Do not promise other genres, particular tracks or artists, a fixed playlist, release chronology or unsupported artistic influence. Do not invent personal history or airplay.',
       `Counts overlap; roughly ${estimate} four-minute records is a pacing estimate, not a hard minimum. Do not force era, mood or energy restrictions from favourite decades or presentation. Return name, topic and intendedGenres.`,
     ].filter(Boolean).join('\n\n'),

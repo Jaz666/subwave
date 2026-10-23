@@ -52,6 +52,25 @@ The music palette can keep some recognizable favourites while reaching into
 related genres. It does not guarantee a never-repeated combination or a disjoint
 track list.
 
+## Normal speech scheduling
+
+Sub/Shows do not use Programme mode. Both strict show saves and lenient loads
+normalize generated slots to `programme: false`, including older slots saved
+with the previous automatic Programme flag. New scheduled templates also start
+with it off. Regular programmes retain their existing behaviour.
+
+The standard segment director and automatic skill crons keep their normal talk
+windows, frequency, cooldown and budget gates. Sub/Shows eligibility is applied
+through the shared skill policy in both paths and rechecked for automatically
+forced capability runs; explicit operator Run now remains an override. A null
+eligible list permits all otherwise eligible skills, and an empty list permits
+none. Host ownership, enablement and co-host requirements still apply.
+
+The generated brief supplies one musical talking point the DJ can revisit
+naturally between tracks. It uses the existing topic field and normal show
+context; it does not add programme beats or require a fixed script. Existing
+accepted episode plans are retained until their normal regeneration opportunity.
+
 ## Compact planner station trial — 23 October 2026
 
 The station trial promotes the compact two-call preview: the concept call returns
@@ -128,9 +147,8 @@ The planner returns a title, a brief and these existing show controls:
 
 The generated title follows from the brief and becomes the episode’s display
 name; the recurring slot retains its DJ’s Choice or Auto DJ template identity.
-Other settings, including programme structure, voices, skills, playlist
-restrictions and duration, stay under operator control unless explicitly added
-to the feature’s scope later.
+Programme mode is excluded from Sub/Shows. Voices, eligible skills, playlist
+restrictions and duration stay under operator control.
 
 Here, “tags” means the generated music settings: `moods`, `genres`, `eras`,
 `energies` and `filtersStrict`. They must fit the brief and eligible library.
@@ -158,8 +176,8 @@ encourage variety without forcing unsuitable music.
 
 The planner chooses an editorial configuration, not a complete fixed playlist.
 Normal track selection and broadcast controls remain responsible for playback.
-Existing Programme planning, when enabled, should consume the accepted episode
-brief to construct its intro, features and outro.
+Normal DJ speech consumes the accepted episode brief as editorial context,
+including its optional recurring talking point, without a Programme arc.
 
 ## Casting
 

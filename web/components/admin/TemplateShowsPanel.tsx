@@ -187,7 +187,7 @@ export default function TemplateShowsPanel() {
             <EligibilityPicker
               title="DJ Skills"
               allLabel="All skills"
-              description="Skills that Sub/Shows may use for programme features, when the host has the skill."
+              description="Skills available to automatic segments in Sub/Shows, when the host has the skill."
               items={skillItems}
               selected={draft.eligibleSkillNames}
               onChange={(id, checked) => togglePool('eligibleSkillNames', skillItems, id, checked)}
@@ -382,7 +382,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
           <div className="flex flex-col items-start gap-3 sm:flex-row">
             <div className="w-full min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                <Pill tone="solid" dot>Programme</Pill>
+                <Pill tone="solid" dot>Sub/Show</Pill>
                 <Pill>{template}</Pill>
               </div>
               <div className="truncate text-[17px] font-extrabold tracking-[-0.01em] text-ink">
