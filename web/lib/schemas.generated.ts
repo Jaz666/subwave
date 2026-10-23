@@ -4556,6 +4556,7 @@ function showObjectSchema(ctx: ShowSchemaContext) {
     })
     .transform((s) => ({
       ...s,
+      programme: s.generation?.mode === 'generated' ? false : s.programme,
       guestPersonaIds: [...new Set(s.guestPersonaIds)].filter((id) => id !== s.personaId),
     }));
 }
@@ -4760,6 +4761,8 @@ export function repairShowForLoad(
   personaIds: string[] | null,
 ): Record<string, unknown> {
   const host = typeof raw.personaId === 'string' ? raw.personaId : '';
+  const generation = repairShowGeneration(raw.generation,
+    typeof raw.preparationSkill === 'string' && !!raw.preparationSkill.trim());
   return {
     ...raw,
     id: typeof raw.id === 'string' && SHOW_ID_RE.test(raw.id) ? raw.id : undefined,
@@ -4769,13 +4772,10 @@ export function repairShowForLoad(
       ? raw.segmentSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX)
       : undefined,
     preparationSkill: typeof raw.preparationSkill === 'string' ? raw.preparationSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX) : undefined,
-    generation: repairShowGeneration(raw.generation,
-      typeof raw.preparationSkill === 'string' && !!raw.preparationSkill.trim()),
-    // Generated episodes use the programme arc so their eligible DJ Skills can
-    // be selected for features. Ordinary shows retain their saved setting.
-    programme: (raw.generation as { mode?: unknown } | undefined)?.mode === 'generated'
-      && !(typeof raw.preparationSkill === 'string' && raw.preparationSkill.trim())
-      ? true : raw.programme,
+    generation,
+    // Sub/Shows use the normal talk scheduler, including legacy saved slots
+    // that were automatically created with Programme mode enabled.
+    programme: generation?.mode === 'generated' ? false : raw.programme,
     themeId: typeof raw.themeId === 'string'
       ? raw.themeId.trim().slice(0, SHOW_THEME_ID_MAX)
       : undefined,

@@ -27,7 +27,7 @@ import { buildContextLines, CONTEXT_FIELDS, lengthMode, lengthPhrase, onAirLocat
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import { recordCuriosity, recentAiredCuriosity } from './curiosity.js';
 import { loadedCapabilities } from './loader.js';
-import { skillEligible } from './eligibility.js';
+import { skillAllowedForShow, skillEligible } from './eligibility.js';
 import { requiresGrounding, standDownReason } from './abstain-policy.js';
 import { runCohostedCapability } from './cohosted.js';
 import * as sfx from '../broadcast/sfx.js';
@@ -195,7 +195,8 @@ function frequencyFloorMs(freq: string) {
 function availableCapabilities(ctx, now: Date) {
   const s = settings.get();
   const enabled = s.skills?.enabled || {};
-  const { host: persona, guests } = settings.getOnAirRoster(now);
+  const { host: persona, guests, show } = settings.getOnAirRoster(now);
+  const eligibleSkillNames = settings.subShowSkillAllowlist(show?.id);
   const out: ReturnType<typeof allCapabilities> = [];
   for (const cap of allCapabilities()) {
     // Enabled + host-owned + roster-compatible. In skills/eligibility.ts
@@ -207,6 +208,7 @@ function availableCapabilities(ctx, now: Date) {
       skill: cap.skill,
       enabled,
       personaSkills: persona?.skills,
+      eligibleSkillNames,
       requiresCohosts: !!cap.cohosts,
       hasCohosts: !!persona && guests.length > 0,
     }).allowed) continue;
@@ -831,7 +833,8 @@ export async function runSleeveNotesSegmentNow(): Promise<CapabilityRun> {
 // Forced capability core shared by POST /dj/skill, per-skill crons and the
 // programme feature beat. All bypass cooldowns, the frequency floor, persona
 // ownership and the enable toggle; automatic callers opt into host-epoch
-// ownership while the operator route deliberately remains unstamped. Programme
+// ownership and the Sub/Shows eligibility list; the operator route remains
+// unstamped and bypasses that list. Programme
 // beats also pass `brief` (the episode feature topic) and `persona` (the rotated
 // speaker, keeping voice, prompt seat and attribution together).
 //
@@ -846,6 +849,12 @@ export async function runCapability(
 ): Promise<CapabilityRun> {
   const cap = allCapabilities().find(c => c.kind === which || c.skill === which);
   if (!cap) throw new Error(`unknown skill: ${which}`);
+  if (automaticHostSpeech) {
+    const { show } = settings.getOnAirRoster(session.contextDate(ctx));
+    if (!skillAllowedForShow({ skill: cap.skill, eligibleSkillNames: settings.subShowSkillAllowlist(show?.id) })) {
+      return { aired: false, queued: false, deferred: false, text: null, reason: 'not eligible for Sub/Shows' };
+    }
+  }
   if (automaticHostSpeech && cap.skill === preparationSkillAt(ctx)) {
     return { aired: false, queued: false, deferred: false, text: null, reason: 'reserved for episode preparation' };
   }
