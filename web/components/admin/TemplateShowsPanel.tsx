@@ -12,7 +12,7 @@ import { Button } from '../ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/skeleton';
-import { Card, MetaChip, Pill } from './ui';
+import { Card, Eyebrow, MetaChip, Pill } from './ui';
 import {
   GENERATED_SHOW_TEMPLATES,
   generatedShowColor,
@@ -141,7 +141,8 @@ export default function TemplateShowsPanel() {
       <section className="card">
         <div className="stack-mobile grid grid-cols-[1fr_auto] items-center gap-4 p-4">
           <div>
-            <h1 className="text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
+            <Eyebrow className="text-vermilion">show plan · Sub/Shows</Eyebrow>
+            <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
               Plan fresh episodes from your DJs’ personalities and musical tastes. Add DJ’s Choice or Deep Discovery
               from the schedule shelf, then click a scheduled block to choose its host, guests and episode-name rules.
@@ -155,6 +156,7 @@ export default function TemplateShowsPanel() {
 
       <Card
         title="Sub/Shows settings"
+        headingLevel={2}
         sub="Used by every generated slot"
         right={(
           <Button size="sm" variant="accent" disabled={!draft || saveSettings.isPending} onClick={() => void savePools()}>
@@ -184,6 +186,7 @@ export default function TemplateShowsPanel() {
             />
             <EligibilityPicker
               title="DJ Skills"
+              allLabel="All skills"
               description="Skills that Sub/Shows may use for programme features, when the host has the skill."
               items={skillItems}
               selected={draft.eligibleSkillNames}
@@ -249,6 +252,7 @@ function EligibilityPicker({
   onAll,
   onNone,
   empty = 'No DJs are available.',
+  allLabel = 'Everyone',
 }: {
   title: string;
   description: string;
@@ -258,6 +262,7 @@ function EligibilityPicker({
   onAll: () => void;
   onNone: () => void;
   empty?: string;
+  allLabel?: string;
 }) {
   const aria = fieldAria(`sub-shows-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, undefined, { hasDescription: true });
   const selectedCount = items.filter(item => selected === null || selected.includes(item.id)).length;
@@ -299,7 +304,7 @@ function EligibilityPicker({
         <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <p {...aria.descriptionProps} className="max-w-[78ch] text-[12px] leading-[1.6] text-muted">{description}</p>
           <div className="flex shrink-0 gap-2">
-            <Button type="button" size="sm" className="min-h-8" onClick={onAll}>Everyone</Button>
+            <Button type="button" size="sm" className="min-h-8" onClick={onAll}>{allLabel}</Button>
             <Button type="button" size="sm" className="min-h-8" onClick={onNone}>Clear</Button>
           </div>
         </div>
@@ -317,6 +322,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
   phase: EpisodePhase;
 }) {
   const regenerate = useRegenerateGeneratedEpisodeMutation(adminFetch);
+  const [briefExpanded, setBriefExpanded] = useState(false);
   const reroll = async () => {
     try {
       await regenerate.mutateAsync(episode.occurrence.id);
@@ -333,10 +339,22 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
   const guests = guestPersonas.map(persona => persona?.name?.trim() || 'Unknown DJ');
   const template = GENERATED_SHOW_TEMPLATES.find(item => item.id === episode.template)?.label || episode.template;
   const startsAt = new Date(episode.occurrence.startsAt);
+  const endsAt = new Date(episode.occurrence.endsAt);
+  const dateOptions = timezone ? { timeZone: timezone } : {};
   const when = new Intl.DateTimeFormat(undefined, {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    ...(timezone ? { timeZone: timezone } : {}),
+    ...dateOptions,
   }).format(startsAt);
+  const until = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric', minute: '2-digit', ...dateOptions,
+    ...(startsAt.toLocaleDateString(undefined, dateOptions) !== endsAt.toLocaleDateString(undefined, dateOptions)
+      ? { weekday: 'short', month: 'short', day: 'numeric' } : {}),
+  }).format(endsAt);
+  const durationMinutes = Math.round((episode.occurrence.endsAt - episode.occurrence.startsAt) / 60_000);
+  const duration = [
+    Math.floor(durationMinutes / 60) ? `${Math.floor(durationMinutes / 60)}h` : '',
+    durationMinutes % 60 ? `${durationMinutes % 60}m` : '',
+  ].filter(Boolean).join(' ');
   const plan = episode.plan;
 
   return (
@@ -377,8 +395,12 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
             </div>
 
             <div className="flex flex-none flex-wrap items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5 sm:text-right">
-              <div className="flex items-center gap-2">
-                <time dateTime={startsAt.toISOString()} className="text-[11px] font-semibold text-ink">{when}</time>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className="text-[11px] font-semibold text-ink">
+                  <time dateTime={startsAt.toISOString()}>{when}</time>
+                  {' – '}<time dateTime={endsAt.toISOString()}>{until}</time>
+                  <span className="ml-2 text-muted">{duration}</span>
+                </div>
                 {phase === 'upcoming' && (
                   <Button
                     type="button" variant="ghost" size="icon"
@@ -391,9 +413,10 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                   </Button>
                 )}
                 {phase === 'past' && (
-                  <span title="Saving as a permanent show is coming later">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" size="sm" disabled><Save aria-hidden="true" />Save</Button>
-                  </span>
+                    <span className="text-[10px] text-muted">Save as a permanent show · coming later</span>
+                  </div>
                 )}
               </div>
               <span role="status">
@@ -420,7 +443,17 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                   {plan.filtersStrict ? 'Strict filters' : 'Soft filters'}
                 </MetaChip>
               </div>
-              <p className="line-clamp-2 max-w-[90ch] text-[12px] leading-[1.55] text-muted italic">{plan.topic}</p>
+              <div>
+                <p className={`${briefExpanded ? '' : 'line-clamp-2 '}max-w-[90ch] text-[12px] leading-[1.55] break-words text-muted italic`}>{plan.topic}</p>
+                <Button
+                  type="button" variant="link" size="sm" className="mt-1 px-0"
+                  aria-expanded={briefExpanded}
+                  aria-label={`${briefExpanded ? 'Collapse' : 'Read full'} brief for ${plan.name}`}
+                  onClick={() => setBriefExpanded(expanded => !expanded)}
+                >
+                  {briefExpanded ? 'Collapse brief' : 'Read full brief'}
+                </Button>
+              </div>
               {plan.rationale && (
                 <details className="text-[10px] text-muted">
                   <summary className="w-fit cursor-pointer hover:text-ink">Why these settings</summary>
