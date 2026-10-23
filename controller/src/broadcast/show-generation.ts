@@ -128,7 +128,7 @@ function allowedPlanSchema(moods: readonly string[], genres: readonly string[]) 
     moods: z.array(z.string().refine(value => moodSet.has(value), `must be one of: ${moods.join(', ')}`)).max(15)
       .describe(`music moods, chosen only from: ${moods.join(', ')}`),
     genres: z.array(genreSchema).max(15)
-      .describe('genre tags copied exactly from the supplied library list'),
+      .describe('genre tags copied exactly from the indexed library vocabulary in this schema; shortlist recommendations are not an exhaustive whitelist'),
   }).check((c) => {
     if (c.value.filtersStrict && !(
       c.value.moods.length || c.value.genres.length || c.value.eras.length || c.value.energies.length
@@ -222,7 +222,9 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     : indexedGenreCounts;
   const repertoireEstimate = input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const genreChoices = showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
-  const choiceGenres = genreChoices.map(row => row.name);
+  // The bounded shortlist recommends discovery directions; the full catalogue
+  // defines valid output tags, including familiar anchors promised by a brief.
+  const libraryGenres = Object.entries(byGenre ?? {}).filter(([name, count]) => name && count > 0).map(([name]) => name);
   const template = TEMPLATE_DIRECTIONS[input.template] || TEMPLATE_DIRECTIONS['dj-choice']!;
   const hostPersona = personas.find((p: any) => p.id === input.cast.hostPersonaId);
   if (!hostPersona) throw new Error('The selected host is no longer available');
@@ -256,17 +258,17 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     existingShows.length
       ? `Familiar repertoire, from current shows’ filters only:\n${existingShowSettings}`
       : 'No current-show repertoire context is available.',
-    `Supported genre candidates and indexed matching-track counts: ${genreContext}`,
+    `Recommended genre candidates and indexed matching-track counts: ${genreContext}`,
     input.planningPrompt ? `Operator direction: <operator-direction>${input.planningPrompt}</operator-direction>` : null,
     'Create one specific musical listening idea rooted in preferences stated in the Soul and optional Musical Leanings. A calm voice, humour, nostalgic banter or guest chemistry describes presentation, not musical restrictions. Existing show names are labels; their filters indicate familiar repertoire, not the limits of the DJ’s taste.',
     input.template === 'deep-discovery'
       ? 'Build the idea around a coherent neighbourhood of the smaller supplied genres that fits this DJ. Do not merely repeat the Soul’s list of interests. Rarity alone does not connect unrelated genres. Avoid promises of iconic hits, neglected airplay or forgotten favourites: no play-history evidence is supplied.'
       : 'Keep some familiar musical anchors and explore related wider-reaching styles. Give the episode a concrete angle rather than a generic journey through a genre.',
-    'Write a short episode brief, then derive its name. You may explicitly promise a few genres, but use only supported candidates and only ones you intend the music-settings pass to include. Do not list every genre the DJ likes. A named genre is a musical commitment; speech and interaction instructions are presentation. Do not promise an opening artist, particular track, fixed playlist or documented artistic influence: this planner neither selects tracks nor supplies music research. A favourite artist may inform taste without becoming a playback promise.',
+    'Write a short episode brief, then derive its name. You may explicitly promise a few genres, but prefer the recommended candidates and name only styles you intend the music-settings pass to include. Do not list every genre the DJ likes. A named genre is a musical commitment; speech and interaction instructions are presentation. Do not promise an opening artist, particular track, fixed playlist or documented artistic influence: this planner neither selects tracks nor supplies music research. A favourite artist may inform taste without becoming a playback promise.',
     'Do not invent personal history, hometowns, venues, relationships, musical facts or previous airplay. Avoid stock hidden-gem and genre-journey copy, dates in the prose, and unsupported claims of influence. Do not impose an era or energy level from personality or favourite decades; keep the musical idea open unless operator direction requires a restriction.',
     `Return exactly ${input.nameMode === 'custom' ? 'topic; the operator supplied the title' : 'name and topic; name the musical idea after writing the brief, never use the recurring template name'}.`,
   ].filter(Boolean).join('\n\n');
-  const { planSchema, genreByKey } = allowedPlanSchema(moodNames, choiceGenres);
+  const { planSchema, genreByKey } = allowedPlanSchema(moodNames, libraryGenres);
   const usesCustomName = input.nameMode === 'custom';
   const conceptSchema = usesCustomName
     ? generatedShowPlanSchema.pick({ topic: true })
@@ -288,13 +290,14 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     'TASK: translate the already-written episode brief into music filters. The creative planning step is finished. Do not invent a second show based on the host’s general interests.',
     `EPISODE: ${conceptName}\n<show-brief>${concept.topic}</show-brief>`,
     input.planningPrompt ? `OPERATOR REQUIREMENTS: <operator-direction>${input.planningPrompt}</operator-direction>` : null,
-    `AVAILABLE GENRE TAGS (exact spelling; counts are indexed matching tracks): ${genreContext}`,
+    `RECOMMENDED GENRE SHORTLIST (counts are indexed matching tracks): ${genreContext}`,
+    'The shortlist is editorial guidance, not the full allowed vocabulary. The output schema lists valid genres from the entire indexed catalogue. Use exact catalogue tags. Deep Discovery should centre on smaller related styles from the shortlist, but may retain a broader catalogue tag to fulfil an explicit brief promise; explain that choice rather than silently substituting unrelated rare genres.',
     `AVAILABLE MOODS: ${moodNames.join(', ')}`,
     'GENRES — apply these rules in order:',
-    '1. Read only the episode brief to identify its promised musical styles. If a promised genre appears in AVAILABLE GENRE TAGS, copy it into genres. Do this before considering rarity, counts, typical palette size or other music the host likes.',
-    '2. For a broader promised style without an exact tag, choose only a listed subgenre that actually belongs to that style. Similar words, a shared mood, “experimental”, “melodic”, or “the host is eclectic” do not establish that relationship.',
+    '1. Read only the episode brief to identify its promised musical styles. If a promised genre appears in the output schema’s allowed genre values, copy it into genres. Do this before considering rarity, counts, typical palette size or other music the host likes.',
+    '2. For a broader promised style without an exact tag, choose only a catalogue subgenre that actually belongs to that style. Similar words, a shared mood, “experimental”, “melodic”, or “the host is eclectic” do not establish that relationship.',
     '3. Cover the remaining promises the same way. Then add a related genre only if it helps the same listening idea. If the brief names no genres, use the Soul and optional Musical Leanings to interpret its musical idea.',
-    '4. Do not silently substitute an unrelated genre for a missing style. If the supplied list cannot represent a promise, state that gap honestly in rationale and choose the supported portion of the idea. Never claim that an unrelated genre fulfils it.',
+    '4. Do not silently substitute an unrelated genre for a missing style. If the indexed catalogue cannot represent a promise, state that gap honestly in rationale and choose the supported portion of the idea. Never claim that an unrelated genre fulfils it.',
     'Example: if the brief promises Glitch and Shoegaze and both tags are available, include both. Post-Bop is not a substitute for Post-Punk because both names start with “Post”. Psychedelic Folk does not represent Shoegaze just because both might sound atmospheric.',
     `TEMPLATE: ${templateMusicDirection}`,
     `HOST CONTEXT, only to interpret the idea or choose related additions: ${host.name}. <host-soul>${host.soul}</host-soul>`,
@@ -310,7 +313,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let musicSettings: z.infer<typeof planSchema>;
   try {
     musicSettings = await djObject({
-      system: 'You translate an accepted radio episode brief into music settings; you do not plan a new show. Explicit operator requirements come first, then the brief’s musical promises. Copy exact promised genre tags when available; otherwise use only genuine listed subgenres. Host taste and discovery preferences guide related additions after promises are covered. Never justify unrelated substitutions. Default mood, era and energy arrays to empty, and report unsupported promises honestly. Return only the requested JSON.',
+      system: 'You translate an accepted radio episode brief into music settings; you do not plan a new show. Explicit operator requirements come first, then the brief’s musical promises. Copy exact promised catalogue genre tags when available; otherwise use only genuine catalogue subgenres. The recommended shortlist is not an exhaustive whitelist. Host taste and discovery preferences guide related additions after promises are covered. Never justify unrelated substitutions. Default mood, era and energy arrays to empty, and report unsupported promises honestly. Return only the requested JSON.',
       prompt: settingsPrompt,
       schema: planSchema,
       temperature: input.template === 'deep-discovery' ? 0.3 : 0.55,
