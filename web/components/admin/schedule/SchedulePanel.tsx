@@ -36,7 +36,7 @@ import {
 } from './lib';
 import { settingsKeys, useSettingsQuery } from '../settings/queries';
 import { scheduleKeys, useScheduleOverrideQuery } from './queries';
-import { isDefaultTakeover, SHOW_GENERATION_CANDIDATES_MAX, takeoverShowId } from '@/lib/schemas.generated';
+import { isDefaultTakeover, takeoverShowId } from '@/lib/schemas.generated';
 import type { ShowGenerationConfig } from '@/lib/schemas.generated';
 import { clientMintId, hydrateShow as hydrateFullShow, showPayload } from '../shows/lib';
 import type { Show } from '../shows/types';
@@ -282,8 +282,6 @@ export default function SchedulePanel() {
         ...show,
         generation: {
           ...show.generation,
-          eligibleHostPersonaIds: [...show.generation.eligibleHostPersonaIds],
-          eligibleGuestPersonaIds: [...show.generation.eligibleGuestPersonaIds],
           guestCount: { ...show.generation.guestCount },
         },
       });
@@ -316,7 +314,7 @@ export default function SchedulePanel() {
 
   const makeGeneratedShow = (templateId: GeneratedTemplateId): Show | null => {
     const template = GENERATED_SHOW_TEMPLATES.find(item => item.id === templateId);
-    const personaIds = personas.map(persona => persona.id).filter(Boolean).slice(0, SHOW_GENERATION_CANDIDATES_MAX);
+    const personaIds = personas.map(persona => persona.id).filter(Boolean);
     if (!template || personaIds.length === 0) {
       notify.err('Add at least one DJ before scheduling a generated show.');
       return null;
@@ -332,9 +330,7 @@ export default function SchedulePanel() {
       nameMode: 'random',
       customName: '',
       hostMode: 'random',
-      eligibleHostPersonaIds: personaIds,
       guestMode: 'random',
-      eligibleGuestPersonaIds: personaIds,
       guestCount: { min: 0, max: GUESTS_MAX },
       minimumCoverage: null,
     };
@@ -860,8 +856,6 @@ export default function SchedulePanel() {
             personas={personas}
             apiBase={API_BASE}
             onHostChange={value => {
-              const eligibleGuests = personas.map(persona => persona.id)
-                .slice(0, SHOW_GENERATION_CANDIDATES_MAX);
               setGeneratedOptionsDraft(current => current?.generation
                 ? value === RANDOM_HOST
                   ? {
@@ -869,7 +863,6 @@ export default function SchedulePanel() {
                       generation: {
                         ...current.generation,
                         hostMode: 'random',
-                        eligibleGuestPersonaIds: eligibleGuests,
                       },
                     }
                   : {
@@ -879,7 +872,6 @@ export default function SchedulePanel() {
                       generation: {
                         ...current.generation,
                         hostMode: 'fixed',
-                        eligibleGuestPersonaIds: eligibleGuests.filter(id => id !== value),
                       },
                     }
                 : current);
@@ -909,10 +901,6 @@ export default function SchedulePanel() {
                       generation: {
                         ...current.generation,
                         guestMode: 'random',
-                        eligibleGuestPersonaIds: personas
-                          .map(persona => persona.id)
-                          .filter(id => current.generation?.hostMode !== 'fixed' || id !== current.personaId)
-                          .slice(0, SHOW_GENERATION_CANDIDATES_MAX),
                         guestCount: { min: 0, max: GUESTS_MAX },
                       },
                     }

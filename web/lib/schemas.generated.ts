@@ -4196,7 +4196,7 @@ export const GUESTS_PER_SHOW = 3;
 export const SHOW_GENERATION_CANDIDATES_MAX = 48;
 export const SUB_SHOW_SKILLS_MAX = 128;
 export const SHOW_GENERATION_PROMPT_MAX = SHOW_TOPIC_MAX;
-export const SHOW_GENERATION_TEMPLATES = ['dj-choice', 'deep-discovery', 'forgotten-favourites'] as const;
+export const SHOW_GENERATION_TEMPLATES = ['dj-choice', 'deep-discovery'] as const;
 export const SHOW_GENERATION_MODES = ['fixed', 'generated'] as const;
 export const PLAYLISTS_PER_SHOW = 10;
 export const EXCLUDED_PLAYLISTS_PER_SHOW = 10;
@@ -4452,7 +4452,7 @@ function showObjectSchema(ctx: ShowSchemaContext) {
           .default(''),
       ),
       preparationSkill: z.preprocess(nullToUndefined, z.string().trim().max(SHOW_SEGMENT_SKILL_MAX).default('')),
-      generation: showGenerationSchema(ctx).optional(),
+      generation: showGenerationSchema().optional(),
       // Empty means "Any": the autonomous dominantMood chain applies on air.
       moods: showStringList({
         max: SHOW_FILTER_VALUES_MAX,
@@ -4595,11 +4595,6 @@ function showObjectSchema(ctx: ShowSchemaContext) {
       if (c.value.generation?.mode === 'generated' && c.value.preparationSkill) {
         c.issues.push({ code: 'custom', input: c.value.preparationSkill, path: ['preparationSkill'], message: 'cannot be combined with generated show planning yet' });
       }
-      if (c.value.generation?.mode === 'generated'
-        && c.value.generation.hostMode === 'fixed'
-        && c.value.generation.eligibleGuestPersonaIds.includes(c.value.personaId)) {
-        c.issues.push({ code: 'custom', input: c.value.generation.eligibleGuestPersonaIds, path: ['generation', 'eligibleGuestPersonaIds'], message: "must not include the show's fixed host" });
-      }
       if (c.value.guestPersonaIds.includes(c.value.personaId)) {
         c.issues.push({
           code: 'custom',
@@ -4624,22 +4619,7 @@ const generationGuestCountSchema = z.object({
   }
 });
 
-function showPersonaCandidates(ctx: ShowSchemaContext) {
-  return z.preprocess(
-    nullToUndefined,
-    z.array(
-      z.string().regex(SHOW_ID_RE, 'must be a valid persona id').refine(
-        (id) => ctx.personaIds == null || ctx.personaIds.includes(id),
-        'must reference existing personas',
-      ),
-    )
-      .max(SHOW_GENERATION_CANDIDATES_MAX, `must have at most ${SHOW_GENERATION_CANDIDATES_MAX} entries`)
-      .default([])
-      .transform((ids) => [...new Set(ids)]),
-  );
-}
-
-function showGenerationSchema(ctx: ShowSchemaContext) {
+function showGenerationSchema() {
   return z.object({
     // Missing generation config is a legacy/ordinary fixed show.
     mode: z.enum(SHOW_GENERATION_MODES).default('fixed'),
@@ -4655,12 +4635,10 @@ function showGenerationSchema(ctx: ShowSchemaContext) {
       nullToUndefined,
       z.string().trim().max(SHOW_GENERATION_PROMPT_MAX, `must be ${SHOW_GENERATION_PROMPT_MAX} characters or fewer`).default(''),
     ),
-    // Fixed uses the show-level personaId; random draws from this saved roster.
+    // Fixed uses personaId; random draws from the station-wide Sub/Shows pool.
     hostMode: z.enum(['fixed', 'random']).default('fixed'),
-    eligibleHostPersonaIds: showPersonaCandidates(ctx),
-    // Fixed uses guestPersonaIds; random draws a bounded count from this roster.
+    // Fixed uses guestPersonaIds; random draws a bounded count from the station-wide pool.
     guestMode: z.enum(['none', 'fixed', 'random']).default('fixed'),
-    eligibleGuestPersonaIds: showPersonaCandidates(ctx),
     guestCount: generationGuestCountSchema.default({ min: 0, max: 0 }),
     // null means no minimum. No numeric default was agreed in the proposal.
     minimumCoverage: z.preprocess(
@@ -4671,12 +4649,6 @@ function showGenerationSchema(ctx: ShowSchemaContext) {
     if (c.value.mode !== 'generated') return;
     if (c.value.nameMode === 'custom' && !c.value.customName) {
       c.issues.push({ code: 'custom', input: c.value.customName, path: ['customName'], message: 'enter a custom episode name' });
-    }
-    if (c.value.hostMode === 'random' && c.value.eligibleHostPersonaIds.length === 0) {
-      c.issues.push({ code: 'custom', input: c.value.eligibleHostPersonaIds, path: ['eligibleHostPersonaIds'], message: 'choose at least one eligible host' });
-    }
-    if (c.value.guestMode === 'random' && c.value.guestCount.max > 0 && c.value.eligibleGuestPersonaIds.length === 0) {
-      c.issues.push({ code: 'custom', input: c.value.eligibleGuestPersonaIds, path: ['eligibleGuestPersonaIds'], message: 'choose at least one eligible guest' });
     }
   });
 }
@@ -4796,19 +4768,10 @@ export function repairShowTags(raw: unknown): string[] | undefined {
 }
 
 /** Repair generated-show settings without losing the ordinary show on load. */
-function repairShowGeneration(raw: unknown, personaIds: string[] | null, hostId: string, hasPreparationSkill: boolean): Record<string, unknown> | undefined {
+function repairShowGeneration(raw: unknown, hasPreparationSkill: boolean): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const value = raw as Record<string, unknown>;
-  const candidates = (candidateRaw: unknown): string[] => {
-    if (!Array.isArray(candidateRaw)) return [];
-    return [...new Set(candidateRaw.filter((id): id is string =>
-      typeof id === 'string' && SHOW_ID_RE.test(id) && (personaIds == null || personaIds.includes(id))))]
-      .slice(0, SHOW_GENERATION_CANDIDATES_MAX);
-  };
-  const eligibleHostPersonaIds = candidates(value.eligibleHostPersonaIds);
-  const rawHostMode = value.hostMode === 'random' && eligibleHostPersonaIds.length > 0 ? 'random' : 'fixed';
-  const eligibleGuestPersonaIds = candidates(value.eligibleGuestPersonaIds)
-    .filter((id) => rawHostMode === 'random' || id !== hostId);
+  const hostMode = value.hostMode === 'random' ? 'random' : 'fixed';
   const rawCount = value.guestCount && typeof value.guestCount === 'object'
     ? value.guestCount as Record<string, unknown>
     : {};
@@ -4818,9 +4781,6 @@ function repairShowGeneration(raw: unknown, personaIds: string[] | null, hostId:
     && Number(min) >= 0 && Number(max) <= GUESTS_PER_SHOW && Number(min) <= Number(max);
   const minimumCoverage = value.minimumCoverage;
   const guestMode = value.guestMode === 'none' || value.guestMode === 'random' ? value.guestMode : 'fixed';
-  const safeGuestMode = guestMode === 'random' && Number(max) > 0 && eligibleGuestPersonaIds.length === 0
-    ? 'fixed'
-    : guestMode;
   return {
     // Artist preparation is not composable with generated planning yet, so a
     // malformed stored combination keeps the show in its ordinary mode.
@@ -4829,10 +4789,8 @@ function repairShowGeneration(raw: unknown, personaIds: string[] | null, hostId:
     nameMode: value.nameMode === 'custom' && typeof value.customName === 'string' && value.customName.trim() ? 'custom' : 'random',
     customName: typeof value.customName === 'string' ? value.customName.trim().slice(0, SHOW_NAME_MAX) : '',
     planningPrompt: typeof value.planningPrompt === 'string' ? value.planningPrompt.slice(0, SHOW_GENERATION_PROMPT_MAX) : '',
-    hostMode: rawHostMode,
-    eligibleHostPersonaIds,
-    guestMode: safeGuestMode,
-    eligibleGuestPersonaIds,
+    hostMode,
+    guestMode,
     guestCount: validCount ? { min: Number(min), max: Number(max) } : { min: 0, max: 0 },
     minimumCoverage: Number.isSafeInteger(minimumCoverage) && Number(minimumCoverage) >= 0 ? Number(minimumCoverage) : null,
   };
@@ -4861,7 +4819,7 @@ export function repairShowForLoad(
       ? raw.segmentSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX)
       : undefined,
     preparationSkill: typeof raw.preparationSkill === 'string' ? raw.preparationSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX) : undefined,
-    generation: repairShowGeneration(raw.generation, personaIds, host,
+    generation: repairShowGeneration(raw.generation,
       typeof raw.preparationSkill === 'string' && !!raw.preparationSkill.trim()),
     // Generated episodes use the programme arc so their eligible DJ Skills can
     // be selected for features. Ordinary shows retain their saved setting.
