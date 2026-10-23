@@ -310,6 +310,15 @@ function resolveShowShape(show, s, date?: Date, occurrence?: { source: 'schedule
   };
 }
 
+// null leaves regular shows unrestricted; [] disables automatic DJ Skills
+// during a Sub/Show. Explicit operator Run now remains an override.
+export function subShowSkillAllowlist(showId: string | null | undefined): string[] | null {
+  const station = get();
+  const show = station.shows?.find(item => item.id === showId);
+  return show?.generation?.mode === 'generated'
+    ? station.subShows?.eligibleSkillNames ?? null : null;
+}
+
 // The persona that should be on air right now: the current show's owner if a
 // show is scheduled, otherwise the admin-selected active persona.
 export function getEffectivePersona(date: Date = new Date()) {

@@ -1253,8 +1253,9 @@ export function skillCronAllowed(gates: SkillCronGates): boolean {
   return skillCronStandDownReason(gates) === null;
 }
 
-export function skillCronEligibility(cap: any, enabled: Record<string, boolean | undefined>, host: any, guests: any[], preparationSkill: string | null = null) {
+export function skillCronEligibility(cap: any, enabled: Record<string, boolean | undefined>, host: any, guests: any[], preparationSkill: string | null = null, eligibleSkillNames: readonly string[] | null = null) {
   return skillEligible({
+    eligibleSkillNames,
     preparationSkill,
     seeded: cap.seeded,
     skill: cap.skill,
@@ -1302,16 +1303,17 @@ export function syncSkillCrons() {
         queue.log('scheduler', `[skills] cron "${cap.kind}" stood down — ${gated}`);
         return;
       }
-      // Same enabled + persona-allowlist rules the autonomous director applies,
+      // Same enabled, persona and Sub/Shows rules the autonomous director applies,
       // logged rather than silent — a stood-down cron leaves no other trace.
       const now = new Date();
-      const { host, guests } = settings.getOnAirRoster(now);
+      const { host, guests, show } = settings.getOnAirRoster(now);
       const eligible = skillCronEligibility(
         cap,
         settings.get().skills?.enabled || {},
         host,
         guests,
         preparationSkillAt(await getFullContext()),
+        settings.subShowSkillAllowlist(show?.id),
       );
       if (!eligible.allowed) {
         queue.log('scheduler', `[skills] cron "${cap.kind}" stood down — ${eligible.reason}`);

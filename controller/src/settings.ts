@@ -270,6 +270,7 @@ export {
   resolvePersonaById,
   resolveShowById,
   spokenProperNounDirective,
+  subShowSkillAllowlist,
 } from './settings/persona.js';
 export { writeLiquidsoapSettings } from './settings/liquidsoap.js';
 export { effectEnabled, enabledEffects } from './settings/transition-effects.js';
