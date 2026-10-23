@@ -302,3 +302,37 @@ alternate planner in the harness until editorial coherence improves. Initial
 isolated-container diagnostics had unresolved Navidrome configuration; those
 counts were discarded and checked through the station's read-only diagnostic
 endpoint instead. No accepted episode plans were replaced by the experiment.
+
+### Preview-only compact two-call handoff
+
+The preview harness also accepts `--planner compact`, or `--planner compare-compact`
+for a fresh current-versus-compact comparison. Existing `compare` still compares
+the production and single-call planners. `scripts/show-plan-compact.ts` is not
+imported by production preparation.
+
+The concept call receives the host’s Soul, optional Musical Leanings, guests,
+existing filter context and recommended genres. It returns a name, short brief
+and 1–6 exact `intendedGenres`. The settings call receives only that proposal,
+selected genre counts, duration, operator direction and mood vocabulary. Its
+schema restricts genre values and array length to the intended palette; a local
+set check also rejects duplicates, omissions, additions and substitutions.
+Nothing silently appends missing genres or accepts an altered palette. This
+checks preservation of declared intent, not the semantics of prose in the brief.
+The first concept response is included in preview call telemetry for inspection.
+
+```bash
+npm run show-plan:preview -- HOST_ID deep-discovery --planner compact --hours 2
+npm run show-plan:preview -- HOST_ID deep-discovery --planner compare-compact --guests GUEST_ID
+```
+
+On 23 October 2026, one compact proposal per host used 3,011 tokens for Maria,
+3,357 for Verity and 3,331 for Dante, including both calls and reported recovery.
+The second calls alone used 987, 1,076 and 1,089 total tokens respectively. These
+were compared against the earlier current-pipeline samples above, not a fresh
+paired rerun: about 69% fewer reported tokens overall. All three preserved the
+intended genre sets and returned 3–4 genres. Their creative briefs remained
+generic; Verity’s palette lacked a clear musical connection. Verity and Dante
+also selected all allowed moods despite the empty-default instruction, and the
+rationales described copying settings rather than musical intent. These are
+experimental results, not grounds to promote the planner without further work.
+Production source, accepted plans and schedules were left unchanged.

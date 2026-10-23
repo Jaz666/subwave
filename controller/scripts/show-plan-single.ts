@@ -7,7 +7,7 @@ import * as library from '../src/music/library.js';
 import { normGenre } from '../src/music/genre-fold.js';
 import { discoveryGenreCounts, normalizeGeneratedMusicSettings, showGenreChoices, type GeneratedShowInput } from '../src/broadcast/show-generation.js';
 
-export async function generateSingleCallPreview(input: GeneratedShowInput) {
+export async function loadShowPreviewContext(input: GeneratedShowInput) {
   await library.load();
   const stats = library.stats();
   const counts = input.template === 'deep-discovery'
@@ -19,6 +19,11 @@ export async function generateSingleCallPreview(input: GeneratedShowInput) {
   const host = personas.find(p => p.id === input.cast.hostPersonaId);
   if (!host) throw new Error('Preview host is unavailable');
   const moods = settings.moodVocab();
+  return { host, personas, moods, choices, counts, estimate };
+}
+
+export async function generateSingleCallPreview(input: GeneratedShowInput) {
+  const { host, personas, moods, choices, counts, estimate } = await loadShowPreviewContext(input);
   const identity = (p: typeof host) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const prompt = [
     `Create one ${input.template} episode proposal: brief first, name derived from it, and matching music settings, all in one JSON response.`,
