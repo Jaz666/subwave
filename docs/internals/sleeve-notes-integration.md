@@ -178,3 +178,24 @@ from 1 to 137 unique library relationships while preserving facts, recordings an
 sources, with no foreign-key errors. This was an offline copy; live collection and
 container rebuilding remain under operator control. The count refreshes after the
 next successful quiet-time background match and normal Overview refresh.
+
+
+## Station acceptance before the draft update — 23 October
+
+The operator confirmed ordinary manual Banter airs correctly. Research resumed
+after the controller rebuild. Provisional artist duplicates progressively collapsed
+through the alphabetical repair; the progress tooltip and explicit storage
+inspection worked as intended. Library Connections rose from 1 to 137 after the
+background pass, matching the offline verification while retaining the requirement
+that both recordings are local.
+
+A manually requested Sleeve Notes segment during the next handoff was refused
+before speech queued. This confirms the live handoff-admission guard. Late writing,
+rendering and publication races, and adjacent shows with the same host, remain
+covered by regression tests rather than a claimed live reproduction of each race.
+The previous outgoing-voice incident also showed research resuming afterwards.
+
+These observations support updating the testing draft. Multi-day storage growth,
+additional real LLM/provider combinations and destructive environment/recovery
+experiments remain further testing work. This record does not claim those checks
+were completed or establish uninterrupted audio in every failure scenario.
