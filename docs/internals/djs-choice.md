@@ -62,6 +62,17 @@ the show from that brief, then chooses music settings that express the brief.
 Template direction, station restrictions and playable library coverage guide
 that work without replacing the host's taste.
 
+The Soul is the primary source of the DJ’s musical preferences as well as their
+identity; Musical Leanings is optional supplementary guidance. Both planning
+passes distinguish those preferences from delivery and interaction instructions.
+A calm voice does not imply calm music, and favourite decades do not require an
+era window. The generated brief frames presentation; the show filters drive
+track selection, with Musical Leanings a soft influence between candidates.
+Mood, era and energy arrays default to empty, and strictness to false, unless
+operator direction or a concrete musical need justifies a restriction. Raw genre
+counts do not establish coverage after intersecting those extra restrictions;
+soft filters are not a reason to accept an implausible matching core.
+
 The planner returns a title, a brief and these existing show controls:
 
 | Operator-facing field | Current source field |
@@ -88,11 +99,12 @@ Example: DJ’s Choice → Mara → “After the Last Train”: nocturnal soul, 
 spacious electronic music, with a reflective brief and moderate energy.
 
 Preparation inputs should include the selected host’s Soul and Musical
-Leanings, the names, briefs and music settings of their other regularly
+Leanings when present, the names and music settings of their other regularly
 scheduled shows, guest identities, slot duration and station-local time, template
 instructions, bounded library coverage, and summaries of recent episodes.
-Existing shows are soft context: DJ’s Choice should vary its editorial angle,
-but their topics and genres are not hard exclusions. Its palette can retain a
+Existing show filters are soft context for familiar repertoire; their verbose
+speech and interaction briefs are omitted from both planning passes. Their
+genres are not hard exclusions. Its palette can retain a
 few of the host’s familiar genres and add related choices from the wider library
 up to the 15-genre limit. The brief and name come before music tags, which
 should follow from the idea without forcing unrelated genres. Deep Discovery
