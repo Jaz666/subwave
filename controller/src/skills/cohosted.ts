@@ -5,7 +5,7 @@
 import { djAgent, djObject } from '../llm/sdk.js';
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import * as settings from '../settings.js';
-import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema, lookAheadSkillSchema } from '../llm/internal/prompts/cohosted-skill.js';
+import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema, lookAheadSkillSchema, MAX_DISCUSSION_TURNS } from '../llm/internal/prompts/cohosted-skill.js';
 import { findSkillPersona } from './special-guest.js';
 import { renderLookAheadTeases } from './look-ahead.js';
 import { requiresGrounding, standDownReason } from './abstain-policy.js';
@@ -69,7 +69,6 @@ export async function runCohostedCapability({
   const promptGuests: string[] = capability.specialGuestNames || [];
   const selectCast = capability.toolCast || promptGuests.length > 0;
   let source: any;
-  let promptSelected = false;
   if (selectCast) {
     source = await fetchSegmentData(capability, context, segmentState, { speakerPersonaId: host.id });
     const blocked = standDownReason(capability, source);
@@ -96,19 +95,18 @@ export async function runCohostedCapability({
       if (!guests.some(persona => persona.id === guest.id)) guests = [...guests, guest];
       if (guests.length > 3) return { aired: false, lines: null, reason: 'special-guest discussions support at most four participants including the host' };
       source = { ...source, onAirHost: { id: host.id, name: host.name }, specialGuest: identity };
-      promptSelected = true;
     }
   }
   const cast = [host, ...guests];
-  const turnCount = selectCast ? source?.turnCount ?? (promptSelected ? cast.length * 2 : cast.length) : cast.length;
-  if (!Number.isInteger(turnCount) || turnCount < cast.length || turnCount > 8 || (cast.length === 1 && turnCount !== 1)) {
+  const turnCount = selectCast ? source?.turnCount ?? null : null;
+  if (turnCount !== null && (!Number.isInteger(turnCount) || turnCount < 1 || turnCount > MAX_DISCUSSION_TURNS)) {
     return { aired: false, lines: null, reason: 'invalid discussion turn count' };
   }
   const grounded = requiresGrounding(capability);
   const solo = selectCast && cast.length === 1;
   const lookAhead = solo && source?.speechFormat === 'look-ahead';
   const system = cohostedSkillSystem({ capability: selectCast ? { ...capability, toolCast: true } : capability, host, guests, grounded, lookAhead, turnCount });
-  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast, turnCount);
+  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast);
   const ask = lookAhead ? 'Write only the two summary fields for the supplied shows; leave secondSummary empty when only one show is supplied.' : solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
@@ -186,11 +184,12 @@ export async function runCohostedCapability({
   }
 
   const byId = new Map(cast.map((persona) => [persona.id, persona]));
-  const lines = (out?.lines || []).map((line) => ({
+  const discussion = cohostedSkillSchema(cast).parse(out);
+  const lines = discussion.lines.map((line) => ({
     persona: byId.get(String(line.speaker || '')),
     text: String(line.text || '').trim(),
   }));
-  if (lines.length !== turnCount || lines.some((line, index) => !line.persona || !line.text || line.persona.id !== cast[index % cast.length].id)) {
+  if (lines.some(line => !line.persona || !line.text)) {
     throw new Error(`skill "${capability.skill || capability.kind}" produced no co-hosted discussion`);
   }
   return {
