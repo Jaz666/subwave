@@ -369,3 +369,8 @@ Only promise a date range when the operator explicitly requests that musical
 restriction, and translate any promised period into matching era windows in
 the settings call. Existing accepted plans are unchanged until regenerated.
 This is prompt guidance, not a semantic validator for arbitrary prose.
+
+The settings prompt supplies required genre names as strings, with indexed
+counts separately. Narrow format recovery unwraps copied `{name, tracks}`
+genre entries before schema validation; it does not add or substitute genres,
+and the exact accepted palette is still checked.

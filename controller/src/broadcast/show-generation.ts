@@ -165,6 +165,15 @@ export function showGenreChoices(byGenre: Record<string, number>, template: stri
 export function normalizeGeneratedMusicSettings(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const value = { ...raw } as Record<string, unknown>;
+  // Some local models copy the input's count annotations into the genre list.
+  // Recover only that known wrapper; the schema still checks every name and
+  // the exact accepted palette is verified below.
+  if (Array.isArray(value.genres)) value.genres = value.genres.map(genre => {
+    if (!genre || typeof genre !== 'object' || Array.isArray(genre)) return genre;
+    const entry = genre as Record<string, unknown>;
+    return typeof entry.name === 'string' && Object.keys(entry).every(key => key === 'name' || key === 'tracks')
+      ? entry.name : genre;
+  });
   if (typeof value.rationale === 'string') value.rationale = value.rationale.trim().slice(0, 500);
   if (Array.isArray(value.eras)) value.eras = value.eras.flatMap(era => {
     if (!era || typeof era !== 'object' || Array.isArray(era)) return [era];
@@ -267,7 +276,9 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     music = await djObject({
       system: `Translate the accepted musical proposal into settings. Do not create another idea or choose another genre palette. Preserve every required genre exactly once. Default mood, era and energy lists to empty. Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
       prompt: [
-        `Accepted proposal: ${JSON.stringify({ name: concept.name, topic: concept.topic, requiredGenres: intended.map(name => ({ name, tracks: counts[name] })) })}`,
+        `Accepted proposal: ${JSON.stringify({ name: concept.name, topic: concept.topic, requiredGenres: intended })}`,
+        `Indexed counts (coverage context only): ${JSON.stringify(Object.fromEntries(intended.map(name => [name, counts[name]])))}`,
+        'Return genres as an array of strings, for example ["Indie Rock", "Post-Punk"]. Copy the requiredGenres strings exactly. Never put name/tracks objects in genres.',
         `Duration: ${(input.occurrence.endsAt - input.occurrence.startsAt) / 60_000} minutes. Allowed moods: ${moods.join(', ')}.`,
         input.planningPrompt ? `Operator requirements: ${input.planningPrompt}` : null,
         input.minimumCoverage != null ? `Operator minimum: ${input.minimumCoverage} unique eligible tracks after all filters and exclusions.` : null,
