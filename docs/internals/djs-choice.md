@@ -260,8 +260,14 @@ casting rules, bypasses the accepted-plan cache and retry cooldown, and shares
 any request already running for that occurrence. An accepted plan is replaced
 only after success; model failures retain it. Requests for missing, changed,
 already airing or past slots are rejected, and a result arriving after airtime
-or a schedule edit is discarded. Past episodes show a disabled Save button;
-copying an episode into a permanent show remains deferred.
+or a schedule edit is discarded. Ready episodes in any phase offer an icon action with the tooltip “Save as
+regular show”. It opens the normal show editor on an isolated copy containing
+the accepted title, brief, cast and music filters, with the recorded playlist
+restrictions. Saving creates a new ordinary show without booking any hours or
+changing the source episode. The copied show has no generation behaviour or
+Programme mode. Its stable new identity makes repeated saves idempotent; after
+saving, the icon opens the saved show. Deleting that saved show permits saving
+a fresh copy later.
 
 An optional “Coming Up” DJ skill reads the remaining schedule for the day and
 its accepted episode titles, casts and briefs. It must not generate episodes or
@@ -374,3 +380,32 @@ The settings prompt supplies required genre names as strings, with indexed
 counts separately. Narrow format recovery unwraps copied `{name, tracks}`
 genre entries before schema validation; it does not add or substitute genres,
 and the exact accepted palette is still checked.
+
+### Episode casting actions
+
+Regenerate has the tooltip “Regenerate show, keeping host and guests”. A
+separate Shuffle icon is available for upcoming slots with random host or
+guest options, with the tooltip “Shuffle random host/guests and regenerate
+show”. It previews a different cast before confirmation. Fixed options stay
+fixed, and only eligible personas participate. If the available choices cannot
+produce a different cast, explain this without regenerating the episode.
+
+The preview draws a new occurrence seed without changing station state. On
+confirmation, validate that the proposed cast is still current and generate
+the replacement with that seed. Persist it with the accepted episode only
+after success, so later regeneration and restarts retain the shuffled cast.
+A schedule change, airtime boundary or generation failure cannot replace the
+accepted episode. Legacy episodes without a seed retain their original
+deterministic casting. These controls do not rebuild or restart the station.
+
+Save draft and save use admin-only endpoints under `/shows/generated`. Save
+validates the edited draft through the shared regular-show schema and checks
+that the accepted plan has not changed since opening it. Reconcile the Shows
+settings and takeover caches after writing, and refresh episode history so
+the save action reflects its saved identity.
+
+New accepted records retain non-sensitive playlist, vocal and track-length
+settings independently of the persona-bearing configuration fingerprint, which
+is removed from past history. Legacy past records without this snapshot use
+the surviving recurring show for those additional settings; their accepted
+brief, cast and generated music filters remain available exactly as recorded.

@@ -71,17 +71,19 @@ export function scheduledShowsForHost(hostId: string, currentShowId: string): Ex
     }));
 }
 
-export function resolveGeneratedShowCast({ show, occurrence, personas }: {
+export function resolveGeneratedShowCast({ show, occurrence, personas, preserveFixedGuests = false }: {
   show: any;
   occurrence: { id: string };
   personas: readonly any[];
+  preserveFixedGuests?: boolean;
 }): GeneratedShowCast | null {
   const config = show.generation;
   if (!config || config.mode !== 'generated') return null;
   const eligible = new Map<string, any>(personas.filter(p => p && typeof p.id === 'string').map(p => [p.id, p] as const));
   const subShows = settings.get().subShows;
   const hostIds = config.hostMode === 'random'
-    ? (subShows?.eligibleHostPersonaIds ?? [...eligible.keys()]).filter((id: string) => eligible.has(id))
+    ? (subShows?.eligibleHostPersonaIds ?? [...eligible.keys()]).filter((id: string) => eligible.has(id)
+      && (!preserveFixedGuests || config.guestMode !== 'fixed' || !(show.guestPersonaIds ?? []).includes(id)))
     : [show.personaId].filter((id: string) => eligible.has(id));
   if (!hostIds.length) return null;
   const hostPersonaId = hostIds[stableIndex(occurrence.id, hostIds.length)]!;
