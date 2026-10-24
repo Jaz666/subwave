@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, statSync, renameSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { wavDurationMs } from '../audio/clip-duration.js';
+import { wavDurationMs } from '../broadcast/queue/voice-io.js';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
 import { zonedParts } from '../time.js';

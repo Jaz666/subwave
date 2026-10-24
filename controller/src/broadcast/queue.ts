@@ -2703,7 +2703,7 @@ class Queue {
           meta: l.meta ?? {},
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
         })),
-        { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null },
+        { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null, hostSpeech },
       );
     }
     for (const [index, l] of rendered.entries()) {
