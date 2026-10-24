@@ -419,3 +419,14 @@ still determines existing show colours. The admin-only `/shows/takeover` read
 provides minimal generation identity for grouping; public schedule reads do
 not gain private generation configuration. The shared takeover cache reconciler
 retains that identity after show writes.
+
+The Schedule page’s “Write an order” selector shares the Takeover menu’s
+grouping and alphabetical order. Default Programming writes empty schedule
+cells (the existing autonomous programming behaviour). Existing Sub/Show
+variants remain individually selectable so their casting options are preserved.
+
+“Airtime against your target” aggregates all generated variants by template: one
+DJ’s Choice row and one Deep Discovery row regardless of host/guest combinations.
+Use the template name and colour, sum their scheduled hours, then calculate the
+bar scale and target status from the combined totals. Saved regular shows stay
+individual, including those copied from generated episodes.
