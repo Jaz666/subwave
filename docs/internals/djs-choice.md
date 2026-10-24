@@ -368,8 +368,12 @@ and one shared musical thread. It then writes a distinctive title and a brief
 of 2–3 sentences explaining each DJ's connection and one recurring musical
 question. Prefer a small coherent palette (usually 2–5 styles), expanding only
 for coverage. Avoid unrelated genre groups, generic template titles and
-invented shared preferences. The settings prompt contains no example date
-range: eras remain empty unless the operator explicitly requests a period.
+invented shared preferences. The concept should remain era-neutral unless the
+operator requests a period. The settings prompt contains no example date range;
+however, any decades or dates promised in the accepted brief must be represented
+in era filters, even if the concept introduced them without an operator request.
+A proposal mixing older and contemporary music must retain both periods, rather
+than restricting the entire show to the older decades.
 
 Both participants must be enabled in **Sub/Shows → Random Hosts**, including
 explicitly named pairs. The Random Guests list is not used for this experiment.
