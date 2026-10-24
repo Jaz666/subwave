@@ -79,11 +79,14 @@ export function resolveGeneratedShowCast({ show, occurrence, personas, preserveF
 }): GeneratedShowCast | null {
   const config = show.generation;
   if (!config || config.mode !== 'generated') return null;
-  const eligible = new Map<string, any>(personas.filter(p => p && typeof p.id === 'string').map(p => [p.id, p] as const));
   const subShows = settings.get().subShows;
+  const commonGround = config.template === 'common-ground';
+  const eligible = new Map<string, any>(personas.filter(p => p && typeof p.id === 'string'
+    && (!commonGround || subShows?.eligibleHostPersonaIds == null || subShows.eligibleHostPersonaIds.includes(p.id)))
+    .map(p => [p.id, p] as const));
   const hostIds = config.hostMode === 'random'
     ? (subShows?.eligibleHostPersonaIds ?? [...eligible.keys()]).filter((id: string) => eligible.has(id)
-      && (!preserveFixedGuests || config.guestMode !== 'fixed' || !(show.guestPersonaIds ?? []).includes(id)))
+      && (!(preserveFixedGuests || commonGround) || config.guestMode !== 'fixed' || !(show.guestPersonaIds ?? []).includes(id)))
     : [show.personaId].filter((id: string) => eligible.has(id));
   if (!hostIds.length) return null;
   const hostPersonaId = hostIds[stableIndex(occurrence.id, hostIds.length)]!;
@@ -91,9 +94,10 @@ export function resolveGeneratedShowCast({ show, occurrence, personas, preserveF
     ? []
     : config.guestMode === 'fixed'
       ? (show.guestPersonaIds ?? []).filter((id: string) => id !== hostPersonaId && eligible.has(id))
-      : stableOrder<string>((subShows?.eligibleGuestPersonaIds ?? [...eligible.keys()])
+      : stableOrder<string>(((commonGround ? subShows?.eligibleHostPersonaIds : subShows?.eligibleGuestPersonaIds) ?? [...eligible.keys()])
         .filter((id: string) => id !== hostPersonaId && eligible.has(id)), occurrence.id)
-        .slice(0, config.guestCount.min + stableIndex(`${occurrence.id}:guest-count`, config.guestCount.max - config.guestCount.min + 1));
+        .slice(0, commonGround ? 1 : config.guestCount.min + stableIndex(`${occurrence.id}:guest-count`, config.guestCount.max - config.guestCount.min + 1));
+  if (commonGround && new Set(guestIds).size !== 1) return null;
   return { hostPersonaId, guestPersonaIds: [...new Set(guestIds)].slice(0, 3) };
 }
 
@@ -199,7 +203,6 @@ export function normalizeGeneratedMusicSettings(raw: unknown): unknown {
 export async function generateShowPlan(input: GeneratedShowInput): Promise<GeneratedShowPlan> {
   const discovery = input.template === 'deep-discovery';
   const djChoice = input.template === 'dj-choice';
-  // Preview-only prototype; not exposed as a saved template yet.
   const commonGround = input.template === 'common-ground';
   const strictGenres = discovery || djChoice || commonGround;
   const genreLimit = strictGenres ? 15 : 6;
@@ -228,7 +231,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const guests = input.cast.guestPersonaIds
     .map(id => personas.find((p: any) => p.id === id))
     .filter(Boolean);
-  if (commonGround && (guests.length !== 1 || guests[0]?.id === hostPersona.id)) {
+  if (commonGround && (input.cast.guestPersonaIds.length !== 1 || guests.length !== 1 || guests[0]?.id === hostPersona.id)) {
     throw new Error('Common Ground requires a host and exactly one distinct guest');
   }
   const host = {
@@ -246,7 +249,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       ? z.array(z.enum(choices.map(g => g.name) as [string, ...string[]])).min(1).max(genreLimit)
       : z.array(z.never()).max(0),
   });
-  // Put the pair-specific evidence before the brief in the preview's output
+  // Put the pair-specific evidence before the brief in the concept output
   // contract so the model must identify a connection rather than just name two styles.
   const conceptSchema = commonGround ? z.object({
     musicalConnection: z.object({
@@ -327,7 +330,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         commonGround ? 'Return eras: [] unless the operator explicitly requested a date restriction. Do not infer years from genre associations, favourite decades or regular-show eras. A requested period uses numeric fromYear/toYear bounds; never invent dates.' : 'Era JSON shape: return eras: [] for unrestricted music. If a date restriction is required, use objects such as eras: [{"fromYear": 1980, "toYear": 1995}], with number or null bounds. Never return date strings such as eras: ["1980-1995"]. This example is formatting only, not an instruction to select those years.',
         'The title and brief must agree with the era settings. If the accepted proposal explicitly promises a decade or date range, encode that range in eras; do not leave eras empty. A favourite decade in persona context alone is not a restriction. An era-neutral proposal should keep eras empty unless the operator explicitly requires a period.',
         'Copy requiredGenres into genres exactly once each, with no additions, omissions or substitutions. Keep moods, eras and energies empty unless the operator or musical idea explicitly requires a restriction and coverage supports it. Conversation style and favourite decades are not music restrictions.',
-        commonGround ? `For this preview, use strict genres and leave moods, eras and energies empty unless explicitly required. The palette should cover at least ${requiredTracks} unique eligible tracks. Explain how the selected styles connect the two DJs; this is a provisional coverage policy for evaluation.` : discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
+        commonGround ? `Use strict genres and leave moods, eras and energies empty unless explicitly required. The palette should cover at least ${requiredTracks} unique eligible tracks. Explain how the selected styles connect the two DJs.` : discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
         `Counts overlap and do not prove coverage after additional filters. Return moods, genres, eras, energies, filtersStrict and a rationale under 500 characters explaining this accepted palette${djChoice ? ': identify the familiar core and why the adjacent styles connect; do not merely report that genres were copied' : ''}. Do not invent artist influence, history or airplay. Any era is eras: [].`,
       ].filter(Boolean).join('\n\n'),
       schema: settingsSchema, temperature: 0.1,

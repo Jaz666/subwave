@@ -38,10 +38,11 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-Only DJ’s Choice and Deep Discovery are accepted template options in saved
-settings and the preview harness. Unsupported legacy template names use the
+DJ’s Choice, Common Ground and Deep Discovery are accepted template options in
+saved settings. Common Ground also has a dedicated comparison harness. Unsupported legacy template names use the
 existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
-Random casting uses the station-wide Sub/Shows host and guest pools only.
+Random casting uses the station-wide Sub/Shows pools. Common Ground uses the
+Random Hosts pool for both participants, including explicitly selected DJs.
 Legacy per-show candidate lists are ignored and stripped during normalization;
 removing them does not change a slot’s random/fixed host or guest modes.
 
@@ -324,32 +325,38 @@ familiar-core policy is described below.
 
 ## Template ideas for later exploration
 
-These are proposals, not implemented templates or commitments. Each should give
+Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and
-show filters. DJ’s Choice and Deep Discovery remain the current templates.
+show filters. DJ’s Choice, Deep Discovery and Common Ground are implemented;
+the remaining ideas below are proposals.
 
 | Working name | Musical idea | Planning approach |
 | --- | --- | --- |
-| Common Ground | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
+| Common Ground (implemented) | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
 | Outside the Comfort Zone | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
 | Time Capsule | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
-Common Ground and Outside the Comfort Zone are the suggested first candidates
-to explore. Both appear compatible with the existing brief-first planner and
-coverage checks; their exact filtering and coverage policies remain to be
-decided. Common Ground is being previewed with exactly one distinct guest and equal
-musical influence for both DJs; the host still leads presentation.
+Outside the Comfort Zone remains a suggested next candidate. Common Ground
+uses exactly one distinct guest and equal musical influence for both DJs; the
+host still leads presentation. It uses strict genres with the same twice-airtime
+coverage checks as the other Sub/Shows.
 
 Templates promising alternating DJ selections, specific tracks or a precise
 musical progression would need additional influence over the track picker.
 Forgotten Favourites remains separately deferred for the same reason: planning
 a brief and filters does not by itself favour neglected tracks at selection.
 
-### Common Ground preview harness
+### Common Ground and preview harness
 
-Common Ground remains a preview-only planner path, not a selectable template.
+Common Ground is available on the schedule shelf, in programming menus and as
+a prepared takeover. The default is Random Host plus exactly one random guest;
+slot options can instead select exactly one guest. Both DJs must be enabled in
+Random Hosts, and a randomly selected host cannot displace a fixed guest.
+Scheduled variants, regeneration, cast shuffling, saved regular shows and Look
+Ahead reuse the existing Sub/Shows lifecycle.
+
 The harness uses the same concept/settings calls as Sub/Shows, with Souls as
 primary evidence, optional Musical Leanings, and both DJs' scheduled regular-show
 filters as supporting repertoire context. Regular-show briefs are omitted.
@@ -395,9 +402,8 @@ approximately equal to the indexed library database.
 
 JSON goes to stdout; progress goes to stderr. Output includes the cast,
 supporting repertoire, generated brief/settings, matching pool diagnostics and
-whether coverage reaches twice the airtime at a four-minute average. Strict
-genres and that coverage target are provisional, not a final Common Ground
-policy. Inadequate pools and individual generation failures remain visible for
+whether coverage reaches twice the airtime at a four-minute average. The harness
+uses the same strict genre and coverage policy as the scheduled template. Inadequate pools and individual generation failures remain visible for
 review; the harness does not silently replace a pairing or accept it for air.
 
 ### DJ’s Choice familiar-core policy

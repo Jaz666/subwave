@@ -109,7 +109,7 @@ async function main() {
       }
     }
     process.stdout.write(JSON.stringify({ previewOnly: true, template: 'common-ground', minutes,
-      policy: 'Strict genres and twice-airtime coverage are provisional for this preview; no plans are saved.',
+      policy: 'Strict genres and twice-airtime coverage use the Common Ground policy; no plans are saved.',
       model: station.llm.model, eligiblePersonas: eligible.map(identity), runs }, null, 2) + '\n');
   } finally { library.shutdown(); }
 }

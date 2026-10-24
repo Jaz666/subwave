@@ -148,7 +148,7 @@ export default function TemplateShowsPanel() {
             <Eyebrow className="text-vermilion">show plan · Sub/Shows</Eyebrow>
             <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
-              Plan fresh episodes from your DJs’ personalities and musical tastes. Add DJ’s Choice or Deep Discovery
+              Plan fresh episodes from your DJs’ personalities and musical tastes. Add DJ’s Choice, Common Ground or Deep Discovery
               from the schedule shelf, then click a scheduled block to choose its host, guests and episode-name rules.
             </p>
           </div>
@@ -172,7 +172,7 @@ export default function TemplateShowsPanel() {
           <div className="grid gap-0">
             <EligibilityPicker
               title="Random hosts"
-              description="DJs available when a slot uses Random Host. Everyone is selected by default."
+              description="DJs available for Random Host and both Common Ground participants. Everyone is selected by default."
               items={hostItems}
               selected={draft.eligibleHostPersonaIds}
               onChange={(id, checked) => togglePool('eligibleHostPersonaIds', hostItems, id, checked)}
@@ -181,7 +181,7 @@ export default function TemplateShowsPanel() {
             />
             <EligibilityPicker
               title="Random guests"
-              description="DJs available when a slot uses Random Guests. The selected host is always excluded."
+              description="Random guests for DJ’s Choice and Deep Discovery. Common Ground uses Random Hosts for both DJs. The selected host is always excluded."
               items={guestItems}
               selected={draft.eligibleGuestPersonaIds}
               onChange={(id, checked) => togglePool('eligibleGuestPersonaIds', guestItems, id, checked)}
@@ -464,7 +464,9 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                     : phase === 'live' ? 'On air' : phase === 'past' ? 'Past slot' : 'Ready'}
                 </Pill>
               </span>
-              <span className="caption uppercase">{episode.occurrence.source}</span>
+              {(phase !== 'past' || episode.occurrence.source !== 'scheduled') && (
+                <span className="caption uppercase">{episode.occurrence.source}</span>
+              )}
             </div>
           </div>
           {plan ? (

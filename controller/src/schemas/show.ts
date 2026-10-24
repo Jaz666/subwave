@@ -24,7 +24,7 @@ export const GUESTS_PER_SHOW = 3;
 export const SHOW_GENERATION_CANDIDATES_MAX = 48;
 export const SUB_SHOW_SKILLS_MAX = 128;
 export const SHOW_GENERATION_PROMPT_MAX = SHOW_TOPIC_MAX;
-export const SHOW_GENERATION_TEMPLATES = ['dj-choice', 'deep-discovery'] as const;
+export const SHOW_GENERATION_TEMPLATES = ['dj-choice', 'common-ground', 'deep-discovery'] as const;
 export const SHOW_GENERATION_MODES = ['fixed', 'generated'] as const;
 export const PLAYLISTS_PER_SHOW = 10;
 export const EXCLUDED_PLAYLISTS_PER_SHOW = 10;
@@ -423,7 +423,12 @@ function showObjectSchema(ctx: ShowSchemaContext) {
       if (c.value.generation?.mode === 'generated' && c.value.preparationSkill) {
         c.issues.push({ code: 'custom', input: c.value.preparationSkill, path: ['preparationSkill'], message: 'cannot be combined with generated show planning yet' });
       }
-      if (c.value.guestPersonaIds.includes(c.value.personaId)) {
+      if (c.value.generation?.mode === 'generated' && c.value.generation.template === 'common-ground'
+        && c.value.generation.guestMode === 'fixed' && c.value.guestPersonaIds.length !== 1) {
+        c.issues.push({ code: 'custom', input: c.value.guestPersonaIds, path: ['guestPersonaIds'], message: 'Common Ground requires exactly one selected guest' });
+      }
+      if (c.value.guestPersonaIds.includes(c.value.personaId)
+        && !(c.value.generation?.mode === 'generated' && c.value.generation.hostMode === 'random')) {
         c.issues.push({
           code: 'custom',
           input: c.value.guestPersonaIds,
@@ -435,7 +440,8 @@ function showObjectSchema(ctx: ShowSchemaContext) {
     .transform((s) => ({
       ...s,
       programme: s.generation?.mode === 'generated' ? false : s.programme,
-      guestPersonaIds: [...new Set(s.guestPersonaIds)].filter((id) => id !== s.personaId),
+      guestPersonaIds: [...new Set(s.guestPersonaIds)].filter((id) =>
+        (s.generation?.mode === 'generated' && s.generation.hostMode === 'random') || id !== s.personaId),
     }));
 }
 
@@ -449,7 +455,7 @@ const generationGuestCountSchema = z.object({
 });
 
 function showGenerationSchema() {
-  return z.object({
+  const schema = z.object({
     // Missing generation config is a legacy/ordinary fixed show.
     mode: z.enum(SHOW_GENERATION_MODES).default('fixed'),
     template: z.enum(SHOW_GENERATION_TEMPLATES).default('dj-choice'),
@@ -476,10 +482,21 @@ function showGenerationSchema() {
     ),
   }).check((c) => {
     if (c.value.mode !== 'generated') return;
+    if (c.value.template === 'common-ground' && (c.value.guestMode === 'none'
+      || (c.value.guestMode === 'random' && (c.value.guestCount.min !== 1 || c.value.guestCount.max !== 1)))) {
+      c.issues.push({ code: 'custom', input: c.value.guestMode, path: ['guestMode'], message: 'Common Ground requires one random guest or one selected guest' });
+    }
     if (c.value.nameMode === 'custom' && !c.value.customName) {
       c.issues.push({ code: 'custom', input: c.value.customName, path: ['customName'], message: 'enter a custom episode name' });
     }
   });
+  return z.preprocess(raw => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+    const value = raw as Record<string, unknown>;
+    return value.template === 'common-ground' ? {
+      ...value, guestMode: value.guestMode ?? 'random', guestCount: value.guestCount ?? { min: 1, max: 1 },
+    } : raw;
+  }, schema);
 }
 
 /** Station-wide pools used by generated Sub/Shows. null means all options. */
@@ -619,8 +636,8 @@ function repairShowGeneration(raw: unknown, hasPreparationSkill: boolean): Recor
     customName: typeof value.customName === 'string' ? value.customName.trim().slice(0, SHOW_NAME_MAX) : '',
     planningPrompt: typeof value.planningPrompt === 'string' ? value.planningPrompt.slice(0, SHOW_GENERATION_PROMPT_MAX) : '',
     hostMode,
-    guestMode,
-    guestCount: validCount ? { min: Number(min), max: Number(max) } : { min: 0, max: 0 },
+    guestMode: value.template === 'common-ground' ? value.guestMode === 'fixed' ? 'fixed' : 'random' : guestMode,
+    guestCount: value.template === 'common-ground' ? { min: 1, max: 1 } : validCount ? { min: Number(min), max: Number(max) } : { min: 0, max: 0 },
     minimumCoverage: Number.isSafeInteger(minimumCoverage) && Number(minimumCoverage) >= 0 ? Number(minimumCoverage) : null,
   };
 }
@@ -683,7 +700,7 @@ export function repairShowForLoad(
     guestPersonaIds: Array.isArray(raw.guestPersonaIds)
       ? raw.guestPersonaIds
           .filter((g): g is string =>
-            typeof g === 'string' && g !== host && (personaIds == null || personaIds.includes(g)))
+            typeof g === 'string' && ((generation?.mode === 'generated' && generation.hostMode === 'random') || g !== host) && (personaIds == null || personaIds.includes(g)))
           .slice(0, GUESTS_PER_SHOW)
       : undefined,
     // Lenient twin of the strict `tags` field: an invalid tag is DROPPED rather
