@@ -134,6 +134,20 @@ router.post('/shows/generated/shuffle', requireAdmin, validateBody(occurrenceBod
   } catch (err: any) { res.status(err instanceof GeneratedShowRegenerationError && err.code === 'not-found' ? 404 : 409).json({ error: err.message }); }
 });
 
+// Dashboard programming choices need template identity, not persona prompts.
+router.get('/shows/takeover', requireAdmin, async (_req, res) => {
+  try {
+    await settings.load();
+    res.json({
+      shows: (settings.get().shows ?? []).map(show => ({
+        id: show.id, name: show.name,
+        ...(show.generation ? { generation: { mode: show.generation.mode, template: show.generation.template } } : {}),
+      })),
+      override: settings.getScheduleOverride(),
+    });
+  } catch (err: unknown) { res.status(500).json({ error: err instanceof Error ? err.message : String(err) }); }
+});
+
 // Generated episode history deliberately omits the saved configuration string,
 // which carries persona prompt material used to decide the plan.
 router.get('/shows/generated', requireAdmin, async (req, res) => {
