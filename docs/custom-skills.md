@@ -708,7 +708,8 @@ chosen by the operator's trusted `tool.mjs`. The controller fetches the data
 once before generation in either segment runtime. The result must include
 `speakerIds`: one to four distinct existing persona IDs in speaking order.
 The current host need not be included; a solo guest promo can use one other persona. Unknown IDs or unusable data stand the segment down. A one-person
-cast produces a normal solo contribution; a larger cast produces one
+cast uses the simple `air`/`text` output contract, then delivers a normal solo
+contribution; a larger cast uses structured speaker lines and produces one
 contribution per persona in that exact order, using their own soul and TTS.
 The show roster is unchanged. A scheduled guest is only included if the tool
 explicitly requests them. Host skill ownership, enablement, cooldown and
