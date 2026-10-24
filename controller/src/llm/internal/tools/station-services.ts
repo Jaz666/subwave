@@ -1,3 +1,4 @@
+import { laterTodayProgramming } from '../../../skills/look-ahead.js';
 import { randomLibraryArtist } from '../../../music/episode-source.js';
 // Station services — the curated facade a skill's data tool (a built-in or an
 // operator's custom tool.mjs) gets to look at the world before the DJ speaks.
@@ -23,6 +24,7 @@ import { fetchHeadlines, hashHeadline } from '../../../skills/feed.js';
 import { getArtist, getAlbum, searchArtists } from '../../../music/subsonic.js';
 
 export interface StationServices {
+  schedule: { laterToday: () => ReturnType<typeof laterTodayProgramming> };
   // Web search via the operator's configured provider (DuckDuckGo / Tavily /
   // SearXNG). `searchReady()` is false when no provider is usable.
   searchWeb: typeof searchWeb;
@@ -49,10 +51,11 @@ let cached: StationServices | null = null;
 
 // Build (once) the services facade. The wrappers are stateless — `nowPlaying`,
 // `recentPlays` etc. read live from the queue each call — so a single cached
-// instance is safe to reuse across ticks.
-export function buildStationServices(): StationServices {
-  if (cached) return cached;
-  cached = {
+// base instance is safe to reuse across ticks. A per-call schedule overlay
+// binds the actual speaker without sharing voice identity between runs.
+export function buildStationServices({ speakerPersonaId = null }: { speakerPersonaId?: string | null } = {}): StationServices {
+  cached ??= {
+    schedule: { laterToday: () => laterTodayProgramming() },
     searchWeb,
     searchReady,
     nowPlaying: () => queue.current?.track ?? null,
@@ -64,5 +67,5 @@ export function buildStationServices(): StationServices {
     recall: { seen: (key: string) => curiositySeen(key), remember: (key: string) => recordCuriosity(key) },
     log: (msg: string) => queue.log('scheduler', `[skill] ${msg}`),
   };
-  return cached;
+  return speakerPersonaId ? { ...cached, schedule: { laterToday: () => laterTodayProgramming(speakerPersonaId) } } : cached;
 }

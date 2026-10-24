@@ -700,3 +700,41 @@ tries up to five artists from Navidrome's artist index. Research is optional in
 the example: no search results means the DJ must stick to supplied library facts.
 Existing custom tools that return arbitrary data need this result envelope to
 serve as preparation skills.
+
+### Look Ahead schedule data
+
+The `docs/examples/skills/look-ahead` skill provides editable instructions and
+a data tool for later-today show teases. `services.schedule.laterToday()` reads
+the station’s local day, resolves scheduled occurrences and accepted Sub/Show
+plans, and returns only prepared future shows beyond the next scheduled show.
+It never generates a plan. A live takeover suppresses the schedule it covers;
+a show resuming after the takeover uses its effective resumption time.
+
+Each entry includes its exact title, local start time, host and guest identities,
+and editorial brief. Solo segment runs bind the actual speaking persona into
+the service, including guest voice rotation and manual speaker overrides.
+`speakerRole` is `host`, `guest`, `neither` or `unknown`; first-person wording
+must follow that identity, not the current programme’s host. Co-hosted exchanges
+use the returned presenter identities for each voice.
+
+The example tool selects up to two shows, preferring occurrences not previously
+offered to this skill. Its durable recall markers record tool offers, not
+confirmed airings. With no qualifying shows it returns `available: false`.
+The segment model summarises each selected brief within its normal call; no
+extra summarisation or show-generation call is needed.
+
+`lookAheadStamp` is a controller-created schedule fingerprint. The tool must
+return it unchanged. Segment wrappers carry it into speech metadata, and the
+queue rechecks it immediately before publishing rendered audio, including
+deferred speech. A changed title, brief, cast, start time, next-show position
+or station-local date drops the stale tease. The check conservatively covers
+the whole remaining schedule; an unrelated upcoming edit may also invalidate
+it. Look Ahead remains ordinary speech rather than reserving a pause-and-talk
+silence, so stale audio can be dropped safely. Speech already committed to the
+mixer cannot be recalled.
+
+To install, copy the example’s `tool.mjs` beside your editable SKILL.md, rebuild
+the controller with this schedule service, then rescan Skills. The tool reports
+not ready on older controllers. Enable it station-wide and assign it to the
+DJs who should use it. For Sub/Show slots, include it in Sub/Shows’ eligible
+skills too. Installation does not enable or run it automatically.

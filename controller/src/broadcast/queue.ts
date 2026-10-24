@@ -1,3 +1,4 @@
+import { lookAheadStampsCurrent } from '../skills/look-ahead.js';
 import { fitsSpeechDeadline, type SpeechDeadline } from './speech-budget.js';
 import { recordSleeveNotesSegmentAir, releaseSleeveNotesSegment } from '../sleeve-notes/segment-ledger.js';
 import { prepareEpisodeContext } from './show-preparation.js';
@@ -2461,6 +2462,9 @@ class Queue {
       speechDeadline?: SpeechDeadline | null;
     } = {},
   ): Promise<AnnounceOutcome> {
+    // A time-sensitive schedule tease must not reserve a committed silence:
+    // its speech can be discarded if the upcoming programming changes.
+    if (meta.lookAheadStamps !== undefined) pauseTalkEligible = false;
     // Single-voice paths leak the label too — a styled POST /dj/say came back as
     // "Iris : Bonsoir…" with one persona and one voice (#1707).
     //
@@ -2575,9 +2579,9 @@ class Queue {
         voiceGainDb(kind, persona),
         {
           onQueued: q => this.onQueued(q, seg),
-          beforeWrite: kind === 'sleeve-notes' ? () => session.isHostSpeechCurrent(hostSpeech)
-            && settings.get().djBehaviour.extendedSleeveNotes
-            && !session.handoffInProgress() : undefined,
+          beforeWrite: () => lookAheadStampsCurrent(meta.lookAheadStamps)
+            && (kind !== 'sleeve-notes' || (session.isHostSpeechCurrent(hostSpeech)
+              && settings.get().djBehaviour.extendedSleeveNotes && !session.handoffInProgress())),
         },
       );
       // Bookkeeping runs when the words reach the stream, not at handoff
@@ -2761,9 +2765,9 @@ class Queue {
         };
         const handoff = await this._airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
           onQueued: q => this.onQueued(q, seg),
-          beforeWrite: kind === 'sleeve-notes' ? () => session.isHostSpeechCurrent(hostSpeech)
-            && settings.get().djBehaviour.extendedSleeveNotes
-            && !session.handoffInProgress() : undefined,
+          beforeWrite: () => lookAheadStampsCurrent(l.meta?.lookAheadStamps)
+            && (kind !== 'sleeve-notes' || (session.isHostSpeechCurrent(hostSpeech)
+              && settings.get().djBehaviour.extendedSleeveNotes && !session.handoffInProgress())),
         });
         this.onSpoken(handoff, seg);
       } catch (err) {
@@ -3125,6 +3129,10 @@ class Queue {
     }
     const p = this._pendingVoice;
     if (!p) return;
+    if (p.clips.some(clip => !lookAheadStampsCurrent(clip.meta.lookAheadStamps))) {
+      this.dropPendingVoice('the upcoming schedule changed before air');
+      return;
+    }
     if (p.hostSpeech && !session.isHostSpeechCurrent(p.hostSpeech)) {
       this.dropPendingVoice('the active show host changed before air');
       return;
@@ -3244,9 +3252,9 @@ class Queue {
               track: this.current?.track ?? null, sleeveClaimUseId: clip.sleeveClaimUseId };
         const handoff = await this._airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
           onQueued: q => this.onQueued(q, seg),
-          beforeWrite: p.kind === 'sleeve-notes' ? () => session.isHostSpeechCurrent(p.hostSpeech)
-            && settings.get().djBehaviour.extendedSleeveNotes
-            && !session.handoffInProgress() : undefined,
+          beforeWrite: () => lookAheadStampsCurrent(clip.meta.lookAheadStamps)
+            && (p.kind !== 'sleeve-notes' || (session.isHostSpeechCurrent(p.hostSpeech)
+              && settings.get().djBehaviour.extendedSleeveNotes && !session.handoffInProgress())),
         });
         completions.push(this.onSpoken(handoff, seg));
         if (!sfxHanded && p.sfx) {
@@ -5011,6 +5019,7 @@ class Queue {
             {
               voiceId: deliveryId,
               pauseDeliveryId: deliveryId,
+              beforeWrite: () => lookAheadStampsCurrent(clip.meta.lookAheadStamps),
               airMarkerPromise: started,
               onQueued: q => this.onQueued(q, seg),
             },
