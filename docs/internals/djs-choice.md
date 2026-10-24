@@ -469,3 +469,9 @@ configuration across restarts. These episodes remain available in Sub/Shows
 history and can be saved as regular shows. Direct unprepared generated-show
 requests to `/schedule/override` are rejected; regular/default takeovers retain
 their existing flow.
+
+Music settings recovery also accepts exact closed year-range strings such as
+`"1980-1995"` by converting them to `{fromYear: 1980, toYear: 1995}` before
+validation. It does not guess decades, open ranges or missing years, swap
+reversed bounds, or drop a restriction. Normal year bounds and coverage checks
+still apply. The prompt explicitly demonstrates the required object format.
