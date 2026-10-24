@@ -1,3 +1,4 @@
+import * as settings from '../../../settings.js';
 import { laterTodayProgramming } from '../../../skills/look-ahead.js';
 import { randomLibraryArtist } from '../../../music/episode-source.js';
 // Station services — the curated facade a skill's data tool (a built-in or an
@@ -23,7 +24,18 @@ import { fetchOnThisDay, curiositySeen, recordCuriosity } from '../../../skills/
 import { fetchHeadlines, hashHeadline } from '../../../skills/feed.js';
 import { getArtist, getAlbum, searchArtists } from '../../../music/subsonic.js';
 
+type PersonaIdentity = { id: string; name: string };
+
+// Resolve an exact ID or a unique case-insensitive name; never guess between duplicates.
+function findPersona(query: string): PersonaIdentity | null {
+  const roster = settings.get().personas || [];
+  const exact = roster.find(persona => persona.id === query);
+  const matches = exact ? [exact] : roster.filter(persona => persona.name.trim().toLowerCase() === query.trim().toLowerCase());
+  return matches.length === 1 ? { id: matches[0].id, name: matches[0].name } : null;
+}
+
 export interface StationServices {
+  personas: { find: (query: string) => PersonaIdentity | null; onAirHost: () => PersonaIdentity | null };
   schedule: { laterToday: () => ReturnType<typeof laterTodayProgramming> };
   // Web search via the operator's configured provider (DuckDuckGo / Tavily /
   // SearXNG). `searchReady()` is false when no provider is usable.
@@ -55,6 +67,13 @@ let cached: StationServices | null = null;
 // binds the actual speaker without sharing voice identity between runs.
 export function buildStationServices({ speakerPersonaId = null }: { speakerPersonaId?: string | null } = {}): StationServices {
   cached ??= {
+    personas: {
+      find: findPersona,
+      onAirHost: () => {
+        const host = settings.getOnAirRoster().host;
+        return host ? { id: host.id, name: host.name } : null;
+      },
+    },
     schedule: { laterToday: () => laterTodayProgramming() },
     searchWeb,
     searchReady,
