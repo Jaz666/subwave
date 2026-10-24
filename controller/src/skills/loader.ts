@@ -61,6 +61,7 @@ import { join, resolve, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { STATE_DIR } from '../config.js';
 import { queue, registerSkillKinds } from '../broadcast/queue.js';
+import { registerSkillNotebook } from './notebook.js';
 import { specialGuestNames } from './special-guest.js';
 import { buildStationServices } from '../llm/internal/tools/station-services.js';
 import { parseConfigFields, type SkillConfigField } from './config-fields.js';
@@ -402,6 +403,7 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
     // Trusted operator tools may request a per-segment cast, without changing the show roster.
     toolCast: data.cast === 'tool',
     specialGuestNames: specialGuestNames(body),
+    notebook: data.notebook === 'show',
     // Operator-editable knobs this skill declares for itself (tool.mjs
     // `configFields`, or the generic feed pair for a skill without a tool.mjs).
     // Drives the admin editor's settings section — see config-fields.ts. Empty
@@ -467,6 +469,7 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
     }
   }
 
+  registerSkillNotebook(name, dir, cap.notebook);
   return cap;
 }
 

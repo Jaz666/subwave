@@ -1,3 +1,5 @@
+import { skillNotebookStatus, resetSkillNotebook } from '../skills/notebook.js';
+import { notebookResetSchema } from '../skills/notebook-schema.js';
 import { showPreparation } from '../broadcast/show-preparation.js';
 // Admin-gated DJ command center behind /admin/dash. Manual triggers are an
 // operator override: they bypass the shouldFire frequency gate and cooldowns.
@@ -228,6 +230,20 @@ router.post('/dj/skills/community/:slug/install', requireAdmin, async (req, res)
     queue.log('error', `POST /dj/skills/community/${slug}/install failed: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Notebook state is operator-only; skill exports contain no airing memory.
+router.get('/dj/skills/:slug/notebook', requireAdmin, (req, res) => {
+  if (!loadedCapabilities().some(cap => cap.skill === req.params.slug)) return res.status(404).json({ error: 'no such skill' });
+  try { res.json(skillNotebookStatus(req.params.slug)); }
+  catch (error) { res.status(409).json({ error: (error as Error).message }); }
+});
+router.post('/dj/skills/:slug/notebook/reset', requireAdmin, (req, res) => {
+  if (!loadedCapabilities().some(cap => cap.skill === req.params.slug)) return res.status(404).json({ error: 'no such skill' });
+  const parsed = notebookResetSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: firstMessage(parsed.error) });
+  try { res.json({ notebook: resetSkillNotebook(req.params.slug, parsed.data.expectedRevision, parsed.data.expectedOccurrenceId, parsed.data.discardCorrupt) }); }
+  catch (error) { res.status(409).json({ error: (error as Error).message }); }
 });
 
 // Download a skill as a .zip (SKILL.md + tool.mjs), files at the archive root.

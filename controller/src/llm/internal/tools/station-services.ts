@@ -1,3 +1,4 @@
+import type { NotebookSnapshot } from '../../../skills/notebook.js';
 import * as settings from '../../../settings.js';
 import { findSkillPersona, type PersonaIdentity } from '../../../skills/special-guest.js';
 import { laterTodayProgramming } from '../../../skills/look-ahead.js';
@@ -26,6 +27,7 @@ import { fetchHeadlines, hashHeadline } from '../../../skills/feed.js';
 import { getArtist, getAlbum, searchArtists } from '../../../music/subsonic.js';
 
 export interface StationServices {
+  notebook: { read: () => NotebookSnapshot | null };
   personas: { find: (query: string) => PersonaIdentity | null; onAirHost: () => PersonaIdentity | null };
   schedule: { laterToday: () => ReturnType<typeof laterTodayProgramming> };
   // Web search via the operator's configured provider (DuckDuckGo / Tavily /
@@ -56,8 +58,9 @@ let cached: StationServices | null = null;
 // `recentPlays` etc. read live from the queue each call — so a single cached
 // base instance is safe to reuse across ticks. A per-call schedule overlay
 // binds the actual speaker without sharing voice identity between runs.
-export function buildStationServices({ speakerPersonaId = null }: { speakerPersonaId?: string | null } = {}): StationServices {
+export function buildStationServices({ speakerPersonaId = null, notebookSnapshot = null }: { speakerPersonaId?: string | null; notebookSnapshot?: NotebookSnapshot | null } = {}): StationServices {
   cached ??= {
+    notebook: { read: () => null },
     personas: {
       find: findSkillPersona,
       onAirHost: () => {
@@ -77,5 +80,8 @@ export function buildStationServices({ speakerPersonaId = null }: { speakerPerso
     recall: { seen: (key: string) => curiositySeen(key), remember: (key: string) => recordCuriosity(key) },
     log: (msg: string) => queue.log('scheduler', `[skill] ${msg}`),
   };
-  return speakerPersonaId ? { ...cached, schedule: { laterToday: () => laterTodayProgramming(speakerPersonaId) } } : cached;
+  return speakerPersonaId || notebookSnapshot ? { ...cached,
+    schedule: { laterToday: () => laterTodayProgramming(speakerPersonaId) },
+    notebook: { read: () => notebookSnapshot ? structuredClone(notebookSnapshot) : null },
+  } : cached;
 }

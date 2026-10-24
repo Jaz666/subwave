@@ -70,7 +70,7 @@ export function buildSegmentTools(
 // defaults ({} — the agent-steerable `inputs` params are a tool-loop nicety).
 export async function fetchSegmentData(cap: any, ctx: any, state: any, { speakerPersonaId = null }: { speakerPersonaId?: string | null } = {}): Promise<any> {
   if (typeof cap?.toolFn !== 'function') return null;
-  const services = buildStationServices({ speakerPersonaId });
+  const services = buildStationServices({ speakerPersonaId, notebookSnapshot: cap.notebookSnapshot });
   try {
     const p = Promise.resolve(cap.toolFn(ctx, state, services, cap.config, {}));
     const data = repairLegacySkillData(cap, await withTimeout(p, 8000));

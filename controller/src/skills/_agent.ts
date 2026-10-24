@@ -285,7 +285,7 @@ export const directorAgent = defineAgent({
   buildTools: ({ ctx, segmentState, caps, persona }) => ({
     // Co-hosted skills run their own cast-shaped tool loop after selection.
     // Their data tools must not be called in this generic selection pass.
-    tools: buildSegmentTools(ctx, segmentState, caps.filter((cap) => !cap.cohosts), { speakerPersonaId: persona?.id }),
+    tools: buildSegmentTools(ctx, segmentState, caps.filter((cap) => !cap.cohosts && !cap.notebook), { speakerPersonaId: persona?.id }),
   }),
 });
 
@@ -403,9 +403,9 @@ async function deadlinedSegmentObject(args: Record<string, unknown>) {
 async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   const cap = chooseCapability(caps, ctx);
   if (!cap) return { seg: null, exchange: null, reason: 'nothing fresh to say' };
-  if (cap.cohosts) {
+  if (cap.cohosts || cap.notebook) {
     const { host, guests } = settings.getOnAirRoster();
-    if (!host || (!guests.length && !cap.toolCast && !cap.specialGuestNames?.length)) return { seg: null, exchange: null, reason: 'requires a co-hosted show' };
+    if (!host || (cap.cohosts && !guests.length && !cap.toolCast && !cap.specialGuestNames?.length)) return { seg: null, exchange: null, reason: 'requires a co-hosted show' };
     const result = await runCohostedCapability({
       capability: cap, host, guests, context: ctx,
       situation: buildCohostedSituation(ctx, cap),
@@ -486,7 +486,7 @@ export async function agenticTick(ctx) {
     const sfxCatalog = settings.get().sfx?.enabled === false ? [] : await sfx.catalog();
 
     let seg: { kind: string; text: string; sfx: string | null } | null = null;
-    let exchange: { kind: string; lines: Array<{ persona: any; text: string }>; castNames: string[] } | null = null;
+    let exchange: { kind: string; lines: Array<{ persona: any; text: string; meta?: Record<string, unknown> }>; castNames: string[] } | null = null;
     let silentReason: string | undefined;
     let skippedBeforeLlm: string | undefined;
     if (settings.get().llm?.segmentRuntime === 'direct') {
@@ -506,9 +506,9 @@ export async function agenticTick(ctx) {
       silentReason = object?.reason;
       const selectedKind = seg?.kind;
       const selected = selectedKind ? caps.find(c => c.kind === selectedKind) : null;
-      if (selected?.cohosts) {
+      if (selected && (selected.cohosts || selected.notebook)) {
         const { host, guests } = settings.getOnAirRoster();
-        if (!host || (!guests.length && !selected.toolCast && !selected.specialGuestNames?.length)) {
+        if (!host || (selected.cohosts && !guests.length && !selected.toolCast && !selected.specialGuestNames?.length)) {
           seg = null;
           silentReason = 'requires a co-hosted show';
         } else {
@@ -527,7 +527,7 @@ export async function agenticTick(ctx) {
     }
 
     if (exchange) {
-      const aired = await queue.announceExchange(exchange.lines.map(line => ({ ...line, meta: lookAheadSourceMeta(ctx, exchange.kind) })), exchange.kind, { castNames: exchange.castNames });
+      const aired = await queue.announceExchange(exchange.lines.map(line => ({ ...line, meta: { ...line.meta, ...lookAheadSourceMeta(ctx, exchange.kind) } })), exchange.kind, { castNames: exchange.castNames });
       if (!aired) throw new Error(`co-hosted skill "${exchange.kind}" failed to render`);
       lastFired.set(exchange.kind, Date.now());
       segmentState.lastAnySegment = Date.now();
@@ -725,12 +725,12 @@ export async function runCapability(
     throw new Error(`skill "${cap.skill}" is not ready${hint}`);
   }
 
-  if (cap.cohosts) {
+  if (cap.cohosts || cap.notebook) {
     const { host, guests } = settings.getOnAirRoster();
     // A solo hour is a normal, transient state, not a misconfiguration, so it
     // reports `{aired: false, reason}` and Run now answers 200. Contrast
     // cap.ready() above, which throws because a missing key needs fixing.
-    if (!host || (!guests.length && !cap.toolCast && !cap.specialGuestNames?.length)) {
+    if (!host || (cap.cohosts && !guests.length && !cap.toolCast && !cap.specialGuestNames?.length)) {
       const reason = 'requires a co-hosted show';
       queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
       return { aired: false, queued: false, deferred: false, text: null, reason };
@@ -744,7 +744,7 @@ export async function runCapability(
       queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
       return { aired: false, queued: false, deferred: false, text: null, reason };
     }
-    const aired = await queue.announceExchange(result.lines.map(line => ({ ...line, meta: lookAheadSourceMeta(ctx, cap.kind) })), cap.kind, { castNames: (result.lines || []).map(line => line.persona.name || line.persona.id) });
+    const aired = await queue.announceExchange(result.lines.map(line => ({ ...line, meta: { ...line.meta, ...lookAheadSourceMeta(ctx, cap.kind) } })), cap.kind, { castNames: (result.lines || []).map(line => line.persona.name || line.persona.id) });
     if (!aired) throw new Error(`skill "${cap.skill}" co-hosted exchange failed to render`);
     lastFired.set(cap.kind, Date.now());
     segmentState.lastAnySegment = Date.now();
@@ -928,6 +928,7 @@ export function skillCatalog() {
       cohosts: !!c.cohosts,
       toolCast: !!c.toolCast,
       hasSpecialGuest: !!c.specialGuestNames?.length,
+      notebook: !!c.notebook,
     };
   });
 }
