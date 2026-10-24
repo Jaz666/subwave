@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { SessionTurn } from '../../../lib/types';
 import { AdminResponseError, adminJson, type AdminFetch } from '../../../lib/admin-query';
-import type { ScheduleOverride } from '../../../lib/schemas.generated';
+import type { ShowGenerationConfig, ScheduleOverride } from '../../../lib/schemas.generated';
 import {
   UNKNOWN_TRUSTED_PROXIES,
   type ActResponse,
@@ -116,6 +116,7 @@ export async function runDashAction(
 export interface TakeoverShow {
   id: string;
   name: string;
+  generation?: Pick<ShowGenerationConfig, 'mode' | 'template'>;
 }
 
 export interface TakeoverData {
@@ -158,11 +159,12 @@ export function writeTakeoverOverride(
 /** Patch the Dashboard picker when Shows returns its authoritative roster. */
 export function writeTakeoverShows(
   client: QueryClient,
-  rawShows: Array<{ id?: string; name?: string }>,
+  rawShows: Array<{ id?: string; name?: string; generation?: TakeoverShow['generation'] }>,
 ): void {
   const shows = rawShows.flatMap(show => (
     typeof show?.id === 'string' && show.id
-      ? [{ id: show.id, name: typeof show.name === 'string' ? show.name : '' }]
+      ? [{ id: show.id, name: typeof show.name === 'string' ? show.name : '',
+        ...(show.generation ? { generation: { mode: show.generation.mode, template: show.generation.template } } : {}) }]
       : []
   ));
   client.setQueryData<TakeoverData>(dashKeys.takeover(), current => (
@@ -174,7 +176,7 @@ export async function fetchTakeover(fetcher: AdminFetch, signal: AbortSignal): P
   const body = await adminJson<{
     shows?: TakeoverShow[];
     override?: ScheduleOverride | null;
-  }>(fetcher, '/schedule', undefined, signal);
+  }>(fetcher, '/shows/takeover', undefined, signal);
   return {
     shows: Array.isArray(body.shows)
       ? body.shows.filter(show => show && typeof show.id === 'string' && show.id)

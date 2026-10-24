@@ -409,3 +409,13 @@ settings independently of the persona-bearing configuration fingerprint, which
 is removed from past history. Legacy past records without this snapshot use
 the surviving recurring show for those additional settings; their accepted
 brief, cast and generated music filters remain available exactly as recorded.
+
+### Takeover programming menu
+
+The Dashboard menu places Default Programming first, then Regular Shows sorted
+A–Z, followed by Sub/Shows with DJ’s Choice first and remaining entries A–Z.
+Section labels are non-selectable. Sort the displayed copy only: roster order
+still determines existing show colours. The admin-only `/shows/takeover` read
+provides minimal generation identity for grouping; public schedule reads do
+not gain private generation configuration. The shared takeover cache reconciler
+retains that identity after show writes.
