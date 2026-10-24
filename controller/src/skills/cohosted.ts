@@ -6,6 +6,7 @@ import { djAgent, djObject } from '../llm/sdk.js';
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import * as settings from '../settings.js';
 import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema, lookAheadSkillSchema } from '../llm/internal/prompts/cohosted-skill.js';
+import { findSkillPersona } from './special-guest.js';
 import { renderLookAheadTeases } from './look-ahead.js';
 import { requiresGrounding, standDownReason } from './abstain-policy.js';
 
@@ -64,45 +65,62 @@ export async function runCohostedCapability({
   runAgent?: AgentRunner;
   runObject?: ObjectRunner;
 }): Promise<CohostedResult> {
-  // Fetch once before selecting voices: the model cannot nominate arbitrary speakers.
-  // cast: tool is operator opt-in; ordinary co-hosted skills retain the show roster.
+  // Resolve once before generation, with explicit tool casts taking precedence.
+  const promptGuests: string[] = capability.specialGuestNames || [];
+  const selectCast = capability.toolCast || promptGuests.length > 0;
   let source: any;
-  if (capability.toolCast) {
+  let promptSelected = false;
+  if (selectCast) {
     source = await fetchSegmentData(capability, context, segmentState, { speakerPersonaId: host.id });
-    const blocked = standDownReason({ ...capability, requiresData: true }, source);
+    const blocked = standDownReason(capability, source);
     if (blocked) return { aired: false, lines: null, reason: blocked };
-    const ids = source?.speakerIds;
-    if (!Array.isArray(ids) || !ids.length || ids.length > 4
-      || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) {
-      return { aired: false, lines: null, reason: 'invalid tool speaker IDs' };
+    if (capability.toolCast || (source && Object.hasOwn(source, 'speakerIds'))) {
+      const ids = source?.speakerIds;
+      if (!Array.isArray(ids) || !ids.length || ids.length > 4
+        || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) {
+        return { aired: false, lines: null, reason: 'invalid tool speaker IDs' };
+      }
+      const roster = settings.get().personas || [];
+      const resolved = ids.map(id => id === host.id ? host : roster.find(persona => persona.id === id));
+      if (resolved.some(persona => !persona)) return { aired: false, lines: null, reason: 'a requested skill speaker no longer exists' };
+      [host, ...guests] = resolved as Persona[];
+    } else {
+      if (promptGuests.length !== 1 || !promptGuests[0]) {
+        return { aired: false, lines: null, reason: 'use exactly one Special guest: Name line in the skill prompt' };
+      }
+      const identity = findSkillPersona(promptGuests[0]);
+      if (!identity) return { aired: false, lines: null, reason: `special guest “${promptGuests[0]}” is missing or ambiguous; use their exact persona name or ID` };
+      if (identity.id === host.id) return { aired: false, lines: null, reason: 'the special guest is already the current host' };
+      const guest = settings.get().personas.find(persona => persona.id === identity.id);
+      if (!guest) return { aired: false, lines: null, reason: 'the special guest no longer exists' };
+      if (!guests.some(persona => persona.id === guest.id)) guests = [...guests, guest];
+      if (guests.length > 3) return { aired: false, lines: null, reason: 'special-guest discussions support at most four participants including the host' };
+      source = { ...source, onAirHost: { id: host.id, name: host.name }, specialGuest: identity };
+      promptSelected = true;
     }
-    const roster = settings.get().personas || [];
-    const resolved = ids.map(id => id === host.id ? host : roster.find(persona => persona.id === id));
-    if (resolved.some(persona => !persona)) return { aired: false, lines: null, reason: 'a requested skill speaker no longer exists' };
-    [host, ...guests] = resolved as Persona[];
   }
   const cast = [host, ...guests];
-  const turnCount = capability.toolCast ? source?.turnCount ?? cast.length : cast.length;
+  const turnCount = selectCast ? source?.turnCount ?? (promptSelected ? cast.length * 2 : cast.length) : cast.length;
   if (!Number.isInteger(turnCount) || turnCount < cast.length || turnCount > 8 || (cast.length === 1 && turnCount !== 1)) {
     return { aired: false, lines: null, reason: 'invalid discussion turn count' };
   }
   const grounded = requiresGrounding(capability);
-  const solo = capability.toolCast && cast.length === 1;
+  const solo = selectCast && cast.length === 1;
   const lookAhead = solo && source?.speechFormat === 'look-ahead';
-  const system = cohostedSkillSystem({ capability, host, guests, grounded, lookAhead, turnCount });
+  const system = cohostedSkillSystem({ capability: selectCast ? { ...capability, toolCast: true } : capability, host, guests, grounded, lookAhead, turnCount });
   const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast, turnCount);
   const ask = lookAhead ? 'Write only the two summary fields for the supplied shows; leave secondSummary empty when only one show is supplied.' : solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
 
-  if (capability.toolCast || settings.get().llm?.segmentRuntime === 'direct') {
+  if (selectCast || settings.get().llm?.segmentRuntime === 'direct') {
     // Pool mode: fetch in code, decide in code, one structured call. A skill
     // that writes from the moment survives a failed fetch (it writes from its
     // brief, as it always could); a GROUNDED one doesn't get that degradation
     // — the discussion was supposed to be ABOUT what the fetch didn't return,
     // so there is no model call at all. Same rule, same wording, as the solo
     // pool path in runCapability.
-    const data = capability.toolCast ? source : await fetchSegmentData(capability, context, segmentState);
+    const data = selectCast ? source : await fetchSegmentData(capability, context, segmentState);
     const blocked = standDownReason(capability, data);
     if (blocked) return { aired: false, lines: null, reason: blocked };
     out = await deadlinedObject(runObject, {

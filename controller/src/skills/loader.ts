@@ -61,6 +61,7 @@ import { join, resolve, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { STATE_DIR } from '../config.js';
 import { queue, registerSkillKinds } from '../broadcast/queue.js';
+import { specialGuestNames } from './special-guest.js';
 import { buildStationServices } from '../llm/internal/tools/station-services.js';
 import { parseConfigFields, type SkillConfigField } from './config-fields.js';
 import { FEED_CONFIG_FIELDS, makeFeedTool, resolveFeedConfig } from './feed.js';
@@ -400,6 +401,7 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
     cohosts: String(data.cohosts).trim().toLowerCase() === 'true' || data.cast === 'tool',
     // Trusted operator tools may request a per-segment cast, without changing the show roster.
     toolCast: data.cast === 'tool',
+    specialGuestNames: specialGuestNames(body),
     // Operator-editable knobs this skill declares for itself (tool.mjs
     // `configFields`, or the generic feed pair for a skill without a tool.mjs).
     // Drives the admin editor's settings section — see config-fields.ts. Empty
