@@ -430,3 +430,42 @@ DJ’s Choice row and one Deep Discovery row regardless of host/guest combinatio
 Use the template name and colour, sum their scheduled hours, then calculate the
 bar scale and target status from the combined totals. Saved regular shows stay
 individual, including those copied from generated episodes.
+
+### Prepared Sub/Show takeovers
+
+The Dashboard programming menu exposes regular shows plus one choice per
+Sub/Show template, not scheduled variants. Selecting DJ’s Choice or Deep
+Discovery prepares a new episode using Random Host and Random Guests (0–3)
+from station eligibility pools. Normal Sub/Show skill eligibility still applies.
+No extra cast controls are shown in Takeover.
+
+During preparation, disable Take Over and label it “Generating…”. Keep current
+programming on air. On success, display the accepted title, host and guests,
+then enable Take Over. Changing the template or duration discards the visible
+preview and prepares another; stale responses cannot enable the button.
+Failures and expired previews offer Retry. Invalid durations and unreadable
+schedule windows cannot start preparation or activation.
+
+Preparation uses `/schedule/takeover/prepare`, with the ordinary takeover
+duration validation and shared Sub/Show planner/coverage checks. Preview tokens
+are bounded to 32 drafts, expire after 15 minutes (or the schedule boundary,
+if earlier), and are intentionally lost on controller restart. Preparing never
+changes the roster, weekly grid or live override. A fixed duration starts in
+full when the operator activates; an until-schedule-change preview is invalid
+if its target boundary changes.
+
+Take Over calls `/schedule/takeover/activate` with the ready token. Recheck the
+cast/configuration, eligibility settings, duration window and matching music
+coverage. Publish the accepted episode before exposing the override, then use
+the ordinary session handoff path. Do not call the model again. Repeated
+activation of one token is idempotent. A failed override write removes the
+unactivated episode and leaves current programming in place.
+
+Each template uses a reusable internal takeover show definition, so repeated
+takeovers do not accumulate saved variants. The weekly grid is unchanged.
+Persist the original casting occurrence identity with the ready episode when
+rebasing its start to the activation time; this preserves its cast and
+configuration across restarts. These episodes remain available in Sub/Shows
+history and can be saved as regular shows. Direct unprepared generated-show
+requests to `/schedule/override` are rejected; regular/default takeovers retain
+their existing flow.
