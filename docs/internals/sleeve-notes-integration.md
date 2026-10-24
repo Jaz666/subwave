@@ -10,7 +10,7 @@ Paths are repository-relative. Test names refer to `controller/scripts/` unless 
 | --- | --- | --- |
 | Ordinary picking and track links: `broadcast/dj-agent/enqueue.ts`, `llm/internal/prompts/scripts.ts` | Enrichment follows the selected track. A Spark is optional, may be passed, and must not alter the pick. Release reservations on failed generation/queue insertion. Disabled metadata paths must not create/migrate the research DB. | `verified-facts.test.ts`, `link-style.test.ts`, `sleeve-notes-spark-packet.test.ts`, `sleeve-notes-link-isolation.test.ts` |
 | Automatic Banter and manual segments: `broadcast/scheduler.ts`, `skills/_agent.ts`, `skills/loader.ts`, `routes/dj.ts` | Eligible automatic slots can try Sleeve Notes, including Produced Episodes, then fall back. Manual Banter remains Banter. Manual feature requests retain material, host, timing and publication guards. | `sleeve-notes-segment.test.ts`, `sleeve-notes-broadcast-gate.test.ts`, `sleeve-notes-lifecycle.test.ts` |
-| Queue/TTS and speech timing: `broadcast/queue.ts`, `broadcast/queue/intro-render.ts`, `broadcast/queue/voice-io.ts`, `audio/tts.ts` | Offer/render/airing are distinct. Bound speech by the actual track play and final rendered duration. Feature disable must not strand speech already committed to a mixer silence. Review shared timing changes independently of the feature flag. | `sleeve-notes-speech-tracking.test.ts`, `speech-budget.test.ts`, `tts-measurements.test.ts`, `pause-talk-recovery.test.ts` |
+| Queue/TTS and speech timing: `broadcast/queue.ts`, `broadcast/queue/intro-render.ts`, `broadcast/queue/voice-io.ts`, `audio/tts.ts` | Offer/render/airing are distinct. Bound speech by the actual track play and final rendered duration. Feature disable must not strand speech already committed to a mixer silence. Review shared timing changes independently of the feature flag. Song-opening station IDs retain upstream skip-if-busy and marker-aware holds; cancelled Sleeve Notes release the shared voice reservation. | `sleeve-notes-speech-tracking.test.ts`, `speech-budget.test.ts`, `tts-measurements.test.ts`, `pause-talk-recovery.test.ts`, `jingle-overlay.test.ts` |
 | Agent activity, LLM budget and telemetry: `llm/agent-activity.ts`, `broadcast/dj-budget.ts`, `llm/internal/core/failover.ts`, `llm/internal/strategy/object.ts` | Overlapping interactive work blocks research correctly. Quiet-time deferrals are not provider failures. Background work obeys the station hard cap. Structured output changes must preserve other model consumers. | `agent-activity.test.ts`, `sleeve-notes-token-budget.test.ts`, `llm-failover.test.ts`, `llm-local-parse-errors.test.ts`, `llm-deadline-hits.test.ts` |
 | Settings and credentials: `schemas/settings.ts`, `settings/patch-registry.ts`, `settings/store.ts` | Master off by default; collection pause is independent. Redacted tokens survive unrelated saves; explicit clearing works. Validation/mirrors and Save/Discard use the existing settings boundary. | `extended-sleeve-notes.test.ts`, `settings-patch-schema.test.ts`, `sleeve-notes-settings-lifecycle.test.ts`, `web/tests/notes-settings.test.ts` |
 | Music identity and library state: `music/library-db/tracks.ts`, `music/subsonic.ts`, `music/musicbrainz.ts` | Metadata/server changes invalidate local bindings and late responses. Catalogue matching must yield during scans/broadcast work and must not treat a failed empty response as library deletion. | `sleeve-notes-local-identity.test.ts`, `sleeve-notes-library-connections.test.ts`, `sleeve-notes-no-genius.test.ts`, `brain-queue.test.ts` |
@@ -223,3 +223,18 @@ a successful build retry does not remediate it. The PR description links the
 advisory and distinguishes supported public-schema upgrades from experimental
 research-only resets. Longer storage, provider and destructive fault/recovery
 trials remain further testing, not claimed completed acceptance.
+
+## Upstream reconciliation — 24 October
+
+Integrated develop through b1e61819, including optional song-opening station IDs,
+lyrics/queued lookups, file details and library run logs. Resolved shared queue,
+voice I/O and server-route conflicts while retaining Sleeve Notes publication
+cancellation and source admission. Duration measurements stay in the shared audio
+helper; optional IDs retain their null-on-skip contract and marker-aware hold.
+Settings coverage is 52 of 57 keys. A handover regression also checks that cancelled
+speech releases upstream's voice-busy reservation.
+
+The final combined code passes 5568 controller checks and 501 web checks, with no
+failures or skips. Package lint/types, generated mirrors and the admin-query audit
+pass; controller lint retains 1726 inherited warnings. No station source, containers,
+settings or live data were changed during this PR reconciliation.
