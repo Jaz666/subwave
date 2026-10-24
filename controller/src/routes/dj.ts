@@ -768,12 +768,17 @@ router.post('/dj/segment', requireAdmin, async (req, res) => {
   }
 });
 
+// Hold through generation and delivery, including when a client retries a slow request.
+const manualSkillRuns = new Set<string>();
 // Run a named skill on demand (operator override).
 router.post('/dj/skill', requireAdmin, async (req, res) => {
   const name = req.body?.name;
   if (!name || typeof name !== 'string') {
     return res.status(400).json({ error: 'name is required' });
   }
+  const key = loadedCapabilities().find(cap => cap.kind === name || cap.skill === name)?.kind || name;
+  if (manualSkillRuns.has(key)) return res.status(409).json({ error: 'This skill is already running; wait for it to finish.' });
+  manualSkillRuns.add(key);
   try {
     // `aired: false` is a 200, not an error: the skill ran and had nothing worth
     // saying (#1412), and the operator gets the reason.
@@ -790,6 +795,8 @@ router.post('/dj/skill', requireAdmin, async (req, res) => {
   } catch (err) {
     queue.log('error', `/dj/skill ${name} failed: ${err.message}`);
     res.status(500).json({ error: err.message });
+  } finally {
+    manualSkillRuns.delete(key);
   }
 });
 

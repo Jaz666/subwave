@@ -754,8 +754,15 @@ full tease. Change the constant to 0 for current-DJ teases only, or 100 for
 promos whenever possible. This setting is intentionally absent from the UI.
 Only the shows actually returned are marked as offered for rotation.
 
-The segment model summarises each selected brief within its normal call; no
-extra summarisation or show-generation call is needed.
+Look Ahead requests `speechFormat: 'look-ahead'`: one model call returns flat
+`firstSummary` and `secondSummary` fields, each bound to that source show's
+brief. The controller inserts each show's exact time, title and cast in source
+order. Promo mode supplies only one show. Summaries containing broadcast-time
+claims are rejected before TTS. This keeps facts out of free-form announcement
+writing; no extra summarisation or show-generation call is needed.
+
+Overlapping manual requests for the same skill return 409 while its generation
+or delivery is still running. They do not start a second generation.
 
 `lookAheadStamp` is a controller-created schedule fingerprint. The tool must
 return it unchanged. Segment wrappers carry it into speech metadata, and the

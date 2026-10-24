@@ -26,7 +26,7 @@ export default async function lookAhead(ctx, state, services) {
     services.recall.remember(`look-ahead:offered:${show.occurrenceId}`);
     rotation.offered[show.occurrenceId] = ++rotation.sequence;
   }
-  return { available: true, mode: promo ? 'upcoming-host-promo' : 'current-dj',
+  return { available: true, speechFormat: 'look-ahead', mode: promo ? 'upcoming-host-promo' : 'current-dj',
     speakerIds: speaker ? [speaker.id] : [],
     promoOccurrenceId: promo?.occurrenceId ?? null, day: snapshot.day, timezone: snapshot.timezone,
     speaker, when: 'All listed shows air later TODAY. Mention every listed show using its exact startTime.',
