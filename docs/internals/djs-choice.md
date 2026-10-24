@@ -269,10 +269,9 @@ Programme mode. Its stable new identity makes repeated saves idempotent; after
 saving, the icon opens the saved show. Deleting that saved show permits saving
 a fresh copy later.
 
-An optional “Coming Up” DJ skill reads the remaining schedule for the day and
+The optional editable “Look Ahead” skill reads the remaining schedule for the day and
 its accepted episode titles, casts and briefs. It must not generate episodes or
-invent unprepared titles. It can tease an unprepared slot using only known
-host/template facts. Vary highlights, observe cooldowns, and refresh facts when
+invent unprepared titles. It skips unprepared slots and excludes the next scheduled show occurrence. Vary highlights, observe cooldowns, and refresh facts when
 the schedule or preparation changes. Generated briefs describe intended content;
 they are not evidence of artist biographies or music-history claims.
 
@@ -475,3 +474,8 @@ Music settings recovery also accepts exact closed year-range strings such as
 validation. It does not guess decades, open ranges or missing years, swap
 reversed bounds, or drop a restriction. Normal year bounds and coverage checks
 still apply. The prompt explicitly demonstrates the required object format.
+
+Look Ahead’s implementation and tool contract are documented in
+`docs/custom-skills.md` under “Look Ahead schedule data”; the editable example
+lives in `docs/examples/skills/look-ahead`. It uses the actual segment speaker’s
+identity to distinguish hosting, guesting and other presenters’ shows.

@@ -1,3 +1,4 @@
+import { lookAheadStampsCurrent } from '../skills/look-ahead.js';
 import { prepareEpisodeContext } from './show-preparation.js';
 // Queue class and public singleton; helper implementations live in queue/.
 
@@ -2437,6 +2438,9 @@ class Queue {
     { persona = null, meta = {}, pauseTalkEligible = false, sfx: selectedSfx = null, hostSpeech = null }:
       { persona?: Persona | null; meta?: TurnMeta; pauseTalkEligible?: boolean; sfx?: string | null; hostSpeech?: HostSpeechStamp | null } = {},
   ): Promise<AnnounceOutcome> {
+    // A time-sensitive schedule tease must not reserve a committed silence:
+    // its speech can be discarded if the upcoming programming changes.
+    if (meta.lookAheadStamps !== undefined) pauseTalkEligible = false;
     // Single-voice paths leak the label too — a styled POST /dj/say came back as
     // "Iris : Bonsoir…" with one persona and one voice (#1707).
     //
@@ -2508,9 +2512,16 @@ class Queue {
       if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) {
         return { accepted: false, deferred: false, completed: Promise.resolve(false) };
       }
-      const handoff = await this._airVoice(targetFile, wavPath, safeText, voiceGainDb(kind, persona), {
-        onQueued: q => this.onQueued(q, seg),
-      });
+      const handoff = await this._airVoice(
+        targetFile,
+        wavPath,
+        safeText,
+        voiceGainDb(kind, persona),
+        {
+          onQueued: q => this.onQueued(q, seg),
+          beforeWrite: () => lookAheadStampsCurrent(meta.lookAheadStamps),
+        },
+      );
       // Bookkeeping runs when the words reach the stream, not at handoff
       // (#1382). A mixer that writes no marker resolves immediately with a null
       // stamp, which is the old timing byte for byte.
@@ -2692,6 +2703,7 @@ class Queue {
         };
         const handoff = await this._airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
           onQueued: q => this.onQueued(q, seg),
+          beforeWrite: () => lookAheadStampsCurrent(l.meta?.lookAheadStamps),
         });
         this.onSpoken(handoff, seg);
       } catch (err) {
@@ -3027,6 +3039,10 @@ class Queue {
     }
     const p = this._pendingVoice;
     if (!p) return;
+    if (p.clips.some(clip => !lookAheadStampsCurrent(clip.meta.lookAheadStamps))) {
+      this.dropPendingVoice('the upcoming schedule changed before air');
+      return;
+    }
     if (p.hostSpeech && !session.isHostSpeechCurrent(p.hostSpeech)) {
       this.dropPendingVoice('the active show host changed before air');
       return;
@@ -3139,6 +3155,7 @@ class Queue {
           : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona };
         const handoff = await this._airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
           onQueued: q => this.onQueued(q, seg),
+          beforeWrite: () => lookAheadStampsCurrent(clip.meta.lookAheadStamps),
         });
         completions.push(this.onSpoken(handoff, seg));
         if (!sfxHanded && p.sfx) {
@@ -4975,6 +4992,7 @@ class Queue {
             {
               voiceId: deliveryId,
               pauseDeliveryId: deliveryId,
+              beforeWrite: () => lookAheadStampsCurrent(clip.meta.lookAheadStamps),
               airMarkerPromise: started,
               onQueued: q => this.onQueued(q, seg),
             },

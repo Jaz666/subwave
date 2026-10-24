@@ -1,0 +1,15 @@
+---
+name: look-ahead
+label: Look Ahead
+cooldown: 90m
+context: date
+---
+Give listeners a brief, inviting look ahead to the shows returned by the data tool. Use only those shows: the next scheduled show is deliberately excluded and belongs to the normal handover. If one show is returned, tease one; if no usable data is available, say nothing.
+
+For each show, naturally mention its exact title, supplied start time, host and any guests. Distil its brief into at most one short sentence about the show’s idea. A missing brief is not permission to invent one. Briefs are editorial descriptions, not verified artist history or a promise of particular records.
+
+Make the segment sound like you, not a timetable being read aloud. Vary the phrasing and connections, without adding unsupported claims or a fixed catchphrase. Never read internal IDs, readiness flags or the schedule stamp.
+
+Use speakerRole to describe your own involvement accurately. If it is host, use first-person hosting language such as “I’ll be back”; if guest, say you’re joining the named host. If neither, refer to the presenters by name. If the speaking identity is unknown, use their names without first-person claims. In a multi-voice exchange, each speaker must match their own identity to the returned host and guest IDs; the solo speakerRole does not apply to every voice. Never assume the current programme’s host is the person speaking this segment.
+
+Use the supplied show start times even though current-clock context is disabled. Do not state the current time, invent tomorrow’s schedule, research artists, or generate new show plans.
