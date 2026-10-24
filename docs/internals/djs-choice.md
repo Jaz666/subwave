@@ -339,13 +339,58 @@ show filters. DJ’s Choice and Deep Discovery remain the current templates.
 Common Ground and Outside the Comfort Zone are the suggested first candidates
 to explore. Both appear compatible with the existing brief-first planner and
 coverage checks; their exact filtering and coverage policies remain to be
-decided. Common Ground would also need a defined policy for slots without a
-guest.
+decided. Common Ground is being previewed with exactly one distinct guest and equal
+musical influence for both DJs; the host still leads presentation.
 
 Templates promising alternating DJ selections, specific tracks or a precise
 musical progression would need additional influence over the track picker.
 Forgotten Favourites remains separately deferred for the same reason: planning
 a brief and filters does not by itself favour neglected tracks at selection.
+
+### Common Ground preview harness
+
+Common Ground remains a preview-only planner path, not a selectable template.
+The harness uses the same concept/settings calls as Sub/Shows, with Souls as
+primary evidence, optional Musical Leanings, and both DJs' scheduled regular-show
+filters as supporting repertoire context. Regular-show briefs are omitted.
+Explicit persona preferences take precedence; an overlap need not already
+appear in either DJ's shows. Both DJs have equal musical influence.
+
+Both participants must be enabled in **Sub/Shows → Random Hosts**, including
+explicitly named pairs. The Random Guests list is not used for this experiment.
+A null eligibility list means everyone; an empty list permits nobody. Unknown,
+ambiguous, excluded or identical participants are rejected before model calls.
+
+From `controller/`, point `STATE_DIR` at the station's state root:
+
+```sh
+STATE_DIR=/path/to/station/state npm run common-ground:preview -- --list
+STATE_DIR=/path/to/station/state npm run common-ground:preview -- --count 3
+STATE_DIR=/path/to/station/state npm run common-ground:preview -- --host "DJ name" --guest "Other DJ name" --count 2
+```
+
+With no fixed pair, `--count` selects distinct random pairs without replacement.
+Fixing one participant compares different eligible partners. Fixing both repeats
+that pair, to inspect variation. Counts default to three and can be 1–20;
+`--minutes` defaults to 60 and can be 1–360.
+
+The default model is `/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf` at
+`http://qwen-llama-cpp:8080/v1`; overrides are `SHOW_PLAN_PREVIEW_MODEL` and
+`LLM_BASE_URL`. Run somewhere those station service addresses are reachable.
+
+Before importing runtime modules, the harness creates temporary settings and
+credential copies plus a consistent SQLite library backup. All local writes and
+telemetry stay in that temporary state, which is removed on exit. Navidrome
+lookups may read the configured music service. No plans, schedules, notebooks
+or station settings are saved. A full library backup needs temporary space
+approximately equal to the indexed library database.
+
+JSON goes to stdout; progress goes to stderr. Output includes the cast,
+supporting repertoire, generated brief/settings, matching pool diagnostics and
+whether coverage reaches twice the airtime at a four-minute average. Strict
+genres and that coverage target are provisional, not a final Common Ground
+policy. Inadequate pools and individual generation failures remain visible for
+review; the harness does not silently replace a pairing or accept it for air.
 
 ### DJ’s Choice familiar-core policy
 
