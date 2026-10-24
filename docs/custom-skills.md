@@ -711,6 +711,10 @@ The current host need not be included; a solo guest promo can use one other pers
 cast uses the simple `air`/`text` output contract, then delivers a normal solo
 contribution; a larger cast uses structured speaker lines and produces one
 contribution per persona in that exact order, using their own soul and TTS.
+A tool can also return `turnCount` (an integer from the cast size to 8) to request
+several turns cycling through that order. Solo casts use one turn. This changes
+only that segment; ordinary `cohosts: true` skills still give one contribution
+per scheduled presenter.
 The show roster is unchanged. A scheduled guest is only included if the tool
 explicitly requests them. Host skill ownership, enablement, cooldown and
 Sub/Shows eligibility still apply; a solo show can use this option.
@@ -720,6 +724,28 @@ roster. Tools should request only the participants needed for their segment;
 the model cannot choose additional speakers. Put the intended roles and format
 in the skill brief and returned data. `cast: tool` is preserved when saving in
 the skill editor; it currently has no dedicated UI switch.
+
+### A Word with the Producer
+
+`docs/examples/skills/word-with-the-producer` is a small creative discussion
+example. Its tool finds Producer Dave and the on-air host, then requests four
+alternating turns: Dave, host, Dave, host. The model invents one fresh premise
+and their responses in a single call; the tool contains no topics or lines.
+The prompt permits fictional suggestions without inventing real station changes,
+listener messages or factual music claims. Scheduled guests do not participate
+in this example.
+
+`services.personas.find(nameOrId)` returns only `{id, name}` for an exact ID or
+a unique case-insensitive name; missing or ambiguous names return null.
+`services.personas.onAirHost()` returns the current host identity or null.
+The controller, rather than the tool, resolves the full souls and voices.
+A future random-guest tool can choose from names or IDs and use the same lookup.
+
+Copy both example files into `state/skills/word-with-the-producer/` after
+updating the controller, then rescan Skills. The new skill arrives disabled;
+enable and assign it to the hosts who should run it, and allow it for Sub/Shows
+if desired. No existing skill is replaced. The general special-guest UI switch
+and prompt-driven participant resolution remain to be designed.
 
 ### Look Ahead schedule data
 

@@ -82,11 +82,15 @@ export async function runCohostedCapability({
     [host, ...guests] = resolved as Persona[];
   }
   const cast = [host, ...guests];
+  const turnCount = capability.toolCast ? source?.turnCount ?? cast.length : cast.length;
+  if (!Number.isInteger(turnCount) || turnCount < cast.length || turnCount > 8 || (cast.length === 1 && turnCount !== 1)) {
+    return { aired: false, lines: null, reason: 'invalid discussion turn count' };
+  }
   const grounded = requiresGrounding(capability);
   const solo = capability.toolCast && cast.length === 1;
   const lookAhead = solo && source?.speechFormat === 'look-ahead';
-  const system = cohostedSkillSystem({ capability, host, guests, grounded, lookAhead });
-  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast);
+  const system = cohostedSkillSystem({ capability, host, guests, grounded, lookAhead, turnCount });
+  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast, turnCount);
   const ask = lookAhead ? 'Write only the two summary fields for the supplied shows; leave secondSummary empty when only one show is supplied.' : solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
@@ -168,7 +172,7 @@ export async function runCohostedCapability({
     persona: byId.get(String(line.speaker || '')),
     text: String(line.text || '').trim(),
   }));
-  if (lines.length !== cast.length || lines.some((line) => !line.persona || !line.text)) {
+  if (lines.length !== turnCount || lines.some((line, index) => !line.persona || !line.text || line.persona.id !== cast[index % cast.length].id)) {
     throw new Error(`skill "${capability.skill || capability.kind}" produced no co-hosted discussion`);
   }
   return {
