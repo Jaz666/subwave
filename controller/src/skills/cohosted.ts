@@ -5,7 +5,8 @@
 import { djAgent, djObject } from '../llm/sdk.js';
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import * as settings from '../settings.js';
-import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema } from '../llm/internal/prompts/cohosted-skill.js';
+import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema, lookAheadSkillSchema } from '../llm/internal/prompts/cohosted-skill.js';
+import { renderLookAheadTeases } from './look-ahead.js';
 import { requiresGrounding, standDownReason } from './abstain-policy.js';
 
 interface Persona {
@@ -23,7 +24,7 @@ interface CohostedResult {
   reason: string | null;
 }
 
-type CohostedObject = { text?: unknown; reason?: unknown; air?: unknown; lines?: Array<{ speaker?: unknown; text?: unknown }> } | undefined;
+type CohostedObject = { firstSummary?: string; secondSummary?: string; text?: unknown; reason?: unknown; air?: unknown; lines?: Array<{ speaker?: unknown; text?: unknown }> } | undefined;
 
 type AgentRunner = (args: Record<string, unknown>) => Promise<{ object?: unknown; steps?: number; toolCalls?: unknown[] }>;
 type ObjectRunner = (args: Record<string, unknown>) => Promise<unknown>;
@@ -82,10 +83,11 @@ export async function runCohostedCapability({
   }
   const cast = [host, ...guests];
   const grounded = requiresGrounding(capability);
-  const system = cohostedSkillSystem({ capability, host, guests, grounded });
   const solo = capability.toolCast && cast.length === 1;
-  const schema = solo ? soloSkillSchema : cohostedSkillSchema(cast);
-  const ask = solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
+  const lookAhead = solo && source?.speechFormat === 'look-ahead';
+  const system = cohostedSkillSystem({ capability, host, guests, grounded, lookAhead });
+  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast);
+  const ask = lookAhead ? 'Write only the two summary fields for the supplied shows; leave secondSummary empty when only one show is supplied.' : solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
 
@@ -154,7 +156,9 @@ export async function runCohostedCapability({
   }
 
   if (solo) {
-    const text = String(out?.text || '').trim();
+    const text = lookAhead
+      ? renderLookAheadTeases(source, String(out?.firstSummary || ''), String(out?.secondSummary || ''))
+      : String(out?.text || '').trim();
     if (!text) throw new Error(`skill "${capability.skill || capability.kind}" produced no spoken segment`);
     return { aired: true, lines: [{ persona: host, text }], reason: String(out?.reason || '').trim() || null };
   }
