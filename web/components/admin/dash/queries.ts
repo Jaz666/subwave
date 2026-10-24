@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { SessionTurn } from '../../../lib/types';
-import { AdminResponseError, adminJson, type AdminFetch } from '../../../lib/admin-query';
-import type { ShowGenerationConfig, ScheduleOverride } from '../../../lib/schemas.generated';
+import { AdminResponseError, adminJson, useAdminMutation, type AdminFetch } from '../../../lib/admin-query';
+import type { GeneratedShowPlan, ShowGenerationConfig, ScheduleOverride } from '../../../lib/schemas.generated';
 import {
   UNKNOWN_TRUSTED_PROXIES,
   type ActResponse,
@@ -11,6 +11,8 @@ import {
   type QueueState,
   type RequestEntry,
 } from './types';
+import { showKeys } from '../shows/keys';
+import { settingsKeys } from '../settings/queries';
 import { scheduleKeys, type ScheduleLiveData } from '../schedule/queries';
 import { toConnectionsState } from './connections';
 
@@ -183,6 +185,43 @@ export async function fetchTakeover(fetcher: AdminFetch, signal: AbortSignal): P
       : [],
     override: body.override ?? null,
   };
+}
+
+export interface TakeoverPreviewRequest {
+  showId: null;
+  template: ShowGenerationConfig['template'];
+  until: 'fixed' | 'schedule-change';
+  minutes?: number;
+  expectedEndsAt?: number;
+}
+export interface TakeoverPreview {
+  token: string; expiresAt: number; plan: GeneratedShowPlan;
+  host: { id: string; name: string }; guests: Array<{ id: string; name: string }>;
+}
+export function usePrepareTakeoverMutation(adminFetch: AdminFetch) {
+  return useAdminMutation<TakeoverPreview, { request: TakeoverPreviewRequest; signal: AbortSignal }>({
+    adminFetch, toastOnError: false,
+    request: ({ request, signal }, fetcher) => adminJson(fetcher, '/schedule/takeover/prepare', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request),
+    }, signal),
+  });
+}
+export function useActivateTakeoverMutation(adminFetch: AdminFetch) {
+  return useAdminMutation<{ override: ScheduleOverride; shows: TakeoverShow[] }, string>({
+    adminFetch, toastOnError: false,
+    request: (token, fetcher) => adminJson(fetcher, '/schedule/takeover/activate', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }),
+    }),
+    onDone: async (data, _token, client) => {
+      writeTakeoverShows(client, data.shows);
+      writeTakeoverOverride(client, data.override);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: dashKeys.takeover() }),
+        client.invalidateQueries({ queryKey: settingsKeys.detail(), exact: true }),
+        client.invalidateQueries({ queryKey: showKeys.generated(), exact: true }),
+      ]);
+    },
+  });
 }
 
 export interface NavidromeStatus {

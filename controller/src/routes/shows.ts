@@ -21,7 +21,8 @@ import { readCommunityShow } from '../shows/community.js';
 import { SLUG_RE } from '../skills/loader.js';
 import { queue } from '../broadcast/queue.js';
 import { rollSessionNow } from '../broadcast/scheduler.js';
-import { GeneratedShowRegenerationError, prepareGeneratedShowAt, prepareUpcomingGeneratedShows, showPreparation } from '../broadcast/show-preparation.js';
+import { GeneratedShowRegenerationError, prepareUpcomingGeneratedShows, showPreparation } from '../broadcast/show-preparation.js';
+import { activateTakeoverPreview, prepareTakeoverPreview, takeoverPreviewRequestSchema } from '../broadcast/takeover-generation.js';
 import { resolveTakeoverWindowNow } from '../broadcast/takeover-window.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import { isInOrderShow } from '../music/playlist-order.js';
@@ -138,9 +139,10 @@ router.post('/shows/generated/shuffle', requireAdmin, validateBody(occurrenceBod
 router.get('/shows/takeover', requireAdmin, async (_req, res) => {
   try {
     await settings.load();
+    const active = settings.resolveActiveShow();
     res.json({
       shows: (settings.get().shows ?? []).map(show => ({
-        id: show.id, name: show.name,
+        id: show.id, name: active && active.id === show.id ? active.name : show.name,
         ...(show.generation ? { generation: { mode: show.generation.mode, template: show.generation.template } } : {}),
       })),
       override: settings.getScheduleOverride(),
@@ -392,6 +394,26 @@ router.get('/schedule/next-change', requireAdmin, async (_req, res) => {
   }
 });
 
+// Preparation is a command with no schedule side effects. Activation consumes
+// the accepted draft, never a second model generation.
+router.post('/schedule/takeover/prepare', requireAdmin, validateBody(takeoverPreviewRequestSchema), async (req, res) => {
+  try { res.json(await prepareTakeoverPreview(req.body)); }
+  catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    queue.log('error', `Takeover preparation failed: ${message}`);
+    res.status(502).json({ error: message });
+  }
+});
+router.post('/schedule/takeover/activate', requireAdmin, validateBody(z.object({ token: z.string().uuid() })), async (req, res) => {
+  try {
+    const result = await activateTakeoverPreview(req.body.token);
+    if (result.newlyActivated) void rollSessionNow({ manual: true, reason: 'prepared Sub/Show takeover started' });
+    res.json(result);
+  } catch (err: unknown) {
+    res.status(409).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // Pin a show or Default programming for a bounded window; re-POSTing replaces a
 // live one. The session roll is fire-and-forget, so the switch lands on-air at
 // the next track boundary. The roster lookup stays here because "no such show"
@@ -412,6 +434,10 @@ router.post('/schedule/override', requireAdmin, validateBody(scheduleOverrideReq
   const show = pinnedId ? (settings.get().shows || []).find((s: any) => s.id === pinnedId) : null;
   if (!isDefaultTakeover(req.body) && !show) {
     return res.status(404).json({ error: `no such show: ${showId}` });
+  }
+
+  if (show?.generation?.mode === 'generated') {
+    return res.status(409).json({ error: 'Prepare a Sub/Show template before starting its takeover.' });
   }
 
   const startedAt = Date.now();
@@ -439,11 +465,6 @@ router.post('/schedule/override', requireAdmin, validateBody(scheduleOverrideReq
         ? `[takeover] "${show.name}" pinned for ${windowMinutes} min${reason} via admin UI`
         : `[takeover] Default programming selected for ${windowMinutes} min${reason} via admin UI`,
     );
-    if (show?.generation?.mode === 'generated') {
-      void prepareGeneratedShowAt(startedAt).then(record => {
-        if (record?.kind === 'failed') queue.log('error', `[takeover] generated show preparation failed: ${record.reason}`);
-      }).catch(err => queue.log('error', `[takeover] generated show preparation failed: ${err.message}`));
-    }
     void rollSessionNow({ manual: true, reason: 'takeover started' });
     res.json({ override });
   } catch (err: any) {
