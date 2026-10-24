@@ -19,7 +19,7 @@ import {
 } from '../schemas/show-preparation.js';
 import type { Show } from '../schemas/show.js';
 import { generateShowPlan, resolveGeneratedShowCast, scheduledShowsForHost, type ExistingScheduledShow, type GeneratedShowCast } from './show-generation.js';
-import { restoreGeneratedShows } from './generated-show-registry.js';
+import { generatedShowAt, restoreGeneratedShows } from './generated-show-registry.js';
 
 export interface PreparationSnapshot {
   occurrence: PreparationOccurrence;
@@ -27,6 +27,7 @@ export interface PreparationSnapshot {
   configuration: string;
 }
 export interface GeneratedShowSnapshot {
+  castSeed?: string;
   occurrence: PreparationOccurrence;
   configuration: string;
   template: string;
@@ -75,8 +76,8 @@ interface PreparationDeps {
   snapshot: (context: SessionContext) => PreparationSnapshot | null;
   execute: (snapshot: PreparationSnapshot, context: SessionContext) => Promise<unknown>;
   source: (result: AcceptedPreparation, snapshot: PreparationSnapshot, context: SessionContext) => Promise<ArtistEpisodeSource | null>;
-  generatedSnapshot?: (context: SessionContext) => GeneratedShowSnapshot | null;
-  scheduledGeneratedSnapshot?: (context: SessionContext) => GeneratedShowSnapshot | null;
+  generatedSnapshot?: (context: SessionContext, castSeed?: string) => GeneratedShowSnapshot | null;
+  scheduledGeneratedSnapshot?: (context: SessionContext, castSeed?: string) => GeneratedShowSnapshot | null;
   generate?: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan>;
   now?: () => number;
   changed?: () => void;
@@ -273,8 +274,13 @@ export function createShowPreparation(deps: PreparationDeps) {
       if (!current()) return null;
       record = {
         kind: 'ready', occurrence: snapshot.occurrence, configuration: snapshot.configuration,
-        template: snapshot.template, hostPersonaId: snapshot.cast.hostPersonaId,
+        template: snapshot.template, castSeed: snapshot.castSeed, hostPersonaId: snapshot.cast.hostPersonaId,
         guestPersonaIds: snapshot.cast.guestPersonaIds, plan, generatedAt: now(),
+        sourceSettings: {
+          playlistIds: snapshot.show.playlistIds ?? [], playlistStrict: snapshot.show.playlistStrict ?? false,
+          excludedPlaylistIds: snapshot.show.excludedPlaylistIds ?? [], maxTrackSeconds: snapshot.show.maxTrackSeconds ?? null,
+          minTrackLengthSeconds: snapshot.show.minTrackLengthSeconds ?? null, vocals: snapshot.show.vocals ?? '',
+        },
       };
       await saveGenerated(record);
       logEvent('show.generation', { show: snapshot.occurrence.showId, occurrence: snapshot.occurrence.id, template: snapshot.template, title: plan.name });
@@ -287,7 +293,7 @@ export function createShowPreparation(deps: PreparationDeps) {
       if (regenerate && record?.kind === 'ready') throw error;
       record = {
         kind: 'failed', occurrence: snapshot.occurrence, configuration: snapshot.configuration,
-        template: snapshot.template, hostPersonaId: snapshot.cast.hostPersonaId,
+        template: snapshot.template, castSeed: snapshot.castSeed, hostPersonaId: snapshot.cast.hostPersonaId,
         guestPersonaIds: snapshot.cast.guestPersonaIds, reason, attempts,
         retryAt: attempts < 2 ? now() + 60_000 : null,
       };
@@ -297,26 +303,28 @@ export function createShowPreparation(deps: PreparationDeps) {
       return record;
     }
   }
-  const ensureGenerated = ({ context, source = 'active', regenerateOccurrenceId }: {
+  const ensureGenerated = ({ context, source = 'active', regenerateOccurrenceId, castSeed }: {
     context: SessionContext;
     source?: 'active' | 'scheduled';
     regenerateOccurrenceId?: string;
+    castSeed?: string;
   }): Promise<GeneratedShowRecord | null> => {
     const snapshotForContext = source === 'scheduled' ? deps.scheduledGeneratedSnapshot : deps.generatedSnapshot;
-    const snapshot = snapshotForContext?.(context);
+    const snapshot = snapshotForContext?.(context, castSeed);
     if (regenerateOccurrenceId && (!snapshot || snapshot.occurrence.id !== regenerateOccurrenceId
       || snapshot.occurrence.startsAt <= now())) {
       throw new GeneratedShowRegenerationError('This slot has started or its schedule has changed. Refresh the episode list.', 'conflict');
     }
     if (!snapshot) return Promise.resolve(null);
     const running = pendingGenerated.get(snapshot.occurrence.id);
+    if (running && castSeed) throw new GeneratedShowRegenerationError('This episode is already being generated. Try again after it finishes.', 'conflict');
     if (running) return running.then(record => {
-      const latest = snapshotForContext?.(context);
+      const latest = snapshotForContext?.(context, castSeed);
       return latest && (latest.configuration !== snapshot.configuration || latest.occurrence.endsAt !== snapshot.occurrence.endsAt)
-        ? ensureGenerated({ context, source, regenerateOccurrenceId })
+        ? ensureGenerated({ context, source, regenerateOccurrenceId, castSeed })
         : record;
     });
-    const operation = prepareGenerated(snapshot, () => snapshotForContext?.(context) ?? null, !!regenerateOccurrenceId)
+    const operation = prepareGenerated(snapshot, () => snapshotForContext?.(context, castSeed) ?? null, !!regenerateOccurrenceId)
       .finally(() => pendingGenerated.delete(snapshot.occurrence.id));
     pendingGenerated.set(snapshot.occurrence.id, operation);
     return operation;
@@ -337,17 +345,28 @@ export function createShowPreparation(deps: PreparationDeps) {
     await writing;
     return newestGenerated(generated.values());
   };
-  const regenerateGenerated = async (occurrenceId: string) => {
+  const regenerateGenerated = async (occurrenceId: string, castSeed?: string) => {
     await recover();
     const record = generated.get(occurrenceId);
     if (!record) throw new GeneratedShowRegenerationError('This episode is no longer available. Refresh the episode list.', 'not-found');
     return ensureGenerated({
       context: { at: new Date(record.occurrence.startsAt).toISOString() } as SessionContext,
       source: record.occurrence.source === 'scheduled' ? 'scheduled' : 'active',
-      regenerateOccurrenceId: occurrenceId,
+      regenerateOccurrenceId: occurrenceId, castSeed,
     });
   };
-  return { recover, read, ensure, retry, occurrence, ensureGenerated, generatedRecords, regenerateGenerated };
+  const previewGeneratedCast = async (occurrenceId: string, castSeed: string) => {
+    await recover();
+    const record = generated.get(occurrenceId);
+    if (!record) throw new GeneratedShowRegenerationError('This episode is no longer available.', 'not-found');
+    const source = record.occurrence.source === 'scheduled' ? deps.scheduledGeneratedSnapshot : deps.generatedSnapshot;
+    const snapshot = source?.({ at: new Date(record.occurrence.startsAt).toISOString() } as SessionContext, castSeed);
+    if (!snapshot || snapshot.occurrence.id !== occurrenceId || snapshot.occurrence.startsAt <= now()) {
+      throw new GeneratedShowRegenerationError('This slot has started or its schedule has changed.', 'conflict');
+    }
+    return snapshot.cast;
+  };
+  return { recover, read, ensure, retry, occurrence, ensureGenerated, generatedRecords, regenerateGenerated, previewGeneratedCast };
 }
 
 const occurrenceCache: Array<{ key: string; occurrence: PreparationOccurrence }> = [];
@@ -377,17 +396,17 @@ function snapshot(context: SessionContext): PreparationSnapshot | null {
     configuration: JSON.stringify([show.preparationSkill, enabled[show.preparationSkill], host?.id, host?.skills, !!cap?.toolFn, capabilityReady(cap), cap?.config]) };
 }
 
-function generatedSnapshot(context: SessionContext): GeneratedShowSnapshot | null {
+function generatedSnapshot(context: SessionContext, castSeed?: string): GeneratedShowSnapshot | null {
   const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
   const active = settings.resolveActiveShow(at);
   if (!active) return null;
   const show = settings.get().shows?.find((item: any) => item.id === active.id);
   if (!show) return null;
   const occurrence = occurrenceFor(at, show.id);
-  return buildGeneratedSnapshot(show, occurrence);
+  return buildGeneratedSnapshot(show, occurrence, castSeed);
 }
 
-function scheduledGeneratedSnapshot(context: SessionContext): GeneratedShowSnapshot | null {
+function scheduledGeneratedSnapshot(context: SessionContext, castSeed?: string): GeneratedShowSnapshot | null {
   const at = typeof context.at === 'string' ? new Date(context.at) : new Date();
   const station = settings.get();
   const { dow, hour } = zonedParts(at);
@@ -398,14 +417,16 @@ function scheduledGeneratedSnapshot(context: SessionContext): GeneratedShowSnaps
     at: at.getTime(), showId, schedule: station.schedule, override: null,
     parts: ms => zonedParts(new Date(ms)),
   });
-  return buildGeneratedSnapshot(show, occurrence);
+  return buildGeneratedSnapshot(show, occurrence, castSeed);
 }
 
-function buildGeneratedSnapshot(show: Show | undefined, occurrence: PreparationOccurrence | null): GeneratedShowSnapshot | null {
+function buildGeneratedSnapshot(show: Show | undefined, occurrence: PreparationOccurrence | null, castSeed?: string): GeneratedShowSnapshot | null {
   const config = show?.generation;
   if (!show || config?.mode !== 'generated' || !occurrence) return null;
   const personas = settings.get().personas ?? [];
-  const cast = resolveGeneratedShowCast({ show, occurrence, personas });
+  const previous = generatedShowAt(show.id, occurrence.startsAt, occurrence.source, occurrence.startsAt);
+  const seed = castSeed ?? previous?.castSeed;
+  const cast = resolveGeneratedShowCast({ show, occurrence: seed ? { id: `${occurrence.id}:${seed}` } : occurrence, personas, preserveFixedGuests: !!seed });
   if (!cast) return null;
   const existingShows = scheduledShowsForHost(cast.hostPersonaId, show.id);
   const personaInput = [cast.hostPersonaId, ...cast.guestPersonaIds].map(id => {
@@ -419,7 +440,7 @@ function buildGeneratedSnapshot(show: Show | undefined, occurrence: PreparationO
     show.vocals,
   ]);
   return {
-    occurrence, configuration, template: config.template,
+    occurrence, configuration, castSeed: seed, template: config.template,
     planningPrompt: config.planningPrompt, nameMode: config.nameMode, customName: config.customName,
     minimumCoverage: config.minimumCoverage, cast,
     existingShows,

@@ -79,6 +79,8 @@ export interface GeneratedEpisodeHistory {
   hostPersonaId: string;
   guestPersonaIds: string[];
   status: 'ready' | 'failed';
+  savedShowId?: string | null;
+  canShuffle?: boolean;
   plan?: GeneratedShowPlan;
   generatedAt?: number;
   reason?: string;
@@ -102,16 +104,54 @@ export function useGeneratedEpisodeHistoryQuery(adminFetch: AdminFetch, enabled:
 }
 
 export function useRegenerateGeneratedEpisodeMutation(adminFetch: AdminFetch) {
-  return useAdminMutation<{ ok: boolean }, string>({
+  return useAdminMutation<{ ok: boolean }, string | { occurrenceId: string; castSeed: string; cast: { hostPersonaId: string; guestPersonaIds: string[] } }>({
     adminFetch,
-    request: (occurrenceId, fetcher) => adminJson<{ ok: boolean }>(fetcher, '/shows/generated/regenerate', {
+    request: (input, fetcher) => adminJson<{ ok: boolean }>(fetcher, '/shows/generated/regenerate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ occurrenceId }),
+      body: JSON.stringify(typeof input === 'string' ? { occurrenceId: input } : input),
     }),
     onDone: async (_data, _id, client) => {
       await client.cancelQueries({ queryKey: showKeys.generated(), exact: true });
       await client.invalidateQueries({ queryKey: showKeys.generated(), exact: true });
+    },
+  });
+}
+
+export interface GeneratedShowDraft { show: Show; saved: boolean; generatedAt: number }
+export interface ShuffledEpisodeCast { castSeed: string; hostPersonaId: string; guestPersonaIds: string[] }
+
+export function useGeneratedShowDraftMutation(adminFetch: AdminFetch) {
+  return useAdminMutation<GeneratedShowDraft, string>({
+    adminFetch,
+    request: (occurrenceId, fetcher) => adminJson(fetcher, '/shows/generated/save-draft', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ occurrenceId }),
+    }),
+  });
+}
+
+export function useShuffleGeneratedEpisodeMutation(adminFetch: AdminFetch) {
+  return useAdminMutation<ShuffledEpisodeCast, string>({
+    adminFetch,
+    request: (occurrenceId, fetcher) => adminJson(fetcher, '/shows/generated/shuffle', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ occurrenceId }),
+    }),
+  });
+}
+
+export function useSaveGeneratedShowMutation(adminFetch: AdminFetch) {
+  return useAdminMutation<{ show: Show; shows: Show[] }, { show: Show; occurrenceId: string; generatedAt: number; saved: boolean }>({
+    adminFetch,
+    request: (input, fetcher) => adminJson(fetcher, input.saved ? '/shows' : '/shows/generated/save', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...input, show: showPayload(input.show) }),
+    }),
+    onDone: async (data, _input, client) => {
+      patchShowSettings(client, { shows: data.shows });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: showKeys.settings(), exact: true }),
+        client.invalidateQueries({ queryKey: showKeys.generated(), exact: true }),
+      ]);
     },
   });
 }

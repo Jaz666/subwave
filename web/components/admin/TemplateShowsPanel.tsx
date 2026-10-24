@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ChevronDown, RefreshCw, Save } from 'lucide-react';
+import { ChevronDown, RefreshCw, Save, Shuffle, ExternalLink } from 'lucide-react';
 import type { AdminFetch } from '@/lib/admin-query';
 import { fieldAria } from '@/lib/form';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -9,6 +9,8 @@ import { useAdminAuth } from '../../lib/adminAuth';
 import { errorMessage, notify } from '../../lib/notify';
 import { useDynamicStyle } from '../../hooks/useDynamicStyle';
 import { Button } from '../ui/button';
+import { V3AlertDialog } from '../ui/alert-dialog';
+import { GeneratedShowEditor } from './shows/GeneratedShowEditor';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/skeleton';
@@ -22,10 +24,12 @@ import { ShowAvatar } from './shows/ShowAvatar';
 import type { SettingsResponse } from './shows/types';
 import {
   useGeneratedEpisodeHistoryQuery,
+  useGeneratedShowDraftMutation,
+  useShuffleGeneratedEpisodeMutation,
   useRegenerateGeneratedEpisodeMutation,
   useShowSkillsQuery,
 } from './shows/queries';
-import type { GeneratedEpisodeHistory } from './shows/queries';
+import type { GeneratedShowDraft, ShuffledEpisodeCast, GeneratedEpisodeHistory } from './shows/queries';
 import type { Persona } from './shows/types';
 import {
   useSettingsMutation,
@@ -227,6 +231,7 @@ export default function TemplateShowsPanel() {
               apiBase={apiBase}
               adminFetch={adminFetch}
               phase={group.phase}
+              settings={data}
             />
           )) : (
             <EmptyState
@@ -313,15 +318,38 @@ function EligibilityPicker({
   );
 }
 
-function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch, phase }: {
+function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch, phase, settings }: {
   episode: GeneratedEpisodeHistory;
   personas: Persona[];
   timezone?: string;
   apiBase: string;
   adminFetch: AdminFetch;
   phase: EpisodePhase;
+  settings: SettingsResponse;
 }) {
   const regenerate = useRegenerateGeneratedEpisodeMutation(adminFetch);
+  const draftMutation = useGeneratedShowDraftMutation(adminFetch);
+  const shuffle = useShuffleGeneratedEpisodeMutation(adminFetch);
+  const [saveDraft, setSaveDraft] = useState<GeneratedShowDraft | null>(null);
+  const [castPreview, setCastPreview] = useState<ShuffledEpisodeCast | null>(null);
+  const busy = regenerate.isPending || shuffle.isPending || draftMutation.isPending;
+  const openSave = async () => {
+    try { setSaveDraft(await draftMutation.mutateAsync(episode.occurrence.id)); }
+    catch { /* Mutation displays the error. */ }
+  };
+  const previewShuffle = async () => {
+    try { setCastPreview(await shuffle.mutateAsync(episode.occurrence.id)); }
+    catch { /* Mutation displays the error. */ }
+  };
+  const confirmShuffle = async () => {
+    if (!castPreview) return;
+    try {
+      await regenerate.mutateAsync({ occurrenceId: episode.occurrence.id, castSeed: castPreview.castSeed,
+        cast: { hostPersonaId: castPreview.hostPersonaId, guestPersonaIds: castPreview.guestPersonaIds } });
+      notify.ok('Cast shuffled and episode regenerated.');
+    } catch { /* The accepted plan is retained on failure. */ }
+    finally { setCastPreview(null); }
+  };
   const [briefExpanded, setBriefExpanded] = useState(false);
   const reroll = async () => {
     try {
@@ -358,7 +386,8 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
   const plan = episode.plan;
 
   return (
-    <article className="card group relative" aria-busy={regenerate.isPending}>
+    <>
+    <article className="card group relative" aria-busy={busy}>
       <span ref={spineRef} aria-hidden="true" className="absolute inset-y-0 left-0 w-1" />
       <div className="card-body flex gap-3.5">
         <div className="flex flex-none flex-col items-center">
@@ -404,19 +433,29 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                 {phase === 'upcoming' && (
                   <Button
                     type="button" variant="ghost" size="icon"
-                    aria-label={`Regenerate ${plan?.name || template}`}
-                    title="Regenerate this episode"
-                    disabled={regenerate.isPending}
+                    aria-label="Regenerate show, keeping host and guests"
+                    title="Regenerate show, keeping host and guests"
+                    disabled={busy}
                     onClick={() => void reroll()}
                   >
                     <RefreshCw aria-hidden="true" className={regenerate.isPending ? 'animate-spin motion-reduce:animate-none' : ''} />
                   </Button>
                 )}
-                {phase === 'past' && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" size="sm" disabled><Save aria-hidden="true" />Save</Button>
-                    <span className="text-[10px] text-muted">Save as a permanent show · coming later</span>
-                  </div>
+                {phase === 'upcoming' && episode.canShuffle && (
+                  <Button type="button" variant="ghost" size="icon"
+                    aria-label="Shuffle random host/guests and regenerate show"
+                    title="Shuffle random host/guests and regenerate show"
+                    disabled={busy} onClick={() => void previewShuffle()}>
+                    <Shuffle aria-hidden="true" />
+                  </Button>
+                )}
+                {plan && (
+                  <Button type="button" variant="ghost" size="icon"
+                    aria-label={episode.savedShowId ? 'Open saved show' : 'Save as regular show'}
+                    title={episode.savedShowId ? 'Open saved show' : 'Save as regular show'}
+                    disabled={busy} onClick={() => void openSave()}>
+                    {episode.savedShowId ? <ExternalLink aria-hidden="true" /> : <Save aria-hidden="true" />}
+                  </Button>
                 )}
               </div>
               <span role="status">
@@ -465,5 +504,18 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
         </div>
       </div>
     </article>
+    <V3AlertDialog open={!!castPreview} onOpenChange={open => { if (!open) setCastPreview(null); }}
+      title="Shuffle host and guests"
+      description={castPreview ? <>
+        Host: <b>{personas.find(p => p.id === castPreview.hostPersonaId)?.name || 'Unknown DJ'}</b>.
+        {' Guests: '}{castPreview.guestPersonaIds.length ? joinNames(castPreview.guestPersonaIds.map(id => personas.find(p => p.id === id)?.name || 'Unknown DJ')) : 'None'}.
+        {' Generate a new show with this cast? Fixed host and guest options are preserved.'}
+      </> : ''}
+      confirmLabel="Generate show" cancelLabel="Cancel" onConfirm={() => void confirmShuffle()}
+    />
+    {saveDraft && <GeneratedShowEditor key={`${episode.occurrence.id}:${saveDraft.generatedAt}`}
+      draft={saveDraft} occurrenceId={episode.occurrence.id} settings={settings}
+      apiBase={apiBase} adminFetch={adminFetch} onClose={() => setSaveDraft(null)} />}
+    </>
   );
 }
