@@ -178,6 +178,12 @@ export function normalizeGeneratedMusicSettings(raw: unknown): unknown {
   });
   if (typeof value.rationale === 'string') value.rationale = value.rationale.trim().slice(0, 500);
   if (Array.isArray(value.eras)) value.eras = value.eras.flatMap(era => {
+    if (typeof era === 'string') {
+      const range = /^(\d{4})\s*[-–—]\s*(\d{4})$/.exec(era.trim());
+      // Exact closed ranges only; the schema still rejects reversed or
+      // out-of-bounds years. Never guess decades or discard a restriction.
+      if (range) return [{ fromYear: Number(range[1]), toYear: Number(range[2]) }];
+    }
     if (!era || typeof era !== 'object' || Array.isArray(era)) return [era];
     const window = { ...era } as Record<string, unknown>;
     for (const key of ['fromYear', 'toYear']) {
@@ -285,6 +291,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         input.planningPrompt ? `Operator requirements: ${input.planningPrompt}` : null,
         input.minimumCoverage != null ? `Operator minimum: ${input.minimumCoverage} unique eligible tracks after all filters and exclusions.` : null,
         input.coverageCorrection || null,
+        'Era JSON shape: return eras: [] for unrestricted music. If a date restriction is required, use objects such as eras: [{"fromYear": 1980, "toYear": 1995}], with number or null bounds. Never return date strings such as eras: ["1980-1995"]. This example is formatting only, not an instruction to select those years.',
         'The title and brief must agree with the era settings. If the accepted proposal explicitly promises a decade or date range, encode that range in eras; do not leave eras empty. A favourite decade in persona context alone is not a restriction. An era-neutral proposal should keep eras empty unless the operator explicitly requires a period.',
         'Copy requiredGenres into genres exactly once each, with no additions, omissions or substitutions. Keep moods, eras and energies empty unless the operator or musical idea explicitly requires a restriction and coverage supports it. Conversation style and favourite decades are not music restrictions.',
         discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
