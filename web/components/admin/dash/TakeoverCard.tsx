@@ -69,7 +69,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
   // The 30s tick refreshes `shows` and `override`, never the form -- a poll must
   // not clobber a half-typed window, which is why there is no `values` prop.
 
-  // GET /schedule carries the roster and the pin in force. Query success also
+  // GET /shows/takeover carries the roster and the pin in force. Query success also
   // advances the "min left" clock.
   const takeoverQuery = useAdminQuery<TakeoverData>({
     key: dashKeys.takeover(),
@@ -81,6 +81,11 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
   });
   const shows = takeoverQuery.data?.shows ?? [];
   const override = takeoverQuery.data?.override ?? null;
+  const regularShows = shows.filter(show => show.generation?.mode !== 'generated')
+    .sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true }));
+  const subShows = shows.filter(show => show.generation?.mode === 'generated')
+    .sort((a, b) => Number(b.generation?.template === 'dj-choice') - Number(a.generation?.template === 'dj-choice')
+      || a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true }));
 
   // The resolved end time for "until the schedule changes", fetched only while
   // that option is selected: the controller's scan walks a minute at a time
@@ -239,7 +244,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
                 className="size-[11px] self-center"
               />
               <span className="min-w-0 truncate text-[13px] font-bold text-ink">
-                {pinned?.name ?? 'Default programming'}
+                {pinned?.name ?? 'Default Programming'}
               </span>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-muted">
@@ -278,7 +283,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
                   label={(
                     <span className="min-w-0 flex-1 truncate text-left">
                       {isDefaultTakeover(chosen)
-                        ? 'Default programming'
+                        ? 'Default Programming'
                         : (chosenId && showById(chosenId)?.name) || 'Choose programming…'}
                     </span>
                   )}
@@ -286,8 +291,9 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
                     ? null
                     : chosenId ? colorOf(chosenId) : undefined}
                   options={[
-                    { key: null, label: 'Default programming', chipColor: null },
-                    ...shows.map(s => ({ key: s.id, label: s.name, chipColor: colorOf(s.id) })),
+                    { key: null, label: 'Default Programming', chipColor: null },
+                    ...regularShows.map(s => ({ key: s.id, label: s.name, chipColor: colorOf(s.id), group: 'Regular Shows' })),
+                    ...subShows.map(s => ({ key: s.id, label: s.name, chipColor: colorOf(s.id), group: 'Sub/Shows' })),
                   ]}
                   onSelect={field.onChange}
                 />
