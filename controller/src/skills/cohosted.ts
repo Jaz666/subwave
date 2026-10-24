@@ -71,14 +71,14 @@ export async function runCohostedCapability({
     const blocked = standDownReason({ ...capability, requiresData: true }, source);
     if (blocked) return { aired: false, lines: null, reason: blocked };
     const ids = source?.speakerIds;
-    if (!Array.isArray(ids) || !ids.length || ids.length > 4 || ids[0] !== host.id
+    if (!Array.isArray(ids) || !ids.length || ids.length > 4
       || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) {
-      return { aired: false, lines: null, reason: 'invalid tool speaker IDs; current host must speak first' };
+      return { aired: false, lines: null, reason: 'invalid tool speaker IDs' };
     }
     const roster = settings.get().personas || [];
-    const resolved = ids.slice(1).map(id => roster.find(persona => persona.id === id));
+    const resolved = ids.map(id => id === host.id ? host : roster.find(persona => persona.id === id));
     if (resolved.some(persona => !persona)) return { aired: false, lines: null, reason: 'a requested skill speaker no longer exists' };
-    guests = resolved as Persona[];
+    [host, ...guests] = resolved as Persona[];
   }
   const cast = [host, ...guests];
   const grounded = requiresGrounding(capability);
