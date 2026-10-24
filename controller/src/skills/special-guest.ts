@@ -10,8 +10,8 @@ export function findSkillPersona(query: string): PersonaIdentity | null {
   return matches.length === 1 ? { id: matches[0].id, name: matches[0].name } : null;
 }
 
-export function specialGuestNames(brief: string): string[] {
-  const names: string[] = [];
+export function promptInstructionLines(brief: string): string[] {
+  const lines: string[] = [];
   let fence: string | null = null;
   for (const line of brief.split(/\r?\n/)) {
     const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
@@ -21,8 +21,14 @@ export function specialGuestNames(brief: string): string[] {
       continue;
     }
     if (fence) continue;
-    const match = line.match(/^[ \t]*Special guest:[ \t]*(.*?)[ \t]*$/i);
-    if (match) names.push(match[1]);
+    lines.push(line);
   }
-  return names;
+  return lines;
+}
+
+export function specialGuestNames(brief: string): string[] {
+  return promptInstructionLines(brief).flatMap(line => {
+    const match = line.match(/^[ \t]*Special guest:[ \t]*(.*?)[ \t]*$/i);
+    return match ? [match[1]] : [];
+  });
 }
