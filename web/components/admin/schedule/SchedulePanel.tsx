@@ -25,7 +25,7 @@ import { GuestPersonaPicker } from '../shows/ShowPickers';
 import Board from './Board';
 import SaveBar from './SaveBar';
 import EditorBand, { LineEditor } from './EditorBand';
-import type { EditorLine, Suggestion } from './EditorBand';
+import type { AirtimeRow, EditorLine, Suggestion } from './EditorBand';
 import { ColorChip, Mu } from './bits';
 import type { Block, DragPlan, GeneratedTemplateId, Schedule } from './lib';
 import {
@@ -597,19 +597,29 @@ export default function SchedulePanel() {
 
   const airtime = useMemo(() => {
     if (!schedule) return { rows: [], tickPct: 0 };
-    const withHours = shows.map(s => ({ s, hours: showHours(schedule, s.id) }));
-    const maxHours = Math.max(0, ...withHours.map(x => x.hours));
+    const totals = new Map<string, Omit<AirtimeRow, 'pct' | 'under'>>();
+    for (const show of shows) {
+      const template = show.generation?.mode === 'generated' ? show.generation.template : null;
+      const id = template ? `template:${template}` : show.id;
+      const hours = showHours(schedule, show.id);
+      const previous = totals.get(id);
+      if (previous) previous.hours += hours;
+      else totals.set(id, {
+        id, hours,
+        name: template ? GENERATED_SHOW_TEMPLATES.find(item => item.id === template)?.label ?? show.name : show.name,
+        color: template ? generatedShowColor(template) : colorOf(show.id),
+      });
+    }
+    const withHours = [...totals.values()];
+    const maxHours = Math.max(0, ...withHours.map(row => row.hours));
     const scale = Math.max(maxHours, WEEKLY_TARGET * 1.4) * 1.06;
     return {
       rows: withHours
         .sort((a, b) => b.hours - a.hours)
-        .map(({ s, hours }) => ({
-          id: s.id,
-          name: showLabel(s),
-          color: colorOf(s.id),
-          hours,
-          pct: scale ? (hours / scale) * 100 : 0,
-          under: hours < WEEKLY_TARGET,
+        .map(row => ({
+          ...row,
+          pct: scale ? (row.hours / scale) * 100 : 0,
+          under: row.hours < WEEKLY_TARGET,
         })),
       tickPct: scale ? (WEEKLY_TARGET / scale) * 100 : 0,
     };
@@ -753,6 +763,7 @@ export default function SchedulePanel() {
             shows={shows.map(show => show.generation?.mode === 'generated'
               ? { ...show, name: showLabel(show) }
               : show)}
+            locale={locale}
             line={line}
             lineShowId={lineShowId}
             lineDays={lineDays.includes(line.day) ? lineDays : [...lineDays, line.day]}

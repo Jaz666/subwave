@@ -23,6 +23,16 @@ export interface ScheduleShow {
 
 export type GeneratedTemplateId = 'dj-choice' | 'deep-discovery';
 
+/** Shared display ordering; never reorder the roster used for show colours. */
+export function programmingGroups<T extends { name: string; generation?: { mode?: string; template?: string } }>(shows: readonly T[], locale?: string) {
+  const alphabetically = (a: T, b: T) => a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true });
+  return {
+    regularShows: shows.filter(show => show.generation?.mode !== 'generated').sort(alphabetically),
+    subShows: shows.filter(show => show.generation?.mode === 'generated').sort((a, b) =>
+      Number(b.generation?.template === 'dj-choice') - Number(a.generation?.template === 'dj-choice') || alphabetically(a, b)),
+  };
+}
+
 export const GENERATED_SHOW_TEMPLATES: {
   id: GeneratedTemplateId;
   label: string;

@@ -15,7 +15,7 @@ import { useZodForm, applyServerFieldErrors } from '@/lib/form';
 import { TextField } from '@/lib/form-fields';
 import { Card, Btn, Pill, Seg } from '../ui';
 import { ColorChip, SlotMenu } from '../schedule/bits';
-import { SHOW_COLORS } from '../schedule/lib';
+import { programmingGroups, SHOW_COLORS } from '../schedule/lib';
 // The pin's shape and its minute bounds come from the shared schema, and POST
 // /schedule/override runs the same rule at the route.
 import {
@@ -81,11 +81,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
   });
   const shows = takeoverQuery.data?.shows ?? [];
   const override = takeoverQuery.data?.override ?? null;
-  const regularShows = shows.filter(show => show.generation?.mode !== 'generated')
-    .sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true }));
-  const subShows = shows.filter(show => show.generation?.mode === 'generated')
-    .sort((a, b) => Number(b.generation?.template === 'dj-choice') - Number(a.generation?.template === 'dj-choice')
-      || a.name.localeCompare(b.name, locale, { sensitivity: 'base', numeric: true }));
+  const { regularShows, subShows } = programmingGroups(shows, locale);
 
   // The resolved end time for "until the schedule changes", fetched only while
   // that option is selected: the controller's scan walks a minute at a time
