@@ -17,6 +17,7 @@ import { preparationSkillAt, prepareEpisodeContext } from '../broadcast/show-pre
 // frequency-derived floor on the gap between ANY two segments, disabled or
 // persona-unowned capabilities, and window/provider gating.
 
+import { lookAheadSourceMeta } from './look-ahead.js';
 import { z } from 'zod';
 import { queue } from '../broadcast/queue.js';
 import * as session from '../broadcast/session.js';
@@ -283,10 +284,10 @@ export const directorAgent = defineAgent({
   timeoutMs: segmentDeadline,
   buildSystem: ({ persona, caps, freq, sfxCatalog }) =>
     directorSystem(persona, caps, freq, sfxCatalog),
-  buildTools: ({ ctx, segmentState, caps }) => ({
+  buildTools: ({ ctx, segmentState, caps, persona }) => ({
     // Co-hosted skills run their own cast-shaped tool loop after selection.
     // Their data tools must not be called in this generic selection pass.
-    tools: buildSegmentTools(ctx, segmentState, caps.filter((cap) => !cap.cohosts)),
+    tools: buildSegmentTools(ctx, segmentState, caps.filter((cap) => !cap.cohosts), { speakerPersonaId: persona?.id }),
   }),
 });
 
@@ -421,7 +422,7 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
       skippedBeforeLlm: undefined,
     };
   }
-  const data = await fetchSegmentData(cap, ctx, segmentState);
+  const data = await fetchSegmentData(cap, ctx, segmentState, { speakerPersonaId: speaker?.id });
   const blocked = standDownReason(cap, data);
   if (blocked || data?.error) {
     lastUnavailable.set(cap.kind, Date.now());
@@ -614,7 +615,7 @@ export async function agenticTick(ctx) {
     }
 
     if (exchange) {
-      const aired = await queue.announceExchange(exchange.lines, exchange.kind, { castNames: exchange.castNames });
+      const aired = await queue.announceExchange(exchange.lines.map(line => ({ ...line, meta: lookAheadSourceMeta(ctx, exchange.kind) })), exchange.kind, { castNames: exchange.castNames });
       if (!aired) throw new Error(`co-hosted skill "${exchange.kind}" failed to render`);
       lastFired.set(exchange.kind, Date.now());
       segmentState.lastAnySegment = Date.now();
@@ -649,7 +650,7 @@ export async function agenticTick(ctx) {
     // turn as theirs rather than the host's own words.
     const delivery = await queue.announce(seg.text.trim(), seg.kind, {
       persona: speaker,
-      meta: { personaId: speaker?.id, personaName: speaker?.name },
+      meta: { personaId: speaker?.id, personaName: speaker?.name, ...lookAheadSourceMeta(ctx, seg.kind) },
       pauseTalkEligible: true,
       sfx: selectedSfx,
       hostSpeech,
@@ -746,8 +747,8 @@ function defineForcedAgent(mayAbstain: boolean) {
     timeoutMs: segmentDeadline,
     buildSystem: ({ persona, cap, sfxCatalog }) =>
       forcedSystem(persona, cap, sfxCatalog, { mayAbstain }),
-    buildTools: ({ ctx, segmentState, cap, onData }) => ({
-      tools: buildSegmentTools(ctx, segmentState, [cap], { onResult: onData }),
+    buildTools: ({ ctx, segmentState, cap, onData, persona }) => ({
+      tools: buildSegmentTools(ctx, segmentState, [cap], { onResult: onData, speakerPersonaId: persona?.id }),
     }),
   });
 }
@@ -893,7 +894,7 @@ export async function runCapability(
       queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
       return { aired: false, queued: false, deferred: false, text: null, reason };
     }
-    const aired = await queue.announceExchange(result.lines, cap.kind, { castNames: [host, ...guests].map(p => p.name) });
+    const aired = await queue.announceExchange(result.lines.map(line => ({ ...line, meta: lookAheadSourceMeta(ctx, cap.kind) })), cap.kind, { castNames: [host, ...guests].map(p => p.name) });
     if (!aired) throw new Error(`skill "${cap.skill}" co-hosted exchange failed to render`);
     lastFired.set(cap.kind, Date.now());
     segmentState.lastAnySegment = Date.now();
@@ -930,7 +931,7 @@ export async function runCapability(
     // writes from the moment survives a failed fetch (it writes from the brief
     // and the moment alone); a GROUNDED skill does not, since its whole segment
     // was to be about what the fetch didn't return, so there is no model call.
-    const data = await fetchSegmentData(cap, ctx, segmentState);
+    const data = await fetchSegmentData(cap, ctx, segmentState, { speakerPersonaId: speaker?.id });
     const blocked = standDownReason(cap, data);
     if (blocked) return standDown(blocked);
     object = await deadlinedSegmentObject({
@@ -987,12 +988,12 @@ export async function runCapability(
   const delivery = await queue.announce(text, cap.kind, (persona || automaticHostSpeech)
     ? {
         persona: speaker,
-        meta: { personaId: speaker?.id, personaName: speaker?.name },
+        meta: { personaId: speaker?.id, personaName: speaker?.name, ...lookAheadSourceMeta(ctx, cap.kind) },
         pauseTalkEligible,
         sfx: selectedSfx,
         hostSpeech: speechOwner.hostSpeech,
       }
-    : { pauseTalkEligible, sfx: selectedSfx });
+    : { pauseTalkEligible, sfx: selectedSfx, meta: lookAheadSourceMeta(ctx, cap.kind) });
   if (!delivery.accepted) {
     const reason = 'the station could not queue the rendered segment';
     queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
