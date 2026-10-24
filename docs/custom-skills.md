@@ -157,8 +157,8 @@ something else, read `config.feed` yourself via
 
 `cohosts: true` turns the skill from one DJ line into a co-hosted discussion. It
 uses the **active scheduled show's roster**: the show's host followed by every
-resolved `guestPersonaIds` co-host. A skill cannot choose arbitrary personas, and
-the existing enable toggle and persona assignment remain keyed to the host.
+resolved `guestPersonaIds` co-host. The separate `cast: tool` option below allows temporary segment guests. The
+existing enable toggle and persona assignment remain keyed to the host.
 
 The discussion contains exactly one contribution per live roster member, in that
 order. The model is instructed to give each person **2–5 short sentences**, in
@@ -701,6 +701,25 @@ the example: no search results means the DJ must stick to supplied library facts
 Existing custom tools that return arbitrary data need this result envelope to
 serve as preparation skills.
 
+### `cast: tool` — temporary segment guests
+
+This opt-in frontmatter setting uses the existing exchange renderer with a cast
+chosen by the operator's trusted `tool.mjs`. The controller fetches the data
+once before generation in either segment runtime. The result must include
+`speakerIds`: one to four distinct existing persona IDs, with the current show
+host first. Unknown IDs or unusable data stand the segment down. A one-person
+cast produces a normal solo contribution; a larger cast produces one
+contribution per persona in that exact order, using their own soul and TTS.
+The show roster is unchanged. A scheduled guest is only included if the tool
+explicitly requests them. Host skill ownership, enablement, cooldown and
+Sub/Shows eligibility still apply; a solo show can use this option.
+
+This is separate from `cohosts: true`, which still uses the full scheduled
+roster. Tools should request only the participants needed for their segment;
+the model cannot choose additional speakers. Put the intended roles and format
+in the skill brief and returned data. `cast: tool` is preserved when saving in
+the skill editor; it currently has no dedicated UI switch.
+
 ### Look Ahead schedule data
 
 The `docs/examples/skills/look-ahead` skill provides editable instructions and
@@ -724,6 +743,15 @@ resets on a controller restart or skill reload. Durable recall still preserves
 first-offer preference across restarts. Markers record tool offers, not
 confirmed airings. The prompt requires both selected shows to be mentioned,
 with exact supplied start times and no relative day or time-of-day wording. With no qualifying shows it returns `available: false`.
+Look Ahead uses `cast: tool`. Normally the current host teases both selected
+shows. With `guestPromoPercent` (default 33), the tool instead picks one selected
+show with a different host: the current DJ introduces that presenter and covers
+the other show, then the upcoming host voices their own promo. The upcoming
+host receives their own soul and voice, not the current DJ's identity. When no
+different host is available, the current DJ delivers the full segment. Set the
+chance to 0 for current-DJ teases only, or 100 for promos whenever possible.
+The percentage appears in the skill editor through the tool's `configFields`.
+
 The segment model summarises each selected brief within its normal call; no
 extra summarisation or show-generation call is needed.
 

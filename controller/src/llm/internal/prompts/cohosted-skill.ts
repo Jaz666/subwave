@@ -1,6 +1,6 @@
 // Co-hosted skill prompt and dynamic output contract. The active show roster is
-// the only speaker authority: one structured run writes one contribution for the
-// host and every guest, then skills/cohosted.ts maps ids back to full personas.
+// default speaker authority. Opt-in tool casts are resolved by skills/cohosted.ts
+// before this prompt is built. Each structured contribution maps to a full persona.
 
 import { z } from 'zod';
 import * as settings from '../../../settings.js';
@@ -50,13 +50,15 @@ function castBlock(host: CastPersona, guests: CastPersona[]): string {
 }
 
 export function cohostedSkillSystem({ capability, host, guests, grounded = false }: {
-  capability: { kind?: string; desc?: string };
+  capability: { kind?: string; desc?: string; toolCast?: boolean };
   host: CastPersona;
   guests: CastPersona[];
   grounded?: boolean;
 }): string {
   const lang = String(host.language || '').trim() || 'English';
-  const grounding = grounded
+  const grounding = capability.toolCast
+    ? 'Source data has already been fetched for this segment. Use only that supplied source data; do not call a tool again or invent missing facts.'
+    : grounded
     ? 'Use the skill tool before writing. Build the discussion only from usable source data it returns; if it returns nothing usable or fails, set air to false. Never fill gaps from memory or plausibility.'
     : 'Build the discussion from the skill brief and current moment. Do not invent quotes, listener messages, callers, or purported events.';
   return `You write one co-hosted between-track discussion for a personal internet radio station.
@@ -69,7 +71,7 @@ ${capability.desc || ''}
 
 Rules:
 - Return exactly one contribution for every cast member, in the cast order above. Use each immutable persona id exactly once; never invent a speaker.
-- Each contribution is 2–5 short sentences. Together they form one coherent discussion: react to each other, differ naturally, and avoid repeated points.
+- ${capability.toolCast ? 'Follow the skill brief for each contribution’s purpose and length. The cast includes temporary segment guests, not necessarily the current show’s guests. A single-person cast delivers the entire segment.' : 'Each contribution is 2–5 short sentences. Together they form one coherent discussion: react to each other, differ naturally, and avoid repeated points.'}
 - Each speaker stays in THEIR OWN character. The host carries the room and the guest co-hosts speak as themselves.
 - ${grounding}
 - ${onAirLocationGrounding()}

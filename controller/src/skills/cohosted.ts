@@ -63,6 +63,23 @@ export async function runCohostedCapability({
   runAgent?: AgentRunner;
   runObject?: ObjectRunner;
 }): Promise<CohostedResult> {
+  // Fetch once before selecting voices: the model cannot nominate arbitrary speakers.
+  // cast: tool is operator opt-in; ordinary co-hosted skills retain the show roster.
+  let source: any;
+  if (capability.toolCast) {
+    source = await fetchSegmentData(capability, context, segmentState, { speakerPersonaId: host.id });
+    const blocked = standDownReason({ ...capability, requiresData: true }, source);
+    if (blocked) return { aired: false, lines: null, reason: blocked };
+    const ids = source?.speakerIds;
+    if (!Array.isArray(ids) || !ids.length || ids.length > 4 || ids[0] !== host.id
+      || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) {
+      return { aired: false, lines: null, reason: 'invalid tool speaker IDs; current host must speak first' };
+    }
+    const roster = settings.get().personas || [];
+    const resolved = ids.slice(1).map(id => roster.find(persona => persona.id === id));
+    if (resolved.some(persona => !persona)) return { aired: false, lines: null, reason: 'a requested skill speaker no longer exists' };
+    guests = resolved as Persona[];
+  }
   const cast = [host, ...guests];
   const grounded = requiresGrounding(capability);
   const system = cohostedSkillSystem({ capability, host, guests, grounded });
@@ -71,14 +88,14 @@ export async function runCohostedCapability({
 
   let out: CohostedObject;
 
-  if (settings.get().llm?.segmentRuntime === 'direct') {
+  if (capability.toolCast || settings.get().llm?.segmentRuntime === 'direct') {
     // Pool mode: fetch in code, decide in code, one structured call. A skill
     // that writes from the moment survives a failed fetch (it writes from its
     // brief, as it always could); a GROUNDED one doesn't get that degradation
     // — the discussion was supposed to be ABOUT what the fetch didn't return,
     // so there is no model call at all. Same rule, same wording, as the solo
     // pool path in runCapability.
-    const data = await fetchSegmentData(capability, context, segmentState);
+    const data = capability.toolCast ? source : await fetchSegmentData(capability, context, segmentState);
     const blocked = standDownReason(capability, data);
     if (blocked) return { aired: false, lines: null, reason: blocked };
     out = await deadlinedObject(runObject, {
