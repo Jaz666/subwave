@@ -90,3 +90,30 @@ export function lookAheadStampsCurrent(stamps: unknown): boolean {
   const current = todayProgramming().stamp;
   return stamps.every(stamp => stamp === current);
 }
+
+// Keep each spoken time/title/cast together; the model writes only the description.
+export function renderLookAheadTeases(data: {
+  mode: string; speaker: { id: string; name: string };
+  shows: Array<{ startTime: string; title: string; host: { id: string; name: string };
+    guests: Array<{ id: string; name: string }> }>;
+}, firstSummary: string, secondSummary: string): string {
+  if (!data.shows?.length || data.shows.length > 2 || (data.mode === 'upcoming-host-promo' && data.shows.length !== 1)) {
+    throw new Error('invalid Look Ahead show count');
+  }
+  const list = (names: string[]) => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  const summaries = [firstSummary, secondSummary];
+  const pieces = data.shows.map((show, index) => {
+    const summary = summaries[index].trim();
+    // A summary may describe the music, but cannot supply another broadcast time.
+    if (/\b(?:\d{1,2}[:.]\d{2}|\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)|today|tomorrow|tonight|this morning|this afternoon|this evening|later still)\b/i.test(summary)) {
+      throw new Error('Look Ahead summary included a time claim; no segment was queued');
+    }
+    const ownShow = show.host.id === data.speaker.id;
+    const guests = show.guests.filter(guest => guest.id !== data.speaker.id).map(guest => guest.name);
+    const cast = ownShow ? `join me${guests.length ? ` with ${list(guests)}` : ''}`
+      : `join ${show.host.name}${guests.length || show.guests.some(guest => guest.id === data.speaker.id)
+        ? ` with ${list([...guests, ...(show.guests.some(guest => guest.id === data.speaker.id) ? ['me'] : [])])}` : ''}`;
+    return `At ${show.startTime}, ${cast} for “${show.title}”.${summary ? ` ${summary}` : ''}`;
+  });
+  return `${data.mode === 'upcoming-host-promo' ? `Hi, ${data.speaker.name} here. ` : ''}${pieces.join(' ')}`;
+}

@@ -21,6 +21,13 @@ export const soloSkillSchema = z.object({
   text: z.string().max(1200).describe('one complete spoken segment in this persona’s voice; empty when air is false'),
 });
 
+export const lookAheadSkillSchema = z.object({
+  reason: z.string(),
+  air: z.boolean(),
+  firstSummary: z.string().max(300).describe('one short sentence about shows[0].brief only; no clock, title, presenter names or date claims'),
+  secondSummary: z.string().max(300).describe('one short sentence about shows[1].brief only, or empty if absent; no clock, title, presenter names or date claims'),
+});
+
 export function cohostedSkillSchema(cast: CastPersona[]) {
   const ids = cast.map((p) => p.id) as [string, ...string[]];
   const line = z.object({
@@ -56,24 +63,25 @@ function castBlock(host: CastPersona, guests: CastPersona[]): string {
   return [entry(host, 'HOST'), ...guests.map((guest) => entry(guest, 'GUEST CO-HOST'))].join('\n');
 }
 
-export function cohostedSkillSystem({ capability, host, guests, grounded = false }: {
+export function cohostedSkillSystem({ capability, host, guests, grounded = false, lookAhead = false }: {
   capability: { kind?: string; desc?: string; toolCast?: boolean };
   host: CastPersona;
   guests: CastPersona[];
   grounded?: boolean;
+  lookAhead?: boolean;
 }): string {
   if (capability.toolCast && !guests.length) {
     return `${settings.agentPersonaPreamble(host)}
 
 You alone deliver this short skill segment. There are no other speaking participants.
 Follow the skill's supplied mode: an upcoming-host promo is a standalone promo for your later show, not a discussion or a claim that you host the current show.
-Use only the supplied source data. If nothing usable is supplied, set air to false and text to an empty string. Never fill gaps from earlier speech or memory.
+Use only the supplied source data. If nothing usable is supplied, set air to false and ${lookAhead ? 'both summaries' : 'text'} to empty strings. Never fill gaps from earlier speech or memory.
 
 Skill "${capability.kind || 'segment'}" instructions:
 ${capability.desc || ''}
 
-Write your spoken words in text, without speaker labels or stage directions.
-${settings.agentLanguageReminder(host, 'the "text" line')}`;
+${lookAhead ? `The controller supplies the exact time, show title and cast separately for each show. Do not write the full announcement. Write firstSummary only about shows[0] and secondSummary only about shows[1] (empty if absent). Use at most one short sentence per summary, in your own voice. Include no dates, times, presenter names, titles, introductions or chronology. The skill's instructions about announcing those facts are handled by the controller. Do not copy earlier spoken examples.` : 'Write your spoken words in text, without speaker labels or stage directions.'}
+${settings.agentLanguageReminder(host, lookAhead ? 'the summary fields' : 'the "text" line')}`;
   }
   const lang = String(host.language || '').trim() || 'English';
   const grounding = capability.toolCast
