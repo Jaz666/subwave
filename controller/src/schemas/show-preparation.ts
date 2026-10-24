@@ -41,6 +41,7 @@ export const generatedShowRecordSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('ready'), occurrence: preparationOccurrenceSchema, configuration: z.string(),
     castSeed: z.string().max(100).optional(),
+    castOrigin: z.string().max(200).optional(),
     sourceSettings: z.object({
       playlistIds: z.array(z.string()), playlistStrict: z.boolean(),
       excludedPlaylistIds: z.array(z.string()), maxTrackSeconds: z.number().nullable(),
@@ -52,6 +53,7 @@ export const generatedShowRecordSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('failed'), occurrence: preparationOccurrenceSchema, configuration: z.string(),
     castSeed: z.string().max(100).optional(),
+    castOrigin: z.string().max(200).optional(),
     template: z.string(), hostPersonaId: z.string().min(1), guestPersonaIds: z.array(z.string()).max(3),
     reason: z.string().max(500), attempts: z.number().int().min(1), retryAt: z.number().nullable(),
   }),
