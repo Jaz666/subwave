@@ -34,10 +34,10 @@ function templateShow(template: Request['template']): Show {
     personaIds: (station.personas ?? []).map(p => p.id), moodNames: settings.moodVocab(),
     themeIds: [], minTrackSeconds: settings.minTrackSeconds(),
   }).parse({
-    id, name: template === 'dj-choice' ? "DJ's Choice" : 'Deep Discovery',
+    id, name: template === 'dj-choice' ? "DJ's Choice" : template === 'common-ground' ? 'Common Ground' : 'Deep Discovery',
     personaId: station.personas?.[0]?.id ?? '', programme: false,
     generation: {
-      mode: 'generated', template, hostMode: 'random', guestMode: 'random', guestCount: { min: 0, max: 3 },
+      mode: 'generated', template, hostMode: 'random', guestMode: 'random', guestCount: template === 'common-ground' ? { min: 1, max: 1 } : { min: 0, max: 3 },
     },
   });
   return { ...parsed, id };
@@ -57,7 +57,9 @@ export async function prepareTakeoverPreview(request: Request) {
   const snapshot = buildGeneratedSnapshot(show, {
     id: `takeover:${show.id}:${startsAt}`, showId: show.id, source: 'takeover', startsAt, endsAt,
   }, token);
-  if (!snapshot) throw new Error('No eligible host is available for this Sub/Show. Check Sub/Shows settings.');
+  if (!snapshot) throw new Error(request.template === 'common-ground'
+    ? 'Common Ground needs two distinct DJs enabled in Sub/Shows → Random Hosts.'
+    : 'No eligible host is available for this Sub/Show. Check Sub/Shows settings.');
   const eligibility = JSON.stringify(settings.get().subShows);
   const plan = await generateAcceptedShowPlan(snapshot);
   const draft: Draft = { request, show, snapshot, plan, eligibility, expiresAt: Math.min(Date.now() + 15 * 60_000, request.until === 'schedule-change' ? endsAt : Infinity) };

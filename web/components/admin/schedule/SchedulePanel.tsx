@@ -68,6 +68,7 @@ interface SettingsResponse {
     personas?: Persona[];
     timezone?: string;
     locale?: StationLocale;
+    subShows?: { eligibleHostPersonaIds?: string[] | null };
   };
   serverTimezone?: string;
 }
@@ -90,6 +91,8 @@ export default function SchedulePanel() {
     refetchOnMount: 'always',
   });
   const overrideQuery = useScheduleOverrideQuery(adminFetch, queryEnabled);
+  const commonGroundPool = settingsQuery.data?.values?.subShows?.eligibleHostPersonaIds;
+  const commonGroundPersonas = personas.filter(persona => commonGroundPool == null || commonGroundPool.includes(persona.id));
   const err = settingsQuery.error && !schedule ? errorMessage(settingsQuery.error) : null;
 
   // Board columns collapsed to rails, keyed by storage day (0=Sun..6=Sat).
@@ -193,7 +196,7 @@ export default function SchedulePanel() {
       const guests = s.generation.guestMode === 'none'
         ? 'No guests'
         : s.generation.guestMode === 'random'
-          ? `Random guests (${s.generation.guestCount.min}–${s.generation.guestCount.max})`
+          ? s.generation.template === 'common-ground' ? 'Random guest' : `Random guests (${s.generation.guestCount.min}–${s.generation.guestCount.max})`
           : 'Selected guests';
       return `${host} · ${guests}`;
     }
@@ -314,7 +317,11 @@ export default function SchedulePanel() {
 
   const makeGeneratedShow = (templateId: GeneratedTemplateId): Show | null => {
     const template = GENERATED_SHOW_TEMPLATES.find(item => item.id === templateId);
-    const personaIds = personas.map(persona => persona.id).filter(Boolean);
+    const personaIds = (templateId === 'common-ground' ? commonGroundPersonas : personas).map(persona => persona.id).filter(Boolean);
+    if (templateId === 'common-ground' && personaIds.length < 2) {
+      notify.err('Enable at least two DJs in Sub/Shows → Random Hosts before adding Common Ground.');
+      return null;
+    }
     if (!template || personaIds.length === 0) {
       notify.err('Add at least one DJ before scheduling a generated show.');
       return null;
@@ -331,7 +338,7 @@ export default function SchedulePanel() {
       customName: '',
       hostMode: 'random',
       guestMode: 'random',
-      guestCount: { min: 0, max: GUESTS_MAX },
+      guestCount: templateId === 'common-ground' ? { min: 1, max: 1 } : { min: 0, max: GUESTS_MAX },
       minimumCoverage: null,
     };
     return hydrateFullShow({
@@ -537,6 +544,17 @@ export default function SchedulePanel() {
     if (generatedOptionsDraft.generation?.nameMode === 'custom' && !generatedOptionsDraft.generation.customName.trim()) {
       notify.err('Enter a custom episode name before applying these options.');
       return;
+    }
+    if (generatedOptionsDraft.generation?.template === 'common-ground') {
+      const draft = generatedOptionsDraft;
+      const eligibleIds = new Set(commonGroundPersonas.map(persona => persona.id));
+      if (eligibleIds.size < 2 || (draft.generation!.hostMode === 'fixed' && !eligibleIds.has(draft.personaId))
+        || (draft.generation!.guestMode === 'fixed' && (draft.guestPersonaIds.length !== 1
+          || !eligibleIds.has(draft.guestPersonaIds[0]!)
+          || (draft.generation!.hostMode === 'fixed' && draft.guestPersonaIds[0] === draft.personaId)))) {
+        notify.err('Common Ground needs two distinct DJs enabled in Random Hosts. Choose one eligible guest.');
+        return;
+      }
     }
     setShows(current => current.map(show => show.id === generatedOptionsDraft.id ? generatedOptionsDraft : show));
     setGeneratedOptionsDraft(null);
@@ -864,7 +882,7 @@ export default function SchedulePanel() {
         {generatedOptionsDraft?.generation?.mode === 'generated' && (
           <GeneratedShowOptions
             show={generatedOptionsDraft}
-            personas={personas}
+            personas={generatedOptionsDraft.generation.template === 'common-ground' ? commonGroundPersonas : personas}
             apiBase={API_BASE}
             onHostChange={value => {
               setGeneratedOptionsDraft(current => current?.generation
@@ -912,7 +930,7 @@ export default function SchedulePanel() {
                       generation: {
                         ...current.generation,
                         guestMode: 'random',
-                        guestCount: { min: 0, max: GUESTS_MAX },
+                        guestCount: current.generation.template === 'common-ground' ? { min: 1, max: 1 } : { min: 0, max: GUESTS_MAX },
                       },
                     }
                   : current);
@@ -1128,10 +1146,13 @@ function GeneratedShowOptions({
 }) {
   const generation = show.generation!;
   const guestCount = generation.guestCount;
+  const commonGround = generation.template === 'common-ground';
   return (
     <div className="grid gap-5">
       <p className="text-[13px] leading-[1.6] text-ink">
-        Choose the episode name, host and guest count. Random DJs draw from the pools in Sub/Shows settings.
+        {commonGround
+          ? 'Choose the host and one guest. Both DJs must be enabled in Sub/Shows → Random Hosts.'
+          : 'Choose the episode name, host and guest count. Random DJs draw from the pools in Sub/Shows settings.'}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid content-start gap-2">
@@ -1170,31 +1191,31 @@ function GeneratedShowOptions({
         </div>
 
         <div className="grid content-start gap-2">
-          <Label htmlFor="generated-show-guests">Guests</Label>
+          <Label htmlFor="generated-show-guests">{commonGround ? 'Guest' : 'Guests'}</Label>
           <Select value={generation.guestMode} onValueChange={onGuestModeChange}>
             <SelectTrigger id="generated-show-guests"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="random">Random Guests</SelectItem>
-              <SelectItem value="none">No guests</SelectItem>
-              <SelectItem value="fixed">Selected guests</SelectItem>
+              <SelectItem value="random">{commonGround ? 'One random guest' : 'Random Guests'}</SelectItem>
+              {!commonGround && <SelectItem value="none">No guests</SelectItem>}
+              <SelectItem value="fixed">{commonGround ? 'Choose one guest' : 'Selected guests'}</SelectItem>
             </SelectContent>
           </Select>
           {generation.guestMode === 'fixed' && (
             <div className="grid gap-2">
-              <Label className="text-xs">Choose up to {GUESTS_MAX} guests</Label>
+              <Label className="text-xs">{commonGround ? 'Choose one guest' : `Choose up to ${GUESTS_MAX} guests`}</Label>
               <GuestPersonaPicker
                 personas={personas.filter(persona => generation.hostMode === 'random' || persona.id !== show.personaId)}
                 value={show.guestPersonaIds}
                 onChange={onGuestsChange}
                 apiBase={apiBase}
-                max={GUESTS_MAX}
+                max={commonGround ? 1 : GUESTS_MAX}
               />
               {personas.length <= (generation.hostMode === 'random' ? 0 : 1) && (
                 <Mu className="text-[9px]">Add another DJ before choosing a fixed guest.</Mu>
               )}
             </div>
           )}
-          {generation.guestMode === 'random' && (
+          {generation.guestMode === 'random' && !commonGround && (
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="generated-show-guest-min" className="text-xs">Minimum</Label>
@@ -1233,11 +1254,11 @@ function GeneratedShowOptions({
             </div>
           )}
           {generation.guestMode === 'fixed' && (
-            <Mu className="text-[9px]">Uses the guests already selected for this show.</Mu>
+            <Mu className="text-[9px]">{commonGround ? 'Exactly one guest is required.' : 'Uses the guests already selected for this show.'}</Mu>
           )}
         </div>
       </div>
-      <Mu className="text-[9px]">Random Guests can range from 0 to {GUESTS_MAX}. The selected host is never added as their own guest.</Mu>
+      <Mu className="text-[9px]">{commonGround ? 'Common Ground always pairs two different DJs with equal musical influence.' : `Random Guests can range from 0 to ${GUESTS_MAX}. The selected host is never added as their own guest.`}</Mu>
     </div>
   );
 }

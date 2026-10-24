@@ -38,10 +38,11 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-Only DJ’s Choice and Deep Discovery are accepted template options in saved
-settings and the preview harness. Unsupported legacy template names use the
+DJ’s Choice, Common Ground and Deep Discovery are accepted template options in
+saved settings. Common Ground also has a dedicated comparison harness. Unsupported legacy template names use the
 existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
-Random casting uses the station-wide Sub/Shows host and guest pools only.
+Random casting uses the station-wide Sub/Shows pools. Common Ground uses the
+Random Hosts pool for both participants, including explicitly selected DJs.
 Legacy per-show candidate lists are ignored and stripped during normalization;
 removing them does not change a slot’s random/fixed host or guest modes.
 
@@ -324,28 +325,86 @@ familiar-core policy is described below.
 
 ## Template ideas for later exploration
 
-These are proposals, not implemented templates or commitments. Each should give
+Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and
-show filters. DJ’s Choice and Deep Discovery remain the current templates.
+show filters. DJ’s Choice, Deep Discovery and Common Ground are implemented;
+the remaining ideas below are proposals.
 
 | Working name | Musical idea | Planning approach |
 | --- | --- | --- |
-| Common Ground | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
+| Common Ground (implemented) | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
 | Outside the Comfort Zone | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
 | Time Capsule | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
-Common Ground and Outside the Comfort Zone are the suggested first candidates
-to explore. Both appear compatible with the existing brief-first planner and
-coverage checks; their exact filtering and coverage policies remain to be
-decided. Common Ground would also need a defined policy for slots without a
-guest.
+Outside the Comfort Zone remains a suggested next candidate. Common Ground
+uses exactly one distinct guest and equal musical influence for both DJs; the
+host still leads presentation. It uses strict genres with the same twice-airtime
+coverage checks as the other Sub/Shows.
 
 Templates promising alternating DJ selections, specific tracks or a precise
 musical progression would need additional influence over the track picker.
 Forgotten Favourites remains separately deferred for the same reason: planning
 a brief and filters does not by itself favour neglected tracks at selection.
+
+### Common Ground and preview harness
+
+Common Ground is available on the schedule shelf, in programming menus and as
+a prepared takeover. The default is Random Host plus exactly one random guest;
+slot options can instead select exactly one guest. Both DJs must be enabled in
+Random Hosts, and a randomly selected host cannot displace a fixed guest.
+Scheduled variants, regeneration, cast shuffling, saved regular shows and Look
+Ahead reuse the existing Sub/Shows lifecycle.
+
+The harness uses the same concept/settings calls as Sub/Shows, with Souls as
+primary evidence, optional Musical Leanings, and both DJs' scheduled regular-show
+filters as supporting repertoire context. Regular-show briefs are omitted.
+Explicit persona preferences take precedence; an overlap need not already
+appear in either DJ's shows. Both DJs have equal musical influence.
+
+The preview concept call first records a supported musical interest for each DJ
+and one shared musical thread. It then writes a distinctive title and a brief
+of 2–3 sentences explaining each DJ's connection and one recurring musical
+question. Prefer a small coherent palette (usually 2–5 styles), expanding only
+for coverage. Avoid unrelated genre groups, generic template titles and
+invented shared preferences. The settings prompt contains no example date
+range: eras remain empty unless the operator explicitly requests a period.
+
+Both participants must be enabled in **Sub/Shows → Random Hosts**, including
+explicitly named pairs. The Random Guests list is not used for this experiment.
+A null eligibility list means everyone; an empty list permits nobody. Unknown,
+ambiguous, excluded or identical participants are rejected before model calls.
+
+From `controller/`, point `STATE_DIR` at the station's state root:
+
+```sh
+STATE_DIR=/path/to/station/state npm run common-ground:preview -- --list
+STATE_DIR=/path/to/station/state npm run common-ground:preview -- --count 3
+STATE_DIR=/path/to/station/state npm run common-ground:preview -- --host "DJ name" --guest "Other DJ name" --count 2
+```
+
+With no fixed pair, `--count` selects distinct random pairs without replacement.
+Fixing one participant compares different eligible partners. Fixing both repeats
+that pair, to inspect variation. Counts default to three and can be 1–20;
+`--minutes` defaults to 60 and can be 1–360.
+
+The default model is `/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf` at
+`http://qwen-llama-cpp:8080/v1`; overrides are `SHOW_PLAN_PREVIEW_MODEL` and
+`LLM_BASE_URL`. Run somewhere those station service addresses are reachable.
+
+Before importing runtime modules, the harness creates temporary settings and
+credential copies plus a consistent SQLite library backup. All local writes and
+telemetry stay in that temporary state, which is removed on exit. Navidrome
+lookups may read the configured music service. No plans, schedules, notebooks
+or station settings are saved. A full library backup needs temporary space
+approximately equal to the indexed library database.
+
+JSON goes to stdout; progress goes to stderr. Output includes the cast,
+supporting repertoire, generated brief/settings, matching pool diagnostics and
+whether coverage reaches twice the airtime at a four-minute average. The harness
+uses the same strict genre and coverage policy as the scheduled template. Inadequate pools and individual generation failures remain visible for
+review; the harness does not silently replace a pairing or accept it for air.
 
 ### DJ’s Choice familiar-core policy
 

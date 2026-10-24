@@ -73,7 +73,7 @@ export function preparationGrounding(result: AcceptedPreparation, music: 'restri
 }
 
 export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, generate: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan> = generateShowPlan): Promise<GeneratedShowPlan> {
-  const strictGenres = snapshot.template === 'deep-discovery' || snapshot.template === 'dj-choice';
+  const strictGenres = ['deep-discovery', 'dj-choice', 'common-ground'].includes(snapshot.template);
   const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0, strictGenres
     ? Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000) : 0);
   const accept = (raw: GeneratedShowPlan) => {
@@ -96,7 +96,7 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
   if (enough(coverage)) return plan;
   plan = accept(await generate({
     ...snapshot,
-    coverageCorrection: `Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for DJ’s Choice and Deep Discovery). Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions. Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
+    coverageCorrection: `Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Sub/Shows). Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions. Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
   }));
   coverage = await validateCoverage(plan);
   if (!enough(coverage)) {
@@ -449,7 +449,9 @@ export function buildGeneratedSnapshot(show: Show | undefined, occurrence: Prepa
     return persona ? [persona.id, persona.name, persona.soul, persona.musicLean] : [id, null];
   });
   const configuration = JSON.stringify([
-    config, cast, personaInput, existingShows, settings.get().timezone, settings.get().locale, settings.moodVocab(),
+    config, cast, personaInput, existingShows,
+    ...(config.template === 'common-ground' ? [scheduledShowsForHost(cast.guestPersonaIds[0]!, show.id)] : []),
+    settings.get().timezone, settings.get().locale, settings.moodVocab(),
     show.playlistIds, show.playlistStrict, show.excludedPlaylistIds,
     show.maxTrackSeconds, show.minTrackLengthSeconds,
     show.vocals,

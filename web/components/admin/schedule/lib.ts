@@ -21,7 +21,7 @@ export interface ScheduleShow {
   generation?: ShowGenerationConfig;
 }
 
-export type GeneratedTemplateId = 'dj-choice' | 'deep-discovery';
+export type GeneratedTemplateId = ShowGenerationConfig['template'];
 
 /** Shared display ordering; never reorder the roster used for show colours. */
 export function programmingGroups<T extends { name: string; generation?: { mode?: string; template?: string } }>(shows: readonly T[], locale?: string) {
@@ -38,11 +38,13 @@ export const GENERATED_SHOW_TEMPLATES: {
   label: string;
 }[] = [
   { id: 'dj-choice', label: "DJ's Choice" },
+  { id: 'common-ground', label: 'Common Ground' },
   { id: 'deep-discovery', label: 'Deep Discovery' },
 ];
 
 export const GENERATED_SHOW_COLORS: Record<GeneratedTemplateId, string> = {
   'dj-choice': 'color-mix(in oklab, #c24824 75%, var(--bg))',
+  'common-ground': 'color-mix(in oklab, #7f5ca5 75%, var(--bg))',
   'deep-discovery': 'color-mix(in oklab, #167978 75%, var(--bg))',
 };
 
@@ -63,7 +65,7 @@ export function generatedShowLabel(
   const guests = generation?.guestMode === 'none'
     ? 'No guests'
     : generation?.guestMode === 'random'
-      ? `Random guests (${generation.guestCount.min}–${generation.guestCount.max})`
+      ? generation.template === 'common-ground' ? 'Random guest' : `Random guests (${generation.guestCount.min}–${generation.guestCount.max})`
       : (show.guestPersonaIds ?? [])
         .map(id => personas.find(persona => persona.id === id)?.name)
         .filter((name): name is string => Boolean(name))

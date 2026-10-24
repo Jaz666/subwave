@@ -102,7 +102,8 @@ export function showPayload(s: Show) {
     personaId: s.personaId,
     // Host can be switched after guests were picked; the server rejects a
     // guest duplicating the host, so filter it here too.
-    guestPersonaIds: (s.guestPersonaIds || []).filter(id => id !== s.personaId),
+    guestPersonaIds: (s.guestPersonaIds || []).filter(id =>
+      (s.generation?.mode === 'generated' && s.generation.hostMode === 'random') || id !== s.personaId),
     // Banter only means something with guests in the studio.
     banter: (s.guestPersonaIds?.length ?? 0) > 0 && s.banter,
     pauseTalk: s.pauseTalk === true,
