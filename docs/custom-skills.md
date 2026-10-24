@@ -160,9 +160,9 @@ uses the **active scheduled show's roster**: the show's host followed by every
 resolved `guestPersonaIds` co-host. The separate `cast: tool` option below allows temporary segment guests. The
 existing enable toggle and persona assignment remain keyed to the host.
 
-The discussion contains exactly one contribution per live roster member, in that
-order. The model is instructed to give each person **2–5 short sentences**, in
-that persona's own character, as one coherent conversation. Do not put labels
+The discussion follows the number and order of turns requested in the skill
+brief, up to 16 turns. Every selected presenter must speak at least once, in
+their own character, as one coherent conversation. Do not put labels
 such as `Mara:` in the brief or returned speech: speaker identity is structured
 metadata, and each contribution is rendered through that persona's own TTS
 configuration and fallback. The clips are pre-rendered as a complete exchange
@@ -712,9 +712,9 @@ Special guest: Producer Dave
 The name must resolve to one existing persona (an exact persona ID also works).
 Matching names is case-insensitive. The controller keeps the current host and
 scheduled guests, then adds the special guest without duplicating them. The
-show roster is unchanged; this also runs on a solo show. Prompt-selected casts
-use two rounds in cast order, at most four participants/eight short turns. Use
-the rest of the prompt to describe the conversation and the guest's role.
+show roster is unchanged; this also runs on a solo show. Prompt-selected casts support at most four participants. Use the rest of the
+prompt to specify the number and order of turns (up to 16) and the guest's role.
+A fifth host reaction is allowed; there is no fixed alternating sequence.
 
 Missing, ambiguous or host-identical guests, empty names and multiple directive
 lines stand the segment down. Fenced examples, quotations and ordinary prose
@@ -733,11 +733,12 @@ once before generation in either segment runtime. The result must include
 The current host need not be included; a solo guest promo can use one other persona. Unknown IDs or unusable data stand the segment down. A one-person
 cast uses the simple `air`/`text` output contract, then delivers a normal solo
 contribution; a larger cast uses structured speaker lines and produces one
-contribution per persona in that exact order, using their own soul and TTS.
-A tool can also return `turnCount` (an integer from the cast size to 8) to request
-several turns cycling through that order. Solo casts use one turn. This changes
-only that segment; ordinary `cohosts: true` skills still give one contribution
-per scheduled presenter.
+conversation using the selected personas’ own souls and TTS voices.
+A tool can also return `turnCount` (an integer from 1 to 16) as a suggested
+length when the prompt does not specify a structure. The prompt takes priority.
+All discussions follow the prompt's turn count and order, with every selected
+presenter speaking at least once and a ceiling of 16 turns. Solo casts still
+use a single speech segment.
 The show roster is unchanged. A scheduled guest is only included if the tool
 explicitly requests them. Host skill ownership, enablement, cooldown and
 Sub/Shows eligibility still apply; a solo show can use this option.
