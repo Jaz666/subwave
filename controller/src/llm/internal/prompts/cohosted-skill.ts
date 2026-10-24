@@ -84,12 +84,13 @@ export function cohostedSkillSystem({ capability, host, guests, grounded = false
 
 You alone deliver this short skill segment. There are no other speaking participants.
 Follow the skill's supplied mode: an upcoming-host promo is a standalone promo for your later show, not a discussion or a claim that you host the current show.
-Use only the supplied source data. If nothing usable is supplied, set air to false and ${lookAhead ? 'both summaries' : 'text'} to empty strings. Never fill gaps from earlier speech or memory.
+Use supplied source data for real factual claims and the show skill notebook for continuity within this airing. When the skill explicitly requests fictional material, invent within that premise; do not present invented real events as facts. If there is neither usable source material nor an explicitly requested fictional premise, set air to false and ${lookAhead ? 'both summaries' : 'text'} to empty strings. Never use earlier speech as evidence for new real-world facts.
+A committed notebook topic is already established: continue the skill's requested mode rather than repeating its introduction. Honor recorded contributions; never describe an established discussion as its first call or claim no contributions exist when history contains them.
 
 Skill "${capability.kind || 'segment'}" instructions:
 ${capability.desc || ''}
 
-${lookAhead ? `The controller supplies the exact time, show title and cast separately for each show. Do not write the full announcement. Write firstSummary only about shows[0] and secondSummary only about shows[1] (empty if absent). Use at most one short sentence per summary, in your own voice. Include no dates, times, presenter names, titles, introductions or chronology. The skill's instructions about announcing those facts are handled by the controller. Do not copy earlier spoken examples.` : 'Write your spoken words in text, without speaker labels or stage directions.'}
+${lookAhead ? `The controller supplies the exact time, show title and cast separately for each show. Do not write the full announcement. Write firstSummary only about shows[0] and secondSummary only about shows[1] (empty if absent). Use at most one short sentence per summary, in your own voice. Include no dates, times, presenter names, titles, introductions or chronology. The skill's instructions about announcing those facts are handled by the controller. Do not copy earlier spoken examples.` : 'Write your spoken words in text, without speaker labels or stage directions. Use ordinary apostrophes, without literal backslashes before quotes or apostrophes.'}
 ${settings.agentLanguageReminder(host, lookAhead ? 'the summary fields' : 'the "text" line')}`;
   }
   const lang = String(host.language || '').trim() || 'English';
@@ -108,7 +109,7 @@ ${capability.desc || ''}
 
 ${turnPlan ? `Required turn plan (exactly ${turnPlan.length} turns):\n${turnPlan.map((turn, index) => `${index + 1}. ${turn.speaker} — ${turn.instruction}`).join('\n')}\nReturn only these turns, in this order. Do not add another introduction, a repeated setup, a station ident or an extra ending.` : ''}
 
-Write a fresh, complete standalone exchange. Earlier on-air excerpts are only repetition warnings, never unfinished dialogue to continue.
+Write a fresh, complete exchange. Use the show skill notebook as continuity: its topic is already established and its history records contributions already heard. Advance the skill's requested mode rather than introducing the topic again. Earlier on-air excerpts are repetition warnings, never unfinished dialogue to continue.
 
 Rules:
 - Follow the number and order of turns requested in the skill brief. Complete its listed steps, including a final reaction or sign-off. Do not truncate the sequence to a default count. Use only the selected persona IDs, and give every participant a contribution. At most ${MAX_DISCUSSION_TURNS} turns.
@@ -117,6 +118,7 @@ Rules:
 - Each speaker stays in THEIR OWN character. Use supplied role information to distinguish the on-air host from a temporary guest.
 - ${grounding}
 - ${onAirLocationGrounding()}
+- Use ordinary apostrophes in spoken words; do not add literal backslashes before quotes or apostrophes.
 - Plain spoken words only. Do not write speaker labels such as "Name:" inside text; speaker identity travels separately and each line will use that persona's own TTS voice.
 - Everyone speaks ${lang} on air. ${settings.spokenProperNounDirective(host)}${settings.castHouseRulesBlock()}`;
 }
