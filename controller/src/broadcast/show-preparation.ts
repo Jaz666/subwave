@@ -125,6 +125,7 @@ interface PreparationDeps {
   source: (result: AcceptedPreparation, snapshot: PreparationSnapshot, context: SessionContext) => Promise<ArtistEpisodeSource | null>;
   generatedSnapshot?: (context: SessionContext, castSeed?: string) => GeneratedShowSnapshot | null;
   scheduledGeneratedSnapshot?: (context: SessionContext, castSeed?: string) => GeneratedShowSnapshot | null;
+  isScheduledOccurrenceCurrent?: (occurrence: PreparationOccurrence) => boolean;
   generate?: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan>;
   now?: () => number;
   changed?: () => void;
@@ -138,8 +139,12 @@ export function createShowPreparation(deps: PreparationDeps) {
   const pending = new Map<string, Promise<EpisodeView>>();
   let writing: Promise<void> = Promise.resolve();
   let recovered: Promise<void> | null = null;
+  let generatedNeedsPrune = false;
   const newestGenerated = (items: Iterable<GeneratedShowRecord>) => [...items]
     .filter(record => record.occurrence.endsAt + GENERATED_SHOW_HISTORY_MS > now())
+    // Keep aired history, but a never-started plan must still match its saved slot.
+    .filter(record => record.occurrence.source !== 'scheduled' || record.occurrence.startsAt <= now()
+      || deps.isScheduledOccurrenceCurrent?.(record.occurrence) !== false)
     .sort((a, b) => b.occurrence.startsAt - a.occurrence.startsAt)
     .slice(0, GENERATED_SHOW_RECORDS_MAX)
     // The configuration fingerprint contains the host's Soul and context. It
@@ -151,6 +156,7 @@ export function createShowPreparation(deps: PreparationDeps) {
       const stored = preparationStoreSchema.parse(raw);
       records = new Map(stored.records.filter(r => r.occurrence.endsAt + 600_000 > now()).map(r => [r.occurrence.id, r]));
       generated = new Map(newestGenerated(stored.generated).map(r => [r.occurrence.id, r]));
+      generatedNeedsPrune = generated.size !== stored.generated.length;
       restoreGeneratedShows([...generated.values()]);
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) logEvent('show.preparation', { error: errorMessage(error), stage: 'recovery' });
@@ -167,6 +173,7 @@ export function createShowPreparation(deps: PreparationDeps) {
       await writeFileAtomic(deps.file, JSON.stringify({ version: 2, records: [...next.values()], generated: [...retainedGenerated.values()] }));
       records = next;
       generated = retainedGenerated;
+      generatedNeedsPrune = false;
       restoreGeneratedShows([...generated.values()]);
       for (const id of views.keys()) if (!next.has(id)) views.delete(id);
     });
@@ -346,9 +353,16 @@ export function createShowPreparation(deps: PreparationDeps) {
     return ensure({ context });
   };
   const occurrence = ({ context }: { context: SessionContext }) => deps.snapshot(context)?.occurrence ?? null;
-  const generatedRecords = async () => {
+  const reconcileGenerated = async () => {
     await recover();
     await writing;
+    if (generatedNeedsPrune || newestGenerated(generated.values()).length !== generated.size) {
+      await persist(() => {});
+      deps.changed?.();
+    }
+  };
+  const generatedRecords = async () => {
+    await reconcileGenerated();
     return newestGenerated(generated.values());
   };
   const regenerateGenerated = async (occurrenceId: string, castSeed?: string) => {
@@ -380,7 +394,7 @@ export function createShowPreparation(deps: PreparationDeps) {
     await recover();
     await persist((_records, next) => { next.delete(occurrenceId); });
   };
-  return { recover, read, ensure, retry, occurrence, ensureGenerated, generatedRecords, regenerateGenerated, previewGeneratedCast, acceptPreparedGenerated, discardPreparedGenerated };
+  return { recover, read, ensure, retry, occurrence, ensureGenerated, reconcileGenerated, generatedRecords, regenerateGenerated, previewGeneratedCast, acceptPreparedGenerated, discardPreparedGenerated };
 }
 
 const occurrenceCache: Array<{ key: string; occurrence: PreparationOccurrence }> = [];
@@ -478,6 +492,14 @@ export const showPreparation = createShowPreparation({
   file: `${config.stateDir}/show-preparations.json`, snapshot,
   generatedSnapshot,
   scheduledGeneratedSnapshot,
+  isScheduledOccurrenceCurrent: occurrence => {
+    const station = settings.get();
+    const show = station.shows?.find(item => item.id === occurrence.showId);
+    if (show?.generation?.mode !== 'generated') return false;
+    const current = resolveShowOccurrence({ at: occurrence.startsAt, showId: occurrence.showId,
+      schedule: station.schedule, override: null, parts: ms => zonedParts(new Date(ms)) });
+    return current?.id === occurrence.id && current.endsAt === occurrence.endsAt;
+  },
   generate: generateShowPlan,
   execute: async (snap, context) => {
     const cap = loadedCapabilities().find(c => c.skill === snap.skill);
@@ -515,6 +537,7 @@ export async function prepareUpcomingGeneratedShows({ from = Date.now(), horizon
   horizonMs?: number;
   showId?: string;
 } = {}): Promise<number> {
+  await showPreparation.reconcileGenerated();
   const until = from + horizonMs;
   const station = settings.get();
   const schedule = station.schedule;
