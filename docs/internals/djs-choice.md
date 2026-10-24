@@ -67,10 +67,17 @@ forced capability runs; explicit operator Run now remains an override. A null
 eligible list permits all otherwise eligible skills, and an empty list permits
 none. Host ownership, enablement and co-host requirements still apply.
 
-The generated brief supplies one musical talking point the DJ can revisit
-naturally between tracks. It uses the existing topic field and normal show
-context; it does not add programme beats or require a fixed script. Existing
-accepted episode plans are retained until their normal regeneration opportunity.
+All three templates require a separate, non-empty `talkingPoint` in the concept
+response. The controller appends it to the saved brief as **Talking point
+(optional thread): …**, using the existing topic field and normal show context.
+Links and segments can therefore pick it up without another model call or a
+separate context setting. The concept summary reserves space so the combined
+brief stays within the existing 2,000-character limit.
+
+The point is one specific musical question or contrast for occasional natural
+comments, not a script, mandatory feature or repeated prompt on every link. It
+must fit the selected music and does not impose additional filter restrictions.
+Existing accepted episode plans are retained until regenerated.
 
 ## Compact planner station trial — 23 October 2026
 
