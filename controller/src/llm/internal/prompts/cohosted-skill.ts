@@ -14,6 +14,13 @@ interface CastPersona {
   language?: string;
 }
 
+// A solo tool-selected voice needs no speaker IDs or nested contribution array.
+export const soloSkillSchema = z.object({
+  reason: z.string().describe('short internal explanation of the segment decision'),
+  air: z.boolean().describe('false when source data is unusable; otherwise true'),
+  text: z.string().max(1200).describe('one complete spoken segment in this persona’s voice; empty when air is false'),
+});
+
 export function cohostedSkillSchema(cast: CastPersona[]) {
   const ids = cast.map((p) => p.id) as [string, ...string[]];
   const line = z.object({
@@ -55,6 +62,19 @@ export function cohostedSkillSystem({ capability, host, guests, grounded = false
   guests: CastPersona[];
   grounded?: boolean;
 }): string {
+  if (capability.toolCast && !guests.length) {
+    return `${settings.agentPersonaPreamble(host)}
+
+You alone deliver this short skill segment. There are no other speaking participants.
+Follow the skill's supplied mode: an upcoming-host promo is a standalone promo for your later show, not a discussion or a claim that you host the current show.
+Use only the supplied source data. If nothing usable is supplied, set air to false and text to an empty string. Never fill gaps from earlier speech or memory.
+
+Skill "${capability.kind || 'segment'}" instructions:
+${capability.desc || ''}
+
+Write your spoken words in text, without speaker labels or stage directions.
+${settings.agentLanguageReminder(host, 'the "text" line')}`;
+  }
   const lang = String(host.language || '').trim() || 'English';
   const grounding = capability.toolCast
     ? 'Source data has already been fetched for this segment. Use only that supplied source data; do not call a tool again or invent missing facts.'
