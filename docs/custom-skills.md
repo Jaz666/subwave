@@ -701,6 +701,29 @@ the example: no search results means the DJ must stick to supplied library facts
 Existing custom tools that return arbitrary data need this result envelope to
 serve as preparation skills.
 
+### Special guests from the prompt
+
+Enable **Co-Hosted Discussion** and add one standalone line to the prompt body:
+
+```text
+Special guest: Producer Dave
+```
+
+The name must resolve to one existing persona (an exact persona ID also works).
+Matching names is case-insensitive. The controller keeps the current host and
+scheduled guests, then adds the special guest without duplicating them. The
+show roster is unchanged; this also runs on a solo show. Prompt-selected casts
+use two rounds in cast order, at most four participants/eight short turns. Use
+the rest of the prompt to describe the conversation and the guest's role.
+
+Missing, ambiguous or host-identical guests, empty names and multiple directive
+lines stand the segment down. Fenced examples, quotations and ordinary prose
+mentions do not invite anyone. The directive is active only when Co-Hosted
+Discussion is enabled. If a tool returns an explicit `speakerIds` list, that
+list takes precedence, including over an invalid or unresolved prompt guest.
+For a tool-selected cast without a prompt directive, use `cast: tool` below.
+No additional model call is needed to resolve the participant.
+
 ### `cast: tool` — temporary segment guests
 
 This opt-in frontmatter setting uses the existing exchange renderer with a cast
@@ -744,8 +767,8 @@ A future random-guest tool can choose from names or IDs and use the same lookup.
 Copy both example files into `state/skills/word-with-the-producer/` after
 updating the controller, then rescan Skills. The new skill arrives disabled;
 enable and assign it to the hosts who should run it, and allow it for Sub/Shows
-if desired. No existing skill is replaced. The general special-guest UI switch
-and prompt-driven participant resolution remain to be designed.
+if desired. No existing skill is replaced. For a prompt-only discussion, use the Special Guest directive above instead
+of a tool. No separate guest switch or dropdown is needed.
 
 ### Look Ahead schedule data
 

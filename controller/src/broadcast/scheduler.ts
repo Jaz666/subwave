@@ -1295,7 +1295,7 @@ export function skillCronEligibility(cap: any, enabled: Record<string, boolean |
     skill: cap.skill,
     enabled,
     personaSkills: host?.skills,
-    requiresCohosts: !!cap.cohosts && !cap.toolCast,
+    requiresCohosts: !!cap.cohosts && !cap.toolCast && !cap.specialGuestNames?.length,
     hasCohosts: !!host && guests.length > 0,
   });
 }

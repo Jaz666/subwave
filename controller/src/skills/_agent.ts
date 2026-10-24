@@ -210,7 +210,7 @@ function availableCapabilities(ctx, now: Date) {
       enabled,
       personaSkills: persona?.skills,
       eligibleSkillNames,
-      requiresCohosts: !!cap.cohosts && !cap.toolCast,
+      requiresCohosts: !!cap.cohosts && !cap.toolCast && !cap.specialGuestNames?.length,
       hasCohosts: !!persona && guests.length > 0,
     }).allowed) continue;
     // cronOnly withholds the skill from the director entirely: it fires only
@@ -407,7 +407,7 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   if (!cap) return { seg: null, exchange: null, reason: 'nothing fresh to say' };
   if (cap.cohosts) {
     const { host, guests } = settings.getOnAirRoster();
-    if (!host || (!guests.length && !cap.toolCast)) return { seg: null, exchange: null, reason: 'requires a co-hosted show' };
+    if (!host || (!guests.length && !cap.toolCast && !cap.specialGuestNames?.length)) return { seg: null, exchange: null, reason: 'requires a co-hosted show' };
     const result = await runCohostedCapability({
       capability: cap, host, guests, context: ctx,
       situation: buildCohostedSituation(ctx, cap),
@@ -596,7 +596,7 @@ export async function agenticTick(ctx) {
       const selected = selectedKind ? caps.find(c => c.kind === selectedKind) : null;
       if (selected?.cohosts) {
         const { host, guests } = settings.getOnAirRoster();
-        if (!host || (!guests.length && !selected.toolCast)) {
+        if (!host || (!guests.length && !selected.toolCast && !selected.specialGuestNames?.length)) {
           seg = null;
           silentReason = 'requires a co-hosted show';
         } else {
@@ -880,7 +880,7 @@ export async function runCapability(
     // A solo hour is a normal, transient state, not a misconfiguration, so it
     // reports `{aired: false, reason}` and Run now answers 200. Contrast
     // cap.ready() above, which throws because a missing key needs fixing.
-    if (!host || (!guests.length && !cap.toolCast)) {
+    if (!host || (!guests.length && !cap.toolCast && !cap.specialGuestNames?.length)) {
       const reason = 'requires a co-hosted show';
       queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
       return { aired: false, queued: false, deferred: false, text: null, reason };
@@ -1077,6 +1077,7 @@ export function skillCatalog() {
       tags: c.tags || [],
       cohosts: !!c.cohosts,
       toolCast: !!c.toolCast,
+      hasSpecialGuest: !!c.specialGuestNames?.length,
     };
   });
 }
