@@ -360,3 +360,12 @@ Explain the familiar core and the musical connection to adjacent styles in
 the rationale. The palette does not enforce how often adjacent styles play;
 that would require picker weighting. Accepted plans remain unchanged until
 regenerated, and failed regeneration retains the previously accepted plan.
+
+### Brief and era alignment
+
+Keep generated titles and briefs era-neutral by default. Favourite decades in
+a persona or regular show do not justify promises such as “the 80s and beyond”.
+Only promise a date range when the operator explicitly requests that musical
+restriction, and translate any promised period into matching era windows in
+the settings call. Existing accepted plans are unchanged until regenerated.
+This is prompt guidance, not a semantic validator for arbitrary prose.
