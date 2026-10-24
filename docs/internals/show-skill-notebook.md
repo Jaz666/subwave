@@ -6,8 +6,8 @@ Enable the controller-owned notebook in SKILL.md frontmatter:
 
 ```yaml
 ---
-name: hot-topic
-label: Hot Topic
+name: show-discussion
+label: Show Discussion
 notebook: show
 cooldown: 5m
 context: show
@@ -34,7 +34,7 @@ the scope and revision:
 
 ```json
 {
-  "skill": "hot-topic",
+  "skill": "show-discussion",
   "occurrence": {
     "id": "scheduled:show-id:1792850400000",
     "showId": "show-id",
@@ -58,10 +58,10 @@ the scope and revision:
 A tool can read the same snapshot:
 
 ```js
-export default async function hotTopic(ctx, state, services) {
+export default async function showDiscussion(ctx, state, services) {
   const notebook = services.notebook.read();
   if (!notebook) return { available: false, reason: 'Enable notebook: show' };
-  return { available: true, fictionalCorrespondence: true };
+  return { available: true, topic: notebook.topic };
 }
 ```
 
@@ -70,7 +70,6 @@ notebook-enabled run, including during a tool module's `ready()` check. If a
 `ready()` export is needed, check that `services.notebook.read` exists; do not
 require `read()` to return a snapshot at that stage. Keep tools focused on facts or participant selection;
 they do not need their own state files, locks, topic catalogues or LLM calls.
-The prompt must explicitly permit any fictional listener correspondence.
 
 ## What generation returns
 
@@ -125,14 +124,13 @@ must be introduced before any new contributions. An explicit stand-down can
 return `memoryUpdate: null`; an aired segment requires a valid update object.
 Invalid updates prevent TTS/playback rather than being silently repaired.
 
-Useful prompt wording for Hot Topic:
+Useful prompt wording for a recurring discussion:
 
-> Use the show skill notebook's topic throughout this airing. If it is empty,
-> invent one fresh, low-stakes question and introduce its exact wording. Invent
-> fresh fictional listener contributions, avoiding the opinions in the notebook
-> history. Return the proposed topic and concise new contribution summaries in
-> memoryUpdate, each attached to the turn that speaks it. Never read those
-> bookkeeping fields aloud. Do not resolve the debate or change its question.
+> Keep the notebook's topic throughout this airing. When it is empty, introduce
+> one fresh topic using its exact wording. Build on the conversation so far
+> without repeating earlier contributions. Return the topic and concise new
+> contribution summaries in memoryUpdate, attached to the turns that speak
+> them. Never read the bookkeeping fields aloud.
 
 The controller already supplies the memory schema and instructions. Do not ask
 for a second summary call. Topic selection and new dialogue stay LLM-led.
