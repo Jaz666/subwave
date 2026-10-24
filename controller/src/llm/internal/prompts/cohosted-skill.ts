@@ -3,6 +3,7 @@
 // before this prompt is built. Each structured contribution maps to a full persona.
 
 import { z } from 'zod';
+import type { DiscussionTurn } from '../../../skills/discussion-structure.js';
 import * as settings from '../../../settings.js';
 import { soulBrief } from '../core/pure.js';
 import { onAirLocationGrounding } from './grounding.js';
@@ -30,7 +31,7 @@ export const lookAheadSkillSchema = z.object({
 
 export const MAX_DISCUSSION_TURNS = 16;
 
-export function cohostedSkillSchema(cast: CastPersona[]) {
+export function cohostedSkillSchema(cast: CastPersona[], turnPlan: readonly DiscussionTurn[] | null = null) {
   const ids = cast.map((p) => p.id) as [string, ...string[]];
   const line = z.object({
     speaker: z.enum(ids).describe('the exact immutable persona id of the person speaking this turn'),
@@ -41,11 +42,19 @@ export function cohostedSkillSchema(cast: CastPersona[]) {
   return z.object({
     reason: z.string().describe('one short internal sentence explaining why this discussion should air, or why it should stand down'),
     air: z.boolean().describe('true to air the complete discussion; false only when there is no usable source material or nothing responsible to discuss'),
-    lines: z.array(line).max(MAX_DISCUSSION_TURNS).describe('follow the number and order of turns requested in the skill brief; every selected participant speaks; when air is false: an empty array'),
+    lines: z.array(line).max(turnPlan?.length ?? MAX_DISCUSSION_TURNS).describe(turnPlan ? `exactly ${turnPlan.length} turns in the required speaker sequence; when air is false: an empty array` : 'follow the number and order of turns requested in the skill brief; every selected participant speaks; when air is false: an empty array'),
   }).superRefine((value, ctx) => {
     if (!value.air) {
       if (value.lines.length) ctx.addIssue({ code: 'custom', path: ['lines'], message: 'lines must be empty when air is false' });
       return;
+    }
+    if (turnPlan) {
+      if (value.lines.length !== turnPlan.length) {
+        ctx.addIssue({ code: 'custom', path: ['lines'], message: `expected exactly ${turnPlan.length} planned turns` });
+      }
+      for (const [index, turn] of turnPlan.entries()) {
+        if (value.lines[index]?.speaker !== turn.speaker) ctx.addIssue({ code: 'custom', path: ['lines', index, 'speaker'], message: `expected ${turn.speaker} for this planned turn` });
+      }
     }
     for (const persona of cast) {
       if (!value.lines.some(line => line.speaker === persona.id)) {
@@ -61,13 +70,14 @@ function castBlock(host: CastPersona, guests: CastPersona[], toolCast = false): 
   return [entry(host, toolCast ? 'PARTICIPANT' : 'HOST'), ...guests.map((guest) => entry(guest, toolCast ? 'PARTICIPANT' : 'GUEST CO-HOST'))].join('\n');
 }
 
-export function cohostedSkillSystem({ capability, host, guests, grounded = false, lookAhead = false, turnCount = null }: {
+export function cohostedSkillSystem({ capability, host, guests, grounded = false, lookAhead = false, turnCount = null, turnPlan = null }: {
   capability: { kind?: string; desc?: string; toolCast?: boolean };
   host: CastPersona;
   guests: CastPersona[];
   grounded?: boolean;
   lookAhead?: boolean;
   turnCount?: number | null;
+  turnPlan?: readonly DiscussionTurn[] | null;
 }): string {
   if (capability.toolCast && !guests.length) {
     return `${settings.agentPersonaPreamble(host)}
@@ -95,6 +105,10 @@ ${castBlock(host, guests, capability.toolCast)}
 
 Skill "${capability.kind || 'discussion'}" brief:
 ${capability.desc || ''}
+
+${turnPlan ? `Required turn plan (exactly ${turnPlan.length} turns):\n${turnPlan.map((turn, index) => `${index + 1}. ${turn.speaker} — ${turn.instruction}`).join('\n')}\nReturn only these turns, in this order. Do not add another introduction, a repeated setup, a station ident or an extra ending.` : ''}
+
+Write a fresh, complete standalone exchange. Earlier on-air excerpts are only repetition warnings, never unfinished dialogue to continue.
 
 Rules:
 - Follow the number and order of turns requested in the skill brief. Complete its listed steps, including a final reaction or sign-off. Do not truncate the sequence to a default count. Use only the selected persona IDs, and give every participant a contribution. At most ${MAX_DISCUSSION_TURNS} turns.

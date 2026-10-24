@@ -715,6 +715,23 @@ scheduled guests, then adds the special guest without duplicating them. The
 show roster is unchanged; this also runs on a solo show. Prompt-selected casts support at most four participants. Use the rest of the
 prompt to specify the number and order of turns (up to 16) and the guest's role.
 A fifth host reaction is allowed; there is no fixed alternating sequence.
+For an enforced sequence, use one numbered list whose steps start with `Host`,
+`Special guest` or an unambiguous participant name, for example:
+
+```text
+1. The host asks for a joke.
+2. Dave gives the setup.
+3. The host asks why.
+4. Dave gives the punchline.
+5. The host reacts.
+```
+
+The controller resolves these steps once and validates the exact turn count and
+speaker order before playback. Changing the list changes the enforced sequence;
+the model still writes the dialogue in one call. Invalid or ambiguous speaker
+steps stand down. Without a speaker-labelled list, the conversation remains
+free in structure within the 16-turn limit. Recent speech is repetition context,
+not a previous exchange to continue.
 
 Missing, ambiguous or host-identical guests, empty names and multiple directive
 lines stand the segment down. Fenced examples, quotations and ordinary prose

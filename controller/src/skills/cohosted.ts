@@ -6,6 +6,7 @@ import { djAgent, djObject } from '../llm/sdk.js';
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import * as settings from '../settings.js';
 import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema, lookAheadSkillSchema, MAX_DISCUSSION_TURNS } from '../llm/internal/prompts/cohosted-skill.js';
+import { discussionTurnPlan } from './discussion-structure.js';
 import { findSkillPersona } from './special-guest.js';
 import { renderLookAheadTeases } from './look-ahead.js';
 import { requiresGrounding, standDownReason } from './abstain-policy.js';
@@ -65,6 +66,7 @@ export async function runCohostedCapability({
   runAgent?: AgentRunner;
   runObject?: ObjectRunner;
 }): Promise<CohostedResult> {
+  const onAirHostId = host.id;
   // Resolve once before generation, with explicit tool casts taking precedence.
   const promptGuests: string[] = capability.specialGuestNames || [];
   const selectCast = capability.toolCast || promptGuests.length > 0;
@@ -105,8 +107,14 @@ export async function runCohostedCapability({
   const grounded = requiresGrounding(capability);
   const solo = selectCast && cast.length === 1;
   const lookAhead = solo && source?.speechFormat === 'look-ahead';
-  const system = cohostedSkillSystem({ capability: selectCast ? { ...capability, toolCast: true } : capability, host, guests, grounded, lookAhead, turnCount });
-  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast);
+  const structure = solo ? { turns: null, reason: null }
+    : discussionTurnPlan(capability.desc || '', cast, onAirHostId, source?.specialGuest?.id || null);
+  if (structure.reason || (structure.turns && structure.turns.length > MAX_DISCUSSION_TURNS)) {
+    return { aired: false, lines: null, reason: structure.reason || `discussion plans support at most ${MAX_DISCUSSION_TURNS} turns` };
+  }
+  const turnPlan = structure.turns;
+  const system = cohostedSkillSystem({ capability: selectCast ? { ...capability, toolCast: true } : capability, host, guests, grounded, lookAhead, turnCount, turnPlan });
+  const schema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast, turnPlan);
   const ask = lookAhead ? 'Write only the two summary fields for the supplied shows; leave secondSummary empty when only one show is supplied.' : solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
@@ -184,7 +192,7 @@ export async function runCohostedCapability({
   }
 
   const byId = new Map(cast.map((persona) => [persona.id, persona]));
-  const discussion = cohostedSkillSchema(cast).parse(out);
+  const discussion = cohostedSkillSchema(cast, turnPlan).parse(out);
   const lines = discussion.lines.map((line) => ({
     persona: byId.get(String(line.speaker || '')),
     text: String(line.text || '').trim(),
