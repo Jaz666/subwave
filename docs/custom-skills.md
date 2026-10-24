@@ -701,6 +701,19 @@ the example: no search results means the DJ must stick to supplied library facts
 Existing custom tools that return arbitrary data need this result envelope to
 serve as preparation skills.
 
+### Show skill notebook
+
+Add `notebook: show` to SKILL.md frontmatter for controller-owned memory scoped
+to this skill and the current show airing. It survives restarts and starts fresh
+for the next occurrence. The writer receives the committed topic and recent
+contributions automatically; a tool can read them with `services.notebook.read()`.
+Generation proposes `memoryUpdate` separately from speech, and the controller
+commits each update only when its associated turn reaches air.
+
+The file is `notebook.json` alongside the skill's other files. Tools must not
+write it. See [Show skill notebooks](internals/show-skill-notebook.md) for the
+output contract, bounds, delivery/recovery behaviour and operator reset API.
+
 ### Special guests from the prompt
 
 Enable **Co-Hosted Discussion** and add one standalone line to the prompt body:
