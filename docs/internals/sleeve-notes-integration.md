@@ -566,3 +566,34 @@ graph; mechanical UI detection is clear. No live database or container changes.
 Station source handoff is for a user-run web-only rebuild; source rollback is
 002b77ab. Keep local until the operator has evaluated the lighter themes. No PR
 push or description change is authorised by this trial.
+
+
+### Station upstream integration — 24 October
+
+Candidate branch `codex/station-upstream-20261024` starts at station `f8aac960`
+and merges upstream develop through `9c2b54d0` (the twelve commits after
+`2d720937`). The source delta matches that twelve-commit batch; older upstream
+skin changes were already present as station copies. Keep station-only Sub/Shows,
+Look Ahead and confirmed-air notebook behaviour intact. Shared speech resolution
+retains the Sleeve Notes publication guard/cancellation contract alongside the
+upstream optional jingle overlay and marker-aware voice lock.
+
+Controller types pass. The isolated full controller run has 5,564 passes and
+13 failures; all thirteen reproduce on an isolated copy of the prior station
+source. They belong to existing scheduling, discussion, generated-show, picker
+and settings checks and are left for their owning development work. No new
+controller failure is introduced by this integration. All 501 web tests and web types pass. Generated schema/theme mirrors have
+no drift; the admin-query audit and focused lint on shared speech/router files
+pass. No production image build or live audio test
+is performed by the agent.
+
+Station handoff: fast-forward the integration checkout only after the checks.
+The source rollback reference is `f8aac960`; keep a compatible database backup
+for runtime rollback because upstream adds library lyric tables (schema 31).
+Do not reset the Sleeve Notes database. Containers, live settings and state
+remain unchanged until the operator rebuilds controller, web and broadcast.
+The broadcast restart reconnects the stream. Upstream enables the Lyrics panel
+and LRCLIB fallback by default, preserving explicitly saved off switches;
+over-music IDs remain opt-in. Next: operator rebuild and check station health,
+lyrics, file-format display and normal speech. No PR changes are part of this
+station integration.
