@@ -104,7 +104,7 @@ export function featureKindMenu(
     return skillCatalog()
       .filter((c) => c.enabled && c.ready)
       .filter((c) => !host?.skills || host.skills.includes(c.name))
-      .filter((c) => skillEligible({ seeded: false, skill: c.name, enabled: { [c.name]: true }, personaSkills: host?.skills, requiresCohosts: c.cohosts, hasCohosts, preparationSkill }).allowed)
+      .filter((c) => skillEligible({ seeded: false, skill: c.name, enabled: { [c.name]: true }, personaSkills: host?.skills, requiresCohosts: c.cohosts && !c.toolCast, hasCohosts, preparationSkill }).allowed)
       .map((c) => ({ kind: c.kind, desc: c.description || c.label }));
   } catch {
     return [];

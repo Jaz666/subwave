@@ -210,7 +210,7 @@ function availableCapabilities(ctx, now: Date) {
       enabled,
       personaSkills: persona?.skills,
       eligibleSkillNames,
-      requiresCohosts: !!cap.cohosts,
+      requiresCohosts: !!cap.cohosts && !cap.toolCast,
       hasCohosts: !!persona && guests.length > 0,
     }).allowed) continue;
     // cronOnly withholds the skill from the director entirely: it fires only
@@ -407,7 +407,7 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
   if (!cap) return { seg: null, exchange: null, reason: 'nothing fresh to say' };
   if (cap.cohosts) {
     const { host, guests } = settings.getOnAirRoster();
-    if (!host || !guests.length) return { seg: null, exchange: null, reason: 'requires a co-hosted show' };
+    if (!host || (!guests.length && !cap.toolCast)) return { seg: null, exchange: null, reason: 'requires a co-hosted show' };
     const result = await runCohostedCapability({
       capability: cap, host, guests, context: ctx,
       situation: buildCohostedSituation(ctx, cap),
@@ -417,7 +417,7 @@ async function runSimpleDirector(ctx, { caps, speaker, freq, sfxCatalog }) {
     else lastUnavailable.set(cap.kind, Date.now());
     return {
       seg: null,
-      exchange: result.aired ? { kind: cap.kind, lines: result.lines || [], castNames: [host, ...guests].map(p => p.name) } : null,
+      exchange: result.aired ? { kind: cap.kind, lines: result.lines || [], castNames: (result.lines || []).map(line => line.persona.name || line.persona.id) } : null,
       reason: result.reason || undefined,
       skippedBeforeLlm: undefined,
     };
@@ -596,7 +596,7 @@ export async function agenticTick(ctx) {
       const selected = selectedKind ? caps.find(c => c.kind === selectedKind) : null;
       if (selected?.cohosts) {
         const { host, guests } = settings.getOnAirRoster();
-        if (!host || !guests.length) {
+        if (!host || (!guests.length && !selected.toolCast)) {
           seg = null;
           silentReason = 'requires a co-hosted show';
         } else {
@@ -605,7 +605,7 @@ export async function agenticTick(ctx) {
             situation: buildCohostedSituation(ctx, selected),
             segmentState, forced: false,
           });
-          exchange = result.aired ? { kind: selected.kind, lines: result.lines || [], castNames: [host, ...guests].map(p => p.name) } : null;
+          exchange = result.aired ? { kind: selected.kind, lines: result.lines || [], castNames: (result.lines || []).map(line => line.persona.name || line.persona.id) } : null;
           if (result.aired) lastUnavailable.delete(selected.kind);
           else lastUnavailable.set(selected.kind, Date.now());
           seg = null;
@@ -880,7 +880,7 @@ export async function runCapability(
     // A solo hour is a normal, transient state, not a misconfiguration, so it
     // reports `{aired: false, reason}` and Run now answers 200. Contrast
     // cap.ready() above, which throws because a missing key needs fixing.
-    if (!host || !guests.length) {
+    if (!host || (!guests.length && !cap.toolCast)) {
       const reason = 'requires a co-hosted show';
       queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
       return { aired: false, queued: false, deferred: false, text: null, reason };
@@ -894,7 +894,7 @@ export async function runCapability(
       queue.log('scheduler', `[skills] "${cap.kind}" stood down — ${reason}`);
       return { aired: false, queued: false, deferred: false, text: null, reason };
     }
-    const aired = await queue.announceExchange(result.lines.map(line => ({ ...line, meta: lookAheadSourceMeta(ctx, cap.kind) })), cap.kind, { castNames: [host, ...guests].map(p => p.name) });
+    const aired = await queue.announceExchange(result.lines.map(line => ({ ...line, meta: lookAheadSourceMeta(ctx, cap.kind) })), cap.kind, { castNames: (result.lines || []).map(line => line.persona.name || line.persona.id) });
     if (!aired) throw new Error(`skill "${cap.skill}" co-hosted exchange failed to render`);
     lastFired.set(cap.kind, Date.now());
     segmentState.lastAnySegment = Date.now();
@@ -1076,6 +1076,7 @@ export function skillCatalog() {
       // Freeform tags from SKILL.md frontmatter, for the admin list filter.
       tags: c.tags || [],
       cohosts: !!c.cohosts,
+      toolCast: !!c.toolCast,
     };
   });
 }

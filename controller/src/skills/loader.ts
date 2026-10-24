@@ -397,7 +397,9 @@ async function loadSkillDir(dir: string, slug: string, { seeded }: { seeded: boo
     cronOnly: String(data.cronOnly).trim().toLowerCase() === 'true',
     // Disk loading stays lenient: only the literal YAML/string true opts in.
     // False, absent and malformed values preserve the historical solo path.
-    cohosts: String(data.cohosts).trim().toLowerCase() === 'true',
+    cohosts: String(data.cohosts).trim().toLowerCase() === 'true' || data.cast === 'tool',
+    // Trusted operator tools may request a per-segment cast, without changing the show roster.
+    toolCast: data.cast === 'tool',
     // Operator-editable knobs this skill declares for itself (tool.mjs
     // `configFields`, or the generic feed pair for a skill without a tool.mjs).
     // Drives the admin editor's settings section — see config-fields.ts. Empty

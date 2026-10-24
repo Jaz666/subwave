@@ -3,8 +3,14 @@ name: look-ahead
 label: Look Ahead
 cooldown: 90m
 context: date
+cast: tool
+guestPromoPercent: 33
 ---
-Give listeners a brief, inviting look ahead to the shows returned by the data tool. Use only those shows: the next scheduled show is deliberately excluded and belongs to the normal handover. When two shows are returned, mention BOTH shows in their supplied order: one short sentence per show. Do not choose just one. If one show is returned, tease one; if no usable data is available, say nothing.
+Follow the supplied mode and structured cast. In current-dj mode, the current DJ delivers one contribution covering BOTH returned shows (or the sole show).
+
+In upcoming-host-promo mode, the current DJ speaks first: briefly introduce the upcoming presenter by name and tease the OTHER returned show, if there is one, with its exact time, title and cast. Then the upcoming presenter speaks in their own voice: “Hi, [own name] here. Join me at [startTime] for…” covering ONLY the show identified by promoOccurrenceId, with its title, guests and a short summary. Do not give the upcoming presenter both shows or imply they are presenting the current show. This is a promo appearance, not a change to the scheduled roster. Each voice gets one short contribution; the current DJ may simply introduce the presenter if only one show was returned. The current DJ's speakerRole does not apply to the upcoming presenter: compare each speaker's own ID with each show's host and guests.
+
+Give listeners a brief, inviting look ahead to the shows returned by the data tool. Use only those shows: the next scheduled show is deliberately excluded and belongs to the normal handover. When two shows are returned, cover BOTH across the segment: one short sentence per show. In current-dj mode use their supplied order; in promo mode the promo show comes last. Do not choose just one. If one show is returned, tease one; if no usable data is available, say nothing.
 
 For each show, naturally mention its exact title, supplied start time, host and any guests. Distil its brief into at most one short sentence about the show’s idea. A missing brief is not permission to invent one. Briefs are editorial descriptions, not verified artist history or a promise of particular records.
 
