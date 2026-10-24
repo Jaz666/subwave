@@ -706,8 +706,8 @@ serve as preparation skills.
 This opt-in frontmatter setting uses the existing exchange renderer with a cast
 chosen by the operator's trusted `tool.mjs`. The controller fetches the data
 once before generation in either segment runtime. The result must include
-`speakerIds`: one to four distinct existing persona IDs, with the current show
-host first. Unknown IDs or unusable data stand the segment down. A one-person
+`speakerIds`: one to four distinct existing persona IDs in speaking order.
+The current host need not be included; a solo guest promo can use one other persona. Unknown IDs or unusable data stand the segment down. A one-person
 cast produces a normal solo contribution; a larger cast produces one
 contribution per persona in that exact order, using their own soul and TTS.
 The show roster is unchanged. A scheduled guest is only included if the tool
@@ -744,13 +744,14 @@ first-offer preference across restarts. Markers record tool offers, not
 confirmed airings. The prompt requires both selected shows to be mentioned,
 with exact supplied start times and no relative day or time-of-day wording. With no qualifying shows it returns `available: false`.
 Look Ahead uses `cast: tool`. Normally the current host teases both selected
-shows. With `guestPromoPercent` (default 33), the tool instead picks one selected
-show with a different host: the current DJ introduces that presenter and covers
-the other show, then the upcoming host voices their own promo. The upcoming
-host receives their own soul and voice, not the current DJ's identity. When no
-different host is available, the current DJ delivers the full segment. Set the
-chance to 0 for current-DJ teases only, or 100 for promos whenever possible.
-The percentage appears in the skill editor through the tool's `configFields`.
+shows. With `GUEST_PROMO_PERCENT` (default 33) in `tool.mjs`, it instead picks
+one selected show with a different host. Only that upcoming host voices the
+promo, and only their show is returned as source data. There is no current-DJ
+introduction or second show in promo mode. The upcoming host receives their own
+soul and voice. With no different host available, the current DJ delivers the
+full tease. Change the constant to 0 for current-DJ teases only, or 100 for
+promos whenever possible. This setting is intentionally absent from the UI.
+Only the shows actually returned are marked as offered for rotation.
 
 The segment model summarises each selected brief within its normal call; no
 extra summarisation or show-generation call is needed.
