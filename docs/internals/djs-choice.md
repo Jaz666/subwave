@@ -356,6 +356,14 @@ filters as supporting repertoire context. Regular-show briefs are omitted.
 Explicit persona preferences take precedence; an overlap need not already
 appear in either DJ's shows. Both DJs have equal musical influence.
 
+The preview concept call first records a supported musical interest for each DJ
+and one shared musical thread. It then writes a distinctive title and a brief
+of 2–3 sentences explaining each DJ's connection and one recurring musical
+question. Prefer a small coherent palette (usually 2–5 styles), expanding only
+for coverage. Avoid unrelated genre groups, generic template titles and
+invented shared preferences. The settings prompt contains no example date
+range: eras remain empty unless the operator explicitly requests a period.
+
 Both participants must be enabled in **Sub/Shows → Random Hosts**, including
 explicitly named pairs. The Random Guests list is not used for this experiment.
 A null eligibility list means everyone; an empty list permits nobody. Unknown,
