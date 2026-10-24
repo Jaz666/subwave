@@ -181,7 +181,9 @@ export function normalizeGeneratedMusicSettings(raw: unknown): unknown {
 
 export async function generateShowPlan(input: GeneratedShowInput): Promise<GeneratedShowPlan> {
   const discovery = input.template === 'deep-discovery';
-  const genreLimit = discovery ? 15 : 6;
+  const djChoice = input.template === 'dj-choice';
+  const strictGenres = discovery || djChoice;
+  const genreLimit = strictGenres ? 15 : 6;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
   let libraryStats: ReturnType<typeof library.stats> | null = null;
@@ -237,7 +239,9 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       'The Soul is primary and may contain all musical preferences. Musical Leanings is optional supplementary guidance. Choose a musical angle that fits stated preferences; calm speech, banter and personality do not impose music filters.',
       input.template === 'deep-discovery'
         ? `Build a coherent neighbourhood around underrepresented styles, expanding into adjacent genres to provide at least ${requiredTracks} unique matching tracks at a four-minute average: twice the slot airtime, to allow for playback exclusions. Use up to 15 genres as needed. Counts overlap; include enough breadth, not only tiny tags. Popular neighbours may support the rare core. Rarity alone does not connect genres; avoid a generic genre journey or repeating the Soul.`
-        : 'Include familiar anchors when available and related wider-reaching choices from the supplied palette.',
+        : djChoice
+          ? `Make this recognisably the host’s usual musical territory, with occasional sideways steps. Build the main genre core from their regular show filters, interpreted through the Soul and optional Musical Leanings. Add only a few musically adjacent genres absent from those shows; guests may suggest connections without displacing the host’s familiar centre. If there are no regular shows, infer the familiar core from the Soul and optional Musical Leanings. Do not chase rarity or invent a restrictive theme that crowds out familiar favourites. Choose specific styles where supported rather than unexplained catch-all genres. Use up to 15 genres as needed, covering at least ${requiredTracks} unique matching tracks at a four-minute average, twice the slot airtime. A smaller number of adjacent genres does not guarantee an occasional playback proportion; do not promise a fixed running order or ratio.`
+          : 'Include familiar anchors when available and related wider-reaching choices from the supplied palette.',
       'Include one concrete, recurring talking point in the brief: a musical question or contrast the DJ can return to naturally between tracks. Treat it as an optional conversational thread, not a scripted programme feature or a claim requiring invented artist history. The thread must fit the intended musical palette.',
       `Write a concise brief and name. Declare 1–${genreLimit} intendedGenres copied exactly from the available palette, never a catalogue dump. The brief must describe those same styles. Do not promise other genres, particular tracks or artists, a fixed playlist, release chronology or unsupported artistic influence. Do not invent personal history or airplay.`,
       `Counts overlap; roughly ${estimate} four-minute records is a pacing estimate, not a hard minimum. Do not force era, mood or energy restrictions from favourite decades or presentation. Return name, topic and intendedGenres.`,
@@ -248,7 +252,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }) as z.infer<typeof conceptSchema>;
   const intended = [...new Set(concept.intendedGenres)];
   const settingsSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
-    moods: generatedShowPlanSchema.shape.moods.max(discovery ? 2 : 15),
+    moods: generatedShowPlanSchema.shape.moods.max(strictGenres ? 2 : 15),
     genres: intended.length
       ? z.array(z.enum(intended as [string, ...string[]])).length(intended.length)
       : z.array(z.never()).max(0),
@@ -260,7 +264,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let music: z.infer<typeof settingsSchema>;
   try {
     music = await djObject({
-      system: `Translate the accepted musical proposal into settings. Do not create another idea or choose another genre palette. Preserve every required genre exactly once. Default mood, era and energy lists to empty. Set filtersStrict to ${discovery ? 'true' : 'false'}.`,
+      system: `Translate the accepted musical proposal into settings. Do not create another idea or choose another genre palette. Preserve every required genre exactly once. Default mood, era and energy lists to empty. Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
       prompt: [
         `Accepted proposal: ${JSON.stringify({ name: concept.name, topic: concept.topic, requiredGenres: intended.map(name => ({ name, tracks: counts[name] })) })}`,
         `Duration: ${(input.occurrence.endsAt - input.occurrence.startsAt) / 60_000} minutes. Allowed moods: ${moods.join(', ')}.`,
@@ -268,8 +272,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         input.minimumCoverage != null ? `Operator minimum: ${input.minimumCoverage} unique eligible tracks after all filters and exclusions.` : null,
         input.coverageCorrection || null,
         'Copy requiredGenres into genres exactly once each, with no additions, omissions or substitutions. Keep moods, eras and energies empty unless the operator or musical idea explicitly requires a restriction and coverage supports it. Conversation style and favourite decades are not music restrictions.',
-        discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : 'Soft filters leave room for exploration.',
-        'Counts overlap and do not prove coverage after additional filters. Return moods, genres, eras, energies, filtersStrict and a rationale under 500 characters explaining this accepted palette. Do not invent artist influence, history or airplay. Any era is eras: [].',
+        discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
+        `Counts overlap and do not prove coverage after additional filters. Return moods, genres, eras, energies, filtersStrict and a rationale under 500 characters explaining this accepted palette${djChoice ? ': identify the familiar core and why the adjacent styles connect; do not merely report that genres were copied' : ''}. Do not invent artist influence, history or airplay. Any era is eras: [].`,
       ].filter(Boolean).join('\n\n'),
       schema: settingsSchema, temperature: 0.1,
       kind: 'generateShowPlan.musicSettings',
@@ -291,7 +295,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }
   if (parsed.moods.some(mood => !moods.includes(mood))) throw new Error('Music settings returned a mood outside the station vocabulary');
   return generatedShowPlanSchema.parse({
-    ...concept, ...parsed, ...(discovery ? { filtersStrict: true } : {}),
+    ...concept, ...parsed, ...(strictGenres ? { filtersStrict: true } : {}),
     moods: [...new Set(parsed.moods)], energies: [...new Set(parsed.energies)],
     eras: mergeEraWindows(parsed.eras),
     name: input.nameMode === 'custom' ? input.customName : concept.name,
