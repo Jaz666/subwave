@@ -28,30 +28,28 @@ export const lookAheadSkillSchema = z.object({
   secondSummary: z.string().max(300).describe('one short sentence about shows[1].brief only, or empty if absent; no clock, title, presenter names or date claims'),
 });
 
-export function cohostedSkillSchema(cast: CastPersona[], turnCount = cast.length) {
+export const MAX_DISCUSSION_TURNS = 16;
+
+export function cohostedSkillSchema(cast: CastPersona[]) {
   const ids = cast.map((p) => p.id) as [string, ...string[]];
   const line = z.object({
-    speaker: z.enum(ids).describe('the exact immutable persona id for this contribution, in the cast order'),
+    speaker: z.enum(ids).describe('the exact immutable persona id of the person speaking this turn'),
     text: z.string().trim().min(1).max(1200)
-      .describe(turnCount > cast.length ? 'one short conversational turn, with no name label or stage direction' : 'this persona’s spoken contribution — 2–5 short sentences, plain speech, with no name label or stage direction'),
+      .describe('one conversational turn, following the skill brief’s length and structure, without name labels or stage directions'),
   });
 
   return z.object({
     reason: z.string().describe('one short internal sentence explaining why this discussion should air, or why it should stand down'),
     air: z.boolean().describe('true to air the complete discussion; false only when there is no usable source material or nothing responsible to discuss'),
-    lines: z.array(line).describe(`when air is true: exactly ${turnCount} contributions, cycling through the cast order; when false: an empty array`),
+    lines: z.array(line).max(MAX_DISCUSSION_TURNS).describe('follow the number and order of turns requested in the skill brief; every selected participant speaks; when air is false: an empty array'),
   }).superRefine((value, ctx) => {
     if (!value.air) {
       if (value.lines.length) ctx.addIssue({ code: 'custom', path: ['lines'], message: 'lines must be empty when air is false' });
       return;
     }
-    if (value.lines.length !== turnCount) {
-      ctx.addIssue({ code: 'custom', path: ['lines'], message: `expected exactly ${turnCount} cast contributions` });
-      return;
-    }
-    for (let i = 0; i < turnCount; i += 1) {
-      if (value.lines[i]?.speaker !== cast[i % cast.length].id) {
-        ctx.addIssue({ code: 'custom', path: ['lines', i, 'speaker'], message: `expected ${cast[i % cast.length].id} in cast order` });
+    for (const persona of cast) {
+      if (!value.lines.some(line => line.speaker === persona.id)) {
+        ctx.addIssue({ code: 'custom', path: ['lines'], message: `missing contribution from ${persona.id}` });
       }
     }
   });
@@ -60,16 +58,16 @@ export function cohostedSkillSchema(cast: CastPersona[], turnCount = cast.length
 function castBlock(host: CastPersona, guests: CastPersona[], toolCast = false): string {
   const entry = (persona: CastPersona, role: string) =>
     `- ${persona.id} — ${persona.name || persona.id} (${role}): ${soulBrief(persona.soul) || 'no notes'}`;
-  return [entry(host, toolCast ? 'FIRST SPEAKER' : 'HOST'), ...guests.map((guest) => entry(guest, toolCast ? 'SEGMENT SPEAKER' : 'GUEST CO-HOST'))].join('\n');
+  return [entry(host, toolCast ? 'PARTICIPANT' : 'HOST'), ...guests.map((guest) => entry(guest, toolCast ? 'PARTICIPANT' : 'GUEST CO-HOST'))].join('\n');
 }
 
-export function cohostedSkillSystem({ capability, host, guests, grounded = false, lookAhead = false, turnCount = guests.length + 1 }: {
+export function cohostedSkillSystem({ capability, host, guests, grounded = false, lookAhead = false, turnCount = null }: {
   capability: { kind?: string; desc?: string; toolCast?: boolean };
   host: CastPersona;
   guests: CastPersona[];
   grounded?: boolean;
   lookAhead?: boolean;
-  turnCount?: number;
+  turnCount?: number | null;
 }): string {
   if (capability.toolCast && !guests.length) {
     return `${settings.agentPersonaPreamble(host)}
@@ -92,14 +90,15 @@ ${settings.agentLanguageReminder(host, lookAhead ? 'the summary fields' : 'the "
     : 'Build the discussion from the skill brief and current moment. Do not invent quotes, listener messages, callers, or purported events.';
   return `You write one co-hosted between-track discussion for a personal internet radio station.
 
-The active cast (persona id — name (role): voice notes), in required speaking order:
+The active cast (persona ID — name, role and voice notes; listed for identity, not speaking order):
 ${castBlock(host, guests, capability.toolCast)}
 
 Skill "${capability.kind || 'discussion'}" brief:
 ${capability.desc || ''}
 
 Rules:
-- Return exactly ${turnCount} contributions, cycling through the cast order above. Use only those immutable persona IDs; never invent a speaker.
+- Follow the number and order of turns requested in the skill brief. Complete its listed steps, including a final reaction or sign-off. Do not truncate the sequence to a default count. Use only the selected persona IDs, and give every participant a contribution. At most ${MAX_DISCUSSION_TURNS} turns.
+- ${turnCount ? `If the brief does not specify a structure, use around ${turnCount} short turns as suggested by the data tool. This is a default, not a fixed count.` : 'If the brief does not specify a structure, choose a short, natural exchange.'}
 - ${capability.toolCast ? 'Follow the skill brief for each turn’s purpose and length. Respond to the previous speaker rather than delivering independent monologues. The cast includes temporary segment guests; speaking order does not determine who hosts the current show.' : 'Each contribution is 2–5 short sentences. Together they form one coherent discussion: react to each other, differ naturally, and avoid repeated points.'}
 - Each speaker stays in THEIR OWN character. Use supplied role information to distinguish the on-air host from a temporary guest.
 - ${grounding}
