@@ -357,6 +357,15 @@ Random Hosts, and a randomly selected host cannot displace a fixed guest.
 Scheduled variants, regeneration, cast shuffling, saved regular shows and Look
 Ahead reuse the existing Sub/Shows lifecycle.
 
+Future scheduled plans are reconciled against the current slot's show ID, start
+and end before preparation or listing. Resizing a shared boundary retires both
+obsolete future shapes; the new slots receive their own plans. Removed future
+slots are retired too, including from the playback registry and persisted store.
+Past and already-started episodes retain their history, and takeover records are
+not discarded by weekly schedule reconciliation. Reconciliation checks schedule
+identity directly, so a temporary casting failure does not erase a valid plan.
+
+
 The harness uses the same concept/settings calls as Sub/Shows, with Souls as
 primary evidence, optional Musical Leanings, and both DJs' scheduled regular-show
 filters as supporting repertoire context. Regular-show briefs are omitted.
