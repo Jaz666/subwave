@@ -5,7 +5,7 @@
 import { djAgent, djObject } from '../llm/sdk.js';
 import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-tools.js';
 import * as settings from '../settings.js';
-import { cohostedSkillSchema, cohostedSkillSystem } from '../llm/internal/prompts/cohosted-skill.js';
+import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema } from '../llm/internal/prompts/cohosted-skill.js';
 import { requiresGrounding, standDownReason } from './abstain-policy.js';
 
 interface Persona {
@@ -23,7 +23,7 @@ interface CohostedResult {
   reason: string | null;
 }
 
-type CohostedObject = { reason?: unknown; air?: unknown; lines?: Array<{ speaker?: unknown; text?: unknown }> } | undefined;
+type CohostedObject = { text?: unknown; reason?: unknown; air?: unknown; lines?: Array<{ speaker?: unknown; text?: unknown }> } | undefined;
 
 type AgentRunner = (args: Record<string, unknown>) => Promise<{ object?: unknown; steps?: number; toolCalls?: unknown[] }>;
 type ObjectRunner = (args: Record<string, unknown>) => Promise<unknown>;
@@ -83,8 +83,9 @@ export async function runCohostedCapability({
   const cast = [host, ...guests];
   const grounded = requiresGrounding(capability);
   const system = cohostedSkillSystem({ capability, host, guests, grounded });
-  const schema = cohostedSkillSchema(cast);
-  const ask = 'Write the complete co-hosted discussion now.';
+  const solo = capability.toolCast && cast.length === 1;
+  const schema = solo ? soloSkillSchema : cohostedSkillSchema(cast);
+  const ask = solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
 
@@ -150,6 +151,12 @@ export async function runCohostedCapability({
     const reason = String(out.reason || '').trim() || 'nothing usable to discuss';
     if (forced && !grounded) throw new Error(`skill "${capability.skill || capability.kind}" declined the forced co-hosted discussion`);
     return { aired: false, lines: null, reason };
+  }
+
+  if (solo) {
+    const text = String(out?.text || '').trim();
+    if (!text) throw new Error(`skill "${capability.skill || capability.kind}" produced no spoken segment`);
+    return { aired: true, lines: [{ persona: host, text }], reason: String(out?.reason || '').trim() || null };
   }
 
   const byId = new Map(cast.map((persona) => [persona.id, persona]));
