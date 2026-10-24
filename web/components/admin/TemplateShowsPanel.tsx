@@ -148,9 +148,23 @@ export default function TemplateShowsPanel() {
             <Eyebrow className="text-vermilion">show plan · Sub/Shows</Eyebrow>
             <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
-              Plan fresh episodes from your DJs’ personalities and musical tastes. Add DJ’s Choice, Common Ground or Deep Discovery
-              from the schedule shelf, then click a scheduled block to choose its host, guests and episode-name rules.
+              Plan fresh episodes from your DJs’ personalities and musical tastes. Drag a Sub/Show from the schedule
+              shelf, then click its slot to choose the host, guests and episode-name rules.
             </p>
+            <dl className="mt-3 grid max-w-[68ch] gap-2 text-[12px] leading-[1.6]">
+              <div>
+                <dt className="inline font-semibold text-ink">DJ’s Choice</dt>{' '}
+                <dd className="inline text-muted">Familiar musical territory for the host, with room for adjacent discoveries.</dd>
+              </div>
+              <div>
+                <dt className="inline font-semibold text-ink">Common Ground</dt>{' '}
+                <dd className="inline text-muted">One host and one guest explore the musical connections between their tastes.</dd>
+              </div>
+              <div>
+                <dt className="inline font-semibold text-ink">Deep Discovery</dt>{' '}
+                <dd className="inline text-muted">Explore less-represented genres that fit the host’s musical identity.</dd>
+              </div>
+            </dl>
           </div>
           <Button asChild variant="accent" size="sm" className="min-h-9">
             <Link href="/admin/shows/schedule">Open the schedule →</Link>
