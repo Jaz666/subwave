@@ -16,6 +16,7 @@ const session = await import('../src/broadcast/session.js');
 const { queue } = await import('../src/broadcast/queue.js');
 const { config } = await import('../src/config.js');
 const { runSleeveNotesSegment } = await import('../src/sleeve-notes/segment.js');
+const { voiceBusy } = await import('../src/broadcast/queue/voice-io.js');
 const { withTalkAir, suppressScheduledSpeechDuringHandoff } = await import('../src/broadcast/talk-air.js');
 const original = settings.get();
 const host = original.personas[0];
@@ -81,6 +82,8 @@ test('a show change while waiting for the speech file vetoes publication and all
   assert.equal(await running, false);
   assert.equal(existsSync(config.liquidsoap.sayFile), false, 'no outgoing WAV was handed to the mixer');
   assert.equal(spoken.mock.callCount(), 0, 'cancelled speech must not reach air bookkeeping');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(voiceBusy(), false, 'cancelled ordinary speech releases the upstream overlay voice reservation');
 });
 
 test('boundary-deferred exchanges retain their original show ownership', async t => {
