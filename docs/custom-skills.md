@@ -718,8 +718,12 @@ must follow that identity, not the current programme’s host. Co-hosted exchang
 use the returned presenter identities for each voice.
 
 The example tool selects up to two shows, preferring occurrences not previously
-offered to this skill. Its durable recall markers record tool offers, not
-confirmed airings. With no qualifying shows it returns `available: false`.
+offered to this skill, then the least recently offered shows in this skill’s
+cross-tick state. Rotation resets on a new local date; cross-tick ordering also
+resets on a controller restart or skill reload. Durable recall still preserves
+first-offer preference across restarts. Markers record tool offers, not
+confirmed airings. The prompt requires both selected shows to be mentioned,
+with exact supplied start times and no relative day or time-of-day wording. With no qualifying shows it returns `available: false`.
 The segment model summarises each selected brief within its normal call; no
 extra summarisation or show-generation call is needed.
 
