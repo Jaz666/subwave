@@ -7,7 +7,7 @@ import { buildSegmentTools, fetchSegmentData, dataBlock } from '../llm/segment-t
 import * as settings from '../settings.js';
 import { cohostedSkillSchema, cohostedSkillSystem, soloSkillSchema, lookAheadSkillSchema, MAX_DISCUSSION_TURNS } from '../llm/internal/prompts/cohosted-skill.js';
 import { beginSkillNotebook, cancelNotebookRun, stageNotebook, notebookPrompt } from './notebook.js';
-import { notebookMemoryUpdateSchema } from './notebook-schema.js';
+import { notebookMemoryUpdateForTurns } from './notebook-schema.js';
 import { discussionTurnPlan } from './discussion-structure.js';
 import { findSkillPersona } from './special-guest.js';
 import { renderLookAheadTeases } from './look-ahead.js';
@@ -138,7 +138,27 @@ async function generateCohostedCapability({
   const turnPlan = structure.turns;
   const system = cohostedSkillSystem({ capability: selectCast || capability.notebook ? { ...capability, toolCast: true } : capability, host, guests, grounded, lookAhead, turnCount, turnPlan });
   const baseSchema = lookAhead ? lookAheadSkillSchema : solo ? soloSkillSchema : cohostedSkillSchema(cast, turnPlan);
-  const schema = capability.notebook ? baseSchema.safeExtend({ memoryUpdate: notebookMemoryUpdateSchema.nullable() }) : baseSchema;
+  const schema = capability.notebook ? baseSchema.safeExtend({
+    memoryUpdate: notebookMemoryUpdateForTurns(solo ? 1 : turnPlan?.length ?? MAX_DISCUSSION_TURNS).nullable(),
+  }).superRefine((value, ctx) => {
+    const output = value as CohostedObject;
+    const update = value.memoryUpdate;
+    if (!value.air) {
+      if (update !== null) ctx.addIssue({ code: 'custom', path: ['memoryUpdate'], message: 'a silent segment must have no memory update' });
+      return;
+    }
+    if (!update) {
+      ctx.addIssue({ code: 'custom', path: ['memoryUpdate'], message: 'spoken notebook segments require a memory update' });
+      return;
+    }
+    const turns = solo ? 1 : output?.lines?.length ?? 0;
+    if (update.topic && update.topic.turn > turns) {
+      ctx.addIssue({ code: 'custom', path: ['memoryUpdate', 'topic', 'turn'], message: 'topic references a missing generated turn' });
+    }
+    update.contributions.forEach((item, index) => {
+      if (item.turn > turns) ctx.addIssue({ code: 'custom', path: ['memoryUpdate', 'contributions', index, 'turn'], message: 'contribution references a missing generated turn' });
+    });
+  }) : baseSchema;
   const ask = lookAhead ? 'Write only the two summary fields for the supplied shows; leave secondSummary empty when only one show is supplied.' : solo ? 'Write the single spoken segment now.' : 'Write the complete co-hosted discussion now.';
 
   let out: CohostedObject;
@@ -200,6 +220,10 @@ async function generateCohostedCapability({
       };
     }
   }
+
+  // Validate the complete speech/update contract before staging memory, including
+  // callers supplying a custom generation runner. Flexible discussions use their actual length.
+  if (capability.notebook) out = schema.parse(out) as CohostedObject;
 
   if (out?.air === false) {
     const reason = String(out.reason || '').trim() || 'nothing usable to discuss';

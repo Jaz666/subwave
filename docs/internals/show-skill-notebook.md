@@ -105,6 +105,19 @@ turn that actually reads or voices it. The contributor can be a participating
 persona or a fictional listener explicitly permitted by the prompt. Summarize
 what was actually said, without adding a new opinion or purported future speech.
 
+Updates contain only new opinions or substantive points from this segment.
+Introductions, repeated questions and invitations are not contributions; use an
+empty array when no new points are voiced. Never copy notebook history into an
+update. When a presenter reads another person's contribution, reference the turn
+that reads it, rather than an introduction or subsequent reaction.
+
+Generation schemas bound solo references to turn 1 and planned discussions to
+the planned turn count. Flexible discussions also validate references against
+the actual returned lines during response parsing. These checks reject missing
+turns before staging or TTS. They cannot establish that a structurally valid
+summary faithfully describes its referenced speech; that still depends on the
+generation instructions and review of actual output.
+
 Limits: topic 500 characters; contributor label 100; summary 240; at most 16 new
 contributions per segment. Empty contribution arrays are valid. A first topic
 must be introduced before any new contributions. An explicit stand-down can

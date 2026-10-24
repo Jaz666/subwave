@@ -2,14 +2,21 @@ import { z } from 'zod';
 
 export const NOTEBOOK_HISTORY_LIMIT = 24;
 export const NOTEBOOK_AIRING_LIMIT = 16;
-export const notebookMemoryUpdateSchema = z.object({
-  topic: z.object({ value: z.string().trim().min(1).max(500), turn: z.number().int().min(1).max(16) }).nullable(),
-  contributions: z.array(z.object({
-    turn: z.number().int().min(1).max(16),
-    contributor: z.string().trim().min(1).max(100),
-    summary: z.string().trim().min(1).max(240),
-  })).max(16),
-});
+export function notebookMemoryUpdateForTurns(maxTurns: number) {
+  const turn = z.number().int().min(1).max(maxTurns)
+    .describe('1-based index of the generated turn that actually voices this item; never an index into notebook history');
+  return z.object({
+    topic: z.object({ value: z.string().trim().min(1).max(500), turn }).nullable()
+      .describe('first topic introduced in this segment, or null when the topic is already established'),
+    contributions: z.array(z.object({
+      turn,
+      contributor: z.string().trim().min(1).max(100).describe('person whose new opinion is voiced in the referenced turn'),
+      summary: z.string().trim().min(1).max(240)
+        .describe('only a new opinion or substantive point actually voiced in this turn; never an invitation, question repetition, or copied history'),
+    })).max(16).describe('new contributions from this segment only; empty when it only introduces or repeats the topic'),
+  });
+}
+export const notebookMemoryUpdateSchema = notebookMemoryUpdateForTurns(16);
 export type NotebookMemoryUpdate = z.infer<typeof notebookMemoryUpdateSchema>;
 export const notebookRefSchema = z.object({
   skill: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).max(100),
