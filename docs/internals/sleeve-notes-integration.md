@@ -624,3 +624,59 @@ schema migration, database edit, queue operation or container rebuild is done
 by the agent. Keep this candidate local; update upstream PR #2033 only after
 station acceptance. Next gate: biography collection followed by LLM extraction
 and saved source-backed artist facts.
+
+
+### Review sections and local coverage verification — 25 October
+
+The Review surface now separates Flagged reviews from Research gaps. Existing
+Needs review/Resolved/Dismissed filters remain inside Flagged reviews, and
+correction drafts survive switching sections. The factual-review badge is
+unchanged; the research-gap count is separate.
+
+The first gap implementation is a derived local read, not an external source
+verification or a persisted moderation finding. It reconciles the cached library
+artist index, matched recording credits, same-name identities, saved artist
+Wikipedia sources and active story facts (including trusted Genius local links).
+Credits/connections, withdrawn/deleted facts and feedback holds do not inflate
+story counts. Stored facts are not a guarantee of immediate air eligibility.
+Failed duplicates are suppressed when the actual recordings use researched
+identities; same-name splits with affected recordings remain partial coverage.
+Composer/performer bridges remain distinct from same-name identity failures.
+Normal unplayed artists, pending jobs, completed empty research and operator
+cancellation do not become missing-source alerts. No identity records merge.
+
+GET /sleeve-notes/research-gaps uses the existing read-only child process and
+a five-minute display snapshot; POST /sleeve-notes/research-gaps/verify forces
+a fresh local check through the same worker. Both require admin authentication.
+Feature-off GET uses the existing cached-read context without creating/upgrading
+the database; verification and queue actions remain disabled. Retry uses the
+existing Station Brain research route, preserving pacing and broadcast gates.
+No new database schema, provider requests or automatic job admissions result
+from verification. Source/identity overrides, dismissal and external verification
+remain subsequent work; the UI exposes only implemented actions.
+
+Candidate: codex/research-gaps-review-20261025, based on station e28ecc32.
+Keep local for operator testing; no PR update or container rebuild is included.
+Next station gate: rebuild controller and web, inspect both Review sections and
+recheck known duplicate, partial and unresearched examples.
+
+Implementation commit: `964a5741`. Verification: 13 research-gap tests, six
+shared-worker tests, ten existing coverage/retry tests and all 501 web tests
+passed. Focused controller/web lint, web typecheck, generated schema mirror,
+admin-query audit and UI detector passed. Controller typecheck reports only the
+two independently reproduced pre-existing discovery-policy test errors at
+`scripts/show-discovery-policy.test.ts:29–30`. Browser checks passed for filters,
+correct retry identity, failed verification retaining results, correction drafts
+surviving tab switches, feature-off controls, and mobile/desktop Riso/Phosphor.
+The read-only station snapshot completed in about half a second at 4,668 indexed
+artists. No database/queue writes, provider requests, production builds or
+container operations were performed during verification.
+
+Station integration route: fast-forward the clean station checkout from
+`e28ecc32` to this candidate including this evidence commit. Source rollback is
+`e28ecc32`; runtime still uses the preceding images until the operator rebuilds
+controller and web. PR #2033 and remote branches remain unchanged: this candidate
+is intentionally local pending station acceptance. Next: rebuild controller and
+web in `/home/jaz666/Docker/subwave`, check health, then inspect both Review tabs
+and known duplicate/partial/unresearched examples. External verification,
+identity/source overrides and dismissal are not implemented in this phase.
