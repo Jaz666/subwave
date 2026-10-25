@@ -108,11 +108,12 @@ async function main() {
   station.llm.model = process.env.SHOW_PLAN_PREVIEW_MODEL || '/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf';
   station.llm.baseUrl = process.env.LLM_BASE_URL || 'http://qwen-llama-cpp:8080/v1';
   station.llm.compatibleMode = 'local';
-  const { generateShowPlan, scheduledShowsForHost, resolveGeneratedShowCast } = await import('../src/broadcast/show-generation.js');
-  const { generateAcceptedShowPlan } = fresh ? await import('../src/broadcast/show-preparation.js') : { generateAcceptedShowPlan: null };
+  const { loadDiscoveryGenreCounts, scheduledShowsForHost, resolveGeneratedShowCast } = await import('../src/broadcast/show-generation.js');
+  const { generateAcceptedShowPlan } = await import('../src/broadcast/show-preparation.js');
   const { diagnoseShowCandidates } = await import('../src/music/show-candidates.js');
   const library = await import('../src/music/library.js');
   const { ShowPlanningError } = await import('../src/broadcast/show-planning-policy.js');
+  const { discoveryCoreGenres, discoveryPalette } = await import('../src/broadcast/show-discovery-policy.js');
   const { recentCalls } = await import('../src/llm/log.js');
   const runs: Array<Record<string, unknown>> = [];
   const generation = { mode: 'generated', template, hostMode: 'random', guestMode: outside ? 'none' : 'random',
@@ -143,7 +144,7 @@ async function main() {
           cast, configuration: 'isolated-preview',
           show: { id: previewId },
         };
-        const plan = generateAcceptedShowPlan ? await generateAcceptedShowPlan(input) : await generateShowPlan(input);
+        const plan = await generateAcceptedShowPlan(input);
         let coverage: Awaited<ReturnType<typeof diagnoseShowCandidates>> | null = null;
         let softCoverage: Awaited<ReturnType<typeof diagnoseShowCandidates>> | null = null;
         let coverageError: string | null = null;
@@ -158,8 +159,18 @@ async function main() {
           ]);
         } catch (error) { coverageError = error instanceof Error ? error.message : String(error); }
         finally { clearTimeout(timer); }
+        let discovery: { ceiling: number; coreGenres: string[]; coreEligible: number; totalEligible: number; coreShare: number; genreCounts: Record<string, number> } | null = null;
+        if (template === 'deep-discovery' && coverage) {
+          const counts = await loadDiscoveryGenreCounts();
+          const core = discoveryCoreGenres(plan.genres, counts);
+          const coreCoverage = core.length === plan.genres.length ? coverage : await diagnoseShowCandidates({ ...plan, genres: core, id: previewId }, { at: startsAt });
+          discovery = { ceiling: discoveryPalette(counts).ceiling, coreGenres: core, coreEligible: coreCoverage.library.effective,
+            totalEligible: coverage.library.effective, coreShare: coverage.library.effective ? coreCoverage.library.effective / coverage.library.effective : 0,
+            genreCounts: Object.fromEntries(plan.genres.map(genre => [genre, counts[genre]])) };
+        }
         runs.push({ host: identity(host), guest: guest ? identity(guest) : null, guests: cast.guestPersonaIds.map(id => identity(eligible.find(p => p.id === id)!)),
           repertoire: (guest ? [host, guest] : [host]).map(persona => ({ ...identity(persona), shows: scheduledShowsForHost(persona.id, previewId) })),
+          discovery,
           strictFilterComparison: coverage && softCoverage ? {
             strictEligible: coverage.library.effective,
             softEligible: softCoverage.library.effective,

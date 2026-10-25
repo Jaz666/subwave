@@ -13,7 +13,7 @@ export function validateShowMusicContract(actual: { genres: string[]; eras: Era[
   }
   if (JSON.stringify(actual.eras) !== JSON.stringify(expected.eras)) throw new Error('Music settings did not preserve the agreed era restrictions');
 }
-export function validateShowBrief(brief: { name: string; topic: string; talkingPoint: string }, eras: Era[], personaNames: string[], cast: string[], genreContract?: { known: string[]; selected: string[]; context: string[] }): void {
+export function validateShowBrief(brief: { name: string; topic: string; talkingPoint: string }, eras: Era[], personaNames: string[], cast: string[], genreContract?: { known: string[]; selected: string[]; context: string[]; inspectAmbiguous?: boolean }): void {
   const text = `${brief.name}\n${brief.topic}\n${brief.talkingPoint}`;
   const contains = (from: number, to = from) => eras.some(era => (era.fromYear ?? 0) <= from && (era.toYear ?? Infinity) >= to);
   const periods: Array<[number, number]> = [];
@@ -45,7 +45,7 @@ export function validateShowBrief(brief: { name: string; topic: string; talkingP
       remaining = remaining.replace(pattern, match => {
         // ponytail: inspect exact multiword catalogue names only; single words
         // such as Soul or House are ambiguous prose. This is not a semantic audit.
-        if (genre.trim().split(/[ -]+/).length > 1 && !allowed.has(genre.toLowerCase())) {
+        if ((genreContract.inspectAmbiguous || genre.trim().split(/[ -]+/).length > 1) && !allowed.has(genre.toLowerCase())) {
           throw new Error(`The show brief names an unselected style (${genre}). Please regenerate the episode.`);
         }
         return ' '.repeat(match.length);

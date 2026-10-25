@@ -33,7 +33,7 @@ test('persona advice includes the guide; library fit is a separate failure', () 
 });
 const snapshot: GeneratedShowSnapshot = {
   occurrence: { id: 'preview', showId: 'show', source: 'scheduled', startsAt: 1_800_000_000_000, endsAt: 1_800_003_600_000 },
-  configuration: 'fixture', template: 'deep-discovery', planningPrompt: '', minimumCoverage: null,
+  configuration: 'fixture', template: 'dj-choice', planningPrompt: '', minimumCoverage: null,
   cast: { hostPersonaId: 'a', guestPersonaIds: [] }, show: { id: 'show' },
 };
 const plan: GeneratedShowPlan = { name: 'A musical connection', topic: 'Talking point: a connection.', genres: ['Folk'], moods: [], energies: [], eras: [], filtersStrict: true, rationale: '' };
