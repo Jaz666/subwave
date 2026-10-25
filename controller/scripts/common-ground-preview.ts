@@ -8,7 +8,7 @@ import { config as loadDotEnv } from 'dotenv';
 import { isolateStationState } from './test-utils/isolated-state.js';
 import { resolveActiveStationDir } from '../src/stations/resolve.js';
 
-const usage = 'Usage: npm run common-ground:preview -- [--template common-ground|outside-comfort-zone] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
+const usage = 'Usage: npm run common-ground:preview -- [--template common-ground|outside-comfort-zone|time-capsule] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
 const options = new Map<string, string>();
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
@@ -20,11 +20,12 @@ for (let index = 2; index < process.argv.length; index++) {
   options.set(flag, process.argv[++index]);
 }
 const template = options.get('--template') ?? 'common-ground';
-if (!['common-ground', 'outside-comfort-zone'].includes(template)) throw new Error('Unknown preview template');
+if (!['common-ground', 'outside-comfort-zone', 'time-capsule'].includes(template)) throw new Error('Unknown preview template');
 const outside = template === 'outside-comfort-zone';
+const solo = outside || template === 'time-capsule';
 const previewId = `${template}-preview`;
-if (outside && options.has('--guest')) throw new Error('Outside the Comfort Zone is a solo preview; omit --guest.');
-const count = Number(options.get('--count') ?? (outside ? 4 : 3));
+if (solo && options.has('--guest')) throw new Error('This preview uses a solo host; omit --guest.');
+const count = Number(options.get('--count') ?? (solo ? 4 : 3));
 const minutes = Number(options.get('--minutes') ?? 60);
 if (!Number.isInteger(count) || count < 1 || count > 20 || !Number.isInteger(minutes) || minutes < 1 || minutes > 360) {
   throw new Error('Use --count 1–20 and --minutes 1–360.');
@@ -58,7 +59,7 @@ async function main() {
     process.stdout.write(JSON.stringify({ eligiblePersonas: eligible.map(identity) }, null, 2) + '\n');
     return;
   }
-  if (eligible.length < (outside ? 1 : 2)) throw new Error('Not enough eligible personas enabled in Random Hosts.');
+  if (eligible.length < (solo ? 1 : 2)) throw new Error('Not enough eligible personas enabled in Random Hosts.');
   const find = (value: string | undefined) => {
     if (!value) return null;
     const matches = eligible.filter(persona => persona.id === value || persona.name.toLowerCase() === value.toLowerCase());
@@ -69,10 +70,10 @@ async function main() {
   const guest = find(options.get('--guest'));
   if (host && guest && host.id === guest.id) throw new Error('Host and guest must be different personas.');
   const pairs: Array<[typeof eligible[number], typeof eligible[number] | null]> = [];
-  if (outside) {
+  if (solo) {
     for (const persona of eligible) if (!host || persona.id === host.id) pairs.push([persona, null]);
   }
-  if (!outside) for (const left of eligible) for (const right of eligible) {
+  if (!solo) for (const left of eligible) for (const right of eligible) {
     if (left.id === right.id || (host && left.id !== host.id) || (guest && right.id !== guest.id)) continue;
     if (!host && !guest && left.id > right.id) continue;
     pairs.push([left, right]);
@@ -81,7 +82,7 @@ async function main() {
     const other = randomInt(index + 1);
     [pairs[index], pairs[other]] = [pairs[other], pairs[index]];
   }
-  const fixed = outside ? !!host : !!(host && guest);
+  const fixed = solo ? !!host : !!(host && guest);
   if (!fixed && count > pairs.length) throw new Error(`Only ${pairs.length} distinct eligible selections are available; reduce --count.`);
   const selections = fixed ? Array.from({ length: count }, () => pairs[0]) : pairs.slice(0, count);
   // SQLite's backup API includes committed WAL changes in a consistent snapshot.
@@ -140,7 +141,7 @@ async function main() {
       }
     }
     process.stdout.write(JSON.stringify({ previewOnly: true, template, minutes,
-      policy: outside
+      policy: template === 'time-capsule' ? 'Era-led preview; strict era and genres, twice-airtime coverage; no plans saved.' : outside
         ? 'Solo departure preview; strict genres and twice-airtime coverage; no plans are saved.'
         : 'Strict genres and twice-airtime coverage use the Common Ground policy; no plans are saved.',
       model: station.llm.model, eligiblePersonas: eligible.map(identity), runs }, null, 2) + '\n');
