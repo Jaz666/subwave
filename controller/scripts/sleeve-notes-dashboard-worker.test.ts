@@ -90,3 +90,20 @@ test('live reads send only required fields, excluding unrelated queue data and c
   assert.equal(cachedDashboardRead({kind:'live-summary',args:[{id:'track',title:'Song',artist:'Band'},{track:{id:'track',title:'Song',artist:'Band'},introScript:'A DJ line.'},null]},db),read);
   assert.equal(JSON.parse(await read).onAir.djLine,'A DJ line.');
 });
+
+test('research-gap snapshots share the read-only worker and refresh only on expiry or explicit verification', async () => {
+  clearConnectionComputeCache();
+  const name=(db.prepare("SELECT name FROM sleeve_artists WHERE id='artist'").get() as {name:string}).name;
+  db.prepare("INSERT INTO sleeve_connection_library_artists(local_artist_id,name,name_key) VALUES('coverage-index',?,?)").run(name,name.toLowerCase());
+  const input={kind:'research-gaps'} as const;
+  const first=JSON.parse(await cachedDashboardRead(input,db));
+  const before=db.prepare('SELECT total_changes() n').get();
+  const external=new Database(path);
+  try { external.prepare("INSERT INTO sleeve_connection_library_artists(local_artist_id,name,name_key) VALUES('new-index','Unplayed Example','unplayed example')").run(); }
+  finally { external.close(); }
+  assert.equal(JSON.parse(await cachedDashboardRead(input,db)).items.length,first.items.length);
+  const refreshed=JSON.parse(await cachedDashboardRead(input,db,true));
+  assert.equal(refreshed.items.length,first.items.length+1);
+  assert.equal(refreshed.items.find((item:{name:string})=>item.name==='Unplayed Example').status,'unexplored');
+  assert.deepEqual(db.prepare('SELECT total_changes() n').get(),before,'verification cannot mutate the writer database');
+});

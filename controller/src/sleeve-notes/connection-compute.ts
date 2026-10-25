@@ -119,10 +119,11 @@ export async function libraryConnectionStoriesInBackground(db: Database.Database
 }
 
 /** Bounded, short-lived display cache. Never used for broadcast selection.
- * Own writes invalidate immediately; external writes and cooldowns expire in 3s.
+ * Ordinary readouts invalidate on own writes; external writes expire in 3s.
+ * Library coverage expires in five minutes or on explicit verification.
  * Serialize in the worker so large readouts do not get cloned/stringified here.
  */
-export function cachedDashboardRead(input: DashboardRead, db = open()): Promise<string> {
+export function cachedDashboardRead(input: DashboardRead, db = open(), refresh = false): Promise<string> {
   if (input.kind === 'live-summary') {
     // Queue items carry unrelated persona/transition data. Send only display inputs.
     const track = (t: LiveNotesItem['track'] | null) => t ? {
@@ -136,16 +137,16 @@ export function cachedDashboardRead(input: DashboardRead, db = open()): Promise<
   }
   if (db.memory) return Promise.resolve(JSON.stringify(dashboardReadInDatabase(db, input)));
   const changes = (db.prepare('SELECT total_changes() AS n').get() as {n: number}).n;
-  const key = JSON.stringify([db.name, changes, input]);
+  const key = JSON.stringify([db.name, input.kind === 'research-gaps' ? 0 : changes, input]);
   const saved = dashboardCache.get(key);
-  if (saved && saved.until > Date.now()) return Promise.resolve(saved.json);
+  if (!refresh && saved && saved.until > Date.now()) return Promise.resolve(saved.json);
   const running = dashboardFlights.get(key);
   if (running) return running;
   const epoch = dashboardEpoch;
   const task = compute<string>(db.name, 'dashboard', undefined, undefined, input).then(json => {
     if (epoch === dashboardEpoch) {
       dashboardCache.delete(key);
-      dashboardCache.set(key, {until: Date.now() + 3_000, json});
+      dashboardCache.set(key, {until: Date.now() + (input.kind === 'research-gaps' ? 5 * 60_000 : 3_000), json});
       while (dashboardCache.size > 4) dashboardCache.delete(dashboardCache.keys().next().value!);
     }
     return json;

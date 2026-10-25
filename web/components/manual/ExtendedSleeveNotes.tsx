@@ -374,6 +374,22 @@ export default function ExtendedSleeveNotes() {
           saved source, then explicitly save the correction to apply it.
         </p>
         <p>
+          Review has two sections. <strong>Flagged reviews</strong> contains facts and
+          speech you have asked the model to check. <strong>Research gaps</strong>
+          checks saved biographies, story facts and recording matches across your
+          cached library. Artists awaiting their first research pass are listed
+          separately from failed or incomplete work.
+        </p>
+        <p>
+          Choose <strong>Verify library coverage</strong> for a fresh local check.
+          It does not contact source services or queue research. A missing biography
+          does not prove that Wikipedia has no article, and another identity may
+          already have useful research. Inspect the identities and sources before
+          choosing <strong>Retry research</strong>; retries use the normal background
+          queues and broadcast checks. Findings refresh every five minutes while
+          Review is open, and clear when a later check finds the gap resolved.
+        </p>
+        <p>
           You can change what the DJ knows and how it sounds separately. Asking for warmer,
           shorter or less formal speech changes presentation; it does not supply
           evidence for a new claim. Inspect the supporting source when the underlying

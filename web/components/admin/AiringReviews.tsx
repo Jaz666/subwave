@@ -20,14 +20,14 @@ type Review={id:string;state:string;guidanceApproved:number;context:{appliedCorr
   result:Result|null;lastError:string|null;createdAt:string};
 const LABELS:Record<string,string>={queued:'Queued for review',running:'Reviewing',ready:'Ready for your decision',resolved:'Resolved',dismissed:'Dismissed'};
 
-export default function AiringReviews({adminFetch,timezone}:{adminFetch:AdminFetch;timezone?:string}) {
+export default function AiringReviews({adminFetch,timezone,active=true}:{adminFetch:AdminFetch;timezone?:string;active?:boolean}) {
   const [status,setStatus]=useState('active'),[offset,setOffset]=useState(0);
   const [drafts,setDrafts]=useState<Record<string,Correction>>({});
   const [deleteReview, setDeleteReview] = useState<string|null>(null);
   const shelf=useAdminQuery<{items:Review[];total:number;readOnly:boolean}>({
-    key:['sleeve-notes','airing-reviews',status,offset],adminFetch,
+    key:['sleeve-notes','airing-reviews',status,offset],adminFetch,enabled:active,
     request:(fetcher,signal)=>adminJson(fetcher,`/sleeve-notes/airing-reviews?status=${status}&offset=${offset}`,undefined,signal),
-    staleTime:5000,refetchInterval:15000,
+    staleTime:5000,refetchInterval:active?15000:false,
   });
   const decide=useAdminMutation<unknown,{id:string;action:string;correction?:Correction}>({
     adminFetch,request:({id,action,correction},fetcher)=>adminJson(fetcher,`/sleeve-notes/airing-reviews/${encodeURIComponent(id)}/decision`,{

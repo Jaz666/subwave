@@ -64,7 +64,7 @@ export const router = express.Router();
 // use withCachedRead, which neither creates nor upgrades the on-disk database.
 const CACHED_VIEWS = new Set([
   '/readout', '/stories', '/explore', '/heard-on-air', '/airing-reviews', '/series',
-  '/moderation', '/live-summary', '/storage', '/connections/search',
+  '/moderation', '/live-summary', '/storage', '/research-gaps', '/connections/search',
   '/connections/coverage', '/connections/album-coverage', '/connections/discoveries',
   '/connections/overview', '/connections/graph',
 ]);
@@ -114,6 +114,17 @@ router.get('/sleeve-notes/airing-reviews', requireAdmin, async (req,res)=>{
   const read=()=>({...listAiringReviews(String(req.query.status??'active'),offset),readOnly:!settings.get().djBehaviour.extendedSleeveNotes});
   return res.json(settings.get().djBehaviour.extendedSleeveNotes?read():withCachedRead(read));
 });
+// Local coverage checks share the read-only worker; no source services are called.
+router.get('/sleeve-notes/research-gaps', requireAdmin, async (_req,res) => {
+  const read=()=>cachedDashboardRead({kind:'research-gaps'});
+  try { return res.type('json').send(await (settings.get().djBehaviour.extendedSleeveNotes ? read() : withCachedRead(read))); }
+  catch(error) { return res.status(503).json({error:error instanceof Error?error.message:'Could not check saved research'}); }
+});
+router.post('/sleeve-notes/research-gaps/verify', requireAdmin, async (_req,res) => {
+  try { return res.type('json').send(await cachedDashboardRead({kind:'research-gaps'},openSleeveNotesDb(),true)); }
+  catch(error) { return res.status(503).json({error:error instanceof Error?error.message:'Could not verify library coverage'}); }
+});
+
 router.post('/sleeve-notes/airing-reviews/:id/decision', requireAdmin, async (req,res)=>{
   await settings.load();
   if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Enable Sleeve Notes before saving a review decision'});

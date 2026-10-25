@@ -34,7 +34,7 @@ import type { SettingsData } from './settings/shared';
 import ConnectionsVisualizer from './connections/ConnectionsVisualizer';
 import ExternalDiscoveries from './connections/ExternalDiscoveries';
 import GeniusCaptureNotice from './connections/GeniusCaptureNotice';
-import AiringReviews from './AiringReviews';
+import NotesReviews from './NotesReviews';
 import MusicBrainzLists from './MusicBrainzLists';
 
 type NotesTab = 'overview' | 'stories' | 'heard' | 'moderation' | 'connections' | 'config';
@@ -543,7 +543,7 @@ export default function NotesPanel() {
         />
       )}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'details' && data && status.data && <ResearchDetailsView data={data} status={status.data} />}
-      {hydrated && tab === 'moderation' && <AiringReviews adminFetch={adminFetch} timezone={status.data?.timezone} />}
+      {hydrated && tab === 'moderation' && <NotesReviews adminFetch={adminFetch} timezone={status.data?.timezone} readOnly={!status.data?.enabled} />}
       {hydrated && tab === 'heard' && <HeardOnAir adminFetch={adminFetch} timezone={status.data?.timezone} />}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'browse' && <ExploreView adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
       {tab==='connections'&&<Seg aria-label="Station Brain sections" value={brainView} options={[{id:'map',label:'Map'},{id:'discoveries',label:'Stats & Discoveries'}]} onChange={value=>{const params=new URLSearchParams(searchParams.toString());params.set('brainView',value);router.replace(`${pathname??'/admin/notes'}?${params}`,{scroll:false});}} />}
