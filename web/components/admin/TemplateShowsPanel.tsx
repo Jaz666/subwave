@@ -164,6 +164,10 @@ export default function TemplateShowsPanel() {
                 <dt className="inline font-semibold text-ink">Deep Discovery</dt>{' '}
                 <dd className="inline text-muted">Explore less-represented genres that fit the host’s musical identity.</dd>
               </div>
+              <div>
+                <dt className="inline font-semibold text-ink">Outside the Comfort Zone</dt>{' '}
+                <dd className="inline text-muted">One host takes a focused sideways step into neighbouring musical territory.</dd>
+              </div>
             </dl>
           </div>
           <Button asChild variant="accent" size="sm" className="min-h-9">

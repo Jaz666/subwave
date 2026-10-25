@@ -90,7 +90,7 @@ export function resolveGeneratedShowCast({ show, occurrence, personas, preserveF
     : [show.personaId].filter((id: string) => eligible.has(id));
   if (!hostIds.length) return null;
   const hostPersonaId = hostIds[stableIndex(occurrence.id, hostIds.length)]!;
-  const guestIds: string[] = config.guestMode === 'none'
+  const guestIds: string[] = config.template === 'outside-comfort-zone' || config.guestMode === 'none'
     ? []
     : config.guestMode === 'fixed'
       ? (show.guestPersonaIds ?? []).filter((id: string) => id !== hostPersonaId && eligible.has(id))
@@ -204,7 +204,6 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const discovery = input.template === 'deep-discovery';
   const djChoice = input.template === 'dj-choice';
   const commonGround = input.template === 'common-ground';
-  // Harness-only prototype; not a selectable scheduled template.
   const outside = input.template === 'outside-comfort-zone';
   const strictGenres = discovery || djChoice || commonGround || outside;
   const genreLimit = strictGenres ? 15 : 6;
@@ -236,7 +235,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   if (commonGround && (input.cast.guestPersonaIds.length !== 1 || guests.length !== 1 || guests[0]?.id === hostPersona.id)) {
     throw new Error('Common Ground requires a host and exactly one distinct guest');
   }
-  if (outside && input.cast.guestPersonaIds.length) throw new Error('Outside the Comfort Zone preview requires a solo host');
+  if (outside && input.cast.guestPersonaIds.length) throw new Error('Outside the Comfort Zone requires a solo host');
   const host = {
     name: String(hostPersona.name || 'Host'),
     soul: String(hostPersona.soul || ''),
@@ -303,7 +302,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       'State the exact destination genre in the brief and make its difference from the starting point clear. A genre absent from show filters may still be an explicit persona preference: do not pretend it is unfamiliar without explaining a more specific departure. Make ONE coherent sideways move, following something the DJ already appreciates into a related territory they do not normally programme. The musical bridge must explain why this DJ would be curious. The destination, not the familiar starting point, supplies the music throughout the show. Do not make a familiar set with occasional adjacent tracks, several unrelated excursions, or a deliberately distant challenge. Underrepresentation is not required. Presentation style and speaking pace do not define music taste.',
       `Choose ONE specific destination genre, copied exactly from the supplied choices, with enough music for ${requiredTracks} unique eligible tracks (twice airtime at a four-minute average). The controller uses departure.destination as the sole strict genre filter. If a destination lacks coverage, choose another coherent destination rather than padding it with an umbrella genre. Broad tags such as Electronic, Rock, Pop or Experimental do not describe a focused destination. Exact regular-show genres have already been excluded. Rarity is not a goal.`,
       'The bridge must name a concrete audible feature supported by this particular persona: instrumentation, rhythm, arrangement, texture or songwriting. Generic curiosity, atmosphere or experimentation alone is insufficient. Consider several plausible directions internally and choose the one with the strongest individual connection; do not default every host to post-punk or industrial. Do not invent genre history, classify a rock genre as electronic music, or claim the regular shows feature a sound not established by their filters or the persona.',
-      'Write a concise brief of 2–3 sentences, at most 80 words: identify the starting interest, the musical bridge and the exact destination genre. Mention familiar genres only as the starting reference, never as additional music promised for this show. Invite an open-minded exploration without claiming that the DJ dislikes this music, is already an expert or has actually played particular records. Do not promise specific artists, tracks, genre alternation or a scripted journey. Only promise music in departure.destination.',
+      'Write a concise brief of 2–3 sentences, at most 80 words: identify the starting interest, the musical bridge and the exact destination genre. Introduce familiar genres explicitly as the host’s existing tastes, then describe the move into the destination. Do not promise a blend, intersection or alternation with those familiar genres; the destination supplies all music. Invite an open-minded exploration without claiming that the DJ dislikes this music, is already an expert or has actually played particular records. Do not promise specific artists, tracks, genre alternation or a scripted journey. Only promise music in departure.destination.',
       talkingPointInstruction,
       input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive an original short title from the musical idea, without presenter names, genre lists or the template name.',
       'Before returning, check that the brief actually states the specific starting interest, audible bridge and destination from departure, rather than just promising a journey. The talking point must be musically accurate. Keep the title and brief era-neutral unless the operator explicitly requests a music period. Return departure, name, topic and talkingPoint.',

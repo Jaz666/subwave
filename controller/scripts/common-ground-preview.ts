@@ -141,7 +141,7 @@ async function main() {
     }
     process.stdout.write(JSON.stringify({ previewOnly: true, template, minutes,
       policy: outside
-        ? 'Harness-only solo departure prototype; strict genres and twice-airtime coverage; no plans are saved.'
+        ? 'Solo departure preview; strict genres and twice-airtime coverage; no plans are saved.'
         : 'Strict genres and twice-airtime coverage use the Common Ground policy; no plans are saved.',
       model: station.llm.model, eligiblePersonas: eligible.map(identity), runs }, null, 2) + '\n');
   } finally { library.shutdown(); }

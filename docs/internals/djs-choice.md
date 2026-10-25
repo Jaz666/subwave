@@ -38,7 +38,7 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-DJ’s Choice, Common Ground and Deep Discovery are accepted template options in
+DJ’s Choice, Common Ground, Deep Discovery and Outside the Comfort Zone are accepted template options in
 saved settings. Common Ground also has a dedicated comparison harness. Unsupported legacy template names use the
 existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
 Random casting uses the station-wide Sub/Shows pools. Common Ground uses the
@@ -334,18 +334,18 @@ familiar-core policy is described below.
 
 Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and
-show filters. DJ’s Choice, Deep Discovery and Common Ground are implemented;
+show filters. DJ’s Choice, Deep Discovery, Common Ground and Outside the Comfort Zone are implemented;
 the remaining ideas below are proposals.
 
 | Working name | Musical idea | Planning approach |
 | --- | --- | --- |
 | Common Ground (implemented) | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
-| Outside the Comfort Zone | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
+| Outside the Comfort Zone (implemented) | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
 | Time Capsule | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
-Outside the Comfort Zone now has a harness-only prototype for evaluation. Common Ground
+Outside the Comfort Zone is implemented after a harness trial. Common Ground
 uses exactly one distinct guest and equal musical influence for both DJs; the
 host still leads presentation. It uses strict genres with the same twice-airtime
 coverage checks as the other Sub/Shows.
@@ -428,7 +428,7 @@ review; the harness does not silently replace a pairing or accept it for air.
 
 ### Outside the Comfort Zone preview — 25 October 2026
 
-This is a solo, harness-only prototype, not a saved template or UI option.
+The initial trial was a solo, harness-only prototype; it is now a saved template and UI option following operator acceptance.
 Its concept first identifies the DJ's familiar territory, one neighbouring
 destination, the musical bridge and why it is a departure. Soul and optional
 Musical Leanings supply taste; scheduled regular-show filters supply evidence
@@ -535,7 +535,26 @@ The briefs now make stronger connections, particularly Carrie's rhythm-section
 and melody bridge, but remain uneven: titles are often generic, Rachel's bridge
 is loose, and Terry's list of familiar styles can read as additional promises.
 Two hosts choosing each destination is valid, but this small run does not prove
-variety across repeated generations. Keep the feature in the harness for now.
+variety across repeated generations. Those findings were accepted for an on-air trial; the template is now integrated below.
+
+### Outside the Comfort Zone implementation
+
+Available from the schedule shelf, Write an Order, Dashboard Takeover and
+Sub/Shows episode plans, with an amber colour. Defaults to Random Host from the
+eligible Random Hosts pool, or an explicitly selected fixed host. It is solo:
+there are no guest controls, saved configuration requires no guests, and casting
+never adds guests. Episode naming, skills eligibility, generation triggers,
+regenerate/shuffle/save, airtime grouping and Look Ahead use the existing shared
+Sub/Show paths.
+
+The brief describes familiar genres explicitly as the host's starting tastes,
+then moves into one neighbouring destination. It must not promise a blend with
+those familiar genres. Strict filters are mandatory, using only the declared
+destination. Required coverage is the greater of the operator minimum and twice
+airtime at a four-minute average, checked after filters and exclusions. If short,
+retry once for a different single connected destination with the same host;
+never expand with umbrella genres. A second insufficient result fails safely
+through the existing preparation error path.
 
 ### DJ’s Choice familiar-core policy
 
