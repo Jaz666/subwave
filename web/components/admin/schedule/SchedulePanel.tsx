@@ -317,13 +317,13 @@ export default function SchedulePanel() {
 
   const makeGeneratedShow = (templateId: GeneratedTemplateId): Show | null => {
     const template = GENERATED_SHOW_TEMPLATES.find(item => item.id === templateId);
-    const personaIds = (templateId === 'common-ground' ? commonGroundPersonas : personas).map(persona => persona.id).filter(Boolean);
+    const personaIds = (templateId === 'common-ground' || templateId === 'outside-comfort-zone' ? commonGroundPersonas : personas).map(persona => persona.id).filter(Boolean);
     if (templateId === 'common-ground' && personaIds.length < 2) {
       notify.err('Enable at least two DJs in Sub/Shows → Random Hosts before adding Common Ground.');
       return null;
     }
     if (!template || personaIds.length === 0) {
-      notify.err('Add at least one DJ before scheduling a generated show.');
+      notify.err('Enable at least one DJ in Sub/Shows → Random Hosts before scheduling a generated show.');
       return null;
     }
     if (shows.length >= SHOWS_MAX) {
@@ -337,8 +337,8 @@ export default function SchedulePanel() {
       nameMode: 'random',
       customName: '',
       hostMode: 'random',
-      guestMode: 'random',
-      guestCount: templateId === 'common-ground' ? { min: 1, max: 1 } : { min: 0, max: GUESTS_MAX },
+      guestMode: templateId === 'outside-comfort-zone' ? 'none' : 'random',
+      guestCount: templateId === 'outside-comfort-zone' ? { min: 0, max: 0 } : templateId === 'common-ground' ? { min: 1, max: 1 } : { min: 0, max: GUESTS_MAX },
       minimumCoverage: null,
     };
     return hydrateFullShow({
@@ -1147,10 +1147,11 @@ function GeneratedShowOptions({
   const generation = show.generation!;
   const guestCount = generation.guestCount;
   const commonGround = generation.template === 'common-ground';
+  const solo = generation.template === 'outside-comfort-zone';
   return (
     <div className="grid gap-5">
       <p className="text-[13px] leading-[1.6] text-ink">
-        {commonGround
+        {solo ? 'Choose the episode name and solo host. Random Host uses the pool in Sub/Shows settings.' : commonGround
           ? 'Choose the host and one guest. Both DJs must be enabled in Sub/Shows → Random Hosts.'
           : 'Choose the episode name, host and guest count. Random DJs draw from the pools in Sub/Shows settings.'}
       </p>
@@ -1190,7 +1191,7 @@ function GeneratedShowOptions({
           </Select>
         </div>
 
-        <div className="grid content-start gap-2">
+        {!solo && <div className="grid content-start gap-2">
           <Label htmlFor="generated-show-guests">{commonGround ? 'Guest' : 'Guests'}</Label>
           <Select value={generation.guestMode} onValueChange={onGuestModeChange}>
             <SelectTrigger id="generated-show-guests"><SelectValue /></SelectTrigger>
@@ -1256,9 +1257,9 @@ function GeneratedShowOptions({
           {generation.guestMode === 'fixed' && (
             <Mu className="text-[9px]">{commonGround ? 'Exactly one guest is required.' : 'Uses the guests already selected for this show.'}</Mu>
           )}
-        </div>
+        </div>}
       </div>
-      <Mu className="text-[9px]">{commonGround ? 'Common Ground always pairs two different DJs with equal musical influence.' : `Random Guests can range from 0 to ${GUESTS_MAX}. The selected host is never added as their own guest.`}</Mu>
+      <Mu className="text-[9px]">{solo ? 'One host explores one neighbouring musical destination, with no guests.' : commonGround ? 'Common Ground always pairs two different DJs with equal musical influence.' : `Random Guests can range from 0 to ${GUESTS_MAX}. The selected host is never added as their own guest.`}</Mu>
     </div>
   );
 }

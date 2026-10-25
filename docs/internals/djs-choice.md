@@ -38,7 +38,7 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-DJ’s Choice, Common Ground and Deep Discovery are accepted template options in
+DJ’s Choice, Common Ground, Deep Discovery and Outside the Comfort Zone are accepted template options in
 saved settings. Common Ground also has a dedicated comparison harness. Unsupported legacy template names use the
 existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
 Random casting uses the station-wide Sub/Shows pools. Common Ground uses the
@@ -334,18 +334,18 @@ familiar-core policy is described below.
 
 Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and
-show filters. DJ’s Choice, Deep Discovery and Common Ground are implemented;
+show filters. DJ’s Choice, Deep Discovery, Common Ground and Outside the Comfort Zone are implemented;
 the remaining ideas below are proposals.
 
 | Working name | Musical idea | Planning approach |
 | --- | --- | --- |
 | Common Ground (implemented) | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
-| Outside the Comfort Zone | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
+| Outside the Comfort Zone (implemented) | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
 | Time Capsule | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
-Outside the Comfort Zone remains a suggested next candidate. Common Ground
+Outside the Comfort Zone is implemented after a harness trial. Common Ground
 uses exactly one distinct guest and equal musical influence for both DJs; the
 host still leads presentation. It uses strict genres with the same twice-airtime
 coverage checks as the other Sub/Shows.
@@ -425,6 +425,136 @@ supporting repertoire, generated brief/settings, matching pool diagnostics and
 whether coverage reaches twice the airtime at a four-minute average. The harness
 uses the same strict genre and coverage policy as the scheduled template. Inadequate pools and individual generation failures remain visible for
 review; the harness does not silently replace a pairing or accept it for air.
+
+### Outside the Comfort Zone preview — 25 October 2026
+
+The initial trial was a solo, harness-only prototype; it is now a saved template and UI option following operator acceptance.
+Its concept first identifies the DJ's familiar territory, one neighbouring
+destination, the musical bridge and why it is a departure. Soul and optional
+Musical Leanings supply taste; scheduled regular-show filters supply evidence
+of established repertoire. Where no regular shows exist, familiarity is inferred
+and must be described as such.
+
+The destination supplies the show's music throughout. It should not become a
+familiar set with occasional adjacent tracks, an arbitrary challenge, or several
+unrelated excursions. Underrepresentation is not required. The brief must invite
+curiosity without inventing dislike, expertise or past listening habits, and
+includes the shared labelled optional talking point.
+
+For this experiment, exact regular-show genre names are removed from the genre
+choices. This prevents obvious repertoire repetition; it does not prove that a
+DJ has never heard a style, nor resolve all genre-family overlaps. The refined
+prototype uses its single declared destination as the entire genre palette;
+choose another destination if coverage is insufficient. The preview
+uses strict filters and reports whether the pool covers twice airtime at a
+four-minute average; it does not automatically accept or schedule a plan.
+
+The existing isolated comparison harness supports:
+
+```sh
+STATE_DIR=/path/to/station/state npm run comfort-zone:preview -- --count 4
+STATE_DIR=/path/to/station/state npm run comfort-zone:preview -- --host "DJ name" --count 1
+```
+
+Only personas enabled in Random Hosts are eligible. Default selection compares
+four distinct random hosts; selecting one host repeats that host for `--count`
+runs. Guests are rejected. Settings, credentials, library and logs use the same
+temporary isolation as the Common Ground harness, with the same local model and
+endpoint overrides. JSON includes briefs, settings, regular-show repertoire and
+coverage diagnostics. Station assessment is needed before adopting this policy.
+
+Coverage diagnostics stop waiting after 30 seconds and preserve the generated
+plan with an unknown coverage result. Model calls share the running station's
+LLM; run previews sequentially and allow for normal station contention.
+
+The four one-hour previews on 25 October all exceeded the 30-track minimum:
+
+| Host | Generated palette | Matching pool |
+| --- | --- | ---: |
+| Carrie Marshall | Electronic, Synth-Pop | 10,314 |
+| Carol Fairclough | Post-Rock, Electro, Experimental | 1,463 |
+| Rachel Cole | Post-Punk, Industrial | 1,562 |
+| Terry Palmer | Industrial, Post-Punk, Experimental | 2,201 |
+
+These establish technical feasibility, not concept quality. Carrie's broad
+Electronic umbrella weakens the focused destination. Carol's brief incorrectly
+calls post-rock electronic music. Rachel and Terry converge on similar territory,
+and their briefs do not clearly establish the individual musical bridge; Terry's
+also claims noise and experimentation in his regular shows without sufficient
+evidence. Every brief includes a talking point, and the revised previews leave
+unrequested mood, era and energy restrictions empty. Refine destination focus,
+musical accuracy and persona-specific bridges before promoting this to a saved
+template. A large matching pool alone is not an acceptance criterion.
+
+#### Refinement: one destination and strict selection
+
+The next prompt requires a concrete audible bridge supported by the persona,
+and checks the brief against that bridge rather than accepting generic curiosity.
+The concept returns one destination; the controller copies it into the required
+genre list. There is no independent list for the model to pad with umbrella tags.
+The broad Rock, Pop, Electronic and Experimental tags are unavailable as
+destinations in this trial. The second call receives the departure evidence to
+explain the rationale.
+
+This matters because genres are OR alternatives, even with strict filters.
+A trial proposing Progressive House plus Electronic admitted 9,371 tracks:
+strictness alone cannot restore focus to an overly broad palette. A single
+destination still permits tracks with other tags, provided at least one tag
+matches the destination using the shared genre matching rules. It does not
+guarantee unfamiliar artists or exclude every recording played in regular shows.
+
+The harness reports `strictFilterComparison`: effective library pools with the
+same musical plan's strict setting on and off, the count excluded by strictness,
+and the matching share of the soft pool. These are diagnostic eligibility counts,
+not airplay probabilities or a simulated playlist. They account for configured
+blocking, exclusions and duration bounds, but not transient recency, artist
+separation or journey state. Runtime's existing never-starve safeguards remain;
+the preview does not change the picker or scheduled episodes.
+
+Final four-host comparison with the single-destination contract:
+
+| Host | Strict destination | Eligible tracks | Also eligible under regular-show genres |
+| --- | --- | ---: | ---: |
+| Carrie Marshall | Synth-Pop | 1,722 | 14 |
+| Carol Fairclough | Synth-Pop | 1,722 | 668 |
+| Rachel Cole | Psychedelic Rock | 650 | 127 |
+| Terry Palmer | Psychedelic Rock | 650 | 113 |
+
+Each soft-filter comparison allowed approximately 68,224 tracks. All strict
+pools exceeded the one-hour minimum of 30. A separate read-only inspection using
+the shared runtime pool helper confirmed the counts and sampled one track per
+artist: Carrie's examples included Erasure, Metronomy, Soft Cell and New Order;
+Rachel's included Khruangbin, Tame Impala and White Denim. These are eligible
+examples, not predicted playlists. Regular-show overlap is genre eligibility,
+not evidence of past airplay. This supports strict filtering for a focused
+departure while retaining incidental overlap, rather than banning familiar
+artists. Carol's greater overlap shows why a new genre name is not sufficient
+evidence of a large departure.
+
+The briefs now make stronger connections, particularly Carrie's rhythm-section
+and melody bridge, but remain uneven: titles are often generic, Rachel's bridge
+is loose, and Terry's list of familiar styles can read as additional promises.
+Two hosts choosing each destination is valid, but this small run does not prove
+variety across repeated generations. Those findings were accepted for an on-air trial; the template is now integrated below.
+
+### Outside the Comfort Zone implementation
+
+Available from the schedule shelf, Write an Order, Dashboard Takeover and
+Sub/Shows episode plans, with an amber colour. Defaults to Random Host from the
+eligible Random Hosts pool, or an explicitly selected fixed host. It is solo:
+there are no guest controls, saved configuration requires no guests, and casting
+never adds guests. Episode naming, skills eligibility, generation triggers,
+regenerate/shuffle/save, airtime grouping and Look Ahead use the existing shared
+Sub/Show paths.
+
+The brief describes familiar genres explicitly as the host's starting tastes,
+then moves into one neighbouring destination. It must not promise a blend with
+those familiar genres. Strict filters are mandatory, using only the declared
+destination. Required coverage is the greater of the operator minimum and twice
+airtime at a four-minute average, checked after filters and exclusions. If short,
+retry once for a different single connected destination with the same host;
+never expand with umbrella genres. A second insufficient result fails safely
+through the existing preparation error path.
 
 ### DJ’s Choice familiar-core policy
 

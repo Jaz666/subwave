@@ -8,24 +8,29 @@ import { config as loadDotEnv } from 'dotenv';
 import { isolateStationState } from './test-utils/isolated-state.js';
 import { resolveActiveStationDir } from '../src/stations/resolve.js';
 
-const usage = 'Usage: npm run common-ground:preview -- [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
+const usage = 'Usage: npm run common-ground:preview -- [--template common-ground|outside-comfort-zone] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
 const options = new Map<string, string>();
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
   if (flag === '--help' || flag === '-h') { console.log(usage); process.exit(0); }
   if (flag === '--list') { options.set(flag, 'true'); continue; }
-  if (!['--host', '--guest', '--count', '--minutes'].includes(flag) || !process.argv[index + 1] || process.argv[index + 1].startsWith('--')) {
+  if (!['--template', '--host', '--guest', '--count', '--minutes'].includes(flag) || !process.argv[index + 1] || process.argv[index + 1].startsWith('--')) {
     throw new Error(usage);
   }
   options.set(flag, process.argv[++index]);
 }
-const count = Number(options.get('--count') ?? 3);
+const template = options.get('--template') ?? 'common-ground';
+if (!['common-ground', 'outside-comfort-zone'].includes(template)) throw new Error('Unknown preview template');
+const outside = template === 'outside-comfort-zone';
+const previewId = `${template}-preview`;
+if (outside && options.has('--guest')) throw new Error('Outside the Comfort Zone is a solo preview; omit --guest.');
+const count = Number(options.get('--count') ?? (outside ? 4 : 3));
 const minutes = Number(options.get('--minutes') ?? 60);
 if (!Number.isInteger(count) || count < 1 || count > 20 || !Number.isInteger(minutes) || minutes < 1 || minutes > 360) {
   throw new Error('Use --count 1–20 and --minutes 1–360.');
 }
 loadDotEnv({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../.env'), quiet: true });
-const isolated = isolateStationState('subwave-common-ground-');
+const isolated = isolateStationState('subwave-show-preview-');
 const source = resolveActiveStationDir(isolated.sourceRoot);
 if (!existsSync(join(isolated.dir, 'settings.json'))) throw new Error('No station settings snapshot; set STATE_DIR to the station state root.');
 for (const file of ['setup-config.json', 'blocklist.json']) {
@@ -53,7 +58,7 @@ async function main() {
     process.stdout.write(JSON.stringify({ eligiblePersonas: eligible.map(identity) }, null, 2) + '\n');
     return;
   }
-  if (eligible.length < 2) throw new Error('Common Ground needs at least two personas enabled in Random Hosts.');
+  if (eligible.length < (outside ? 1 : 2)) throw new Error('Not enough eligible personas enabled in Random Hosts.');
   const find = (value: string | undefined) => {
     if (!value) return null;
     const matches = eligible.filter(persona => persona.id === value || persona.name.toLowerCase() === value.toLowerCase());
@@ -63,8 +68,11 @@ async function main() {
   const host = find(options.get('--host'));
   const guest = find(options.get('--guest'));
   if (host && guest && host.id === guest.id) throw new Error('Host and guest must be different personas.');
-  const pairs: Array<[typeof eligible[number], typeof eligible[number]]> = [];
-  for (const left of eligible) for (const right of eligible) {
+  const pairs: Array<[typeof eligible[number], typeof eligible[number] | null]> = [];
+  if (outside) {
+    for (const persona of eligible) if (!host || persona.id === host.id) pairs.push([persona, null]);
+  }
+  if (!outside) for (const left of eligible) for (const right of eligible) {
     if (left.id === right.id || (host && left.id !== host.id) || (guest && right.id !== guest.id)) continue;
     if (!host && !guest && left.id > right.id) continue;
     pairs.push([left, right]);
@@ -73,8 +81,9 @@ async function main() {
     const other = randomInt(index + 1);
     [pairs[index], pairs[other]] = [pairs[other], pairs[index]];
   }
-  if (!(host && guest) && count > pairs.length) throw new Error(`Only ${pairs.length} distinct eligible pairs are available; reduce --count.`);
-  const selections = host && guest ? Array.from({ length: count }, () => pairs[0]) : pairs.slice(0, count);
+  const fixed = outside ? !!host : !!(host && guest);
+  if (!fixed && count > pairs.length) throw new Error(`Only ${pairs.length} distinct eligible selections are available; reduce --count.`);
+  const selections = fixed ? Array.from({ length: count }, () => pairs[0]) : pairs.slice(0, count);
   // SQLite's backup API includes committed WAL changes in a consistent snapshot.
   const db = new Database(join(source, 'library.db'), { readonly: true, fileMustExist: true });
   try { await db.backup(join(isolated.dir, 'library.db')); } finally { db.close(); }
@@ -89,27 +98,51 @@ async function main() {
   const runs: Array<Record<string, unknown>> = [];
   try {
     for (const [index, [host, guest]] of selections.entries()) {
-      console.error(`Common Ground ${index + 1}/${selections.length}: ${host.name} + ${guest.name}`);
+      console.error(`${template} ${index + 1}/${selections.length}: ${host.name}${guest ? ` + ${guest.name}` : ''}`);
       const startsAt = Date.now();
       const minimumTracks = Math.ceil(minutes / 2); // twice airtime at four minutes per track
       try {
         const plan = await generateShowPlan({
-          occurrence: { id: `common-ground-preview-${index}-${startsAt}`, startsAt, endsAt: startsAt + minutes * 60_000 },
-          template: 'common-ground', planningPrompt: '', minimumCoverage: minimumTracks,
-          cast: { hostPersonaId: host.id, guestPersonaIds: [guest.id] },
-          show: { id: 'common-ground-preview' },
+          occurrence: { id: `${previewId}-${index}-${startsAt}`, startsAt, endsAt: startsAt + minutes * 60_000 },
+          template, planningPrompt: '', minimumCoverage: minimumTracks,
+          cast: { hostPersonaId: host.id, guestPersonaIds: guest ? [guest.id] : [] },
+          show: { id: previewId },
         });
-        const coverage = await diagnoseShowCandidates({ ...plan, id: 'common-ground-preview' }, { at: startsAt });
-        runs.push({ host: identity(host), guest: identity(guest),
-          repertoire: [host, guest].map(persona => ({ ...identity(persona), shows: scheduledShowsForHost(persona.id, 'common-ground-preview') })),
-          plan, coverage: { ...coverage, minimumTracks, meetsMinimum: coverage.warnings.some(warning => /not (?:present|counted|an active lock)|could not|failed to resolve/i.test(warning)) ? null : coverage.library.effective >= minimumTracks } });
+        let coverage: Awaited<ReturnType<typeof diagnoseShowCandidates>> | null = null;
+        let softCoverage: Awaited<ReturnType<typeof diagnoseShowCandidates>> | null = null;
+        let coverageError: string | null = null;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          [coverage, softCoverage] = await Promise.race([
+            Promise.all([
+              diagnoseShowCandidates({ ...plan, id: previewId }, { at: startsAt }),
+              diagnoseShowCandidates({ ...plan, id: previewId, filtersStrict: false }, { at: startsAt }),
+            ]),
+            new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Coverage lookup exceeded 30 seconds')), 30_000); }),
+          ]);
+        } catch (error) { coverageError = error instanceof Error ? error.message : String(error); }
+        finally { clearTimeout(timer); }
+        runs.push({ host: identity(host), guest: guest ? identity(guest) : null,
+          repertoire: (guest ? [host, guest] : [host]).map(persona => ({ ...identity(persona), shows: scheduledShowsForHost(persona.id, previewId) })),
+          strictFilterComparison: coverage && softCoverage ? {
+            strictEligible: coverage.library.effective,
+            softEligible: softCoverage.library.effective,
+            excludedByStrict: softCoverage.library.effective - coverage.library.effective,
+            matchingShareOfSoftPool: softCoverage.library.effective ? coverage.library.effective / softCoverage.library.effective : null,
+            note: 'Eligible library universes, not predicted airplay proportions. Recency, artist separation and journey state are not included.',
+          } : null,
+          plan, coverage: coverage
+            ? { ...coverage, minimumTracks, meetsMinimum: coverage.warnings.some(warning => /not (?:present|counted|an active lock)|could not|failed to resolve/i.test(warning)) ? null : coverage.library.effective >= minimumTracks }
+            : { error: coverageError, minimumTracks, meetsMinimum: null } });
       } catch (error) {
-        runs.push({ host: identity(host), guest: identity(guest), error: error instanceof Error ? error.message : String(error) });
+        runs.push({ host: identity(host), guest: guest ? identity(guest) : null, error: error instanceof Error ? error.message : String(error) });
         process.exitCode = 1;
       }
     }
-    process.stdout.write(JSON.stringify({ previewOnly: true, template: 'common-ground', minutes,
-      policy: 'Strict genres and twice-airtime coverage use the Common Ground policy; no plans are saved.',
+    process.stdout.write(JSON.stringify({ previewOnly: true, template, minutes,
+      policy: outside
+        ? 'Solo departure preview; strict genres and twice-airtime coverage; no plans are saved.'
+        : 'Strict genres and twice-airtime coverage use the Common Ground policy; no plans are saved.',
       model: station.llm.model, eligiblePersonas: eligible.map(identity), runs }, null, 2) + '\n');
   } finally { library.shutdown(); }
 }

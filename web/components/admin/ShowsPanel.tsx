@@ -512,7 +512,7 @@ export default function ShowsPanel() {
         <EmptyState
           art="calendar"
           title="No regular shows"
-          description="DJ’s Choice and Deep Discovery variants are managed in Sub/Shows."
+          description="Generated show variants are managed in Sub/Shows."
           action={(
             <Button asChild variant="outline" size="sm">
               <Link href="/admin/shows/templates">Open Sub/Shows</Link>
