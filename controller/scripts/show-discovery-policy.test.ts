@@ -87,3 +87,20 @@ test('host genre terms rank related rare choices ahead of unrelated early labels
   assert.deepEqual(anchored.choices.slice(0, 2).map(genre => genre.name), ['Alternative Hip Hop', 'Conscious Hip Hop']);
   assert.deepEqual(anchored.core, plain.core);
 });
+
+test('compound genre names have no extra priority; varied ordering preserves rarity and relevant choices', () => {
+  const counts = { 'Acoustic Rock': 16, 'Alternative Hip Hop': 20, 'Minimal Electronic': 31, 'Conscious Hip Hop': 48, Small1: 70, Small2: 90, Neighbour: 150, Rock: 10000 };
+  const anchors = ['Hip Hop', 'Electronic'];
+  let draw = 0;
+  const forward = discoveryPalette(counts, 15, anchors, () => ++draw / 10);
+  draw = 1;
+  const reverse = discoveryPalette(counts, 15, anchors, () => (draw -= 0.1));
+  assert.equal(forward.choices[0].name, 'Alternative Hip Hop');
+  assert.equal(reverse.choices[0].name, 'Conscious Hip Hop');
+  assert.equal(forward.choices[1].name, 'Minimal Electronic');
+  assert.equal(reverse.choices[1].name, 'Minimal Electronic');
+  assert.deepEqual(forward.core, reverse.core);
+  assert.equal(forward.ceiling, reverse.ceiling);
+  assert.deepEqual(forward.choices.map(g => g.name).sort(), reverse.choices.map(g => g.name).sort());
+  assert.equal(draw.toFixed(1), '0.2'); // One draw per candidate; no random comparator.
+});
