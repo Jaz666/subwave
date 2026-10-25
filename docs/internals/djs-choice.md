@@ -96,7 +96,7 @@ Production telemetry retains `generateShowPlan.concept` and
 narrow formatting recovery, cast resolution and accepted-plan persistence remain
 in use. No prompt-version marker is added to the configuration fingerprint, so
 this code change alone should not invalidate accepted episodes. Regenerate an
-upcoming episode explicitly to try it; retain Maria’s reviewed episode.
+upcoming episode explicitly to try it; retain previously reviewed episodes.
 
 Deployment base: station source `e7df2405`. The previous controller image is
 retained locally as `subwave-controller:before-compact-20261023`
@@ -332,6 +332,113 @@ familiar-core policy is described below.
 
 ## Template ideas for later exploration
 
+### Fresh-install regression scenario
+
+The isolated comparison harness accepts `--fresh-user`, also available as
+`npm run sub-shows:fresh-preview -- --template <template> --count 3` from
+`controller/`. Set `STATE_DIR` to the source station state root as with the
+other previews. Run once for each of `dj-choice`, `deep-discovery`,
+`common-ground`, `outside-comfort-zone` and `time-capsule`.
+
+This writes shipped DEFAULTS into temporary settings/schedule files: the three
+seed personas (Marlowe, Wren and Hale), no separate Musical Leanings, no saved
+shows, an empty schedule and unrestricted eligibility pools. It omits the source
+station's blocklist. Only service connections and a library snapshot are reused;
+no source persona, show, schedule or skill configuration is retained. It asserts
+the empty fixture, checks 60 deterministic random casts per template, then tests
+each default persona as host with the template's normal random-guest policy.
+Outside the Comfort Zone stays solo and Common Ground requires one guest.
+Generation uses the production acceptance/coverage/retry function. No episodes
+are saved or aired and the source station is unchanged.
+
+The 25 October 2026 run completed all 15 one-hour previews and 300 casting checks.
+Every accepted plan passed strict coverage with at least 30 matching tracks:
+
+| Template | Marlowe | Wren | Hale |
+| --- | ---: | ---: | ---: |
+| DJ's Choice | 5,870 | 10,493 | 45,901 |
+| Deep Discovery | 1,378 | 194 | 170 |
+| Common Ground | 29,994 | 10,732 | 29,994 |
+| Outside the Comfort Zone | 279 | 195 | 279 |
+| Time Capsule | 635 | 635 | 635 |
+
+This is a successful mechanics check, not a pass for fresh-install editorial
+quality. The seed Souls describe presentation style without explicit musical
+tastes. Generation inferred preferences from those speaking traits, and two
+Outside the Comfort Zone rationales invented established Soul/Funk repertoires
+despite the empty show list. One Deep Discovery plan mixed 15 unrelated genres
+under an electronic-music brief. Seven of the nine DJ's Choice, Deep Discovery
+and Common Ground plans introduced unrequested era filters (including two
+effectively unhelpful 1900-onward windows). All Time Capsule hosts converged on
+1965–1969 with the same palette; one brief additionally promised Blues Rock,
+which was absent from the accepted filters.
+
+### Musical readiness and library suitability
+
+The first concept call now assesses readiness before proposing an episode.
+The host must have concrete musical evidence in their Soul or optional Musical
+Leanings; Common Ground requires this from both participants. Existing shows
+are supporting repertoire context, never a prerequisite. Speaking style alone
+cannot establish musical taste. Unchanged shipped presentation-only Souls and
+empty profiles stand down before loading the library or calling the model.
+
+For other profiles the concept response contains an assessment and a nullable
+proposal. Exact supporting quotations are checked against each participant's
+own source text. A narrow local guard also rejects obvious delivery-only quotes
+without musical language or a library genre. Clear catalogue-genre preferences
+in Musical Leanings, or explicitly expressed preferences in Soul, also count
+directly if the model quotes the wrong field. These checks do not classify every
+possible musical taste. Missing evidence returns advice to add musical detail, with
+an external [Musical Leanings guide](https://github.com/perminder-klair/subwave/discussions/1817)
+at the bottom of the message. Both the Sub/Shows episode card and takeover
+preview render that guide as a clickable external link. This adds no model call
+to successful generation; meaning and musical coherence still rely on the model.
+
+Library suitability is assessed for the chosen template. A large or narrowly
+tagged catalogue need not support a credible departure or shared musical
+connection. Failure explains that fit problem without labelling the library
+small or silently switching templates. Track-count failures separately report
+the slot length, required count and actual eligible count after exclusions,
+with advice to shorten the slot, try another template or add suitable music.
+The twice-airtime/four-minute rule, higher operator minimum and single coverage
+correction remain. Unresolved genres or inactive metadata filters fail coverage
+verification rather than accepting a count inflated by a missing lock.
+
+The fresh-user harness accepts fresh-only `--music-lean` or `--soul` overrides
+for positive controls. Unmodified default-persona readiness refusals are expected
+outcomes, recorded with their error code. The library snapshot remains isolated;
+no plans are saved or aired. Editorial era restraint and brief/filter agreement
+remain separate review concerns. These previews do not exercise browser onboarding.
+
+The readiness rerun on 25 October returned the expected persona guidance for
+all 15 unchanged-default cases and again passed 300 deterministic casting checks.
+Enriched fresh-user positive controls produced accepted one-hour plans with no
+regular shows:
+
+| Template | Musical evidence | Eligible tracks |
+| --- | --- | ---: |
+| DJ's Choice | Soul only | 4,833 |
+| Deep Discovery | Optional Musical Leanings | 178 |
+| Common Ground | Optional Musical Leanings for both participants | 1,661 |
+| Outside the Comfort Zone | Optional Musical Leanings | 279 |
+| Time Capsule | Soul only | 635 |
+
+Initial enriched trials exposed false readiness refusals, one deficient coverage
+correction and one invalid settings JSON response. The evidence instruction and
+verbatim quotation requirement were clarified before rerunning the first
+three templates; the accepted positive controls above do not establish that
+model-level refusals, format failures or editorial inconsistencies are eliminated.
+A custom presentation-only Soul also exposed an incorrect model approval after
+prompt clarification, motivating the local delivery-evidence guard. Another
+trial quoted a guest’s delivery instead of their explicit Leanings, motivating
+the direct catalogue-genre preference check.
+Thirteen focused policy tests and nine existing generated-show tests cover the
+readiness gate, quote provenance, per-participant requirements, count advice,
+bounded retry, inactive locks and regeneration lifecycle. The existing lifecycle
+fixture now supplies an explicit coverage diagnostic instead of relying on a
+live music server. Small-pool and metadata-failure tests use injected diagnostics;
+the live previews still reuse a substantial catalogue.
+
 ### Bundled Sub/Show discussion skill
 
 Include `sub-show-talking-point` in the later Sub/Shows release as the Sub/Show
@@ -390,18 +497,18 @@ Second-pass one-hour results (30 tracks required):
 
 | Host | Title | Strict years | Genres | Matching tracks |
 | --- | --- | --- | --- | ---: |
-| Carrie Marshall | Riff Fest | 1975–1979 | Progressive Rock, Hard Rock, Folk Rock | 638 |
-| Maria Ashcroft | Synthetic Dreams | 1985–1989 | Synth-Pop, New Wave, Indie Pop | 498 |
-| Terry Palmer | Punk New Wave Collision | 1975–1979 | Punk, New Wave, Post-Punk | 820 |
+| Rock/metal host | Riff Fest | 1975–1979 | Progressive Rock, Hard Rock, Folk Rock | 638 |
+| Pop/soul host | Synthetic Dreams | 1985–1989 | Synth-Pop, New Wave, Indie Pop | 498 |
+| Eclectic host | Punk New Wave Collision | 1975–1979 | Punk, New Wave, Post-Punk | 820 |
 
 All six model calls in this pass completed and all plans preserved the closed
 period exactly in strict settings, with no mood or energy restriction. The
 three distinct musical angles and sufficient era/genre pools support further
-exploration, but the prose still failed some instructions. Carrie introduced
-Yes in the talking point and omitted supporting genres from the brief; Maria
-used a vague mid-80s label and unsupported emergence/influence framing; Terry
+exploration, but the prose still failed some instructions. The rock/metal host introduced
+Yes in the talking point and omitted supporting genres from the brief; the pop/soul host
+used a vague mid-80s label and unsupported emergence/influence framing; the eclectic host
 promised late-1970s Britain without any country filter or verified geography.
-Both Maria and Terry omitted the exact bounds in their prose. These findings
+Both the pop/soul host and the eclectic host omitted the exact bounds in their prose. These findings
 informed the production changes below; coverage alone does not establish prose
 quality or verify historical/geographical claims.
 
@@ -556,15 +663,15 @@ The four one-hour previews on 25 October all exceeded the 30-track minimum:
 
 | Host | Generated palette | Matching pool |
 | --- | --- | ---: |
-| Carrie Marshall | Electronic, Synth-Pop | 10,314 |
-| Carol Fairclough | Post-Rock, Electro, Experimental | 1,463 |
-| Rachel Cole | Post-Punk, Industrial | 1,562 |
-| Terry Palmer | Industrial, Post-Punk, Experimental | 2,201 |
+| Rock/metal host | Electronic, Synth-Pop | 10,314 |
+| Electronic host | Post-Rock, Electro, Experimental | 1,463 |
+| Alternative-pop host | Post-Punk, Industrial | 1,562 |
+| Eclectic host | Industrial, Post-Punk, Experimental | 2,201 |
 
-These establish technical feasibility, not concept quality. Carrie's broad
-Electronic umbrella weakens the focused destination. Carol's brief incorrectly
-calls post-rock electronic music. Rachel and Terry converge on similar territory,
-and their briefs do not clearly establish the individual musical bridge; Terry's
+These establish technical feasibility, not concept quality. The rock/metal host's broad
+Electronic umbrella weakens the focused destination. The electronic host's brief incorrectly
+calls post-rock electronic music. The alternative-pop host and the eclectic host converge on similar territory,
+and their briefs do not clearly establish the individual musical bridge; the eclectic host's
 also claims noise and experimentation in his regular shows without sufficient
 evidence. Every brief includes a talking point, and the revised previews leave
 unrequested mood, era and energy restrictions empty. Refine destination focus,
@@ -600,25 +707,25 @@ Final four-host comparison with the single-destination contract:
 
 | Host | Strict destination | Eligible tracks | Also eligible under regular-show genres |
 | --- | --- | ---: | ---: |
-| Carrie Marshall | Synth-Pop | 1,722 | 14 |
-| Carol Fairclough | Synth-Pop | 1,722 | 668 |
-| Rachel Cole | Psychedelic Rock | 650 | 127 |
-| Terry Palmer | Psychedelic Rock | 650 | 113 |
+| Rock/metal host | Synth-Pop | 1,722 | 14 |
+| Electronic host | Synth-Pop | 1,722 | 668 |
+| Alternative-pop host | Psychedelic Rock | 650 | 127 |
+| Eclectic host | Psychedelic Rock | 650 | 113 |
 
 Each soft-filter comparison allowed approximately 68,224 tracks. All strict
 pools exceeded the one-hour minimum of 30. A separate read-only inspection using
 the shared runtime pool helper confirmed the counts and sampled one track per
-artist: Carrie's examples included Erasure, Metronomy, Soft Cell and New Order;
-Rachel's included Khruangbin, Tame Impala and White Denim. These are eligible
+artist: the rock/metal host's examples included Erasure, Metronomy, Soft Cell and New Order.
+The alternative-pop host's examples included Khruangbin, Tame Impala and White Denim. These are eligible
 examples, not predicted playlists. Regular-show overlap is genre eligibility,
 not evidence of past airplay. This supports strict filtering for a focused
 departure while retaining incidental overlap, rather than banning familiar
-artists. Carol's greater overlap shows why a new genre name is not sufficient
+artists. The electronic host's greater overlap shows why a new genre name is not sufficient
 evidence of a large departure.
 
-The briefs now make stronger connections, particularly Carrie's rhythm-section
-and melody bridge, but remain uneven: titles are often generic, Rachel's bridge
-is loose, and Terry's list of familiar styles can read as additional promises.
+The briefs now make stronger connections, particularly the rock/metal host's rhythm-section
+and melody bridge, but remain uneven: titles are often generic, the alternative-pop host's bridge
+is loose, and the eclectic host's list of familiar styles can read as additional promises.
 Two hosts choosing each destination is valid, but this small run does not prove
 variety across repeated generations. Those findings were accepted for an on-air trial; the template is now integrated below.
 

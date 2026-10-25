@@ -719,10 +719,11 @@ output contract, bounds, delivery/recovery behaviour and operator reset API.
 Enable **Co-Hosted Discussion** and add one standalone line to the prompt body:
 
 ```text
-Special guest: Producer Dave
+Special guest: <Full Persona Name>
 ```
 
-The name must resolve to one existing persona (an exact persona ID also works).
+Replace `<Full Persona Name>` with the full name of a persona in your own
+station. The name must resolve to one existing persona (an exact persona ID also works).
 Matching names is case-insensitive. The controller keeps the current host and
 scheduled guests, then adds the special guest without duplicating them. The
 show roster is unchanged; this also runs on a solo show. Prompt-selected casts support at most four participants. Use the rest of the
@@ -733,9 +734,9 @@ For an enforced sequence, use one numbered list whose steps start with `Host`,
 
 ```text
 1. The host asks for a joke.
-2. Dave gives the setup.
+2. The special guest gives the setup.
 3. The host asks why.
-4. Dave gives the punchline.
+4. The special guest gives the punchline.
 5. The host reacts.
 ```
 
@@ -780,15 +781,7 @@ the model cannot choose additional speakers. Put the intended roles and format
 in the skill brief and returned data. `cast: tool` is preserved when saving in
 the skill editor; it currently has no dedicated UI switch.
 
-### A Word with the Producer
-
-`docs/examples/skills/word-with-the-producer` is a small creative discussion
-example. Its tool finds Producer Dave and the on-air host, then requests four
-alternating turns: Dave, host, Dave, host. The model invents one fresh premise
-and their responses in a single call; the tool contains no topics or lines.
-The prompt permits fictional suggestions without inventing real station changes,
-listener messages or factual music claims. Scheduled guests do not participate
-in this example.
+### Persona lookup for skill tools
 
 `services.personas.find(nameOrId)` returns only `{id, name}` for an exact ID or
 a unique case-insensitive name; missing or ambiguous names return null.
@@ -796,11 +789,11 @@ a unique case-insensitive name; missing or ambiguous names return null.
 The controller, rather than the tool, resolves the full souls and voices.
 A future random-guest tool can choose from names or IDs and use the same lookup.
 
-Copy both example files into `state/skills/word-with-the-producer/` after
-updating the controller, then rescan Skills. The new skill arrives disabled;
-enable and assign it to the hosts who should run it, and allow it for Sub/Shows
-if desired. No existing skill is replaced. For a prompt-only discussion, use the Special Guest directive above instead
-of a tool. No separate guest switch or dropdown is needed.
+Choose names or IDs from the operator's own roster, or expose a setting in the
+skill for the operator to supply them. Shared skills must not depend on a
+particular station's persona names or IDs. For a prompt-only discussion, use
+the Special Guest directive above instead of a tool. No separate guest switch
+or dropdown is needed.
 
 ### Look Ahead schedule data
 

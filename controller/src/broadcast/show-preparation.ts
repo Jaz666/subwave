@@ -1,3 +1,4 @@
+import { ShowPlanningError, coverageError, coverageUnavailable } from './show-planning-policy.js';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import * as settings from '../settings.js';
@@ -72,7 +73,7 @@ export function preparationGrounding(result: AcceptedPreparation, music: 'restri
     + `<episode-source-data>\n${data}\n</episode-source-data>`;
 }
 
-export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, generate: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan> = generateShowPlan): Promise<GeneratedShowPlan> {
+export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, generate: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan> = generateShowPlan, diagnose: typeof diagnoseShowCandidates = diagnoseShowCandidates): Promise<GeneratedShowPlan> {
   const strictGenres = ['deep-discovery', 'dj-choice', 'common-ground', 'outside-comfort-zone', 'time-capsule'].includes(snapshot.template);
   const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0, strictGenres
     ? Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000) : 0);
@@ -90,10 +91,13 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
     return plan;
   };
   const validateCoverage = async (plan: GeneratedShowPlan) => {
-    const diagnostic = await diagnoseShowCandidates({
+    const diagnostic = await diagnose({
       ...snapshot.show, moods: plan.moods, genres: plan.genres, eras: plan.eras,
       energies: plan.energies, filtersStrict: plan.filtersStrict,
-    }, { at: snapshot.occurrence.startsAt, showId: snapshot.occurrence.showId });
+    }, { at: snapshot.occurrence.startsAt, showId: snapshot.occurrence.showId }).catch(() => {
+      throw new ShowPlanningError('library-unavailable', 'Could not verify the music library. Check the library connection and indexing, then try again.');
+    });
+    if (coverageUnavailable(diagnostic.warnings)) throw new ShowPlanningError('library-unavailable', `Could not verify the show's music filters. Check the library connection and genre metadata, then try again. ${diagnostic.warnings.join(' ')}`);
     return { count: diagnostic.library.effective, warnings: diagnostic.warnings };
   };
   let plan = accept(await generate(snapshot));
@@ -108,11 +112,11 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
     coverageCorrection: `Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Sub/Shows). ${snapshot.template === 'outside-comfort-zone' ? 'Choose a different single neighbouring destination with sufficient coverage. Do not retain the failed destination or add broad fallback genres.' : snapshot.template === 'time-capsule' ? 'Choose a better-covered closed period of at most ten years and a coherent connected genre palette. Update the brief to match the new period and genres. Keep both year bounds and strict filtering; never remove the era restriction.' : 'Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions.'} Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
   }));
   if (snapshot.template === 'outside-comfort-zone' && plan.genres[0] === previousDestination) {
-    throw new Error('Coverage retry must choose a different destination genre');
+    throw coverageError(Math.round((snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 60_000), minimumTracks, coverage.count);
   }
   coverage = await validateCoverage(plan);
   if (!enough(coverage)) {
-    throw new Error(`Generated settings cover ${coverage.count} unique eligible tracks; ${minimumTracks} are required`);
+    throw coverageError(Math.round((snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 60_000), minimumTracks, coverage.count);
   }
   return plan;
 }
@@ -139,6 +143,7 @@ interface PreparationDeps {
   scheduledGeneratedSnapshot?: (context: SessionContext, castSeed?: string) => GeneratedShowSnapshot | null;
   isScheduledOccurrenceCurrent?: (occurrence: PreparationOccurrence) => boolean;
   generate?: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan>;
+  diagnose?: typeof diagnoseShowCandidates;
   now?: () => number;
   changed?: () => void;
 }
@@ -281,7 +286,7 @@ export function createShowPreparation(deps: PreparationDeps) {
     return operation;
   };
   const pendingGenerated = new Map<string, Promise<GeneratedShowRecord | null>>();
-  const generateAcceptedPlan = (snapshot: GeneratedShowSnapshot) => generateAcceptedShowPlan(snapshot, deps.generate ?? generateShowPlan);
+  const generateAcceptedPlan = (snapshot: GeneratedShowSnapshot) => generateAcceptedShowPlan(snapshot, deps.generate ?? generateShowPlan, deps.diagnose ?? diagnoseShowCandidates);
   async function prepareGenerated(
     snapshot: GeneratedShowSnapshot,
     latestSnapshot: () => GeneratedShowSnapshot | null,

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Controller } from 'react-hook-form';
 import type { z } from 'zod';
 import Link from 'next/link';
+import { ShowGenerationNotice } from '../shows/ShowGenerationNotice';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { useAdminMutation, useAdminQuery } from '../../../lib/admin-query';
 import { notify, errorMessage } from '../../../lib/notify';
@@ -389,7 +390,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
                 <span>Ready to take over.</span>
               </> : generating ? <span>Preparing a show with a random host and 0–3 random guests…</span>
                 : currentPreparation?.status === 'failed' ? <>
-                  <span>{currentPreparation.error}</span>
+                  <ShowGenerationNotice message={currentPreparation.error || 'Show generation failed. Please try again.'} />
                   <Btn sm onClick={() => setRetryVersion(version => version + 1)}>Retry</Btn>
                 </> : currentPreparation?.status === 'ready' ? <>
                   <span>This preview has expired.</span>
