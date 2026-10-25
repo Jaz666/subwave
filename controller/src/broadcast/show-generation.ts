@@ -347,7 +347,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const intended = 'departure' in concept ? [concept.departure.destination] : [...new Set(concept.intendedGenres)];
   const settingsSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
     moods: generatedShowPlanSchema.shape.moods.max(outside && !input.planningPrompt.trim() ? 0 : strictGenres ? 2 : 15),
-    eras: generatedShowPlanSchema.shape.eras.max(outside && !input.planningPrompt.trim() ? 0 : 15),
+    eras: generatedShowPlanSchema.shape.eras.max(outside && !input.planningPrompt.trim() && input.nameMode !== 'custom' ? 0 : 15),
     energies: generatedShowPlanSchema.shape.energies.max(outside && !input.planningPrompt.trim() ? 0 : 15),
     genres: intended.length
       ? z.array(z.enum(intended as [string, ...string[]])).length(intended.length)
