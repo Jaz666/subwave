@@ -332,6 +332,55 @@ familiar-core policy is described below.
 
 ## Template ideas for later exploration
 
+### Fresh-install regression scenario
+
+The isolated comparison harness accepts `--fresh-user`, also available as
+`npm run sub-shows:fresh-preview -- --template <template> --count 3` from
+`controller/`. Set `STATE_DIR` to the source station state root as with the
+other previews. Run once for each of `dj-choice`, `deep-discovery`,
+`common-ground`, `outside-comfort-zone` and `time-capsule`.
+
+This writes shipped DEFAULTS into temporary settings/schedule files: the three
+seed personas (Marlowe, Wren and Hale), no separate Musical Leanings, no saved
+shows, an empty schedule and unrestricted eligibility pools. It omits the source
+station's blocklist. Only service connections and a library snapshot are reused;
+no source persona, show, schedule or skill configuration is retained. It asserts
+the empty fixture, checks 60 deterministic random casts per template, then tests
+each default persona as host with the template's normal random-guest policy.
+Outside the Comfort Zone stays solo and Common Ground requires one guest.
+Generation uses the production acceptance/coverage/retry function. No episodes
+are saved or aired and the source station is unchanged.
+
+The 25 October 2026 run completed all 15 one-hour previews and 300 casting checks.
+Every accepted plan passed strict coverage with at least 30 matching tracks:
+
+| Template | Marlowe | Wren | Hale |
+| --- | ---: | ---: | ---: |
+| DJ's Choice | 5,870 | 10,493 | 45,901 |
+| Deep Discovery | 1,378 | 194 | 170 |
+| Common Ground | 29,994 | 10,732 | 29,994 |
+| Outside the Comfort Zone | 279 | 195 | 279 |
+| Time Capsule | 635 | 635 | 635 |
+
+This is a successful mechanics check, not a pass for fresh-install editorial
+quality. The seed Souls describe presentation style without explicit musical
+tastes. Generation inferred preferences from those speaking traits, and two
+Outside the Comfort Zone rationales invented established Soul/Funk repertoires
+despite the empty show list. One Deep Discovery plan mixed 15 unrelated genres
+under an electronic-music brief. Seven of the nine DJ's Choice, Deep Discovery
+and Common Ground plans introduced unrequested era filters (including two
+effectively unhelpful 1900-onward windows). All Time Capsule hosts converged on
+1965–1969 with the same palette; one brief additionally promised Blues Rock,
+which was absent from the accepted filters.
+
+Follow-up: define an explicit library-led fallback when musical preferences and
+repertoire evidence are absent, without claiming known host tastes/history;
+strengthen default era restraint, coherent palettes and brief/filter agreement.
+Repeat this scenario after that change. The test uses a substantial existing
+library, not an empty/small library or a full browser onboarding flow. Inspection
+of the empty schedule shelf confirms template controls are rendered without
+regular shows; browser interaction was not exercised by this harness.
+
 ### Bundled Sub/Show discussion skill
 
 Include `sub-show-talking-point` in the later Sub/Shows release as the Sub/Show
