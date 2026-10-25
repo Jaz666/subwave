@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ShowGenerationNotice } from './shows/ShowGenerationNotice';
 import { ChevronDown, RefreshCw, Save, Shuffle, ExternalLink } from 'lucide-react';
 import type { AdminFetch } from '@/lib/admin-query';
 import { fieldAria } from '@/lib/form';
@@ -491,6 +492,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
               )}
             </div>
           </div>
+          {episode.status === 'failed' && episode.reason && <ShowGenerationNotice message={episode.reason} />}
           {plan ? (
             <>
               <div className="flex flex-wrap gap-1">
@@ -524,7 +526,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                 </details>
               )}
             </>
-          ) : <p className="text-[10px] text-muted">{episode.reason || 'The plan has not been generated yet.'}</p>}
+          ) : episode.status !== 'failed' && <p className="text-[10px] text-muted">{episode.reason || 'The plan has not been generated yet.'}</p>}
         </div>
       </div>
     </article>

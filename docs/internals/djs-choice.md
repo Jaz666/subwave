@@ -373,13 +373,71 @@ effectively unhelpful 1900-onward windows). All Time Capsule hosts converged on
 1965–1969 with the same palette; one brief additionally promised Blues Rock,
 which was absent from the accepted filters.
 
-Follow-up: define an explicit library-led fallback when musical preferences and
-repertoire evidence are absent, without claiming known host tastes/history;
-strengthen default era restraint, coherent palettes and brief/filter agreement.
-Repeat this scenario after that change. The test uses a substantial existing
-library, not an empty/small library or a full browser onboarding flow. Inspection
-of the empty schedule shelf confirms template controls are rendered without
-regular shows; browser interaction was not exercised by this harness.
+### Musical readiness and library suitability
+
+The first concept call now assesses readiness before proposing an episode.
+The host must have concrete musical evidence in their Soul or optional Musical
+Leanings; Common Ground requires this from both participants. Existing shows
+are supporting repertoire context, never a prerequisite. Speaking style alone
+cannot establish musical taste. Unchanged shipped presentation-only Souls and
+empty profiles stand down before loading the library or calling the model.
+
+For other profiles the concept response contains an assessment and a nullable
+proposal. Exact supporting quotations are checked against each participant's
+own source text. A narrow local guard also rejects obvious delivery-only quotes
+without musical language or a library genre. Clear catalogue-genre preferences
+in Musical Leanings, or explicitly expressed preferences in Soul, also count
+directly if the model quotes the wrong field. These checks do not classify every
+possible musical taste. Missing evidence returns advice to add musical detail, with
+an external [Musical Leanings guide](https://github.com/perminder-klair/subwave/discussions/1817)
+at the bottom of the message. Both the Sub/Shows episode card and takeover
+preview render that guide as a clickable external link. This adds no model call
+to successful generation; meaning and musical coherence still rely on the model.
+
+Library suitability is assessed for the chosen template. A large or narrowly
+tagged catalogue need not support a credible departure or shared musical
+connection. Failure explains that fit problem without labelling the library
+small or silently switching templates. Track-count failures separately report
+the slot length, required count and actual eligible count after exclusions,
+with advice to shorten the slot, try another template or add suitable music.
+The twice-airtime/four-minute rule, higher operator minimum and single coverage
+correction remain. Unresolved genres or inactive metadata filters fail coverage
+verification rather than accepting a count inflated by a missing lock.
+
+The fresh-user harness accepts fresh-only `--music-lean` or `--soul` overrides
+for positive controls. Unmodified default-persona readiness refusals are expected
+outcomes, recorded with their error code. The library snapshot remains isolated;
+no plans are saved or aired. Editorial era restraint and brief/filter agreement
+remain separate review concerns. These previews do not exercise browser onboarding.
+
+The readiness rerun on 25 October returned the expected persona guidance for
+all 15 unchanged-default cases and again passed 300 deterministic casting checks.
+Enriched fresh-user positive controls produced accepted one-hour plans with no
+regular shows:
+
+| Template | Musical evidence | Eligible tracks |
+| --- | --- | ---: |
+| DJ's Choice | Soul only | 4,833 |
+| Deep Discovery | Optional Musical Leanings | 178 |
+| Common Ground | Optional Musical Leanings for both participants | 1,661 |
+| Outside the Comfort Zone | Optional Musical Leanings | 279 |
+| Time Capsule | Soul only | 635 |
+
+Initial enriched trials exposed false readiness refusals, one deficient coverage
+correction and one invalid settings JSON response. The evidence instruction and
+verbatim quotation requirement were clarified before rerunning the first
+three templates; the accepted positive controls above do not establish that
+model-level refusals, format failures or editorial inconsistencies are eliminated.
+A custom presentation-only Soul also exposed an incorrect model approval after
+prompt clarification, motivating the local delivery-evidence guard. Another
+trial quoted a guest’s delivery instead of their explicit Leanings, motivating
+the direct catalogue-genre preference check.
+Thirteen focused policy tests and nine existing generated-show tests cover the
+readiness gate, quote provenance, per-participant requirements, count advice,
+bounded retry, inactive locks and regeneration lifecycle. The existing lifecycle
+fixture now supplies an explicit coverage diagnostic instead of relying on a
+live music server. Small-pool and metadata-failure tests use injected diagnostics;
+the live previews still reuse a substantial catalogue.
 
 ### Bundled Sub/Show discussion skill
 

@@ -72,6 +72,7 @@ function fixture(name: string) {
   const owner = createShowPreparation({
     file, snapshot: () => null, generatedSnapshot: () => snap, scheduledGeneratedSnapshot: () => snap,
     execute: async () => null, source: async () => null, now: () => clock,
+    diagnose: async () => ({ strict: true, library: { indexed: 100, matchingFilters: 100, afterExclusions: 100, effective: 100 }, playlist: null, warnings: [] }),
     generate: async () => {
       calls++;
       await waiting;

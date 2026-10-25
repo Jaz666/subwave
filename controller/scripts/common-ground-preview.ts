@@ -8,13 +8,13 @@ import { config as loadDotEnv } from 'dotenv';
 import { isolateStationState } from './test-utils/isolated-state.js';
 import { resolveActiveStationDir } from '../src/stations/resolve.js';
 
-const usage = 'Usage: npm run common-ground:preview -- [--template dj-choice|deep-discovery|common-ground|outside-comfort-zone|time-capsule] [--fresh-user] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
+const usage = 'Usage: npm run common-ground:preview -- [--template dj-choice|deep-discovery|common-ground|outside-comfort-zone|time-capsule] [--fresh-user] [--music-lean "Musical preferences"] [--soul "Persona Soul"] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
 const options = new Map<string, string>();
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
   if (flag === '--help' || flag === '-h') { console.log(usage); process.exit(0); }
   if (flag === '--list' || flag === '--fresh-user') { options.set(flag, 'true'); continue; }
-  if (!['--template', '--host', '--guest', '--count', '--minutes'].includes(flag) || !process.argv[index + 1] || process.argv[index + 1].startsWith('--')) {
+  if (!['--template', '--host', '--guest', '--count', '--minutes', '--music-lean', '--soul'].includes(flag) || !process.argv[index + 1] || process.argv[index + 1].startsWith('--')) {
     throw new Error(usage);
   }
   options.set(flag, process.argv[++index]);
@@ -22,6 +22,7 @@ for (let index = 2; index < process.argv.length; index++) {
 const template = options.get('--template') ?? 'common-ground';
 if (!['dj-choice', 'deep-discovery', 'common-ground', 'outside-comfort-zone', 'time-capsule'].includes(template)) throw new Error('Unknown preview template');
 const fresh = options.has('--fresh-user');
+if (!fresh && (options.has('--music-lean') || options.has('--soul'))) throw new Error('Persona overrides require --fresh-user.');
 if (fresh && options.has('--guest')) throw new Error('Fresh-user previews use the default guest policy; omit --guest.');
 const outside = template === 'outside-comfort-zone';
 const solo = outside || template === 'time-capsule';
@@ -59,6 +60,10 @@ async function main() {
   }
   await settings.load();
   const station = settings.get();
+  if (fresh) for (const persona of station.personas) {
+    if (options.has('--music-lean')) persona.musicLean = options.get('--music-lean')!;
+    if (options.has('--soul')) persona.soul = options.get('--soul')!;
+  }
   const allowed = station.subShows?.eligibleHostPersonaIds;
   if (fresh && (station.personas.length !== 3 || station.shows.length || Object.values(station.schedule).some(day => !Array.isArray(day) || day.some(Boolean)))) {
     throw new Error('Fresh-user fixture must have three default personas, no shows and an empty schedule');
@@ -107,6 +112,8 @@ async function main() {
   const { generateAcceptedShowPlan } = fresh ? await import('../src/broadcast/show-preparation.js') : { generateAcceptedShowPlan: null };
   const { diagnoseShowCandidates } = await import('../src/music/show-candidates.js');
   const library = await import('../src/music/library.js');
+  const { ShowPlanningError } = await import('../src/broadcast/show-planning-policy.js');
+  const { recentCalls } = await import('../src/llm/log.js');
   const runs: Array<Record<string, unknown>> = [];
   const generation = { mode: 'generated', template, hostMode: 'random', guestMode: outside ? 'none' : 'random',
     guestCount: template === 'common-ground' ? { min: 1, max: 1 } : outside ? { min: 0, max: 0 } : { min: 0, max: 3 } };
@@ -159,12 +166,15 @@ async function main() {
             matchingShareOfSoftPool: softCoverage.library.effective ? coverage.library.effective / softCoverage.library.effective : null,
             note: 'Eligible library universes, not predicted airplay proportions. Recency, artist separation and journey state are not included.',
           } : null,
+          conceptResponses: fresh ? recentCalls.filter(call => call.kind === 'generateShowPlan.concept').slice(0, 2).map(call => call.response) : undefined,
           plan, coverage: coverage
             ? { ...coverage, minimumTracks, meetsMinimum: coverage.warnings.some(warning => /not (?:present|counted|an active lock)|could not|failed to resolve/i.test(warning)) ? null : coverage.library.effective >= minimumTracks }
             : { error: coverageError, minimumTracks, meetsMinimum: null } });
       } catch (error) {
-        runs.push({ host: identity(host), guest: guest ? identity(guest) : null, error: error instanceof Error ? error.message : String(error) });
-        process.exitCode = 1;
+        const code = error instanceof ShowPlanningError ? error.code : null;
+        const expectedStandDown = fresh && !options.has('--music-lean') && !options.has('--soul') && code === 'persona-readiness';
+        runs.push({ host: identity(host), guest: guest ? identity(guest) : null, code, expectedStandDown, conceptResponses: fresh ? recentCalls.filter(call => call.kind === 'generateShowPlan.concept').slice(0, 2).map(call => call.response) : undefined, error: error instanceof Error ? error.message : String(error) });
+        if (!expectedStandDown) process.exitCode = 1;
       }
     }
     process.stdout.write(JSON.stringify({ previewOnly: true, template, minutes, freshUser: fresh,

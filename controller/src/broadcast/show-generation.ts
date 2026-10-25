@@ -7,6 +7,8 @@ import { genreRuns, normGenre } from '../music/genre-fold.js';
 import { zonedParts } from '../time.js';
 import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show-preparation.js';
 import { djObject } from '../llm/sdk.js';
+import { DJ_SOULS } from '../settings/vocab.js';
+import { ShowPlanningError, musicalDetailError, libraryFitError, missingMusicalEvidence } from './show-planning-policy.js';
 
 export interface GeneratedShowCast {
   hostPersonaId: string;
@@ -211,24 +213,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const genreLimit = strictGenres ? 15 : 6;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
-  let libraryStats: ReturnType<typeof library.stats> | null = null;
-  try {
-    await library.load();
-    libraryStats = library.stats();
-  } catch { /* A show can still be planned without local coverage data. */ }
   const personas = settings.get().personas ?? [];
   const moodNames = settings.moodVocab();
-  const indexedGenreCounts = libraryStats?.byGenre as Record<string, number> | undefined;
-  const byGenre = input.template === 'deep-discovery' && libraryStats
-    ? discoveryGenreCounts(Object.keys(indexedGenreCounts ?? {}), library.candidateFilterTracks())
-    : indexedGenreCounts;
-  const repertoireEstimate = input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
-  const genreChoices = discovery
-    ? [...new Map([
-      ...showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate).slice(0, 60),
-      ...showGenreChoices(byGenre ?? {}, 'dj-choice').slice(0, 20),
-    ].map(genre => [genre.name, genre])).values()]
-    : showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
   const hostPersona = personas.find((p: any) => p.id === input.cast.hostPersonaId);
   if (!hostPersona) throw new Error('The selected host is no longer available');
   const guests = input.cast.guestPersonaIds
@@ -246,9 +232,31 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const existingShows = input.existingShows ?? scheduledShowsForHost(hostPersona.id, input.show?.id);
   const familiarGenres = new Set(existingShows.flatMap(show => show.genres).map(normGenre));
   const umbrellaGenres = new Set(['Rock', 'Pop', 'Electronic', 'Experimental'].map(normGenre));
+  const evidencePersonas = [hostPersona, ...(commonGround ? guests : [])].map(persona => ({
+    id: String(persona.id), name: String(persona.name || 'Selected DJ'), soul: String(persona.soul || '').trim(), musicLean: String(persona.musicLean || '').trim(),
+  }));
+  const knownUnready = evidencePersonas.filter(persona => !persona.musicLean && (!persona.soul || DJ_SOULS.includes(persona.soul))).map(persona => persona.name);
+  if (knownUnready.length) throw musicalDetailError(knownUnready);
+  let libraryStats: ReturnType<typeof library.stats> | null = null;
+  try {
+    await library.load();
+    libraryStats = library.stats();
+  } catch { /* Report unavailable coverage below; do not guess library suitability. */ }
+  const indexedGenreCounts = libraryStats?.byGenre as Record<string, number> | undefined;
+  const byGenre = input.template === 'deep-discovery' && libraryStats
+    ? discoveryGenreCounts(Object.keys(indexedGenreCounts ?? {}), library.candidateFilterTracks())
+    : indexedGenreCounts;
+  const repertoireEstimate = input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
+  const genreChoices = discovery
+    ? [...new Map([
+      ...showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate).slice(0, 60),
+      ...showGenreChoices(byGenre ?? {}, 'dj-choice').slice(0, 20),
+    ].map(genre => [genre.name, genre])).values()]
+    : showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
   const choices = genreChoices.filter(genre => (!outside || !familiarGenres.has(normGenre(genre.name)))
     && (!(outside || timeCapsule) || !umbrellaGenres.has(normGenre(genre.name))));
-  if (outside && !choices.length) throw new Error('No genre choices remain outside this host’s scheduled repertoire');
+  if (!libraryStats) throw new ShowPlanningError('library-unavailable', 'Music library information is unavailable. Check the library connection and indexing, then try again.');
+  if (!choices.length) throw libraryFitError('The indexed library has no available genre palette supporting this template.');
   const counts = byGenre ?? {};
   const moods = moodNames;
   const estimate = Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
@@ -316,15 +324,24 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }) : baseConceptSchema;
   const talkingPointInstruction = 'Return talkingPoint separately from topic: one specific musical question or contrast suggested by this episode’s music and cast. It is an optional conversational thread for occasional natural comments, not a scripted exchange, mandatory feature, repeated announcement or question to answer on every link. It must fit the declared genre palette without promising extra genres, eras, tracks or invented artist facts. Keep it to one short sentence and do not put a Talking point label in either field; the controller adds that label to the brief.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
-  const concept = await djObject({
-    system: timeCapsule
+  const assessmentSchema = z.object({
+    evidence: z.array(z.object({ personaId: z.enum(evidencePersonas.map(p => p.id) as [string, ...string[]]), source: z.enum(['soul', 'musicLean']), quote: z.string().min(1).max(500).describe('Copy a short musical preference verbatim from this persona’s selected source. Do not paraphrase, combine fields or quote another participant.') })).max(12),
+    problem: z.enum(['none', 'persona-readiness', 'library-fit']),
+    reason: z.string().max(500),
+  });
+  const responseSchema = z.object({ assessment: assessmentSchema, proposal: conceptSchema.nullable() });
+  const readinessInstruction = `Before planning, apply a mandatory musical-readiness gate to the required participants supplied in the user data. Quote exact musical evidence from each participant's own soul or musicLean. An explicit preference for even one genre, artist, instrument, songwriting quality or musical style is sufficient. Soul OR musicLean is enough; either field may be empty, and no existing shows are needed. Copy a short relevant passage verbatim, not a summary. A participant with clear genres in musicLean is ready even if their Soul only describes presentation. Evidence must explicitly describe a taste in MUSIC. Never infer music from warmth, dry humour, plainspoken delivery, wistfulness, brevity, leaving conversational space, a welcoming voice, concise links, an eye for everyday details or presenter/station comparisons. These describe speech or personality, not music tastes. For example, Soul="a relaxed presenter with dry humour" and empty musicLean MUST return persona-readiness, evidence=[], proposal=null. Soul="loves folk rock" with empty musicLean supplies musical evidence; presentation-only Soul plus musicLean="loves folk rock" also supplies it. Regular-show filters are supporting repertoire evidence, not quotations from Soul or Leanings. If ANY required participant lacks musical evidence, return assessment.problem=persona-readiness, evidence only for supported participants, and proposal=null. Do not invent preferences or repertoire to fill this gap. Otherwise assess whether the supplied library supports THIS template's musical idea: a coherent palette, a genuinely less-represented territory for Deep Discovery, a credible neighbouring departure for Outside the Comfort Zone, a real musical connection for Common Ground, or a covered period for Time Capsule. A large track count or a long unrelated genre list alone is not sufficient. If no credible musical fit exists, include the exact evidence for every required participant, return library-fit with a short reason and proposal=null, even if many tracks exist. On success return problem=none, exact evidence for every required participant and the requested proposal. Never force a proposal when not ready.
+
+`;
+  const response = await djObject({
+    system: readinessInstruction + (timeCapsule
       ? 'Plan one era-led radio episode interpreted through this host’s musical tastes. Choose a precise closed period with library coverage, then a coherent genre palette and short brief. Do not invent historical facts or personal memories. Return only requested JSON.'
       : outside
       ? 'Plan one solo musical radio episode exploring a neighbouring territory outside the DJ’s familiar repertoire. Establish a supported starting point, a credible musical bridge and one focused destination, then write the brief and title. Return only the requested JSON.'
       : commonGround
       ? 'Plan one specific musical radio episode finding common ground between two DJs with equal musical influence. Write its short brief, derive its title, and declare the genre palette it promises. Return only the requested JSON.'
-      : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.',
-    prompt: timeCapsule ? [
+      : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.'),
+    prompt: `Required participants: ${JSON.stringify(evidencePersonas)}\n\n` + (timeCapsule ? [
       `Host: ${JSON.stringify(identity(host))}`,
       `Guest perspectives (optional, host remains musical lead): ${JSON.stringify(guests.map(identity))}`,
       `Supporting regular-show music filters: ${JSON.stringify(existingShows)}`,
@@ -387,11 +404,17 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       `Write a concise brief and name. Declare 1–${genreLimit} intendedGenres copied exactly from the available palette, never a catalogue dump. The brief must describe those same styles. Do not promise other genres, particular tracks or artists, a fixed playlist, release chronology or unsupported artistic influence. Do not invent personal history or airplay.`,
       'Keep the brief and title era-neutral by default. Do not promise decades or date ranges, including phrases such as “the 80s and beyond”, just because they appear in the Soul, Musical Leanings or regular shows. Only describe a bounded period when the operator explicitly requests it as a music restriction; the settings must then include matching era windows. Otherwise describe the musical connection without dates.',
       `Counts overlap; roughly ${estimate} four-minute records is a pacing estimate, not a hard minimum. Do not force era, mood or energy restrictions from favourite decades or presentation. Return name, topic, talkingPoint and intendedGenres.`,
-    ].filter(Boolean).join('\n\n'),
-    schema: conceptSchema, temperature: 0.7,
+    ].filter(Boolean).join('\n\n')),
+    schema: responseSchema, temperature: 0.7,
     kind: 'generateShowPlan.concept',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
-  }) as z.infer<typeof conceptSchema>;
+  }) as z.infer<typeof responseSchema>;
+  const assessment = response.assessment;
+  const missing = missingMusicalEvidence(evidencePersonas, assessment.evidence, Object.keys(counts));
+  if (missing.length) throw musicalDetailError(missing);
+  if (assessment.problem === 'library-fit') throw libraryFitError(assessment.reason || 'No coherent musical direction is supported by the available music.');
+  if (!response.proposal) throw new Error('The planner could not create a proposal from the supplied musical preferences. Please try again.');
+  const concept = response.proposal;
   const period = timeCapsule ? timePeriodSchema.parse('period' in concept ? concept.period : null) : null;
   if (period && (period.toYear < period.fromYear || period.toYear - period.fromYear >= 10)) throw new Error('Time Capsule requires a closed period of at most ten years');
   const intended = 'departure' in concept ? [concept.departure.destination] : [...new Set(concept.intendedGenres)];
