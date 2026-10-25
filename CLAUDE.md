@@ -45,6 +45,23 @@ The compose files sit at the repo root: `docker-compose.yml` (prod, with Caddy a
 
 Use `gh pr create --base develop`. `main` is the release branch, and `enforce-main-source.yml` fails any PR into it from anything but `develop` or release-please. Ignore the session preamble's "Main branch: main" line: it is computed locally and is wrong for this repo. The release PR (`develop` → `main`) follows `.claude/skills/subwave-release-pr/SKILL.md`.
 
+## Code Review Rules
+
+- Before reviewing, read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+  [`PR template`](.github/PULL_REQUEST_TEMPLATE.md) for contribution and
+  verification expectations. Read the applicable scoped guides from
+  **Where the detail lives** above for the files and behaviour being changed.
+- Apply the fork's [Contribution Practices](https://github.com/Jaz666/subwave/blob/docs/contribution-practices/docs/CONTRIBUTION_PRACTICES.md),
+  using `docs/CONTRIBUTION_PRACTICES.md` when it exists in the reviewed checkout.
+  If that guide cannot be retrieved, say so rather than claiming it was checked.
+- Prioritise actionable regressions in user behaviour, compatibility, data
+  safety and broadcast timing. Check shared callers and optional-feature-off
+  behaviour where relevant; distinguish existing base-branch failures from
+  failures introduced by the PR.
+- Assess the reported test evidence against the changed behaviour. Passing
+  lint or a large test count does not establish runtime compatibility. State
+  checks that were not run; do not operate the live station during a review.
+
 ## Architecture
 
 The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeScript), Web (Next.js) and the native app. Controller and Liquidsoap share the `state/` dir (`/var/sub-wave` in containers) and must mount the same host path. Data passes as files in it; control (reloads, restart, skip, probes) goes over Liquidsoap's telnet on `broadcast:1234` (`broadcast/liquidsoap-control.ts`).
