@@ -379,9 +379,14 @@ creative story. Genius supplies structured writer and producer credits.
 For artists, resolve the MusicBrainz artist's Wikidata URL relation. For an
 album, resolve its canonical MusicBrainz release-group Wikidata URL relation;
 request that item's English Wikipedia sitelink and fetch the article revision.
-The route is MusicBrainz release group → Wikidata → English Wikipedia. Do not
-guess an article from the title or use a loose name search. A missing
-MusicBrainz relation, Wikidata item, or English sitelink is a clean no-match.
+Wikidata remains the preferred route. If its item or English sitelink is absent,
+use an explicit English Wikipedia URL relationship from that same MusicBrainz
+artist or release group. This covers stage-name and personal identities stored
+as separate Wikidata items. Accept only HTTP(S) article links on
+`en.wikipedia.org`, follow Wikipedia article redirects, and retain the resolved
+canonical page and revision. Do not guess an article from a name or title, or
+use a loose search. Missing identity links remain a clean no-match; transient
+provider failures retain normal retry/backoff rather than switching routes.
 Store album material and claims under the release-group identity so editions
 of the same album share the research and its repetition history. Use the
 `release-stories` category for creation, recording, concept and collaboration

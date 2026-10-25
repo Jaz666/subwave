@@ -29,3 +29,89 @@ test('Wikipedia projection refuses an unrevisioned or empty result', () => {
     '123': { title: 'Example', fullurl: 'https://example.test', extract: 'Text', revisions: [] },
   } } }), null);
 });
+
+// Exercise the production client, replacing HTTP only at the network boundary.
+test('explicit article fallback works for artists and albums while Wikidata stays preferred', async t => {
+  const { fetchWikipediaArtistDocument, fetchWikipediaReleaseGroupDocument } = await import('../src/sleeve-notes/wikipedia.js');
+  for (const entity of ['artist', 'release-group'] as const) {
+    for (const route of ['no-wikidata', 'missing-sitelink', 'missing-item', 'wikidata-preferred'] as const) {
+      await t.test(`${entity}: ${route}`, async t => {
+        const requests: URL[] = [];
+        t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+          const url = new URL(String(input)); requests.push(url);
+          if (url.hostname === 'musicbrainz.org') {
+            assert.equal(url.pathname, `/ws/2/${entity}/fixture-id`);
+            assert.equal(url.searchParams.get('inc'), 'url-rels');
+            return Response.json({ relations: [
+              { type: 'wikipedia', url: { resource: 'https://en.wikipedia.org/wiki/Example_Stage_Name' } },
+              ...(route === 'no-wikidata' ? [] : [{ type: 'wikidata', url: { resource: 'https://www.wikidata.org/wiki/Q123' } }]),
+            ] });
+          }
+          if (url.hostname === 'www.wikidata.org') {
+            if (route === 'missing-item') return new Response(null, { status: 404 });
+            return Response.json({ entities: { Q123: { sitelinks: route === 'wikidata-preferred'
+              ? { enwiki: { title: 'Example Musician' } } : {} } } });
+          }
+          assert.equal(url.hostname, 'en.wikipedia.org');
+          if (url.pathname === '/w/api.php') {
+            assert.equal(url.searchParams.get('titles'), route === 'wikidata-preferred' ? 'Example Musician' : 'Example Stage Name');
+            assert.equal(url.searchParams.get('redirects'), '1');
+            return Response.json({ query: { pages: { '123': {
+              title: 'Example Musician', fullurl: 'https://en.wikipedia.org/wiki/Example_Musician',
+              extract: 'Example Musician releases music under a stage name.', revisions: [{ revid: 456 }],
+            } } } });
+          }
+          assert.equal(url.pathname, '/w/rest.php/v1/revision/456/html');
+          return new Response('<p>Example Musician releases music under a stage name.</p>');
+        });
+        const document = await (entity === 'artist' ? fetchWikipediaArtistDocument : fetchWikipediaReleaseGroupDocument)('fixture-id');
+        assert.ok(document);
+        assert.equal(document.title, 'Example Musician');
+        assert.equal(document.url, 'https://en.wikipedia.org/wiki/Example_Musician');
+        assert.equal(document.revisionId, '456');
+        assert.equal(document.sourceFormatVersion, 2);
+        assert.match(document.text, /Example Musician releases music/);
+        assert.equal(requests.length, route === 'no-wikidata' ? 3 : 4);
+      });
+    }
+  }
+});
+
+test('missing, unrelated, non-English and malformed article relations are clean misses', async t => {
+  const { fetchWikipediaArtistDocument } = await import('../src/sleeve-notes/wikipedia.js');
+  const invalid = [
+    null, {}, { type: 'official homepage', url: { resource: 'https://en.wikipedia.org/wiki/Example' } },
+    ...[
+      'not a URL', 'https://de.wikipedia.org/wiki/Example', 'https://en.wikipedia.org.evil.test/wiki/Example',
+      'https://en.wikipedia.org@evil.test/wiki/Example', 'ftp://en.wikipedia.org/wiki/Example',
+      'https://en.wikipedia.org/wiki/', 'https://en.wikipedia.org/w/index.php?title=Example',
+      'https://en.wikipedia.org/wiki/Example#History', 'https://en.wikipedia.org/wiki/Example?oldid=123',
+      'https://en.wikipedia.org/wiki/%ZZ', 'https://en.wikipedia.org/wiki/One%7CTwo',
+      'https://en.wikipedia.org/wiki/Example%0AOther',
+    ].map(resource => ({ type: 'wikipedia', url: { resource } })),
+  ];
+  for (const relation of invalid) {
+    let calls = 0;
+    t.mock.method(globalThis, 'fetch', async () => {
+      assert.equal(++calls, 1, 'invalid links must not cause a Wikipedia request');
+      return Response.json({ relations: relation === null ? [] : [relation] });
+    });
+    assert.equal(await fetchWikipediaArtistDocument('fixture-id'), null);
+    t.mock.restoreAll();
+  }
+});
+
+test('a transient Wikidata failure remains retryable rather than using the fallback', async t => {
+  const { fetchWikipediaArtistDocument } = await import('../src/sleeve-notes/wikipedia.js');
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (++calls === 1) return Response.json({ relations: [
+      { type: 'wikidata', url: { resource: 'https://www.wikidata.org/wiki/Q123' } },
+      { type: 'wikipedia', url: { resource: 'https://en.wikipedia.org/wiki/Example' } },
+    ] });
+    assert.equal(calls, 2);
+    return new Response(null, { status: 503 });
+  });
+  await assert.rejects(fetchWikipediaArtistDocument('fixture-id'), /HTTP 503/);
+  assert.equal(calls, 2);
+});

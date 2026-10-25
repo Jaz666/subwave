@@ -167,6 +167,25 @@ export function englishWikipediaTitleFromWikidata(payload: unknown, wikidataId: 
   return typeof title === 'string' && title.trim() ? title.trim() : null;
 }
 
+/** Accept only an explicit English article relation, never a guessed title. */
+function englishWikipediaTitleFromMusicBrainzEntity(payload: unknown): string | null {
+  const relations = (payload as { relations?: unknown })?.relations;
+  if (!Array.isArray(relations)) return null;
+  for (const relation of relations) {
+    const row = relation as { type?: unknown; url?: { resource?: unknown } };
+    if (row.type !== 'wikipedia' || typeof row.url?.resource !== 'string') continue;
+    try {
+      const url = new URL(row.url.resource);
+      if (!['https:', 'http:'].includes(url.protocol) || url.hostname !== 'en.wikipedia.org'
+        || url.username || url.password || url.port || url.search || url.hash
+        || !url.pathname.startsWith('/wiki/')) continue;
+      const title = decodeURIComponent(url.pathname.slice('/wiki/'.length)).replaceAll('_', ' ').trim();
+      if (title && !/[|#\u0000-\u001f\u007f]/u.test(title)) return title;
+    } catch { /* Malformed relations are a clean miss. */ }
+  }
+  return null;
+}
+
 async function fetchWikipediaDocumentFromMusicBrainzEntity(
   entityPath: 'artist' | 'release-group', musicBrainzId: string,
 ): Promise<WikipediaArticleDocument | null> {
@@ -175,19 +194,24 @@ async function fetchWikipediaDocumentFromMusicBrainzEntity(
   const entityUrl = `${MUSICBRAINZ_API}/${entityPath}/${encodeURIComponent(entityId)}?inc=url-rels&fmt=json`;
   const params = new URLSearchParams({
     action: 'query', format: 'json', prop: 'extracts|info|revisions',
-    inprop: 'url', explaintext: '1', rvprop: 'ids', rvslots: 'main', maxlag: '5',
+    inprop: 'url', explaintext: '1', rvprop: 'ids', rvslots: 'main', maxlag: '5', redirects: '1',
   });
   const entityPayload = await fetchJson(entityUrl);
   if (!entityPayload) return null;
   const wikidataId = entityPath === 'artist'
     ? wikidataIdFromMusicBrainzArtist(entityPayload)
     : wikidataIdFromMusicBrainzReleaseGroup(entityPayload);
-  if (!wikidataId) return null;
-  const wikidataPayload = await fetchJson(`${WIKIDATA_API}?${new URLSearchParams({
+  let title: string | null = null;
+  if (wikidataId) {
+    const wikidataPayload = await fetchJson(`${WIKIDATA_API}?${new URLSearchParams({
       action: 'wbgetentities', format: 'json', ids: wikidataId, props: 'sitelinks', sitefilter: 'enwiki', origin: '*',
-  })}`);
-  if (!wikidataPayload) return null;
-  const title = englishWikipediaTitleFromWikidata(wikidataPayload, wikidataId);
+    })}`);
+    if (wikidataPayload) title = englishWikipediaTitleFromWikidata(wikidataPayload, wikidataId);
+  }
+  // Stage-name and personal identities can have separate Wikidata items. Use
+  // MusicBrainz's own article relation if its item has no English sitelink.
+  // Transient errors still throw above and retain the normal retry/backoff.
+  title ??= englishWikipediaTitleFromMusicBrainzEntity(entityPayload);
   if (!title) return null;
   params.set('titles', title);
   const articlePayload = await fetchJson(`${API}?${params}`);
@@ -214,7 +238,7 @@ export function fetchWikipediaArtistDocument(musicBrainzArtistId: string): Promi
   return fetchWikipediaDocumentFromMusicBrainzEntity('artist', musicBrainzArtistId);
 }
 
-/** Resolve an album through its MusicBrainz release group and Wikidata sitelink. */
+/** Resolve an album through its release group's explicit Wikidata/Wikipedia links. */
 export function fetchWikipediaReleaseGroupDocument(musicBrainzReleaseGroupId: string): Promise<WikipediaArticleDocument | null> {
   return fetchWikipediaDocumentFromMusicBrainzEntity('release-group', musicBrainzReleaseGroupId);
 }

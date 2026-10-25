@@ -597,3 +597,30 @@ and LRCLIB fallback by default, preserving explicitly saved off switches;
 over-music IDs remain opt-in. Next: operator rebuild and check station health,
 lyrics, file-format display and normal speech. No PR changes are part of this
 station integration.
+
+
+### Explicit Wikipedia URL fallback — 25 October
+
+Joan as Police Woman's MusicBrainz artist links to Wikidata Q84953682, which
+has no English sitelink; the biography is attached to Joan Wasser's Q447338.
+The same MusicBrainz API response contains an explicit English Wikipedia
+relationship. The source client now uses that relationship when the preferred
+Wikidata item/sitelink is absent, for artists and release groups alike. It
+accepts only HTTP(S) English article URLs without credentials, query strings,
+fragments or malformed titles, and resolves article redirects to a revisioned
+canonical source. Temporary provider failures retain normal retry/backoff.
+
+Verification: all 33 Wikipedia checks pass, including real-client HTTP fixtures
+for both identities, missing items/sitelinks, primary-route precedence, redirect
+resolution, malformed links and transient failure. New regressions fail against
+the prior client. Focused lint passes. The controller type check reports only
+two existing errors in `scripts/show-discovery-policy.test.ts`; the same errors
+are reproduced with the prior client and left for the owning development work.
+
+Station source candidate: `codex/wikipedia-url-fallback-20261025`, based on
+`5fd6bc4b` (source rollback). Integrate by fast-forward after verification; the
+operator then rebuilds controller only and manually queues the artist. No
+schema migration, database edit, queue operation or container rebuild is done
+by the agent. Keep this candidate local; update upstream PR #2033 only after
+station acceptance. Next gate: biography collection followed by LLM extraction
+and saved source-backed artist facts.
