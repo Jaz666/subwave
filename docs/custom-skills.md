@@ -860,3 +860,22 @@ the controller with this schedule service, then rescan Skills. The tool reports
 not ready on older controllers. Enable it station-wide and assign it to the
 DJs who should use it. For Sub/Show slots, include it in Sub/Shows’ eligible
 skills too. Installation does not enable or run it automatically.
+
+### Sub/Show talking-point discussion example
+
+`docs/examples/skills/sub-show-talking-point` provides a grounded co-hosted
+discussion using the current brief's explicit `Talking point (optional thread):`
+label and `services.nowPlaying()`. Its tool returns `available: false` when the
+label, identified track, track-level genres or direct genre wording connection
+is missing. If queue metadata lacks genres, it reads the current album and uses
+only the song with the exact current track ID. It rechecks the on-air track ID
+after collecting metadata. No search or invented examples are used.
+
+The relevance check is deliberately conservative text/genre matching, not audio
+analysis or a semantic guarantee. General musical questions with no matching
+genre wording will stand down. An admitted genre connection does not establish
+instruments, lyrics, credits or history; the brief requires a second stand-down
+if the question needs unsupported facts, and prohibits naming any other track
+or artist. It uses the normal on-air cast, with at most two turns per persona;
+solo shows skip through the existing co-host eligibility rule. With
+`requiresData: true`, unavailable tool results also stand down on manual runs.
