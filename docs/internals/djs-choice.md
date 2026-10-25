@@ -362,6 +362,49 @@ the remaining ideas below are proposals.
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
+Time Capsule has a harness-only trial. It is not yet a saved template or UI option.
+Run `STATE_DIR=/path/to/station/state npm run time-capsule:preview -- --host "DJ name" --count 1`
+from `controller/`. The default comparison uses four distinct eligible Random
+Hosts, with solo hosts for this initial experiment; explicit guests are rejected.
+It uses the same isolated state, local model and sequential generation as the
+other preview templates and never saves or schedules episodes.
+
+The first call chooses one closed period (normally 1–5 years, at most 10),
+a host-specific musical angle and 1–3 specific genres. Compact library evidence
+lists the six most represented available genres within each five-year bin,
+using the same original-year resolution as selection. These overlapping tag
+counts suggest viable periods; they do not prove coverage for a narrower window.
+The second call must preserve the chosen year bounds exactly in one era filter,
+along with every declared genre. Both era and genre filters are strict; moods
+and energies remain unrestricted. The harness measures actual combined coverage
+against twice airtime at four minutes per track and reports failure or shortage
+without accepting an episode. Production retry behaviour is not implemented.
+
+The first trial allowed broad Rock/Pop padding, named artists without research,
+historical "birth" framing and a vague 1980s brief for 1985–1989 filters. The
+refined concept schema puts period and musical angle before the brief, excludes
+umbrella tags, requests exact years in the brief, and disallows artist promises,
+historical claims and talking points requiring unsupported influence research.
+
+Second-pass one-hour results (30 tracks required):
+
+| Host | Title | Strict years | Genres | Matching tracks |
+| --- | --- | --- | --- | ---: |
+| Carrie Marshall | Riff Fest | 1975–1979 | Progressive Rock, Hard Rock, Folk Rock | 638 |
+| Maria Ashcroft | Synthetic Dreams | 1985–1989 | Synth-Pop, New Wave, Indie Pop | 498 |
+| Terry Palmer | Punk New Wave Collision | 1975–1979 | Punk, New Wave, Post-Punk | 820 |
+
+All six model calls in this pass completed and all plans preserved the closed
+period exactly in strict settings, with no mood or energy restriction. The
+three distinct musical angles and sufficient era/genre pools support further
+exploration, but the prose still failed some instructions. Carrie introduced
+Yes in the talking point and omitted supporting genres from the brief; Maria
+used a vague mid-80s label and unsupported emergence/influence framing; Terry
+promised late-1970s Britain without any country filter or verified geography.
+Both Maria and Terry omitted the exact bounds in their prose. Do not promote
+the prototype on coverage alone: exact-period wording, palette alignment and
+unresearched historical/geographical promises remain unresolved.
+
 Outside the Comfort Zone is implemented after a harness trial. Common Ground
 uses exactly one distinct guest and equal musical influence for both DJs; the
 host still leads presentation. It uses strict genres with the same twice-airtime

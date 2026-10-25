@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import * as settings from '../settings.js';
 import * as library from '../music/library.js';
+import { resolveEraYear } from '../music/era-year.js';
 import { genreRuns, normGenre } from '../music/genre-fold.js';
 import { zonedParts } from '../time.js';
 import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show-preparation.js';
@@ -205,7 +206,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const djChoice = input.template === 'dj-choice';
   const commonGround = input.template === 'common-ground';
   const outside = input.template === 'outside-comfort-zone';
-  const strictGenres = discovery || djChoice || commonGround || outside;
+  const timeCapsule = input.template === 'time-capsule'; // Harness-only trial.
+  const strictGenres = discovery || djChoice || commonGround || outside || timeCapsule;
   const genreLimit = strictGenres ? 15 : 6;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
@@ -244,11 +246,28 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const existingShows = input.existingShows ?? scheduledShowsForHost(hostPersona.id, input.show?.id);
   const familiarGenres = new Set(existingShows.flatMap(show => show.genres).map(normGenre));
   const umbrellaGenres = new Set(['Rock', 'Pop', 'Electronic', 'Experimental'].map(normGenre));
-  const choices = outside ? genreChoices.filter(genre => !familiarGenres.has(normGenre(genre.name)) && !umbrellaGenres.has(normGenre(genre.name))) : genreChoices;
+  const choices = genreChoices.filter(genre => (!outside || !familiarGenres.has(normGenre(genre.name)))
+    && (!(outside || timeCapsule) || !umbrellaGenres.has(normGenre(genre.name))));
   if (outside && !choices.length) throw new Error('No genre choices remain outside this host’s scheduled repertoire');
   const counts = byGenre ?? {};
   const moods = moodNames;
   const estimate = Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
+  const currentYear = new Date(input.occurrence.startsAt).getUTCFullYear();
+  const periodCounts = new Map<number, Map<string, number>>();
+  if (timeCapsule) for (const track of library.candidateFilterTracks()) {
+    const year = resolveEraYear(track.year, track.originalYear, track.yearUntrusted ?? track.isCompilation);
+    if (year == null || year < 1900 || year > currentYear) continue;
+    const start = Math.floor(year / 5) * 5;
+    const counts = periodCounts.get(start) ?? new Map<string, number>();
+    for (const genre of new Set(track.genres?.length ? track.genres : track.genre ? [track.genre] : [])) {
+      if (choices.some(choice => choice.name === genre)) counts.set(genre, (counts.get(genre) ?? 0) + 1);
+    }
+    periodCounts.set(start, counts);
+  }
+  const periodEvidence = [...periodCounts].sort(([a], [b]) => a - b).map(([start, counts]) => ({
+    years: `${start}–${Math.min(start + 4, currentYear)}`,
+    genres: Object.fromEntries([...counts].sort((a, b) => b[1] - a[1]).slice(0, 6)),
+  }));
   const baseConceptSchema = generatedShowPlanSchema.pick({ name: true, topic: true }).extend({
     // Reserve room for the labelled thread inside the persisted 2,000-character brief.
     topic: generatedShowPlanSchema.shape.topic.max(1600),
@@ -260,7 +279,18 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   });
   // Put the pair-specific evidence before the brief in the concept output
   // contract so the model must identify a connection rather than just name two styles.
-  const conceptSchema = outside ? z.object({
+  const timePeriodSchema = z.object({
+    fromYear: z.number().int().min(1900).max(currentYear),
+    toYear: z.number().int().min(1900).max(currentYear),
+  }).describe('one closed music period, normally 1–5 years and never more than 10 years inclusive');
+  const conceptSchema = timeCapsule ? z.object({
+    period: timePeriodSchema,
+    musicalAngle: z.string().min(1).max(300).describe('why this period and coherent genre palette suit this particular DJ’s musical tastes'),
+    name: baseConceptSchema.shape.name.describe('short musical title; no claims about the birth, invention, firsts, rise or definitive history of a genre'),
+    topic: baseConceptSchema.shape.topic.min(160).max(650).describe('2–3 sentences: exact period, specific genre palette and this host’s musical angle. No named artists, tracks, historical claims or invented personal memories.'),
+    talkingPoint: baseConceptSchema.shape.talkingPoint,
+    intendedGenres: baseConceptSchema.shape.intendedGenres.max(3),
+  }) : outside ? z.object({
     departure: z.object({
       familiarTerritory: z.string().min(1).max(300).describe('musical interests supported by Soul/Leanings and established repertoire from regular-show filters'),
       destination: z.enum(choices.map(genre => genre.name) as [string, ...string[]])
@@ -287,12 +317,28 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const talkingPointInstruction = 'Return talkingPoint separately from topic: one specific musical question or contrast suggested by this episode’s music and cast. It is an optional conversational thread for occasional natural comments, not a scripted exchange, mandatory feature, repeated announcement or question to answer on every link. It must fit the declared genre palette without promising extra genres, eras, tracks or invented artist facts. Keep it to one short sentence and do not put a Talking point label in either field; the controller adds that label to the brief.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const concept = await djObject({
-    system: outside
+    system: timeCapsule
+      ? 'Plan one era-led radio episode interpreted through this host’s musical tastes. Choose a precise closed period with library coverage, then a coherent genre palette and short brief. Do not invent historical facts or personal memories. Return only requested JSON.'
+      : outside
       ? 'Plan one solo musical radio episode exploring a neighbouring territory outside the DJ’s familiar repertoire. Establish a supported starting point, a credible musical bridge and one focused destination, then write the brief and title. Return only the requested JSON.'
       : commonGround
       ? 'Plan one specific musical radio episode finding common ground between two DJs with equal musical influence. Write its short brief, derive its title, and declare the genre palette it promises. Return only the requested JSON.'
       : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.',
-    prompt: outside ? [
+    prompt: timeCapsule ? [
+      `Host: ${JSON.stringify(identity(host))}`,
+      `Supporting regular-show music filters: ${JSON.stringify(existingShows)}`,
+      `Local slot: ${showTime(input)}. Available genres: ${choices.map(g => g.name).join('; ')}`,
+      `Library period evidence (five-year bins, top six genres each; counts overlap): ${JSON.stringify(periodEvidence)}`,
+      input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
+      input.coverageCorrection || null,
+      `Choose period first: a specific year or short closed window, preferably 1–5 years, at most 10 years inclusive. Both numeric bounds are required. Choose 1–3 specific coherent genres fitting that period and this host’s Soul plus optional Musical Leanings. Prefer a period supporting at least ${requiredTracks} unique tracks after era and genre filters; evidence bins are context, not proof of exact coverage. Rarity and a departure from familiar tastes are not required.`,
+      'Fill period and musicalAngle before writing. Use only specific genre choices; umbrella Rock, Pop, Electronic and Experimental are excluded, and must not be promised in the brief as extra music. Do not add padding genres when the main style already has coverage.',
+      'The brief must state both exact numeric year bounds from period (or the single year); never replace a narrower window with a whole-decade label. It must also state the selected genre palette and this host’s particular musical angle. Use 2–3 concise sentences, at most 80 words. Do not broaden the period to present day, promise other decades, or make a definitive history programme. Do not name any artists, bands, albums or tracks. Do not claim the birth, emergence, invention, rise or golden age of a genre, including in the title. Do not invent release milestones, firsts, influence, remembered gigs or personal listening history. Discuss musical qualities and tastes rather than unsupported historical events.',
+      talkingPointInstruction,
+      'For this template, talkingPoint must be about musical qualities, songwriting, arrangement or contrasting tastes within the chosen palette and period. Do not ask about the rise, influence, origin, impact or historical role of a genre, and do not introduce an unselected genre or compare with present-day music. No research is provided.',
+      input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive a distinctive short title from the musical idea. Avoid generic time-travel slogans and presenter names.',
+      'Return name, topic, talkingPoint, intendedGenres, period and musicalAngle. Only promise the declared music and period. Mood and energy filters will remain unrestricted.',
+    ].filter(Boolean).join('\n\n') : outside ? [
       `Host: ${JSON.stringify(identity(host))}`,
       `Scheduled regular-show filters, evidence of established repertoire rather than limits on taste: ${JSON.stringify(existingShows)}`,
       `Local slot: ${showTime(input)}. Available destination genres and indexed counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
@@ -344,11 +390,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     kind: 'generateShowPlan.concept',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
   }) as z.infer<typeof conceptSchema>;
+  const period = timeCapsule ? timePeriodSchema.parse('period' in concept ? concept.period : null) : null;
+  if (period && (period.toYear < period.fromYear || period.toYear - period.fromYear >= 10)) throw new Error('Time Capsule requires a closed period of at most ten years');
   const intended = 'departure' in concept ? [concept.departure.destination] : [...new Set(concept.intendedGenres)];
   const settingsSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
-    moods: generatedShowPlanSchema.shape.moods.max(outside && !input.planningPrompt.trim() ? 0 : strictGenres ? 2 : 15),
-    eras: generatedShowPlanSchema.shape.eras.max(outside && !input.planningPrompt.trim() && input.nameMode !== 'custom' ? 0 : 15),
-    energies: generatedShowPlanSchema.shape.energies.max(outside && !input.planningPrompt.trim() ? 0 : 15),
+    moods: generatedShowPlanSchema.shape.moods.max(timeCapsule || outside && !input.planningPrompt.trim() ? 0 : strictGenres ? 2 : 15),
+    eras: period ? z.array(z.object({ fromYear: z.literal(period.fromYear), toYear: z.literal(period.toYear) })).length(1) : generatedShowPlanSchema.shape.eras.max(outside && !input.planningPrompt.trim() && input.nameMode !== 'custom' ? 0 : 15),
+    energies: generatedShowPlanSchema.shape.energies.max(timeCapsule || outside && !input.planningPrompt.trim() ? 0 : 15),
     genres: intended.length
       ? z.array(z.enum(intended as [string, ...string[]])).length(intended.length)
       : z.array(z.never()).max(0),
@@ -360,9 +408,10 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let music: z.infer<typeof settingsSchema>;
   try {
     music = await djObject({
-      system: `Translate the accepted musical proposal into settings. Do not create another idea or choose another genre palette. Preserve every required genre exactly once. Default mood, era and energy lists to empty. Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
+      system: `Translate the accepted musical proposal into settings. Do not create another idea or choose another genre palette. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
       prompt: [
         `Accepted proposal: ${JSON.stringify({ name: concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint, requiredGenres: intended })}`,
+        period ? `Required era: ${JSON.stringify(period)}. Return exactly this one closed era window. It is mandatory, not an optional restriction. Musical angle: ${'musicalAngle' in concept ? concept.musicalAngle : ''}` : null,
         outside && 'departure' in concept ? `Musical bridge evidence for the rationale: ${JSON.stringify(concept.departure)}` : null,
         `Indexed counts (coverage context only): ${JSON.stringify(Object.fromEntries(intended.map(name => [name, counts[name]])))}`,
         'talkingPoint is optional editorial context, not a promise of extra music or an instruction to narrow filters. Do not derive extra genre, era, mood or energy restrictions from its question.',
@@ -371,10 +420,10 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         input.planningPrompt ? `Operator requirements: ${input.planningPrompt}` : null,
         input.minimumCoverage != null ? `Operator minimum: ${input.minimumCoverage} unique eligible tracks after all filters and exclusions.` : null,
         input.coverageCorrection || null,
-        (commonGround || outside) ? 'The accepted proposal is authoritative for era promises, just as it is for genres. Return eras: [] only when its name and brief are era-neutral and the operator requested no period. If the accepted brief promises decades or dates, encode those periods even when the concept writer introduced them without an operator request. Use numeric fromYear/toYear bounds, never date strings. Preserve every promised period; a brief spanning older and contemporary music must keep an open upper bound so current music remains eligible. Do not infer extra restrictions from genre associations or persona preferences.' : 'Era JSON shape: return eras: [] for unrestricted music. If a date restriction is required, use objects such as eras: [{"fromYear": 1980, "toYear": 1995}], with number or null bounds. Never return date strings such as eras: ["1980-1995"]. This example is formatting only, not an instruction to select those years.',
+        (commonGround || outside || timeCapsule) ? 'The accepted proposal is authoritative for era promises, just as it is for genres. Return eras: [] only when its name and brief are era-neutral and the operator requested no period. If the accepted brief promises decades or dates, encode those periods even when the concept writer introduced them without an operator request. Use numeric fromYear/toYear bounds, never date strings. Preserve every promised period; a brief spanning older and contemporary music must keep an open upper bound so current music remains eligible. Do not infer extra restrictions from genre associations or persona preferences.' : 'Era JSON shape: return eras: [] for unrestricted music. If a date restriction is required, use objects such as eras: [{"fromYear": 1980, "toYear": 1995}], with number or null bounds. Never return date strings such as eras: ["1980-1995"]. This example is formatting only, not an instruction to select those years.',
         'The title and brief must agree with the era settings. If the accepted proposal explicitly promises a decade or date range, encode that range in eras; do not leave eras empty. A favourite decade in persona context alone is not a restriction. An era-neutral proposal should keep eras empty unless the operator explicitly requires a period.',
         'Copy requiredGenres into genres exactly once each, with no additions, omissions or substitutions. Keep moods, eras and energies empty unless the operator or musical idea explicitly requires a restriction and coverage supports it. Conversation style and favourite decades are not music restrictions.',
-        outside ? `Use strict genres to keep the show in its chosen destination. Preserve requiredGenres exactly; leave moods, eras and energies empty unless the accepted brief explicitly requires a restriction. Explain the musical bridge and departure, not merely that genres were copied.` : commonGround ? `Use strict genres. Leave moods and energies empty unless explicitly required. Era filters must represent any periods promised in the accepted proposal; otherwise leave eras empty. The palette should cover at least ${requiredTracks} unique eligible tracks. Explain how the selected styles connect the two DJs.` : discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
+        timeCapsule ? 'Strict era and genre filters are mandatory. Copy the supplied period exactly into the sole era entry, with numeric closed bounds. Leave moods and energies empty. Explain why this period and palette suit the host.' : outside ? `Use strict genres to keep the show in its chosen destination. Preserve requiredGenres exactly; leave moods, eras and energies empty unless the accepted brief explicitly requires a restriction. Explain the musical bridge and departure, not merely that genres were copied.` : commonGround ? `Use strict genres. Leave moods and energies empty unless explicitly required. Era filters must represent any periods promised in the accepted proposal; otherwise leave eras empty. The palette should cover at least ${requiredTracks} unique eligible tracks. Explain how the selected styles connect the two DJs.` : discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
         `Counts overlap and do not prove coverage after additional filters. Return moods, genres, eras, energies, filtersStrict and a rationale under 500 characters explaining this accepted palette${djChoice ? ': identify the familiar core and why the adjacent styles connect; do not merely report that genres were copied' : ''}. Do not invent artist influence, history or airplay. Unrestricted music uses eras: []; this must not override an explicit period promised by the accepted brief.`,
       ].filter(Boolean).join('\n\n'),
       schema: settingsSchema, temperature: 0.1,
