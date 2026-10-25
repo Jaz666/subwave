@@ -8,13 +8,13 @@ import { config as loadDotEnv } from 'dotenv';
 import { isolateStationState } from './test-utils/isolated-state.js';
 import { resolveActiveStationDir } from '../src/stations/resolve.js';
 
-const usage = 'Usage: npm run common-ground:preview -- [--template dj-choice|deep-discovery|common-ground|outside-comfort-zone|time-capsule] [--fresh-user] [--music-lean "Musical preferences"] [--soul "Persona Soul"] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60]';
+const usage = 'Usage: npm run common-ground:preview -- [--template dj-choice|deep-discovery|common-ground|outside-comfort-zone|time-capsule] [--fresh-user] [--music-lean "Musical preferences"] [--soul "Persona Soul"] [--list] [--host "Name or ID"] [--guest "Name or ID"] [--count 3] [--minutes 60] [--direction "Operator music requirements"] [--name "Custom title"]';
 const options = new Map<string, string>();
 for (let index = 2; index < process.argv.length; index++) {
   const flag = process.argv[index];
   if (flag === '--help' || flag === '-h') { console.log(usage); process.exit(0); }
   if (flag === '--list' || flag === '--fresh-user') { options.set(flag, 'true'); continue; }
-  if (!['--template', '--host', '--guest', '--count', '--minutes', '--music-lean', '--soul'].includes(flag) || !process.argv[index + 1] || process.argv[index + 1].startsWith('--')) {
+  if (!['--template', '--host', '--guest', '--count', '--minutes', '--music-lean', '--soul', '--direction', '--name'].includes(flag) || !process.argv[index + 1] || process.argv[index + 1].startsWith('--')) {
     throw new Error(usage);
   }
   options.set(flag, process.argv[++index]);
@@ -138,7 +138,8 @@ async function main() {
         if (!cast) throw new Error('No eligible cast for this default persona');
         const input = {
           occurrence: { id: `${previewId}-${index}-${startsAt}`, showId: previewId, source: 'scheduled' as const, startsAt, endsAt: startsAt + minutes * 60_000 },
-          template, planningPrompt: '', minimumCoverage: minimumTracks,
+          template, planningPrompt: options.get('--direction') ?? '', minimumCoverage: minimumTracks,
+          nameMode: options.has('--name') ? 'custom' as const : 'random' as const, customName: options.get('--name'),
           cast, configuration: 'isolated-preview',
           show: { id: previewId },
         };
@@ -166,6 +167,7 @@ async function main() {
             matchingShareOfSoftPool: softCoverage.library.effective ? coverage.library.effective / softCoverage.library.effective : null,
             note: 'Eligible library universes, not predicted airplay proportions. Recency, artist separation and journey state are not included.',
           } : null,
+          compilerResponses: fresh ? recentCalls.filter(call => call.kind === 'generateShowPlan.musicSettings').slice(0, 2).map(call => call.response) : undefined,
           conceptResponses: fresh ? recentCalls.filter(call => call.kind === 'generateShowPlan.concept').slice(0, 2).map(call => call.response) : undefined,
           plan, coverage: coverage
             ? { ...coverage, minimumTracks, meetsMinimum: coverage.warnings.some(warning => /not (?:present|counted|an active lock)|could not|failed to resolve/i.test(warning)) ? null : coverage.library.effective >= minimumTracks }

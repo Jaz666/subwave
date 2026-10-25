@@ -439,6 +439,67 @@ fixture now supplies an explicit coverage diagnostic instead of relying on a
 live music server. Small-pool and metadata-failure tests use injected diagnostics;
 the live previews still reuse a substantial catalogue.
 
+### Brief and music contract
+
+The concept remains the creative step: it proposes the brief, title and declared
+music palette. Non-Time-Capsule templates also declare `eras`, which must be
+empty unless the operator direction or custom title contains a recognised year
+or decade request. Favourite decades in persona notes and normal show filters
+do not enable era restrictions. Time Capsule still supplies its closed period.
+
+The existing `generateShowPlan.musicSettings` call now also acts as a final
+editor. It receives the actual cast, the accepted draft and the exact genre/era
+contract, plus any concrete mismatch found in that draft. It preserves correct
+wording, the musical bridge and the talking point; it can repair contradictory
+promises without introducing a different palette. Correct titles and custom
+titles are held fixed. There is no third model call. This changes the internal
+response contract, not the persisted episode schema or the two-call lifecycle.
+
+Genre membership, uniqueness and agreed era windows are checked before acceptance.
+Default shows cannot acquire a 1900-onward or other unrequested era in the
+settings call. Publication checks inspect the final title, brief and talking
+point for year/decade promises outside those windows, known presenters outside
+the cast and explicit unsupported appearances. They also catch exact multiword
+catalogue styles absent from the selected palette. Documented taste/repertoire
+references can explain a bridge in Common Ground and Outside the Comfort Zone;
+mentioning those starting tastes does not add them to the music filters.
+
+These are bounded text checks, not semantic fact verification. Single-word tags
+such as Soul and House are ambiguous in prose and are not used to reject a
+brief. Unknown artists, paraphrased styles, historical claims and the distinction
+between a comparison and a playback promise still need the editor instructions
+and operator review. A remaining detected mismatch fails generation through the
+existing path, preserving any accepted episode; filters are never broadened to
+justify a contradictory sentence. Existing accepted episodes are unchanged.
+
+The isolated harness also accepts `--direction` and `--name`, allowing an explicit
+music period/custom-title control alongside era-neutral templates. The focused
+`show-brief-contract` tests cover era/genre preservation, date promises, closed and
+open periods, known cast boundaries and explicit catalogue subgenre mismatches.
+
+The 25 October consistency run used enriched default personas with favourite
+80s/90s notes, no regular shows and an isolated snapshot of the existing library.
+The final sweep accepted all five templates and one explicit custom-era control:
+
+| Preview | Era filters | Eligible tracks |
+| --- | --- | ---: |
+| DJ's Choice | Unrestricted | 1,667 |
+| Deep Discovery | Unrestricted | 176 |
+| Common Ground | Unrestricted | 1,667 |
+| Outside the Comfort Zone | Unrestricted | 650 |
+| Time Capsule | 1965–1969 | 458 |
+| Common Ground: Eighties Connections | 1980–1989 | 145 |
+
+Earlier iterations caught a contradictory DJ's Choice subgenre promise and a
+decade-description problem; detected draft issues are now supplied directly to
+the editor within the same second call. Eleven contract tests, thirteen readiness
+policy tests and nine generation/regeneration tests pass, as do controller and
+preview TypeScript checks and scoped lint (existing `any` warnings remain).
+These establish the concrete contracts and coverage checks, not universal prose
+quality or template novelty: an Outside the Comfort Zone destination can still
+need review when no regular-show repertoire exists. No live episodes were saved,
+regenerated or aired by these previews.
+
 ### Bundled Sub/Show discussion skill
 
 Include `sub-show-talking-point` in the later Sub/Shows release as the Sub/Show
