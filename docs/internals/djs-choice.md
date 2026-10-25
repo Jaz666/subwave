@@ -332,6 +332,23 @@ familiar-core policy is described below.
 
 ## Template ideas for later exploration
 
+### Bundled Sub/Show discussion skill
+
+Include `sub-show-talking-point` in the later Sub/Shows release as the Sub/Show
+counterpart to DJ Banter in regular shows. The maintained example is in
+`docs/examples/skills/sub-show-talking-point`; it has been exercised on the
+station and includes the first-person conversation refinement. Keep regular
+Banter Breaks disabled for Sub/Shows.
+
+This remains an editable DJ Skill, using the existing assignment and Sub/Shows
+skill eligibility settings. It discusses the explicit episode talking point
+with the on-air host and guests, at most two turns each. Its grounded tool
+checks current-track genre relevance and stands down when no supported
+connection exists. Solo shows skip it. Bundle the markdown and tool together;
+shipping an example alone does not install or enable it for other operators.
+Release integration must use the existing skill installation flow and preserve
+operator edits and normal enablement choices.
+
 Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and
 show filters. DJ’s Choice, Deep Discovery, Common Ground and Outside the Comfort Zone are implemented;
