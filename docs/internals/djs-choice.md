@@ -96,7 +96,7 @@ Production telemetry retains `generateShowPlan.concept` and
 narrow formatting recovery, cast resolution and accepted-plan persistence remain
 in use. No prompt-version marker is added to the configuration fingerprint, so
 this code change alone should not invalidate accepted episodes. Regenerate an
-upcoming episode explicitly to try it; retain Maria’s reviewed episode.
+upcoming episode explicitly to try it; retain previously reviewed episodes.
 
 Deployment base: station source `e7df2405`. The previous controller image is
 retained locally as `subwave-controller:before-compact-20261023`
@@ -390,18 +390,18 @@ Second-pass one-hour results (30 tracks required):
 
 | Host | Title | Strict years | Genres | Matching tracks |
 | --- | --- | --- | --- | ---: |
-| Carrie Marshall | Riff Fest | 1975–1979 | Progressive Rock, Hard Rock, Folk Rock | 638 |
-| Maria Ashcroft | Synthetic Dreams | 1985–1989 | Synth-Pop, New Wave, Indie Pop | 498 |
-| Terry Palmer | Punk New Wave Collision | 1975–1979 | Punk, New Wave, Post-Punk | 820 |
+| Rock/metal host | Riff Fest | 1975–1979 | Progressive Rock, Hard Rock, Folk Rock | 638 |
+| Pop/soul host | Synthetic Dreams | 1985–1989 | Synth-Pop, New Wave, Indie Pop | 498 |
+| Eclectic host | Punk New Wave Collision | 1975–1979 | Punk, New Wave, Post-Punk | 820 |
 
 All six model calls in this pass completed and all plans preserved the closed
 period exactly in strict settings, with no mood or energy restriction. The
 three distinct musical angles and sufficient era/genre pools support further
-exploration, but the prose still failed some instructions. Carrie introduced
-Yes in the talking point and omitted supporting genres from the brief; Maria
-used a vague mid-80s label and unsupported emergence/influence framing; Terry
+exploration, but the prose still failed some instructions. The rock/metal host introduced
+Yes in the talking point and omitted supporting genres from the brief; the pop/soul host
+used a vague mid-80s label and unsupported emergence/influence framing; the eclectic host
 promised late-1970s Britain without any country filter or verified geography.
-Both Maria and Terry omitted the exact bounds in their prose. These findings
+Both the pop/soul host and the eclectic host omitted the exact bounds in their prose. These findings
 informed the production changes below; coverage alone does not establish prose
 quality or verify historical/geographical claims.
 
@@ -556,15 +556,15 @@ The four one-hour previews on 25 October all exceeded the 30-track minimum:
 
 | Host | Generated palette | Matching pool |
 | --- | --- | ---: |
-| Carrie Marshall | Electronic, Synth-Pop | 10,314 |
-| Carol Fairclough | Post-Rock, Electro, Experimental | 1,463 |
-| Rachel Cole | Post-Punk, Industrial | 1,562 |
-| Terry Palmer | Industrial, Post-Punk, Experimental | 2,201 |
+| Rock/metal host | Electronic, Synth-Pop | 10,314 |
+| Electronic host | Post-Rock, Electro, Experimental | 1,463 |
+| Alternative-pop host | Post-Punk, Industrial | 1,562 |
+| Eclectic host | Industrial, Post-Punk, Experimental | 2,201 |
 
-These establish technical feasibility, not concept quality. Carrie's broad
-Electronic umbrella weakens the focused destination. Carol's brief incorrectly
-calls post-rock electronic music. Rachel and Terry converge on similar territory,
-and their briefs do not clearly establish the individual musical bridge; Terry's
+These establish technical feasibility, not concept quality. The rock/metal host's broad
+Electronic umbrella weakens the focused destination. The electronic host's brief incorrectly
+calls post-rock electronic music. The alternative-pop host and the eclectic host converge on similar territory,
+and their briefs do not clearly establish the individual musical bridge; the eclectic host's
 also claims noise and experimentation in his regular shows without sufficient
 evidence. Every brief includes a talking point, and the revised previews leave
 unrequested mood, era and energy restrictions empty. Refine destination focus,
@@ -600,25 +600,25 @@ Final four-host comparison with the single-destination contract:
 
 | Host | Strict destination | Eligible tracks | Also eligible under regular-show genres |
 | --- | --- | ---: | ---: |
-| Carrie Marshall | Synth-Pop | 1,722 | 14 |
-| Carol Fairclough | Synth-Pop | 1,722 | 668 |
-| Rachel Cole | Psychedelic Rock | 650 | 127 |
-| Terry Palmer | Psychedelic Rock | 650 | 113 |
+| Rock/metal host | Synth-Pop | 1,722 | 14 |
+| Electronic host | Synth-Pop | 1,722 | 668 |
+| Alternative-pop host | Psychedelic Rock | 650 | 127 |
+| Eclectic host | Psychedelic Rock | 650 | 113 |
 
 Each soft-filter comparison allowed approximately 68,224 tracks. All strict
 pools exceeded the one-hour minimum of 30. A separate read-only inspection using
 the shared runtime pool helper confirmed the counts and sampled one track per
-artist: Carrie's examples included Erasure, Metronomy, Soft Cell and New Order;
-Rachel's included Khruangbin, Tame Impala and White Denim. These are eligible
+artist: the rock/metal host's examples included Erasure, Metronomy, Soft Cell and New Order.
+The alternative-pop host's examples included Khruangbin, Tame Impala and White Denim. These are eligible
 examples, not predicted playlists. Regular-show overlap is genre eligibility,
 not evidence of past airplay. This supports strict filtering for a focused
 departure while retaining incidental overlap, rather than banning familiar
-artists. Carol's greater overlap shows why a new genre name is not sufficient
+artists. The electronic host's greater overlap shows why a new genre name is not sufficient
 evidence of a large departure.
 
-The briefs now make stronger connections, particularly Carrie's rhythm-section
-and melody bridge, but remain uneven: titles are often generic, Rachel's bridge
-is loose, and Terry's list of familiar styles can read as additional promises.
+The briefs now make stronger connections, particularly the rock/metal host's rhythm-section
+and melody bridge, but remain uneven: titles are often generic, the alternative-pop host's bridge
+is loose, and the eclectic host's list of familiar styles can read as additional promises.
 Two hosts choosing each destination is valid, but this small run does not prove
 variety across repeated generations. Those findings were accepted for an on-air trial; the template is now integrated below.
 
