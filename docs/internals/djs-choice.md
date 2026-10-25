@@ -443,8 +443,9 @@ includes the shared labelled optional talking point.
 
 For this experiment, exact regular-show genre names are removed from the genre
 choices. This prevents obvious repertoire repetition; it does not prove that a
-DJ has never heard a style, nor resolve all genre-family overlaps. Use a focused
-palette, normally 1–4 connected styles, expanding only for coverage. The preview
+DJ has never heard a style, nor resolve all genre-family overlaps. The refined
+prototype uses its single declared destination as the entire genre palette;
+choose another destination if coverage is insufficient. The preview
 uses strict filters and reports whether the pool covers twice airtime at a
 four-minute average; it does not automatically accept or schedule a plan.
 
@@ -484,6 +485,57 @@ evidence. Every brief includes a talking point, and the revised previews leave
 unrequested mood, era and energy restrictions empty. Refine destination focus,
 musical accuracy and persona-specific bridges before promoting this to a saved
 template. A large matching pool alone is not an acceptance criterion.
+
+#### Refinement: one destination and strict selection
+
+The next prompt requires a concrete audible bridge supported by the persona,
+and checks the brief against that bridge rather than accepting generic curiosity.
+The concept returns one destination; the controller copies it into the required
+genre list. There is no independent list for the model to pad with umbrella tags.
+The broad Rock, Pop, Electronic and Experimental tags are unavailable as
+destinations in this trial. The second call receives the departure evidence to
+explain the rationale.
+
+This matters because genres are OR alternatives, even with strict filters.
+A trial proposing Progressive House plus Electronic admitted 9,371 tracks:
+strictness alone cannot restore focus to an overly broad palette. A single
+destination still permits tracks with other tags, provided at least one tag
+matches the destination using the shared genre matching rules. It does not
+guarantee unfamiliar artists or exclude every recording played in regular shows.
+
+The harness reports `strictFilterComparison`: effective library pools with the
+same musical plan's strict setting on and off, the count excluded by strictness,
+and the matching share of the soft pool. These are diagnostic eligibility counts,
+not airplay probabilities or a simulated playlist. They account for configured
+blocking, exclusions and duration bounds, but not transient recency, artist
+separation or journey state. Runtime's existing never-starve safeguards remain;
+the preview does not change the picker or scheduled episodes.
+
+Final four-host comparison with the single-destination contract:
+
+| Host | Strict destination | Eligible tracks | Also eligible under regular-show genres |
+| --- | --- | ---: | ---: |
+| Carrie Marshall | Synth-Pop | 1,722 | 14 |
+| Carol Fairclough | Synth-Pop | 1,722 | 668 |
+| Rachel Cole | Psychedelic Rock | 650 | 127 |
+| Terry Palmer | Psychedelic Rock | 650 | 113 |
+
+Each soft-filter comparison allowed approximately 68,224 tracks. All strict
+pools exceeded the one-hour minimum of 30. A separate read-only inspection using
+the shared runtime pool helper confirmed the counts and sampled one track per
+artist: Carrie's examples included Erasure, Metronomy, Soft Cell and New Order;
+Rachel's included Khruangbin, Tame Impala and White Denim. These are eligible
+examples, not predicted playlists. Regular-show overlap is genre eligibility,
+not evidence of past airplay. This supports strict filtering for a focused
+departure while retaining incidental overlap, rather than banning familiar
+artists. Carol's greater overlap shows why a new genre name is not sufficient
+evidence of a large departure.
+
+The briefs now make stronger connections, particularly Carrie's rhythm-section
+and melody bridge, but remain uneven: titles are often generic, Rachel's bridge
+is loose, and Terry's list of familiar styles can read as additional promises.
+Two hosts choosing each destination is valid, but this small run does not prove
+variety across repeated generations. Keep the feature in the harness for now.
 
 ### DJ’s Choice familiar-core policy
 

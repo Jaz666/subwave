@@ -109,17 +109,28 @@ async function main() {
           show: { id: previewId },
         });
         let coverage: Awaited<ReturnType<typeof diagnoseShowCandidates>> | null = null;
+        let softCoverage: Awaited<ReturnType<typeof diagnoseShowCandidates>> | null = null;
         let coverageError: string | null = null;
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          coverage = await Promise.race([
-            diagnoseShowCandidates({ ...plan, id: previewId }, { at: startsAt }),
+          [coverage, softCoverage] = await Promise.race([
+            Promise.all([
+              diagnoseShowCandidates({ ...plan, id: previewId }, { at: startsAt }),
+              diagnoseShowCandidates({ ...plan, id: previewId, filtersStrict: false }, { at: startsAt }),
+            ]),
             new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Coverage lookup exceeded 30 seconds')), 30_000); }),
           ]);
         } catch (error) { coverageError = error instanceof Error ? error.message : String(error); }
         finally { clearTimeout(timer); }
         runs.push({ host: identity(host), guest: guest ? identity(guest) : null,
           repertoire: (guest ? [host, guest] : [host]).map(persona => ({ ...identity(persona), shows: scheduledShowsForHost(persona.id, previewId) })),
+          strictFilterComparison: coverage && softCoverage ? {
+            strictEligible: coverage.library.effective,
+            softEligible: softCoverage.library.effective,
+            excludedByStrict: softCoverage.library.effective - coverage.library.effective,
+            matchingShareOfSoftPool: softCoverage.library.effective ? coverage.library.effective / softCoverage.library.effective : null,
+            note: 'Eligible library universes, not predicted airplay proportions. Recency, artist separation and journey state are not included.',
+          } : null,
           plan, coverage: coverage
             ? { ...coverage, minimumTracks, meetsMinimum: coverage.warnings.some(warning => /not (?:present|counted|an active lock)|could not|failed to resolve/i.test(warning)) ? null : coverage.library.effective >= minimumTracks }
             : { error: coverageError, minimumTracks, meetsMinimum: null } });

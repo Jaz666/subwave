@@ -244,7 +244,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   };
   const existingShows = input.existingShows ?? scheduledShowsForHost(hostPersona.id, input.show?.id);
   const familiarGenres = new Set(existingShows.flatMap(show => show.genres).map(normGenre));
-  const choices = outside ? genreChoices.filter(genre => !familiarGenres.has(normGenre(genre.name))) : genreChoices;
+  const umbrellaGenres = new Set(['Rock', 'Pop', 'Electronic', 'Experimental'].map(normGenre));
+  const choices = outside ? genreChoices.filter(genre => !familiarGenres.has(normGenre(genre.name)) && !umbrellaGenres.has(normGenre(genre.name))) : genreChoices;
   if (outside && !choices.length) throw new Error('No genre choices remain outside this host’s scheduled repertoire');
   const counts = byGenre ?? {};
   const moods = moodNames;
@@ -269,9 +270,9 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       whyOutside: z.string().min(1).max(300).describe('how this departs from regular-show filters; distinguish documented repertoire from inferred taste'),
     }),
     name: baseConceptSchema.shape.name,
-    topic: baseConceptSchema.shape.topic.min(160).max(650),
+    topic: baseConceptSchema.shape.topic.min(160).max(650)
+      .describe('State this host’s specific familiar musical interest, the audible bridge and the exact destination genre from departure in 2–3 sentences. Do not merely invite a journey or describe the destination.'),
     talkingPoint: baseConceptSchema.shape.talkingPoint,
-    intendedGenres: baseConceptSchema.shape.intendedGenres,
   }) : commonGround ? z.object({
     musicalConnection: z.object({
       hostTaste: z.string().min(1).max(300).describe('a specific musical interest supported by the host Soul or Leanings, not presentation style'),
@@ -300,11 +301,12 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       input.coverageCorrection || null,
       'Fill departure first. Soul is primary; optional Musical Leanings supplement it. Use regular-show filters to distinguish documented repertoire from a plausible new destination. If no shows exist, explicitly acknowledge that the familiar territory is inferred from persona preferences. Never invent a dislike, a lack of knowledge or a past listening habit.',
       'State the exact destination genre in the brief and make its difference from the starting point clear. A genre absent from show filters may still be an explicit persona preference: do not pretend it is unfamiliar without explaining a more specific departure. Make ONE coherent sideways move, following something the DJ already appreciates into a related territory they do not normally programme. The musical bridge must explain why this DJ would be curious. The destination, not the familiar starting point, supplies the music throughout the show. Do not make a familiar set with occasional adjacent tracks, several unrelated excursions, or a deliberately distant challenge. Underrepresentation is not required. Presentation style and speaking pace do not define music taste.',
-      `Use a focused palette, usually 1–4 connected styles, copied exactly from the supplied choices. Exact genre names in scheduled regular shows have been excluded from this preview’s palette. Expand only into styles supporting the same destination when needed for ${requiredTracks} unique eligible tracks (twice airtime at a four-minute average). Counts overlap. Do not pad with broad familiar genres or choose tiny tags merely because they are rare.`,
-      'Write a concise brief of 2–3 sentences, at most 80 words: identify the starting interest, the musical bridge and the exact destination genre. Mention familiar genres only as the starting reference, never as additional music promised for this show. Invite an open-minded exploration without claiming that the DJ dislikes this music, is already an expert or has actually played particular records. Do not promise specific artists, tracks, genre alternation or a scripted journey. Only promise music covered by intendedGenres.',
+      `Choose ONE specific destination genre, copied exactly from the supplied choices, with enough music for ${requiredTracks} unique eligible tracks (twice airtime at a four-minute average). The controller uses departure.destination as the sole strict genre filter. If a destination lacks coverage, choose another coherent destination rather than padding it with an umbrella genre. Broad tags such as Electronic, Rock, Pop or Experimental do not describe a focused destination. Exact regular-show genres have already been excluded. Rarity is not a goal.`,
+      'The bridge must name a concrete audible feature supported by this particular persona: instrumentation, rhythm, arrangement, texture or songwriting. Generic curiosity, atmosphere or experimentation alone is insufficient. Consider several plausible directions internally and choose the one with the strongest individual connection; do not default every host to post-punk or industrial. Do not invent genre history, classify a rock genre as electronic music, or claim the regular shows feature a sound not established by their filters or the persona.',
+      'Write a concise brief of 2–3 sentences, at most 80 words: identify the starting interest, the musical bridge and the exact destination genre. Mention familiar genres only as the starting reference, never as additional music promised for this show. Invite an open-minded exploration without claiming that the DJ dislikes this music, is already an expert or has actually played particular records. Do not promise specific artists, tracks, genre alternation or a scripted journey. Only promise music in departure.destination.',
       talkingPointInstruction,
       input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive an original short title from the musical idea, without presenter names, genre lists or the template name.',
-      'Keep the title and brief era-neutral unless the operator explicitly requests a music period. Return departure, name, topic, talkingPoint and intendedGenres.',
+      'Before returning, check that the brief actually states the specific starting interest, audible bridge and destination from departure, rather than just promising a journey. The talking point must be musically accurate. Keep the title and brief era-neutral unless the operator explicitly requests a music period. Return departure, name, topic and talkingPoint.',
     ].filter(Boolean).join('\n\n') : commonGround ? [
       `Host (presentation lead only): ${JSON.stringify(identity(host))}`,
       `Guest (equal musical influence): ${JSON.stringify(identity(guests[0]))}`,
@@ -343,7 +345,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     kind: 'generateShowPlan.concept',
     telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
   }) as z.infer<typeof conceptSchema>;
-  const intended = [...new Set(concept.intendedGenres)];
+  const intended = 'departure' in concept ? [concept.departure.destination] : [...new Set(concept.intendedGenres)];
   const settingsSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
     moods: generatedShowPlanSchema.shape.moods.max(outside && !input.planningPrompt.trim() ? 0 : strictGenres ? 2 : 15),
     eras: generatedShowPlanSchema.shape.eras.max(outside && !input.planningPrompt.trim() ? 0 : 15),
@@ -362,6 +364,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       system: `Translate the accepted musical proposal into settings. Do not create another idea or choose another genre palette. Preserve every required genre exactly once. Default mood, era and energy lists to empty. Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
       prompt: [
         `Accepted proposal: ${JSON.stringify({ name: concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint, requiredGenres: intended })}`,
+        outside && 'departure' in concept ? `Musical bridge evidence for the rationale: ${JSON.stringify(concept.departure)}` : null,
         `Indexed counts (coverage context only): ${JSON.stringify(Object.fromEntries(intended.map(name => [name, counts[name]])))}`,
         'talkingPoint is optional editorial context, not a promise of extra music or an instruction to narrow filters. Do not derive extra genre, era, mood or energy restrictions from its question.',
         'Return genres as an array of strings, for example ["Indie Rock", "Post-Punk"]. Copy the requiredGenres strings exactly. Never put name/tracks objects in genres.',
