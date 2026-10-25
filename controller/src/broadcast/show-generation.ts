@@ -251,7 +251,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     : input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const discoveryAnchors = discovery ? [...existingShows.flatMap(show => show.genres),
     ...Object.keys(byGenre ?? {}).filter(genre => tagCoversGenre(`${host.soul} ${host.musicLean}`, normGenre(genre)))] : [];
-  const discoveryOptions = discovery ? discoveryPalette(byGenre ?? {}, repertoireEstimate, discoveryAnchors) : null;
+  const discoveryOptions = discovery ? discoveryPalette(byGenre ?? {}, repertoireEstimate, discoveryAnchors, Math.random) : null;
   if (discoveryOptions && !discoveryOptions.core.length) throw libraryFitError('Deep Discovery needs meaningfully less-represented genres, but this catalogue has no smaller genre pools to explore.');
   const genreChoices = discoveryOptions?.choices ?? showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
   const choices = genreChoices.filter(genre => (!outside || !familiarGenres.has(normGenre(genre.name)))
@@ -295,8 +295,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     toYear: z.number().int().min(1900).max(currentYear),
   }).describe('one closed music period, normally 1–5 years and never more than 10 years inclusive');
   const conceptSchema = discovery ? z.object({
-    discoveryFocus: z.string().min(1).max(400).describe('First identify one specific musical neighbourhood connecting the host’s stated tastes to underrepresented styles. Name the audible musical thread, not a list of unrelated genres or a generic journey.'),
-    ...baseConceptSchema.shape,
+    discoveryFocus: z.string().min(1).max(400).describe('Name one specific underrepresented musical neighbourhood and the audible characteristic connecting it to a stated host taste. "Cultural collisions", "genre-bending" and "distinctive voices and beats" alone are too generic.'),
+    intendedGenres: baseConceptSchema.shape.intendedGenres,
+    eras: conceptErasSchema,
+    name: baseConceptSchema.shape.name,
+    topic: baseConceptSchema.shape.topic.min(160).max(650)
+      .describe('2–3 sentences naming the selected genres and their specific audible thread. Explain the host’s connection to THIS music. Do not substitute a list of the host’s broader tastes or promise those tastes as additional styles.'),
+    talkingPoint: baseConceptSchema.shape.talkingPoint,
   }) : timeCapsule ? z.object({
     period: timePeriodSchema,
     musicalAngle: z.string().min(1).max(300).describe('why this period and coherent genre palette suit this particular DJ’s musical tastes'),
@@ -399,7 +404,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       `Guests (secondary): ${JSON.stringify(guests.map(identity))}`,
       `Template: ${input.template}; local slot: ${showTime(input)}.`,
       `Familiar repertoire, not speech instructions: ${JSON.stringify(existingShows)}`,
-      discoveryOptions ? `These choices are present in the indexed library and have been pre-screened for this slot’s repertoire cue. Exact filtered coverage will be verified by the controller; missing numeric counts are not evidence of a musical-fit failure. Choose the musical connection first. Underrepresented core choices: ${choices.filter(genre => genre.tracks <= discoveryOptions.ceiling).map(g => g.name).join('; ')}. Supporting neighbours (not core): ${choices.filter(genre => genre.tracks > discoveryOptions.ceiling).map(g => g.name).join('; ')}.` : `Available genre palette, with indexed matching-track counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
+      discoveryOptions ? `These choices are present in the indexed library and have been pre-screened for this slot’s repertoire cue. Exact filtered coverage will be verified by the controller; missing numeric counts are not evidence of a musical-fit failure. Their order varies between runs and is not a suggested playlist or genre combination. Explore any part of the host’s musical tastes, choosing the musical connection before its genres. Underrepresented core choices: ${choices.filter(genre => genre.tracks <= discoveryOptions.ceiling).map(g => g.name).join('; ')}. Supporting neighbours (not core): ${choices.filter(genre => genre.tracks > discoveryOptions.ceiling).map(g => g.name).join('; ')}.` : `Available genre palette, with indexed matching-track counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
       input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive an original title from the brief.',
@@ -464,7 +469,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let music: z.infer<typeof settingsSchema>;
   try {
     music = await djObject({
-      system: `Compile and edit the accepted musical proposal. Copy the accepted topic and talkingPoint verbatim when they fit the contract. Edit only a concrete contradiction or unsupported promise. Do not condense, paraphrase or anonymise a correct draft. Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a concise final name, topic and separate talkingPoint as well as music settings. Remove unsupported promises; do not introduce another idea. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
+      system: `Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Copy the accepted topic and talkingPoint verbatim when they fit the contract. Edit only a concrete contradiction or unsupported promise. Do not condense, paraphrase or anonymise a correct draft.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a concise final name, topic and separate talkingPoint as well as music settings. Remove unsupported promises; do not introduce another idea. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
       prompt: [
         `Accepted proposal: ${JSON.stringify(concept)}`,
         draftIssue ? `Detected draft problem: ${draftIssue.replace(' Please regenerate the episode.', '')} Repair this before publishing. Check the entire draft for similar contradictions; do not merely copy it. Remove unselected style promises rather than adding filters. Preserve the musical angle that fits the selected palette.` : 'No concrete contract mismatch was found. Preserve the original wording unless an unsupported factual promise needs removing.',

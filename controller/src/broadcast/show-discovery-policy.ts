@@ -2,7 +2,7 @@ import { genreRuns } from '../music/genre-fold.js';
 
 // Relative catalogue rarity, measured with the same hierarchical genre counts
 // as selection. No fixed library size or station-specific genre list.
-export function discoveryPalette(counts: Record<string, number>, repertoireEstimate = 1, anchorGenres: readonly string[] = []) {
+export function discoveryPalette(counts: Record<string, number>, repertoireEstimate = 1, anchorGenres: readonly string[] = [], random?: () => number) {
   const all = Object.entries(counts).filter(([name, tracks]) => name.trim() && tracks > 0)
     .map(([name, tracks]) => ({ name, tracks })).sort((a, b) => a.tracks - b.tracks || a.name.localeCompare(b.name));
   // The long tail includes many singleton tags. Its upper quartile retains
@@ -13,8 +13,14 @@ export function discoveryPalette(counts: Record<string, number>, repertoireEstim
   // Shared genre terms are a ranking hint, not a claim of musical equivalence.
   // The model still chooses the connection; rarity classification is unchanged.
   const anchors = new Set(anchorGenres.flatMap(genreRuns));
-  const affinity = new Map(all.map(genre => [genre.name, genreRuns(genre.name).filter(run => anchors.has(run)).length]));
+  // Count a connection once: "Hip Hop" must not beat "Electronic" simply
+  // because hip, hop and hiphop are three overlapping matches.
+  const affinity = new Map(all.map(genre => [genre.name, Number(genreRuns(genre.name).some(run => anchors.has(run)))]));
+  // Draw once per candidate, never in the comparator. Generation varies both
+  // the bounded sample and its presentation; diagnostic callers stay stable.
+  const order = new Map(all.map(genre => [genre.name, random?.() ?? 0]));
   const rank = (a: typeof all[number], b: typeof all[number]) => affinity.get(b.name)! - affinity.get(a.name)!
+    || order.get(a.name)! - order.get(b.name)!
     || (viable.length ? a.tracks - b.tracks : b.tracks - a.tracks) || a.name.localeCompare(b.name);
   const coreChoices = [...(viable.length ? viable : core)].sort(rank).slice(0, 60);
   // Bound neighbours by size BEFORE applying affinity: familiar large genres

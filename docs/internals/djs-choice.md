@@ -238,9 +238,20 @@ it no longer appends the 20 most popular genres. Rank core choices and those
 bounded neighbours using shared genre terms from the host's Soul, optional
 Leanings and regular-show filters. This is a relevance hint, not proof of
 musical adjacency, and does not change which genres qualify as rare.
+Count shared-term relevance once per candidate: compound labels such as
+"Hip Hop" must not gain extra priority from overlapping word fragments.
+On each generation, randomly order equally relevant candidates before taking
+the bounded sample. This varies the palette's membership and presentation
+without changing rarity or coverage rules. The model still chooses the musical
+thread; list order is not a suggested combination, and regeneration does not
+guarantee a different result in a narrow library.
 
 The creative call first describes one host-related musical neighbourhood, then
-chooses the palette. Counts are deliberately omitted from its genre lists so
+chooses the palette before writing its brief. The brief must name those styles
+and their audible connection, rather than restating the host's wider tastes.
+The compiler names the selected styles in its opening sentence and rewrites a
+generic or contradictory draft around the accepted discovery focus.
+Counts are deliberately omitted from its genre lists so
 matching numbers are not mistaken for musical connections. The second call
 still compiles and edits the accepted proposal. Genre counts overlap and precede
 filters/exclusions, so are not an eligible-track guarantee.
@@ -363,7 +374,7 @@ were also in the host's regular-show filters. Its concept had chosen that broad
 palette; the compiler had correctly preserved it. The old combined-pool minimum
 could not detect the missing discovery core.
 
-The final two one-hour controls with the same host/guest pairing both selected
+Two previous one-hour controls with the same host/guest pairing both selected
 Alternative Hip Hop (20 matching tracks) and East Coast Hip Hop (16), yielding
 36 eligible tracks and 100% core participation. Earlier ranked trials also
 produced a 68-track Alternative/Conscious Hip Hop palette and a 118-track palette
@@ -373,11 +384,24 @@ available choices. The creative focus now precedes the sole genre array, relevan
 styles lead the shortlist, and ambiguous single-word genre claims can request
 editorial repair without becoming an automatic publication veto.
 
+Two subsequent live regenerations repeated the same three hip-hop styles. The
+shortlist rewarded overlapping "hip", "hop" and "hiphop" terms and always
+presented the same choices first. Relevance now counts once per candidate, and
+equally relevant choices vary in order before sampling. An initial varied
+preview exposed a contradictory brief and one rejected unselected-style claim;
+the concept now writes its palette before its brief, and the compiler explicitly
+describes the selected music. Three refined one-hour previews with an identical
+host/guest pair produced Alternative Punk/Noise Rock (88 eligible tracks),
+Power Pop/Folk Pop (135), and Alternative and indie/Contemporary Folk (41).
+All three passed the production acceptance path with 100% core coverage and
+no correction call. Their generic themes and talking points still leave room
+for editorial improvement; this sample demonstrates variety, not a guarantee.
+
 The runtime policy cannot prove musical coherence, guarantee a new palette on
-every regeneration or eliminate unjustified model refusals. Ten discovery-policy
+every regeneration or eliminate unjustified model refusals. Eleven discovery-policy
 tests cover rarity, core share, correction, exclusions and metadata failures;
 with twelve brief-contract, thirteen readiness and nine generation/regeneration
-tests, 44 focused controller checks pass. TypeScript and scoped lint pass (existing
+tests, 45 focused controller checks pass. TypeScript and scoped lint pass (existing
 `any` warnings remain). Cached accepted episodes are unchanged: regenerate them
 after rebuilding the controller to apply this policy.
 
