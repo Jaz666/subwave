@@ -25,8 +25,9 @@ ordinary show.
   genre palette should include a few familiar choices plus related genres the
   DJ plays less often, up to the 15-genre show limit.
 - Deep Discovery uses the host’s Soul and optional Musical Leanings to shape the
-  show idea, then deliberately favors less-represented library genres in its
-  music settings when they fit and have enough playable coverage.
+  show idea, then requires an underrepresented core in its music settings.
+  At least half the eligible pool must match that core; larger neighbours cannot
+  turn it into a familiar broad-genre show.
 - Forgotten Favourites is deferred. It needs listening history to influence
   track selection before the station can make credible claims about what was
   previously popular or loved.
@@ -218,21 +219,31 @@ extension. Choose the initial shipped set during implementation planning.
 
 ### Deep Discovery and playable coverage
 
-Deep Discovery scans the entire indexed genre catalogue before building a bounded
-list of up to 80 smaller genres with plausible repertoire for the slot. The cue
-is the operator's minimum coverage when supplied, otherwise an editorial estimate
-of one record per four minutes of slot time. This is shortlist guidance, not a
-new hard playback restriction or a default for the optional minimum coverage
-setting. If no genre reaches the estimate, offer the largest available small
-genres so the LLM can combine them. Never truncate to the most common genres
-before ranking rarity: doing that excluded the real long tail. The music-settings
-pass also receives the host's Soul, Musical Leanings, final brief and duration.
-The LLM builds a coherent palette around related styles; a one-track genre cannot
-carry an entire show. Deep Discovery counts use the playback genre-matching
-rules: Indie also counts Indie Rock, and a multi-tagged recording counts once
-per matching genre. A broad tag with few exact-label assignments therefore
-cannot masquerade as rare. Counts still overlap between genres and precede
-the final show filters and exclusions, so are not an eligible-track guarantee.
+Deep Discovery scans the entire indexed genre catalogue, using playback's
+hierarchical matching counts rather than exact-label assignments: Indie also
+counts Indie Rock, and multi-tagged recordings count once per genre. A broad
+tag cannot masquerade as rare because few files use its exact label.
+
+The underrepresented core is the lower-count tail up to the smaller of the
+75th-percentile positive genre count (rounded down by rank) and half the largest
+genre count. A single-genre or nearly uniform library has no meaningful core;
+return library-fit advice instead of inventing a discovery premise. These are
+relative catalogue counts, not a fixed minimum library size.
+
+Offer up to 60 core choices and 20 modest neighbours. Prefer core styles with at
+least half the required eligible-track minimum as a repertoire cue; if none
+reach that cue, offer larger core styles that can be combined. The neighbour
+pool is bounded to the smallest genres above the core ceiling before ranking;
+it no longer appends the 20 most popular genres. Rank core choices and those
+bounded neighbours using shared genre terms from the host's Soul, optional
+Leanings and regular-show filters. This is a relevance hint, not proof of
+musical adjacency, and does not change which genres qualify as rare.
+
+The creative call first describes one host-related musical neighbourhood, then
+chooses the palette. Counts are deliberately omitted from its genre lists so
+matching numbers are not mistaken for musical connections. The second call
+still compiles and edits the accepted proposal. Genre counts overlap and precede
+filters/exclusions, so are not an eligible-track guarantee.
 Smaller library genres and neglected airplay are different signals:
 the first uses catalogue counts, the second needs history. The brief must not
 invent a personal record collection or drift into Forgotten Favourites.
@@ -322,13 +333,53 @@ blocklists and active filters, without double-counting overlapping genres.
 Transient artist spacing and recent-play exclusions are not included; the
 twofold buffer provides headroom for these at playback.
 
-Keep mood, era and energy restrictions empty unless musically necessary; Deep
-Discovery allows at most two mood tags. A deficient plan gets one correction
-attempt to broaden into adjacent genres; if still deficient it is rejected and
-an existing accepted plan is retained. Accepted episodes are not automatically
+At least half the final unique eligible pool must also match core genres.
+Diagnose the core subset with the same era, mood, energy, duration, vocal,
+playlist and exclusion settings as the full palette. Skip the extra diagnostic
+when every selected genre is core. A token rare tag alongside a dominating
+broad genre fails even if total coverage is ample. This is a candidate-pool rule,
+not an airplay quota, guaranteed first plays or a fixed running order.
+
+Keep mood, era and energy restrictions empty by default; an era needs an
+explicit operator/title period request. Deep Discovery allows at most two mood
+tags, and the compiler asks for mood/energy restrictions only when the operator
+requires them. A deficient plan gets one correction
+attempt to add coherent core styles or reduce dominating neighbours as needed;
+if coverage or core share is still deficient, reject the result and retain any
+existing accepted plan. Accepted episodes are not automatically
 regenerated by this policy change: regenerate upcoming episodes to apply it.
 DJ’s Choice uses the same strictness and twice-airtime coverage check; its
 familiar-core policy is described below.
+
+All preview modes now run the production acceptance/one-correction path, not
+just raw generation. Deep Discovery reports the core names, global rarity ceiling,
+per-genre matching counts, eligible core/full counts and core share. The regular
+cast preview uses the operator's allowed persona roster and an isolated snapshot
+of source settings, library and blocklist; no episodes are saved or aired.
+
+On 25 October a one-hour scheduled plan using Alternative Rock, Indie Rock and
+Electronic admitted 19,912 of 68,224 indexed tracks before exclusions. All three
+were also in the host's regular-show filters. Its concept had chosen that broad
+palette; the compiler had correctly preserved it. The old combined-pool minimum
+could not detect the missing discovery core.
+
+The final two one-hour controls with the same host/guest pairing both selected
+Alternative Hip Hop (20 matching tracks) and East Coast Hip Hop (16), yielding
+36 eligible tracks and 100% core participation. Earlier ranked trials also
+produced a 68-track Alternative/Conscious Hip Hop palette and a 118-track palette
+including Industrial Rock. Early iterations exposed unrelated small-genre piles,
+a redundant model core-list mismatch and a model library-fit refusal despite
+available choices. The creative focus now precedes the sole genre array, relevant
+styles lead the shortlist, and ambiguous single-word genre claims can request
+editorial repair without becoming an automatic publication veto.
+
+The runtime policy cannot prove musical coherence, guarantee a new palette on
+every regeneration or eliminate unjustified model refusals. Ten discovery-policy
+tests cover rarity, core share, correction, exclusions and metadata failures;
+with twelve brief-contract, thirteen readiness and nine generation/regeneration
+tests, 44 focused controller checks pass. TypeScript and scoped lint pass (existing
+`any` warnings remain). Cached accepted episodes are unchanged: regenerate them
+after rebuilding the controller to apply this policy.
 
 ## Template ideas for later exploration
 

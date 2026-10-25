@@ -36,10 +36,12 @@ test('Deep Discovery finds rare workable candidates across the whole catalogue b
   const discovery = showGenreChoices(counts, 'deep-discovery', 30);
   assert.equal(discovery.length, 80);
   assert.deepEqual(discovery[0], { name: 'Genre 456', tracks: 30 });
-  assert.equal(discovery.at(-1)?.tracks, 109);
+  assert.equal(discovery[59]?.tracks, 89);
+  assert.equal(discovery.at(-1)?.tracks, 263);
+  assert.equal(discovery.some(genre => genre.name === 'Genre 0'), false, 'the largest catalogue genre is not a default neighbour');
   assert.deepEqual(showGenreChoices({ Tiny: 2, Small: 5 }, 'deep-discovery', 30), [
-    { name: 'Small', tracks: 5 }, { name: 'Tiny', tracks: 2 },
-  ], 'a sparse library keeps the largest available small genres to combine');
+    { name: 'Tiny', tracks: 2 }, { name: 'Small', tracks: 5 },
+  ], 'a sparse library keeps its rare core first and an available neighbour to combine');
   const choice = showGenreChoices(counts, 'dj-choice');
   assert.equal(choice.length, 80);
   assert.equal(choice[0]?.name, 'Genre 0');
@@ -72,6 +74,7 @@ function fixture(name: string) {
   const owner = createShowPreparation({
     file, snapshot: () => null, generatedSnapshot: () => snap, scheduledGeneratedSnapshot: () => snap,
     execute: async () => null, source: async () => null, now: () => clock,
+    discoveryCounts: async () => ({ 'Math Rock': 100, Rock: 10000 }),
     diagnose: async () => ({ strict: true, library: { indexed: 100, matchingFilters: 100, afterExclusions: 100, effective: 100 }, playlist: null, warnings: [] }),
     generate: async () => {
       calls++;

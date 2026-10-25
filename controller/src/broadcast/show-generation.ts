@@ -9,6 +9,7 @@ import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show
 import { djObject } from '../llm/sdk.js';
 import { DJ_SOULS } from '../settings/vocab.js';
 import { ShowPlanningError, musicalDetailError, libraryFitError, missingMusicalEvidence } from './show-planning-policy.js';
+import { discoveryPalette } from './show-discovery-policy.js';
 import { hasEraReference, validateShowBrief, validateShowMusicContract } from './show-brief-contract.js';
 
 export interface GeneratedShowCast {
@@ -158,17 +159,16 @@ export function discoveryGenreCounts(names: string[], tracks: readonly { genres?
   return Object.fromEntries(names.map(name => [name, counts.get(normGenre(name)) ?? 0]));
 }
 
+export async function loadDiscoveryGenreCounts(): Promise<Record<string, number>> {
+  await library.load();
+  return discoveryGenreCounts(Object.keys(library.stats().byGenre ?? {}), library.candidateFilterTracks());
+}
+
 export function showGenreChoices(byGenre: Record<string, number>, template: string, repertoireEstimate = 1) {
   const genres = Object.entries(byGenre)
     .filter(([name, count]) => name && count > 0)
     .map(([name, tracks]) => ({ name, tracks }));
-  if (template === 'deep-discovery') {
-    // Scan the whole catalogue before bounding the prompt. A duration-based
-    // repertoire cue avoids offering only singleton tags to the small model;
-    // it is not an operator minimum or a unique eligible-track guarantee.
-    const viable = genres.filter(genre => genre.tracks >= repertoireEstimate);
-    if (viable.length) return viable.sort((a, b) => a.tracks - b.tracks || a.name.localeCompare(b.name)).slice(0, 80);
-  }
+  if (template === 'deep-discovery') return discoveryPalette(byGenre, repertoireEstimate).choices;
   return genres.sort((a, b) => b.tracks - a.tracks || a.name.localeCompare(b.name)).slice(0, 80);
 }
 
@@ -247,13 +247,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const byGenre = input.template === 'deep-discovery' && libraryStats
     ? discoveryGenreCounts(Object.keys(indexedGenreCounts ?? {}), library.candidateFilterTracks())
     : indexedGenreCounts;
-  const repertoireEstimate = input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
-  const genreChoices = discovery
-    ? [...new Map([
-      ...showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate).slice(0, 60),
-      ...showGenreChoices(byGenre ?? {}, 'dj-choice').slice(0, 20),
-    ].map(genre => [genre.name, genre])).values()]
-    : showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
+  const repertoireEstimate = discovery ? Math.max(1, Math.ceil(requiredTracks / 2))
+    : input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
+  const discoveryAnchors = discovery ? [...existingShows.flatMap(show => show.genres),
+    ...Object.keys(byGenre ?? {}).filter(genre => tagCoversGenre(`${host.soul} ${host.musicLean}`, normGenre(genre)))] : [];
+  const discoveryOptions = discovery ? discoveryPalette(byGenre ?? {}, repertoireEstimate, discoveryAnchors) : null;
+  if (discoveryOptions && !discoveryOptions.core.length) throw libraryFitError('Deep Discovery needs meaningfully less-represented genres, but this catalogue has no smaller genre pools to explore.');
+  const genreChoices = discoveryOptions?.choices ?? showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
   const choices = genreChoices.filter(genre => (!outside || !familiarGenres.has(normGenre(genre.name)))
     && (!(outside || timeCapsule) || !umbrellaGenres.has(normGenre(genre.name))));
   if (!libraryStats) throw new ShowPlanningError('library-unavailable', 'Music library information is unavailable. Check the library connection and indexing, then try again.');
@@ -294,7 +294,10 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     fromYear: z.number().int().min(1900).max(currentYear),
     toYear: z.number().int().min(1900).max(currentYear),
   }).describe('one closed music period, normally 1–5 years and never more than 10 years inclusive');
-  const conceptSchema = timeCapsule ? z.object({
+  const conceptSchema = discovery ? z.object({
+    discoveryFocus: z.string().min(1).max(400).describe('First identify one specific musical neighbourhood connecting the host’s stated tastes to underrepresented styles. Name the audible musical thread, not a list of unrelated genres or a generic journey.'),
+    ...baseConceptSchema.shape,
+  }) : timeCapsule ? z.object({
     period: timePeriodSchema,
     musicalAngle: z.string().min(1).max(300).describe('why this period and coherent genre palette suit this particular DJ’s musical tastes'),
     name: baseConceptSchema.shape.name.describe('short musical title; no claims about the birth, invention, firsts, rise or definitive history of a genre'),
@@ -345,6 +348,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       ? 'Plan one solo musical radio episode exploring a neighbouring territory outside the DJ’s familiar repertoire. Establish a supported starting point, a credible musical bridge and one focused destination, then write the brief and title. Return only the requested JSON.'
       : commonGround
       ? 'Plan one specific musical radio episode finding common ground between two DJs with equal musical influence. Write its short brief, derive its title, and declare the genre palette it promises. Return only the requested JSON.'
+      : discovery ? 'Plan Deep Discovery: a coherent episode anchored in the library’s underrepresented genres. Start with a rare core connected to the host’s musical tastes, then use only adjacent supporting styles. Familiar broad genres alone cannot satisfy this template. Return only the requested JSON.'
       : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.'),
     prompt: `Required participants: ${JSON.stringify(evidencePersonas)}\n\nDeclared music contract: derive the genre palette from the musical brief and declare any operator-requested era with it. ${timeCapsule ? 'The period supplies the required era.' : 'Return eras in the proposal: [] unless the operator explicitly restricts the music by period. A custom title alone must only imply an era when it actually names one.'} Do not add performers, artist appearances, personal memories or historical claims. Only the supplied cast presents the show.\n\n` + (timeCapsule ? [
       `Host: ${JSON.stringify(identity(host))}`,
@@ -395,13 +399,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       `Guests (secondary): ${JSON.stringify(guests.map(identity))}`,
       `Template: ${input.template}; local slot: ${showTime(input)}.`,
       `Familiar repertoire, not speech instructions: ${JSON.stringify(existingShows)}`,
-      `Available genre palette, with indexed matching-track counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
+      discoveryOptions ? `These choices are present in the indexed library and have been pre-screened for this slot’s repertoire cue. Exact filtered coverage will be verified by the controller; missing numeric counts are not evidence of a musical-fit failure. Choose the musical connection first. Underrepresented core choices: ${choices.filter(genre => genre.tracks <= discoveryOptions.ceiling).map(g => g.name).join('; ')}. Supporting neighbours (not core): ${choices.filter(genre => genre.tracks > discoveryOptions.ceiling).map(g => g.name).join('; ')}.` : `Available genre palette, with indexed matching-track counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
       input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive an original title from the brief.',
       'The Soul is primary and may contain all musical preferences. Musical Leanings is optional supplementary guidance. Choose a musical angle that fits stated preferences; calm speech, banter and personality do not impose music filters.',
       input.template === 'deep-discovery'
-        ? `Build a coherent neighbourhood around underrepresented styles, expanding into adjacent genres to provide at least ${requiredTracks} unique matching tracks at a four-minute average: twice the slot airtime, to allow for playback exclusions. Use up to 15 genres as needed. Counts overlap; include enough breadth, not only tiny tags. Popular neighbours may support the rare core. Rarity alone does not connect genres; avoid a generic genre journey or repeating the Soul.`
+        ? `Fill discoveryFocus first: identify one specific musical neighbourhood suggested by this host’s stated tastes, with one audible thread such as a particular approach to rhythm, texture, arrangement or songwriting. Then select a coherent core from the CORE choices that realises that idea. intendedGenres must include at least one CORE choice. Do not combine unrelated folk, jazz, rock and electronic labels simply because they are all small pools. The musical connection must explain every selected genre, not just the first two. At least half of the final unique eligible track pool must match core genres; a token rare tag beside a large popular genre fails. Supporting neighbours are optional, must follow the same musical thread, and cannot replace the core. Regular-show filters describe familiar territory, not the target palette. Build a coherent neighbourhood around this core, expanding into adjacent genres to provide at least ${requiredTracks} unique matching tracks at a four-minute average: twice the slot airtime, to allow for playback exclusions. Use up to 15 genres as needed. Counts overlap; include enough breadth, not only tiny tags. Adjacent neighbours may support the rare core only while core-matching tracks remain at least half the eligible pool. Rarity alone does not connect genres; avoid a generic genre journey or repeating the Soul.`
         : djChoice
           ? `Make this recognisably the host’s usual musical territory, with occasional sideways steps. Build the main genre core from their regular show filters, interpreted through the Soul and optional Musical Leanings. Add only a few musically adjacent genres absent from those shows; guests may suggest connections without displacing the host’s familiar centre. If there are no regular shows, infer the familiar core from the Soul and optional Musical Leanings. Do not chase rarity or invent a restrictive theme that crowds out familiar favourites. Choose specific styles where supported rather than unexplained catch-all genres. Use up to 15 genres as needed, covering at least ${requiredTracks} unique matching tracks at a four-minute average, twice the slot airtime. A smaller number of adjacent genres does not guarantee an occasional playback proportion; do not promise a fixed running order or ratio.`
           : 'Include familiar anchors when available and related wider-reaching choices from the supplied palette.',
@@ -435,7 +439,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const genreContract = { known: Object.keys(counts), selected: intended, context: contextGenres };
   let draftIssue: string | null = null;
   try {
-    validateShowBrief({ name: input.nameMode === 'custom' ? input.customName! : concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint }, agreedEras, personaNames, castNames, genreContract);
+    validateShowBrief({ name: input.nameMode === 'custom' ? input.customName! : concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint }, agreedEras, personaNames, castNames, { ...genreContract, inspectAmbiguous: discovery });
   } catch (error) { draftIssue = error instanceof Error ? error.message : 'The draft contradicts the music contract.'; }
   let fixedTitle: string | null = input.nameMode === 'custom' ? input.customName! : concept.name;
   if (fixedTitle != null && input.nameMode !== 'custom') {

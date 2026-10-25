@@ -63,3 +63,10 @@ test('explicit catalogue subgenres must be selected or documented as taste conte
   assert.throws(() => validateShowBrief({ ...brief, topic: 'Exploring Blues Rock arrangements.' }, [], names, cast, contract), /unselected style/);
   validateShowBrief({ ...brief, topic: 'A Blues Rock fan explores Indie Rock.' }, [], names, cast, { ...contract, context: ['Blues Rock'] });
 });
+
+test('ambiguous genre words can request editorial repair without becoming a publication veto', () => {
+  const contract = { known: ['Indie', 'Electronic', 'Alternative Hip Hop'], selected: ['Alternative Hip Hop'], context: [] };
+  const draft = { ...brief, topic: 'Explore Indie and Electronic styles.' };
+  assert.throws(() => validateShowBrief(draft, [], names, cast, { ...contract, inspectAmbiguous: true }), /unselected style/);
+  validateShowBrief(draft, [], names, cast, contract);
+});
