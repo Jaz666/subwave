@@ -34,7 +34,7 @@ function templateShow(template: Request['template']): Show {
     personaIds: (station.personas ?? []).map(p => p.id), moodNames: settings.moodVocab(),
     themeIds: [], minTrackSeconds: settings.minTrackSeconds(),
   }).parse({
-    id, name: template === 'dj-choice' ? "DJ's Choice" : template === 'common-ground' ? 'Common Ground' : template === 'outside-comfort-zone' ? 'Outside the Comfort Zone' : 'Deep Discovery',
+    id, name: template === 'dj-choice' ? "DJ's Choice" : template === 'common-ground' ? 'Common Ground' : template === 'outside-comfort-zone' ? 'Outside the Comfort Zone' : template === 'time-capsule' ? 'Time Capsule' : 'Deep Discovery',
     personaId: station.personas?.[0]?.id ?? '', programme: false,
     generation: {
       mode: 'generated', template, hostMode: 'random', guestMode: template === 'outside-comfort-zone' ? 'none' : 'random', guestCount: template === 'outside-comfort-zone' ? { min: 0, max: 0 } : template === 'common-ground' ? { min: 1, max: 1 } : { min: 0, max: 3 },

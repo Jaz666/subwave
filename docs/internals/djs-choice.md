@@ -38,7 +38,7 @@ ordinary show.
   setup into a new permanent show.
 - A DJ skill can look ahead at the day’s schedule and tease prepared shows.
 
-DJ’s Choice, Common Ground, Deep Discovery and Outside the Comfort Zone are accepted template options in
+DJ’s Choice, Common Ground, Deep Discovery, Outside the Comfort Zone and Time Capsule are accepted template options in
 saved settings. Common Ground also has a dedicated comparison harness. Unsupported legacy template names use the
 existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
 Random casting uses the station-wide Sub/Shows pools. Common Ground uses the
@@ -351,18 +351,18 @@ operator edits and normal enablement choices.
 
 Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and
-show filters. DJ’s Choice, Deep Discovery, Common Ground and Outside the Comfort Zone are implemented;
+show filters. DJ’s Choice, Deep Discovery, Common Ground, Outside the Comfort Zone and Time Capsule are implemented;
 the remaining ideas below are proposals.
 
 | Working name | Musical idea | Planning approach |
 | --- | --- | --- |
 | Common Ground (implemented) | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
 | Outside the Comfort Zone (implemented) | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
-| Time Capsule | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
+| Time Capsule (implemented) | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
-Time Capsule has a harness-only trial. It is not yet a saved template or UI option.
+Time Capsule is implemented following the accepted harness trial described below.
 Run `STATE_DIR=/path/to/station/state npm run time-capsule:preview -- --host "DJ name" --count 1`
 from `controller/`. The default comparison uses four distinct eligible Random
 Hosts, with solo hosts for this initial experiment; explicit guests are rejected.
@@ -378,7 +378,7 @@ The second call must preserve the chosen year bounds exactly in one era filter,
 along with every declared genre. Both era and genre filters are strict; moods
 and energies remain unrestricted. The harness measures actual combined coverage
 against twice airtime at four minutes per track and reports failure or shortage
-without accepting an episode. Production retry behaviour is not implemented.
+without accepting an episode. The initial harness did not exercise production retry behaviour.
 
 The first trial allowed broad Rock/Pop padding, named artists without research,
 historical "birth" framing and a vague 1980s brief for 1985–1989 filters. The
@@ -401,9 +401,34 @@ exploration, but the prose still failed some instructions. Carrie introduced
 Yes in the talking point and omitted supporting genres from the brief; Maria
 used a vague mid-80s label and unsupported emergence/influence framing; Terry
 promised late-1970s Britain without any country filter or verified geography.
-Both Maria and Terry omitted the exact bounds in their prose. Do not promote
-the prototype on coverage alone: exact-period wording, palette alignment and
-unresearched historical/geographical promises remain unresolved.
+Both Maria and Terry omitted the exact bounds in their prose. These findings
+informed the production changes below; coverage alone does not establish prose
+quality or verify historical/geographical claims.
+
+### Time Capsule implementation
+
+Time Capsule is available on the schedule shelf, in Write an Order and Dashboard
+Takeover, and in Sub/Shows episode plans and airtime totals, with a blue colour.
+It defaults to Random Host and Random Guests (0–3), using the existing eligibility
+pools and slot editor. A fixed host, selected guests or no guests are supported.
+The host remains the musical lead; optional guests supply additional perspectives.
+The preview harness retains its solo comparison mode.
+
+The concept chooses a closed period, normally 1–5 years and never more than ten
+years inclusive, with 1–3 specific genres. The second call must copy both year
+bounds and every selected genre exactly. A brief lead states the accepted period
+and full palette explicitly, even if the model describes the period informally.
+The prompt forbids unsupported geographic restrictions, historical claims and
+artist promises, and requests a musical talking point within the selected period.
+Mood and energy filters remain empty; strict era and genre filters are mandatory.
+
+Coverage must reach twice airtime at a four-minute average, or the configured
+minimum if greater, after filters and exclusions. The shared acceptance path
+checks closed bounds and retries once with a better-covered closed period and
+coherent palette, keeping the same cast. It cannot remove the era restriction
+or relax strictness. Insufficient coverage after retry uses the existing failure
+path. Shared preparation triggers, regeneration, host shuffle, permanent-show
+saving, DJ Skills and Look Ahead all apply. Banter Breaks remain disabled.
 
 Outside the Comfort Zone is implemented after a harness trial. Common Ground
 uses exactly one distinct guest and equal musical influence for both DJs; the

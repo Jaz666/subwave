@@ -382,6 +382,8 @@ export default function Board({
                     : 'border-separator-strong hover:border-ink',
                   template.id === 'dj-choice'
                     ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#c24824_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
+                    : template.id === 'time-capsule'
+                      ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#3b709d_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
                     : template.id === 'outside-comfort-zone'
                       ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#a67b22_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
                     : template.id === 'common-ground'

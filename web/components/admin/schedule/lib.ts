@@ -41,11 +41,13 @@ export const GENERATED_SHOW_TEMPLATES: {
   { id: 'common-ground', label: 'Common Ground' },
   { id: 'deep-discovery', label: 'Deep Discovery' },
   { id: 'outside-comfort-zone', label: 'Outside the Comfort Zone' },
+  { id: 'time-capsule', label: 'Time Capsule' },
 ];
 
 export const GENERATED_SHOW_COLORS: Record<GeneratedTemplateId, string> = {
   'dj-choice': 'color-mix(in oklab, #c24824 75%, var(--bg))',
   'common-ground': 'color-mix(in oklab, #7f5ca5 75%, var(--bg))',
+  'time-capsule': 'color-mix(in oklab, #3b709d 75%, var(--bg))',
   'outside-comfort-zone': 'color-mix(in oklab, #a67b22 75%, var(--bg))',
   'deep-discovery': 'color-mix(in oklab, #167978 75%, var(--bg))',
 };

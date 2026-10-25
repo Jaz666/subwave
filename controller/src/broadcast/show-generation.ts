@@ -206,7 +206,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const djChoice = input.template === 'dj-choice';
   const commonGround = input.template === 'common-ground';
   const outside = input.template === 'outside-comfort-zone';
-  const timeCapsule = input.template === 'time-capsule'; // Harness-only trial.
+  const timeCapsule = input.template === 'time-capsule';
   const strictGenres = discovery || djChoice || commonGround || outside || timeCapsule;
   const genreLimit = strictGenres ? 15 : 6;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
@@ -326,12 +326,14 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.',
     prompt: timeCapsule ? [
       `Host: ${JSON.stringify(identity(host))}`,
+      `Guest perspectives (optional, host remains musical lead): ${JSON.stringify(guests.map(identity))}`,
       `Supporting regular-show music filters: ${JSON.stringify(existingShows)}`,
       `Local slot: ${showTime(input)}. Available genres: ${choices.map(g => g.name).join('; ')}`,
       `Library period evidence (five-year bins, top six genres each; counts overlap): ${JSON.stringify(periodEvidence)}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
       `Choose period first: a specific year or short closed window, preferably 1–5 years, at most 10 years inclusive. Both numeric bounds are required. Choose 1–3 specific coherent genres fitting that period and this host’s Soul plus optional Musical Leanings. Prefer a period supporting at least ${requiredTracks} unique tracks after era and genre filters; evidence bins are context, not proof of exact coverage. Rarity and a departure from familiar tastes are not required.`,
+      'No country, regional scene or nationality restriction is available. Do not promise a British, American or other geographically exclusive selection. Do not turn period atmosphere into claims about where a genre emerged. Keep the talking point a general musical question within this palette; do not name artists or bands.',
       'Fill period and musicalAngle before writing. Use only specific genre choices; umbrella Rock, Pop, Electronic and Experimental are excluded, and must not be promised in the brief as extra music. Do not add padding genres when the main style already has coverage.',
       'The brief must state both exact numeric year bounds from period (or the single year); never replace a narrower window with a whole-decade label. It must also state the selected genre palette and this host’s particular musical angle. Use 2–3 concise sentences, at most 80 words. Do not broaden the period to present day, promise other decades, or make a definitive history programme. Do not name any artists, bands, albums or tracks. Do not claim the birth, emergence, invention, rise or golden age of a genre, including in the title. Do not invent release milestones, firsts, influence, remembered gigs or personal listening history. Discuss musical qualities and tastes rather than unsupported historical events.',
       talkingPointInstruction,
@@ -447,7 +449,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   if (parsed.moods.some(mood => !moods.includes(mood))) throw new Error('Music settings returned a mood outside the station vocabulary');
   return generatedShowPlanSchema.parse({
     ...concept, ...parsed, ...(strictGenres ? { filtersStrict: true } : {}),
-    topic: `${concept.topic}\n\nTalking point (optional thread): ${concept.talkingPoint}`,
+    topic: `${period ? `${host.name} explores ${intended.join(', ')} from ${period.fromYear === period.toYear ? period.fromYear : `${period.fromYear}–${period.toYear}`}.\n\n` : ''}${concept.topic}\n\nTalking point (optional thread): ${concept.talkingPoint}`,
     moods: [...new Set(parsed.moods)], energies: [...new Set(parsed.energies)],
     eras: mergeEraWindows(parsed.eras),
     name: input.nameMode === 'custom' ? input.customName : concept.name,

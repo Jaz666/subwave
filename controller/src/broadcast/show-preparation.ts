@@ -73,12 +73,19 @@ export function preparationGrounding(result: AcceptedPreparation, music: 'restri
 }
 
 export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, generate: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan> = generateShowPlan): Promise<GeneratedShowPlan> {
-  const strictGenres = ['deep-discovery', 'dj-choice', 'common-ground', 'outside-comfort-zone'].includes(snapshot.template);
+  const strictGenres = ['deep-discovery', 'dj-choice', 'common-ground', 'outside-comfort-zone', 'time-capsule'].includes(snapshot.template);
   const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0, strictGenres
     ? Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000) : 0);
   const accept = (raw: GeneratedShowPlan) => {
     const plan = generatedShowPlanSchema.parse({ ...raw, ...(strictGenres ? { filtersStrict: true } : {}) });
     if (snapshot.template === 'outside-comfort-zone' && plan.genres.length !== 1) throw new Error('Outside the Comfort Zone requires one destination genre');
+    if (snapshot.template === 'time-capsule') {
+      const period = plan.eras[0];
+      if (plan.eras.length !== 1 || period?.fromYear == null || period.toYear == null
+        || period.toYear < period.fromYear || period.toYear - period.fromYear >= 10) {
+        throw new Error('Time Capsule requires one closed period of at most ten years');
+      }
+    }
     if (strictGenres && !plan.genres.length) throw new Error('Sub/Show requires a genre palette');
     return plan;
   };
@@ -98,7 +105,7 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
   const previousDestination = plan.genres[0];
   plan = accept(await generate({
     ...snapshot,
-    coverageCorrection: `Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Sub/Shows). ${snapshot.template === 'outside-comfort-zone' ? 'Choose a different single neighbouring destination with sufficient coverage. Do not retain the failed destination or add broad fallback genres.' : 'Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions.'} Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
+    coverageCorrection: `Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Sub/Shows). ${snapshot.template === 'outside-comfort-zone' ? 'Choose a different single neighbouring destination with sufficient coverage. Do not retain the failed destination or add broad fallback genres.' : snapshot.template === 'time-capsule' ? 'Choose a better-covered closed period of at most ten years and a coherent connected genre palette. Update the brief to match the new period and genres. Keep both year bounds and strict filtering; never remove the era restriction.' : 'Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions.'} Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
   }));
   if (snapshot.template === 'outside-comfort-zone' && plan.genres[0] === previousDestination) {
     throw new Error('Coverage retry must choose a different destination genre');

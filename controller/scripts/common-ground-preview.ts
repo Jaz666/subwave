@@ -141,7 +141,7 @@ async function main() {
       }
     }
     process.stdout.write(JSON.stringify({ previewOnly: true, template, minutes,
-      policy: template === 'time-capsule' ? 'Harness-only era-led preview; strict era and genres, twice-airtime coverage; no plans saved.' : outside
+      policy: template === 'time-capsule' ? 'Era-led preview; strict era and genres, twice-airtime coverage; no plans saved.' : outside
         ? 'Solo departure preview; strict genres and twice-airtime coverage; no plans are saved.'
         : 'Strict genres and twice-airtime coverage use the Common Ground policy; no plans are saved.',
       model: station.llm.model, eligiblePersonas: eligible.map(identity), runs }, null, 2) + '\n');

@@ -168,6 +168,10 @@ export default function TemplateShowsPanel() {
                 <dt className="inline font-semibold text-ink">Outside the Comfort Zone</dt>{' '}
                 <dd className="inline text-muted">One host takes a focused sideways step into neighbouring musical territory.</dd>
               </div>
+              <div>
+                <dt className="inline font-semibold text-ink">Time Capsule</dt>{' '}
+                <dd className="inline text-muted">Explore a defined period through the host’s musical tastes, with strict era and genre filters.</dd>
+              </div>
             </dl>
           </div>
           <Button asChild variant="accent" size="sm" className="min-h-9">
@@ -199,7 +203,7 @@ export default function TemplateShowsPanel() {
             />
             <EligibilityPicker
               title="Random guests"
-              description="Random guests for DJ’s Choice and Deep Discovery. Common Ground uses Random Hosts for both DJs. The selected host is always excluded."
+              description="Random guests for DJ’s Choice, Deep Discovery and Time Capsule. Common Ground uses Random Hosts for both DJs. The selected host is always excluded."
               items={guestItems}
               selected={draft.eligibleGuestPersonaIds}
               onChange={(id, checked) => togglePool('eligibleGuestPersonaIds', guestItems, id, checked)}
