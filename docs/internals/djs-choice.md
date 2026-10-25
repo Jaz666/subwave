@@ -345,7 +345,7 @@ the remaining ideas below are proposals.
 | Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
 | After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
 
-Outside the Comfort Zone remains a suggested next candidate. Common Ground
+Outside the Comfort Zone now has a harness-only prototype for evaluation. Common Ground
 uses exactly one distinct guest and equal musical influence for both DJs; the
 host still leads presentation. It uses strict genres with the same twice-airtime
 coverage checks as the other Sub/Shows.
@@ -425,6 +425,65 @@ supporting repertoire, generated brief/settings, matching pool diagnostics and
 whether coverage reaches twice the airtime at a four-minute average. The harness
 uses the same strict genre and coverage policy as the scheduled template. Inadequate pools and individual generation failures remain visible for
 review; the harness does not silently replace a pairing or accept it for air.
+
+### Outside the Comfort Zone preview — 25 October 2026
+
+This is a solo, harness-only prototype, not a saved template or UI option.
+Its concept first identifies the DJ's familiar territory, one neighbouring
+destination, the musical bridge and why it is a departure. Soul and optional
+Musical Leanings supply taste; scheduled regular-show filters supply evidence
+of established repertoire. Where no regular shows exist, familiarity is inferred
+and must be described as such.
+
+The destination supplies the show's music throughout. It should not become a
+familiar set with occasional adjacent tracks, an arbitrary challenge, or several
+unrelated excursions. Underrepresentation is not required. The brief must invite
+curiosity without inventing dislike, expertise or past listening habits, and
+includes the shared labelled optional talking point.
+
+For this experiment, exact regular-show genre names are removed from the genre
+choices. This prevents obvious repertoire repetition; it does not prove that a
+DJ has never heard a style, nor resolve all genre-family overlaps. Use a focused
+palette, normally 1–4 connected styles, expanding only for coverage. The preview
+uses strict filters and reports whether the pool covers twice airtime at a
+four-minute average; it does not automatically accept or schedule a plan.
+
+The existing isolated comparison harness supports:
+
+```sh
+STATE_DIR=/path/to/station/state npm run comfort-zone:preview -- --count 4
+STATE_DIR=/path/to/station/state npm run comfort-zone:preview -- --host "DJ name" --count 1
+```
+
+Only personas enabled in Random Hosts are eligible. Default selection compares
+four distinct random hosts; selecting one host repeats that host for `--count`
+runs. Guests are rejected. Settings, credentials, library and logs use the same
+temporary isolation as the Common Ground harness, with the same local model and
+endpoint overrides. JSON includes briefs, settings, regular-show repertoire and
+coverage diagnostics. Station assessment is needed before adopting this policy.
+
+Coverage diagnostics stop waiting after 30 seconds and preserve the generated
+plan with an unknown coverage result. Model calls share the running station's
+LLM; run previews sequentially and allow for normal station contention.
+
+The four one-hour previews on 25 October all exceeded the 30-track minimum:
+
+| Host | Generated palette | Matching pool |
+| --- | --- | ---: |
+| Carrie Marshall | Electronic, Synth-Pop | 10,314 |
+| Carol Fairclough | Post-Rock, Electro, Experimental | 1,463 |
+| Rachel Cole | Post-Punk, Industrial | 1,562 |
+| Terry Palmer | Industrial, Post-Punk, Experimental | 2,201 |
+
+These establish technical feasibility, not concept quality. Carrie's broad
+Electronic umbrella weakens the focused destination. Carol's brief incorrectly
+calls post-rock electronic music. Rachel and Terry converge on similar territory,
+and their briefs do not clearly establish the individual musical bridge; Terry's
+also claims noise and experimentation in his regular shows without sufficient
+evidence. Every brief includes a talking point, and the revised previews leave
+unrequested mood, era and energy restrictions empty. Refine destination focus,
+musical accuracy and persona-specific bridges before promoting this to a saved
+template. A large matching pool alone is not an acceptance criterion.
 
 ### DJ’s Choice familiar-core policy
 

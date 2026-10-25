@@ -204,7 +204,9 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const discovery = input.template === 'deep-discovery';
   const djChoice = input.template === 'dj-choice';
   const commonGround = input.template === 'common-ground';
-  const strictGenres = discovery || djChoice || commonGround;
+  // Harness-only prototype; not a selectable scheduled template.
+  const outside = input.template === 'outside-comfort-zone';
+  const strictGenres = discovery || djChoice || commonGround || outside;
   const genreLimit = strictGenres ? 15 : 6;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
@@ -234,13 +236,16 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   if (commonGround && (input.cast.guestPersonaIds.length !== 1 || guests.length !== 1 || guests[0]?.id === hostPersona.id)) {
     throw new Error('Common Ground requires a host and exactly one distinct guest');
   }
+  if (outside && input.cast.guestPersonaIds.length) throw new Error('Outside the Comfort Zone preview requires a solo host');
   const host = {
     name: String(hostPersona.name || 'Host'),
     soul: String(hostPersona.soul || ''),
     musicLean: String(hostPersona.musicLean || '').trim(),
   };
   const existingShows = input.existingShows ?? scheduledShowsForHost(hostPersona.id, input.show?.id);
-  const choices = genreChoices;
+  const familiarGenres = new Set(existingShows.flatMap(show => show.genres).map(normGenre));
+  const choices = outside ? genreChoices.filter(genre => !familiarGenres.has(normGenre(genre.name))) : genreChoices;
+  if (outside && !choices.length) throw new Error('No genre choices remain outside this host’s scheduled repertoire');
   const counts = byGenre ?? {};
   const moods = moodNames;
   const estimate = Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
@@ -255,7 +260,19 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   });
   // Put the pair-specific evidence before the brief in the concept output
   // contract so the model must identify a connection rather than just name two styles.
-  const conceptSchema = commonGround ? z.object({
+  const conceptSchema = outside ? z.object({
+    departure: z.object({
+      familiarTerritory: z.string().min(1).max(300).describe('musical interests supported by Soul/Leanings and established repertoire from regular-show filters'),
+      destination: z.enum(choices.map(genre => genre.name) as [string, ...string[]])
+        .describe('the exact name of the primary destination genre, copied from the available choices'),
+      bridge: z.string().min(1).max(300).describe('a concrete musical characteristic linking the host’s interests to the destination'),
+      whyOutside: z.string().min(1).max(300).describe('how this departs from regular-show filters; distinguish documented repertoire from inferred taste'),
+    }),
+    name: baseConceptSchema.shape.name,
+    topic: baseConceptSchema.shape.topic.min(160).max(650),
+    talkingPoint: baseConceptSchema.shape.talkingPoint,
+    intendedGenres: baseConceptSchema.shape.intendedGenres,
+  }) : commonGround ? z.object({
     musicalConnection: z.object({
       hostTaste: z.string().min(1).max(300).describe('a specific musical interest supported by the host Soul or Leanings, not presentation style'),
       guestTaste: z.string().min(1).max(300).describe('a specific musical interest supported by the guest Soul or Leanings, not presentation style'),
@@ -270,10 +287,25 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const talkingPointInstruction = 'Return talkingPoint separately from topic: one specific musical question or contrast suggested by this episode’s music and cast. It is an optional conversational thread for occasional natural comments, not a scripted exchange, mandatory feature, repeated announcement or question to answer on every link. It must fit the declared genre palette without promising extra genres, eras, tracks or invented artist facts. Keep it to one short sentence and do not put a Talking point label in either field; the controller adds that label to the brief.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const concept = await djObject({
-    system: commonGround
+    system: outside
+      ? 'Plan one solo musical radio episode exploring a neighbouring territory outside the DJ’s familiar repertoire. Establish a supported starting point, a credible musical bridge and one focused destination, then write the brief and title. Return only the requested JSON.'
+      : commonGround
       ? 'Plan one specific musical radio episode finding common ground between two DJs with equal musical influence. Write its short brief, derive its title, and declare the genre palette it promises. Return only the requested JSON.'
       : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.',
-    prompt: commonGround ? [
+    prompt: outside ? [
+      `Host: ${JSON.stringify(identity(host))}`,
+      `Scheduled regular-show filters, evidence of established repertoire rather than limits on taste: ${JSON.stringify(existingShows)}`,
+      `Local slot: ${showTime(input)}. Available destination genres and indexed counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
+      input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
+      input.coverageCorrection || null,
+      'Fill departure first. Soul is primary; optional Musical Leanings supplement it. Use regular-show filters to distinguish documented repertoire from a plausible new destination. If no shows exist, explicitly acknowledge that the familiar territory is inferred from persona preferences. Never invent a dislike, a lack of knowledge or a past listening habit.',
+      'State the exact destination genre in the brief and make its difference from the starting point clear. A genre absent from show filters may still be an explicit persona preference: do not pretend it is unfamiliar without explaining a more specific departure. Make ONE coherent sideways move, following something the DJ already appreciates into a related territory they do not normally programme. The musical bridge must explain why this DJ would be curious. The destination, not the familiar starting point, supplies the music throughout the show. Do not make a familiar set with occasional adjacent tracks, several unrelated excursions, or a deliberately distant challenge. Underrepresentation is not required. Presentation style and speaking pace do not define music taste.',
+      `Use a focused palette, usually 1–4 connected styles, copied exactly from the supplied choices. Exact genre names in scheduled regular shows have been excluded from this preview’s palette. Expand only into styles supporting the same destination when needed for ${requiredTracks} unique eligible tracks (twice airtime at a four-minute average). Counts overlap. Do not pad with broad familiar genres or choose tiny tags merely because they are rare.`,
+      'Write a concise brief of 2–3 sentences, at most 80 words: identify the starting interest, the musical bridge and the exact destination genre. Mention familiar genres only as the starting reference, never as additional music promised for this show. Invite an open-minded exploration without claiming that the DJ dislikes this music, is already an expert or has actually played particular records. Do not promise specific artists, tracks, genre alternation or a scripted journey. Only promise music covered by intendedGenres.',
+      talkingPointInstruction,
+      input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive an original short title from the musical idea, without presenter names, genre lists or the template name.',
+      'Keep the title and brief era-neutral unless the operator explicitly requests a music period. Return departure, name, topic, talkingPoint and intendedGenres.',
+    ].filter(Boolean).join('\n\n') : commonGround ? [
       `Host (presentation lead only): ${JSON.stringify(identity(host))}`,
       `Guest (equal musical influence): ${JSON.stringify(identity(guests[0]))}`,
       `Supporting repertoire filters: ${JSON.stringify([{ dj: host.name, shows: existingShows }, { dj: guests[0]?.name, shows: scheduledShowsForHost(guests[0]!.id, input.show?.id) }])}`,
@@ -313,7 +345,9 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }) as z.infer<typeof conceptSchema>;
   const intended = [...new Set(concept.intendedGenres)];
   const settingsSchema = generatedShowPlanSchema.omit({ name: true, topic: true }).extend({
-    moods: generatedShowPlanSchema.shape.moods.max(strictGenres ? 2 : 15),
+    moods: generatedShowPlanSchema.shape.moods.max(outside && !input.planningPrompt.trim() ? 0 : strictGenres ? 2 : 15),
+    eras: generatedShowPlanSchema.shape.eras.max(outside && !input.planningPrompt.trim() ? 0 : 15),
+    energies: generatedShowPlanSchema.shape.energies.max(outside && !input.planningPrompt.trim() ? 0 : 15),
     genres: intended.length
       ? z.array(z.enum(intended as [string, ...string[]])).length(intended.length)
       : z.array(z.never()).max(0),
@@ -335,10 +369,10 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         input.planningPrompt ? `Operator requirements: ${input.planningPrompt}` : null,
         input.minimumCoverage != null ? `Operator minimum: ${input.minimumCoverage} unique eligible tracks after all filters and exclusions.` : null,
         input.coverageCorrection || null,
-        commonGround ? 'The accepted proposal is authoritative for era promises, just as it is for genres. Return eras: [] only when its name and brief are era-neutral and the operator requested no period. If the accepted brief promises decades or dates, encode those periods even when the concept writer introduced them without an operator request. Use numeric fromYear/toYear bounds, never date strings. Preserve every promised period; a brief spanning older and contemporary music must keep an open upper bound so current music remains eligible. Do not infer extra restrictions from genre associations or persona preferences.' : 'Era JSON shape: return eras: [] for unrestricted music. If a date restriction is required, use objects such as eras: [{"fromYear": 1980, "toYear": 1995}], with number or null bounds. Never return date strings such as eras: ["1980-1995"]. This example is formatting only, not an instruction to select those years.',
+        (commonGround || outside) ? 'The accepted proposal is authoritative for era promises, just as it is for genres. Return eras: [] only when its name and brief are era-neutral and the operator requested no period. If the accepted brief promises decades or dates, encode those periods even when the concept writer introduced them without an operator request. Use numeric fromYear/toYear bounds, never date strings. Preserve every promised period; a brief spanning older and contemporary music must keep an open upper bound so current music remains eligible. Do not infer extra restrictions from genre associations or persona preferences.' : 'Era JSON shape: return eras: [] for unrestricted music. If a date restriction is required, use objects such as eras: [{"fromYear": 1980, "toYear": 1995}], with number or null bounds. Never return date strings such as eras: ["1980-1995"]. This example is formatting only, not an instruction to select those years.',
         'The title and brief must agree with the era settings. If the accepted proposal explicitly promises a decade or date range, encode that range in eras; do not leave eras empty. A favourite decade in persona context alone is not a restriction. An era-neutral proposal should keep eras empty unless the operator explicitly requires a period.',
         'Copy requiredGenres into genres exactly once each, with no additions, omissions or substitutions. Keep moods, eras and energies empty unless the operator or musical idea explicitly requires a restriction and coverage supports it. Conversation style and favourite decades are not music restrictions.',
-        commonGround ? `Use strict genres. Leave moods and energies empty unless explicitly required. Era filters must represent any periods promised in the accepted proposal; otherwise leave eras empty. The palette should cover at least ${requiredTracks} unique eligible tracks. Explain how the selected styles connect the two DJs.` : discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
+        outside ? `Use strict genres to keep the show in its chosen destination. Preserve requiredGenres exactly; leave moods, eras and energies empty unless the accepted brief explicitly requires a restriction. Explain the musical bridge and departure, not merely that genres were copied.` : commonGround ? `Use strict genres. Leave moods and energies empty unless explicitly required. Era filters must represent any periods promised in the accepted proposal; otherwise leave eras empty. The palette should cover at least ${requiredTracks} unique eligible tracks. Explain how the selected styles connect the two DJs.` : discovery ? `Strict filters are mandatory. The combined genre palette must cover at least ${requiredTracks} unique tracks after all restrictions and configured exclusions (four-minute average, twice the slot airtime). Prefer empty moods, eras and energies so they do not shrink discovery coverage. Select at most two moods only when musically necessary; never list most of the mood vocabulary.` : djChoice ? `Strict genres are mandatory: the palette itself supplies the familiar core and connected departures. Cover at least ${requiredTracks} unique eligible tracks, using a four-minute average and twice the slot airtime. Return moods: [], eras: [] and energies: [] by default so daypart and weather can softly influence selection. Add at most two moods, an era or an energy only for an explicit operator requirement or a clear musical necessity, never just a theme, presentation style or favourite decade.` : 'Soft filters leave room for exploration.',
         `Counts overlap and do not prove coverage after additional filters. Return moods, genres, eras, energies, filtersStrict and a rationale under 500 characters explaining this accepted palette${djChoice ? ': identify the familiar core and why the adjacent styles connect; do not merely report that genres were copied' : ''}. Do not invent artist influence, history or airplay. Unrestricted music uses eras: []; this must not override an explicit period promised by the accepted brief.`,
       ].filter(Boolean).join('\n\n'),
       schema: settingsSchema, temperature: 0.1,
