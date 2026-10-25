@@ -405,6 +405,28 @@ tests, 45 focused controller checks pass. TypeScript and scoped lint pass (exist
 `any` warnings remain). Cached accepted episodes are unchanged: regenerate them
 after rebuilding the controller to apply this policy.
 
+### Pre-review regression coverage
+
+`npm --prefix controller test -- sub-show-template-rules` runs fourteen
+deterministic checks with synthetic personas, temporary state and injected
+generation/coverage results. No station LLM or live library is used.
+
+The checks cover Common Ground's default single guest, selected-guest counts,
+use of the allowed host pool for both participants, stable casting within an
+airing, and failure when two eligible participants are unavailable. They cover
+Outside the Comfort Zone's solo contract, single destination and mandatory
+destination change after failed coverage. Time Capsule checks include regular
+casting pools, single-year and ten-year inclusive periods, rejection of open or
+multiple periods, and retaining the era requirement during correction. All
+three templates are checked for strict filters, nonempty genre palettes and
+twice-airtime coverage with exactly one correction at 30, 60 and 90 minutes.
+
+These pin schema, casting and acceptance behaviour, not the quality of an LLM's
+musical judgement or every prompt requirement. The fourteen checks, scoped lint
+and controller/preview/new-test TypeScript passed. No production code changed.
+Skill notebook/special-guest regressions and the remaining lifecycle assessment
+are still separate review tasks.
+
 ## Template ideas for later exploration
 
 ### Fresh-install regression scenario
