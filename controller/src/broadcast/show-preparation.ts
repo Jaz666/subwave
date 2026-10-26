@@ -492,7 +492,7 @@ export function buildGeneratedSnapshot(show: Show | undefined, occurrence: Prepa
   const previous = generatedShowAt(show.id, occurrence.startsAt, occurrence.source, occurrence.startsAt);
   const seed = castSeed ?? previous?.castSeed;
   const origin = castOrigin ?? (castSeed ? occurrence.id : previous?.castOrigin ?? occurrence.id);
-  const cast = resolveGeneratedShowCast({ show, occurrence: seed ? { id: `${origin}:${seed}` } : occurrence, personas, preserveFixedGuests: !!seed });
+  const cast = resolveGeneratedShowCast({ show, occurrence: seed ? { id: `${origin}:${seed}` } : occurrence, personas });
   if (!cast) return null;
   const existingShows = scheduledShowsForHost(cast.hostPersonaId, show.id);
   const personaInput = [cast.hostPersonaId, ...cast.guestPersonaIds].map(id => {

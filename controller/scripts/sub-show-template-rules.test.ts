@@ -86,6 +86,19 @@ test('Common Ground stands down when two distinct eligible participants are unav
   }
 });
 
+test('random hosts preserve fixed guests on initial preparation for every optional-guest template', () => {
+  for (const template of ['dj-choice', 'deep-discovery', 'time-capsule']) {
+    pools(['p_host', 'p_guest'], null);
+    const parsed = schema.parse(show(template, { guestMode: 'fixed' }, { guestPersonaIds: ['p_guest'] }));
+    for (let index = 0; index < 32; index++) {
+      assert.deepEqual(resolveGeneratedShowCast({ show: parsed, occurrence: { id: `initial-${index}` }, personas }),
+        { hostPersonaId: 'p_host', guestPersonaIds: ['p_guest'] });
+    }
+    pools(['p_guest'], null);
+    assert.equal(resolveGeneratedShowCast({ show: parsed, occurrence: { id: 'no-distinct-host' }, personas }), null);
+  }
+});
+
 test('Outside the Comfort Zone defaults to solo and rejects guest configuration on save', () => {
   const parsed = schema.parse(show('outside-comfort-zone'));
   assert.ok(parsed.generation);

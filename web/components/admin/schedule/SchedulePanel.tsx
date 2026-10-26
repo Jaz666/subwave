@@ -41,6 +41,7 @@ import type { ShowGenerationConfig } from '@/lib/schemas.generated';
 import { clientMintId, hydrateShow as hydrateFullShow, showPayload } from '../shows/lib';
 import type { Show } from '../shows/types';
 import { GUESTS_MAX, SHOWS_MAX } from '../shows/types';
+import { patchShowSettings } from '../shows/queries';
 
 /** The airtime-bar tick — hours a show "should" get in a week. */
 const WEEKLY_TARGET = 12;
@@ -459,12 +460,7 @@ export default function SchedulePanel() {
       setShows(current => current.some(show => show.id === saved.id)
         ? current.map(show => show.id === saved.id ? saved : show)
         : [...current, saved]);
-      if (result.shows) {
-        client.setQueryData<SettingsResponse>(settingsKeys.detail(), previous => {
-          if (!previous?.values) return previous;
-          return { ...previous, values: { ...previous.values, shows: result.shows } };
-        });
-      }
+      if (result.shows) patchShowSettings(client, { shows: result.shows });
     },
     toastOnError: false,
   });
