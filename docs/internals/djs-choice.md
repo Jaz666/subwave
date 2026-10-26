@@ -53,6 +53,15 @@ This remains prompt guidance, not a general factual or semantic validator.
 Genre selection, two-call planning and existing accepted episodes are unchanged;
 explicit regeneration uses the revised instructions.
 
+The four regenerated plans retained matching genre declarations but still showed
+generic bridges and talking points. Operator acceptance prioritises plausible
+track selection and natural on-air discussion over polished commissioning prose.
+The current sample does not complete Common Ground or Time Capsule review.
+Missing apostrophes were observed in one generated brief. Inspection found no
+apostrophe-removal operation in the planner/structured-output path; raw response
+evidence is still needed to establish the source. No heuristic insertion was
+added. Double-escaped punctuation decoding does not repair absent characters.
+
 Give a DJ authorship of a fresh show for each scheduled broadcast. The operator
 places a generated-show slot in the schedule and chooses its casting rules.
 Ahead of airtime, the station selects the cast and asks an LLM to design a

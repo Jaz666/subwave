@@ -1,5 +1,8 @@
 # Custom skills
 
+For an operator introduction to conversations, temporary guests, Look Ahead and
+show-airing memory, see [the skill features guide](skill-features-guide.md).
+
 SUB/WAVE's **skills** are the things the AI DJ does *between* tracks — a weather
 check, a headline, a dig on the song playing. The built-in ones ship as
 read-only templates under `controller/src/skills/builtins/<kind>/` and are
