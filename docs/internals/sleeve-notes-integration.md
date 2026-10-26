@@ -760,3 +760,19 @@ to this candidate and its separate local evidence commit. Runtime remains on
 previous images until the operator rebuilds. Both development and station
 working trees should be clean after integration. Commits remain intentionally
 local; no remote branch or PR has been updated.
+
+### Source editor single-field Save fix — 26 October
+
+The Save condition short-circuited before reading React Hook Form's proxied
+`isValid` flag while the form was pristine. Validity was therefore subscribed too
+late and a single-field edit could leave Save disabled. Subscribe to `isDirty`
+and `isValid` unconditionally before evaluating the button condition. The browser
+reproduction failed before the fix and passed afterward for a Wikipedia-only
+edit and a MusicBrainz-only edit, without touching the other input. Invalid and
+unchanged values still disable Save, and both valid forms submit. This is a
+web-only follow-up; no controller/database change or container operation.
+Source rollback: `094bdd5c`. Keep local; PR remains unchanged. Next: rebuild web
+only on the station and confirm Antony's Wikipedia override enables Save.
+
+Functional fix: `b07f9b55`. Focused web lint and web typecheck passed. Integrate
+by fast-forward from clean station `094bdd5c`; the operator rebuilds web.
