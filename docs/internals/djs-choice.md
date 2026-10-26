@@ -436,7 +436,32 @@ co-hosted suite now distinguishes flexible discussion order from explicit plans;
 its twelve checks pass.
 Both suites, scoped lint and controller/preview/new-test TypeScript pass without
 station LLM calls or production changes. End-to-end queue/mixer crash windows,
-backup/restore and the wider show lifecycle remain separate review tasks.
+backup/restore remain separate review tasks.
+
+The lifecycle batch runs eleven `generated-show-lifecycle` checks, ten
+`takeover-generation` checks, seven `show-occurrence` checks, nine
+`generated-shows` checks and eleven `takeover-window` checks (48 total).
+Restart recovery is tested with fresh owners and a fresh process. Coverage
+includes accepted/on-air plan retention, bounded failed-generation retries,
+failed manual rerolls, short pools, stale results, edits while generation is
+pending, shuffle contention, both sides of an adjacent-slot boundary edit,
+obsolete-plan pruning and history retention. Time checks include midnight,
+repeated/missing DST hours and quarter-hour timezone offsets.
+
+Takeover tests use the real preview/activation flow, synthetic SQLite tracks
+and stubbed LLM/Navidrome responses; no live service or mixer is called. They
+cover draft isolation, activation-time duration, exact accepted-plan reuse,
+duplicate activation requests, expiry, changed eligibility/pool/window,
+failed-switch rollback and metadata failures. This exposed and fixed two bugs:
+a waiting generation request could miss an edit already present in its own
+snapshot, and takeover activation checked pool size without rejecting inactive
+genre locks. Waiting callers now compare the completed result against the
+latest slot; activation reuses the shared unavailable-coverage policy.
+
+All 48 checks, controller/preview/new-test TypeScript and scoped lint pass
+(existing lint warnings remain). These checks do not simulate every process
+crash during a write, browser interaction, mixer delivery or backup restore.
+The two controller fixes need a rebuild; accepted episodes are not rerolled.
 
 ## Template ideas for later exploration
 
