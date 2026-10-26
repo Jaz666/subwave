@@ -1,11 +1,11 @@
 # DJ’s Choice development plan
 
 Prepared: 22 October 2026 (Europe/London).
-Status: implementation in progress. The current branch includes generated-show
-settings, host-led planning, bounded coverage correction, occurrence
-persistence, schedule variants and pre-air generation triggers. Episode
-history, prepared-episode editing and permanent-copy workflow remain future
-work.
+Status: historical implementation plan, retained as a record of the original
+scope. Episode history, prepared-episode controls and saving as a regular show
+have since been implemented. Use [djs-choice.md](djs-choice.md) for the current
+five-template policies and pre-review evidence; the future-tense instructions
+below describe the earlier starting point.
 
 Product scope: [djs-choice.md](djs-choice.md).
 Source inspected: `feat/dj's-choice` at

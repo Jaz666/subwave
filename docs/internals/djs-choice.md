@@ -1,8 +1,42 @@
-# DJ’s Choice and Auto DJ shows
+# Sub/Shows implementation and design record
 
-Discussed: 13–22 October 2026. Status: product proposal with implementation in progress on the feature branch.
+Updated: 26 October 2026. Five templates are implemented on the feature branch
+and undergoing pre-review checks. Dated trial sections retain earlier design
+decisions; the current template policies and review evidence below supersede
+those snapshots.
 
-Development plan: [djs-choice-development-plan.md](djs-choice-development-plan.md).
+Historical development plan: [djs-choice-development-plan.md](djs-choice-development-plan.md).
+
+## Maintainability and upstream reconciliation — 26 October 2026
+
+Merged upstream `develop` at `677cc2ed` in `a598c848`, preserving feature branch
+history. The merge required no conflict resolution. The shared broadcast queue
+retains notebook publication hooks alongside upstream's early MP3 cue handling.
+The comparison against upstream contains the feature changes; fork-only handbook
+commits were not imported. The station checkout and running services were untouched.
+
+Full controller and web TypeScript checks pass. The controller check exposed an
+inferred optional-key type in an older discovery-policy fixture; an explicit
+record-array annotation fixes it without changing test behaviour. Generated web
+schemas match. Selected controller groups report 525 passing tests across shows,
+takeovers, notebooks, special guests, discussions, cues, voice delivery and
+handoffs; selected web query/show groups report 14. The discovery-policy group
+also passes after the annotation. Scoped lint on the integration files reports
+no errors or warnings. This is not a complete suite, browser session, mobile-app
+check or mixer crash simulation; no live model calls were needed.
+
+The maintainability review retains the shared occurrence lifecycle and coverage
+validation, with explicit template policy branches. Two small deletion candidates
+remain unapplied follow-ups:
+
+- `controller/scripts/show-plan-preview.ts:1`: delete the obsolete raw preview
+  and its npm entry. Use the existing isolated five-template preview instead.
+- `controller/src/broadcast/generated-show-registry.ts:5`: delete the unused
+  alternate registry writer. The durable owner already restores the registry.
+
+Net: 85 lines possible to remove. No new abstraction or dependency is proposed.
+Earlier trial notes below are historical; current strict-filter rules supersede
+their soft-filter descriptions. Semantic review of generated prose remains open.
 
 ## Purpose
 
@@ -82,6 +116,9 @@ Existing accepted episode plans are retained until regenerated.
 
 ## Compact planner station trial — 23 October 2026
 
+Historical snapshot: the trial below predates the current five-template policy
+and its genre limits.
+
 The station trial promotes the compact two-call preview: the concept call returns
 the name, brief and 1–6 intended genre tags from the recommended shortlist. The
 music-settings call receives only that proposal, selected genre counts, duration,
@@ -99,19 +136,16 @@ in use. No prompt-version marker is added to the configuration fingerprint, so
 this code change alone should not invalidate accepted episodes. Regenerate an
 upcoming episode explicitly to try it; retain previously reviewed episodes.
 
-Deployment base: station source `e7df2405`. The previous controller image is
-retained locally as `subwave-controller:before-compact-20261023`
-(`sha256:05c404589cc30498caac93573a98dae8174f3bc7803ceb4e6861e2f9c395b2bf`).
-Rollback is to revert the compact-planner promotion commit and rebuild only the
-controller; the web and broadcast services do not need replacement.
-
 ## Generated episode
 
 Generation is led by the resolved host's editorial voice, not by a preset list
 of filters. Resolve the host before planning. The prompt uses that DJ's Soul and,
 when present, Musical Leanings as its primary creative input; guest identities
-can influence the result secondarily. The LLM writes the show brief first, names
-the show from that brief, then chooses music settings that express the brief.
+can influence the result secondarily. The LLM develops a musical premise,
+title, brief, intended genre palette and any applicable era in the concept call.
+Some templates establish their musical connection or destination before writing
+the brief. The settings/compiler call preserves the declared music contract and
+edits concrete contradictions in the prose.
 Template direction, station restrictions and playable library coverage guide
 that work without replacing the host's taste.
 
@@ -122,10 +156,11 @@ the settings pass receives its declared musical intent.
 A calm voice does not imply calm music, and favourite decades do not require an
 era window. The generated brief frames presentation; the show filters drive
 track selection, with Musical Leanings a soft influence between candidates.
-Mood, era and energy arrays default to empty, and strictness to false, unless
-operator direction or a concrete musical need justifies a restriction. Raw genre
-counts do not establish coverage after intersecting those extra restrictions;
-soft filters are not a reason to accept an implausible matching core.
+All five templates use strict filters. Mood and energy arrays default to empty
+unless operator direction requires a restriction. Time Capsule requires its
+closed era; the other templates keep eras empty unless the operator explicitly
+requests a period. Raw genre counts do not establish eligible coverage after
+intersecting the applicable settings and exclusions.
 
 The concept pass receives the bounded recommended genre shortlist; the settings
 pass receives only the intended genres from its accepted concept. The compact

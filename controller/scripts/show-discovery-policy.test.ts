@@ -25,7 +25,8 @@ test('rarity is relative; modest neighbours are separate from the core', () => {
   assert.deepEqual(palette.choices.slice(0, 2).map(genre => genre.name), ['Rare A', 'Rare B']);
 });
 test('empty, single-genre and almost uniform libraries have no meaningful rare core', () => {
-  for (const counts of [{}, { Rock: 100 }, { Rock: 100, Pop: 101 }]) {
+  const libraries: Array<Record<string, number>> = [{}, { Rock: 100 }, { Rock: 100, Pop: 101 }];
+  for (const counts of libraries) {
     assert.equal(discoveryPalette(counts).core.length, 0);
     assert.equal(discoveryPalette(counts).choices.length, 0);
   }
