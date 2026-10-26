@@ -199,3 +199,21 @@ station backup restore. Delivery uses existing voice markers and requires only
 a controller rebuild; there is no Liquidsoap change. Runtime behaviour must be
 exercised on the station after installing the update. No live broadcasts are
 triggered by development checks.
+
+## Pre-review regression checks
+
+Run `npm --prefix controller test -- skill-notebook` for seventeen isolated
+checks of file-backed memory, per-turn receipts, fixed topics, bounded history,
+skill/airing isolation, leases, cancellation, reset and corrupt-file handling.
+The suite also reads committed memory in a fresh process and exercises recovery
+of rendered, unaired turns with their original receipt IDs. A handed-off turn
+with unknown air time remains pending until a later receipt or lease expiry;
+it does not immediately permit duplicate generation.
+
+Run `npm --prefix controller test -- skill-special-guest` for eleven checks of
+prompt directives, full-name/ID lookup, ambiguous/missing personas, tool-selected
+casts, participant limits, speaker validation and a five-turn numbered exchange.
+Both suites use synthetic
+personas and injected model results; they do not call the station LLM, render
+speech or broadcast audio. These checks establish structural and persistence
+behaviour, not whether a generated summary truthfully describes its speech.

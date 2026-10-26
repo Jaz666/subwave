@@ -424,8 +424,19 @@ twice-airtime coverage with exactly one correction at 30, 60 and 90 minutes.
 These pin schema, casting and acceptance behaviour, not the quality of an LLM's
 musical judgement or every prompt requirement. The fourteen checks, scoped lint
 and controller/preview/new-test TypeScript passed. No production code changed.
-Skill notebook/special-guest regressions and the remaining lifecycle assessment
-are still separate review tasks.
+The next batch adds seventeen notebook and eleven special-guest checks using
+temporary files, a synthetic roster and injected model results. It covers
+per-turn air commits, fixed topics, bounded history, isolated airings, confirmed
+and ambiguous delivery receipts, cancellation, expired leases, reset/corruption
+guards, a fresh-process read of committed memory, and rendered-turn recovery.
+Guest checks cover explicit prompt directives, roster resolution, duplicate and
+invalid casts, tool precedence, participant limits and unexpected model speakers. A
+five-turn numbered exchange preserves its final host reaction. The existing
+co-hosted suite now distinguishes flexible discussion order from explicit plans;
+its twelve checks pass.
+Both suites, scoped lint and controller/preview/new-test TypeScript pass without
+station LLM calls or production changes. End-to-end queue/mixer crash windows,
+backup/restore and the wider show lifecycle remain separate review tasks.
 
 ## Template ideas for later exploration
 
