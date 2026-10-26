@@ -40,3 +40,40 @@ test('Station Brain queue scope follows the layer and narrows to a selected chil
   assert.equal(brainQueueChoice(true,null,{...artist,local:false}).node,null);
   assert.equal(brainQueueChoice(false,album,null).node,album,'clearing a track selection restores the album default');
 });
+
+test('artist research chooses the library-linked record over provisional and unused same-name records',async()=>{
+  const {artistResearchSource}=await import('../components/admin/sleeve-notes-view');
+  const provisional={id:'genius',name:'Antony Szmierek',mbid:null,matchedTracks:0,articleUrl:null,storyCount:0,canRetry:false};
+  const matched={...provisional,id:'matched',mbid:'musicbrainz-artist',matchedTracks:3};
+  const unused={...matched,id:'unused',mbid:'another-musicbrainz-artist',matchedTracks:0};
+  for(const identities of [[provisional,matched],[matched,provisional],[unused,provisional,matched]]) {
+    assert.equal(artistResearchSource({name:'Antony Szmierek',identities})?.id,'matched');
+  }
+});
+test('multiple matched artist records need an explicit choice, regardless of which has more stories',async()=>{
+  const {artistResearchSource}=await import('../components/admin/sleeve-notes-view');
+  const first={id:'a',name:'Artist',mbid:'mb-a',matchedTracks:20,articleUrl:null,storyCount:40,canRetry:false};
+  const second={...first,id:'b',mbid:'mb-b',matchedTracks:1,storyCount:0};
+  assert.equal(artistResearchSource({name:'Artist',identities:[first,second]}),null);
+});
+test('without matched recordings, only an unambiguous artist record is chosen',async()=>{
+  const {artistResearchSource}=await import('../components/admin/sleeve-notes-view');
+  const provisional={id:'provisional',name:'Artist',mbid:null,matchedTracks:0,articleUrl:null,storyCount:0,canRetry:false};
+  const canonical={...provisional,id:'canonical',mbid:'mb-a'};
+  assert.equal(artistResearchSource({name:'Artist',identities:[provisional,canonical]})?.id,'canonical');
+  assert.equal(artistResearchSource({name:'Artist',identities:[provisional]})?.id,'provisional');
+  assert.equal(artistResearchSource({name:'Artist',identities:[canonical,{...canonical,id:'other',mbid:'mb-b'}]}),null);
+  assert.equal(artistResearchSource({name:'Artist',identities:[]}),null);
+});
+test('a composer credit cannot silently select a different performer for biography editing',async()=>{
+  const {artistResearchSource}=await import('../components/admin/sleeve-notes-view');
+  const performer={id:'performer',name:'Example Performer',mbid:'mb',matchedTracks:2,articleUrl:null,storyCount:4,canRetry:false};
+  assert.equal(artistResearchSource({name:'Example Composer',identities:[performer]}),null);
+  assert.equal(artistResearchSource({name:'Example Performer',identities:[performer]})?.id,'performer');
+});
+test('artist editor comparisons tolerate typography without merging distinct names',async()=>{
+  const {artistResearchSource}=await import('../components/admin/sleeve-notes-view');
+  const artist={id:'artist',name:"Youssou N'Dour",mbid:'mb',matchedTracks:2,articleUrl:null,storyCount:4,canRetry:false};
+  assert.equal(artistResearchSource({name:'  Youssou  N’Dour ',identities:[artist]})?.id,'artist');
+  assert.equal(artistResearchSource({name:'Youssou N’Dour & Le Super Étoile',identities:[artist]}),null);
+});

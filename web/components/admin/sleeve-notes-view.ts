@@ -1,3 +1,4 @@
+import type { ResearchGapSnapshot } from '../../lib/schemas.generated';
 import type {ConnectionNode} from './connections/types';
 
 export function groupAiredStories<T extends {id:string;segmentId?:string|null;conversation?:{id:string}|null}>(items:readonly T[]) {
@@ -40,4 +41,15 @@ export function brainQueueChoice(overview:boolean,root:ConnectionNode|null|undef
     return {node:track??local(root),label:track?'Queue This Track':'Choose Any Album Track and Queue'};
   }
   return {node:selected&&['artist','release','recording'].includes(selected.kind)?local(selected):null,label:'Queue This Track'};
+}
+
+/** Choose a biography editor target, never merge or authorise artist identities. */
+export function artistResearchSource(item: Pick<ResearchGapSnapshot['items'][number], 'name'|'identities'>) {
+  const key=(name:string)=>name.normalize('NFKC').replace(/[‘’]/gu,"'").trim().replace(/\s+/gu,' ').toLocaleLowerCase();
+  const named=item.identities.filter(identity=>key(identity.name)===key(item.name));
+  const matched=named.filter(identity=>identity.matchedTracks>0);
+  if (matched.length) return matched.length===1?matched[0]:null;
+  const canonical=named.filter(identity=>identity.mbid);
+  if (canonical.length) return canonical.length===1?canonical[0]:null;
+  return named.length===1?named[0]:null;
 }

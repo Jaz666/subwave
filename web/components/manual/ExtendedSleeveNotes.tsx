@@ -385,7 +385,7 @@ export default function ExtendedSleeveNotes() {
           It does not contact source services or queue research. A missing biography
           does not prove that Wikipedia has no article, and another identity may
           already have useful research. Inspect the identities and sources before
-          choosing <strong>Retry research</strong>; retries use the normal background
+          choosing <strong>Rescan artist</strong>; research uses the normal background
           queues and broadcast checks. Findings refresh every five minutes while
           Review is open, and clear when a later check finds the gap resolved.
         </p>
@@ -399,14 +399,20 @@ export default function ExtendedSleeveNotes() {
           and the scan does not start LLM research or retain complete articles.
         </p>
         <p>
-          If you know a source is wrong or missing, expand the artist’s identities
-          and choose <strong>Edit research source</strong>. Supply a MusicBrainz artist
+          If you know a source is wrong or missing, choose <strong>Edit research source</strong>. Supply a MusicBrainz artist
           link or an English Wikipedia article you have checked. A Wikipedia override
           takes priority. <strong>Save and rescan</strong> collects the biography again
           and queues normal research. Clear both fields to return to automatic lookup.
           These overrides affect biography research, not recording matches or other
           artists. Changing a source removes automatic facts from the previous
           biography from DJ use, while approved facts and airing history are kept.
+        </p>
+        <p>
+          Subwave normally chooses the research record linked to the artist’s library
+          recordings, so you only need to edit one source. Separate records from
+          different providers are listed under <strong>Advanced source details</strong>.
+          If recording matches are ambiguous, check the artist links there and choose
+          the record to edit. Choosing a record does not merge it with another.
           <strong> Rescan artist</strong> also requests fresh collection without changing
           an override. Running research must finish before its source can be edited.
         </p>
