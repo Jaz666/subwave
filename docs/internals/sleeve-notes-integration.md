@@ -238,3 +238,41 @@ The final combined code passes 5568 controller checks and 501 web checks, with n
 failures or skips. Package lint/types, generated mirrors and the admin-query audit
 pass; controller lint retains 1726 inherited warnings. No station source, containers,
 settings or live data were changed during this PR reconciliation.
+
+## Biography coverage and browsing follow-up
+
+Review now separates factual flags from Research gaps. Biography discovery uses
+MusicBrainz's explicit English Wikipedia relationship when the preferred Wikidata
+item/sitelink is absent. Operators can correct research-only artist identities,
+set an article URL, rescan an artist, or run a paced metadata-only library scan.
+These operations do not merge artists or change canonical recording matches.
+Source-generation checks, durable backoff and quiet/broadcast gates apply to late
+results and retries. Public schemas 1–3 upgrade additively to schema 4; the tester
+guide explains backup and rollback requirements.
+
+Shared-boundary coverage includes the MusicBrainz request throttle, feature-off
+read-only access, source/queue restart behaviour, backups and generated settings
+schemas. Tests are `sleeve-notes-research-corrections`, `sleeve-notes-research-gaps`,
+`sleeve-notes-wikipedia`, `sleeve-notes-dashboard-worker`,
+`sleeve-notes-cached-browsing` and `sleeve-notes-artist-identity`.
+
+Browse Library's artist query now starts from each artist's indexed recordings,
+rather than repeating a broad recording-claim search. Lists and dossiers use the
+existing read-only worker. Search matches Station Brain's delayed typing and
+clear behaviour. Tests check the query plan, response parity, timer responsiveness
+and unchanged database bytes. Browser checks cover searching, clearing, page and
+navigation resets, album scope and mobile overflow.
+
+The station operator reported stable rapid tab switching across two independent
+browser sessions and stable browsing during an active research job after the fix.
+These are observed acceptance checks, not a sustained-load benchmark or a guarantee
+that every possible controller stall has been eliminated.
+
+The combined update with upstream develop through `677cc2ed` passes 5,618
+controller tests and 506 web tests, with no failures or skips. Controller/web
+lint and types, the generated schema mirror and the admin-query audit pass;
+controller lint retains 1,726 existing warnings and no errors. No production
+build, container restart or live database operation was performed during this
+PR reconciliation. Upstream's MP3 cue-landing, mobile lyrics and appearance-modal
+changes are retained; the shared queue merge preserves feature cancellation and
+speech reservations.

@@ -3,10 +3,10 @@ title: Sing along with the station
 date: 2026-10-24
 category: Feature
 author: The SUB/WAVE desk
-excerpt: The Classic and Drift skins can show the playing song's lyrics in time with the music, each word lighting up as it is sung. Turn it on in admin, and let LRCLIB fill in the songs your library has no timed lyrics for.
+excerpt: The Classic and Drift skins show the playing song's lyrics in time with the music, each word lighting up as it is sung. It's on out of the box, and LRCLIB fills in the songs your library has no timed lyrics for.
 ---
 
-The player can show the words now. Turn lyrics on and the Classic and Drift skins put the playing song's lyrics on the stage, in time with the music, each word lighting up as it is sung.
+The player shows the words now. The Classic and Drift skins put the playing song's lyrics on the stage, in time with the music, each word lighting up as it is sung.
 
 <video controls playsinline preload="metadata" poster="/video/sing-along-with-the-station.webp" aria-label="A 34-second tour of synced lyrics: Burn It Down by Juniper Static on the Classic skin, its lines lighting up word by word as the column glides, a close look at the lyrics button beside the heart, then the same song in the centre of the Drift skin, ending on the words Now with synced lyrics">
   <source src="/video/sing-along-with-the-station.mp4" type="video/mp4">
@@ -18,10 +18,10 @@ On Classic, a wide screen splits in two. The cover, title and artist stack in a 
 
 ![The Classic skin in Classic Light with lyrics on: the cover, title and artist of Last Boat Home in a column on the left, and the song's lines down the right, the line being sung large and dark at the centre with its newest word in vermilion, the lines around it fading, and the waveform below](/screenshots/lyrics-classic.webp)
 
-On a phone or a narrow window the lyrics sit in a band just above the waveform.
+On a phone the cover, title and artist shrink to one row at the top, and the lyrics fill the screen below it, down to the waveform. A tablet or a narrow window gives them a band just above the waveform.
 
 <figure data-shot="phone">
-  <img src="/screenshots/lyrics-phone.webp" alt="Classic on a phone in Classic Dark: the track title, tags and the DJ's last line at the top, three lines of lyrics in a band above the waveform with the sung line in white and its newest word in red, and the tuning bar along the bottom" />
+  <img src="/screenshots/lyrics-phone.webp" alt="Classic on a phone in Classic Dark: a small cover beside the title Last Boat Home and Lantern Static in one row at the top, the song's lines filling the screen below with the sung line in white and its newest word in red, and the waveform along the bottom" />
 </figure>
 
 Drift makes them the middle of the page. The cover and title shrink to one small row, and three lines share the centre: the one just sung, faint above, the one being sung, large, and the next one waiting below. Lines fade in and out in place, at Drift's slower pace.
@@ -32,9 +32,9 @@ A song with only untimed lyrics still shows them, every line at once, for you to
 
 ## How to use it
 
-Lyrics start switched off, because the panel republishes lyric text to anyone who can open your player. In admin, open Settings, then Listeners, find the Lyrics panel card and set Enabled to On. Save.
+There is nothing to switch on. Lyrics are on out of the box, on a new install and after an upgrade. The panel republishes lyric text to anyone who can open your player, so if you'd rather it didn't, open Settings in admin, then Listeners, find the Lyrics panel card and set Enabled to Off. Save.
 
-In one real library we sampled, Navidrome had synced lyrics for none of 200 tracks. LRCLIB, a community database of synced lyrics, had them for 24 of 40. Set LRCLIB fallback to On in the same card and the station looks up each song your music server has no timed lyrics for as it goes on air, about 20 seconds before your listeners hear it. That sends the track's artist, title, album and length to lrclib.net. To keep track names on your own network, run your own LRCLIB and point the controller at it in `.env`:
+In one real library we sampled, Navidrome had synced lyrics for none of 200 tracks. LRCLIB, a community database of synced lyrics, had them for 24 of 40. The LRCLIB fallback in the same card is on too. When a song your music server has no timed lyrics for joins the queue, the station looks it up straight away, minutes before it airs, and asks again as it goes on air if LRCLIB was busy the first time. That sends the track's artist, title, album and length to lrclib.net. To keep track names on your own network, set LRCLIB fallback to Off, or run your own LRCLIB and point the controller at it in `.env`:
 
 ```
 LRCLIB_URL=https://lrclib.example.lan
