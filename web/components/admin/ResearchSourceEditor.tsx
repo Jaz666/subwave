@@ -20,6 +20,9 @@ export default function ResearchSourceEditor({identity,adminFetch,onSaved}: {ide
     request:(_value,fetcher)=>adminJson(fetcher,`/sleeve-notes/research-gaps/${encodeURIComponent(identity.id)}/rescan`,{method:'POST'}),
     onDone:async()=>{notify.ok('Fresh biography research queued. Broadcast and source limits still apply.');await onSaved();},
   });
+  // Subscribe to both flags before the button condition can short-circuit.
+  // Otherwise a one-field edit can leave validity stale until another edit.
+  const {isDirty,isValid}=form.formState;
   const busy=save.isPending||rescan.isPending;
   return <div className="space-y-3 pt-2">
     {identity.override&&<div className="space-y-1 text-xs text-muted"><p>Operator research override active. Recording matches are unchanged.</p>
@@ -35,7 +38,7 @@ export default function ResearchSourceEditor({identity,adminFetch,onSaved}: {ide
       <TextField control={form.control} name="musicBrainzId" label="MusicBrainz artist override" description="Paste the artist page link or ID. Leave blank to use the matched identity." disabled={busy} />
       <TextField control={form.control} name="wikipediaUrl" label="English Wikipedia article override" description="Optional. A supplied article takes priority over the MusicBrainz links. Redirects are followed; disambiguation pages are rejected." disabled={busy} />
       <p className="text-xs text-muted">Saving queues fresh research. Changing a source takes automatic facts from the previous artist biography out of DJ use; approved facts and airing history are kept. Clear both fields to return to automatic source lookup.</p>
-      <div className="flex flex-wrap gap-3"><Btn type="submit" sm disabled={busy||!form.formState.isDirty||!form.formState.isValid}>{save.isPending?'Saving…':'Save and rescan'}</Btn><Btn sm disabled={busy} onClick={()=>{form.reset();setEditing(false);}}>Discard</Btn></div>
+      <div className="flex flex-wrap gap-3"><Btn type="submit" sm disabled={busy||!isDirty||!isValid}>{save.isPending?'Saving…':'Save and rescan'}</Btn><Btn sm disabled={busy} onClick={()=>{form.reset();setEditing(false);}}>Discard</Btn></div>
     </form>}
     {(save.error||rescan.error)&&<p role="alert" className="text-xs text-vermilion">{(save.error??rescan.error)?.message}</p>}
   </div>;
