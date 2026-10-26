@@ -45,10 +45,13 @@ export function researchGapsInDatabase(db: Database.Database): ResearchGapSnapsh
       const credit = groupFor(row.credit); credit.ids.add(row.id); credit.tracks.set(row.id, (credit.tracks.get(row.id) ?? 0) + row.tracks);
     }
   }
-  const sourceRows = db.prepare(`SELECT entity_id AS id,source_url AS url FROM sleeve_source_documents
-    WHERE entity_type='artist' AND provider='wikipedia' ORDER BY retrieved_at DESC`).all() as Array<{id: string; url: string}>;
-  const sources = new Map<string, string>();
-  for (const row of sourceRows) if (!sources.has(row.id)) sources.set(row.id, row.url);
+  const correctionSources=has('sleeve_artist_research_overrides');
+  const sourceRows = db.prepare(`SELECT source.entity_id AS id,source.source_url AS url,source.retrieved_at AS retrievedAt FROM sleeve_source_documents source
+    ${correctionSources?'LEFT JOIN sleeve_artist_research_overrides correction ON correction.artist_id=source.entity_id':''}
+    WHERE source.entity_type='artist' AND source.provider='wikipedia'
+    ${correctionSources?'AND (correction.updated_at IS NULL OR source.retrieved_at>=correction.updated_at)':''} ORDER BY source.retrieved_at DESC`).all() as Array<{id: string; url: string;retrievedAt:string}>;
+  const sources = new Map<string, string>(),sourceDates=new Map<string,string>();
+  for (const row of sourceRows) if (!sources.has(row.id)) {sources.set(row.id, row.url);sourceDates.set(row.id,row.retrievedAt);}
   const narrativeFilter = `claim.enabled=1 AND claim.operator_state<>'deleted' AND claim.feedback_hold=0
     AND claim.category NOT IN ('credits','musical-connections') AND length(trim(source.source_url))>0
     AND length(trim(claim.wording))>0 AND length(trim(claim.evidence))>0`;
@@ -86,6 +89,10 @@ export function researchGapsInDatabase(db: Database.Database): ResearchGapSnapsh
     WHERE job.subject_type='local-track' AND job.provider='musicbrainz' AND job.capability='match'`).all() as Array<{name: string | null; state: string}>;
   const pendingNames = new Set(matchJobs.filter(j => active.has(j.state)).map(j => connectionNameKey(j.name)));
   const failedNames = new Set(matchJobs.filter(j => j.state==='failed').map(j => connectionNameKey(j.name)));
+  const corrections=has('sleeve_artist_research_overrides') ? db.prepare('SELECT artist_id AS id,musicbrainz_id AS musicBrainzId,wikipedia_url AS wikipediaUrl FROM sleeve_artist_research_overrides').all() as Array<{id:string;musicBrainzId:string|null;wikipediaUrl:string|null}> : [];
+  const overrides=new Map(corrections.filter(row=>row.musicBrainzId||row.wikipediaUrl).map(row=>[row.id,{musicBrainzId:row.musicBrainzId??'',wikipediaUrl:row.wikipediaUrl??''}]));
+  const checks=has('sleeve_artist_verification') ? db.prepare('SELECT artist_id AS id,state,source_url AS sourceUrl,checked_at AS checkedAt,last_error AS lastError FROM sleeve_artist_verification').all() as Array<{id:string;state:string;sourceUrl:string|null;checkedAt:string|null;lastError:string|null}> : [];
+  const verified=new Map(checks.map(row=>[row.id,row]));
   const items: ResearchGapSnapshot['items'] = [];
   for (const [key, group] of groups) {
     const identities = [...group.ids].map(id => artistById.get(id)).filter((a): a is Artist => !!a);
@@ -96,8 +103,14 @@ export function researchGapsInDatabase(db: Database.Database): ResearchGapSnapsh
     const storyIds = new Set([...(creditStories.get(key) ?? []), ...identities.flatMap(a => [...stories.get(a.id) ?? []])]);
     const failed = (a: Artist, provider: string) => (jobsById.get(a.id) ?? []).some(j => j.provider===provider && j.state==='failed');
     const partial = named.some(a => sources.has(a.id)) && named.some(a => (group.tracks.get(a.id) ?? 0)>0 && !sources.has(a.id) && failed(a, 'wikipedia'));
+    const sourceIssue=(a:Artist,state:string)=>verified.get(a.id)?.state===state
+      && (verified.get(a.id)?.checkedAt??'') > (sourceDates.get(a.id)??'')
+      && (!coveredIds.length || (group.tracks.get(a.id)??0)>0);
     let status: ResearchGapStatus;
     if (relevant.some(j => active.has(j.state)) || pendingNames.has(key)) status='pending';
+    else if (named.some(a=>sourceIssue(a,'missing'))) status='source-missing';
+    else if (named.some(a=>sourceIssue(a,'failed'))) status='source-error';
+    else if (!coveredIds.length && named.some(a=>verified.get(a.id)?.state==='found')) status='source-available';
     else if (partial) status='partial-coverage';
     else if (!coveredIds.length && namedJobs.some(j => j.provider==='wikipedia' && j.state==='failed')) status='source-not-found';
     else if (named.some(a => sources.has(a.id) && failed(a, 'researcher'))) status='extraction-failed';
@@ -108,13 +121,13 @@ export function researchGapsInDatabase(db: Database.Database): ResearchGapSnapsh
     else if (coveredIds.length) status='pending';
     else if (identities.some(a => connectionNameKey(a.name) !== key)) status='related-credit';
     else status='unexplored';
-    const attention = ['source-not-found','partial-coverage','extraction-failed','identity-unresolved'].includes(status);
+    const attention = ['source-not-found','partial-coverage','extraction-failed','identity-unresolved','source-missing','source-error','source-available'].includes(status);
     empty.counts[attention ? 'attention' : status === 'pending' ? 'pending' : status === 'covered' ? 'covered' : status === 'related-credit' ? 'related' : ['empty','stopped'].includes(status) ? 'empty' : 'unexplored']++;
     items.push({id: key, name: group.name, status, libraryArtistIds: group.libraryIds, storyCount: storyIds.size,
       lastAttemptAt: relevant.map(j => j.updatedAt).sort().at(-1) ?? null,
-      identities: identities.map(a => ({...a, articleUrl: sources.get(a.id) ?? null,
+      identities: identities.map(a => ({...a, override:overrides.get(a.id)??null,verification:verified.get(a.id)??null, articleUrl: sources.get(a.id) ?? null,
         storyCount: stories.get(a.id)?.size ?? 0, matchedTracks: group.tracks.get(a.id) ?? 0,
-        canRetry: !!a.mbid && (jobsById.get(a.id) ?? []).some(j => j.state==='failed')
+        canRetry: !!(a.mbid || overrides.get(a.id)?.musicBrainzId || overrides.get(a.id)?.wikipediaUrl) && (jobsById.get(a.id) ?? []).some(j => j.state==='failed')
           && !(jobsById.get(a.id) ?? []).some(j => active.has(j.state)),
       })),
     });

@@ -138,11 +138,22 @@ test('review API protects verification and preserves feature-off read-only brows
     assert.equal((await fetch(`${url}/verify`,{method:'POST'})).status,401);
     const response=await fetch(`${url}/verify`,{method:'POST',headers});assert.equal(response.status,200);
     assert.equal(((await response.json()) as ResearchGapSnapshot).counts.attention,1);
+    assert.equal((await fetch(`${url}/scan`,{method:'POST'})).status,401);
+    assert.equal((await fetch(`${url}/route/override`,{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({musicBrainzId:'bad',wikipediaUrl:''})})).status,400);
+    assert.equal((await fetch(`${url}/route/override`,{method:'PUT',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({musicBrainzId:'',wikipediaUrl:'https://en.wikipedia.org/wiki/Example'})})).status,200);
+    assert.equal((await fetch(`${url}/route/rescan`,{method:'POST',headers})).status,200);
+    assert.equal((await fetch(`${url}/scan`,{method:'POST',headers})).status,200);
+    assert.equal((await fetch(`${url}/scan`,{method:'DELETE',headers})).status,200);
     await settings.update({djBehaviour:{extendedSleeveNotes:false}});
     assert.equal((await fetch(`${url}/verify`,{method:'POST',headers})).status,409);
+    assert.equal((await fetch(`${url}/scan`,{method:'POST',headers})).status,409);
+    assert.equal((await fetch(`${url}/scan`,{method:'DELETE',headers})).status,409);
+    assert.equal((await fetch(`${url}/route/override`,{method:'PUT',headers})).status,409);
+    assert.equal((await fetch(`${url}/route/rescan`,{method:'POST',headers})).status,409);
+    assert.equal((await fetch(`${url}/scan`,{headers})).status,200);
     const before=db.prepare('SELECT total_changes() n').get();
     const cached=await fetch(url,{headers});assert.equal(cached.status,200);
-    assert.equal(((await cached.json()) as ResearchGapSnapshot).counts.attention,1);
+    assert.equal(((await cached.json()) as ResearchGapSnapshot).items.length,1);
     assert.deepEqual(db.prepare('SELECT total_changes() n').get(),before);
   } finally {
     await new Promise<void>(resolve=>server.close(()=>resolve()));clearConnectionComputeCache();store.close();

@@ -115,3 +115,36 @@ test('a transient Wikidata failure remains retryable rather than using the fallb
   await assert.rejects(fetchWikipediaArtistDocument('fixture-id'), /HTTP 503/);
   assert.equal(calls, 2);
 });
+
+test('operator article override bypasses name guessing and MusicBrainz but still validates redirects and disambiguation',async t=>{
+  const {fetchWikipediaArtistDocument}=await import('../src/sleeve-notes/wikipedia.js');
+  for (const disambiguation of [false,true]) {
+    let calls=0;
+    t.mock.method(globalThis,'fetch',async(input:string|URL|Request)=>{
+      const url=new URL(String(input));calls++;assert.equal(url.hostname,'en.wikipedia.org');
+      if(url.pathname==='/w/api.php') {
+        assert.equal(url.searchParams.get('titles'),'Stage Name');assert.equal(url.searchParams.get('redirects'),'1');
+        assert.equal(url.searchParams.get('ppprop'),'disambiguation');
+        return Response.json({query:{pages:{'123':{ns:0,title:'Personal Name',fullurl:'https://en.wikipedia.org/wiki/Personal_Name',extract:'Biography',revisions:[{revid:456}],...(disambiguation?{pageprops:{disambiguation:''}}:{})}}}});
+      }
+      return new Response('<p>Biography of the musician.</p>');
+    });
+    const document=await fetchWikipediaArtistDocument('ignored','https://en.wikipedia.org/wiki/Stage_Name');
+    assert.equal(document?.title??null,disambiguation?null:'Personal Name');assert.equal(calls,disambiguation?1:2);t.mock.restoreAll();
+  }
+  let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return Response.json({});});
+  assert.throws(()=>fetchWikipediaArtistDocument('ignored','https://localhost/wiki/Artist'));assert.equal(calls,0);
+});
+
+test('source-only verification fetches metadata without article prose or HTML and treats service errors as failures',async t=>{
+  const {fetchWikipediaArtistDocument}=await import('../src/sleeve-notes/wikipedia.js');let calls=0;
+  t.mock.method(globalThis,'fetch',async(input:string|URL|Request)=>{
+    calls++;const url=new URL(String(input));assert.equal(url.pathname,'/w/api.php');assert.equal(url.searchParams.get('prop'),'info|revisions|pageprops');
+    return Response.json({query:{pages:{'123':{ns:0,title:'Example',fullurl:'https://en.wikipedia.org/wiki/Example',revisions:[{revid:456}]}}}});
+  });
+  const result=await fetchWikipediaArtistDocument('ignored','https://en.wikipedia.org/wiki/Example',{metadataOnly:true});assert.equal(result?.text,'');assert.equal(calls,1);
+  t.mock.restoreAll();
+  t.mock.method(globalThis,'fetch',async()=>Response.json({error:{code:'maxlag'}}));await assert.rejects(fetchWikipediaArtistDocument('ignored','https://en.wikipedia.org/wiki/Example',{metadataOnly:true}),/maxlag/);
+  t.mock.restoreAll();
+  t.mock.method(globalThis,'fetch',async()=>new Response(null,{status:403}));await assert.rejects(fetchWikipediaArtistDocument('ignored','https://en.wikipedia.org/wiki/Example',{metadataOnly:true}),/HTTP 403/);
+});

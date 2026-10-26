@@ -1024,7 +1024,9 @@ export interface SourceDocumentForResearch {
 }
 
 export function latestSourceDocumentForResearch(entityType: 'artist' | 'recording' | 'release' | 'release-group', entityId: string, provider: string): SourceDocumentForResearch | null {
-  const row = open().prepare(`SELECT source.id, source.entity_id AS entityId,
+  const db=open();
+  const hasCorrections=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_artist_research_overrides'").get();
+  const row = db.prepare(`SELECT source.id, source.entity_id AS entityId,
     CASE source.entity_type
       WHEN 'artist' THEN (SELECT artist.name FROM sleeve_artists artist WHERE artist.id = source.entity_id)
       WHEN 'recording' THEN (SELECT recording.title FROM sleeve_recordings recording WHERE recording.id = source.entity_id)
@@ -1035,6 +1037,7 @@ export function latestSourceDocumentForResearch(entityType: 'artist' | 'recordin
     source.provider, source.source_url AS sourceUrl,
     source.revision_id AS revisionId, source.content, source.wikipedia_pruned_at AS wikipediaPrunedAt FROM sleeve_source_documents source
     WHERE source.entity_type = ? AND source.entity_id = ? AND source.provider = ?
+      ${hasCorrections?"AND NOT EXISTS (SELECT 1 FROM sleeve_artist_research_overrides correction WHERE source.entity_type='artist' AND source.provider='wikipedia' AND correction.artist_id=source.entity_id AND source.retrieved_at<correction.updated_at)":''}
     ORDER BY source.retrieved_at DESC LIMIT 1`).get(entityType, entityId, provider) as SourceDocumentForResearch | undefined;
   return row ?? null;
 }
@@ -1387,6 +1390,9 @@ export function wikipediaOutageDelay(attempts: number): number {
 
 export function deferWikipediaResearchJobsInDatabase(db: Database.Database, delayMs: number, now = new Date()): number {
   const runAfter = new Date(now.getTime() + delayMs).toISOString();
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_library_verification'").get()) {
+    db.prepare("UPDATE sleeve_library_verification SET next_step_at=MAX(COALESCE(next_step_at,''),?) WHERE id=1").run(runAfter);
+  }
   return db.prepare(`UPDATE sleeve_research_jobs
     SET state = 'retry-at', run_after = ?, updated_at = ?
     WHERE provider = 'wikipedia' AND capability IN ('biography', 'release-group-biography')

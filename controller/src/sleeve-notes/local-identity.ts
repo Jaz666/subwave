@@ -57,6 +57,10 @@ export function alignLibrarySource(db: Database.Database, fingerprint: string): 
         'sleeve_connection_library_scan','sleeve_connection_artist_population','sleeve_series_library_albums',
         'sleeve_genius_seed_cursor','sleeve_brain_layers']) db.prepare(`DELETE FROM ${table}`).run();
       db.prepare("UPDATE sleeve_brain_album_requests SET release_group_id=NULL,state='failed',last_error='Music source changed; request this album again.'").run();
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_library_verification'").get()) {
+        db.prepare("UPDATE sleeve_library_verification SET state='cancelled' WHERE state='running'").run();
+        db.prepare('DELETE FROM sleeve_artist_verification').run();
+      }
       const now=new Date().toISOString();
       db.prepare("UPDATE sleeve_local_attachments SET recording_id=NULL,musicbrainz_recording_id=NULL,match_state='unmatched',updated_at=?").run(now);
       db.prepare("UPDATE sleeve_research_jobs SET state='cancelled',run_after=NULL,updated_at=? WHERE subject_type='local-track'").run(now);

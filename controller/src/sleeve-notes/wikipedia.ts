@@ -1,11 +1,12 @@
 // Conservative identity-first Wikipedia source client. It accepts no page
 // instructions as commands; returned text is untrusted source data for a later,
 // evidence-bounded researcher.
+import { lookupMusicBrainzUrlRelations } from '../music/musicbrainz.js';
+import { researchWikipediaUrlSchema } from '../schemas/sleeve-notes-corrections.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 
 const API = 'https://en.wikipedia.org/w/api.php';
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
-const MUSICBRAINZ_API = 'https://musicbrainz.org/ws/2';
 const USER_AGENT = 'Subwave Sleeve Notes/1.13 (https://github.com/Jaz666/subwave)';
 const TIMEOUT_MS = 8_000;
 const HEADERS = { 'User-Agent': USER_AGENT, Accept: 'application/json' };
@@ -16,12 +17,12 @@ async function fetchJson(url: string): Promise<unknown | null> {
   if (!response.ok) {
     // Identity or page absence is a clean miss; throttling and server errors
     // are transient and should leave the durable research job retryable.
-    if (response.status === 408 || response.status === 429 || response.status >= 500) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return null;
+    if (response.status === 404) return null;
+    throw new Error(`HTTP ${response.status}`);
   }
-  return response.json();
+  const payload=await response.json() as {error?:{code?:string}};
+  if (payload?.error) throw new Error(`Wikipedia API error: ${payload.error.code??'unknown'}`);
+  return payload;
 }
 
 export interface WikipediaArticleDocument {
@@ -37,23 +38,24 @@ export interface WikipediaArticleDocument {
 /** Kept as an alias for the existing artist-source call sites. */
 export type WikipediaArtistDocument = WikipediaArticleDocument;
 
-export function projectWikipediaArticleDocument(payload: unknown): WikipediaArticleDocument | null {
+export function projectWikipediaArticleDocument(payload: unknown, metadataOnly = false): WikipediaArticleDocument | null {
   const pages = (payload as { query?: { pages?: Record<string, unknown> } })?.query?.pages;
   if (!pages || typeof pages !== 'object') return null;
   const page = Object.values(pages)[0] as Record<string, unknown> | undefined;
-  if (!page || page.missing !== undefined) return null;
+  if (!page || page.missing !== undefined || page.ns !== undefined && page.ns !== 0
+    || (page.pageprops && Object.hasOwn(page.pageprops as object, 'disambiguation'))) return null;
   const title = typeof page.title === 'string' ? page.title : null;
   const url = typeof page.fullurl === 'string' ? page.fullurl : null;
   const text = typeof page.extract === 'string' ? page.extract.trim() : null;
   const revision = Array.isArray(page.revisions) ? page.revisions[0] as Record<string, unknown> | undefined : undefined;
   const revisionId = typeof revision?.revid === 'number' || typeof revision?.revid === 'string' ? String(revision.revid) : null;
-  if (!title || !url || !text || !revisionId) return null;
+  if (!title || !url || !revisionId || !metadataOnly && !text) return null;
   return {
     title,
     url,
     revisionId,
     retrievedAt: new Date().toISOString(),
-    text: text.slice(0, 250_000),
+    text: metadataOnly ? '' : text!.slice(0, 250_000),
     attribution: `Wikipedia contributors, “${title}”, CC BY-SA`,
     sourceFormatVersion: 1,
   };
@@ -187,16 +189,11 @@ function englishWikipediaTitleFromMusicBrainzEntity(payload: unknown): string | 
 }
 
 async function fetchWikipediaDocumentFromMusicBrainzEntity(
-  entityPath: 'artist' | 'release-group', musicBrainzId: string,
+  entityPath: 'artist' | 'release-group', musicBrainzId: string, metadataOnly = false,
 ): Promise<WikipediaArticleDocument | null> {
   const entityId = musicBrainzId.trim();
   if (!entityId) return null;
-  const entityUrl = `${MUSICBRAINZ_API}/${entityPath}/${encodeURIComponent(entityId)}?inc=url-rels&fmt=json`;
-  const params = new URLSearchParams({
-    action: 'query', format: 'json', prop: 'extracts|info|revisions',
-    inprop: 'url', explaintext: '1', rvprop: 'ids', rvslots: 'main', maxlag: '5', redirects: '1',
-  });
-  const entityPayload = await fetchJson(entityUrl);
+  const entityPayload = await lookupMusicBrainzUrlRelations(entityPath,entityId);
   if (!entityPayload) return null;
   const wikidataId = entityPath === 'artist'
     ? wikidataIdFromMusicBrainzArtist(entityPayload)
@@ -213,17 +210,24 @@ async function fetchWikipediaDocumentFromMusicBrainzEntity(
   // Transient errors still throw above and retain the normal retry/backoff.
   title ??= englishWikipediaTitleFromMusicBrainzEntity(entityPayload);
   if (!title) return null;
-  params.set('titles', title);
+  return fetchWikipediaTitleDocument(title,metadataOnly);
+}
+
+async function fetchWikipediaTitleDocument(title: string, metadataOnly = false): Promise<WikipediaArticleDocument | null> {
+  const params = new URLSearchParams({
+    action:'query',format:'json',prop:metadataOnly?'info|revisions|pageprops':'extracts|info|revisions|pageprops',ppprop:'disambiguation',
+    inprop:'url',explaintext:'1',rvprop:'ids',rvslots:'main',maxlag:'5',redirects:'1',titles:title,
+  });
   const articlePayload = await fetchJson(`${API}?${params}`);
-  const projected = articlePayload ? projectWikipediaArticleDocument(articlePayload) : null;
-  if (!projected) return null;
+  const projected = articlePayload ? projectWikipediaArticleDocument(articlePayload,metadataOnly) : null;
+  if (!projected || metadataOnly) return projected;
   const response = await fetchWithTimeout(`${WIKIPEDIA_REST}/${encodeURIComponent(projected.revisionId)}/html`, {
     timeoutMs: TIMEOUT_MS,
     headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
   });
   if (!response.ok) {
-    if (response.status === 408 || response.status === 429 || response.status >= 500) throw new Error(`HTTP ${response.status}`);
-    return null;
+    if (response.status === 404) return null;
+    throw new Error(`HTTP ${response.status}`);
   }
   const text = wikipediaHtmlToProse(await response.text());
   if (!text) return null;
@@ -234,8 +238,12 @@ async function fetchWikipediaDocumentFromMusicBrainzEntity(
   };
 }
 
-export function fetchWikipediaArtistDocument(musicBrainzArtistId: string): Promise<WikipediaArtistDocument | null> {
-  return fetchWikipediaDocumentFromMusicBrainzEntity('artist', musicBrainzArtistId);
+export function fetchWikipediaArtistDocument(musicBrainzArtistId: string, wikipediaUrl?: string, options?: {metadataOnly?:boolean}): Promise<WikipediaArtistDocument | null> {
+  if (wikipediaUrl) {
+    const valid=researchWikipediaUrlSchema.parse(wikipediaUrl);
+    return fetchWikipediaTitleDocument(decodeURIComponent(new URL(valid).pathname.slice(6)).replaceAll('_',' '),options?.metadataOnly);
+  }
+  return fetchWikipediaDocumentFromMusicBrainzEntity('artist', musicBrainzArtistId ?? '',options?.metadataOnly);
 }
 
 /** Resolve an album through its release group's explicit Wikidata/Wikipedia links. */

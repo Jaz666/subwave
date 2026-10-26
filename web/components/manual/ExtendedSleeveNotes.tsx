@@ -381,13 +381,34 @@ export default function ExtendedSleeveNotes() {
           separately from failed or incomplete work.
         </p>
         <p>
-          Choose <strong>Verify library coverage</strong> for a fresh local check.
+          Choose <strong>Refresh saved coverage</strong> for a fresh local check.
           It does not contact source services or queue research. A missing biography
           does not prove that Wikipedia has no article, and another identity may
           already have useful research. Inspect the identities and sources before
           choosing <strong>Retry research</strong>; retries use the normal background
           queues and broadcast checks. Findings refresh every five minutes while
           Review is open, and clear when a later check finds the gap resolved.
+        </p>
+        <p>
+          <strong>Scan library sources</strong> checks external source links for known
+          artist identities across the cached library. It checks at most one artist
+          per quiet minute, respects collection pauses and broadcast work, and can
+          be cancelled. Progress survives a controller restart. Artists without a
+          confirmed identity remain unchecked; request their research in Station
+          Brain first. Finding an article does not prove it is about the right artist,
+          and the scan does not start LLM research or retain complete articles.
+        </p>
+        <p>
+          If you know a source is wrong or missing, expand the artist’s identities
+          and choose <strong>Edit research source</strong>. Supply a MusicBrainz artist
+          link or an English Wikipedia article you have checked. A Wikipedia override
+          takes priority. <strong>Save and rescan</strong> collects the biography again
+          and queues normal research. Clear both fields to return to automatic lookup.
+          These overrides affect biography research, not recording matches or other
+          artists. Changing a source removes automatic facts from the previous
+          biography from DJ use, while approved facts and airing history are kept.
+          <strong> Rescan artist</strong> also requests fresh collection without changing
+          an override. Running research must finish before its source can be edited.
         </p>
         <p>
           You can change what the DJ knows and how it sounds separately. Asking for warmer,

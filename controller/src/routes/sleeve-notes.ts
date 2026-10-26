@@ -1,3 +1,6 @@
+import { librarySourceKey } from '../sleeve-notes/local-identity.js';
+import { researchOverrideSchema } from '../schemas/sleeve-notes-corrections.js';
+import { saveResearchOverride, queueArtistRescan, verificationReadout, startLibraryVerification, cancelLibraryVerification } from '../sleeve-notes/research-corrections.js';
 import {researchBlockReason} from '../sleeve-notes/research-availability.js';
 import { manageQueuedJob } from '../sleeve-notes/queue-actions.js';
 import {loadExtendedSleeveNoteCandidatesInDatabase} from '../sleeve-notes/link-selection.js';
@@ -64,7 +67,7 @@ export const router = express.Router();
 // use withCachedRead, which neither creates nor upgrades the on-disk database.
 const CACHED_VIEWS = new Set([
   '/readout', '/stories', '/explore', '/heard-on-air', '/airing-reviews', '/series',
-  '/moderation', '/live-summary', '/storage', '/research-gaps', '/connections/search',
+  '/moderation', '/live-summary', '/storage', '/research-gaps', '/research-gaps/scan', '/connections/search',
   '/connections/coverage', '/connections/album-coverage', '/connections/discoveries',
   '/connections/overview', '/connections/graph',
 ]);
@@ -123,6 +126,32 @@ router.get('/sleeve-notes/research-gaps', requireAdmin, async (_req,res) => {
 router.post('/sleeve-notes/research-gaps/verify', requireAdmin, async (_req,res) => {
   try { return res.type('json').send(await cachedDashboardRead({kind:'research-gaps'},openSleeveNotesDb(),true)); }
   catch(error) { return res.status(503).json({error:error instanceof Error?error.message:'Could not verify library coverage'}); }
+});
+
+// External scans persist a bounded result per known artist; reads stay available off.
+router.get('/sleeve-notes/research-gaps/scan',requireAdmin,(_req,res)=>{
+  const read=()=>verificationReadout(openSleeveNotesDb());
+  return res.json(settings.get().djBehaviour.extendedSleeveNotes?read():withCachedRead(read));
+});
+router.post('/sleeve-notes/research-gaps/scan',requireAdmin,async(_req,res)=>{
+  try {
+    const sourceKey=librarySourceKey();
+    const snapshot=JSON.parse(await cachedDashboardRead({kind:'research-gaps'},openSleeveNotesDb(),true));
+    if (sourceKey!==librarySourceKey()) throw new Error('The music source changed. Refresh saved coverage before starting a scan.');
+    if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Sleeve Notes was disabled before the scan could start.'});
+    return res.json(startLibraryVerification(openSleeveNotesDb(),snapshot));
+  } catch(error) {return res.status(409).json({error:error instanceof Error?error.message:'Could not start source verification'});}
+});
+router.delete('/sleeve-notes/research-gaps/scan',requireAdmin,(_req,res)=>res.json(cancelLibraryVerification(openSleeveNotesDb())));
+router.put('/sleeve-notes/research-gaps/:id/override',requireAdmin,(req,res)=>{
+  const parsed=researchOverrideSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({error:parsed.error.issues[0]?.message??'Check the source links.'});
+  try { return res.json({ok:true,...saveResearchOverride(openSleeveNotesDb(),String(req.params.id),parsed.data)}); }
+  catch(error) {return res.status(409).json({error:error instanceof Error?error.message:'Could not save the research source'});}
+});
+router.post('/sleeve-notes/research-gaps/:id/rescan',requireAdmin,(req,res)=>{
+  try {openSleeveNotesDb().transaction(()=>queueArtistRescan(openSleeveNotesDb(),String(req.params.id))).immediate();return res.json({ok:true});}
+  catch(error) {return res.status(409).json({error:error instanceof Error?error.message:'Could not queue fresh research'});}
 });
 
 router.post('/sleeve-notes/airing-reviews/:id/decision', requireAdmin, async (req,res)=>{
