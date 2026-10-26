@@ -811,3 +811,12 @@ Antony's single-editor workflow. Existing database schema 4 is unchanged.
 Functional commit: `f5f20974`. Station integration is a fast-forward to this
 candidate plus its local evidence commit. Runtime remains on existing images
 until the operator rebuilds web; both working trees are clean after integration.
+
+### Remove incidental Station Brain link — 26 October
+
+Removed the per-artist Open in Station Brain link from Research gaps at the
+operator’s request to avoid accidental navigation. Main Station Brain navigation
+remains available. Functional commit: `8e463dd3`. Focused lint, UI detector and
+diff checks passed; no new tests or build for this link-only removal. Keep local,
+fast-forward clean station from `a54715a2` (source rollback), then rebuild web
+only. No controller/database changes, container operations or PR update.
