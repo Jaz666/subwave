@@ -75,3 +75,21 @@ test('public v1 upgrades by adding indexes without resetting collected research'
   assert.equal(researchStoreExploreInDatabase(db, { search: '2Pac' }).total, 0);
   db.close();
 });
+
+
+test('Browse Library checks indexed recordings for each artist before searching their claims', () => {
+  const db = fixture();
+  const prepare = db.prepare.bind(db);
+  let artistQuery = '';
+  db.prepare = ((sql: string) => {
+    if (sql.includes('FROM sleeve_artists artist_row')) artistQuery = sql;
+    return prepare(sql);
+  }) as typeof db.prepare;
+  try {
+    researchStoreExploreInDatabase(db, {});
+    const plan = prepare(`EXPLAIN QUERY PLAN ${artistQuery}`).all('', '%%', '%%', '', '', 30, 0) as Array<{detail: string}>;
+    assert.ok(plan.some(row => /SEARCH child_recording .*\(artist_id=\?\)/.test(row.detail)),
+      'artist browse must look up that artist’s recordings, rather than repeatedly scanning every recording claim');
+    assert.ok(plan.some(row => /SEARCH recording_claim .*\(entity_type=\? AND entity_id=\?\)/.test(row.detail)));
+  } finally { db.close(); }
+});

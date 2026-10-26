@@ -21,6 +21,7 @@ export function brainCoverageInDatabase(db: Database.Database): Record<string, B
   if (!has('sleeve_artists')) return {};
   const artists = db.prepare('SELECT id, name, musicbrainz_id AS mbid FROM sleeve_artists').all() as Array<{ id: string; name: string; mbid: string | null }>;
   const index = has('sleeve_connection_library_artists') ? db.prepare('SELECT local_artist_id AS id, name FROM sleeve_connection_library_artists').all() as Array<{ id: string; name: string }> : [];
+  const overridden = new Set(has('sleeve_artist_research_overrides') ? (db.prepare("SELECT artist_id AS id FROM sleeve_artist_research_overrides WHERE musicbrainz_id IS NOT NULL OR wikipedia_url IS NOT NULL").all() as Array<{id:string}>).map(row=>row.id) : []);
   const byName = new Map<string, string[]>();
   for (const artist of artists) {
     const key = connectionNameKey(artist.name);
@@ -96,7 +97,7 @@ export function brainCoverageInDatabase(db: Database.Database): Record<string, B
       canQueue: canQueue && !queued, hasResearchHistory: usableStories > 0 || relevant.some(job => job.provider === 'researcher' || ['failed', 'cancelled'].includes(job.state)) };
   }
   const result: Record<string, BrainCoverage> = {};
-  for (const artist of artists) result[`artist:${artist.id}`] = coverage(artist.id, null, !!artist.mbid);
+  for (const artist of artists) result[`artist:${artist.id}`] = coverage(artist.id, null, !!artist.mbid || overridden.has(artist.id));
   for (const artist of index) {
     const key = connectionNameKey(artist.name);
     const canonical = byName.get(key);
@@ -111,11 +112,13 @@ export function brainCoverageInDatabase(db: Database.Database): Record<string, B
 export function queueBrainArtistInDatabase(db: Database.Database, artistId: string, now = new Date()): { queued: boolean; state: 'queued' | 'researching' } {
   return db.transaction(() => {
     const artist = db.prepare('SELECT musicbrainz_id AS mbid FROM sleeve_artists WHERE id = ?').get(artistId) as { mbid: string | null } | undefined;
-    if (!artist?.mbid) throw new Error('This artist has no confirmed MusicBrainz identity yet. Queue their library artist instead.');
+    const override=db.prepare('SELECT musicbrainz_id,wikipedia_url FROM sleeve_artist_research_overrides WHERE artist_id=?').get(artistId) as {musicbrainz_id:string|null;wikipedia_url:string|null}|undefined;
+    if (!artist || !artist.mbid && !override?.musicbrainz_id && !override?.wikipedia_url) throw new Error('This artist has no confirmed MusicBrainz identity yet. Queue their library artist instead.');
     const active = db.prepare(`SELECT state FROM sleeve_research_jobs WHERE subject_type = 'artist' AND subject_id = ?
       AND provider IN ('wikipedia', 'researcher') AND state IN ('queued', 'retry-at', 'running')`).all(artistId) as Array<{ state: string }>;
     if (active.length) return { queued: false, state: active.some(job => job.state === 'running') ? 'researching' : 'queued' };
-    const cached = !!db.prepare(`SELECT 1 FROM sleeve_source_documents WHERE provider = 'wikipedia' AND entity_type = 'artist' AND entity_id = ?`).get(artistId);
+    const cached = !!db.prepare(`SELECT 1 FROM sleeve_source_documents WHERE provider = 'wikipedia' AND entity_type = 'artist' AND entity_id = ?
+      AND NOT EXISTS (SELECT 1 FROM sleeve_artist_research_overrides correction WHERE correction.artist_id=sleeve_source_documents.entity_id AND sleeve_source_documents.retrieved_at<correction.updated_at)`).get(artistId);
     const provider = cached ? 'researcher' : 'wikipedia';
     const capability = cached ? 'extract-wikipedia' : 'biography';
     db.prepare(`INSERT INTO sleeve_research_jobs (id, provider, subject_type, subject_id, capability, state, priority,

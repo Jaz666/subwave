@@ -9,7 +9,7 @@ import { dirname } from 'node:path';
 import { STATE_DIR } from '../config.js';
 
 export const DB_PATH = `${STATE_DIR}/sleeve-notes.db`;
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 const APPLICATION_ID = 0x53574e31; // SWN1: distinguishes public v1 from old experiments.
 
 const RESEARCH_INDEXES = `
@@ -170,9 +170,10 @@ export function restorePreparedBackup(path: string): void {
 export function migrate(d: Database.Database): void {
   const version = Number(d.pragma('user_version', { simple: true }));
   // Supported public stores upgrade without resetting research or operator decisions.
-  if ((version === 1 || version === 2) && Number(d.pragma('application_id', { simple: true })) === APPLICATION_ID) {
+  if ((version === 1 || version === 2 || version === 3) && Number(d.pragma('application_id', { simple: true })) === APPLICATION_ID) {
     d.transaction(() => {
       d.exec(RESEARCH_INDEXES);
+      d.exec(readFileSync(new URL('./research-corrections-schema.sql', import.meta.url), 'utf8'));
       if (!d.prepare("SELECT 1 FROM pragma_table_info('sleeve_connection_edges') WHERE name='source_local_track_id'").get())
         d.exec('ALTER TABLE sleeve_connection_edges ADD COLUMN source_local_track_id TEXT REFERENCES sleeve_connection_library_tracks(local_track_id) ON DELETE SET NULL');
       d.exec('CREATE INDEX IF NOT EXISTS idx_sleeve_connection_source_local ON sleeve_connection_edges(source_local_track_id)');
@@ -200,6 +201,7 @@ export function migrate(d: Database.Database): void {
   d.transaction(() => {
     d.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
     d.exec(RESEARCH_INDEXES);
+    d.exec(readFileSync(new URL('./research-corrections-schema.sql', import.meta.url), 'utf8'));
     d.pragma(`application_id = ${APPLICATION_ID}`);
     d.pragma(`user_version = ${SCHEMA_VERSION}`);
   })();

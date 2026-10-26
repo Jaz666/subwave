@@ -374,6 +374,49 @@ export default function ExtendedSleeveNotes() {
           saved source, then explicitly save the correction to apply it.
         </p>
         <p>
+          Review has two sections. <strong>Flagged reviews</strong> contains facts and
+          speech you have asked the model to check. <strong>Research gaps</strong>
+          checks saved biographies, story facts and recording matches across your
+          cached library. Artists awaiting their first research pass are listed
+          separately from failed or incomplete work.
+        </p>
+        <p>
+          Choose <strong>Refresh saved coverage</strong> for a fresh local check.
+          It does not contact source services or queue research. A missing biography
+          does not prove that Wikipedia has no article, and another identity may
+          already have useful research. Inspect the identities and sources before
+          choosing <strong>Rescan artist</strong>; research uses the normal background
+          queues and broadcast checks. Findings refresh every five minutes while
+          Review is open, and clear when a later check finds the gap resolved.
+        </p>
+        <p>
+          <strong>Scan library sources</strong> checks external source links for known
+          artist identities across the cached library. It checks at most one artist
+          per quiet minute, respects collection pauses and broadcast work, and can
+          be cancelled. Progress survives a controller restart. Artists without a
+          confirmed identity remain unchecked; request their research in Station
+          Brain first. Finding an article does not prove it is about the right artist,
+          and the scan does not start LLM research or retain complete articles.
+        </p>
+        <p>
+          If you know a source is wrong or missing, choose <strong>Edit research source</strong>. Supply a MusicBrainz artist
+          link or an English Wikipedia article you have checked. A Wikipedia override
+          takes priority. <strong>Save and rescan</strong> collects the biography again
+          and queues normal research. Clear both fields to return to automatic lookup.
+          These overrides affect biography research, not recording matches or other
+          artists. Changing a source removes automatic facts from the previous
+          biography from DJ use, while approved facts and airing history are kept.
+        </p>
+        <p>
+          Subwave normally chooses the research record linked to the artist’s library
+          recordings, so you only need to edit one source. Separate records from
+          different providers are listed under <strong>Advanced source details</strong>.
+          If recording matches are ambiguous, check the artist links there and choose
+          the record to edit. Choosing a record does not merge it with another.
+          <strong> Rescan artist</strong> also requests fresh collection without changing
+          an override. Running research must finish before its source can be edited.
+        </p>
+        <p>
           You can change what the DJ knows and how it sounds separately. Asking for warmer,
           shorter or less formal speech changes presentation; it does not supply
           evidence for a new claim. Inspect the supporting source when the underlying

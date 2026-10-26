@@ -14,10 +14,10 @@ import { formatNotesDate } from './sleeve-notes-view';
 import SleeveNotesSegmentSettings from './SleeveNotesSegmentSettings';
 
 import Link from 'next/link';
-import type { FormEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, ExternalLink, GitBranch, Search } from 'lucide-react';
+import { ArrowRight, ExternalLink, GitBranch, Search, X } from 'lucide-react';
 import { Card, Btn, Eyebrow, Pill, Seg } from './ui';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -34,7 +34,7 @@ import type { SettingsData } from './settings/shared';
 import ConnectionsVisualizer from './connections/ConnectionsVisualizer';
 import ExternalDiscoveries from './connections/ExternalDiscoveries';
 import GeniusCaptureNotice from './connections/GeniusCaptureNotice';
-import AiringReviews from './AiringReviews';
+import NotesReviews from './NotesReviews';
 import MusicBrainzLists from './MusicBrainzLists';
 
 type NotesTab = 'overview' | 'stories' | 'heard' | 'moderation' | 'connections' | 'config';
@@ -543,7 +543,7 @@ export default function NotesPanel() {
         />
       )}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'details' && data && status.data && <ResearchDetailsView data={data} status={status.data} />}
-      {hydrated && tab === 'moderation' && <AiringReviews adminFetch={adminFetch} timezone={status.data?.timezone} />}
+      {hydrated && tab === 'moderation' && <NotesReviews adminFetch={adminFetch} timezone={status.data?.timezone} readOnly={!status.data?.enabled} />}
       {hydrated && tab === 'heard' && <HeardOnAir adminFetch={adminFetch} timezone={status.data?.timezone} />}
       {hydrated && tab === 'stories' && !storyId && storiesMode === 'browse' && <ExploreView adminFetch={adminFetch} hydrated={hydrated} readOnly={!enabled} />}
       {tab==='connections'&&<Seg aria-label="Station Brain sections" value={brainView} options={[{id:'map',label:'Map'},{id:'discoveries',label:'Stats & Discoveries'}]} onChange={value=>{const params=new URLSearchParams(searchParams.toString());params.set('brainView',value);router.replace(`${pathname??'/admin/notes'}?${params}`,{scroll:false});}} />}
@@ -774,7 +774,7 @@ function entityTypeName(type: ExploreEntity['entityType']): string {
   return 'Release';
 }
 
-function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: string, init?: RequestInit) => Promise<Response>; hydrated: boolean; readOnly: boolean }) {
+export function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: string, init?: RequestInit) => Promise<Response>; hydrated: boolean; readOnly: boolean }) {
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [selectedLetter, setSelectedLetter] = useState('');
@@ -782,6 +782,13 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
   const [selectedArtist, setSelectedArtist] = useState<ExploreEntity | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<ExploreEntity | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<ExploreEntity | null>(null);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const query = draft.trim();
+      setSearch(query.length >= 2 ? query : '');
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [draft]);
   const pageSize = 30;
   const offset = page * pageSize;
   const level = selectedAlbum ? 'tracks' : selectedArtist ? 'albums' : 'artists';
@@ -819,17 +826,11 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
   });
   const totalPages = Math.max(1, Math.ceil((results.data?.total ?? 0) / pageSize));
 
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSearch(draft.trim());
+  function changeSearch(value: string) {
+    setDraft(value);
     setSelectedLetter('');
     setPage(0);
-    if (level === 'albums') {
-      setSelectedAlbum(null);
-      setSelectedTrack(null);
-    } else if (level === 'tracks') {
-      setSelectedTrack(null);
-    }
+    setSelectedTrack(null);
   }
 
   function enterArtist(entity: ExploreEntity) {
@@ -904,14 +905,15 @@ function ExploreView({ adminFetch, hydrated, readOnly }: { adminFetch: (path: st
           {selectedAlbum && <><span aria-hidden="true" className="text-muted">/</span><button type="button" onClick={showTracks} className={!selectedTrack ? 'font-semibold text-ink' : 'text-primary hover:underline'}>{selectedAlbum.title}</button></>}
           {selectedTrack && <><span aria-hidden="true" className="text-muted">/</span><span className="font-semibold text-ink">{selectedTrack.title}</span></>}
         </nav>
-        <form onSubmit={submitSearch} className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">{searchPlaceholder}</span>
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-            <Input type="search" maxLength={120} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={searchPlaceholder} className="pr-3 pl-9" />
+            <Input type="search" maxLength={120} value={draft} onChange={(event) => changeSearch(event.target.value)} placeholder={searchPlaceholder} className="pr-9 pl-9" />
+            {draft && <button type="button" onClick={() => changeSearch('')} aria-label="Clear search"
+              className="absolute top-1/2 right-2 -translate-y-1/2 p-1 text-muted hover:text-ink"><X className="size-4" /></button>}
           </label>
-          <Btn type="submit" title="Search within the artists, albums or tracks shown here">Search</Btn>
-        </form>
+        </div>
       </Card>
       {results.error && <Card headingLevel={2} title="Could not load the Notes library"><p className="text-[13px] text-muted">{results.error instanceof Error ? results.error.message : 'The Explore index is temporarily unavailable.'}</p><button type="button" onClick={() => void results.refetch()} className="mt-3 text-[13px] font-medium text-primary hover:underline">Try again</button></Card>}
       {results.isLoading && <p className="text-[13px] text-muted">Loading {level.toLowerCase()}…</p>}

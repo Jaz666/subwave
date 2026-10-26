@@ -1024,7 +1024,9 @@ export interface SourceDocumentForResearch {
 }
 
 export function latestSourceDocumentForResearch(entityType: 'artist' | 'recording' | 'release' | 'release-group', entityId: string, provider: string): SourceDocumentForResearch | null {
-  const row = open().prepare(`SELECT source.id, source.entity_id AS entityId,
+  const db=open();
+  const hasCorrections=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_artist_research_overrides'").get();
+  const row = db.prepare(`SELECT source.id, source.entity_id AS entityId,
     CASE source.entity_type
       WHEN 'artist' THEN (SELECT artist.name FROM sleeve_artists artist WHERE artist.id = source.entity_id)
       WHEN 'recording' THEN (SELECT recording.title FROM sleeve_recordings recording WHERE recording.id = source.entity_id)
@@ -1035,6 +1037,7 @@ export function latestSourceDocumentForResearch(entityType: 'artist' | 'recordin
     source.provider, source.source_url AS sourceUrl,
     source.revision_id AS revisionId, source.content, source.wikipedia_pruned_at AS wikipediaPrunedAt FROM sleeve_source_documents source
     WHERE source.entity_type = ? AND source.entity_id = ? AND source.provider = ?
+      ${hasCorrections?"AND NOT EXISTS (SELECT 1 FROM sleeve_artist_research_overrides correction WHERE source.entity_type='artist' AND source.provider='wikipedia' AND correction.artist_id=source.entity_id AND source.retrieved_at<correction.updated_at)":''}
     ORDER BY source.retrieved_at DESC LIMIT 1`).get(entityType, entityId, provider) as SourceDocumentForResearch | undefined;
   return row ?? null;
 }
@@ -1387,6 +1390,9 @@ export function wikipediaOutageDelay(attempts: number): number {
 
 export function deferWikipediaResearchJobsInDatabase(db: Database.Database, delayMs: number, now = new Date()): number {
   const runAfter = new Date(now.getTime() + delayMs).toISOString();
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='sleeve_library_verification'").get()) {
+    db.prepare("UPDATE sleeve_library_verification SET next_step_at=MAX(COALESCE(next_step_at,''),?) WHERE id=1").run(runAfter);
+  }
   return db.prepare(`UPDATE sleeve_research_jobs
     SET state = 'retry-at', run_after = ?, updated_at = ?
     WHERE provider = 'wikipedia' AND capability IN ('biography', 'release-group-biography')
@@ -2328,11 +2334,13 @@ export function researchStoreExploreInDatabase(db: Database.Database, input: {
   // The first view is intentionally a small artist index. It checks for a
   // retained claim at the artist or one of its known recording/album children,
   // but does not aggregate those descendants until an artist is opened.
+  // Keep each artist's indexed recordings outermost. SQLite otherwise chooses
+  // all recording claims first and repeats that search for every artist.
   const artistHasClaims = `(
     EXISTS (SELECT 1 FROM sleeve_claims direct_claim
       WHERE direct_claim.entity_type = 'artist' AND direct_claim.entity_id = artist_row.id AND direct_claim.enabled = 1)
     OR EXISTS (SELECT 1 FROM sleeve_recordings child_recording
-      JOIN sleeve_claims recording_claim ON recording_claim.entity_type = 'recording'
+      CROSS JOIN sleeve_claims recording_claim ON recording_claim.entity_type = 'recording'
         AND recording_claim.entity_id = child_recording.id AND recording_claim.enabled = 1
       WHERE child_recording.artist_id = artist_row.id)
     OR EXISTS (SELECT 1 FROM sleeve_recordings album_recording

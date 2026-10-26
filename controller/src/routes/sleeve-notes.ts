@@ -1,3 +1,6 @@
+import { librarySourceKey } from '../sleeve-notes/local-identity.js';
+import { researchOverrideSchema } from '../schemas/sleeve-notes-corrections.js';
+import { saveResearchOverride, queueArtistRescan, verificationReadout, startLibraryVerification, cancelLibraryVerification } from '../sleeve-notes/research-corrections.js';
 import {researchBlockReason} from '../sleeve-notes/research-availability.js';
 import { manageQueuedJob } from '../sleeve-notes/queue-actions.js';
 import {loadExtendedSleeveNoteCandidatesInDatabase} from '../sleeve-notes/link-selection.js';
@@ -41,10 +44,8 @@ import {
   rebuildWikipediaClaimsForArtist,
   requeueCachedWikipediaResearch,
   researchConnectionsGraph,
-  researchEntityDossier,
   resolveConnectionLocalTrack,
   researchStoreCoverage,
-  researchStoreExplore,
   searchResearchStoriesInDatabase,
   reconcileConfiguredSeries,
   researchStoreSummary,
@@ -53,6 +54,7 @@ import {
   type ConnectionEdgeType,
   type ResearchExploreLevel,
   type ResearchEntityType,
+  type ResearchEntityDossier,
 } from '../sleeve-notes/research-repository.js';
 
 import { airingReviewDecisionSchema } from '../schemas/sleeve-notes-feedback.js';
@@ -64,7 +66,7 @@ export const router = express.Router();
 // use withCachedRead, which neither creates nor upgrades the on-disk database.
 const CACHED_VIEWS = new Set([
   '/readout', '/stories', '/explore', '/heard-on-air', '/airing-reviews', '/series',
-  '/moderation', '/live-summary', '/storage', '/connections/search',
+  '/moderation', '/live-summary', '/storage', '/research-gaps', '/research-gaps/scan', '/connections/search',
   '/connections/coverage', '/connections/album-coverage', '/connections/discoveries',
   '/connections/overview', '/connections/graph',
 ]);
@@ -114,6 +116,43 @@ router.get('/sleeve-notes/airing-reviews', requireAdmin, async (req,res)=>{
   const read=()=>({...listAiringReviews(String(req.query.status??'active'),offset),readOnly:!settings.get().djBehaviour.extendedSleeveNotes});
   return res.json(settings.get().djBehaviour.extendedSleeveNotes?read():withCachedRead(read));
 });
+// Local coverage checks share the read-only worker; no source services are called.
+router.get('/sleeve-notes/research-gaps', requireAdmin, async (_req,res) => {
+  const read=()=>cachedDashboardRead({kind:'research-gaps'});
+  try { return res.type('json').send(await (settings.get().djBehaviour.extendedSleeveNotes ? read() : withCachedRead(read))); }
+  catch(error) { return res.status(503).json({error:error instanceof Error?error.message:'Could not check saved research'}); }
+});
+router.post('/sleeve-notes/research-gaps/verify', requireAdmin, async (_req,res) => {
+  try { return res.type('json').send(await cachedDashboardRead({kind:'research-gaps'},openSleeveNotesDb(),true)); }
+  catch(error) { return res.status(503).json({error:error instanceof Error?error.message:'Could not verify library coverage'}); }
+});
+
+// External scans persist a bounded result per known artist; reads stay available off.
+router.get('/sleeve-notes/research-gaps/scan',requireAdmin,(_req,res)=>{
+  const read=()=>verificationReadout(openSleeveNotesDb());
+  return res.json(settings.get().djBehaviour.extendedSleeveNotes?read():withCachedRead(read));
+});
+router.post('/sleeve-notes/research-gaps/scan',requireAdmin,async(_req,res)=>{
+  try {
+    const sourceKey=librarySourceKey();
+    const snapshot=JSON.parse(await cachedDashboardRead({kind:'research-gaps'},openSleeveNotesDb(),true));
+    if (sourceKey!==librarySourceKey()) throw new Error('The music source changed. Refresh saved coverage before starting a scan.');
+    if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Sleeve Notes was disabled before the scan could start.'});
+    return res.json(startLibraryVerification(openSleeveNotesDb(),snapshot));
+  } catch(error) {return res.status(409).json({error:error instanceof Error?error.message:'Could not start source verification'});}
+});
+router.delete('/sleeve-notes/research-gaps/scan',requireAdmin,(_req,res)=>res.json(cancelLibraryVerification(openSleeveNotesDb())));
+router.put('/sleeve-notes/research-gaps/:id/override',requireAdmin,(req,res)=>{
+  const parsed=researchOverrideSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({error:parsed.error.issues[0]?.message??'Check the source links.'});
+  try { return res.json({ok:true,...saveResearchOverride(openSleeveNotesDb(),String(req.params.id),parsed.data)}); }
+  catch(error) {return res.status(409).json({error:error instanceof Error?error.message:'Could not save the research source'});}
+});
+router.post('/sleeve-notes/research-gaps/:id/rescan',requireAdmin,(req,res)=>{
+  try {openSleeveNotesDb().transaction(()=>queueArtistRescan(openSleeveNotesDb(),String(req.params.id))).immediate();return res.json({ok:true});}
+  catch(error) {return res.status(409).json({error:error instanceof Error?error.message:'Could not queue fresh research'});}
+});
+
 router.post('/sleeve-notes/airing-reviews/:id/decision', requireAdmin, async (req,res)=>{
   await settings.load();
   if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Enable Sleeve Notes before saving a review decision'});
@@ -623,9 +662,9 @@ router.get('/sleeve-notes/explore', requireAdmin, async (req, res) => {
   const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(100, Math.trunc(rawLimit))) : 30;
   const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.trunc(rawOffset)) : 0;
   const search = typeof req.query.search === 'string' ? req.query.search.slice(0, 120) : '';
-  const read = () => researchStoreExplore({ level, artistId, albumType, albumId, letter, search, limit, offset });
+  const read = () => cachedDashboardRead({kind: 'explore', input: {level, artistId, albumType, albumId, letter, search, limit, offset}});
   const enabled = settings.get().djBehaviour.extendedSleeveNotes === true;
-  return res.json({ active: enabled, level, ...(enabled ? read() : withCachedRead(read)) });
+  return res.json({ active: enabled, level, ...JSON.parse(await (enabled ? read() : withCachedRead(read))) });
 });
 
 router.get('/sleeve-notes/dossier/:entityType/:entityId', requireAdmin, async (req, res) => {
@@ -639,13 +678,13 @@ router.get('/sleeve-notes/dossier/:entityType/:entityId', requireAdmin, async (r
   if (!validTypes.includes(entityType as ResearchEntityType) || !entityId || entityId.length > 200) {
     return res.status(400).json({ error: 'A supported entity type and id are required' });
   }
-  const read = () => {
-    const result=researchEntityDossier(entityType as ResearchEntityType, entityId);
+  const read = async () => {
+    const result=JSON.parse(await cachedDashboardRead({kind: 'dossier', entityType: entityType as ResearchEntityType, entityId})) as ResearchEntityDossier | null;
     if (!result) return null;
     const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));
     return {...result,claims:result.claims.map(claim=>({...claim,review:reviews[claim.id]??null}))};
   };
-  const dossier = settings.get().djBehaviour.extendedSleeveNotes === true ? read() : withCachedRead(read);
+  const dossier = await (settings.get().djBehaviour.extendedSleeveNotes === true ? read() : withCachedRead(read));
   if (!dossier) return res.status(404).json({ error: 'No saved stories exist for this artist, album or track' });
   return res.json({ active: settings.get().djBehaviour.extendedSleeveNotes === true, ...dossier });
 });

@@ -121,3 +121,35 @@ cached catalogue, while still excluding external endpoints and ambiguous version
 Inverse descriptions and compilation copies of the same recording count once.
 Removing or retagging a local recording must clear its old source match. This
 update does not fetch the same Genius sources again to repair the count.
+
+## Research gaps and source corrections
+
+Public schemas 1–3 upgrade additively to schema 4; no research reset is needed.
+Back up the database before upgrading. Rolling back to a build that supports only
+an earlier schema requires restoring its compatible backup, not opening schema 4
+with that older build.
+
+In Review > Research gaps, refresh the local coverage check and inspect a missing
+or partial biography. Confirm ordinary unplayed artists and pending research are
+not reported as broken sources. A library source scan checks known identities
+quietly and can be cancelled; provider failures should appear separately from
+missing articles. Saving a research identity or Wikipedia URL, rescanning, and
+clearing an override should leave canonical recording matches unchanged. Test a
+single-field edit, an artist with duplicate provider records, and a genuinely
+ambiguous identity. Advanced details should explain the separate identities.
+
+## Browsing under load
+
+Use a populated research database. Open Stories > Browse Library in two browser
+sessions and switch between it, Review, Overview and Station Brain while research
+is running. Search, clear, change pages and open artist/album/track details. Search
+should update after a short typing pause, starting at two characters; clearing
+restores the list and a new search starts at the first page. Keep searches within
+the current browse level.
+
+Watch controller health, scheduled work and broadcast continuity during these
+checks. Page latency and controller responsiveness are separate measurements:
+a slow page must not prevent health requests or broadcast timers from running.
+Report database/library size and whether fresh research was being saved. Avoid
+stress-testing external provider APIs; replay stored results in an isolated cache
+for heavier load tests.

@@ -5060,6 +5060,26 @@ export function skillFieldsFrom(kind: string, parsed: SkillFileParsed) {
   };
 }
 
+// ─── from controller/src/schemas/sleeve-notes-corrections.ts ─────────────
+
+export const researchMusicBrainzIdSchema = z.string().trim().max(200).transform(value => value.replace(/^https:\/\/musicbrainz\.org\/artist\//i,'').replace(/\/$/,'').toLowerCase())
+  .refine(value => value === '' || /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value), 'Use a MusicBrainz artist link or artist ID.');
+export const researchWikipediaUrlSchema = z.string().trim().max(1000).refine(value => {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    const title = decodeURIComponent(url.pathname.slice(6));
+    return url.protocol==='https:' && url.hostname==='en.wikipedia.org' && !url.port && !url.username && !url.password
+      && !url.search && !url.hash && url.pathname.startsWith('/wiki/') && !!title.trim() && !/[:|#\u0000-\u001f\u007f]/u.test(title);
+  } catch { return false; }
+}, 'Use an English Wikipedia article link, without a section or query.');
+export const researchOverrideSchema = z.object({musicBrainzId:researchMusicBrainzIdSchema,wikipediaUrl:researchWikipediaUrlSchema}).strict();
+export type ResearchOverride = z.infer<typeof researchOverrideSchema>;
+export const researchVerificationSchema = z.object({
+  state:z.enum(['idle','running','complete','cancelled']), total:z.number(), checked:z.number(), found:z.number(), missing:z.number(), failed:z.number(), skipped:z.number(), startedAt:z.string().nullable(),
+});
+export type ResearchVerification = z.infer<typeof researchVerificationSchema>;
+
 // ─── from controller/src/schemas/sleeve-notes-feedback.ts ────────────────
 
 export const sparkFeedbackSchema = z.object({
@@ -5098,6 +5118,24 @@ export const airingReviewDecisionSchema = z.object({
 }).refine(value=>!value.correction||value.action==='apply-correction', {
   message:'Edited corrections can only be supplied when applying a correction',path:['correction'],
 });
+
+// ─── from controller/src/schemas/sleeve-notes-research-gaps.ts ───────────
+
+export const researchGapStatusSchema = z.enum(['source-not-found','partial-coverage','extraction-failed','identity-unresolved','pending','unexplored','covered','empty','stopped','related-credit','source-missing','source-error','source-available']);
+export type ResearchGapStatus = z.infer<typeof researchGapStatusSchema>;
+export const researchGapSnapshotSchema = z.object({
+  checkedAt: z.string(), libraryIndexedAt: z.string().nullable(), libraryArtists: z.number(),
+  counts: z.object({attention: z.number(), pending: z.number(), unexplored: z.number(), covered: z.number(), empty: z.number(), related: z.number()}),
+  items: z.array(z.object({
+    id: z.string(), name: z.string(), status: researchGapStatusSchema,
+    libraryArtistIds: z.array(z.string()), storyCount: z.number(), lastAttemptAt: z.string().nullable(),
+    identities: z.array(z.object({id: z.string(), name: z.string(), mbid: z.string().nullable(), articleUrl: z.string().nullable(),
+      storyCount: z.number(), matchedTracks: z.number(), canRetry: z.boolean(),
+      override:z.object({musicBrainzId:z.string(),wikipediaUrl:z.string()}).nullable().optional(),
+      verification:z.object({state:z.string(),sourceUrl:z.string().nullable(),checkedAt:z.string().nullable(),lastError:z.string().nullable()}).nullable().optional()})),
+  })),
+});
+export type ResearchGapSnapshot = z.infer<typeof researchGapSnapshotSchema>;
 
 // ─── from controller/src/schemas/sleeve-notes-series.ts ──────────────────
 

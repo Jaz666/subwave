@@ -97,3 +97,29 @@ operator alarm. Storage inspection is an explicit action in the read-only child
 process, without polling or source API requests. It reports file/WAL/reusable space,
 retained text by source and derived connection space where SQLite supports it.
 The previous inspection is remembered locally in the browser for comparison.
+
+## Biography discovery and research gaps
+
+Wikipedia discovery prefers the English sitelink on the MusicBrainz identity's
+Wikidata item. When the item or sitelink is absent, an explicit English Wikipedia
+relationship on that same MusicBrainz identity is accepted. Redirects resolve to
+canonical revisioned articles; transient provider failures keep their retry/backoff
+rather than falling back to a name search.
+
+Review separates flagged factual reviews from Research gaps. Local coverage
+checks use the saved library and research cache; the optional library source scan
+checks one known identity per quiet minute using source metadata, without fetching
+article prose or invoking the LLM. Provider outages remain distinct from missing
+articles. Progress, cancellation and provider backoff survive controller restarts.
+
+An artist-facing source editor accepts a research-only MusicBrainz artist override
+or an English Wikipedia URL; the explicit article URL takes precedence. Overrides
+never change canonical recording matches or merge identities. Save and Rescan use
+the existing paced biography/research pipeline. Source generations prevent stale
+collection/extraction results from replacing an operator's later choice. Ambiguous
+artist identities require an explicit selection in Advanced details.
+
+Browse Library lists and selected-entity dossiers use the existing read-only child
+process and bounded display cache. Its artist query searches each artist's indexed
+recordings before their claims. Search follows Station Brain's 220 ms typing delay,
+two-character minimum and clear control, scoped to the current browse level.

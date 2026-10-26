@@ -40,6 +40,20 @@ function throttled<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** Biography discovery shares the existing MusicBrainz request throttle. */
+export function lookupMusicBrainzUrlRelations(entity:'artist'|'release-group',id:string):Promise<unknown|null> {
+  return throttled(async()=>{
+    const response=await fetchWithTimeout(`${MB_API}/${entity}/${encodeURIComponent(id)}?inc=url-rels&fmt=json`,{
+      timeoutMs:TIMEOUT_MS,headers:{'User-Agent':USER_AGENT,Accept:'application/json'},
+    });
+    if (!response.ok) {
+      if (response.status===404) return null;
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  });
+}
+
 // Normalised comparison token, same shape as show-filter.normGenre, so
 // "Dancing Queen (Remastered)" still contains "dancingqueen".
 function norm(s: unknown): string {
