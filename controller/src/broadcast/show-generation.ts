@@ -76,11 +76,10 @@ export function scheduledShowsForHost(hostId: string, currentShowId: string): Ex
     }));
 }
 
-export function resolveGeneratedShowCast({ show, occurrence, personas, preserveFixedGuests = false }: {
+export function resolveGeneratedShowCast({ show, occurrence, personas }: {
   show: any;
   occurrence: { id: string };
   personas: readonly any[];
-  preserveFixedGuests?: boolean;
 }): GeneratedShowCast | null {
   const config = show.generation;
   if (!config || config.mode !== 'generated') return null;
@@ -91,7 +90,7 @@ export function resolveGeneratedShowCast({ show, occurrence, personas, preserveF
     .map(p => [p.id, p] as const));
   const hostIds = config.hostMode === 'random'
     ? (subShows?.eligibleHostPersonaIds ?? [...eligible.keys()]).filter((id: string) => eligible.has(id)
-      && (!(preserveFixedGuests || commonGround) || config.guestMode !== 'fixed' || !(show.guestPersonaIds ?? []).includes(id)))
+      && (config.guestMode !== 'fixed' || !(show.guestPersonaIds ?? []).includes(id)))
     : [show.personaId].filter((id: string) => eligible.has(id));
   if (!hostIds.length) return null;
   const hostPersonaId = hostIds[stableIndex(occurrence.id, hostIds.length)]!;
@@ -335,6 +334,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       .describe('2–3 sentences explaining the musical connection and what each DJ brings; reflect musicalConnection; put the optional conversational thread in talkingPoint'),
     talkingPoint: baseConceptSchema.shape.talkingPoint,
   }) : baseConceptSchema;
+  const proseInstruction = `Write grammatical prose with intact punctuation. Apostrophes are valid inside JSON strings: retain them in contractions and possessives, never replace them with spaces ("we'll", not "we ll"; "the DJ's taste", not "the DJ s taste"). If unsure, use full forms such as "we will" or "the tastes of the host" instead. Preserve correct punctuation when copying or editing the concept.`;
   const talkingPointInstruction = 'Return talkingPoint separately from topic: one specific musical question or contrast suggested by this episode’s music and cast. It is an optional conversational thread for occasional natural comments, not a scripted exchange, mandatory feature, repeated announcement or question to answer on every link. It must fit the declared genre palette without promising extra genres, eras, tracks or invented artist facts. Base it on something the presenters can hear: rhythm, repetition, instrumentation, texture, arrangement, melody or songwriting. Make it useful across the palette, rather than dependent on one artist or subgenre. Do not name artists, bands or recordings, ask broad questions about social/cultural change or genre history, invent technical explanations, or assume a particular record will play. Keep it to one short sentence and do not put a Talking point label in either field; the controller adds that label to the brief.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const assessmentSchema = z.object({
@@ -347,7 +347,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
 
 `;
   const response = await djObject({
-    system: readinessInstruction + (timeCapsule
+    system: readinessInstruction + proseInstruction + '\n\n' + (timeCapsule
       ? 'Plan one era-led radio episode interpreted through this host’s musical tastes. Choose a precise closed period with library coverage, then a coherent genre palette and short brief. Do not invent historical facts or personal memories. Return only requested JSON.'
       : outside
       ? 'Plan one solo musical radio episode exploring a neighbouring territory outside the DJ’s familiar repertoire. Establish a supported starting point, a credible musical bridge and one focused destination, then write the brief and title. Return only the requested JSON.'
@@ -474,7 +474,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let music: z.infer<typeof settingsSchema>;
   try {
     music = await djObject({
-      system: `Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Copy the accepted topic and talkingPoint verbatim when they fit the contract. Edit only a concrete contradiction or unsupported promise. Do not condense, paraphrase or anonymise a correct draft.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a concise final name, topic and separate talkingPoint as well as music settings. Remove unsupported promises; do not introduce another idea. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
+      system: `${proseInstruction} Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Copy the accepted topic and talkingPoint verbatim when they fit the contract. Edit only a concrete contradiction or unsupported promise. Do not condense, paraphrase or anonymise a correct draft.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a concise final name, topic and separate talkingPoint as well as music settings. Remove unsupported promises; do not introduce another idea. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
       prompt: [
         `Accepted proposal: ${JSON.stringify(concept)}`,
         draftIssue ? `Detected draft problem: ${draftIssue.replace(' Please regenerate the episode.', '')} Repair this before publishing. Check the entire draft for similar contradictions; do not merely copy it. Remove unselected style promises rather than adding filters. Preserve the musical angle that fits the selected palette.` : 'No concrete contract mismatch was found. Preserve the original wording unless an unsupported factual promise needs removing.',
