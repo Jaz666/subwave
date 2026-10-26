@@ -2334,11 +2334,13 @@ export function researchStoreExploreInDatabase(db: Database.Database, input: {
   // The first view is intentionally a small artist index. It checks for a
   // retained claim at the artist or one of its known recording/album children,
   // but does not aggregate those descendants until an artist is opened.
+  // Keep each artist's indexed recordings outermost. SQLite otherwise chooses
+  // all recording claims first and repeats that search for every artist.
   const artistHasClaims = `(
     EXISTS (SELECT 1 FROM sleeve_claims direct_claim
       WHERE direct_claim.entity_type = 'artist' AND direct_claim.entity_id = artist_row.id AND direct_claim.enabled = 1)
     OR EXISTS (SELECT 1 FROM sleeve_recordings child_recording
-      JOIN sleeve_claims recording_claim ON recording_claim.entity_type = 'recording'
+      CROSS JOIN sleeve_claims recording_claim ON recording_claim.entity_type = 'recording'
         AND recording_claim.entity_id = child_recording.id AND recording_claim.enabled = 1
       WHERE child_recording.artist_id = artist_row.id)
     OR EXISTS (SELECT 1 FROM sleeve_recordings album_recording

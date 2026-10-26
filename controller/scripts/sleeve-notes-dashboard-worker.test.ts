@@ -28,11 +28,21 @@ test.after(async () => { clearConnectionComputeCache(); db.close(); await remove
 test('worker reads match direct results, count sources/facts independently, and do not write', async () => {
   const before = readFileSync(path);
   const inputs: DashboardRead[] = [
+    {kind:'explore',input:{level:'artists'}},
+    {kind:'explore',input:{level:'artists',search:'Band',letter:'b',limit:1,offset:0}},
+    {kind:'explore',input:{level:'albums',artistId:'artist'}},
+    {kind:'explore',input:{level:'tracks',artistId:'artist',albumType:'release',albumId:'album'}},
+    {kind:'dossier',entityType:'artist',entityId:'artist'},
+    {kind:'dossier',entityType:'artist',entityId:'missing'},
     {kind:'readout'}, {kind:'readout',queue:false}, {kind:'live-summary',args:[{subsonic_id:'track',title:'Song',artist:'Band'},null,null]},
     {kind:'heard-on-air',offset:0,filters:{usage:'sleeve-notes'}},
   ];
   for(const input of inputs) {
+    let yielded = false;
+    const timer = setTimeout(() => { yielded = true; }, 0);
     assert.deepEqual(JSON.parse(await cachedDashboardRead(input,db)),dashboardReadInDatabase(db,input));
+    clearTimeout(timer);
+    assert.equal(yielded, true, `${input.kind} must leave controller timers responsive`);
   }
   const result=JSON.parse(await cachedDashboardRead({kind:'readout'},db));
   assert.deepEqual(result.artists,[{name:'Band',musicbrainzId:null,sources:3,claims:4}]);

@@ -44,10 +44,8 @@ import {
   rebuildWikipediaClaimsForArtist,
   requeueCachedWikipediaResearch,
   researchConnectionsGraph,
-  researchEntityDossier,
   resolveConnectionLocalTrack,
   researchStoreCoverage,
-  researchStoreExplore,
   searchResearchStoriesInDatabase,
   reconcileConfiguredSeries,
   researchStoreSummary,
@@ -56,6 +54,7 @@ import {
   type ConnectionEdgeType,
   type ResearchExploreLevel,
   type ResearchEntityType,
+  type ResearchEntityDossier,
 } from '../sleeve-notes/research-repository.js';
 
 import { airingReviewDecisionSchema } from '../schemas/sleeve-notes-feedback.js';
@@ -663,9 +662,9 @@ router.get('/sleeve-notes/explore', requireAdmin, async (req, res) => {
   const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(100, Math.trunc(rawLimit))) : 30;
   const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.trunc(rawOffset)) : 0;
   const search = typeof req.query.search === 'string' ? req.query.search.slice(0, 120) : '';
-  const read = () => researchStoreExplore({ level, artistId, albumType, albumId, letter, search, limit, offset });
+  const read = () => cachedDashboardRead({kind: 'explore', input: {level, artistId, albumType, albumId, letter, search, limit, offset}});
   const enabled = settings.get().djBehaviour.extendedSleeveNotes === true;
-  return res.json({ active: enabled, level, ...(enabled ? read() : withCachedRead(read)) });
+  return res.json({ active: enabled, level, ...JSON.parse(await (enabled ? read() : withCachedRead(read))) });
 });
 
 router.get('/sleeve-notes/dossier/:entityType/:entityId', requireAdmin, async (req, res) => {
@@ -679,13 +678,13 @@ router.get('/sleeve-notes/dossier/:entityType/:entityId', requireAdmin, async (r
   if (!validTypes.includes(entityType as ResearchEntityType) || !entityId || entityId.length > 200) {
     return res.status(400).json({ error: 'A supported entity type and id are required' });
   }
-  const read = () => {
-    const result=researchEntityDossier(entityType as ResearchEntityType, entityId);
+  const read = async () => {
+    const result=JSON.parse(await cachedDashboardRead({kind: 'dossier', entityType: entityType as ResearchEntityType, entityId})) as ResearchEntityDossier | null;
     if (!result) return null;
     const reviews=storedClaimReviews(result.claims.map(claim=>claim.id));
     return {...result,claims:result.claims.map(claim=>({...claim,review:reviews[claim.id]??null}))};
   };
-  const dossier = settings.get().djBehaviour.extendedSleeveNotes === true ? read() : withCachedRead(read);
+  const dossier = await (settings.get().djBehaviour.extendedSleeveNotes === true ? read() : withCachedRead(read));
   if (!dossier) return res.status(404).json({ error: 'No saved stories exist for this artist, album or track' });
   return res.json({ active: settings.get().djBehaviour.extendedSleeveNotes === true, ...dossier });
 });

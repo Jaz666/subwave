@@ -2,17 +2,21 @@ import { researchGapsInDatabase } from './research-gaps.js';
 import {researchProgress,researchStorage} from './research-diagnostics.js';
 import { researchQueueDetails } from './research-worker.js';
 import type Database from 'better-sqlite3';
-import { geniusQueueReadout, researchStoreReadoutInDatabase } from './research-repository.js';
+import { geniusQueueReadout, researchStoreReadoutInDatabase, researchStoreExploreInDatabase, researchEntityDossierInDatabase } from './research-repository.js';
 import { liveNotesSummary } from './live-summary.js';
 import { heardOnAir } from './heard-on-air.js';
 
-export type DashboardRead = {kind:'research-gaps'} | {kind:'storage'} | { kind: 'readout'; queue?: boolean }
+export type DashboardRead = {kind:'explore'; input: Parameters<typeof researchStoreExploreInDatabase>[1]}
+  | {kind:'dossier'; entityType: Parameters<typeof researchEntityDossierInDatabase>[1]; entityId: string}
+  | {kind:'research-gaps'} | {kind:'storage'} | { kind: 'readout'; queue?: boolean }
   | { kind: 'live-summary'; args: [Parameters<typeof liveNotesSummary>[0], Parameters<typeof liveNotesSummary>[1], Parameters<typeof liveNotesSummary>[2]] }
   | { kind: 'heard-on-air'; offset: number; filters: Parameters<typeof heardOnAir>[3] };
 
 /** Pure reads: worker owns the read-only snapshot; no settings or queue mutations. */
 export function dashboardReadInDatabase(db: Database.Database, input: DashboardRead) {
   switch (input.kind) {
+    case 'explore': return researchStoreExploreInDatabase(db, input.input);
+    case 'dossier': return researchEntityDossierInDatabase(db, input.entityType, input.entityId);
     case 'research-gaps': return researchGapsInDatabase(db);
     case 'storage': return researchStorage(db);
     case 'readout': return {
