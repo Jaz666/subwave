@@ -9,6 +9,7 @@ import type { GeneratedShowPlan } from '../schemas/show-preparation.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
 import { resolveTakeoverWindowNow } from './takeover-window.js';
+import { coverageUnavailable, ShowPlanningError } from './show-planning-policy.js';
 import {
   buildGeneratedSnapshot, generateAcceptedShowPlan, showPreparation,
   type GeneratedShowSnapshot,
@@ -86,6 +87,9 @@ export async function activateTakeoverPreview(token: string): Promise<Activated 
 async function activate(draft: Draft): Promise<Activated> {
   await settings.load();
   const coverage = await diagnoseShowCandidates({ ...draft.show, ...draft.plan }, { at: Date.now(), showId: draft.show.id });
+  if (coverageUnavailable(coverage.warnings)) {
+    throw new ShowPlanningError('library-unavailable', `Could not verify the takeover's music filters. Check the library connection and genre metadata, then retry generation. ${coverage.warnings.join(' ')}`);
+  }
   const requiredTracks = Math.ceil(2 * (draft.snapshot.occurrence.endsAt - draft.snapshot.occurrence.startsAt) / 240_000);
   if (coverage.library.effective < requiredTracks) throw new Error('The available music pool changed. Retry generation.');
   const current = buildGeneratedSnapshot(templateShow(draft.request.template), draft.snapshot.occurrence,

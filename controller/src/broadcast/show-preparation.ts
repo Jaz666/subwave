@@ -366,7 +366,11 @@ export function createShowPreparation(deps: PreparationDeps) {
     if (running && castSeed) throw new GeneratedShowRegenerationError('This episode is already being generated. Try again after it finishes.', 'conflict');
     if (running) return running.then(record => {
       const latest = snapshotForContext?.(context, castSeed);
-      return latest && (latest.configuration !== snapshot.configuration || latest.occurrence.endsAt !== snapshot.occurrence.endsAt)
+      // This caller may already have captured an edit while the running task
+      // still uses the old snapshot. Compare its result with the latest slot.
+      return latest && now() < latest.occurrence.endsAt && (!record
+        || latest.configuration !== record.configuration || latest.occurrence.id !== record.occurrence.id
+        || latest.occurrence.endsAt !== record.occurrence.endsAt)
         ? ensureGenerated({ context, source, regenerateOccurrenceId, castSeed })
         : record;
     });

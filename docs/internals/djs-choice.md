@@ -405,6 +405,64 @@ tests, 45 focused controller checks pass. TypeScript and scoped lint pass (exist
 `any` warnings remain). Cached accepted episodes are unchanged: regenerate them
 after rebuilding the controller to apply this policy.
 
+### Pre-review regression coverage
+
+`npm --prefix controller test -- sub-show-template-rules` runs fourteen
+deterministic checks with synthetic personas, temporary state and injected
+generation/coverage results. No station LLM or live library is used.
+
+The checks cover Common Ground's default single guest, selected-guest counts,
+use of the allowed host pool for both participants, stable casting within an
+airing, and failure when two eligible participants are unavailable. They cover
+Outside the Comfort Zone's solo contract, single destination and mandatory
+destination change after failed coverage. Time Capsule checks include regular
+casting pools, single-year and ten-year inclusive periods, rejection of open or
+multiple periods, and retaining the era requirement during correction. All
+three templates are checked for strict filters, nonempty genre palettes and
+twice-airtime coverage with exactly one correction at 30, 60 and 90 minutes.
+
+These pin schema, casting and acceptance behaviour, not the quality of an LLM's
+musical judgement or every prompt requirement. The fourteen checks, scoped lint
+and controller/preview/new-test TypeScript passed. No production code changed.
+The next batch adds seventeen notebook and eleven special-guest checks using
+temporary files, a synthetic roster and injected model results. It covers
+per-turn air commits, fixed topics, bounded history, isolated airings, confirmed
+and ambiguous delivery receipts, cancellation, expired leases, reset/corruption
+guards, a fresh-process read of committed memory, and rendered-turn recovery.
+Guest checks cover explicit prompt directives, roster resolution, duplicate and
+invalid casts, tool precedence, participant limits and unexpected model speakers. A
+five-turn numbered exchange preserves its final host reaction. The existing
+co-hosted suite now distinguishes flexible discussion order from explicit plans;
+its twelve checks pass.
+Both suites, scoped lint and controller/preview/new-test TypeScript pass without
+station LLM calls or production changes. End-to-end queue/mixer crash windows,
+backup/restore remain separate review tasks.
+
+The lifecycle batch runs eleven `generated-show-lifecycle` checks, ten
+`takeover-generation` checks, seven `show-occurrence` checks, nine
+`generated-shows` checks and eleven `takeover-window` checks (48 total).
+Restart recovery is tested with fresh owners and a fresh process. Coverage
+includes accepted/on-air plan retention, bounded failed-generation retries,
+failed manual rerolls, short pools, stale results, edits while generation is
+pending, shuffle contention, both sides of an adjacent-slot boundary edit,
+obsolete-plan pruning and history retention. Time checks include midnight,
+repeated/missing DST hours and quarter-hour timezone offsets.
+
+Takeover tests use the real preview/activation flow, synthetic SQLite tracks
+and stubbed LLM/Navidrome responses; no live service or mixer is called. They
+cover draft isolation, activation-time duration, exact accepted-plan reuse,
+duplicate activation requests, expiry, changed eligibility/pool/window,
+failed-switch rollback and metadata failures. This exposed and fixed two bugs:
+a waiting generation request could miss an edit already present in its own
+snapshot, and takeover activation checked pool size without rejecting inactive
+genre locks. Waiting callers now compare the completed result against the
+latest slot; activation reuses the shared unavailable-coverage policy.
+
+All 48 checks, controller/preview/new-test TypeScript and scoped lint pass
+(existing lint warnings remain). These checks do not simulate every process
+crash during a write, browser interaction, mixer delivery or backup restore.
+The two controller fixes need a rebuild; accepted episodes are not rerolled.
+
 ## Template ideas for later exploration
 
 ### Fresh-install regression scenario
