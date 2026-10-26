@@ -57,10 +57,33 @@ The four regenerated plans retained matching genre declarations but still showed
 generic bridges and talking points. Operator acceptance prioritises plausible
 track selection and natural on-air discussion over polished commissioning prose.
 The current sample does not complete Common Ground or Time Capsule review.
-Missing apostrophes were observed in one generated brief. Inspection found no
-apostrophe-removal operation in the planner/structured-output path; raw response
-evidence is still needed to establish the source. No heuristic insertion was
-added. Double-escaped punctuation decoding does not repair absent characters.
+Missing apostrophes were observed in one generated brief. The saved concept
+response retained its contractions and possessives; the compiler response
+already contained forms such as “We ll” before persistence or display. Both
+calls now explicitly request intact apostrophes, with full-word alternatives
+when necessary. This is an instruction to generation, not a guarantee of model
+compliance. No heuristic insertion was added. Double-escaped punctuation
+decoding does not repair absent characters.
+
+### Codex review follow-up — 26 October 2026
+
+Random host draws now always exclude selected fixed guests, including initial
+preparation as well as shuffles. If no distinct eligible host remains, casting
+stands down instead of silently promoting and dropping a selected guest.
+The obsolete shuffle-only preservation flag was removed from the resolver and
+snapshot caller. The added regression exercises all three optional-guest
+templates across 32 occurrence keys and an exhausted host pool.
+
+Schedule-originated generated-show saves now send the authoritative roster
+through `patchShowSettings`, updating both Settings and Dashboard takeover
+projections. This uses the existing shared reconciler rather than waiting for
+the next Dashboard poll. No new cache layer or polling was introduced.
+
+The fix is committed in `70c19c99`. Controller/web TypeScript and the admin-query
+audit pass. Focused template/lifecycle and web audit/cache checks report 45
+passing tests (15 + 13 + 9 + 8). Scoped lint has no errors; 15 existing controller
+`any` warnings remain. No live generation was requested to test the punctuation
+instruction, so its model adherence remains an observation for subsequent plans.
 
 Give a DJ authorship of a fresh show for each scheduled broadcast. The operator
 places a generated-show slot in the schedule and chooses its casting rules.
