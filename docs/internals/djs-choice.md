@@ -27,14 +27,14 @@ check or mixer crash simulation; no live model calls were needed.
 
 The maintainability review retains the shared occurrence lifecycle and coverage
 validation, with explicit template policy branches. Two small deletion candidates
-remain unapplied follow-ups:
+were removed in the subsequent cleanup:
 
-- `controller/scripts/show-plan-preview.ts:1`: delete the obsolete raw preview
-  and its npm entry. Use the existing isolated five-template preview instead.
-- `controller/src/broadcast/generated-show-registry.ts:5`: delete the unused
-  alternate registry writer. The durable owner already restores the registry.
+- Removed the obsolete raw preview script and its npm entry. Use the existing
+  isolated five-template preview (`common-ground:preview`) instead.
+- Removed the unused alternate registry writer. The durable owner already
+  restores the registry through `restoreGeneratedShows`.
 
-Net: 85 lines possible to remove. No new abstraction or dependency is proposed.
+Net: 85 code/config lines removed. No new abstraction or dependency was added.
 Earlier trial notes below are historical; current strict-filter rules supersede
 their soft-filter descriptions. Semantic review of generated prose remains open.
 

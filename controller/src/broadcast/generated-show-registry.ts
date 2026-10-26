@@ -2,10 +2,6 @@ import type { GeneratedShowRecord } from '../schemas/show-preparation.js';
 
 const generated = new Map<string, GeneratedShowRecord>();
 
-export function publishGeneratedShow(record: GeneratedShowRecord): void {
-  generated.set(record.occurrence.id, record);
-}
-
 export function restoreGeneratedShows(records: readonly GeneratedShowRecord[]): void {
   generated.clear();
   for (const record of records) generated.set(record.occurrence.id, record);

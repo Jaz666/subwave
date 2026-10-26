@@ -20,7 +20,6 @@
     "leanings:replay": "tsx scripts/agentic-leanings-replay.ts",
     "llm-bench": "tsx scripts/llm-bench/cli.ts",
     "llm-bench:publish": "tsx scripts/llm-bench/publish-manual.ts",
-    "show-plan:preview": "tsx scripts/show-plan-preview.ts",
     "sub-shows:fresh-preview": "tsx scripts/common-ground-preview.ts --fresh-user",
     "common-ground:preview": "tsx scripts/common-ground-preview.ts",
     "time-capsule:preview": "tsx scripts/common-ground-preview.ts --template time-capsule",
