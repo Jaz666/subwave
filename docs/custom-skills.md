@@ -854,10 +854,18 @@ not ready on older controllers. Enable it station-wide and assign it to the
 DJs who should use it. For Sub/Show slots, include it in Sub/Shows’ eligible
 skills too. Installation does not enable or run it automatically.
 
-### Sub/Show talking-point discussion example
+### Sub/Show Talking Point
 
-`docs/examples/skills/sub-show-talking-point` provides a grounded co-hosted
-discussion using the current brief's explicit `Talking point (optional thread):`
+The bundled `sub-show-talking-point` skill is installed automatically with both
+SKILL.md and tool.mjs, but is **disabled by default**, including after upgrading
+an existing station. Its source lives in
+`controller/src/skills/builtins/sub-show-talking-point`. Enable it in Skills,
+choose which DJs run it, and permit it in Sub/Shows' eligible skills if that
+list is restricted. Installation does not add persona assignments. An existing
+"all skills" persona choice retains its normal meaning. Explicit enabled states,
+assignments and edited files survive upgrades; missing files alone are restored.
+
+It provides a grounded co-hosted discussion using the current brief's explicit `Talking point (optional thread):`
 label and `services.nowPlaying()`. Its tool returns `available: false` when the
 label, identified track, track-level genres or direct genre wording connection
 is missing. If queue metadata lacks genres, it reads the current album and uses
