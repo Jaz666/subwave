@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { ResearchGapSnapshot, ResearchGapStatus, ResearchVerification } from '../../lib/schemas.generated';
 import { adminJson, useAdminMutation, useAdminQuery, type AdminFetch } from '../../lib/admin-query';
@@ -95,7 +94,6 @@ export default function ResearchGaps({adminFetch,timezone,readOnly}: {adminFetch
       <p className="max-w-4xl text-[13px]">{DETAILS[item.status]}</p>
       <p className="text-xs text-muted">{item.storyCount.toLocaleString()} saved story {item.storyCount===1?'fact':'facts'} from artist, recording and album research. Credits and musical connections are counted separately.</p>
       <ResearchArtistSource artist={item} adminFetch={adminFetch} timezone={timezone} readOnly={readOnly} onSaved={()=>verify.mutateAsync()} />
-      {!!item.libraryArtistIds.length&&<Link className="inline-block text-xs text-primary hover:underline" href={`/admin/notes?tab=connections&focusType=library-artist&focusId=${encodeURIComponent(item.libraryArtistIds[0]!)}`}>Open in Station Brain →</Link>}
     </article>)}</div>
     {!!filtered.length&&<div className="mt-4 flex flex-wrap items-center gap-3 text-xs"><span>{Math.min(offset+1,filtered.length)}–{Math.min(offset+30,filtered.length)} of {filtered.length} artists</span><Btn sm disabled={offset===0||busy} onClick={()=>setOffset(Math.max(0,offset-30))}>Previous</Btn><Btn sm disabled={offset+30>=filtered.length||busy} onClick={()=>setOffset(offset+30)}>Next</Btn></div>}
   </Card>;
