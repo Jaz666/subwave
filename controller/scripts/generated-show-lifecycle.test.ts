@@ -1,6 +1,6 @@
 // Durable generated episodes: isolated files, controlled clocks and injected generation.
 import assert from 'node:assert/strict';
-import test, { after } from 'node:test';
+import test, { after, type TestContext } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -11,7 +11,9 @@ import type { SessionContext } from '../src/broadcast/session.js';
 
 const root = createTempDir(join(tmpdir(), 'subwave-generated-lifecycle-'));
 process.env.STATE_DIR = root;
-const { createShowPreparation } = await import('../src/broadcast/show-preparation.js');
+const { createShowPreparation, prepareUpcomingGeneratedShows, showPreparation } = await import('../src/broadcast/show-preparation.js');
+const settings = await import('../src/settings.js');
+const { showSchema } = await import('../src/schemas/show.js');
 const { resolveShowOccurrence } = await import('../src/broadcast/show-occurrence.js');
 const { zonedParts, setStationTimezone } = await import('../src/time.js');
 after(() => removeTempDir(root));
@@ -248,4 +250,56 @@ test('pruning drops removed future episodes but preserves aired history without 
   f.at(epoch + 32 * 24 * 3600_000);
   assert.deepEqual(await f.owner.generatedRecords(), []);
   assert.deepEqual(JSON.parse(await readFile(f.file, 'utf8')).generated, []);
+});
+
+function sweepFixture(t: TestContext) {
+  const station = settings.get();
+  const original = { shows: station.shows, schedule: station.schedule };
+  t.after(() => Object.assign(station, original));
+  setStationTimezone('UTC');
+  station.shows = ['s_first', 's_second'].map(id => ({
+    ...showSchema({ personaIds: null, moodNames: null, themeIds: null, minTrackSeconds: null }).parse({
+      name: 'Generated fixture', personaId: station.personas[0].id,
+      generation: { mode: 'generated', template: 'dj-choice' },
+    }), id,
+  }));
+  station.schedule = Object.fromEntries(Array.from({ length: 7 }, (_, day) => [day, Array(24).fill(null)]));
+  station.schedule[1][8] = station.schedule[1][10] = station.schedule[1][11] = 's_first';
+  station.schedule[1][12] = 's_second'; station.schedule[2][9] = 's_first';
+  t.mock.method(showPreparation, 'reconcileGenerated', async () => {});
+}
+
+test('the 48-hour sweep prepares distinct future airings serially and skips the already-airing slot', async t => {
+  sweepFixture(t);
+  let release = () => {};
+  let entered = () => {};
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const calls: string[] = [];
+  let active = 0; let peak = 0;
+  t.mock.method(showPreparation, 'ensureGenerated', async args => {
+    assert.equal(args.source, 'scheduled');
+    calls.push(args.context.at!); peak = Math.max(peak, ++active);
+    if (calls.length === 1) { entered(); await gate; }
+    active--;
+    return null;
+  });
+  const preparing = prepareUpcomingGeneratedShows({ from: epoch });
+  await started;
+  assert.equal(calls.length, 1);
+  release();
+  assert.equal(await preparing, 3);
+  assert.deepEqual(calls, ['2026-10-26T10:00:00.000Z', '2026-10-26T12:00:00.000Z', '2026-10-27T09:00:00.000Z']);
+  assert.equal(peak, 1);
+});
+
+test('one failed scheduled preparation does not block later airings in the sweep', async t => {
+  sweepFixture(t);
+  let calls = 0;
+  t.mock.method(showPreparation, 'ensureGenerated', async () => {
+    if (++calls === 1) throw new Error('Fixture provider offline');
+    return null;
+  });
+  assert.equal(await prepareUpcomingGeneratedShows({ from: epoch }), 3);
+  assert.equal(calls, 3);
 });

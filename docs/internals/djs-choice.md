@@ -463,6 +463,50 @@ All 48 checks, controller/preview/new-test TypeScript and scoped lint pass
 crash during a write, browser interaction, mixer delivery or backup restore.
 The two controller fixes need a rebuild; accepted episodes are not rerolled.
 
+### Failure, contention and cost review
+
+Ten further regression checks cover failure during either structured call,
+preserving an already-active takeover during a new failure, bounded coverage
+correction, a workable shorter slot, empty/genre-less libraries, a single-genre
+Deep Discovery refusal, serial look-ahead preparation and continuing the sweep
+after one failed airing. A cross-contract check keeps the diagnostic's strict
+zero-match count separate from a runtime never-starve pool.
+
+Normal successful generation makes two logical structured calls. One coverage
+correction adds a second pair, rather than an unbounded search. Shared SDK
+format recovery, transient retries and configured failover can add transport
+requests; four is not a universal HTTP-request cap or token budget. The stubbed
+401 cases currently make two transport attempts for a concept failure and three
+total when the concept succeeds but compilation fails, due to shared SDK text
+recovery. No Sub/Show-specific provider retry policy is introduced. Empty or
+genre-less libraries, and Deep Discovery without a rarity core, stop before a
+model call. These are call-count checks, not live token/latency benchmarks.
+
+The 48-hour sweep prepares distinct future airings in order, one at a time,
+deduplicating contiguous hours and skipping an already-airing slot. Identical
+occurrence requests share an in-flight generation. Independent requests, such
+as different slots and takeover previews, can still overlap and compete with
+on-air speech for the configured LLM. There is no new global queue, cumulative
+episode token budget or shorter provider timeout in this feature.
+
+Coverage diagnostics use hard locks, including to an empty pool, and acceptance
+still requires twice the airtime after exclusions. Playback retains Subwave's
+existing safety behaviour: the pool picker and final fallback use per-dimension
+never-starve filtering; unresolved genre metadata can disable a runtime genre
+lock, while a resolved short genre pool can loop. The offline fallback also has
+its existing playlist/exclusion safety behaviour. The absolute station blocklist
+remains a separate hard prohibition. A Sub/Show's Strict filters badge therefore
+does not guarantee every aired track under metadata loss or exhausted pools.
+No dead-air policy was changed to make generation pass.
+
+The expanded takeover and lifecycle suites, plus show-filter, show-candidates,
+music-starve, auto-playlist-show, generation-lifecycle, blocklist, planning-policy
+and discovery-policy groups pass (170 reported tests). Controller/preview/test
+TypeScript and scoped lint pass, with existing warnings where applicable. No
+production code changed, no station model was called and no live audio was
+generated. This does not simulate real provider load, every SDK/provider retry
+combination or a full mixer outage.
+
 ## Template ideas for later exploration
 
 ### Fresh-install regression scenario

@@ -26,10 +26,11 @@ const plan = { name: 'Melody and Space', topic: 'A folk show exploring spare arr
 let modelCalls = 0;
 let refuse = false;
 let genresUnavailable = false;
+let unavailableStage: 'concept' | 'compiler' | null = null;
 
 beforeEach(async () => {
   mock.timers.enable({ apis: ['Date'], now: epoch });
-  modelCalls = 0; refuse = false; genresUnavailable = false;
+  modelCalls = 0; refuse = false; genresUnavailable = false; unavailableStage = null;
   mock.method(globalThis, 'fetch', async (input, init) => {
     const url = new URL(String(input));
     assert.equal(url.origin, 'http://127.0.0.1:9', 'No real service may be called');
@@ -44,6 +45,10 @@ beforeEach(async () => {
     modelCalls++;
     const body = JSON.parse(String(init?.body));
     const concept = body.messages.some((message: { content?: string }) => message.content?.includes('mandatory musical-readiness gate'));
+    if (unavailableStage === (concept ? 'concept' : 'compiler')) {
+      return new Response(JSON.stringify({ error: { message: 'Fixture provider unavailable', type: 'authentication_error', code: 'invalid_api_key' } }),
+        { status: 401, headers: { 'content-type': 'application/json' } });
+    }
     const output = concept ? {
       assessment: { problem: refuse ? 'library-fit' : 'none', reason: refuse ? 'No coherent musical fit.' : '',
         evidence: [{ personaId: persona.id, source: 'soul', quote: persona.soul }] },
@@ -181,4 +186,70 @@ test('unavailable genre metadata cannot turn strict takeover filters into an ina
   await assert.rejects(activateTakeoverPreview(preview.token), /Could not verify.*music filters/);
   assert.equal(settings.get().scheduleOverride, null);
   assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('provider failures in either call leave programming and accepted episodes untouched', async () => {
+  for (const stage of ['concept', 'compiler'] as const) {
+    unavailableStage = stage; modelCalls = 0;
+    await assert.rejects(prepareTakeoverPreview(request()), /Fixture provider unavailable/);
+    assert.equal(modelCalls, stage === 'concept' ? 2 : 3, 'shared SDK recovery may repeat the failed call; no coverage correction starts');
+    assert.equal(settings.get().scheduleOverride, null);
+    assert.deepEqual(settings.get().shows, []);
+    assert.deepEqual(await showPreparation.generatedRecords(), []);
+  }
+});
+
+test('a provider failure preparing another takeover preserves the already-active accepted show', async () => {
+  const preview = await prepareTakeoverPreview(request());
+  const active = await activateTakeoverPreview(preview.token);
+  const records = await showPreparation.generatedRecords();
+  unavailableStage = 'concept';
+  await assert.rejects(prepareTakeoverPreview(request()), /Fixture provider unavailable/);
+  assert.deepEqual(settings.get().scheduleOverride, active.override);
+  assert.deepEqual(await showPreparation.generatedRecords(), records);
+  assert.equal(settings.resolveActiveShow(new Date())?.name, preview.plan.name);
+});
+
+test('a short pool permits only one concept/compiler correction pair, without activating a fallback show', async () => {
+  for (let index = 0; index < 11; index++) db.upsertTrackMeta(`fixture-${index}`, { genres: ['Other'] });
+  library.stats({ fresh: true });
+  await assert.rejects(prepareTakeoverPreview(request()), /needs at least 30.*only 29/);
+  assert.equal(modelCalls, 4, 'two structured calls per proposal, at most two proposals for coverage');
+  assert.equal(settings.get().scheduleOverride, null);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('a small library can support a shorter slot without inventing broader filters', async () => {
+  for (let index = 0; index < 11; index++) db.upsertTrackMeta(`fixture-${index}`, { genres: ['Other'] });
+  library.stats({ fresh: true });
+  const preview = await prepareTakeoverPreview({ ...request(), minutes: 30 });
+  assert.deepEqual(preview.plan.genres, ['Folk']);
+  assert.equal(preview.plan.filtersStrict, true);
+  assert.equal(modelCalls, 2);
+  assert.equal(settings.get().scheduleOverride, null);
+});
+
+test('a narrow single-genre library cannot fabricate a Deep Discovery rarity core', async () => {
+  await assert.rejects(prepareTakeoverPreview({ ...request(), template: 'deep-discovery' }), /no smaller genre pools/);
+  assert.equal(modelCalls, 0);
+  assert.equal(settings.get().scheduleOverride, null);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('an empty library stops before spending a model call', async () => {
+  db.pruneMissingTracks(new Set());
+  library.stats({ fresh: true });
+  await assert.rejects(prepareTakeoverPreview(request()), /no available genre palette/);
+  assert.equal(modelCalls, 0);
+  assert.equal(settings.get().scheduleOverride, null);
+});
+
+test('indexed tracks without genre metadata cannot fabricate a genre palette', async () => {
+  db.pruneMissingTracks(new Set());
+  db.upsertTrackMeta('no-genres', { title: 'Fixture Song', artist: 'Fixture Artist', duration: 240 });
+  db.upsertTrackTags('no-genres', { moods: ['reflective'], energy: 'low', source: 'llm' });
+  library.stats({ fresh: true });
+  await assert.rejects(prepareTakeoverPreview(request()), /no available genre palette/);
+  assert.equal(modelCalls, 0);
+  assert.equal(settings.get().scheduleOverride, null);
 });
