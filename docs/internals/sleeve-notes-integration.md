@@ -680,3 +680,83 @@ is intentionally local pending station acceptance. Next: rebuild controller and
 web in `/home/jaz666/Docker/subwave`, check health, then inspect both Review tabs
 and known duplicate/partial/unresearched examples. External verification,
 identity/source overrides and dismissal are not implemented in this phase.
+
+### Research source editing and external library verification — 26 October
+
+Candidate branch: `codex/research-overrides-rescan-20261026`, worktree
+`/home/jaz666/codex/subwave-research-overrides-20261026`, based on station
+`b436e302`. Keep this candidate local for station acceptance; do not update
+upstream PR #2033 or operate containers during this phase.
+
+Research gaps now offers an inline, schema-validated research-source editor for
+saved artist identities. An optional MusicBrainz artist ID/link replaces only
+the identity used for biography discovery; an English Wikipedia article URL
+has precedence. Neither changes canonical recording matches, merges artists nor
+updates MusicBrainz/Wikidata. Clearing both fields restores automatic lookup.
+Saving queues a paced fresh biography collection and then explicit extraction;
+Rescan artist requests the same collection without changing an override. Active
+collection/extraction blocks editing. Repeated requests preserve provider
+backoff. Only automatic facts from the superseded artist Wikipedia source are
+disabled; approved/deleted decisions, held facts and historical evidence remain.
+Superseded sources cannot be selected by the extraction path, even after clearing
+an override. Old extraction checkpoints resume only after fresh collection.
+
+The opt-in library source scan covers known identities found by the local cached
+coverage check. Unmatched/unplayed artists without a known identity are reported
+as unchecked, not guessed or submitted to a name search. The existing Wikipedia
+worker checks at most one identity per quiet minute and uses metadata only, with
+no full-article retention or LLM admissions. MusicBrainz source-link discovery
+shares the existing global request throttle. The scan obeys master enablement,
+collection pause and the existing broadcast/quiet gate; pacing, progress and
+provider outage backoff persist across worker/controller restarts. Cancellation,
+source edits and library-source changes invalidate late results. Service errors,
+including HTTP-200 API errors, never become missing-article findings; exhausted
+retries are shown separately. A reachable article is actionable but is not
+presented as a verified artist identity or already researched biography.
+
+Existing read-only worker snapshots still refresh every five minutes. Lightweight
+scan progress polls only while Research gaps is mounted. Fresh collection clears
+older missing-source findings. Feature-off browsing of older public caches does
+not create tables or migrate the database; writes and scan controls remain off.
+
+Database schema 4 adds three small tables: artist research overrides (including a
+source-generation timestamp when cleared), one library scan record, and one
+verification result per artist. Public schemas 1–3 upgrade additively. No live DB
+has been migrated by the agent. Runtime rollback after rebuilding schema 4 needs
+the operator's pre-rebuild Sleeve Notes backup; source rollback is `b436e302`.
+
+Verification: 121 focused controller tests passed (research/corrections/gaps/policy
+37, Wikipedia/retention/LLM 35, Station Brain 20, upgrades 3, database 2, local
+identity 12, shared read worker 6, backups 6). All 501 web tests passed. Focused
+controller/web lint, web typecheck, generated schema mirror, admin-query audit
+and UI detector passed. Controller typecheck still reports only the two known
+pre-existing errors in `scripts/show-discovery-policy.test.ts:29–30`.
+Browser validation with mocked admin requests passed source URL/MBID validation,
+normalised save payloads, server errors retaining drafts, save/discard/rescan,
+override removal, scan start/cancel, disabled-feature controls, and desktop/mobile
+Riso/Phosphor layouts without overflow or browser errors. Temporary preview files
+and the dev server were removed. No container rebuilds, station database writes,
+provider-side edits or live research requests were performed.
+
+Additional edge cases pinned: source removal without a canonical fallback is
+allowed (with no fresh research admission), explicit rescans promote already
+queued automatic lookups without clearing outage backoff, stale coverage cannot
+admit orphan artist IDs after a database replacement, and fresh collection clears
+older missing-source findings. Finding suppression still distinguishes unused
+same-name duplicates from actual matched recording splits.
+
+Fetched upstream/fork before station integration. Upstream now advertises
+v1.28.0; those unrelated release commits are not merged into this candidate.
+Next operator gate is a Sleeve Notes database export, followed by rebuilding
+controller and web in `/home/jaz666/Docker/subwave`, checking health, then testing
+one override/save/rescan/removal and a cancellable library source scan. The first
+rebuild upgrades public schema 3 to 4 without a database reset. After station
+acceptance, transfer only the functional commit (not this private journal) to
+the clean upstream PR branch.
+
+Functional commit: `b02687b6`. Station source integration route is a fast-forward
+of the clean `test-station/sleeve-notes-clean-20261014` checkout from `b436e302`
+to this candidate and its separate local evidence commit. Runtime remains on
+previous images until the operator rebuilds. Both development and station
+working trees should be clean after integration. Commits remain intentionally
+local; no remote branch or PR has been updated.
