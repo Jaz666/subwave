@@ -7,7 +7,7 @@ import { loadedCapabilities as readCapabilities, replaceLoadedCapabilities } fro
 //     SKILL.md     frontmatter (→ metadata) + body (→ the agent's brief)
 //     tool.mjs     OPTIONAL: a data fetcher the segment director calls first
 //
-// The seven built-ins are not special at load time: they are *seeded* into
+// Shipped built-ins are not special at load time: they are *seeded* into
 // state/skills on first boot from read-only templates that ship in the image
 // (src/skills/builtins/<kind>/, see scaffold.js → seedBuiltinSkills), then loaded
 // exactly like an operator skill. The only residue of "built-in" is the

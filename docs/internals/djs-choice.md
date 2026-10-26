@@ -635,20 +635,30 @@ regenerated or aired by these previews.
 
 ### Bundled Sub/Show discussion skill
 
-Include `sub-show-talking-point` in the later Sub/Shows release as the Sub/Show
-counterpart to DJ Banter in regular shows. The maintained example is in
-`docs/examples/skills/sub-show-talking-point`; it has been exercised on the
-station and includes the first-person conversation refinement. Keep regular
-Banter Breaks disabled for Sub/Shows.
+`sub-show-talking-point` ships as the Sub/Show counterpart to DJ Banter in
+regular shows. Its canonical SKILL.md and tool.mjs now live together in
+`controller/src/skills/builtins/sub-show-talking-point`, replacing the manual
+installation example. It includes the first-person conversation refinement.
+Keep regular Banter Breaks disabled for Sub/Shows.
 
 This remains an editable DJ Skill, using the existing assignment and Sub/Shows
 skill eligibility settings. It discusses the explicit episode talking point
 with the on-air host and guests, at most two turns each. Its grounded tool
 checks current-track genre relevance and stands down when no supported
-connection exists. Solo shows skip it. Bundle the markdown and tool together;
-shipping an example alone does not install or enable it for other operators.
-Release integration must use the existing skill installation flow and preserve
-operator edits and normal enablement choices.
+connection exists. Solo shows skip it. The standard built-in seeder installs
+both editable files and restores only missing ones; it never replaces edited
+copies. The settings default is explicitly disabled, and cold loading merges
+that default before saved toggles so existing stations also start disabled
+unless they previously opted in. Existing true/false choices and persona
+allowlists are preserved, including the legacy "all skills" sentinel. Nothing
+adds it to a persona or restricted Sub/Shows skill list automatically.
+
+Eight `sub-show-skill-install` checks cover first installation, upgrade defaults,
+explicit enablement, unchanged assignments, edited-file preservation, partial
+installation repair and the bundled tool's relevance/current-track guards.
+They pass alongside the existing eligibility, scaffold-preservation and
+backup/restore guard suites (25 reported tests total). Controller/preview/new-test
+TypeScript passes; scoped lint has no errors (existing warnings remain).
 
 Unimplemented entries below are proposals, not commitments. Each should give
 the planner a clear musical question that can be supported by the library and

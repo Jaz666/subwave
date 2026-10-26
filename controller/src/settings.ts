@@ -1217,13 +1217,16 @@ export async function load() {
       },
     },
     skills: {
-      enabled: Object.fromEntries(
-        Object.entries(stored.skills?.enabled || {})
-          .filter(([, v]) => typeof v === 'boolean')
-          // Same rename applied to the operator's enable toggle map so an
-          // existing `random-facts: false` carries forward as `curiosity: false`.
-          .map(([k, v]) => [SKILL_RENAMES[k] || k, v]),
-      ),
+      enabled: {
+        ...DEFAULTS.skills.enabled,
+        ...Object.fromEntries(
+          Object.entries(stored.skills?.enabled || {})
+            .filter(([, v]) => typeof v === 'boolean')
+            // Same rename applied to the operator's enable toggle map so an
+            // existing `random-facts: false` carries forward as `curiosity: false`.
+            .map(([k, v]) => [SKILL_RENAMES[k] || k, v]),
+        ),
+      },
     },
     audio: {
       embeddings: typeof stored.audio?.embeddings === 'boolean' ? stored.audio.embeddings : DEFAULTS.audio.embeddings,

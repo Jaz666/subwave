@@ -649,7 +649,8 @@ export const DEFAULTS = {
     searxngEngines: '',
   },
   skills: {
-    enabled: {},
+    // Installed for review; operators choose whether to enable the discussion.
+    enabled: { 'sub-show-talking-point': false },
   },
   audio: {
     // CLAP "sounds-like" embeddings — drive the audio-similar picker source, the
