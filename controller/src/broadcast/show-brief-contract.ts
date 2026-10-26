@@ -3,6 +3,10 @@
 type Era = { fromYear: number | null; toYear: number | null };
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const namedDecades: Record<string, number> = { thirties: 1930, forties: 1940, fifties: 1950, sixties: 1960, seventies: 1970, eighties: 1980, nineties: 1990, noughties: 2000, aughts: 2000 };
+// Decode only double-escaped prose punctuation, never arbitrary JSON or filters.
+export function normalizeShowProse(text: string): string {
+  return text.replace(/\\+u(201[89abcd]|2026|00a0)/gi, (_, code: string) => String.fromCharCode(parseInt(code, 16)));
+}
 export function hasEraReference(text: string): boolean {
   return /\b(?:(?:19|20)\d{2}(?:[’']?s)?|(?:\d0)[’']?s|thirties|forties|fifties|sixties|seventies|eighties|nineties|noughties|aughts)\b/i.test(text);
 }

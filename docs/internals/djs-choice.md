@@ -40,6 +40,19 @@ their soft-filter descriptions. Semantic review of generated prose remains open.
 
 ## Purpose
 
+### Brief and talking-point refinement — 26 October 2026
+
+Review of four upcoming accepted episodes found matching genre declarations,
+but unsupported regional/modern-selection promises, broad social-history
+questions and double-escaped punctuation. Both planning calls now request
+regional interests as persona perspective rather than geographic selection,
+era-supported period promises, and one listening-led question usable across
+the palette without named artists or assumed records. Generated prose decodes
+only escaped typographic punctuation; operator titles and filters are preserved.
+This remains prompt guidance, not a general factual or semantic validator.
+Genre selection, two-call planning and existing accepted episodes are unchanged;
+explicit regeneration uses the revised instructions.
+
 Give a DJ authorship of a fresh show for each scheduled broadcast. The operator
 places a generated-show slot in the schedule and chooses its casting rules.
 Ahead of airtime, the station selects the cast and asks an LLM to design a

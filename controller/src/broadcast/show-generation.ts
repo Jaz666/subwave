@@ -10,7 +10,7 @@ import { djObject } from '../llm/sdk.js';
 import { DJ_SOULS } from '../settings/vocab.js';
 import { ShowPlanningError, musicalDetailError, libraryFitError, missingMusicalEvidence } from './show-planning-policy.js';
 import { discoveryPalette } from './show-discovery-policy.js';
-import { hasEraReference, validateShowBrief, validateShowMusicContract } from './show-brief-contract.js';
+import { hasEraReference, normalizeShowProse, validateShowBrief, validateShowMusicContract } from './show-brief-contract.js';
 
 export interface GeneratedShowCast {
   hostPersonaId: string;
@@ -286,7 +286,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     intendedGenres: z.array(z.enum(choices.map(g => g.name) as [string, ...string[]])).min(1).max(genreLimit),
     eras: conceptErasSchema,
     talkingPoint: z.string().trim().min(1).max(300)
-      .describe('one specific optional musical question or contrast the DJ can revisit naturally; not a script, fixed segment or extra music restriction'),
+      .describe('one specific listening-led question about an audible feature connecting the selected palette; no named artists, historical or social claims, script or extra music restriction'),
   });
   // Put the pair-specific evidence before the brief in the concept output
   // contract so the model must identify a connection rather than just name two styles.
@@ -335,7 +335,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       .describe('2–3 sentences explaining the musical connection and what each DJ brings; reflect musicalConnection; put the optional conversational thread in talkingPoint'),
     talkingPoint: baseConceptSchema.shape.talkingPoint,
   }) : baseConceptSchema;
-  const talkingPointInstruction = 'Return talkingPoint separately from topic: one specific musical question or contrast suggested by this episode’s music and cast. It is an optional conversational thread for occasional natural comments, not a scripted exchange, mandatory feature, repeated announcement or question to answer on every link. It must fit the declared genre palette without promising extra genres, eras, tracks or invented artist facts. Keep it to one short sentence and do not put a Talking point label in either field; the controller adds that label to the brief.';
+  const talkingPointInstruction = 'Return talkingPoint separately from topic: one specific musical question or contrast suggested by this episode’s music and cast. It is an optional conversational thread for occasional natural comments, not a scripted exchange, mandatory feature, repeated announcement or question to answer on every link. It must fit the declared genre palette without promising extra genres, eras, tracks or invented artist facts. Base it on something the presenters can hear: rhythm, repetition, instrumentation, texture, arrangement, melody or songwriting. Make it useful across the palette, rather than dependent on one artist or subgenre. Do not name artists, bands or recordings, ask broad questions about social/cultural change or genre history, invent technical explanations, or assume a particular record will play. Keep it to one short sentence and do not put a Talking point label in either field; the controller adds that label to the brief.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const assessmentSchema = z.object({
     evidence: z.array(z.object({ personaId: z.enum(evidencePersonas.map(p => p.id) as [string, ...string[]]), source: z.enum(['soul', 'musicLean']), quote: z.string().min(1).max(500).describe('Copy a short musical preference verbatim from this persona’s selected source. Do not paraphrase, combine fields or quote another participant.') })).max(12),
@@ -355,7 +355,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       ? 'Plan one specific musical radio episode finding common ground between two DJs with equal musical influence. Write its short brief, derive its title, and declare the genre palette it promises. Return only the requested JSON.'
       : discovery ? 'Plan Deep Discovery: a coherent episode anchored in the library’s underrepresented genres. Start with a rare core connected to the host’s musical tastes, then use only adjacent supporting styles. Familiar broad genres alone cannot satisfy this template. Return only the requested JSON.'
       : 'Plan one specific musical radio episode led by the host. Write its short brief, derive its title, and explicitly declare the small genre palette the brief promises. Return only the requested JSON.'),
-    prompt: `Required participants: ${JSON.stringify(evidencePersonas)}\n\nDeclared music contract: derive the genre palette from the musical brief and declare any operator-requested era with it. ${timeCapsule ? 'The period supplies the required era.' : 'Return eras in the proposal: [] unless the operator explicitly restricts the music by period. A custom title alone must only imply an era when it actually names one.'} Do not add performers, artist appearances, personal memories or historical claims. Only the supplied cast presents the show.\n\n` + (timeCapsule ? [
+    prompt: `Required participants: ${JSON.stringify(evidencePersonas)}\n\nDeclared music contract: derive the genre palette from the musical brief and declare any operator-requested era with it. ${timeCapsule ? 'The period supplies the required era.' : 'Return eras in the proposal: [] unless the operator explicitly restricts the music by period. A custom title alone must only imply an era when it actually names one.'} Do not add performers, artist appearances, personal memories or historical claims. Only the supplied cast presents the show. No geographic artist/scene filter exists: a DJ's regional taste may explain their perspective, but never promise that the selected records come from that place. Unless an agreed era supports it, do not promise modern, contemporary, recent or new releases; describe the sound instead. Return normal readable punctuation, not literal Unicode escape sequences.\n\n` + (timeCapsule ? [
       `Host: ${JSON.stringify(identity(host))}`,
       `Guest perspectives (optional, host remains musical lead): ${JSON.stringify(guests.map(identity))}`,
       `Supporting regular-show music filters: ${JSON.stringify(existingShows)}`,
@@ -428,7 +428,12 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   if (missing.length) throw musicalDetailError(missing);
   if (assessment.problem === 'library-fit') throw libraryFitError(assessment.reason || 'No coherent musical direction is supported by the available music.');
   if (!response.proposal) throw new Error('The planner could not create a proposal from the supplied musical preferences. Please try again.');
-  const concept = response.proposal;
+  const concept = {
+    ...response.proposal,
+    name: input.nameMode === 'custom' ? input.customName! : normalizeShowProse(response.proposal.name),
+    topic: normalizeShowProse(response.proposal.topic),
+    talkingPoint: normalizeShowProse(response.proposal.talkingPoint),
+  };
   const period = timeCapsule ? timePeriodSchema.parse('period' in concept ? concept.period : null) : null;
   if (period && (period.toYear < period.fromYear || period.toYear - period.fromYear >= 10)) throw new Error('Time Capsule requires a closed period of at most ten years');
   const intended = 'departure' in concept ? [concept.departure.destination] : [...new Set(concept.intendedGenres)];
@@ -477,8 +482,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         `Actual cast: ${JSON.stringify({ host: host.name, guests: guests.map(persona => persona.name) })}. These are the only presenters. Artists whose records might be selected are not studio guests. Do not promise surprise guests, special artists, interviews, particular records or artist appearances.`,
         input.nameMode === 'custom' ? `Preserve this exact operator title: ${input.customName}` : 'Keep the concept title unless it contradicts the contract; then make a short truthful revision.',
         `Keep topic as a concise musical commissioning brief (2–3 sentences, at most 80 words). Preserve the distinctive angle and each DJ’s musical perspective; do not reduce the brief to a generic anonymous journey. State the selected musical styles naturally. Describe only the selected music. ${outside ? 'Preserve the specific familiar interest, audible bridge and exact destination from departure. Do not merely describe the destination. Familiar tastes explain the bridge, but the destination alone supplies the music; never promise a blend or alternation with the starting genre.' : 'Do not promise additional genres.'}`,
-        agreedEras.length ? 'Mention the agreed period accurately. Do not broaden a short window to a whole decade, other periods or present day unless the agreed bounds cover that music.' : 'Keep name, topic and talkingPoint era-neutral. Remove all decade/year promises, including “the 80s and beyond”. Do not add era filters to justify them.',
-        'No research is provided. Remove historical milestones, origins, firsts, golden ages, influence claims, invented memories, existing-airplay claims and geographical exclusivity. Describe audible qualities, songwriting or arrangements instead. Do not name artists, bands, tracks or albums in the brief.',
+        agreedEras.length ? 'Mention the agreed period accurately. Do not broaden a short window to a whole decade, other periods or present day unless the agreed bounds cover that music.' : 'Keep name, topic and talkingPoint era-neutral. Remove all decade/year promises, including “the 80s and beyond”, and unsupported modern/contemporary/recent/new-release promises. Do not add era filters to justify them.',
+        'No research is provided. Remove historical milestones, origins, firsts, golden ages, influence claims, invented memories, existing-airplay claims and geographical exclusivity. Describe audible qualities, songwriting or arrangements instead. A DJ’s regional musical interests explain their perspective, not the origin of the records selected: rewrite scene-exclusive promises as persona perspective. Do not name artists, bands, tracks or albums in the brief. Use normal readable punctuation, not literal Unicode escape sequences.',
         talkingPointInstruction,
         'The talking point must fit this same music contract. It is a musical question, not a history lesson or promise of extra music.',
         `Indexed counts (overlapping coverage context only): ${JSON.stringify(Object.fromEntries(intended.map(name => [name, counts[name]])))}`,
@@ -497,7 +502,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       music = settingsSchema.parse(normalizeGeneratedMusicSettings(JSON.parse(error.text)));
     } catch { throw error; }
   }
-  const parsed = settingsSchema.parse(normalizeGeneratedMusicSettings(music));
+  const parsed = settingsSchema.parse(normalizeGeneratedMusicSettings({
+    ...music,
+    name: input.nameMode === 'custom' ? input.customName! : normalizeShowProse(music.name),
+    topic: normalizeShowProse(music.topic),
+    talkingPoint: normalizeShowProse(music.talkingPoint),
+    rationale: normalizeShowProse(music.rationale),
+  }));
   validateShowMusicContract({ genres: parsed.genres, eras: mergeEraWindows(parsed.eras) }, { genres: intended, eras: agreedEras });
   validateShowBrief(
     { name: input.nameMode === 'custom' ? input.customName! : parsed.name, topic: parsed.topic, talkingPoint: parsed.talkingPoint },
