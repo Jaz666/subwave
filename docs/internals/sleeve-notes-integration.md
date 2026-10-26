@@ -776,3 +776,38 @@ only on the station and confirm Antony's Wikipedia override enables Save.
 
 Functional fix: `b07f9b55`. Focused web lint and web typecheck passed. Integrate
 by fast-forward from clean station `094bdd5c`; the operator rebuilds web.
+
+### One artist-facing biography editor — 26 October
+
+Research gaps now presents one main research-source editor per artist with its
+current biography link and plain-English status. The default target is the sole
+same-name record owning matched library recordings; without one, use the sole
+MusicBrainz record, then a sole provisional record. Multiple matched records or
+multiple unmatched MusicBrainz candidates require an explicit choice. Differently
+named composer/performer credits cannot silently become the editing target.
+This selection changes only the displayed editor; no identities or facts merge.
+
+Individual provider records, matching counts, overrides and verification results
+remain in collapsed Advanced source details. Explicit record selection lives
+there, and is disabled while the source editor is open to protect unsaved edits.
+The duplicate Retry research action is replaced by the existing Rescan artist
+control. The one-field Save validity fix remains intact. Manual and coverage
+copy follow this artist-facing workflow. This is web-only work; neither schema
+nor controller changes, database writes or container operations are involved.
+
+Verified: nine focused view/selection tests passed, including provisional versus
+canonical selection, real split matches, unused duplicates, composer/performer
+credits and typographic variants. Browser checks passed one primary editor,
+collapsed provisional details, correct canonical save endpoint, Wikipedia-only
+Save, protected drafts, explicit ambiguous selection, correct rescan endpoint,
+feature-off controls and desktop/mobile Riso/Phosphor without overflow or browser
+errors. Focused lint, web types, admin-query audit and UI detector passed.
+Temporary previews and the dev server were removed. No production build was run.
+
+Keep commits local and PR unchanged. Integrate by fast-forward from clean station
+`f7fb84f4` (source rollback), then the operator rebuilds web only and checks
+Antony's single-editor workflow. Existing database schema 4 is unchanged.
+
+Functional commit: `f5f20974`. Station integration is a fast-forward to this
+candidate plus its local evidence commit. Runtime remains on existing images
+until the operator rebuilds web; both working trees are clean after integration.
