@@ -820,3 +820,43 @@ remains available. Functional commit: `8e463dd3`. Focused lint, UI detector and
 diff checks passed; no new tests or build for this link-only removal. Keep local,
 fast-forward clean station from `a54715a2` (source rollback), then rebuild web
 only. No controller/database changes, container operations or PR update.
+
+### Browse Library controller stalls and search consistency — 26 October
+
+Scope: controller responsiveness and Stories > Browse Library. Development
+branch/worktree: `codex/research-overrides-rescan-20261026` at
+`/home/jaz666/codex/subwave-research-overrides-20261026`.
+
+During the reported unhealthy periods, the controller main thread consumed one
+full CPU core while its trivial health route timed out. Host CPU/memory pressure
+was low. The operator identified opening Browse Library as a trigger. Its artist
+query ran synchronously on the controller: SQLite chose recording claims before
+artist-indexed recordings, repeating a broad claim search for every artist.
+A bounded, read-only reproduction exceeded its 1.5-second cutoff; constraining
+the join order completed the first page and total count in 50 ms against the
+station database. A live stack sample was unavailable, so this demonstrates a
+real blocking defect, not proof that every observed stall has the same cause.
+
+Functional candidate `27336287` keeps each artist's indexed recordings first,
+and moves both browse lists and selected-entity dossiers into the existing
+read-only child/cache. Existing enabled/disabled read gates, response shapes,
+claim reviews and pagination remain. Browse search now follows Station Brain:
+automatic search after 220 ms, two-character minimum, and clear button; changing
+search resets pagination and letter filtering, and navigation clears the query.
+No new dependency, setting, schema migration or database cleanup.
+
+Verified: all 423 Sleeve Notes controller tests and all 506 web tests passed.
+Added a regression for the artist query plan and extended actual child-process
+checks for artist/album/track browsing and dossiers, timer responsiveness,
+read-only output and missing entities. Focused controller/web lint, web types,
+admin-query audit and UI detector passed. Controller types report only the two
+pre-existing `show-discovery-policy.test.ts:29–30` errors. Isolated browser
+checks passed typing, minimum length, clear, pagination reset, album scope,
+navigation reset, desktop/mobile layout and no page errors. Temporary preview
+and server removed; no production build or container restart performed.
+
+Keep both commits local; upstream PR unchanged. Integrate by fast-forward from
+clean station `2119b31c` (source rollback), then the operator rebuilds controller
+and web. Live database and settings are untouched. Acceptance: repeatedly open,
+search and navigate Browse Library with station-sized data; controller health
+must stay responsive while research and broadcast continue.
