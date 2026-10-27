@@ -446,10 +446,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     ...(commonGround ? scheduledShowsForHost(guests[0]!.id, input.show?.id).flatMap(show => show.genres) : []),
     ...Object.keys(counts).filter(genre => tagCoversGenre(sourceTastes, normGenre(genre))),
   ] : [];
-  const genreContract = { known: Object.keys(counts), selected: intended, context: contextGenres };
+  // A departure brief compares familiar styles with its destination. A word
+  // match cannot distinguish that comparison from a promise to play them.
+  // The destination filter is still checked exactly by validateShowMusicContract.
+  const genreContract = outside ? undefined : { known: Object.keys(counts), selected: intended, context: contextGenres };
   let draftIssue: string | null = null;
   try {
-    validateShowBrief({ name: input.nameMode === 'custom' ? input.customName! : concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint }, agreedEras, personaNames, castNames, { ...genreContract, inspectAmbiguous: discovery });
+    validateShowBrief({ name: input.nameMode === 'custom' ? input.customName! : concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint }, agreedEras, personaNames, castNames, genreContract && { ...genreContract, inspectAmbiguous: discovery });
   } catch (error) { draftIssue = error instanceof Error ? error.message : 'The draft contradicts the music contract.'; }
   let fixedTitle: string | null = input.nameMode === 'custom' ? input.customName! : concept.name;
   if (fixedTitle != null && input.nameMode !== 'custom') {
@@ -480,6 +483,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         `Accepted proposal: ${JSON.stringify(concept)}`,
         draftIssue ? `Detected draft problem: ${draftIssue.replace(' Please regenerate the episode.', '')} Repair this before publishing. Check the entire draft for similar contradictions; do not merely copy it. Remove unselected style promises rather than adding filters. Preserve the musical angle that fits the selected palette.` : 'No concrete contract mismatch was found. Preserve the premise and concrete details while expanding only the presentation context where useful.',
         `Required music contract: ${JSON.stringify({ genres: intended, eras: agreedEras, filtersStrict: strictGenres })}. Copy genres exactly once each and eras exactly, including [] when unrestricted. Never infer a new filter from the draft prose.`,
+        `Allowed genre labels in the brief and talking point: ${JSON.stringify({ selectedMusic: intended, familiarTasteContext: [...new Set(contextGenres)] })}. Only selectedMusic describes records being played. familiarTasteContext may explain supported existing tastes or the bridge, never extra music. Use only labels from these lists, even when the accepted concept uses another label in its starting point. Do not refine a broad preference into an unlisted subgenre. If a starting label is absent, describe the supported interest in plain terms such as melodic guitars rather than naming that style. Do not add or change filters to justify prose.`,
         `Actual cast: ${JSON.stringify({ host: host.name, guests: guests.map(persona => persona.name) })}. These are the only presenters. Artists whose records might be selected are not studio guests. Do not promise surprise guests, special artists, interviews, particular records or artist appearances.`,
         input.nameMode === 'custom' ? `Preserve this exact operator title: ${input.customName}` : 'Keep the concept title unless it contradicts the contract; then make a short truthful revision.',
         `Write topic as a fuller presentation brief, aiming for 80–120 words when the idea benefits from it; this is a target, not a minimum, and shorter focused briefs are fine. Explain the musical idea, why it suits the host, what the actual guests bring when present, and what listeners can listen for or consider. Add useful subjective perspective rather than filler, invented facts, biography or predicted dialogue. Do not repeat the separate talking point or script a disagreement. State the selected styles naturally. Expand only within the fixed music contract: no extra genres, eras, moods, energy locks, geographic selection promises, artists or running order. ${outside ? 'Preserve the specific familiar interest, audible bridge and exact destination from departure. Do not merely describe the destination. Familiar tastes explain the bridge, but the destination alone supplies the music; never promise a blend or alternation with the starting genre.' : 'Do not promise additional genres.'}`,
