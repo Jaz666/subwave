@@ -10,13 +10,6 @@ export function normalizeShowProse(text: string): string {
 export function hasEraReference(text: string): boolean {
   return /\b(?:(?:19|20)\d{2}(?:[’']?s)?|(?:\d0)[’']?s|thirties|forties|fifties|sixties|seventies|eighties|nineties|noughties|aughts)\b/i.test(text);
 }
-export function validateShowMusicContract(actual: { genres: string[]; eras: Era[] }, expected: { genres: string[]; eras: Era[] }): void {
-  const genres = new Set(actual.genres);
-  if (genres.size !== actual.genres.length || genres.size !== expected.genres.length || expected.genres.some(genre => !genres.has(genre))) {
-    throw new Error('Music settings did not preserve the intended genre palette');
-  }
-  if (JSON.stringify(actual.eras) !== JSON.stringify(expected.eras)) throw new Error('Music settings did not preserve the agreed era restrictions');
-}
 export function validateShowBrief(brief: { name: string; topic: string; talkingPoint: string }, eras: Era[], personaNames: string[], cast: string[], genreContract?: { known: string[]; selected: string[]; context: string[]; inspectAmbiguous?: boolean }): void {
   const text = `${brief.name}\n${brief.topic}\n${brief.talkingPoint}`;
   const contains = (from: number, to = from) => eras.some(era => (era.fromYear ?? 0) <= from && (era.toYear ?? Infinity) >= to);

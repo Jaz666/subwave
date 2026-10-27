@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasEraReference, validateShowBrief, validateShowMusicContract } from '../src/broadcast/show-brief-contract.js';
+import { hasEraReference, validateShowBrief } from '../src/broadcast/show-brief-contract.js';
 const brief = { name: 'Shared textures', topic: 'Two perspectives on rhythm and songwriting.', talkingPoint: 'How does a melody change the feel of a rhythm?' };
 const names = ['First DJ', 'Second DJ', 'Other DJ'];
 const cast = ['First DJ', 'Second DJ'];
@@ -32,20 +32,6 @@ test('known unassigned presenters and unsupported appearances are rejected', () 
   for (const topic of ['Joined by special artists.', 'With surprise guests.', 'Expect live interviews.']) {
     assert.throws(() => validateShowBrief({ ...brief, topic }, [], names, cast), /appearance/);
   }
-});
-test('contract accepts reordered genres but rejects additions, omissions and duplicates', () => {
-  const expected = { genres: ['Indie Rock', 'Post-Punk'], eras: [] };
-  validateShowMusicContract({ genres: ['Post-Punk', 'Indie Rock'], eras: [] }, expected);
-  for (const genres of [['Indie Rock'], ['Indie Rock', 'Post-Punk', 'Blues Rock'], ['Indie Rock', 'Indie Rock']]) {
-    assert.throws(() => validateShowMusicContract({ genres, eras: [] }, expected), /genre palette/);
-  }
-});
-test('settings cannot add, remove or broaden the concept era', () => {
-  const restricted = { genres: ['Folk Rock'], eras: [{ fromYear: 1980, toYear: 1989 }] };
-  const unrestricted = { genres: restricted.genres, eras: [] };
-  assert.throws(() => validateShowMusicContract(restricted, unrestricted), /era restrictions/);
-  assert.throws(() => validateShowMusicContract(unrestricted, restricted), /era restrictions/);
-  assert.throws(() => validateShowMusicContract({ ...restricted, eras: [{ fromYear: 1980, toYear: null }] }, restricted), /era restrictions/);
 });
 test('only period-related operator direction enables an era contract', () => {
   for (const text of ['1980–1989 only', 'Eighties radio', 'The 90s and beyond', '1990s only']) assert.equal(hasEraReference(text), true);
@@ -86,7 +72,5 @@ test('all five templates can publish taste comparisons without broadening their 
     assert.throws(() => validateShowBrief(prose, fixture.eras, names, cast,
       { known: ['Indie Rock', fixture.genre], selected: expected.genres, context: [] }), /unselected style/, fixture.template);
     validateShowBrief(prose, fixture.eras, names, cast);
-    validateShowMusicContract(expected, expected);
-    assert.throws(() => validateShowMusicContract({ ...expected, genres: [...expected.genres, 'Indie Rock'] }, expected), /genre palette/, fixture.template);
   }
 });

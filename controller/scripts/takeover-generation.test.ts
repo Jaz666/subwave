@@ -13,7 +13,8 @@ process.env.NAVIDROME_PASS = 'fixture';
 const settings = await import('../src/settings.js');
 const library = await import('../src/music/library.js');
 const db = await import('../src/music/library-db.js');
-const { showSchema } = await import('../src/schemas/show.js');
+const { showSchema, SHOW_GENERATION_TEMPLATES } = await import('../src/schemas/show.js');
+const { generateShowPlan } = await import('../src/broadcast/show-generation.js');
 const { showPreparation } = await import('../src/broadcast/show-preparation.js');
 const { prepareTakeoverPreview, activateTakeoverPreview, takeoverPreviewRequestSchema } = await import('../src/broadcast/takeover-generation.js');
 await settings.load();
@@ -30,11 +31,18 @@ let unavailableStage: 'concept' | 'compiler' | null = null;
 let datedBrief = false;
 let invalidRepair = false;
 let repairCalls = 0;
+let compilerPatch: Record<string, unknown> = {};
+let planningTemplate: typeof SHOW_GENERATION_TEMPLATES[number] = 'dj-choice';
+let conceptEras: Array<{ fromYear: number; toYear: number }> = [];
+const guest = { ...persona, id: 'p_guest', name: 'Riley Stone' };
+const editorial = { name: plan.name, topic: plan.topic, talkingPoint: plan.talkingPoint,
+  moods: plan.moods, energies: plan.energies, rationale: plan.rationale };
 
 beforeEach(async () => {
   mock.timers.enable({ apis: ['Date'], now: epoch });
   modelCalls = 0; refuse = false; genresUnavailable = false; unavailableStage = null;
   datedBrief = false; invalidRepair = false; repairCalls = 0;
+  compilerPatch = {}; planningTemplate = 'dj-choice'; conceptEras = [];
   mock.method(globalThis, 'fetch', async (input, init) => {
     const url = new URL(String(input));
     assert.equal(url.origin, 'http://127.0.0.1:9', 'No real service may be called');
@@ -54,17 +62,28 @@ beforeEach(async () => {
       repairCalls++;
       assert.deepEqual(Object.keys(body.tools[0].function.parameters.properties).sort(), ['name', 'talkingPoint', 'topic']);
     }
+    if (!concept && !repair && body.tools?.[0]) {
+      assert.deepEqual(Object.keys(body.tools[0].function.parameters.properties).sort(),
+        ['energies', 'moods', 'name', 'rationale', 'talkingPoint', 'topic']);
+    }
     if (unavailableStage === (concept ? 'concept' : 'compiler')) {
       return new Response(JSON.stringify({ error: { message: 'Fixture provider unavailable', type: 'authentication_error', code: 'invalid_api_key' } }),
         { status: 401, headers: { 'content-type': 'application/json' } });
     }
     const output = concept ? {
       assessment: { problem: refuse ? 'library-fit' : 'none', reason: refuse ? 'No coherent musical fit.' : '',
-        evidence: [{ personaId: persona.id, source: 'soul', quote: persona.soul }] },
-      proposal: refuse ? null : { name: plan.name, topic: plan.topic, intendedGenres: plan.genres, eras: [], talkingPoint: plan.talkingPoint },
+        evidence: (planningTemplate === 'common-ground' ? [persona, guest] : [persona])
+          .map(p => ({ personaId: p.id, source: 'soul', quote: p.soul })) },
+      proposal: refuse ? null : { name: plan.name, topic: planningTemplate === 'dj-choice' ? plan.topic
+        : 'Alex Vale explores a coherent palette through spare arrangements and memorable melodies. The episode connects familiar musical interests to a focused listening idea, with room for differing perspectives on texture and rhythm.', intendedGenres: plan.genres, eras: conceptEras, talkingPoint: plan.talkingPoint,
+        ...(planningTemplate === 'deep-discovery' ? { discoveryFocus: 'A smaller folk neighbourhood connected by spare arrangements.' } : {}),
+        ...(planningTemplate === 'common-ground' ? { musicalConnection: { hostTaste: 'Folk songs', guestTaste: 'Folk arrangements', sharedThread: 'Melody and spare instrumentation' } } : {}),
+        ...(planningTemplate === 'outside-comfort-zone' ? { departure: { familiarTerritory: 'Folk songs', destination: 'Other', bridge: 'Spare arrangements', whyOutside: 'A different destination from familiar folk' } } : {}),
+        ...(planningTemplate === 'time-capsule' ? { period: { fromYear: 1980, toYear: 1984 }, musicalAngle: 'Folk melodies in a covered period' } : {}),
+      },
     } : repair ? { name: plan.name, topic: invalidRepair ? 'Folk from the 1980s.' : plan.topic,
       talkingPoint: plan.talkingPoint, genres: ['Other'], eras: [{ fromYear: 1980, toYear: 1989 }] }
-      : datedBrief ? { ...plan, topic: 'Folk from the 1980s.' } : plan;
+      : { ...editorial, ...(datedBrief ? { topic: 'Folk from the 1980s.' } : {}), ...compilerPatch };
     const toolName = body.tools?.[0]?.function?.name;
     const message = toolName
       ? { role: 'assistant', content: null, tool_calls: [{ id: 'fixture', type: 'function', function: { name: toolName, arguments: JSON.stringify(output) } }] }
@@ -80,6 +99,7 @@ beforeEach(async () => {
       compatibleMode: 'local', fallback: { enabled: false } },
   });
   for (const record of await showPreparation.generatedRecords()) await showPreparation.discardPreparedGenerated(record.occurrence.id);
+  db.pruneMissingTracks(new Set());
   for (let index = 0; index < 40; index++) {
     const id = `fixture-${index}`;
     db.upsertTrackMeta(id, { title: `Song ${index}`, artist: `Artist ${index}`, genres: ['Folk'], duration: 240 });
@@ -94,6 +114,58 @@ function regular(id: string) {
   return { ...showSchema({ personaIds: [persona.id], moodNames: null, themeIds: null, minTrackSeconds: null })
     .parse({ name: 'Regular fixture', personaId: persona.id, genres: ['Folk'] }), id };
 }
+
+test('the six-field compiler preserves the controller contract for every template', async () => {
+  await settings.update({ personas: [persona, guest] });
+  for (let index = 0; index < 200; index++) {
+    db.upsertTrackMeta(`other-${index}`, { title: `Other ${index}`, artist: `Other artist ${index}`, genres: ['Other'], year: 1982, duration: 240 });
+    db.upsertTrackTags(`other-${index}`, { moods: ['reflective'], energy: 'low', source: 'llm' });
+  }
+  library.stats({ fresh: true });
+  const customName = "Operator's Fixed Title";
+  for (const template of SHOW_GENERATION_TEMPLATES) {
+    planningTemplate = template;
+    compilerPatch = { name: customName };
+    const before = modelCalls;
+    const generated = await generateShowPlan({ template, planningPrompt: '', nameMode: 'custom', customName,
+      show: { id: 'fixture' }, cast: { hostPersonaId: persona.id, guestPersonaIds: template === 'common-ground' ? [guest.id] : [] },
+      occurrence: { id: `compiler-${template}`, startsAt: epoch, endsAt: epoch + 3600_000 },
+    });
+    assert.equal(modelCalls - before, 2);
+    assert.equal(generated.name, customName);
+    assert.equal(generated.filtersStrict, true);
+    assert.deepEqual(generated.genres, template === 'outside-comfort-zone' ? ['Other'] : ['Folk']);
+    assert.deepEqual(generated.eras, template === 'time-capsule' ? [{ fromYear: 1980, toYear: 1984 }] : []);
+    assert.match(generated.topic, /Talking point \(optional thread\):/);
+  }
+});
+
+test('compiler attempts to add, remove or broaden fixed filters are ignored', async () => {
+  conceptEras = [{ fromYear: 1980, toYear: 1984 }];
+  for (const patch of [
+    { genres: ['Other'], eras: [], filtersStrict: false },
+    { genres: [], eras: [{ fromYear: 1900, toYear: null }], filtersStrict: false },
+    { genres: [{ name: 'Other' }], eras: 'not an era', filtersStrict: 'invalid' },
+  ]) {
+    compilerPatch = patch;
+    const generated = await generateShowPlan({ template: 'dj-choice', planningPrompt: '1980–1984 only',
+      show: { id: 'fixture' }, cast: { hostPersonaId: persona.id, guestPersonaIds: [] },
+      occurrence: { id: 'fixed-contract', startsAt: epoch, endsAt: epoch + 3600_000 },
+    });
+    assert.deepEqual(generated.genres, ['Folk']);
+    assert.deepEqual(generated.eras, conceptEras);
+    assert.equal(generated.filtersStrict, true);
+  }
+});
+
+test('unknown moods and malformed editable fields still reject the compiler response', async () => {
+  for (const patch of [{ moods: ['unknown-mood'] }, { energies: ['invalid-energy'] }, { topic: [] }]) {
+    compilerPatch = patch;
+    await assert.rejects(prepareTakeoverPreview(request()));
+    assert.equal(settings.get().scheduleOverride, null);
+    assert.deepEqual(await showPreparation.generatedRecords(), []);
+  }
+});
 
 test('preparing a takeover returns a draft without changing programming or publishing an episode', async () => {
   const preview = await prepareTakeoverPreview(request());

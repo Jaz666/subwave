@@ -112,11 +112,12 @@ persona’s preferences do not themselves restrict playback. The fixed music
 settings, rather than descriptive speech instructions, drive track selection;
 Musical Leanings remain a soft influence among eligible candidates.
 
-The compiler currently returns the fixed genres/eras/strictness as well as its
-editable output. Removing that redundant echo is a separate evaluation, not
-part of the strict-policy cleanup. Narrow local format recovery remains for
-observed genre wrappers and exact closed year strings/singleton year arrays;
-it never guesses decades, swaps bounds or silently drops a restriction.
+The compiler returns only six editable fields: name, topic, talkingPoint, moods,
+energies and rationale. The controller supplies the concept’s accepted genres,
+agreed eras and `filtersStrict: true`, then validates the assembled plan against
+the unchanged persisted schema. The model cannot overwrite these fixed fields.
+Local recovery bounds an overlong rationale; obsolete genre-wrapper and
+year-format recovery is unnecessary because the compiler no longer returns them.
 
 Prose checks reject periods outside the agreed eras, other station presenters
 and unsupported appearance/interview promises. Genre-word detection is advisory
@@ -338,21 +339,22 @@ The strict-policy cleanup removes only unreachable non-strict branches in new
 plan generation/acceptance and narrows planner template inputs to the existing
 five-template type. It does not change prompts’ musical direction, accepted
 history, coverage thresholds, cast rules or retry limits. The second call’s
-response contract remains unchanged pending the separate evaluation.
+response contract was unchanged in that cleanup; the subsequent implementation
+below adopts the evaluated six-field shape.
 
 Cleanup verification: controller TypeScript passes; the selected show and
 takeover groups report 323 and 30 passing tests respectively. Scoped lint has
 zero errors and 15 existing warnings. These are focused checks, not a rerun of
 the complete earlier regression selection. No station source or state changed.
 
-### Second-call evaluation — 27 October 2026
+### Pre-implementation second-call evaluation — 27 October 2026
 
-**Recommendation:** make removal of the fixed-field echo a separate focused
-change. Keep both planning calls, the full editorial instructions, optional
-prose repair, persisted schema, coverage checks and failure-preserves-plan
-behaviour. The production second-call response shape is unchanged here.
+The evaluation recommended removing the fixed-field echo in a separate focused
+change while retaining both planning calls, the full editorial instructions,
+optional prose repair, persisted schema, coverage checks and failure-preserves-plan
+behaviour. The implementation below adopts that recommendation.
 
-The current compiler returns nine fields. The proposed shape returns six:
+The evaluated baseline returned nine fields. The candidate shape returned six:
 name, topic, talkingPoint, moods, energies and rationale. The controller supplies
 the already accepted genres, eras and `filtersStrict: true`, then validates the
 assembled plan. This makes those settings independent of model copying and
@@ -393,8 +395,22 @@ as part of this change. An earlier shortened-prompt trial and an incomplete
 replay using truncated logs/default mood vocabulary were diagnostic only and
 are excluded from the comparison above.
 
-Before adoption, run focused regression checks for all templates, custom titles,
-closed/unrestricted eras, the bounded prose repair, malformed editable output
-and coverage correction. Keep existing accepted plans and avoid automatic
-regeneration. Evaluation scripts/results stayed outside the repository in
-isolated temporary state; no station plans, schedule, settings or source changed.
+Evaluation scripts/results stayed outside the repository in isolated temporary
+state; no station plans, schedule, settings or source changed.
+
+### Six-field compiler implementation — 27 October 2026
+
+The compiler now requests the six editable fields and assembles fixed filters
+locally. Its full editorial guidance, `generateShowPlan.musicSettings` telemetry,
+coverage correction and bounded prose repair remain. The redundant echoed-filter
+comparator and genre/era response recovery have been removed. Existing accepted
+plans are unchanged; this source change does not trigger regeneration.
+
+Regression checks cover every template, custom titles, closed/unrestricted eras,
+attempts to overwrite the fixed filters, malformed editable fields, period repair
+and preservation of an accepted plan after failed regeneration.
+
+Implementation verification: controller TypeScript passes; 321 show and 33
+takeover checks pass. Scoped lint reports zero errors and 11 existing warnings
+in the changed files. These are focused regression groups, not the entire
+controller suite. No station source or state changed.
