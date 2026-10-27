@@ -374,21 +374,13 @@ export default function Board({
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
                 onClick={() => onArmTemplate(template.id)}
-                title={`Create a new ${template.label} variant on the board`}
+                title={`Choose ${template.label} options, then drag into the grid`}
                 className={cn(
                   'flex min-h-9 flex-none cursor-grab items-center gap-1.5 border border-dashed px-2.5 py-1.5 active:cursor-grabbing sm:min-h-0',
                   armed
                     ? 'border-ink outline-2 -outline-offset-2 outline-[var(--accent)]'
                     : 'border-separator-strong hover:border-ink',
-                  template.id === 'dj-choice'
-                    ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#c24824_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
-                    : template.id === 'time-capsule'
-                      ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#3b709d_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
-                    : template.id === 'outside-comfort-zone'
-                      ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#a67b22_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
-                    : template.id === 'common-ground'
-                      ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#7f5ca5_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]'
-                      : 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#167978_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+                  template.stripeClassName,
                 )}
               >
                 <ColorChip color={GENERATED_SHOW_COLORS[template.id]} />

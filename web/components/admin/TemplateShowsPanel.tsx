@@ -150,29 +150,15 @@ export default function TemplateShowsPanel() {
             <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
               Plan fresh episodes from your DJs’ personalities and musical tastes. Drag a Sub/Show from the schedule
-              shelf, then click its slot to choose the host, guests and episode-name rules.
+              shelf. Click a template to choose its host, guests and episode-name rules before dragging, or click a slot to adjust it later.
             </p>
-            <dl className="mt-3 grid max-w-[68ch] gap-2 text-[12px] leading-[1.6]">
-              <div>
-                <dt className="inline font-semibold text-ink">DJ’s Choice</dt>{' '}
-                <dd className="inline text-muted">Familiar musical territory for the host, with room for adjacent discoveries.</dd>
-              </div>
-              <div>
-                <dt className="inline font-semibold text-ink">Common Ground</dt>{' '}
-                <dd className="inline text-muted">One host and one guest explore the musical connections between their tastes.</dd>
-              </div>
-              <div>
-                <dt className="inline font-semibold text-ink">Deep Discovery</dt>{' '}
-                <dd className="inline text-muted">Explore less-represented genres that fit the host’s musical identity.</dd>
-              </div>
-              <div>
-                <dt className="inline font-semibold text-ink">Outside the Comfort Zone</dt>{' '}
-                <dd className="inline text-muted">One host takes a focused sideways step into neighbouring musical territory.</dd>
-              </div>
-              <div>
-                <dt className="inline font-semibold text-ink">Time Capsule</dt>{' '}
-                <dd className="inline text-muted">Explore a defined period through the host’s musical tastes, with strict era and genre filters.</dd>
-              </div>
+            <dl className="mt-3 grid max-w-[78ch] gap-2 text-[12px] leading-[1.6]">
+              {GENERATED_SHOW_TEMPLATES.map(template => (
+                <div key={template.id} className={`border border-separator-soft px-3 py-2 ${template.stripeClassName}`}>
+                  <dt className="font-semibold text-ink">{template.label}</dt>
+                  <dd className="text-muted">{template.summary}</dd>
+                </div>
+              ))}
             </dl>
           </div>
           <Button asChild variant="accent" size="sm" className="min-h-9">

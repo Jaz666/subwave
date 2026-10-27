@@ -110,6 +110,9 @@ export default function SchedulePanel() {
   const [armedShowId, setArmedShowId] = useState<string | null>(null);
   const [armedTemplateId, setArmedTemplateId] = useState<GeneratedTemplateId | null>(null);
   const [generatedOptionsDraft, setGeneratedOptionsDraft] = useState<Show | null>(null);
+  // One page-local preset; selecting another template discards it.
+  const [templateOptions, setTemplateOptions] = useState<Show | null>(null);
+  const [editingTemplateOptions, setEditingTemplateOptions] = useState(false);
   const [density, setDensity] = useBoardDensity();
 
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -238,8 +241,13 @@ export default function SchedulePanel() {
   };
 
   const armTemplate = (templateId: GeneratedTemplateId) => {
+    const draft = makeGeneratedShow(templateId);
+    if (!draft) return;
+    if (templateOptions?.generation?.template !== templateId) setTemplateOptions(null);
     setArmedShowId(null);
-    setArmedTemplateId(cur => (cur === templateId ? null : templateId));
+    setArmedTemplateId(templateId);
+    setEditingTemplateOptions(true);
+    setGeneratedOptionsDraft(draft);
   };
 
   useEffect(() => {
@@ -285,6 +293,7 @@ export default function SchedulePanel() {
     setLineDays([b.day]);
     setLineShowId(b.showId ?? lineShowId ?? shows[0]?.id ?? null);
     if (show?.generation?.mode === 'generated') {
+      setEditingTemplateOptions(false);
       setGeneratedOptionsDraft({
         ...show,
         generation: {
@@ -330,6 +339,14 @@ export default function SchedulePanel() {
     if (shows.length >= SHOWS_MAX) {
       notify.err(`The show list is full (${SHOWS_MAX} shows max). Remove one before adding a generated show.`);
       return null;
+    }
+    if (templateOptions?.generation?.template === templateId) {
+      return hydrateFullShow({
+        ...templateOptions,
+        id: clientMintId(),
+        guestPersonaIds: [...templateOptions.guestPersonaIds],
+        generation: { ...templateOptions.generation, guestCount: { ...templateOptions.generation.guestCount } },
+      });
     }
     const generation: ShowGenerationConfig = {
       mode: 'generated',
@@ -552,9 +569,16 @@ export default function SchedulePanel() {
         return;
       }
     }
-    setShows(current => current.map(show => show.id === generatedOptionsDraft.id ? generatedOptionsDraft : show));
+    if (editingTemplateOptions) {
+      setTemplateOptions(generatedOptionsDraft);
+      setArmedShowId(null);
+      setArmedTemplateId(generatedOptionsDraft.generation!.template as GeneratedTemplateId);
+      notify.ok('Template options ready — drag into the grid, then save the week.');
+    } else {
+      setShows(current => current.map(show => show.id === generatedOptionsDraft.id ? generatedOptionsDraft : show));
+      notify.ok('Episode name, host and guest options updated — save the week to keep them.');
+    }
     setGeneratedOptionsDraft(null);
-    notify.ok('Episode name, host and guest options updated — save the week to keep them.');
   };
 
   const suggestions: Suggestion[] = useMemo(() => {
@@ -860,7 +884,7 @@ export default function SchedulePanel() {
         open={generatedOptionsDraft !== null}
         onOpenChange={open => { if (!open) setGeneratedOptionsDraft(null); }}
         title={generatedOptionsDraft?.name ?? 'Template show'}
-        sub="Host, guest and episode name · saved with the week"
+        sub={editingTemplateOptions ? "Options for new slots · saved when you save the week" : "Host, guest and episode name · saved with the week"}
         width={520}
         footer={(
           <div className="flex w-full items-center gap-2">
@@ -1147,6 +1171,9 @@ function GeneratedShowOptions({
   return (
     <div className="grid gap-5">
       <p className="text-[13px] leading-[1.6] text-ink">
+        {GENERATED_SHOW_TEMPLATES.find(template => template.id === generation.template)?.description}
+      </p>
+      <p className="text-[12px] leading-[1.6] text-muted">
         {solo ? 'Choose the episode name and solo host. Random Host uses the pool in Sub/Shows settings.' : commonGround
           ? 'Choose the host and one guest. Both DJs must be enabled in Sub/Shows → Random Hosts.'
           : 'Choose the episode name, host and guest count. Random DJs draw from the pools in Sub/Shows settings.'}

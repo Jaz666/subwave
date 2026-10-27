@@ -40,6 +40,22 @@ their soft-filter descriptions. Semantic review of generated prose remains open.
 
 ## Purpose
 
+### Shelf options — 27 October 2026
+
+Clicking one of the five shelf templates opens its options before scheduling.
+Applying keeps one page-local preset for that template. Each subsequent drag
+creates a separate show with a fresh identity and those options, ready for Save
+the week. Reopening the same template retains its applied options; selecting
+another template or refreshing drops the preset. Applying a shelf preset alone
+does not add a show, dirty the week or write settings. Existing grid slots still
+open their own options and populate the order desk without changing the preset.
+The popup uses expanded template descriptions; the Sub/Shows introduction
+shares the shelf's striped colours and summaries through template metadata.
+
+Web TypeScript, scoped lint, whitespace and the admin-query audit pass. The UI
+detector reports no findings. No browser harness is installed in this checkout;
+desktop/mobile interaction and visual confirmation remain operator checks.
+
 ### Brief and talking-point refinement — 26 October 2026
 
 Review of four upcoming accepted episodes found matching genre declarations,
