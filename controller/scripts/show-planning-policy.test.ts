@@ -83,7 +83,7 @@ test('unchanged shipped Souls stand down for all templates before loading a libr
   const settings = await import('../src/settings.js');
   const { generateShowPlan } = await import('../src/broadcast/show-generation.js');
   const personas = settings.get().personas;
-  for (const template of ['dj-choice', 'deep-discovery', 'common-ground', 'outside-comfort-zone', 'time-capsule']) {
+  for (const template of ['dj-choice', 'deep-discovery', 'common-ground', 'outside-comfort-zone', 'time-capsule'] as const) {
     await assert.rejects(generateShowPlan({ ...snapshot, template,
       cast: { hostPersonaId: personas[0].id, guestPersonaIds: template === 'common-ground' ? [personas[1].id] : [] } }),
     error => error instanceof ShowPlanningError && error.code === 'persona-readiness');

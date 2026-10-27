@@ -87,7 +87,7 @@ test('Common Ground stands down when two distinct eligible participants are unav
 });
 
 test('random hosts preserve fixed guests on initial preparation for every optional-guest template', () => {
-  for (const template of ['dj-choice', 'deep-discovery', 'time-capsule']) {
+  for (const template of ['dj-choice', 'deep-discovery', 'time-capsule'] as const) {
     pools(['p_host', 'p_guest'], null);
     const parsed = schema.parse(show(template, { guestMode: 'fixed' }, { guestPersonaIds: ['p_guest'] }));
     for (let index = 0; index < 32; index++) {
@@ -136,7 +136,7 @@ test('Time Capsule uses the regular host and guest pools with bounded guest coun
 });
 
 test('all three templates enforce strict filters and verify twice-airtime coverage', async () => {
-  for (const template of ['common-ground', 'outside-comfort-zone', 'time-capsule']) {
+  for (const template of ['common-ground', 'outside-comfort-zone', 'time-capsule'] as const) {
     const generated = { ...plan, eras: template === 'time-capsule' ? [{ fromYear: 1980, toYear: 1989 }] : [] };
     let checks = 0;
     const accepted = await generateAcceptedShowPlan({ ...snapshot, template }, async () => generated, async show => {
@@ -152,7 +152,7 @@ test('all three templates enforce strict filters and verify twice-airtime covera
 });
 
 test('all three templates reject short pools after one correction, scaling the minimum to airtime', async () => {
-  for (const template of ['common-ground', 'outside-comfort-zone', 'time-capsule']) {
+  for (const template of ['common-ground', 'outside-comfort-zone', 'time-capsule'] as const) {
     for (const minutes of [30, 60, 90]) {
       let calls = 0;
       const minimum = minutes / 2;
@@ -167,7 +167,7 @@ test('all three templates reject short pools after one correction, scaling the m
 });
 
 test('Common Ground and Time Capsule cannot accept an empty genre palette', async () => {
-  for (const template of ['common-ground', 'time-capsule']) {
+  for (const template of ['common-ground', 'time-capsule'] as const) {
     await assert.rejects(generateAcceptedShowPlan({ ...snapshot, template }, async () => ({ ...plan, genres: [],
       eras: template === 'time-capsule' ? [{ fromYear: 1980, toYear: 1984 }] : [] }),
     async () => { assert.fail('Empty palette reached coverage'); }), /requires a genre palette/);

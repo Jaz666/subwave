@@ -1,1425 +1,346 @@
-# Sub/Shows implementation and design record
-
-Updated: 27 October 2026. Five templates are implemented on the feature branch
-and undergoing pre-review checks. Dated trial sections retain earlier design
-decisions; the current template policies and review evidence below supersede
-those snapshots.
-
-Historical development plan: [djs-choice-development-plan.md](djs-choice-development-plan.md).
-
-## Final submission checks — 27 October 2026
-
-### UIAudit follow-up
-
-Addressed the six technical UI findings together:
-
-- Constrain episode grid tracks and wrap titles/cast names, including valid
-  long titles that previously hid mobile actions despite zero page overflow.
-- Increase narrow-screen list height to fit two collapsed cards and provide
-  44px touch areas for episode, eligibility, save and disclosure controls.
-- Give episodes labelled articles and h3 headings; describe repeated icon
-  actions with their episode title while keeping the existing tooltips.
-- Keep an eligibility draft and its saved baseline independently of unrelated
-  Settings refreshes. Show unsaved state; a received conflicting eligibility
-  update preserves local edits and requires an explicit discard/reload.
-- Derive shared accent fill/text colours from the station palette for contrast.
-  Bind the admin muted utility to its existing local muted token rather than
-  the root palette. This also affects other admin pages using these controls.
-
-Web lint/TypeScript and the admin-query audit pass. Isolated browser checks
-passed in light/dark modes at 1280px, 375px and 320px: a valid 58-character title
-keeps actions inside the card; two collapsed cards fit the scrolling region;
-mobile controls meet the checked 44px target; episode headings/labels and
-keyboard scrolling work. The regular-show save no longer resets unfinished
-eligibility edits. Saving settings and handling a simulated concurrent update
-also pass. No real controller or station writes were made.
-
-Computed default-theme contrast is approximately 5.46:1 for white accent-button
-labels, 4.81:1 for light introductory copy and 5.11:1 for dark introductory copy.
-Custom palettes still require their own contrast review. The mechanical scan
-found no new issues in the changed components; its global stylesheet findings
-refer to existing animation/accent rules outside this change. The selected
-529/14 regression counts below predate this UI-only follow-up; those suites
-were not rerun for it.
-
-Merged upstream `develop` at `45725ad7` in `98e7a79b`. The Android lyrics fix
-merged without conflicts. No broadcast or generation policy changed in this
-review pass, and the running station was not updated or restarted.
-
-- Full controller and web lint/TypeScript checks pass. Controller lint reports
-  1,746 warnings and zero errors; this is not a warning-free repository.
-- Regenerating the browser schema produces no tracked difference.
-- The selected controller groups report 529 passing tests: show (323), takeover
-  (30), skill-notebook (17), skill-special-guest (11), cohosted-skill (12),
-  stem-seam-cues (11), cue-landing (13), voice-air-events (22),
-  pause-voice-delivery (3), and handoff (87). The web query/show groups report
-  another 14 passing tests, and the admin-query audit passes. These counts are
-  reported across the selected groups, not a complete repository suite.
-- Both earlier Codex review threads are resolved; the selected-guest and shared
-  cache reconciler regression checks are included above.
-
-An isolated Chromium session against the feature web checkout also passed:
-
-- Desktop (1280 × 1000) heading/action alignment and mobile (375 × 950)
-  layout without horizontal page overflow; stripe summaries and collapsed
-  settings were visually inspected.
-- Upcoming/Past regions overflow independently, accept keyboard focus and
-  respond to Page Down.
-- Save as regular show can be cancelled without saving. Saving preserves the
-  accepted genre filters and removes the generated-template configuration.
-- Common Ground shelf options retain a fixed host/custom title on reopening.
-  Applying the preset alone writes nothing. Two simulated HTML drops create
-  distinct configured shows, persisted together through Save the week.
-- Selecting another template and refreshing both reset the temporary preset.
-  The successful session reported no browser exceptions.
-
-All API responses and writes in this browser session were intercepted in memory
-using generic fixtures. It did not contact the controller, run live generation
-or alter station data. This is a browser smoke check, not a real mixer test or
-an exhaustive pointer, assistive-technology or device matrix. The preview used
-webpack because Turbopack cannot resolve this checkout's linked dependencies;
-no dependency or application source change was needed.
-
-### Time Capsule takeover boundary triage
-
-The 26 October takeover ran from 14:54:47 to 15:54:47 GMT, with strict Indie
-Rock/Alternative Rock and 1985–1989 filters. Two tracks started inside that
-window after being selected before activation. Fifteen consecutive subsequent
-tracks matched the contract, including a reissue whose original release year
-qualified. The final track began 112 seconds before expiry after being selected
-with the following regular show's context.
-
-This follows existing shared queue policy: `PICK_SHOW_LOOKAHEAD_SEC` in
-`controller/src/broadcast/queue/pure.ts` is 120 seconds, identical to upstream.
-Selection intentionally anticipates the next show; takeover activation also
-does not flush already-selected tracks. The live session remains with the
-outgoing show until the actual boundary. This triages the observation as an
-existing timing policy, without changing normal programming during this review.
-Strict library acceptance therefore does not guarantee every track starting
-inside a nominal wall-clock interval matches that interval's filters. A change
-to queue flushing or selection lead time would need a separate policy decision.
-
-## Maintainability and upstream reconciliation — 26 October 2026
-
-Merged upstream `develop` at `677cc2ed` in `a598c848`, preserving feature branch
-history. The merge required no conflict resolution. The shared broadcast queue
-retains notebook publication hooks alongside upstream's early MP3 cue handling.
-The comparison against upstream contains the feature changes; fork-only handbook
-commits were not imported. The station checkout and running services were untouched.
-
-Full controller and web TypeScript checks pass. The controller check exposed an
-inferred optional-key type in an older discovery-policy fixture; an explicit
-record-array annotation fixes it without changing test behaviour. Generated web
-schemas match. Selected controller groups report 525 passing tests across shows,
-takeovers, notebooks, special guests, discussions, cues, voice delivery and
-handoffs; selected web query/show groups report 14. The discovery-policy group
-also passes after the annotation. Scoped lint on the integration files reports
-no errors or warnings. This is not a complete suite, browser session, mobile-app
-check or mixer crash simulation; no live model calls were needed.
-
-The maintainability review retains the shared occurrence lifecycle and coverage
-validation, with explicit template policy branches. Two small deletion candidates
-were removed in the subsequent cleanup:
-
-- Removed the obsolete raw preview script and its npm entry. Use the existing
-  isolated five-template preview (`common-ground:preview`) instead.
-- Removed the unused alternate registry writer. The durable owner already
-  restores the registry through `restoreGeneratedShows`.
-
-Net: 85 code/config lines removed. No new abstraction or dependency was added.
-Earlier trial notes below are historical; current strict-filter rules supersede
-their soft-filter descriptions. Semantic review of generated prose remains open.
-
-## Purpose
-
-### Bounded repair of dated prose — 27 October 2026
-
-A Common Ground regeneration still returned 502 when both concept and compiler
-described favourite decades as the episode's period despite empty era filters.
-This differs from the genre-comparison false positive: period promises still
-need to match the agreed era contract. A final period rejection now gets one
-small editorial repair call. Its schema contains only name, topic and
-talkingPoint; validated music settings are not editable. The repaired prose is
-checked again for era, cast and appearance violations before publication.
-Custom operator titles remain exact. A failed repair preserves the accepted
-episode and returns the error; there is no further repair loop.
-
-Ordinary successful generation still uses two logical calls. This exceptional
-path adds one `generateShowPlan.briefRepair` call, with the existing shared SDK
-retries/recovery still applicable. Coverage correction can still add its bounded
-generation pair. Genre, era, strictness and coverage policies are unchanged.
-
-Nineteen takeover/planning checks and controller TypeScript pass. The added
-tests exercise a dated compiler response, prove the repair schema excludes
-filters even when the stub tries to return them, and stop after one still-invalid
-repair. Normal previews retain two-call assertions. Scoped lint has no errors
-(existing `any` warnings remain). An isolated two-hour Common Ground preview
-with the affected cast passed in two calls: strict Indie Rock/Alternative Rock,
-empty eras and 11,213 eligible tracks against 60 required. No live episode was
-saved, regenerated or aired by the preview.
-
-### Shared comparison handling — 27 October 2026
-
-The follow-up audit confirmed that all four other templates shared the same
-literal genre-name publication veto. Common Ground necessarily compares tastes;
-DJ's Choice, Deep Discovery and Time Capsule can also refer to familiar musical
-context without promising it as extra playback. The compiler now receives
-supported taste labels for all five templates. The literal genre scan remains
-draft feedback for the existing editor call, while final publication validates
-eras, cast and unsupported appearances independently of genre-name mentions.
-Exact genre/era settings and template-specific strict coverage rules remain
-mandatory. This supersedes the Outside-only exception below and avoids another
-template-specific prose heuristic or an extra model call.
-
-A deterministic regression reproduces the old false positive for each template,
-accepts the comparison through final prose checks, and rejects adding its
-starting genre to the agreed filter array. It does not certify every playback
-promise or comparison in generated prose as truthful; that remains editorial
-guidance and operator assessment.
-
-All 28 focused brief/template checks and controller TypeScript pass. Scoped
-lint reports no errors, with the 11 existing controller `any` warnings.
-This is deterministic regression evidence, not four additional live-model
-previews. No accepted station episode was regenerated by this audit.
-
-### Editorial context supplied to the compiler — 27 October 2026
-
-Regeneration failures returned 502 after successful model calls when an expanded
-Outside the Comfort Zone brief named an unsupported familiar-style refinement.
-The final editor had the concept and playback contract but not the exact
-familiar-taste labels already allowed by the publication check. Its added prose
-could therefore fail validation even while its sole destination filter was correct.
-The editor now receives those existing labels explicitly, distinguishing
-selected music from supported taste context. An unlisted starting-point label
-must be described through supported musical interests rather than invented
-subgenre specificity.
-
-A two-run isolated control still rejected one legitimate comparison to an
-unlisted starting style; the other passed with 650 eligible tracks. Outside the
-Comfort Zone therefore no longer uses literal genre-name presence as a hard
-publication veto: its brief necessarily compares starting tastes with the
-chosen destination. Editorial instructions still restrict playback promises.
-Other templates retain their genre-prose checks. Exact destination settings,
-era/cast checks, strictness, coverage and the two-call flow remain enforced.
-This intentionally relaxes the prose guard, not the musical filters; it does
-not establish that every generated comparison is editorially sound.
-
-Both final isolated Jay previews passed production acceptance with one strict
-Indie Folk destination and 279 eligible tracks against a 30-track one-hour
-requirement. One brief explicitly compared his indie-rock/Britpop tastes with
-Indie Folk, reproducing the formerly rejected comparison without adding those
-starting genres to the filters. Each used two model calls; no episode was saved,
-regenerated or aired. The wording remains imperfect; acceptance here establishes
-the repaired comparison path and unchanged coverage, not ideal prose.
-
-### Fuller briefs and varied talking points — 27 October 2026
-
-The final writing pass now aims for 80–120 words when useful, without a minimum.
-Its private topic ceiling is 1,200 characters; the persisted brief remains within
-the existing 2,000-character schema including the labelled talking point. The
-concept still establishes the musical premise and contract before compilation.
-Extra prose describes the host's perspective, actual guests and a listening
-invitation within that contract. No new filter logic, model call, selection
-restriction or coverage rule is introduced.
-
-Talking points may invite subjective tastes, listening habits, discovery,
-hypothetical settings or associations and contrasting views, as well as musical
-qualities. The planner chooses one natural angle rather than rotating a topic
-list or scripting a disagreement. It names a selected genre naturally to retain
-an explicit connection for the existing skill, without promising extra music,
-inventing memories or asserting unsupported facts. The skill and its relevance,
-grounding and stand-down rules remain unchanged for a later discussion.
-Existing accepted episodes need explicit regeneration to use these instructions.
-
-### Shelf options — 27 October 2026
-
-Clicking one of the five shelf templates opens its options before scheduling.
-Applying keeps one page-local preset for that template. Each subsequent drag
-creates a separate show with a fresh identity and those options, ready for Save
-the week. Reopening the same template retains its applied options; selecting
-another template or refreshing drops the preset. Applying a shelf preset alone
-does not add a show, dirty the week or write settings. Existing grid slots still
-open their own options and populate the order desk without changing the preset.
-The popup uses expanded template descriptions; the Sub/Shows introduction
-shares the shelf's striped colours and summaries through template metadata.
-
-Web TypeScript, scoped lint, whitespace and the admin-query audit pass. The UI
-detector reports no findings. No browser harness is installed in this checkout;
-desktop/mobile interaction and visual confirmation remain operator checks.
-
-### Brief and talking-point refinement — 26 October 2026
-
-Review of four upcoming accepted episodes found matching genre declarations,
-but unsupported regional/modern-selection promises, broad social-history
-questions and double-escaped punctuation. Both planning calls now request
-regional interests as persona perspective rather than geographic selection,
-era-supported period promises, and one listening-led question usable across
-the palette without named artists or assumed records. Generated prose decodes
-only escaped typographic punctuation; operator titles and filters are preserved.
-This remains prompt guidance, not a general factual or semantic validator.
-Genre selection, two-call planning and existing accepted episodes are unchanged;
-explicit regeneration uses the revised instructions.
-
-The four regenerated plans retained matching genre declarations but still showed
-generic bridges and talking points. Operator acceptance prioritises plausible
-track selection and natural on-air discussion over polished commissioning prose.
-The current sample does not complete Common Ground or Time Capsule review.
-Missing apostrophes were observed in one generated brief. The saved concept
-response retained its contractions and possessives; the compiler response
-already contained forms such as “We ll” before persistence or display. Both
-calls now explicitly request intact apostrophes, with full-word alternatives
-when necessary. This is an instruction to generation, not a guarantee of model
-compliance. No heuristic insertion was added. Double-escaped punctuation
-decoding does not repair absent characters.
-
-### Codex review follow-up — 26 October 2026
-
-Random host draws now always exclude selected fixed guests, including initial
-preparation as well as shuffles. If no distinct eligible host remains, casting
-stands down instead of silently promoting and dropping a selected guest.
-The obsolete shuffle-only preservation flag was removed from the resolver and
-snapshot caller. The added regression exercises all three optional-guest
-templates across 32 occurrence keys and an exhausted host pool.
-
-Schedule-originated generated-show saves now send the authoritative roster
-through `patchShowSettings`, updating both Settings and Dashboard takeover
-projections. This uses the existing shared reconciler rather than waiting for
-the next Dashboard poll. No new cache layer or polling was introduced.
-
-The fix is committed in `70c19c99`. Controller/web TypeScript and the admin-query
-audit pass. Focused template/lifecycle and web audit/cache checks report 45
-passing tests (15 + 13 + 9 + 8). Scoped lint has no errors; 15 existing controller
-`any` warnings remain. No live generation was requested to test the punctuation
-instruction, so its model adherence remains an observation for subsequent plans.
-
-Give a DJ authorship of a fresh show for each scheduled broadcast. The operator
-places a generated-show slot in the schedule and chooses its casting rules.
-Ahead of airtime, the station selects the cast and asks an LLM to design a
-coherent show influenced by the host’s DJ Soul and Musical Leanings.
-
-For example, schedule DJ’s Choice at 21:00 every night, with a different named
-DJ each night or a randomly assigned host. Each occurrence receives its own
-title, brief and music settings. A successful episode can become a permanent
-ordinary show.
-
-## Agreed direction
-
-- DJ’s Choice is a distinct show type available to drag into a free schedule slot.
-- DJ’s Choice is the open-ended catch-all, guided by the host’s identity and
-  taste within station restrictions and available music. Existing shows should
-  gently steer its editorial angle, without becoming hard exclusions. Its
-  genre palette should include a few familiar choices plus related genres the
-  DJ plays less often, up to the 15-genre show limit.
-- Deep Discovery uses the host’s Soul and optional Musical Leanings to shape the
-  show idea, then requires an underrepresented core in its music settings.
-  At least half the eligible pool must match that core; larger neighbours cannot
-  turn it into a familiar broad-genre show.
-- Forgotten Favourites is deferred. It needs listening history to influence
-  track selection before the station can make credible claims about what was
-  previously popular or loved.
-- A custom, editable LLM planning prompt generates the normal show settings.
-- Preparation happens ahead of airtime, at a suitable point in the day, and
-  generates a show name as well as its configuration.
-- Fixed and randomly assigned hosts and guests are supported.
-- Keep the last few generated and aired shows, with a way to copy an episode’s
-  setup into a new permanent show.
-- A DJ skill can look ahead at the day’s schedule and tease prepared shows.
-
-DJ’s Choice, Common Ground, Deep Discovery, Outside the Comfort Zone and Time Capsule are accepted template options in
-saved settings. Common Ground also has a dedicated comparison harness. Unsupported legacy template names use the
-existing load-time fallback to DJ’s Choice; retained episode history is unchanged.
-Random casting uses the station-wide Sub/Shows pools. Common Ground uses the
-Random Hosts pool for both participants, including explicitly selected DJs.
-Legacy per-show candidate lists are ignored and stripped during normalization;
-removing them does not change a slot’s random/fixed host or guest modes.
-
-For DJ’s Choice, “fresh” means a specific premise that naturally offers some
-variety from the host’s other regularly scheduled shows. Existing shows help
-identify familiar genres and angles; they are not forbidden subjects or genres.
-The music palette can keep some recognizable favourites while reaching into
-related genres. It does not guarantee a never-repeated combination or a disjoint
-track list.
-
-## Normal speech scheduling
-
-Sub/Shows do not use Programme mode. Both strict show saves and lenient loads
-normalize generated slots to `programme: false`, including older slots saved
-with the previous automatic Programme flag. New scheduled templates also start
-with it off. Regular programmes retain their existing behaviour.
-
-The standard segment director and automatic skill crons keep their normal talk
-windows, frequency, cooldown and budget gates. Sub/Shows eligibility is applied
-through the shared skill policy in both paths and rechecked for automatically
-forced capability runs; explicit operator Run now remains an override. A null
-eligible list permits all otherwise eligible skills, and an empty list permits
-none. Host ownership, enablement and co-host requirements still apply.
-
-All three templates require a separate, non-empty `talkingPoint` in the concept
-response. The controller appends it to the saved brief as **Talking point
-(optional thread): …**, using the existing topic field and normal show context.
-Links and segments can therefore pick it up without another model call or a
-separate context setting. The concept summary reserves space so the combined
-brief stays within the existing 2,000-character limit.
-
-The point is one specific musical question or contrast for occasional natural
-comments, not a script, mandatory feature or repeated prompt on every link. It
-must fit the selected music and does not impose additional filter restrictions.
-Existing accepted episode plans are retained until regenerated.
-
-## Compact planner station trial — 23 October 2026
-
-Historical snapshot: the trial below predates the current five-template policy
-and its genre limits.
-
-The station trial promotes the compact two-call preview: the concept call returns
-the name, brief and 1–6 intended genre tags from the recommended shortlist. The
-music-settings call receives only that proposal, selected genre counts, duration,
-operator direction and mood vocabulary. Its schema and a local set check require
-the same genre palette without omissions, additions, substitutions or duplicates.
-The second call no longer repeats the Soul, guest identities, existing shows or
-full catalogue enum. Reported settings-call totals in the three preview trials
-were approximately 1,000 tokens each. Editorial quality remains an on-air trial;
-mechanical palette preservation does not validate prose or musical connections.
-
-Production telemetry retains `generateShowPlan.concept` and
-`generateShowPlan.musicSettings`. Existing coverage correction, custom names,
-narrow formatting recovery, cast resolution and accepted-plan persistence remain
-in use. No prompt-version marker is added to the configuration fingerprint, so
-this code change alone should not invalidate accepted episodes. Regenerate an
-upcoming episode explicitly to try it; retain previously reviewed episodes.
-
-## Generated episode
-
-Generation is led by the resolved host's editorial voice, not by a preset list
-of filters. Resolve the host before planning. The prompt uses that DJ's Soul and,
-when present, Musical Leanings as its primary creative input; guest identities
-can influence the result secondarily. The LLM develops a musical premise,
-title, brief, intended genre palette and any applicable era in the concept call.
-Some templates establish their musical connection or destination before writing
-the brief. The settings/compiler call preserves the declared music contract and
-edits concrete contradictions in the prose.
-Template direction, station restrictions and playable library coverage guide
-that work without replacing the host's taste.
-
-The Soul is the primary source of the DJ’s musical preferences as well as their
-identity; Musical Leanings is optional supplementary guidance. The concept
-pass distinguishes those preferences from delivery and interaction instructions;
-the settings pass receives its declared musical intent.
-A calm voice does not imply calm music, and favourite decades do not require an
-era window. The generated brief frames presentation; the show filters drive
-track selection, with Musical Leanings a soft influence between candidates.
-All five templates use strict filters. Mood and energy arrays default to empty
-unless operator direction requires a restriction. Time Capsule requires its
-closed era; the other templates keep eras empty unless the operator explicitly
-requests a period. Raw genre counts do not establish eligible coverage after
-intersecting the applicable settings and exclusions.
-
-The concept pass receives the bounded recommended genre shortlist; the settings
-pass receives only the intended genres from its accepted concept. The compact
-trial restricts model output to that declared palette; the previous full-catalogue
-enum is no longer sent to the settings call. The brief may promise a
-few supported genres; the music-settings pass must represent those promises
-using exact supported tags or musically appropriate listed subgenres, explained
-in its rationale. Presentation instructions do not become filters. The concept
-must not copy the Soul’s whole genre list, promise a specific opening artist or
-track, or assert an artistic influence without research. These are prompt
-instructions, not a deterministic semantic consistency validator. The settings
-pass translates the accepted brief rather than planning a second show: exact
-promised tags take priority over rarity and palette-size guidance, genuine
-subgenres may represent broader promises, and unsupported promises must be
-reported honestly in the rationale rather than rationalized as fulfilled.
-Host taste guides interpretation and related additions after promises are covered.
-
-The planner returns a title, a brief and these existing show controls:
-
-| Operator-facing field | Current source field |
-| --- | --- |
-| Show Brief | `topic` |
-| Music Mood | `moods` |
-| Genre Leans | `genres` |
-| Eras | `eras` |
-| Energy | `energies` |
-| Strict Filter on/off | `filtersStrict` |
-
-The generated title follows from the brief and becomes the episode’s display
-name; the recurring slot retains its DJ’s Choice or Auto DJ template identity.
-Programme mode is excluded from Sub/Shows. Voices, eligible skills, playlist
-restrictions and duration stay under operator control.
-
-Here, “tags” means the generated music settings: `moods`, `genres`, `eras`,
-`energies` and `filtersStrict`. They must fit the brief and eligible library.
-These are distinct from the existing show `tags` field, which remains an
-operator organization feature and is not generated.
-
-Example: DJ’s Choice → Mara → “After the Last Train”: nocturnal soul, dub and
-spacious electronic music, with a reflective brief and moderate energy.
-
-Preparation inputs should include the selected host’s Soul and Musical
-Leanings when present, the names and music settings of their other regularly
-scheduled shows, guest identities, slot duration and station-local time, template
-instructions, bounded library coverage, and summaries of recent episodes.
-Existing show filters are soft context for familiar repertoire; their verbose
-speech and interaction briefs are omitted from both planning passes. Their
-genres are not hard exclusions. Its palette can retain a
-few of the host’s familiar genres and add related choices from the wider library
-up to the 15-genre limit. The brief and name come before music tags, which
-should follow from the idea without forcing unrelated genres. Deep Discovery
-uses the same host-led concept step, then favors lower-count library genres
-that fit the brief and have enough playable coverage. The host supplies the
-main point of view; Musical Leanings are inspiration, not a genre limit. Guest
-influence is secondary. Recent choices by this host and other hosts can
-encourage variety without forcing unsuitable music.
-
-The planner chooses an editorial configuration, not a complete fixed playlist.
-Normal track selection and broadcast controls remain responsible for playback.
-Normal DJ speech consumes the accepted episode brief as editorial context,
-including its optional recurring talking point, without a Programme arc.
-
-## Casting
-
-Offer a specific host or random selection from an operator-selected eligible
-roster. Guests may be absent, explicitly selected or random. Random guest
-count may be fixed or “up to” the permitted maximum.
-
-Select the cast before generating the show. Persist the actual cast with that
-occurrence so a restart or later schedule read does not redraw it. Prevent
-host/guest duplication and respect the existing guest limit. Rotation-aware
-randomness, avoiding recent hosts and repeated pairings where possible, is a
-suggested default rather than a strict promise when the roster is small.
-
-## Template directions
-
-| Template | Direction | Status |
+# Sub/Shows
+
+Current implementation contract for DJ’s Choice, Deep Discovery, Common Ground,
+Outside the Comfort Zone and Time Capsule. Updated 27 October 2026.
+
+This document describes implemented behaviour. The
+[original development plan](djs-choice-development-plan.md) and
+[pre-cleanup design/trial record](https://github.com/Jaz666/subwave/blob/229f970f6cde002d426d12b859c9d65f4ee63800/docs/internals/djs-choice.md)
+preserve the earlier proposals, model samples, rejected approaches and dated
+verification evidence. Those snapshots do not override the rules below.
+
+## Operator workflow
+
+Use **Shows → Sub/Shows** for episode plans and station-wide eligibility.
+Generated variants stay separate from regular editable shows.
+
+On Schedule, the striped shelf offers one entry for each template. Clicking one
+opens its name/casting options. Apply retains a temporary preset for repeated
+drags of that template; choosing another template or refreshing clears it.
+Applying a preset alone writes nothing. Each drop creates a distinct configured
+show, persisted with **Save the week**. Clicking a generated grid slot also
+puts it in the order editor and opens its own options. Resizing adjacent slots
+reconciles both affected occurrences and removes obsolete future plans.
+
+The Sub/Shows page has collapsed host/guest/skill settings, an on-air section
+when applicable, and separately scrolling upcoming/past lists. Regenerate keeps
+the cast. Shuffle previews a new cast according to the slot’s random/fixed rules
+before regenerating; fixed participants remain fixed. Started slots cannot be
+regenerated or shuffled. Save as regular show opens the ordinary editor on a
+copy of the accepted episode, including its music settings and cast. It leaves
+the recurring template and weekly schedule unchanged. Repeated saves reuse a
+stable regular-show identity; changed episodes require reopening the save draft.
+
+Episode titles may be generated or operator-defined. A custom title is reused
+for each airing of that variant and preserved exactly during planning/repair.
+Show organisation tags are operator-managed; they are not the generated music
+settings.
+
+## Five template policies
+
+| Template | Musical direction | Cast |
 | --- | --- | --- |
-| DJ’s Choice | Catch-all led by the host, with a gentle preference for variety from their existing shows | Active |
-| Auto DJ – Deep Discovery | Start from the host’s taste, then favor less-represented library genres with playable coverage | Active |
-| Auto DJ – Forgotten Favourites | Revisit music based on listening history that can also shape track selection | Deferred until that evidence is available |
-| Auto DJ – Hidden Gems | Explore tracks with little or no airplay | Suggested |
-| Auto DJ – Fresh Arrivals | Explore recent additions with familiar connections | Suggested |
-| Auto DJ – Across the Decades | Follow a musical thread across eras | Suggested |
-| Auto DJ – Unexpected Connections | Connect distant genres by mood, sound or influence | Suggested |
-| Auto DJ – Host’s Obsession | Explore one corner of the host’s Musical Leanings | Suggested |
-| Auto DJ – Night Journey | Interpret a late-night slot through the host’s taste | Suggested |
+| DJ’s Choice | A familiar core with occasional connected departures beyond regular-show repertoire. Keep the host’s musical centre recognisable. | Host, optional guests |
+| Deep Discovery | One coherent underrepresented neighbourhood related to the host’s tastes. At least half the eligible pool must match its rare core. | Host, optional guests |
+| Common Ground | A specific musical connection with equal influence from both DJs. Avoid joining two unrelated genre lists. | Host, exactly one guest |
+| Outside the Comfort Zone | One credible sideways move into a neighbouring destination outside usual repertoire. That single destination supplies the music throughout. Rarity is not required. | Solo host |
+| Time Capsule | One coherent palette in a closed period, normally 1–5 years and at most ten inclusive. No unsupported historical claims. | Host, optional guests |
 
-Templates should expose editable prompts; saving custom templates is a proposed
-extension. Choose the initial shipped set during implementation planning.
+All five generate strict filters. DJ’s Choice is familiar music with adjacent
+exploration, rather than a requirement to pick rare styles. Deep Discovery
+measures catalogue underrepresentation, not low airplay or forgotten favourites.
+Outside the Comfort Zone excludes exact regular-show genres and broad umbrella
+Rock/Pop/Electronic/Experimental destinations; absence from a show’s filters does
+not prove the DJ has never heard that music. Common Ground requires a supported
+musical bridge, not similar presentation styles. Time Capsule excludes those
+umbrella genres, uses 1–3 specific styles, and retains exact closed year bounds.
 
-### Deep Discovery and playable coverage
+## Persona evidence and casting
 
-Deep Discovery scans the entire indexed genre catalogue, using playback's
-hierarchical matching counts rather than exact-label assignments: Indie also
-counts Indie Rock, and multi-tagged recordings count once per genre. A broad
-tag cannot masquerade as rare because few files use its exact label.
+Resolve the cast before planning. Soul supplies personality and musical taste;
+optional Musical Leanings supplement it. One explicit preference for a genre,
+artist, instrument or musical quality is sufficient. Neither Leanings nor
+existing regular shows are required. Voice, humour, pacing and interaction
+instructions do not establish musical preferences.
 
-The underrepresented core is the lower-count tail up to the smaller of the
-75th-percentile positive genre count (rounded down by rank) and half the largest
-genre count. A single-genre or nearly uniform library has no meaningful core;
-return library-fit advice instead of inventing a discovery premise. These are
-relative catalogue counts, not a fixed minimum library size.
+Readiness is checked for the host and, for Common Ground, the guest. The concept
+response quotes evidence from each required participant’s own text. Local checks
+reject invented/misattributed quotations and obvious presentation-only evidence.
+Untouched shipped Souls without music evidence stand down before generation.
+Failures provide setup advice with the
+[Musical Leanings guide](https://github.com/perminder-klair/subwave/discussions/1817).
+A library-fit refusal is separate from insufficient persona information.
 
-Offer up to 60 core choices and 20 modest neighbours. Prefer core styles with at
-least half the required eligible-track minimum as a repertoire cue; if none
-reach that cue, offer larger core styles that can be combined. The neighbour
-pool is bounded to the smallest genres above the core ceiling before ranking;
-it no longer appends the 20 most popular genres. Rank core choices and those
-bounded neighbours using shared genre terms from the host's Soul, optional
-Leanings and regular-show filters. This is a relevance hint, not proof of
-musical adjacency, and does not change which genres qualify as rare.
-Count shared-term relevance once per candidate: compound labels such as
-"Hip Hop" must not gain extra priority from overlapping word fragments.
-On each generation, randomly order equally relevant candidates before taking
-the bounded sample. This varies the palette's membership and presentation
-without changing rarity or coverage rules. The model still chooses the musical
-thread; list order is not a suggested combination, and regeneration does not
-guarantee a different result in a narrow library.
+Scheduled regular shows contribute names and music filters as repertoire
+context; their verbose presentation briefs are omitted. For DJ’s Choice these
+are familiar context, not hard exclusions. Common Ground considers both DJs’
+repertoire. Soul remains primary, and inferred familiarity must be described
+honestly when no shows exist.
 
-The creative call first describes one host-related musical neighbourhood, then
-chooses the palette before writing its brief. The brief must name those styles
-and their audible connection, rather than restating the host's wider tastes.
-The compiler names the selected styles in its opening sentence and rewrites a
-generic or contradictory draft around the accepted discovery focus.
-Counts are deliberately omitted from its genre lists so
-matching numbers are not mistaken for musical connections. The second call
-still compiles and edits the accepted proposal. Genre counts overlap and precede
-filters/exclusions, so are not an eligible-track guarantee.
-Smaller library genres and neglected airplay are different signals:
-the first uses catalogue counts, the second needs history. The brief must not
-invent a personal record collection or drift into Forgotten Favourites.
+Station-wide pools use `null` for everyone/all skills and `[]` for none.
+Optional-guest templates draw random hosts and guests from their respective
+pools, excluding fixed guests from random-host draws. Common Ground uses
+**Random Hosts for both participants**, including explicitly chosen DJs.
+Outside the Comfort Zone is solo. Optional random guests number 0–3; prevent
+host/guest duplication and enforce the three-guest maximum.
 
-Do not add genre counts blindly. Count unique eligible recordings using the
-actual show-filter semantics after generated eras, moods, energy and strictness
-are applied, along with fixed library restrictions and blocklists. Overlapping
-genres must not count the same track twice. Soft leans and strict restrictions
-must retain their existing meanings. Explain which pool the reported count
-represents. Apply live cooldowns again at selection time; preparation cannot
-promise future availability.
+Casting is stable for an occurrence and saved seed. Regeneration retains it;
+shuffle changes its seed. Prepared takeovers retain their original casting
+identity when rebased to activation time. A restart does not redraw an accepted
+unchanged episode. Rotation-aware fairness and unique pairings are not promised.
+Legacy candidate lists are stripped; unsupported stored template names retain
+the existing load-time fallback to DJ’s Choice. History is not rewritten.
 
-If coverage is insufficient, broaden the proposed configuration or retain a
-usable fallback. The minimum X is configurable; no numeric default was agreed.
+## Planning and music contract
 
-## Daily preparation and promotion
+Normal generation uses two structured calls through the shared DJ SDK:
 
-Generated shows are prepared before airtime so the DJ can tease the next show
-and hand over with its accepted title and brief. The controller prepares the
-next 48 hours at 05:00 station time and catches up on startup. Saving the weekly
-schedule or editing a generated show's host/guest settings also starts
-preparation for its upcoming occurrences in the next 48 hours. Accepted plans
-already on air remain fixed. Choosing a generated show
-for a takeover starts preparation for that takeover occurrence immediately.
-The normal on-air preparation path remains a final fallback. All timing uses
-the station timezone and must handle daylight-saving changes.
+1. **Concept:** assess readiness and library fit; establish the template’s
+   musical direction, declared genres and applicable era; write the brief,
+   title and separate talking point. Some templates return connection,
+   departure or period evidence before prose.
+2. **Music settings/editorial pass:** preserve the declared genre/era contract
+   and title, compile settings and edit the presentation brief. Aim for 80–120
+   words when useful, without a minimum or filler. Expand the actual host/guest
+   perspectives and listening invitation without adding music restrictions.
 
-The 48-hour horizon is a preparation limit, not a scheduling limit. Slots further
-ahead remain in the weekly schedule but do not yet have episode plans to show
-on the Sub/Shows page. A later preparation sweep picks them up once they fall
-inside its window; this is not a continuously advancing background timer.
-Startup catches up missing or invalidated plans without rerolling an accepted
-unchanged occurrence. The Sub/Shows introduction and empty state, README and PR
-description expose this behaviour to operators.
+The concept receives a bounded library shortlist; the second call receives the
+accepted palette. Genres are exact available labels, up to the 15-genre limit.
+Mood and energy default to empty. Except for Time Capsule, era filters remain
+empty unless the operator explicitly requests a period. Favourite decades in a
+persona’s preferences do not themselves restrict playback. The fixed music
+settings, rather than descriptive speech instructions, drive track selection;
+Musical Leanings remain a soft influence among eligible candidates.
 
-The Sub/Shows page separates upcoming, currently airing and past episodes. Its
-host, guest and skill eligibility controls start collapsed. Upcoming episodes
-have a regenerate action (`POST /shows/generated/regenerate`, with an
-`occurrenceId`). It reruns the planner for that occurrence with its current
-casting rules, bypasses the accepted-plan cache and retry cooldown, and shares
-any request already running for that occurrence. An accepted plan is replaced
-only after success; model failures retain it. Requests for missing, changed,
-already airing or past slots are rejected, and a result arriving after airtime
-or a schedule edit is discarded. Ready episodes in any phase offer an icon action with the tooltip “Save as
-regular show”. It opens the normal show editor on an isolated copy containing
-the accepted title, brief, cast and music filters, with the recorded playlist
-restrictions. Saving creates a new ordinary show without booking any hours or
-changing the source episode. The copied show has no generation behaviour or
-Programme mode. Its stable new identity makes repeated saves idempotent; after
-saving, the icon opens the saved show. Deleting that saved show permits saving
-a fresh copy later.
+The compiler currently returns the fixed genres/eras/strictness as well as its
+editable output. Removing that redundant echo is a separate evaluation, not
+part of the strict-policy cleanup. Narrow local format recovery remains for
+observed genre wrappers and exact closed year strings/singleton year arrays;
+it never guesses decades, swaps bounds or silently drops a restriction.
 
-The optional editable “Look Ahead” skill reads the remaining schedule for the day and
-its accepted episode titles, casts and briefs. It must not generate episodes or
-invent unprepared titles. It skips unprepared slots and excludes the next scheduled show occurrence. Vary highlights, observe cooldowns, and refresh facts when
-the schedule or preparation changes. Generated briefs describe intended content;
-they are not evidence of artist biographies or music-history claims.
+Prose checks reject periods outside the agreed eras, other station presenters
+and unsupported appearance/interview promises. Genre-word detection is advisory
+feedback for editing, not a semantic classifier or a final rejection of valid
+comparisons. The final music contract still requires the exact declared palette
+and era. Keep apostrophes intact or use full-word alternatives; no speculative
+punctuation insertion is applied.
 
-## Recent episodes and permanent shows
+Do not promise particular records, artists, running order, regional exclusivity,
+release milestones or personal listening history without supporting data. A
+persona’s regional interest can explain perspective, not constrain record
+origin. Filters cannot guarantee alternating genres, a particular track
+sequence, narrative coherence or historical accuracy.
 
-Keep a bounded recent history of prepared and actually aired occurrences.
-Store their title, six generated settings, actual cast, template/prompt revision,
-scheduled time, generation time and actual airing evidence. Distinguish Prepared
-from Aired; generation or queue admission alone does not mean broadcast.
-Cancelled, failed and fallback outcomes should be visible without claiming the
-planned show aired. Exact retention and partial-airing labels remain open.
+A final period-contract rejection permits **one prose-only repair call** whose
+schema contains name, topic and talkingPoint. It cannot change validated music
+settings. Revalidate the result and stop on persistent failure. A custom title
+remains exact. The normal success path still takes two logical calls.
 
-“Save as permanent show” opens a populated copy in the ordinary show editor.
-Use the episode’s actual host, guests and accepted settings; give it a new show
-ID, clear generation/randomisation behaviour, and leave the original record and
-schedule untouched. Saving makes an ordinary show available to schedule; it
-must not automatically book it or overwrite an existing show.
+Coverage correction may add one further concept/compiler pair. Shared SDK
+transport retries, formatting recovery and failover can add requests, so these
+are not fixed latency/token budgets. No global LLM queue is introduced; previews
+and regeneration can contend with live speech.
 
-## Reliability and scope
+## Coverage and discovery
 
-Persist each occurrence’s accepted configuration. Preview, edit and regenerate
-before it is committed for playback; edits afterwards must not silently change
-queued or aired material. Keep the recurring template separate from episode
-settings. Missing models, failed planning, token limits or insufficient coverage
-must leave the station able to play its documented fallback configuration.
+A new plan needs at least twice its airtime at a four-minute average: **30 unique
+eligible tracks per hour**, or an operator’s higher `minimumCoverage`. Validate
+actual filter intersections and exclusions, not sums of overlapping genre
+counts. Use the shared candidate diagnostic, genre hierarchy, original-release
+year resolution, configured playlists/exclusions, blocklists and duration
+restrictions. Unavailable/inactive filters cannot establish eligible coverage.
+Live cooldowns, artist separation and availability are checked again at selection.
 
-The separate neglected-library report is deferred: recommend changes to existing
-show configurations to cover neglected artists and genres. Optional Driving
-Beat analysis and protected Sub/Flow track groups are separate proposals and
-are not prerequisites for DJ’s Choice.
+If coverage is insufficient, permit one bounded correction. Outside the Comfort
+Zone must choose another single destination. Time Capsule may choose a better
+covered closed period, never remove its era. Deep Discovery must keep a genuine
+rare core instead of falling back to popular genres. Persistent failure returns
+coverage/setup advice. An unsuccessful regeneration preserves an accepted plan.
 
-### Deep Discovery coverage policy
+Deep Discovery counts each recording once per matching genre, using playback’s
+hierarchical semantics: Indie includes Indie Rock. Its rare core is the lower
+count tail up to the smaller of the 75th-percentile positive genre count and
+half the largest genre count. Uniform/single-genre libraries cannot support a
+meaningful rare core and receive library-fit advice.
 
-New Deep Discovery plans use strict filters. Choose a coherent underrepresented
-core plus adjacent genres as needed, up to 15 genres. Require at least twice the
-slot airtime using a four-minute average: 30 unique eligible tracks per hour
-(60 for a two-hour slot), or the operator minimum if higher. The existing
-candidate diagnostic checks the combined palette after configured exclusions,
-blocklists and active filters, without double-counting overlapping genres.
-Transient artist spacing and recent-play exclusions are not included; the
-twofold buffer provides headroom for these at playback.
+Offer at most 60 core choices and 20 modest neighbours. Prefer core styles with
+at least half the required track minimum as a repertoire cue; otherwise allow
+combining smaller core styles. Select the smallest neighbours above the ceiling
+before affinity ranking. Shared genre terms from Soul/Leanings/repertoire rank
+relevance once per candidate; random tie ordering varies each generation’s
+bounded sample. This is a hint, not proof of adjacency or guaranteed variety.
 
-At least half the final unique eligible pool must also match core genres.
-Diagnose the core subset with the same era, mood, energy, duration, vocal,
-playlist and exclusion settings as the full palette. Skip the extra diagnostic
-when every selected genre is core. A token rare tag alongside a dominating
-broad genre fails even if total coverage is ample. This is a candidate-pool rule,
-not an airplay quota, guaranteed first plays or a fixed running order.
+After all filters/exclusions, at least half the unique eligible pool must also
+match the core genres. This prevents a large adjacent genre from dominating a
+nominal discovery palette. The creative brief names those selected styles and
+their specific musical connection instead of restating the host’s wider tastes.
 
-Keep mood, era and energy restrictions empty by default; an era needs an
-explicit operator/title period request. Deep Discovery allows at most two mood
-tags, and the compiler asks for mood/energy restrictions only when the operator
-requires them. A deficient plan gets one correction
-attempt to add coherent core styles or reduce dominating neighbours as needed;
-if coverage or core share is still deficient, reject the result and retain any
-existing accepted plan. Accepted episodes are not automatically
-regenerated by this policy change: regenerate upcoming episodes to apply it.
-DJ’s Choice uses the same strictness and twice-airtime coverage check; its
-familiar-core policy is described below.
+## Preparation, persistence and scheduling
 
-All preview modes now run the production acceptance/one-correction path, not
-just raw generation. Deep Discovery reports the core names, global rarity ceiling,
-per-genre matching counts, eligible core/full counts and core share. The regular
-cast preview uses the operator's allowed persona roster and an isolated snapshot
-of source settings, library and blocklist; no episodes are saved or aired.
+Scheduled Sub/Shows are prepared **within the next 48 hours**, earliest first.
+The sweep runs at **05:00 station time**, on startup, after saving the week,
+after editing a generated show and after host/guest eligibility changes.
+The horizon limits preparation, not scheduling: more distant slots stay in the
+weekly grid without a prepared episode. A later sweep picks them up inside its
+window; this is not a continuously advancing timer. The UI and README explain
+that distinction. The normal on-air path remains a final fallback.
 
-On 25 October a one-hour scheduled plan using Alternative Rock, Indie Rock and
-Electronic admitted 19,912 of 68,224 indexed tracks before exclusions. All three
-were also in the host's regular-show filters. Its concept had chosen that broad
-palette; the compiler had correctly preserved it. The old combined-pool minimum
-could not detect the missing discovery core.
+Accepted unchanged plans survive restarts. Configuration changes invalidate
+future plans where appropriate; already-airing accepted plans remain fixed.
+The shared occurrence owner serialises writes and coalesces generation by
+occurrence, rejects stale publication and reconciles removed/resized slots.
+Missing/repeated local hours use the station timezone and occurrence boundaries.
 
-Two previous one-hour controls with the same host/guest pairing both selected
-Alternative Hip Hop (20 matching tracks) and East Coast Hip Hop (16), yielding
-36 eligible tracks and 100% core participation. Earlier ranked trials also
-produced a 68-track Alternative/Conscious Hip Hop palette and a 118-track palette
-including Industrial Rock. Early iterations exposed unrelated small-genre piles,
-a redundant model core-list mismatch and a model library-fit refusal despite
-available choices. The creative focus now precedes the sole genre array, relevant
-styles lead the shortlist, and ambiguous single-word genre claims can request
-editorial repair without becoming an automatic publication veto.
+Keep generated history for 30 days, bounded to 1,024 records. Remove private
+configuration fingerprints from ended history; retain non-sensitive source
+music settings needed for regular-show copies. Legacy records can use their
+available saved fingerprint or surviving source-show fallback. Do not migrate
+historical soft-filter episodes to strict filters during this cleanup.
 
-Two subsequent live regenerations repeated the same three hip-hop styles. The
-shortlist rewarded overlapping "hip", "hop" and "hiphop" terms and always
-presented the same choices first. Relevance now counts once per candidate, and
-equally relevant choices vary in order before sampling. An initial varied
-preview exposed a contradictory brief and one rejected unselected-style claim;
-the concept now writes its palette before its brief, and the compiler explicitly
-describes the selected music. Three refined one-hour previews with an identical
-host/guest pair produced Alternative Punk/Noise Rock (88 eligible tracks),
-Power Pop/Folk Pop (135), and Alternative and indie/Contemporary Folk (41).
-All three passed the production acceptance path with 100% core coverage and
-no correction call. Their generic themes and talking points still leave room
-for editorial improvement; this sample demonstrates variety, not a guarantee.
+### Takeovers
 
-The runtime policy cannot prove musical coherence, guarantee a new palette on
-every regeneration or eliminate unjustified model refusals. Eleven discovery-policy
-tests cover rarity, core share, correction, exclusions and metadata failures;
-with twelve brief-contract, thirteen readiness and nine generation/regeneration
-tests, 45 focused controller checks pass. TypeScript and scoped lint pass (existing
-`any` warnings remain). Cached accepted episodes are unchanged: regenerate them
-after rebuilding the controller to apply this policy.
+The Dashboard lists Default Programming, regular shows A–Z, then Sub/Shows with
+DJ’s Choice first and the others A–Z. Schedule’s order selector shares ordering;
+airtime totals combine generated variants by template. Regular saved copies
+remain separate shows.
 
-### Pre-review regression coverage
+Selecting a template prepares a random eligible cast and accepted plan before
+activation is available. Show **Generating…** and disable Take Over; keep current
+programming on air. Ready previews show title/cast. Duration/template edits
+discard the visible preview; stale responses cannot enable activation. Failures
+and expiry offer Retry.
 
-`npm --prefix controller test -- sub-show-template-rules` runs fourteen
-deterministic checks with synthetic personas, temporary state and injected
-generation/coverage results. No station LLM or live library is used.
+`/schedule/takeover/prepare` stores at most 32 drafts, expiring after 15 minutes
+or the target schedule boundary, whichever is earlier. Drafts disappear on
+restart; accepted episodes persist. Preparing changes neither schedule nor live
+override. Fixed duration starts in full on activation; until-schedule-change
+previews must still match their boundary.
 
-The checks cover Common Ground's default single guest, selected-guest counts,
-use of the allowed host pool for both participants, stable casting within an
-airing, and failure when two eligible participants are unavailable. They cover
-Outside the Comfort Zone's solo contract, single destination and mandatory
-destination change after failed coverage. Time Capsule checks include regular
-casting pools, single-year and ten-year inclusive periods, rejection of open or
-multiple periods, and retaining the era requirement during correction. All
-three templates are checked for strict filters, nonempty genre palettes and
-twice-airtime coverage with exactly one correction at 30, 60 and 90 minutes.
+`/schedule/takeover/activate` rechecks configuration, eligibility, coverage and
+window, publishes the accepted episode before the override, and uses the normal
+handoff path without another model call. Activation is idempotent; an override
+write failure removes the unactivated episode. Reuse one internal show per
+template rather than accumulating takeover variants. Direct unprepared
+Sub/Show override requests are rejected; regular/default takeover behaviour is
+unchanged.
 
-These pin schema, casting and acceptance behaviour, not the quality of an LLM's
-musical judgement or every prompt requirement. The fourteen checks, scoped lint
-and controller/preview/new-test TypeScript passed. No production code changed.
-The next batch adds seventeen notebook and eleven special-guest checks using
-temporary files, a synthetic roster and injected model results. It covers
-per-turn air commits, fixed topics, bounded history, isolated airings, confirmed
-and ambiguous delivery receipts, cancellation, expired leases, reset/corruption
-guards, a fresh-process read of committed memory, and rendered-turn recovery.
-Guest checks cover explicit prompt directives, roster resolution, duplicate and
-invalid casts, tool precedence, participant limits and unexpected model speakers. A
-five-turn numbered exchange preserves its final host reaction. The existing
-co-hosted suite now distinguishes flexible discussion order from explicit plans;
-its twelve checks pass.
-Both suites, scoped lint and controller/preview/new-test TypeScript pass without
-station LLM calls or production changes. End-to-end queue/mixer crash windows,
-backup/restore remain separate review tasks.
+### Playback boundary limitation
 
-The lifecycle batch runs eleven `generated-show-lifecycle` checks, ten
-`takeover-generation` checks, seven `show-occurrence` checks, nine
-`generated-shows` checks and eleven `takeover-window` checks (48 total).
-Restart recovery is tested with fresh owners and a fresh process. Coverage
-includes accepted/on-air plan retention, bounded failed-generation retries,
-failed manual rerolls, short pools, stale results, edits while generation is
-pending, shuffle contention, both sides of an adjacent-slot boundary edit,
-obsolete-plan pruning and history retention. Time checks include midnight,
-repeated/missing DST hours and quarter-hour timezone offsets.
+Strict eligible-pool acceptance is not an every-track wall-clock guarantee.
+Shared upstream selection anticipates show boundaries by **120 seconds**, and
+takeover activation does not flush preselected tracks. Outages and existing
+never-starve/fallback behaviour can also affect actual playback.
 
-Takeover tests use the real preview/activation flow, synthetic SQLite tracks
-and stubbed LLM/Navidrome responses; no live service or mixer is called. They
-cover draft isolation, activation-time duration, exact accepted-plan reuse,
-duplicate activation requests, expiry, changed eligibility/pool/window,
-failed-switch rollback and metadata failures. This exposed and fixed two bugs:
-a waiting generation request could miss an edit already present in its own
-snapshot, and takeover activation checked pool size without rejecting inactive
-genre locks. Waiting callers now compare the completed result against the
-latest slot; activation reuses the shared unavailable-coverage policy.
+The 26 October Time Capsule takeover produced 15 consecutive matching selections
+for its 1985–1989 Indie Rock/Alternative Rock contract. Two opening exceptions
+were selected before activation; a closing exception began 112 seconds before
+expiry under the next show’s selection context. This follows the existing
+`PICK_SHOW_LOOKAHEAD_SEC` policy; this feature does not change that timing.
 
-All 48 checks, controller/preview/new-test TypeScript and scoped lint pass
-(existing lint warnings remain). These checks do not simulate every process
-crash during a write, browser interaction, mixer delivery or backup restore.
-The two controller fixes need a rebuild; accepted episodes are not rerolled.
+## Speech and skills
 
-### Failure, contention and cost review
+Sub/Shows keep Programme mode and automatic Banter Breaks off. The normal segment
+director and skill crons retain their timing, cooldown, frequency and budget
+gates. Eligible skills must also belong to the host and be enabled/ready; the
+Sub/Shows list restricts automatic usage rather than granting ownership.
+Explicit operator Run now retains its normal override behaviour.
 
-Ten further regression checks cover failure during either structured call,
-preserving an already-active takeover during a new failure, bounded coverage
-correction, a workable shorter slot, empty/genre-less libraries, a single-genre
-Deep Discovery refusal, serial look-ahead preparation and continuing the sweep
-after one failed airing. A cross-contract check keeps the diagnostic's strict
-zero-match count separate from a runtime never-starve pool.
+All five templates return one non-empty talkingPoint. The controller appends
+**Talking point (optional thread): …** to the existing topic field, within the
+2,000-character persisted limit. This is occasional editorial context for links
+and skills, not a scripted arc, extra filter or instruction to repeat the same
+question. Invite subjective taste, listening habits, discovery, hypothetical
+associations and naturally different opinions as well as musical qualities.
+Do not fabricate memories or require either disagreement or consensus.
 
-Normal successful generation makes two logical structured calls. One coverage
-correction adds a second pair, rather than an unbounded search. Shared SDK
-format recovery, transient retries and configured failover can add transport
-requests; four is not a universal HTTP-request cap or token budget. The stubbed
-401 cases currently make two transport attempts for a concept failure and three
-total when the concept succeeds but compilation fails, due to shared SDK text
-recovery. No Sub/Show-specific provider retry policy is introduced. Empty or
-genre-less libraries, and Deep Discovery without a rarity core, stop before a
-model call. These are call-count checks, not live token/latency benchmarks.
+The editable **Sub/Show Talking Point** skill is the short-discussion counterpart
+to regular-show banter. It ships disabled by default; existing edits, enable
+choices and assignments are preserved. Its tool requires the explicit label,
+identified current track and conservative genre/text relevance. It stands down
+without support, including on manual runs, and on solo shows. The brief allows
+at most two turns per participant, first-person delivery and only the supplied
+current recording. Genre relevance does not verify instrumentation, influence,
+lyrics, credits or history.
 
-The 48-hour sweep prepares distinct future airings in order, one at a time,
-deduplicating contiguous hours and skipping an already-airing slot. Identical
-occurrence requests share an in-flight generation. Independent requests, such
-as different slots and takeover previews, can still overlap and compete with
-on-air speech for the configured LLM. There is no new global queue, cumulative
-episode token budget or shorter provider timeout in this feature.
+Look Ahead is an editable example, not an automatically enabled skill. It uses
+same-day prepared schedule context, excludes the immediately following show,
+and lets the current host tease two shows or one upcoming presenter promote
+one. Refer to [the skill features guide](../skill-features-guide.md),
+[custom skill contracts](../custom-skills.md) and
+[show-airing notebooks](show-skill-notebook.md) for reusable guest, cast,
+continuity and air-receipt features. Shared examples contain no station-specific
+persona dependencies.
 
-Coverage diagnostics use hard locks, including to an empty pool, and acceptance
-still requires twice the airtime after exclusions. Playback retains Subwave's
-existing safety behaviour: the pool picker and final fallback use per-dimension
-never-starve filtering; unresolved genre metadata can disable a runtime genre
-lock, while a resolved short genre pool can loop. The offline fallback also has
-its existing playlist/exclusion safety behaviour. The absolute station blocklist
-remains a separate hard prohibition. A Sub/Show's Strict filters badge therefore
-does not guarantee every aired track under metadata loss or exhausted pools.
-No dead-air policy was changed to make generation pass.
+## Verification and source map
 
-The expanded takeover and lifecycle suites, plus show-filter, show-candidates,
-music-starve, auto-playlist-show, generation-lifecycle, blocklist, planning-policy
-and discovery-policy groups pass (170 reported tests). Controller/preview/test
-TypeScript and scoped lint pass, with existing warnings where applicable. No
-production code changed, no station model was called and no live audio was
-generated. This does not simulate real provider load, every SDK/provider retry
-combination or a full mixer outage.
+Pre-cleanup checks on 27 October: controller/web lint and TypeScript, generated
+schema parity, whitespace and the admin-query audit passed. Controller lint had
+zero errors and 1,746 repository warnings. Selected suites reported **529
+controller and 14 web tests**, not a complete repository run. Both earlier Codex
+findings are resolved: fixed guests are excluded from initial random-host draws,
+and Schedule show saves use the shared Settings/Dashboard cache reconciler.
+
+The later UIAudit fixes passed web lint/TypeScript and isolated Chromium checks
+at 1280px, 375px and 320px in light/dark modes. They cover valid long-title
+geometry, two collapsed cards, 44px mobile targets, labelled episode headings,
+keyboard scrolling, save/cancel and dirty/concurrent eligibility handling.
+Shared regular-Show layout also passed. Default measured contrast: accent-button
+labels 5.46:1, light introductory copy 4.81:1, dark introductory copy 5.11:1.
+Custom palettes and assistive-technology/device combinations need separate
+assessment. Browser API traffic was mocked; no live controller writes occurred.
+
+Default-persona/no-show trials found invented musical assumptions before the
+readiness gate. Afterward all 15 untouched-default cases returned intended
+setup advice; enriched positive controls produced accepted plans for all five
+templates. Trials used a substantial library snapshot, not a live tiny-library
+installation. All five templates have station airing/takeover observations;
+Look Ahead, temporary guests and Talking Point also received trials. Autumn DST
+operation was reported; synthetic missing/repeated-hour tests provide additional
+coverage. These observations do not prove universal musical or notebook quality.
+
+| Area | Source |
+| --- | --- |
+| Planner, brief and coverage policies | `controller/src/broadcast/show-generation.ts`, `show-brief-contract.ts`, `show-planning-policy.ts`, `show-discovery-policy.ts` |
+| Occurrence owner and sweep | `controller/src/broadcast/show-preparation.ts`, `generated-show-registry.ts` |
+| Prepared takeovers | `controller/src/broadcast/takeover-generation.ts` |
+| Actual eligible-pool diagnosis | `controller/src/music/show-candidates.ts` |
+| Persistence and saved configuration | `controller/src/schemas/show-preparation.ts`, `show.ts` |
+| Admin endpoints | `controller/src/routes/shows.ts` |
+| Settings/history and regular-show copies | `web/components/admin/TemplateShowsPanel.tsx`, `shows/GeneratedShowEditor.tsx` |
+| Schedule and Dashboard controls | `web/components/admin/schedule/`, `dash/TakeoverCard.tsx` |
+
+The isolated `common-ground:preview` harness supports all five templates;
+`sub-shows:fresh-preview`, `comfort-zone:preview` and `time-capsule:preview` are
+convenience commands. It copies station/library inputs into temporary state and
+never saves or schedules generated plans. See its `--help` for cast, duration,
+operator-direction, custom-title and fresh-user options. Live model work can be
+slower while the running station uses the same service.
 
 ## Template ideas for later exploration
 
-### Fresh-install regression scenario
+Keep the shipped set at five. The following are proposals, not supported saved
+template IDs or promises about selection order.
 
-The isolated comparison harness accepts `--fresh-user`, also available as
-`npm run sub-shows:fresh-preview -- --template <template> --count 3` from
-`controller/`. Set `STATE_DIR` to the source station state root as with the
-other previews. Run once for each of `dj-choice`, `deep-discovery`,
-`common-ground`, `outside-comfort-zone` and `time-capsule`.
-
-This writes shipped DEFAULTS into temporary settings/schedule files: the three
-seed personas (Marlowe, Wren and Hale), no separate Musical Leanings, no saved
-shows, an empty schedule and unrestricted eligibility pools. It omits the source
-station's blocklist. Only service connections and a library snapshot are reused;
-no source persona, show, schedule or skill configuration is retained. It asserts
-the empty fixture, checks 60 deterministic random casts per template, then tests
-each default persona as host with the template's normal random-guest policy.
-Outside the Comfort Zone stays solo and Common Ground requires one guest.
-Generation uses the production acceptance/coverage/retry function. No episodes
-are saved or aired and the source station is unchanged.
-
-The 25 October 2026 run completed all 15 one-hour previews and 300 casting checks.
-Every accepted plan passed strict coverage with at least 30 matching tracks:
-
-| Template | Marlowe | Wren | Hale |
-| --- | ---: | ---: | ---: |
-| DJ's Choice | 5,870 | 10,493 | 45,901 |
-| Deep Discovery | 1,378 | 194 | 170 |
-| Common Ground | 29,994 | 10,732 | 29,994 |
-| Outside the Comfort Zone | 279 | 195 | 279 |
-| Time Capsule | 635 | 635 | 635 |
-
-This is a successful mechanics check, not a pass for fresh-install editorial
-quality. The seed Souls describe presentation style without explicit musical
-tastes. Generation inferred preferences from those speaking traits, and two
-Outside the Comfort Zone rationales invented established Soul/Funk repertoires
-despite the empty show list. One Deep Discovery plan mixed 15 unrelated genres
-under an electronic-music brief. Seven of the nine DJ's Choice, Deep Discovery
-and Common Ground plans introduced unrequested era filters (including two
-effectively unhelpful 1900-onward windows). All Time Capsule hosts converged on
-1965–1969 with the same palette; one brief additionally promised Blues Rock,
-which was absent from the accepted filters.
-
-### Musical readiness and library suitability
-
-The first concept call now assesses readiness before proposing an episode.
-The host must have concrete musical evidence in their Soul or optional Musical
-Leanings; Common Ground requires this from both participants. Existing shows
-are supporting repertoire context, never a prerequisite. Speaking style alone
-cannot establish musical taste. Unchanged shipped presentation-only Souls and
-empty profiles stand down before loading the library or calling the model.
-
-For other profiles the concept response contains an assessment and a nullable
-proposal. Exact supporting quotations are checked against each participant's
-own source text. A narrow local guard also rejects obvious delivery-only quotes
-without musical language or a library genre. Clear catalogue-genre preferences
-in Musical Leanings, or explicitly expressed preferences in Soul, also count
-directly if the model quotes the wrong field. These checks do not classify every
-possible musical taste. Missing evidence returns advice to add musical detail, with
-an external [Musical Leanings guide](https://github.com/perminder-klair/subwave/discussions/1817)
-at the bottom of the message. Both the Sub/Shows episode card and takeover
-preview render that guide as a clickable external link. This adds no model call
-to successful generation; meaning and musical coherence still rely on the model.
-
-Library suitability is assessed for the chosen template. A large or narrowly
-tagged catalogue need not support a credible departure or shared musical
-connection. Failure explains that fit problem without labelling the library
-small or silently switching templates. Track-count failures separately report
-the slot length, required count and actual eligible count after exclusions,
-with advice to shorten the slot, try another template or add suitable music.
-The twice-airtime/four-minute rule, higher operator minimum and single coverage
-correction remain. Unresolved genres or inactive metadata filters fail coverage
-verification rather than accepting a count inflated by a missing lock.
-
-The fresh-user harness accepts fresh-only `--music-lean` or `--soul` overrides
-for positive controls. Unmodified default-persona readiness refusals are expected
-outcomes, recorded with their error code. The library snapshot remains isolated;
-no plans are saved or aired. Editorial era restraint and brief/filter agreement
-remain separate review concerns. These previews do not exercise browser onboarding.
-
-The readiness rerun on 25 October returned the expected persona guidance for
-all 15 unchanged-default cases and again passed 300 deterministic casting checks.
-Enriched fresh-user positive controls produced accepted one-hour plans with no
-regular shows:
-
-| Template | Musical evidence | Eligible tracks |
-| --- | --- | ---: |
-| DJ's Choice | Soul only | 4,833 |
-| Deep Discovery | Optional Musical Leanings | 178 |
-| Common Ground | Optional Musical Leanings for both participants | 1,661 |
-| Outside the Comfort Zone | Optional Musical Leanings | 279 |
-| Time Capsule | Soul only | 635 |
-
-Initial enriched trials exposed false readiness refusals, one deficient coverage
-correction and one invalid settings JSON response. The evidence instruction and
-verbatim quotation requirement were clarified before rerunning the first
-three templates; the accepted positive controls above do not establish that
-model-level refusals, format failures or editorial inconsistencies are eliminated.
-A custom presentation-only Soul also exposed an incorrect model approval after
-prompt clarification, motivating the local delivery-evidence guard. Another
-trial quoted a guest’s delivery instead of their explicit Leanings, motivating
-the direct catalogue-genre preference check.
-Thirteen focused policy tests and nine existing generated-show tests cover the
-readiness gate, quote provenance, per-participant requirements, count advice,
-bounded retry, inactive locks and regeneration lifecycle. The existing lifecycle
-fixture now supplies an explicit coverage diagnostic instead of relying on a
-live music server. Small-pool and metadata-failure tests use injected diagnostics;
-the live previews still reuse a substantial catalogue.
-
-### Brief and music contract
-
-The concept remains the creative step: it proposes the brief, title and declared
-music palette. Non-Time-Capsule templates also declare `eras`, which must be
-empty unless the operator direction or custom title contains a recognised year
-or decade request. Favourite decades in persona notes and normal show filters
-do not enable era restrictions. Time Capsule still supplies its closed period.
-
-The existing `generateShowPlan.musicSettings` call now also acts as a final
-editor. It receives the actual cast, the accepted draft and the exact genre/era
-contract, plus any concrete mismatch found in that draft. It preserves correct
-wording, the musical bridge and the talking point; it can repair contradictory
-promises without introducing a different palette. Correct titles and custom
-titles are held fixed. There is no third model call. This changes the internal
-response contract, not the persisted episode schema or the two-call lifecycle.
-
-Genre membership, uniqueness and agreed era windows are checked before acceptance.
-Default shows cannot acquire a 1900-onward or other unrequested era in the
-settings call. Publication checks inspect the final title, brief and talking
-point for year/decade promises outside those windows, known presenters outside
-the cast and explicit unsupported appearances. They also catch exact multiword
-catalogue styles absent from the selected palette. Documented taste/repertoire
-references can explain a bridge in Common Ground and Outside the Comfort Zone;
-mentioning those starting tastes does not add them to the music filters.
-
-These are bounded text checks, not semantic fact verification. Single-word tags
-such as Soul and House are ambiguous in prose and are not used to reject a
-brief. Unknown artists, paraphrased styles, historical claims and the distinction
-between a comparison and a playback promise still need the editor instructions
-and operator review. A remaining detected mismatch fails generation through the
-existing path, preserving any accepted episode; filters are never broadened to
-justify a contradictory sentence. Existing accepted episodes are unchanged.
-
-The isolated harness also accepts `--direction` and `--name`, allowing an explicit
-music period/custom-title control alongside era-neutral templates. The focused
-`show-brief-contract` tests cover era/genre preservation, date promises, closed and
-open periods, known cast boundaries and explicit catalogue subgenre mismatches.
-
-The 25 October consistency run used enriched default personas with favourite
-80s/90s notes, no regular shows and an isolated snapshot of the existing library.
-The final sweep accepted all five templates and one explicit custom-era control:
-
-| Preview | Era filters | Eligible tracks |
-| --- | --- | ---: |
-| DJ's Choice | Unrestricted | 1,667 |
-| Deep Discovery | Unrestricted | 176 |
-| Common Ground | Unrestricted | 1,667 |
-| Outside the Comfort Zone | Unrestricted | 650 |
-| Time Capsule | 1965–1969 | 458 |
-| Common Ground: Eighties Connections | 1980–1989 | 145 |
-
-Earlier iterations caught a contradictory DJ's Choice subgenre promise and a
-decade-description problem; detected draft issues are now supplied directly to
-the editor within the same second call. Eleven contract tests, thirteen readiness
-policy tests and nine generation/regeneration tests pass, as do controller and
-preview TypeScript checks and scoped lint (existing `any` warnings remain).
-These establish the concrete contracts and coverage checks, not universal prose
-quality or template novelty: an Outside the Comfort Zone destination can still
-need review when no regular-show repertoire exists. No live episodes were saved,
-regenerated or aired by these previews.
-
-### Bundled Sub/Show discussion skill
-
-`sub-show-talking-point` ships as the Sub/Show counterpart to DJ Banter in
-regular shows. Its canonical SKILL.md and tool.mjs now live together in
-`controller/src/skills/builtins/sub-show-talking-point`, replacing the manual
-installation example. It includes the first-person conversation refinement.
-Keep regular Banter Breaks disabled for Sub/Shows.
-
-This remains an editable DJ Skill, using the existing assignment and Sub/Shows
-skill eligibility settings. It discusses the explicit episode talking point
-with the on-air host and guests, at most two turns each. Its grounded tool
-checks current-track genre relevance and stands down when no supported
-connection exists. Solo shows skip it. The standard built-in seeder installs
-both editable files and restores only missing ones; it never replaces edited
-copies. The settings default is explicitly disabled, and cold loading merges
-that default before saved toggles so existing stations also start disabled
-unless they previously opted in. Existing true/false choices and persona
-allowlists are preserved, including the legacy "all skills" sentinel. Nothing
-adds it to a persona or restricted Sub/Shows skill list automatically.
-
-Eight `sub-show-skill-install` checks cover first installation, upgrade defaults,
-explicit enablement, unchanged assignments, edited-file preservation, partial
-installation repair and the bundled tool's relevance/current-track guards.
-They pass alongside the existing eligibility, scaffold-preservation and
-backup/restore guard suites (25 reported tests total). Controller/preview/new-test
-TypeScript passes; scoped lint has no errors (existing warnings remain).
-
-Unimplemented entries below are proposals, not commitments. Each should give
-the planner a clear musical question that can be supported by the library and
-show filters. DJ’s Choice, Deep Discovery, Common Ground, Outside the Comfort Zone and Time Capsule are implemented;
-the remaining ideas below are proposals.
-
-| Working name | Musical idea | Planning approach |
+| Working name | Musical idea | Requirement or caution |
 | --- | --- | --- |
-| Common Ground (implemented) | Two DJs discover where their tastes meet, including unexpected overlaps. | Use the host and guest Souls, supplemented by optional Musical Leanings, to find a shared musical territory. Guest selection should meaningfully affect the result. |
-| Outside the Comfort Zone (implemented) | A DJ makes one coherent sideways move into neighbouring musical territory. | Start from the DJ’s preferences and explore a related area outside their familiar repertoire. More focused than DJ’s Choice; underrepresentation is not required. |
-| Time Capsule (implemented) | Explore a particular period through the DJ’s perspective. | Choose an era with sufficient library coverage, then a coherent genre palette. Do not promise historical facts without supporting research. |
-| Opposites Attract | Explore a contrast such as organic/electronic, delicate/heavy or polished/raw. | Choose complementary genre groups and make their contrast a recurring talking point. Filters alone do not guarantee alternating tracks or a particular running order. |
-| After Hours | Reveal a different side of a familiar DJ through a late-night musical setting. | Let the persona interpret intimacy, hypnosis, unease or spaciousness. Do not automatically equate late-night presentation with low-energy music. |
-
-Time Capsule is implemented following the accepted harness trial described below.
-Run `STATE_DIR=/path/to/station/state npm run time-capsule:preview -- --host "DJ name" --count 1`
-from `controller/`. The default comparison uses four distinct eligible Random
-Hosts, with solo hosts for this initial experiment; explicit guests are rejected.
-It uses the same isolated state, local model and sequential generation as the
-other preview templates and never saves or schedules episodes.
-
-The first call chooses one closed period (normally 1–5 years, at most 10),
-a host-specific musical angle and 1–3 specific genres. Compact library evidence
-lists the six most represented available genres within each five-year bin,
-using the same original-year resolution as selection. These overlapping tag
-counts suggest viable periods; they do not prove coverage for a narrower window.
-The second call must preserve the chosen year bounds exactly in one era filter,
-along with every declared genre. Both era and genre filters are strict; moods
-and energies remain unrestricted. The harness measures actual combined coverage
-against twice airtime at four minutes per track and reports failure or shortage
-without accepting an episode. The initial harness did not exercise production retry behaviour.
-
-The first trial allowed broad Rock/Pop padding, named artists without research,
-historical "birth" framing and a vague 1980s brief for 1985–1989 filters. The
-refined concept schema puts period and musical angle before the brief, excludes
-umbrella tags, requests exact years in the brief, and disallows artist promises,
-historical claims and talking points requiring unsupported influence research.
-
-Second-pass one-hour results (30 tracks required):
-
-| Host | Title | Strict years | Genres | Matching tracks |
-| --- | --- | --- | --- | ---: |
-| Rock/metal host | Riff Fest | 1975–1979 | Progressive Rock, Hard Rock, Folk Rock | 638 |
-| Pop/soul host | Synthetic Dreams | 1985–1989 | Synth-Pop, New Wave, Indie Pop | 498 |
-| Eclectic host | Punk New Wave Collision | 1975–1979 | Punk, New Wave, Post-Punk | 820 |
-
-All six model calls in this pass completed and all plans preserved the closed
-period exactly in strict settings, with no mood or energy restriction. The
-three distinct musical angles and sufficient era/genre pools support further
-exploration, but the prose still failed some instructions. The rock/metal host introduced
-Yes in the talking point and omitted supporting genres from the brief; the pop/soul host
-used a vague mid-80s label and unsupported emergence/influence framing; the eclectic host
-promised late-1970s Britain without any country filter or verified geography.
-Both the pop/soul host and the eclectic host omitted the exact bounds in their prose. These findings
-informed the production changes below; coverage alone does not establish prose
-quality or verify historical/geographical claims.
-
-### Time Capsule implementation
-
-Time Capsule is available on the schedule shelf, in Write an Order and Dashboard
-Takeover, and in Sub/Shows episode plans and airtime totals, with a blue colour.
-It defaults to Random Host and Random Guests (0–3), using the existing eligibility
-pools and slot editor. A fixed host, selected guests or no guests are supported.
-The host remains the musical lead; optional guests supply additional perspectives.
-The preview harness retains its solo comparison mode.
-
-The concept chooses a closed period, normally 1–5 years and never more than ten
-years inclusive, with 1–3 specific genres. The second call must copy both year
-bounds and every selected genre exactly. A brief lead states the accepted period
-and full palette explicitly, even if the model describes the period informally.
-The prompt forbids unsupported geographic restrictions, historical claims and
-artist promises, and requests a musical talking point within the selected period.
-Mood and energy filters remain empty; strict era and genre filters are mandatory.
-
-Coverage must reach twice airtime at a four-minute average, or the configured
-minimum if greater, after filters and exclusions. The shared acceptance path
-checks closed bounds and retries once with a better-covered closed period and
-coherent palette, keeping the same cast. It cannot remove the era restriction
-or relax strictness. Insufficient coverage after retry uses the existing failure
-path. Shared preparation triggers, regeneration, host shuffle, permanent-show
-saving, DJ Skills and Look Ahead all apply. Banter Breaks remain disabled.
-
-Outside the Comfort Zone is implemented after a harness trial. Common Ground
-uses exactly one distinct guest and equal musical influence for both DJs; the
-host still leads presentation. It uses strict genres with the same twice-airtime
-coverage checks as the other Sub/Shows.
-
-Templates promising alternating DJ selections, specific tracks or a precise
-musical progression would need additional influence over the track picker.
-Forgotten Favourites remains separately deferred for the same reason: planning
-a brief and filters does not by itself favour neglected tracks at selection.
-
-### Common Ground and preview harness
-
-Common Ground is available on the schedule shelf, in programming menus and as
-a prepared takeover. The default is Random Host plus exactly one random guest;
-slot options can instead select exactly one guest. Both DJs must be enabled in
-Random Hosts, and a randomly selected host cannot displace a fixed guest.
-Scheduled variants, regeneration, cast shuffling, saved regular shows and Look
-Ahead reuse the existing Sub/Shows lifecycle.
-
-Future scheduled plans are reconciled against the current slot's show ID, start
-and end before preparation or listing. Resizing a shared boundary retires both
-obsolete future shapes; the new slots receive their own plans. Removed future
-slots are retired too, including from the playback registry and persisted store.
-Past and already-started episodes retain their history, and takeover records are
-not discarded by weekly schedule reconciliation. Reconciliation checks schedule
-identity directly, so a temporary casting failure does not erase a valid plan.
-
-
-The harness uses the same concept/settings calls as Sub/Shows, with Souls as
-primary evidence, optional Musical Leanings, and both DJs' scheduled regular-show
-filters as supporting repertoire context. Regular-show briefs are omitted.
-Explicit persona preferences take precedence; an overlap need not already
-appear in either DJ's shows. Both DJs have equal musical influence.
-
-The preview concept call first records a supported musical interest for each DJ
-and one shared musical thread. It then writes a distinctive title and a brief
-of 2–3 sentences explaining each DJ's connection and one recurring musical
-question. Prefer a small coherent palette (usually 2–5 styles), expanding only
-for coverage. Avoid unrelated genre groups, generic template titles and
-invented shared preferences. The concept should remain era-neutral unless the
-operator requests a period. The settings prompt contains no example date range;
-however, any decades or dates promised in the accepted brief must be represented
-in era filters, even if the concept introduced them without an operator request.
-A proposal mixing older and contemporary music must retain both periods, rather
-than restricting the entire show to the older decades.
-
-Both participants must be enabled in **Sub/Shows → Random Hosts**, including
-explicitly named pairs. The Random Guests list is not used for this experiment.
-A null eligibility list means everyone; an empty list permits nobody. Unknown,
-ambiguous, excluded or identical participants are rejected before model calls.
-
-From `controller/`, point `STATE_DIR` at the station's state root:
-
-```sh
-STATE_DIR=/path/to/station/state npm run common-ground:preview -- --list
-STATE_DIR=/path/to/station/state npm run common-ground:preview -- --count 3
-STATE_DIR=/path/to/station/state npm run common-ground:preview -- --host "DJ name" --guest "Other DJ name" --count 2
-```
-
-With no fixed pair, `--count` selects distinct random pairs without replacement.
-Fixing one participant compares different eligible partners. Fixing both repeats
-that pair, to inspect variation. Counts default to three and can be 1–20;
-`--minutes` defaults to 60 and can be 1–360.
-
-The default model is `/models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf` at
-`http://qwen-llama-cpp:8080/v1`; overrides are `SHOW_PLAN_PREVIEW_MODEL` and
-`LLM_BASE_URL`. Run somewhere those station service addresses are reachable.
-
-Before importing runtime modules, the harness creates temporary settings and
-credential copies plus a consistent SQLite library backup. All local writes and
-telemetry stay in that temporary state, which is removed on exit. Navidrome
-lookups may read the configured music service. No plans, schedules, notebooks
-or station settings are saved. A full library backup needs temporary space
-approximately equal to the indexed library database.
-
-JSON goes to stdout; progress goes to stderr. Output includes the cast,
-supporting repertoire, generated brief/settings, matching pool diagnostics and
-whether coverage reaches twice the airtime at a four-minute average. The harness
-uses the same strict genre and coverage policy as the scheduled template. Inadequate pools and individual generation failures remain visible for
-review; the harness does not silently replace a pairing or accept it for air.
-
-### Outside the Comfort Zone preview — 25 October 2026
-
-The initial trial was a solo, harness-only prototype; it is now a saved template and UI option following operator acceptance.
-Its concept first identifies the DJ's familiar territory, one neighbouring
-destination, the musical bridge and why it is a departure. Soul and optional
-Musical Leanings supply taste; scheduled regular-show filters supply evidence
-of established repertoire. Where no regular shows exist, familiarity is inferred
-and must be described as such.
-
-The destination supplies the show's music throughout. It should not become a
-familiar set with occasional adjacent tracks, an arbitrary challenge, or several
-unrelated excursions. Underrepresentation is not required. The brief must invite
-curiosity without inventing dislike, expertise or past listening habits, and
-includes the shared labelled optional talking point.
-
-For this experiment, exact regular-show genre names are removed from the genre
-choices. This prevents obvious repertoire repetition; it does not prove that a
-DJ has never heard a style, nor resolve all genre-family overlaps. The refined
-prototype uses its single declared destination as the entire genre palette;
-choose another destination if coverage is insufficient. The preview
-uses strict filters and reports whether the pool covers twice airtime at a
-four-minute average; it does not automatically accept or schedule a plan.
-
-The existing isolated comparison harness supports:
-
-```sh
-STATE_DIR=/path/to/station/state npm run comfort-zone:preview -- --count 4
-STATE_DIR=/path/to/station/state npm run comfort-zone:preview -- --host "DJ name" --count 1
-```
-
-Only personas enabled in Random Hosts are eligible. Default selection compares
-four distinct random hosts; selecting one host repeats that host for `--count`
-runs. Guests are rejected. Settings, credentials, library and logs use the same
-temporary isolation as the Common Ground harness, with the same local model and
-endpoint overrides. JSON includes briefs, settings, regular-show repertoire and
-coverage diagnostics. Station assessment is needed before adopting this policy.
-
-Coverage diagnostics stop waiting after 30 seconds and preserve the generated
-plan with an unknown coverage result. Model calls share the running station's
-LLM; run previews sequentially and allow for normal station contention.
-
-The four one-hour previews on 25 October all exceeded the 30-track minimum:
-
-| Host | Generated palette | Matching pool |
-| --- | --- | ---: |
-| Rock/metal host | Electronic, Synth-Pop | 10,314 |
-| Electronic host | Post-Rock, Electro, Experimental | 1,463 |
-| Alternative-pop host | Post-Punk, Industrial | 1,562 |
-| Eclectic host | Industrial, Post-Punk, Experimental | 2,201 |
-
-These establish technical feasibility, not concept quality. The rock/metal host's broad
-Electronic umbrella weakens the focused destination. The electronic host's brief incorrectly
-calls post-rock electronic music. The alternative-pop host and the eclectic host converge on similar territory,
-and their briefs do not clearly establish the individual musical bridge; the eclectic host's
-also claims noise and experimentation in his regular shows without sufficient
-evidence. Every brief includes a talking point, and the revised previews leave
-unrequested mood, era and energy restrictions empty. Refine destination focus,
-musical accuracy and persona-specific bridges before promoting this to a saved
-template. A large matching pool alone is not an acceptance criterion.
-
-#### Refinement: one destination and strict selection
-
-The next prompt requires a concrete audible bridge supported by the persona,
-and checks the brief against that bridge rather than accepting generic curiosity.
-The concept returns one destination; the controller copies it into the required
-genre list. There is no independent list for the model to pad with umbrella tags.
-The broad Rock, Pop, Electronic and Experimental tags are unavailable as
-destinations in this trial. The second call receives the departure evidence to
-explain the rationale.
-
-This matters because genres are OR alternatives, even with strict filters.
-A trial proposing Progressive House plus Electronic admitted 9,371 tracks:
-strictness alone cannot restore focus to an overly broad palette. A single
-destination still permits tracks with other tags, provided at least one tag
-matches the destination using the shared genre matching rules. It does not
-guarantee unfamiliar artists or exclude every recording played in regular shows.
-
-The harness reports `strictFilterComparison`: effective library pools with the
-same musical plan's strict setting on and off, the count excluded by strictness,
-and the matching share of the soft pool. These are diagnostic eligibility counts,
-not airplay probabilities or a simulated playlist. They account for configured
-blocking, exclusions and duration bounds, but not transient recency, artist
-separation or journey state. Runtime's existing never-starve safeguards remain;
-the preview does not change the picker or scheduled episodes.
-
-Final four-host comparison with the single-destination contract:
-
-| Host | Strict destination | Eligible tracks | Also eligible under regular-show genres |
-| --- | --- | ---: | ---: |
-| Rock/metal host | Synth-Pop | 1,722 | 14 |
-| Electronic host | Synth-Pop | 1,722 | 668 |
-| Alternative-pop host | Psychedelic Rock | 650 | 127 |
-| Eclectic host | Psychedelic Rock | 650 | 113 |
-
-Each soft-filter comparison allowed approximately 68,224 tracks. All strict
-pools exceeded the one-hour minimum of 30. A separate read-only inspection using
-the shared runtime pool helper confirmed the counts and sampled one track per
-artist: the rock/metal host's examples included Erasure, Metronomy, Soft Cell and New Order.
-The alternative-pop host's examples included Khruangbin, Tame Impala and White Denim. These are eligible
-examples, not predicted playlists. Regular-show overlap is genre eligibility,
-not evidence of past airplay. This supports strict filtering for a focused
-departure while retaining incidental overlap, rather than banning familiar
-artists. The electronic host's greater overlap shows why a new genre name is not sufficient
-evidence of a large departure.
-
-The briefs now make stronger connections, particularly the rock/metal host's rhythm-section
-and melody bridge, but remain uneven: titles are often generic, the alternative-pop host's bridge
-is loose, and the eclectic host's list of familiar styles can read as additional promises.
-Two hosts choosing each destination is valid, but this small run does not prove
-variety across repeated generations. Those findings were accepted for an on-air trial; the template is now integrated below.
-
-### Outside the Comfort Zone implementation
-
-Available from the schedule shelf, Write an Order, Dashboard Takeover and
-Sub/Shows episode plans, with an amber colour. Defaults to Random Host from the
-eligible Random Hosts pool, or an explicitly selected fixed host. It is solo:
-there are no guest controls, saved configuration requires no guests, and casting
-never adds guests. Episode naming, skills eligibility, generation triggers,
-regenerate/shuffle/save, airtime grouping and Look Ahead use the existing shared
-Sub/Show paths.
-
-The brief describes familiar genres explicitly as the host's starting tastes,
-then moves into one neighbouring destination. It must not promise a blend with
-those familiar genres. Strict filters are mandatory, using only the declared
-destination. Required coverage is the greater of the operator minimum and twice
-airtime at a four-minute average, checked after filters and exclusions. If short,
-retry once for a different single connected destination with the same host;
-never expand with umbrella genres. A second insufficient result fails safely
-through the existing preparation error path.
-
-### DJ’s Choice familiar-core policy
-
-New DJ’s Choice plans use the host’s regular show genre filters as their familiar
-centre, interpreted through the Soul and optional Musical Leanings. Where no
-regular shows exist, infer that centre from the persona. Add a few connected
-genres absent from the regular shows; guest tastes may suggest connections
-without displacing the host. The brief’s talking point must leave room for
-familiar favourites rather than impose a restrictive theme.
-
-Use strict genres, with up to 15 styles and the same checked coverage minimum
-as Deep Discovery: 30 unique eligible tracks per scheduled hour, or the operator
-minimum if higher. Leave moods, eras and energies empty by default, permitting
-soft daypart/weather influence within the genre boundary. Use a restriction
-only when explicitly requested or musically necessary; at most two moods.
-Explain the familiar core and the musical connection to adjacent styles in
-the rationale. The palette does not enforce how often adjacent styles play;
-that would require picker weighting. Accepted plans remain unchanged until
-regenerated, and failed regeneration retains the previously accepted plan.
-
-### Brief and era alignment
-
-Keep generated titles and briefs era-neutral by default. Favourite decades in
-a persona or regular show do not justify promises such as “the 80s and beyond”.
-Only promise a date range when the operator explicitly requests that musical
-restriction, and translate any promised period into matching era windows in
-the settings call. Existing accepted plans are unchanged until regenerated.
-This is prompt guidance, not a semantic validator for arbitrary prose.
-
-The settings prompt supplies required genre names as strings, with indexed
-counts separately. Narrow format recovery unwraps copied `{name, tracks}`
-genre entries before schema validation; it does not add or substitute genres,
-and the exact accepted palette is still checked.
-
-### Episode casting actions
-
-Regenerate has the tooltip “Regenerate show, keeping host and guests”. A
-separate Shuffle icon is available for upcoming slots with random host or
-guest options, with the tooltip “Shuffle random host/guests and regenerate
-show”. It previews a different cast before confirmation. Fixed options stay
-fixed, and only eligible personas participate. If the available choices cannot
-produce a different cast, explain this without regenerating the episode.
-
-The preview draws a new occurrence seed without changing station state. On
-confirmation, validate that the proposed cast is still current and generate
-the replacement with that seed. Persist it with the accepted episode only
-after success, so later regeneration and restarts retain the shuffled cast.
-A schedule change, airtime boundary or generation failure cannot replace the
-accepted episode. Legacy episodes without a seed retain their original
-deterministic casting. These controls do not rebuild or restart the station.
-
-Save draft and save use admin-only endpoints under `/shows/generated`. Save
-validates the edited draft through the shared regular-show schema and checks
-that the accepted plan has not changed since opening it. Reconcile the Shows
-settings and takeover caches after writing, and refresh episode history so
-the save action reflects its saved identity.
-
-New accepted records retain non-sensitive playlist, vocal and track-length
-settings independently of the persona-bearing configuration fingerprint, which
-is removed from past history. Legacy past records without this snapshot use
-the surviving recurring show for those additional settings; their accepted
-brief, cast and generated music filters remain available exactly as recorded.
-
-### Takeover programming menu
-
-The Dashboard menu places Default Programming first, then Regular Shows sorted
-A–Z, followed by Sub/Shows with DJ’s Choice first and remaining entries A–Z.
-Section labels are non-selectable. Sort the displayed copy only: roster order
-still determines existing show colours. The admin-only `/shows/takeover` read
-provides minimal generation identity for grouping; public schedule reads do
-not gain private generation configuration. The shared takeover cache reconciler
-retains that identity after show writes.
-
-The Schedule page’s “Write an order” selector shares the Takeover menu’s
-grouping and alphabetical order. Default Programming writes empty schedule
-cells (the existing autonomous programming behaviour). Existing Sub/Show
-variants remain individually selectable so their casting options are preserved.
-
-“Airtime against your target” aggregates all generated variants by template: one
-DJ’s Choice row and one Deep Discovery row regardless of host/guest combinations.
-Use the template name and colour, sum their scheduled hours, then calculate the
-bar scale and target status from the combined totals. Saved regular shows stay
-individual, including those copied from generated episodes.
-
-### Prepared Sub/Show takeovers
-
-The Dashboard programming menu exposes regular shows plus one choice per
-Sub/Show template, not scheduled variants. Selecting DJ’s Choice or Deep
-Discovery prepares a new episode using Random Host and Random Guests (0–3)
-from station eligibility pools. Normal Sub/Show skill eligibility still applies.
-No extra cast controls are shown in Takeover.
-
-During preparation, disable Take Over and label it “Generating…”. Keep current
-programming on air. On success, display the accepted title, host and guests,
-then enable Take Over. Changing the template or duration discards the visible
-preview and prepares another; stale responses cannot enable the button.
-Failures and expired previews offer Retry. Invalid durations and unreadable
-schedule windows cannot start preparation or activation.
-
-Preparation uses `/schedule/takeover/prepare`, with the ordinary takeover
-duration validation and shared Sub/Show planner/coverage checks. Preview tokens
-are bounded to 32 drafts, expire after 15 minutes (or the schedule boundary,
-if earlier), and are intentionally lost on controller restart. Preparing never
-changes the roster, weekly grid or live override. A fixed duration starts in
-full when the operator activates; an until-schedule-change preview is invalid
-if its target boundary changes.
-
-Take Over calls `/schedule/takeover/activate` with the ready token. Recheck the
-cast/configuration, eligibility settings, duration window and matching music
-coverage. Publish the accepted episode before exposing the override, then use
-the ordinary session handoff path. Do not call the model again. Repeated
-activation of one token is idempotent. A failed override write removes the
-unactivated episode and leaves current programming in place.
-
-Each template uses a reusable internal takeover show definition, so repeated
-takeovers do not accumulate saved variants. The weekly grid is unchanged.
-Persist the original casting occurrence identity with the ready episode when
-rebasing its start to the activation time; this preserves its cast and
-configuration across restarts. These episodes remain available in Sub/Shows
-history and can be saved as regular shows. Direct unprepared generated-show
-requests to `/schedule/override` are rejected; regular/default takeovers retain
-their existing flow.
-
-Music settings recovery also accepts exact closed year-range strings such as
-`"1980-1995"` by converting them to `{fromYear: 1980, toYear: 1995}` before
-validation. It does not guess decades, open ranges or missing years, swap
-reversed bounds, or drop a restriction. Normal year bounds and coverage checks
-still apply. The prompt explicitly demonstrates the required object format.
-
-Look Ahead’s implementation and tool contract are documented in
-`docs/custom-skills.md` under “Look Ahead schedule data”; the editable example
-lives in `docs/examples/skills/look-ahead`. It uses the actual segment speaker’s
-identity to distinguish hosting, guesting and other presenters’ shows.
+| Forgotten Favourites | Revisit previously loved music. | Needs listening/favourite history to influence actual track picking. Deferred. |
+| Hidden Gems | Explore tracks with little or no airplay. | Needs track-level airplay evidence; catalogue rarity alone is insufficient. |
+| Fresh Arrivals | Connect recent library additions to familiar tastes. | Use addition timestamps, not an invented release-date restriction. |
+| Across the Decades | Follow one musical thread across eras. | Needs covered eras; filters alone do not order records chronologically. |
+| Unexpected Connections | Connect distant genres through a musical characteristic. | Needs a credible bridge rather than invented influence/history. |
+| Host’s Obsession | Focus on one corner of the DJ’s tastes. | Soul remains usable when Musical Leanings are absent. |
+| Night Journey / After Hours | Reveal another side of the DJ in a late-night setting. | Presentation intimacy does not imply low-energy music. |
+| Opposites Attract | Explore organic/electronic, delicate/heavy or polished/raw contrasts. | Complementary genre groups cannot guarantee back-to-back alternation. Set aside. |
+
+## Cleanup and second-call evaluation
+
+The strict-policy cleanup removes only unreachable non-strict branches in new
+plan generation/acceptance and narrows planner template inputs to the existing
+five-template type. It does not change prompts’ musical direction, accepted
+history, coverage thresholds, cast rules or retry limits. The second call’s
+response contract remains unchanged pending the separate evaluation.
+
+Cleanup verification: controller TypeScript passes; the selected show and
+takeover groups report 323 and 30 passing tests respectively. Scoped lint has
+zero errors and 15 existing warnings. These are focused checks, not a rerun of
+the complete earlier regression selection. No station source or state changed.

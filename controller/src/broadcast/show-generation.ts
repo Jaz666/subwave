@@ -5,6 +5,7 @@ import * as library from '../music/library.js';
 import { resolveEraYear } from '../music/era-year.js';
 import { genreRuns, normGenre, tagCoversGenre } from '../music/genre-fold.js';
 import { zonedParts } from '../time.js';
+import type { ShowGenerationConfig } from '../schemas/show.js';
 import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show-preparation.js';
 import { djObject } from '../llm/sdk.js';
 import { DJ_SOULS } from '../settings/vocab.js';
@@ -28,7 +29,7 @@ export interface ExistingScheduledShow {
 
 export interface GeneratedShowInput {
   occurrence: { id: string; startsAt: number; endsAt: number };
-  template: string;
+  template: ShowGenerationConfig['template'];
   planningPrompt: string;
   nameMode?: 'random' | 'custom';
   customName?: string;
@@ -209,8 +210,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const commonGround = input.template === 'common-ground';
   const outside = input.template === 'outside-comfort-zone';
   const timeCapsule = input.template === 'time-capsule';
-  const strictGenres = discovery || djChoice || commonGround || outside || timeCapsule;
-  const genreLimit = strictGenres ? 15 : 6;
+  const genreLimit = 15;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
   const personas = settings.get().personas ?? [];
@@ -463,7 +463,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     topic: generatedShowPlanSchema.shape.topic.max(1200)
       .describe('A fuller presentation brief, aiming for 80–120 words when useful, with no minimum. Expand the host/guest perspective and listening invitation, never the fixed music filters.'),
     talkingPoint: baseConceptSchema.shape.talkingPoint,
-    moods: generatedShowPlanSchema.shape.moods.max(timeCapsule || outside && !input.planningPrompt.trim() ? 0 : strictGenres ? 2 : 15),
+    moods: generatedShowPlanSchema.shape.moods.max(timeCapsule || outside && !input.planningPrompt.trim() ? 0 : 2),
     eras: generatedShowPlanSchema.shape.eras.length(agreedEras.length),
     energies: generatedShowPlanSchema.shape.energies.max(timeCapsule || outside && !input.planningPrompt.trim() ? 0 : 15),
     genres: intended.length
@@ -477,11 +477,11 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let music: z.infer<typeof settingsSchema>;
   try {
     music = await djObject({
-      system: `${proseInstruction} Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Expand a short accepted topic into a fuller presentation brief while preserving its musical premise and concrete details. Preserve a correct talkingPoint. Repair contradictions and unsupported promises, but do not anonymise the DJs or replace the idea with a generic journey.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a final name, fuller topic and separate talkingPoint as well as music settings. Extra prose adds presentation context only, never new selection constraints. Remove unsupported promises; do not introduce another idea. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to ${strictGenres ? 'true' : 'false'}.`,
+      system: `${proseInstruction} Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Expand a short accepted topic into a fuller presentation brief while preserving its musical premise and concrete details. Preserve a correct talkingPoint. Repair contradictions and unsupported promises, but do not anonymise the DJs or replace the idea with a generic journey.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a final name, fuller topic and separate talkingPoint as well as music settings. Extra prose adds presentation context only, never new selection constraints. Remove unsupported promises; do not introduce another idea. Preserve every required genre exactly once. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood, era and energy lists to empty.'} Set filtersStrict to true.`,
       prompt: [
         `Accepted proposal: ${JSON.stringify(concept)}`,
         draftIssue ? `Detected draft problem: ${draftIssue.replace(' Please regenerate the episode.', '')} Repair this before publishing. Check the entire draft for similar contradictions; do not merely copy it. Remove unselected style promises rather than adding filters. Preserve the musical angle that fits the selected palette.` : 'No concrete contract mismatch was found. Preserve the premise and concrete details while expanding only the presentation context where useful.',
-        `Required music contract: ${JSON.stringify({ genres: intended, eras: agreedEras, filtersStrict: strictGenres })}. Copy genres exactly once each and eras exactly, including [] when unrestricted. Never infer a new filter from the draft prose.`,
+        `Required music contract: ${JSON.stringify({ genres: intended, eras: agreedEras, filtersStrict: true })}. Copy genres exactly once each and eras exactly, including [] when unrestricted. Never infer a new filter from the draft prose.`,
         `Allowed genre labels in the brief and talking point: ${JSON.stringify({ selectedMusic: intended, familiarTasteContext: [...new Set(contextGenres)] })}. Only selectedMusic describes records being played. familiarTasteContext may explain supported existing tastes or the bridge, never extra music. Use only labels from these lists, even when the accepted concept uses another label in its starting point. Do not refine a broad preference into an unlisted subgenre. If a starting label is absent, describe the supported interest in plain terms such as melodic guitars rather than naming that style. Do not add or change filters to justify prose.`,
         `Actual cast: ${JSON.stringify({ host: host.name, guests: guests.map(persona => persona.name) })}. These are the only presenters. Artists whose records might be selected are not studio guests. Do not promise surprise guests, special artists, interviews, particular records or artist appearances.`,
         input.nameMode === 'custom' ? `Preserve this exact operator title: ${input.customName}` : 'Keep the concept title unless it contradicts the contract; then make a short truthful revision.',
@@ -545,7 +545,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   }
   if (parsed.moods.some(mood => !moods.includes(mood))) throw new Error('Music settings returned a mood outside the station vocabulary');
   return generatedShowPlanSchema.parse({
-    ...concept, ...parsed, ...(strictGenres ? { filtersStrict: true } : {}),
+    ...concept, ...parsed, filtersStrict: true,
     topic: `${period ? `${host.name} explores ${intended.join(', ')} from ${period.fromYear === period.toYear ? period.fromYear : `${period.fromYear}–${period.toYear}`}.\n\n` : ''}${parsed.topic}\n\nTalking point (optional thread): ${parsed.talkingPoint}`,
     moods: [...new Set(parsed.moods)], energies: [...new Set(parsed.energies)],
     eras: mergeEraWindows(parsed.eras),
