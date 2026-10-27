@@ -880,3 +880,8 @@ if the question needs unsupported facts, and prohibits naming any other track
 or artist. It uses the normal on-air cast, with at most two turns per persona;
 solo shows skip through the existing co-host eligibility rule. With
 `requiresData: true`, unavailable tool results also stand down on manual runs.
+
+Its brief welcomes subjective taste, discovery, listening habits and hypothetical
+associations, while allowing occasional persona-led differences of opinion.
+It does not require a debate or agreement at the end. Hypothetical reactions do
+not license invented memories or factual claims about the current recording.
