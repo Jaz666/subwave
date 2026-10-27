@@ -303,6 +303,11 @@ export async function search(query, { songCount = 20, songOffset = 0, includeBlo
   return (await searchPage(query, { songCount, songOffset, includeBlocked })).songs;
 }
 
+export async function searchAlbums(query: string) {
+  const r = await call('search3', { query, artistCount: 0, songCount: 0, albumCount: 50 }, RETRY_FAST_TRANSPORT);
+  return r.searchResult3?.album || [];
+}
+
 // search() plus `rawCount`: how many songs the server returned for the page
 // BEFORE the archive and blocklist filters. A caller asking "was that a full
 // page?" must ask this — a 25-row page with one blocked track is still a full
