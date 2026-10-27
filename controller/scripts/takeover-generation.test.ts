@@ -26,10 +26,14 @@ const plan = { name: 'Melody and Space', topic: 'A folk show exploring spare arr
 let modelCalls = 0;
 let refuse = false;
 let genresUnavailable = false;
+let datedBrief = false;
+let invalidRepair = false;
+let repairCalls = 0;
 
 beforeEach(async () => {
   mock.timers.enable({ apis: ['Date'], now: epoch });
   modelCalls = 0; refuse = false; genresUnavailable = false;
+  datedBrief = false; invalidRepair = false; repairCalls = 0;
   mock.method(globalThis, 'fetch', async (input, init) => {
     const url = new URL(String(input));
     assert.equal(url.origin, 'http://127.0.0.1:9', 'No real service may be called');
@@ -44,11 +48,18 @@ beforeEach(async () => {
     modelCalls++;
     const body = JSON.parse(String(init?.body));
     const concept = body.messages.some((message: { content?: string }) => message.content?.includes('mandatory musical-readiness gate'));
+    const repair = body.messages.some((message: { content?: string }) => message.content?.includes('Repair only the dated wording'));
+    if (repair) {
+      repairCalls++;
+      assert.deepEqual(Object.keys(body.tools[0].function.parameters.properties).sort(), ['name', 'talkingPoint', 'topic']);
+    }
     const output = concept ? {
       assessment: { problem: refuse ? 'library-fit' : 'none', reason: refuse ? 'No coherent musical fit.' : '',
         evidence: [{ personaId: persona.id, source: 'soul', quote: persona.soul }] },
       proposal: refuse ? null : { name: plan.name, topic: plan.topic, intendedGenres: plan.genres, eras: [], talkingPoint: plan.talkingPoint },
-    } : plan;
+    } : repair ? { name: plan.name, topic: invalidRepair ? 'Folk from the 1980s.' : plan.topic,
+      talkingPoint: plan.talkingPoint, genres: ['Other'], eras: [{ fromYear: 1980, toYear: 1989 }] }
+      : datedBrief ? { ...plan, topic: 'Folk from the 1980s.' } : plan;
     const toolName = body.tools?.[0]?.function?.name;
     const message = toolName
       ? { role: 'assistant', content: null, tool_calls: [{ id: 'fixture', type: 'function', function: { name: toolName, arguments: JSON.stringify(output) } }] }
@@ -88,6 +99,29 @@ test('preparing a takeover returns a draft without changing programming or publi
   assert.deepEqual(settings.get().shows, []);
   assert.deepEqual(await showPreparation.generatedRecords(), []);
   assert.equal(modelCalls, 2);
+});
+
+test('a dated compiler brief gets one prose-only repair without changing strict filters', async () => {
+  datedBrief = true;
+  const preview = await prepareTakeoverPreview(request());
+  assert.equal(modelCalls, 3);
+  assert.equal(repairCalls, 1);
+  assert.equal(preview.plan.topic, `${plan.topic}\n\nTalking point (optional thread): ${plan.talkingPoint}`);
+  assert.deepEqual(preview.plan.genres, ['Folk']);
+  assert.deepEqual(preview.plan.eras, []);
+  assert.equal(preview.plan.filtersStrict, true);
+  assert.equal(settings.get().scheduleOverride, null);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('a repair that still contradicts the era fails after exactly one repair call', async () => {
+  datedBrief = true;
+  invalidRepair = true;
+  await assert.rejects(prepareTakeoverPreview(request()), /period outside/);
+  assert.equal(modelCalls, 3);
+  assert.equal(repairCalls, 1);
+  assert.equal(settings.get().scheduleOverride, null);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
 });
 
 test('activation publishes the exact preview before switching and starts the full duration at activation', async () => {
