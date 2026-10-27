@@ -5,11 +5,15 @@ import { ArrowDown, ArrowUp, Disc3, Plus, Search, Trash2, X } from 'lucide-react
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../ui/input-group';
 import { Btn, Card, Pill } from './ui';
 import { ADMIN_API_URL, useAdminAuth } from '../../lib/adminAuth';
-import { adminJson, useAdminQuery } from '../../lib/admin-query';
+import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
 import { fmtDuration } from './library/bits';
+import { useWatch } from 'react-hook-form';
+import { useZodForm } from '../../lib/form';
+import { TextField } from '../../lib/form-fields';
+import { subFlowNameSchema } from '../../lib/schemas.generated';
 
 type Track = { id: string; title: string; duration: number | null; artist: string | null; album: string | null };
-type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean };
+type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean; revision: number; verification: 'pending' | 'verified' | 'failed'; verificationError: string | null };
 type Album = { id: string; name: string; artist: string | null; year: number | null; coverArt: string | null };
 
 export default function SubFlowDraft() {
@@ -18,11 +22,39 @@ export default function SubFlowDraft() {
   const [album, setAlbum] = useState<Album | null>(null);
   const [artFailed, setArtFailed] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [name, setName] = useState('');
-  const [flows, setFlows] = useState<Flow[]>([]);
-  const [editing, setEditing] = useState<string | null>(null);
+  const nameForm = useZodForm(subFlowNameSchema, { name: '' });
+  const name = useWatch({ control: nameForm.control, name: 'name' }) ?? '';
+  const [editing, setEditing] = useState<{ id: string; revision: number } | null>(null);
   const [enabled, setEnabled] = useState(true);
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
+  const flowsQuery = useAdminQuery({
+    key: ['sub-flow', 'definitions'], adminFetch, enabled: hydrated && !needsAuth,
+    refetchInterval: 5000,
+    request: (fetcher, signal) => adminJson<{ flows: Flow[] }>(fetcher, '/library/sub-flow', undefined, signal),
+  });
+  const flows = flowsQuery.data?.flows ?? [];
+  const saveFlow = useAdminMutation({
+    adminFetch,
+    request: (value: { id: string | null; revision?: number; name: string; enabled: boolean; trackIds: string[] }, fetcher) =>
+      adminJson<{ flow: Flow }>(fetcher, value.id ? `/library/sub-flow/${encodeURIComponent(value.id)}` : '/library/sub-flow', {
+        method: value.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: value.name, enabled: value.enabled, trackIds: value.trackIds, ...(value.revision ? { revision: value.revision } : {}) }),
+      }),
+    onDone: async (_data, _value, client) => { await client.invalidateQueries({ queryKey: ['sub-flow', 'definitions'] }); },
+  });
+  const deleteFlow = useAdminMutation({
+    adminFetch,
+    request: (flow: Flow, fetcher) => adminJson(fetcher, `/library/sub-flow/${encodeURIComponent(flow.id)}?revision=${flow.revision}`, { method: 'DELETE' }),
+    onDone: async (_data, _value, client) => { await client.invalidateQueries({ queryKey: ['sub-flow', 'definitions'] }); },
+  });
+  const setFlowEnabled = useAdminMutation({
+    adminFetch,
+    request: (flow: Flow, fetcher) => adminJson(fetcher, `/library/sub-flow/${encodeURIComponent(flow.id)}/enabled`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revision: flow.revision, enabled: !flow.enabled }),
+    }),
+    onDone: async (_data, _value, client) => { await client.invalidateQueries({ queryKey: ['sub-flow', 'definitions'] }); },
+  });
   const albums = useAdminQuery({
     key: ['sub-flow', 'albums', submitted], adminFetch,
     enabled: hydrated && !needsAuth && !!submitted,
@@ -35,9 +67,9 @@ export default function SubFlowDraft() {
   });
   const availableTracks = albumTracks.data?.tracks ?? [];
 
-  const reset = () => { setTracks([]); setName(''); setEditing(null); setEnabled(true); };
+  const reset = () => { setTracks([]); nameForm.reset({ name: '' }); setEditing(null); setEnabled(true); };
   const add = (track: Track, index = tracks.length) => {
-    if (tracks.some(t => t.id === track.id) || tracks.length >= 3) return;
+    if (saveFlow.isPending || tracks.some(t => t.id === track.id) || tracks.length >= 3) return;
     setTracks(current => {
       if (current.some(t => t.id === track.id) || current.length >= 3) return current;
       const next = [...current];
@@ -58,11 +90,12 @@ export default function SubFlowDraft() {
       return next;
     });
   };
-  const save = () => {
-    if (!name.trim() || tracks.length < 2) return;
-    const flow = { id: editing ?? crypto.randomUUID(), name: name.trim(), tracks: [...tracks], enabled };
-    setFlows(current => editing ? current.map(item => item.id === editing ? flow : item) : [...current, flow]);
-    reset();
+  const save = async () => {
+    if (tracks.length < 2 || !(await nameForm.trigger())) return;
+    try {
+      await saveFlow.mutateAsync({ id: editing?.id ?? null, revision: editing?.revision, name: name.trim(), enabled, trackIds: tracks.map(track => track.id) });
+      reset();
+    } catch { /* mutation displays the error and keeps the editor intact */ }
   };
   const findAlbum = (event: FormEvent) => {
     event.preventDefault();
@@ -79,10 +112,10 @@ export default function SubFlowDraft() {
         <p className="mt-1 text-sm text-muted">Keep two or three album tracks together, in the order they were meant to play.</p>
       </div>
       <div role="status" className="border border-separator-strong bg-bg p-3 text-sm text-muted">
-        Saved Flows last only until this page is refreshed. Playback and track verification are not connected yet.
+        Saved Flows are checked in the background. Protected playback is not connected yet.
       </div>
       <Card title="Build a Sub/Flow" sub="Choose an album, then add its tracks in order">
-        <div className="grid gap-5">
+        <fieldset disabled={saveFlow.isPending} className="grid min-w-0 gap-5">
           <form onSubmit={findAlbum} className="flex flex-wrap gap-2">
             <InputGroup className="min-w-0 flex-1">
               <InputGroupAddon><Search /></InputGroupAddon>
@@ -123,10 +156,8 @@ export default function SubFlowDraft() {
           </div>
 
           <div className="flex flex-wrap items-end gap-2">
-            <label className="grid min-w-48 flex-1 gap-1 text-sm font-semibold">Flow name
-              <input className="min-h-10 border border-separator-strong bg-bg px-3 text-sm font-normal text-ink" value={name} onChange={event => setName(event.target.value)} placeholder="Name this Flow" />
-            </label>
-            <Btn tone="accent" onClick={save} disabled={!name.trim() || tracks.length < 2}>{editing ? 'Update draft' : 'Save draft'}</Btn>
+            <TextField control={nameForm.control} name="name" label="Flow name" placeholder="Name this Flow" maxLength={200} className="min-w-48 flex-1" />
+            <Btn tone="accent" onClick={() => { void save(); }} disabled={!name.trim() || tracks.length < 2 || saveFlow.isPending}>{saveFlow.isPending ? 'Saving…' : editing ? 'Update Flow' : 'Save Flow'}</Btn>
             <Btn onClick={reset}>Clear</Btn>
           </div>
 
@@ -145,16 +176,20 @@ export default function SubFlowDraft() {
               </div>)}
             </div>
           </div>}
-        </div>
+        </fieldset>
       </Card>
 
-      <Card title="Saved Flows" sub={`${flows.length} draft${flows.length === 1 ? '' : 's'} in this session`}>
-        {flows.length === 0 ? <p className="text-sm text-muted">No Flows saved yet. Build one above to see it here.</p> : <div className="grid gap-3">{flows.map(flow =>
+      <Card title="Saved Flows" sub={`${flows.length} Flow${flows.length === 1 ? '' : 's'}`}>
+        {flowsQuery.isLoading ? <p className="text-sm text-muted">Loading Flows…</p> : flowsQuery.isError ? <p className="text-sm text-muted">Could not load saved Flows. Refresh the page to try again.</p> : flows.length === 0 ? <p className="text-sm text-muted">No Flows saved yet. Build one above to see it here.</p> : <div className="grid gap-3">{flows.map(flow =>
           <div key={flow.id} className="flex flex-wrap items-center gap-3 border border-separator-strong p-3">
-            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill></div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p></div>
-            <Btn sm onClick={() => { setEditing(flow.id); setName(flow.name); setTracks([...flow.tracks]); setEnabled(flow.enabled); }}>Edit</Btn>
-            <Btn sm onClick={() => setFlows(current => current.map(item => item.id === flow.id ? { ...item, enabled: !item.enabled } : item))}>{flow.enabled ? 'Disable' : 'Enable'}</Btn>
-            <Btn sm aria-label={`Delete ${flow.name}`} onClick={() => { setFlows(current => current.filter(item => item.id !== flow.id)); if (editing === flow.id) reset(); }}><Trash2 size={14} /></Btn>
+            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill><Pill>{flow.verification === 'pending' ? 'Checking…' : flow.verification === 'verified' ? 'Checked at save' : 'Needs attention'}</Pill></div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p>{flow.verificationError && <p className="mt-1 text-xs text-muted">{flow.verificationError}</p>}</div>
+            <Btn sm disabled={saveFlow.isPending} onClick={() => { setEditing({ id: flow.id, revision: flow.revision }); nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled); }}>Edit</Btn>
+            <Btn sm disabled={setFlowEnabled.isPending} onClick={() => { void setFlowEnabled.mutateAsync(flow).catch(() => {}); }}>{flow.enabled ? 'Disable' : 'Enable'}</Btn>
+            {flow.verification === 'failed' && <Btn sm disabled={saveFlow.isPending} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>}
+            <Btn sm disabled={deleteFlow.isPending} aria-label={`Delete ${flow.name}`} onClick={() => {
+              if (!window.confirm(`Delete “${flow.name}”? This cannot be undone.`)) return;
+              void deleteFlow.mutateAsync(flow).then(() => { if (editing?.id === flow.id) reset(); }).catch(() => {});
+            }}><Trash2 size={14} /></Btn>
           </div>)}</div>}
       </Card>
     </div>

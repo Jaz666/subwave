@@ -1,8 +1,38 @@
 import express from 'express';
 import { requireAdmin } from '../../middleware/auth.js';
 import * as subsonic from '../../music/subsonic.js';
+import * as flows from '../../music/sub-flow.js';
 
 export const router = express.Router();
+
+router.get('/library/sub-flow', requireAdmin, (_req, res) => {
+  try { res.json({ flows: flows.list() }); }
+  catch { res.status(500).json({ error: 'Saved Flows could not be read' }); }
+});
+
+router.post('/library/sub-flow', requireAdmin, async (req, res) => {
+  try { res.status(201).json({ flow: await flows.save(null, req.body) }); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Flow could not be saved' }); }
+});
+
+router.put('/library/sub-flow/:id', requireAdmin, async (req, res) => {
+  try { res.json({ flow: await flows.save(req.params.id, req.body) }); }
+  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Flow could not be saved' }); }
+});
+
+router.patch('/library/sub-flow/:id/enabled', requireAdmin, (req, res) => {
+  const { revision, enabled } = req.body ?? {};
+  if (!Number.isInteger(revision) || revision < 1 || typeof enabled !== 'boolean') return res.status(400).json({ error: 'A revision and enabled state are required' });
+  try { res.json({ flow: flows.setEnabled(req.params.id, revision, enabled) }); }
+  catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Flow could not be changed' }); }
+});
+
+router.delete('/library/sub-flow/:id', requireAdmin, (req, res) => {
+  const revision = Number(req.query.revision);
+  if (!Number.isInteger(revision) || revision < 1) return res.status(400).json({ error: 'A revision is required' });
+  try { flows.remove(req.params.id, revision); res.json({ ok: true }); }
+  catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Flow could not be deleted' }); }
+});
 
 router.get('/library/sub-flow/albums', requireAdmin, async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
