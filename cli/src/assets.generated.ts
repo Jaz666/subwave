@@ -730,7 +730,7 @@ volumes:
 `;
 
 // docker-compose.dev.yml
-export const COMPOSE_DEV_YML = `# SUB/WAVE — dev compose (local smoke test): Broadcast + Controller only.
+export const COMPOSE_DEV_YML = `# SUB/WAVE — dev compose (local smoke test): Broadcast, Controller, analyzer and docker-socket-proxy.
 # The Next.js UI runs separately via \`cd web && npm run dev\` for hot reload.
 # State + sounds + radio.liq are bind-mounted so dev cycles need no rebuilds.
 
@@ -1295,6 +1295,14 @@ SITE_URL=
 #                                   # e.g. http://koito:4110/apis/listenbrainz/1/submit-listens
 #                                   # otherwise set base URL in admin → Settings → Scrobbling
 
+# ───────── Lyrics (optional) ─────────
+# The LRCLIB fallback (admin → Settings → Listeners → Lyrics panel, on by
+# default) asks lrclib.net for synced lyrics the music server lacks, sending each
+# such track's artist, title, album and length. LRCLIB is self-hostable: point
+# this at your own instance and no track names leave your network, or switch
+# the fallback off in that panel.
+# LRCLIB_URL=https://lrclib.net
+
 # ───────── Acoustic analysis (CLAP audio-similarity + Demucs vocals) ─────────
 # The analysis pass (npm run analyze / admin "Analyze audio") computes bpm, key,
 # loudness, structure, pace and a beat grid for every track. This runs by
@@ -1475,4 +1483,4 @@ SITE_URL=
 
 // cli/package.json#version (embedded so the compiled binary can self-identify
 // — used by `subwave --version`).
-export const CLI_VERSION = `1.23.0`; // x-release-please-version
+export const CLI_VERSION = `1.28.0`; // x-release-please-version

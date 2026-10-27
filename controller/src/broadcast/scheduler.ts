@@ -17,7 +17,7 @@ import * as likes from './likes.js';
 import { onCacheChange } from '../settings/store.js';
 import { applyKnownTrackCeiling } from '../music/track-duration.js';
 import * as settings from '../settings.js';
-import { jingleRotateOwner, rotateJingleDue } from './jingle-rotate.js';
+import { jinglePlacement, jingleRotateOwner, rotateJingleDue } from './jingle-rotate.js';
 import { normGenre, genreMatches, genreResolutionWarningOnce, inYearRange, preferEnergy, preferEnergyStrict, preferMood, applyStrictLocks, hasEraBound, eraSpan, type VocalMode } from '../music/show-filter.js';
 import { freshnessBiasedOrder } from '../music/airing.js';
 import { recencyWindowsForLibrary } from '../music/recency.js';
@@ -813,9 +813,10 @@ function banterEligible(now: Date): boolean {
   return true;
 }
 
-// Segment director: the talk table's one FILL row (#1500) — offered every fifth
-// minute, no wall-clock placement, stands down on any minute a scheduled row
-// wants. Its per-kind cooldowns and frequency floor stay in skills/_agent.ts.
+// Segment director: a FILL row of the talk table (#1500), beside the jingle
+// rotate — offered every fifth minute, no wall-clock placement, stands down on
+// any minute a scheduled row wants. Its per-kind cooldowns and frequency floor
+// stay in skills/_agent.ts.
 function segmentEligible(): boolean {
   if (!autoVoiceAllowed()) return false;  // station voice is off — music only (manual /dj/skill still runs)
   if (programme.onAir()) return false;  // a programme episode owns its talk moments — the director stands down
@@ -956,6 +957,7 @@ function talkEligible(kind: TalkKind, now: Date, rolled: SessionRoll | null): bo
     const s = settings.get();
     return rotateJingleDue({
       owner: jingleRotateOwner(s),
+      placement: jinglePlacement(s),
       ratio: Number(s?.jingleRatio) || 0,
       tracksSinceJingle: queue.rotateJingleTracksSince(),
     });
@@ -1000,7 +1002,11 @@ async function runTalkSlot(plan: Extract<TalkPlan, { act: 'fire' }>, rolled: Ses
   // is about to use, which is the same "quietly switch the unload off" failure
   // the fire-not-window rule above exists to avoid.
   if (plan.kind !== 'jingle') void warmHeavy();
-  return withTalkAir(plan.air, () => runTalkSlotInner(plan, rolled));
+  const fire = () => withTalkAir(plan.air, () => runTalkSlotInner(plan, rolled));
+  // An immediate fire is speech on its way to this song from the moment it
+  // starts writing, so an overlay ID offered meanwhile must stand down. A
+  // 'next-track' fire airs at the next seam, which no overlay can reach.
+  return plan.kind !== 'jingle' && plan.air === 'immediate' ? queue.whileTalkInFlight(fire) : fire();
 }
 
 async function runTalkSlotInner(plan: Extract<TalkPlan, { act: 'fire' }>, rolled: SessionRoll | null) {

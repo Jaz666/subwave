@@ -29,7 +29,8 @@ a no-op). Don't rely on such flags anywhere; they do nothing on this RN version.
 RNTP 4.1.2 is not natively New-Architecture-compatible — out of the box, Android
 playback crashes with `You should not use ReactNativeHost directly in the New
 Architecture` from `MusicService`. **The fix is `patches/react-native-track-player+4.1.2.patch`**,
-which makes two source edits:
+whose New Architecture half is two source edits (the rest of the patch is the
+progress and iOS metadata fixes described below):
 
 - `MusicModule.kt` — routes async `@ReactMethod`s through a Unit-returning
   `launch` helper (TurboModule interop requires void-returning async methods).
@@ -86,6 +87,14 @@ and progress must also be checked in the car.
   `react-native-google-cast` runs under the New Architecture in **compat
   (interop) mode** (v5 will be native); if a Cast API breaks after an RN/Expo
   upgrade, check the library's v5 status before patching.
+- **The Android Cast SDK is pinned** (`androidPlayServicesCastFrameworkVersion`
+  on the `react-native-google-cast` plugin in `app.json`). The library defaults
+  to `play-services-cast-framework:+`, so every build takes Google's newest, and
+  23.0.0 pulls `androidx.mediarouter:mediarouter:1.9.0-beta01`, which needs
+  compileSdk 37 and AGP 9.1: `:app:checkReleaseAarMetadata` fails the build.
+  Raise the pin alongside an Expo SDK upgrade that moves compileSdk/AGP, and
+  ship it in a binary for both platforms, because the plugin options are in the
+  shared app config, so the pin is in the iOS fingerprint too.
 
 ---
 
@@ -358,7 +367,7 @@ eas submit --profile production --platform ios     # uploads to App Store Connec
 |---|---|---|
 | `tsc --noEmit` | ✅ | ✅ |
 | Native build | ✅ simulator (new arch ON) | ✅ emulator + APK (new arch ON, JDK 17) |
-| RNTP slim patch (2 files) | ✅ live playback | ✅ `BUILD SUCCESSFUL` after slim |
+| RNTP New Architecture patch | ✅ live playback | ✅ `BUILD SUCCESSFUL` after slim |
 | Install + launch | ✅ | ✅ (emulator install) |
 | JS bundle | ✅ 4075 modules | ✅ build path |
 | Onboarding → health check | ✅ all 4 probes OK | (same JS; via skill on device) |
