@@ -190,6 +190,10 @@ Accepted unchanged plans survive restarts. Configuration changes invalidate
 future plans where appropriate; already-airing accepted plans remain fixed.
 The shared occurrence owner serialises writes and coalesces generation by
 occurrence, rejects stale publication and reconciles removed/resized slots.
+Reconciliation also removes a future scheduled plan from storage and the playback
+registry when current eligibility settings cannot supply its required cast (for
+example, Common Ground with only one eligible DJ). Restoring a valid cast lets
+the normal preparation sweep generate the slot again; aired history is retained.
 Missing/repeated local hours use the station timezone and occurrence boundaries.
 
 Keep generated history for 30 days, bounded to 1,024 records. Remove private
