@@ -144,10 +144,17 @@ export default function TemplateShowsPanel() {
   return (
     <div className="grid gap-4">
       <section className="card">
-        <div className="stack-mobile grid grid-cols-[1fr_auto] items-center gap-4 p-4">
+        <div className="grid gap-4 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <Eyebrow className="text-vermilion">show plan · Sub/Shows</Eyebrow>
+              <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
+            </div>
+            <Button asChild variant="accent" size="sm" className="min-h-9">
+              <Link href="/admin/shows/schedule">Open the schedule →</Link>
+            </Button>
+          </div>
           <div>
-            <Eyebrow className="text-vermilion">show plan · Sub/Shows</Eyebrow>
-            <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
               Plan fresh episodes from your DJs’ personalities and musical tastes. Drag a Sub/Show from the schedule
               shelf. Click a template to choose its host, guests and episode-name rules before dragging, or click a slot to adjust it later.
@@ -161,9 +168,6 @@ export default function TemplateShowsPanel() {
               ))}
             </dl>
           </div>
-          <Button asChild variant="accent" size="sm" className="min-h-9">
-            <Link href="/admin/shows/schedule">Open the schedule →</Link>
-          </Button>
         </div>
       </section>
 
@@ -231,18 +235,27 @@ export default function TemplateShowsPanel() {
               {group.phase === 'past' ? ' · kept for 30 days' : ''}
             </span>
           </div>
-          {group.episodes.length ? group.episodes.map(episode => (
-            <GeneratedEpisodeRow
-              key={episode.occurrence.id}
-              episode={episode}
-              personas={personas}
-              timezone={data.values?.timezone}
-              apiBase={apiBase}
-              adminFetch={adminFetch}
-              phase={group.phase}
-              settings={data}
-            />
-          )) : (
+          {group.episodes.length ? (
+            <div
+              className={group.phase === 'live' ? 'grid gap-3' : 'grid max-h-[44rem] gap-3 overflow-y-auto overscroll-contain pr-1 focus-visible:outline-2 focus-visible:outline-[var(--accent)] sm:max-h-[36rem]'}
+              role={group.phase === 'live' ? undefined : 'region'}
+              aria-label={group.phase === 'live' ? undefined : `${group.title} list`}
+              tabIndex={group.phase === 'live' ? undefined : 0}
+            >
+              {group.episodes.map(episode => (
+                <GeneratedEpisodeRow
+                  key={episode.occurrence.id}
+                  episode={episode}
+                  personas={personas}
+                  timezone={data.values?.timezone}
+                  apiBase={apiBase}
+                  adminFetch={adminFetch}
+                  phase={group.phase}
+                  settings={data}
+                />
+              ))}
+            </div>
+          ) : (
             <EmptyState
               compact
               title={group.phase === 'past' ? 'No past episodes yet' : 'No upcoming episodes prepared'}
