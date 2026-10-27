@@ -40,6 +40,25 @@ their soft-filter descriptions. Semantic review of generated prose remains open.
 
 ## Purpose
 
+### Fuller briefs and varied talking points — 27 October 2026
+
+The final writing pass now aims for 80–120 words when useful, without a minimum.
+Its private topic ceiling is 1,200 characters; the persisted brief remains within
+the existing 2,000-character schema including the labelled talking point. The
+concept still establishes the musical premise and contract before compilation.
+Extra prose describes the host's perspective, actual guests and a listening
+invitation within that contract. No new filter logic, model call, selection
+restriction or coverage rule is introduced.
+
+Talking points may invite subjective tastes, listening habits, discovery,
+hypothetical settings or associations and contrasting views, as well as musical
+qualities. The planner chooses one natural angle rather than rotating a topic
+list or scripting a disagreement. It names a selected genre naturally to retain
+an explicit connection for the existing skill, without promising extra music,
+inventing memories or asserting unsupported facts. The skill and its relevance,
+grounding and stand-down rules remain unchanged for a later discussion.
+Existing accepted episodes need explicit regeneration to use these instructions.
+
 ### Shelf options — 27 October 2026
 
 Clicking one of the five shelf templates opens its options before scheduling.
