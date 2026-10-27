@@ -36,12 +36,40 @@ export function programmingGroups<T extends { name: string; generation?: { mode?
 export const GENERATED_SHOW_TEMPLATES: {
   id: GeneratedTemplateId;
   label: string;
+  summary: string;
+  description: string;
+  stripeClassName: string;
 }[] = [
-  { id: 'dj-choice', label: "DJ's Choice" },
-  { id: 'common-ground', label: 'Common Ground' },
-  { id: 'deep-discovery', label: 'Deep Discovery' },
-  { id: 'outside-comfort-zone', label: 'Outside the Comfort Zone' },
-  { id: 'time-capsule', label: 'Time Capsule' },
+  {
+    id: 'dj-choice', label: "DJ's Choice",
+    summary: 'Familiar musical territory for the host, with room for adjacent discoveries.',
+    description: 'A familiar set shaped by the host’s musical tastes and regular-show repertoire, with a few connected departures into neighbouring genres. Guests can suggest new angles while the host’s familiar musical centre remains recognisable.',
+    stripeClassName: 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#c24824_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+  },
+  {
+    id: 'common-ground', label: 'Common Ground',
+    summary: 'One host and one guest explore the musical connections between their tastes.',
+    description: 'One host and exactly one guest find a musical connection between their tastes, with equal influence from both DJs. The episode follows a shared thread in rhythm, texture, instrumentation or songwriting rather than simply mixing two unrelated genre lists.',
+    stripeClassName: 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#7f5ca5_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+  },
+  {
+    id: 'deep-discovery', label: 'Deep Discovery',
+    summary: 'Explore less-represented genres that fit the host’s musical identity.',
+    description: 'Explore a coherent musical neighbourhood built around less-represented genres in your library that connect with the host’s tastes. Related styles can provide breadth, while the underrepresented core must account for at least half the eligible track pool.',
+    stripeClassName: 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#167978_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+  },
+  {
+    id: 'outside-comfort-zone', label: 'Outside the Comfort Zone',
+    summary: 'One host takes a focused sideways step into neighbouring musical territory.',
+    description: 'A solo host follows one audible connection from familiar tastes into a neighbouring genre outside their usual repertoire. The destination supplies the music for the whole episode; rarity is not required, and this is a focused departure rather than a familiar set with occasional detours.',
+    stripeClassName: 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#a67b22_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+  },
+  {
+    id: 'time-capsule', label: 'Time Capsule',
+    summary: 'Explore a defined period through the host’s musical tastes, with strict era and genre filters.',
+    description: 'Explore one closed period through the host’s musical tastes, using a coherent genre palette with enough library coverage. The chosen window is normally one to five years and never more than ten. Strict era and genre filters keep the selection within that period.',
+    stripeClassName: 'bg-[repeating-linear-gradient(135deg,color-mix(in_oklab,#3b709d_19%,var(--card-bg))_0_5px,var(--card-bg)_5px_10px)]',
+  },
 ];
 
 export const GENERATED_SHOW_COLORS: Record<GeneratedTemplateId, string> = {
