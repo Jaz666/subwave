@@ -159,6 +159,12 @@ export default function TemplateShowsPanel() {
               Plan fresh episodes from your DJs’ personalities and musical tastes. Drag a Sub/Show from the schedule
               shelf. Click a template to choose its host, guests and episode-name rules before dragging, or click a slot to adjust it later.
             </p>
+            <p className="mt-2 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
+              Episode plans are prepared for the next 48 hours. Preparation runs daily at 05:00 station time,
+              on startup, and after saving the week or changing a slot’s host or guests. Slots further ahead
+              stay scheduled and get a plan when a preparation run reaches them. Accepted plans are kept on restart.
+              Takeovers are prepared when you select them.
+            </p>
             <dl className="mt-3 grid max-w-[78ch] gap-2 text-[12px] leading-[1.6]">
               {GENERATED_SHOW_TEMPLATES.map(template => (
                 <div key={template.id} className={`border border-separator-soft px-3 py-2 ${template.stripeClassName}`}>
@@ -261,7 +267,7 @@ export default function TemplateShowsPanel() {
               title={group.phase === 'past' ? 'No past episodes yet' : 'No upcoming episodes prepared'}
               description={group.phase === 'past'
                 ? 'Episodes move here after their scheduled slot finishes.'
-                : 'Plans appear here when upcoming Sub/Shows are prepared.'}
+                : 'Plans appear here as scheduled Sub/Shows are prepared within the next 48 hours. Slots further ahead remain in the schedule.'}
             />
           )}
         </section>

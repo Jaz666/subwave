@@ -536,6 +536,14 @@ for a takeover starts preparation for that takeover occurrence immediately.
 The normal on-air preparation path remains a final fallback. All timing uses
 the station timezone and must handle daylight-saving changes.
 
+The 48-hour horizon is a preparation limit, not a scheduling limit. Slots further
+ahead remain in the weekly schedule but do not yet have episode plans to show
+on the Sub/Shows page. A later preparation sweep picks them up once they fall
+inside its window; this is not a continuously advancing background timer.
+Startup catches up missing or invalidated plans without rerolling an accepted
+unchanged occurrence. The Sub/Shows introduction and empty state, README and PR
+description expose this behaviour to operators.
+
 The Sub/Shows page separates upcoming, currently airing and past episodes. Its
 host, guest and skill eligibility controls start collapsed. Upcoming episodes
 have a regenerate action (`POST /shows/generated/regenerate`, with an
