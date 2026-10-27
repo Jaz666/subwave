@@ -344,3 +344,57 @@ Cleanup verification: controller TypeScript passes; the selected show and
 takeover groups report 323 and 30 passing tests respectively. Scoped lint has
 zero errors and 15 existing warnings. These are focused checks, not a rerun of
 the complete earlier regression selection. No station source or state changed.
+
+### Second-call evaluation — 27 October 2026
+
+**Recommendation:** make removal of the fixed-field echo a separate focused
+change. Keep both planning calls, the full editorial instructions, optional
+prose repair, persisted schema, coverage checks and failure-preserves-plan
+behaviour. The production second-call response shape is unchanged here.
+
+The current compiler returns nine fields. The proposed shape returns six:
+name, topic, talkingPoint, moods, energies and rationale. The controller supplies
+the already accepted genres, eras and `filtersStrict: true`, then validates the
+assembled plan. This makes those settings independent of model copying and
+allows deleting their wrapper/year-format recovery from this call. It does not
+remove the need for prose validation or mood/energy checks.
+
+Five paired local-model replays used saved successful concepts from 26–27
+October, one per template, with the configured Meta-Llama-3.1-8B Q5 model. Call
+arguments were constructed from the current production compiler prompt/schema;
+the candidate omitted only the three fixed response fields and adjusted their
+return instructions. Both arms used identical saved proposals, cast, mood
+vocabulary and music contracts. The historical request logs truncate long
+prompts, so old token totals were not treated as a direct comparison. Advisory
+indexed-count context was unavailable and omitted in both arms; missing older
+familiar-genre context was empty in both. These are controlled compiler replays,
+not full production-generation or library-fit trials.
+
+| Template | Current-shape total tokens | Reduced-shape total tokens |
+| --- | ---: | ---: |
+| Outside the Comfort Zone | 2,353 | 2,051 |
+| DJ’s Choice | 2,239 | 1,884 |
+| Deep Discovery | 2,307 | 2,048 |
+| Common Ground | 2,347 | 2,057 |
+| Time Capsule | 2,307 | 1,993 |
+| Total | 11,553 | 10,033 |
+
+All ten replies passed the checked schema, era/cast/appearance, allowed-mood and
+exact genre/era contract checks. Candidate assembly preserved every fixed filter.
+Input tokens fell from 10,622 to 9,290 (12.5%); total tokens fell 13.2%. Output
+length varies with prose, so the total reduction is not solely fixed-field
+savings. The first call was not rerun; this is not a measured whole-show saving,
+latency claim or estimated failure-rate improvement.
+
+Some briefs/talking points remained generic in both arms, and some questions
+omitted an explicit genre connection. Hard-filter preservation does not establish
+editorial or Talking Point skill quality. Do not shorten the editorial prompt
+as part of this change. An earlier shortened-prompt trial and an incomplete
+replay using truncated logs/default mood vocabulary were diagnostic only and
+are excluded from the comparison above.
+
+Before adoption, run focused regression checks for all templates, custom titles,
+closed/unrestricted eras, the bounded prose repair, malformed editable output
+and coverage correction. Keep existing accepted plans and avoid automatic
+regeneration. Evaluation scripts/results stayed outside the repository in
+isolated temporary state; no station plans, schedule, settings or source changed.
