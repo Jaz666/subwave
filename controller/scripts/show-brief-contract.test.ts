@@ -70,3 +70,23 @@ test('ambiguous genre words can request editorial repair without becoming a publ
   assert.throws(() => validateShowBrief(draft, [], names, cast, { ...contract, inspectAmbiguous: true }), /unselected style/);
   validateShowBrief(draft, [], names, cast, contract);
 });
+
+test('all five templates can publish taste comparisons without broadening their music contract', () => {
+  const cases = [
+    { template: 'dj-choice', genre: 'Alternative Rock', topic: 'An Indie Rock fan explores Alternative Rock arrangements.', eras: [] },
+    { template: 'deep-discovery', genre: 'Noise Rock', topic: 'An Indie Rock enthusiast explores Noise Rock textures.', eras: [] },
+    { template: 'common-ground', genre: 'Dream Pop', topic: 'Indie Rock tastes and electronic textures meet in Dream Pop.', eras: [] },
+    { template: 'outside-comfort-zone', genre: 'Indie Folk', topic: 'Indie Rock tastes lead into the melodic guitars of Indie Folk.', eras: [] },
+    { template: 'time-capsule', genre: 'Alternative Rock', topic: 'An Indie Rock fan explores Alternative Rock from 1985–1989.', eras: [{ fromYear: 1985, toYear: 1989 }] },
+  ];
+  for (const fixture of cases) {
+    const prose = { ...brief, topic: fixture.topic };
+    const expected = { genres: [fixture.genre], eras: fixture.eras };
+    // The draft word check can request editing, but is not a semantic classifier.
+    assert.throws(() => validateShowBrief(prose, fixture.eras, names, cast,
+      { known: ['Indie Rock', fixture.genre], selected: expected.genres, context: [] }), /unselected style/, fixture.template);
+    validateShowBrief(prose, fixture.eras, names, cast);
+    validateShowMusicContract(expected, expected);
+    assert.throws(() => validateShowMusicContract({ ...expected, genres: [...expected.genres, 'Indie Rock'] }, expected), /genre palette/, fixture.template);
+  }
+});

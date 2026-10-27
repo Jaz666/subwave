@@ -441,18 +441,17 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const personaNames = personas.map((persona: { name: string }) => persona.name);
   const castNames = [host.name, ...guests.map(persona => persona.name)];
   const sourceTastes = [host.soul, host.musicLean, ...guests.map(persona => `${persona.soul} ${persona.musicLean ?? ''}`)].join(' ');
-  const contextGenres = outside || commonGround ? [
+  const contextGenres = [
     ...existingShows.flatMap(show => show.genres),
     ...(commonGround ? scheduledShowsForHost(guests[0]!.id, input.show?.id).flatMap(show => show.genres) : []),
     ...Object.keys(counts).filter(genre => tagCoversGenre(sourceTastes, normGenre(genre))),
-  ] : [];
-  // A departure brief compares familiar styles with its destination. A word
-  // match cannot distinguish that comparison from a promise to play them.
-  // The destination filter is still checked exactly by validateShowMusicContract.
-  const genreContract = outside ? undefined : { known: Object.keys(counts), selected: intended, context: contextGenres };
+  ];
+  // Genre-name matches are editorial feedback: comparisons to familiar tastes
+  // are not necessarily playback promises. Validate the actual filters exactly.
+  const genreContract = { known: Object.keys(counts), selected: intended, context: contextGenres };
   let draftIssue: string | null = null;
   try {
-    validateShowBrief({ name: input.nameMode === 'custom' ? input.customName! : concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint }, agreedEras, personaNames, castNames, genreContract && { ...genreContract, inspectAmbiguous: discovery });
+    validateShowBrief({ name: input.nameMode === 'custom' ? input.customName! : concept.name, topic: concept.topic, talkingPoint: concept.talkingPoint }, agreedEras, personaNames, castNames, { ...genreContract, inspectAmbiguous: discovery });
   } catch (error) { draftIssue = error instanceof Error ? error.message : 'The draft contradicts the music contract.'; }
   let fixedTitle: string | null = input.nameMode === 'custom' ? input.customName! : concept.name;
   if (fixedTitle != null && input.nameMode !== 'custom') {
@@ -517,7 +516,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   validateShowMusicContract({ genres: parsed.genres, eras: mergeEraWindows(parsed.eras) }, { genres: intended, eras: agreedEras });
   validateShowBrief(
     { name: input.nameMode === 'custom' ? input.customName! : parsed.name, topic: parsed.topic, talkingPoint: parsed.talkingPoint },
-    agreedEras, personaNames, castNames, genreContract,
+    agreedEras, personaNames, castNames,
   );
   if (parsed.moods.some(mood => !moods.includes(mood))) throw new Error('Music settings returned a mood outside the station vocabulary');
   return generatedShowPlanSchema.parse({

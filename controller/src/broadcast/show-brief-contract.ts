@@ -1,5 +1,5 @@
-// Check concrete publication promises. Musical meaning and historical accuracy
-// still need the editor prompt and operator review; this is not a prose fact checker.
+// Check era/cast/appearance contracts, with optional genre-word feedback for
+// draft editing. Word matches are not a semantic classifier or prose fact checker.
 type Era = { fromYear: number | null; toYear: number | null };
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const namedDecades: Record<string, number> = { thirties: 1930, forties: 1940, fifties: 1950, sixties: 1960, seventies: 1970, eighties: 1980, nineties: 1990, noughties: 2000, aughts: 2000 };
