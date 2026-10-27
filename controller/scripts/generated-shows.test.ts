@@ -16,8 +16,7 @@ process.env.STATE_DIR = root;
 process.env.ADMIN_USER = 'test';
 process.env.ADMIN_PASS = 'test';
 const { createShowPreparation } = await import('../src/broadcast/show-preparation.js');
-const { showGenreChoices, discoveryGenreCounts, normalizeGeneratedMusicSettings } = await import('../src/broadcast/show-generation.js');
-const { generatedShowPlanSchema } = await import('../src/schemas/show-preparation.js');
+const { showGenreChoices, discoveryGenreCounts, normalizeGeneratedEditorialSettings } = await import('../src/broadcast/show-generation.js');
 after(() => removeTempDir(root));
 
 test('rarity counts include finer genre matches and count a multi-tagged track once per genre', () => {
@@ -48,14 +47,10 @@ test('Deep Discovery finds rare workable candidates across the whole catalogue b
   assert.equal(choice.at(-1)?.name, 'Genre 79');
 });
 
-test('format recovery normalizes observed local-model shorthands while retaining strict validation', () => {
-  const schema = generatedShowPlanSchema.omit({ name: true, topic: true });
-  const valid = { moods: [], genres: ['Math Rock'], eras: [{ fromYear: [1980], toYear: null }, { fromYear: null, toYear: null }], energies: [], filtersStrict: false, rationale: 'x'.repeat(600) };
-  const normalized = schema.parse(normalizeGeneratedMusicSettings(valid));
-  assert.deepEqual(normalized.eras, [{ fromYear: 1980, toYear: null }]);
-  assert.equal(normalized.rationale.length, 500);
-  for (const eras of [[{ fromYear: [1980, 1990], toYear: null }], [{ fromYear: 3000, toYear: null }], [{ fromYear: 1990, toYear: 1980 }]]) {
-    assert.equal(schema.safeParse(normalizeGeneratedMusicSettings({ ...valid, eras })).success, false);
+test('editorial recovery bounds rationale without coercing malformed editable fields', () => {
+  assert.deepEqual(normalizeGeneratedEditorialSettings({ rationale: 'x'.repeat(600) }), { rationale: 'x'.repeat(500) });
+  for (const raw of [null, 'not an object', [], { moods: 'reflective' }, { energies: ['invalid'] }]) {
+    assert.deepEqual(normalizeGeneratedEditorialSettings(raw), raw);
   }
 });
 

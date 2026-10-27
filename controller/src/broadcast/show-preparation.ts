@@ -19,7 +19,7 @@ import {
   type AcceptedPreparation, type GeneratedShowRecord, type GeneratedShowPlan, type PreparationOccurrence,
   type PreparationRecord, type PreparationStatus, type PreparationTrack,
 } from '../schemas/show-preparation.js';
-import type { Show } from '../schemas/show.js';
+import type { Show, ShowGenerationConfig } from '../schemas/show.js';
 import { generateShowPlan, loadDiscoveryGenreCounts, resolveGeneratedShowCast, scheduledShowsForHost, type ExistingScheduledShow, type GeneratedShowCast } from './show-generation.js';
 import { generatedShowAt, restoreGeneratedShows } from './generated-show-registry.js';
 
@@ -33,7 +33,7 @@ export interface GeneratedShowSnapshot {
   castOrigin?: string;
   occurrence: PreparationOccurrence;
   configuration: string;
-  template: string;
+  template: ShowGenerationConfig['template'];
   planningPrompt: string;
   nameMode?: 'random' | 'custom';
   customName?: string;
@@ -75,11 +75,10 @@ export function preparationGrounding(result: AcceptedPreparation, music: 'restri
 }
 
 export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, generate: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan> = generateShowPlan, diagnose: typeof diagnoseShowCandidates = diagnoseShowCandidates, discoveryCounts: () => Promise<Record<string, number>> = loadDiscoveryGenreCounts): Promise<GeneratedShowPlan> {
-  const strictGenres = ['deep-discovery', 'dj-choice', 'common-ground', 'outside-comfort-zone', 'time-capsule'].includes(snapshot.template);
-  const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0, strictGenres
-    ? Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000) : 0);
+  const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0,
+    Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000));
   const accept = (raw: GeneratedShowPlan) => {
-    const plan = generatedShowPlanSchema.parse({ ...raw, ...(strictGenres ? { filtersStrict: true } : {}) });
+    const plan = generatedShowPlanSchema.parse({ ...raw, filtersStrict: true });
     if (snapshot.template === 'outside-comfort-zone' && plan.genres.length !== 1) throw new Error('Outside the Comfort Zone requires one destination genre');
     if (snapshot.template === 'time-capsule') {
       const period = plan.eras[0];
@@ -88,7 +87,7 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
         throw new Error('Time Capsule requires one closed period of at most ten years');
       }
     }
-    if (strictGenres && !plan.genres.length) throw new Error('Sub/Show requires a genre palette');
+    if (!plan.genres.length) throw new Error('Sub/Show requires a genre palette');
     return plan;
   };
   let rarityCounts: Record<string, number> | null = null;
@@ -115,7 +114,6 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
     return { count: diagnostic.library.effective, warnings: diagnostic.warnings, discoveryIssue };
   };
   let plan = accept(await generate(snapshot));
-  if (!strictGenres && snapshot.minimumCoverage == null) return plan;
   const enough = (coverage: Awaited<ReturnType<typeof validateCoverage>>) =>
     coverage.count >= minimumTracks && !coverage.discoveryIssue;
   let coverage = await validateCoverage(plan);
