@@ -6,6 +6,36 @@ Development plan: [djs-choice-development-plan.md](djs-choice-development-plan.m
 
 ## Purpose
 
+### Editorial context supplied to the compiler — 27 October 2026
+
+Regeneration failures returned 502 after successful model calls when an expanded
+Outside the Comfort Zone brief named an unsupported familiar-style refinement.
+The final editor had the concept and playback contract but not the exact
+familiar-taste labels already allowed by the publication check. Its added prose
+could therefore fail validation even while its sole destination filter was correct.
+The editor now receives those existing labels explicitly, distinguishing
+selected music from supported taste context. An unlisted starting-point label
+must be described through supported musical interests rather than invented
+subgenre specificity.
+
+A two-run isolated control still rejected one legitimate comparison to an
+unlisted starting style; the other passed with 650 eligible tracks. Outside the
+Comfort Zone therefore no longer uses literal genre-name presence as a hard
+publication veto: its brief necessarily compares starting tastes with the
+chosen destination. Editorial instructions still restrict playback promises.
+Other templates retain their genre-prose checks. Exact destination settings,
+era/cast checks, strictness, coverage and the two-call flow remain enforced.
+This intentionally relaxes the prose guard, not the musical filters; it does
+not establish that every generated comparison is editorially sound.
+
+Both final isolated Jay previews passed production acceptance with one strict
+Indie Folk destination and 279 eligible tracks against a 30-track one-hour
+requirement. One brief explicitly compared his indie-rock/Britpop tastes with
+Indie Folk, reproducing the formerly rejected comparison without adding those
+starting genres to the filters. Each used two model calls; no episode was saved,
+regenerated or aired. The wording remains imperfect; acceptance here establishes
+the repaired comparison path and unchanged coverage, not ideal prose.
+
 ### Fuller briefs and varied talking points — 27 October 2026
 
 The final writing pass now aims for 80–120 words when useful, without a minimum.
