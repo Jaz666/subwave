@@ -1212,3 +1212,24 @@ Look Ahead’s implementation and tool contract are documented in
 `docs/custom-skills.md` under “Look Ahead schedule data”; the editable example
 lives in `docs/examples/skills/look-ahead`. It uses the actual segment speaker’s
 identity to distinguish hosting, guesting and other presenters’ shows.
+
+
+### Station source integration — 27 October 2026
+
+Applied the approved web/README changes from feature commits `f885db13` and
+`229f970f` to `/home/jaz666/Docker/subwave` on
+`test-station/sleeve-notes-clean-20261014`. This exposes the 48-hour preparation
+window and addresses the six UIAudit findings: mobile card sizing, two-card
+list capacity, touch targets, contrast, episode accessibility and preservation
+of unfinished eligibility edits. Existing station-specific styles are retained.
+
+The feature candidate passed web lint/TypeScript, the admin-query audit and
+isolated light/dark browser checks at 1280px, 375px and 320px. The station patch
+applied cleanly; no suites were rerun in the integration checkout. No runtime
+state was changed and no service was built or restarted. Only `web` needs a
+rebuild; controller and broadcast can keep running.
+
+The previous source state is `74476076`. To roll back this integration, revert
+its station commit and rebuild web. The operator's next action from the station
+checkout is `docker compose up -d --build --no-deps web`, followed by
+`curl -fsS http://localhost:7700/api/health`.

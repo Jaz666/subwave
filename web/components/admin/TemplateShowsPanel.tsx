@@ -5,7 +5,7 @@ import { ShowGenerationNotice } from './shows/ShowGenerationNotice';
 import { ChevronDown, RefreshCw, Save, Shuffle, ExternalLink } from 'lucide-react';
 import type { AdminFetch } from '@/lib/admin-query';
 import { fieldAria } from '@/lib/form';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { errorMessage, notify } from '../../lib/notify';
 import { useDynamicStyle } from '../../hooks/useDynamicStyle';
@@ -41,6 +41,7 @@ import type { SubShowsSettings } from '@/lib/schemas.generated';
 type PoolKey = 'eligibleHostPersonaIds' | 'eligibleGuestPersonaIds' | 'eligibleSkillNames';
 type PoolItem = { id: string; label: string };
 type EpisodePhase = 'upcoming' | 'live' | 'past';
+const DEFAULT_POOLS: SubShowsSettings = { eligibleHostPersonaIds: null, eligibleGuestPersonaIds: null, eligibleSkillNames: null };
 
 export default function TemplateShowsPanel() {
   const { adminFetch, needsAuth, hydrated } = useAdminAuth();
@@ -57,17 +58,19 @@ export default function TemplateShowsPanel() {
       .filter(show => show.generation?.mode === 'generated'),
     [data?.values?.shows],
   );
+  const savedPools = data?.values?.subShows ?? DEFAULT_POOLS;
   const [draft, setDraft] = useState<SubShowsSettings | null>(null);
+  const [baseline, setBaseline] = useState<SubShowsSettings | null>(null);
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(baseline);
+  const conflict = dirty && JSON.stringify(savedPools) !== JSON.stringify(baseline);
 
   useEffect(() => {
-    if (data) {
-      setDraft(data.values?.subShows ?? {
-        eligibleHostPersonaIds: null,
-        eligibleGuestPersonaIds: null,
-        eligibleSkillNames: null,
-      });
+    // Unrelated show saves also refresh Settings; preserve unfinished pool edits.
+    if (data && !dirty) {
+      setDraft(savedPools);
+      setBaseline(savedPools);
     }
-  }, [data]);
+  }, [data, savedPools, dirty]);
 
   const hostItems = personas.map(persona => ({ id: persona.id, label: persona.name || 'Unnamed DJ' }));
   const guestItems = hostItems;
@@ -101,7 +104,7 @@ export default function TemplateShowsPanel() {
   };
 
   const savePools = async () => {
-    if (!draft) return;
+    if (!draft || conflict) return;
     if (draft.eligibleHostPersonaIds?.length === 0 && variants.some(show => show.generation?.hostMode === 'random')) {
       notify.err('Select at least one eligible host while a variant uses Random Host.');
       return;
@@ -115,7 +118,10 @@ export default function TemplateShowsPanel() {
     try {
       const receipt = await saveSettings.mutateAsync({ subShows: draft });
       if (receipt.refreshError) notify.err(`Saved Sub/Shows settings, but could not refresh them: ${receipt.refreshError}`);
-      else notify.ok('Sub/Shows settings saved. Upcoming generated shows are being refreshed.');
+      else {
+        setBaseline(draft);
+        notify.ok('Sub/Shows settings saved. Upcoming generated shows are being refreshed.');
+      }
     } catch (error) {
       notify.err(`Could not save Sub/Shows settings: ${errorMessage(error)}`);
     }
@@ -150,7 +156,7 @@ export default function TemplateShowsPanel() {
               <Eyebrow className="text-vermilion">show plan · Sub/Shows</Eyebrow>
               <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Shows</h1>
             </div>
-            <Button asChild variant="accent" size="sm" className="min-h-9">
+            <Button asChild variant="accent" size="sm" className="min-h-11 sm:min-h-9">
               <Link href="/admin/shows/schedule">Open the schedule →</Link>
             </Button>
           </div>
@@ -158,6 +164,12 @@ export default function TemplateShowsPanel() {
             <p className="mt-1 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
               Plan fresh episodes from your DJs’ personalities and musical tastes. Drag a Sub/Show from the schedule
               shelf. Click a template to choose its host, guests and episode-name rules before dragging, or click a slot to adjust it later.
+            </p>
+            <p className="mt-2 max-w-[68ch] text-[11px] leading-[1.6] text-muted">
+              Episode plans are prepared for the next 48 hours. Preparation runs daily at 05:00 station time,
+              on startup, and after saving the week or changing a slot’s host or guests. Slots further ahead
+              stay scheduled and get a plan when a preparation run reaches them. Accepted plans are kept on restart.
+              Takeovers are prepared when you select them.
             </p>
             <dl className="mt-3 grid max-w-[78ch] gap-2 text-[12px] leading-[1.6]">
               {GENERATED_SHOW_TEMPLATES.map(template => (
@@ -174,15 +186,21 @@ export default function TemplateShowsPanel() {
       <Card
         title="Sub/Shows settings"
         headingLevel={2}
-        sub="Used by every generated slot"
+        sub={dirty ? 'Unsaved changes · used by every generated slot' : 'Used by every generated slot'}
         right={(
-          <Button size="sm" variant="accent" disabled={!draft || saveSettings.isPending} onClick={() => void savePools()}>
+          <Button size="sm" variant="accent" className="min-h-11 sm:min-h-0" disabled={!draft || !dirty || conflict || saveSettings.isPending} onClick={() => void savePools()}>
             {saveSettings.isPending ? 'Saving…' : 'Save settings'}
           </Button>
         )}
       >
         {draft && (
           <div className="grid gap-0">
+            {conflict && <div role="alert" className="mb-3 grid gap-2 text-[12px]">
+              <p>Eligibility settings changed elsewhere. Your edits are kept here. Discard them and load the saved settings before editing again.</p>
+              <Button type="button" className="min-h-11 w-fit" onClick={() => { setDraft(savedPools); setBaseline(savedPools); }}>
+                Discard edits and load saved settings
+              </Button>
+            </div>}
             <EligibilityPicker
               title="Random hosts"
               description="DJs available for Random Host and both Common Ground participants. Everyone is selected by default."
@@ -237,7 +255,7 @@ export default function TemplateShowsPanel() {
           </div>
           {group.episodes.length ? (
             <div
-              className={group.phase === 'live' ? 'grid gap-3' : 'grid max-h-[44rem] gap-3 overflow-y-auto overscroll-contain pr-1 focus-visible:outline-2 focus-visible:outline-[var(--accent)] sm:max-h-[36rem]'}
+              className={group.phase === 'live' ? 'grid gap-3' : 'grid max-h-[72rem] grid-cols-[minmax(0,1fr)] gap-3 overflow-y-auto overscroll-contain pr-1 focus-visible:outline-2 focus-visible:outline-[var(--accent)] sm:max-h-[36rem]'}
               role={group.phase === 'live' ? undefined : 'region'}
               aria-label={group.phase === 'live' ? undefined : `${group.title} list`}
               tabIndex={group.phase === 'live' ? undefined : 0}
@@ -261,7 +279,7 @@ export default function TemplateShowsPanel() {
               title={group.phase === 'past' ? 'No past episodes yet' : 'No upcoming episodes prepared'}
               description={group.phase === 'past'
                 ? 'Episodes move here after their scheduled slot finishes.'
-                : 'Plans appear here when upcoming Sub/Shows are prepared.'}
+                : 'Plans appear here as scheduled Sub/Shows are prepared within the next 48 hours. Slots further ahead remain in the schedule.'}
             />
           )}
         </section>
@@ -311,7 +329,7 @@ function EligibilityPicker({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => onChange(item.id, !isSelected)}
-                className={`inline-flex min-h-10 cursor-pointer items-center gap-2.5 border px-3.5 py-2 text-[13px] transition-colors ${
+                className={`inline-flex min-h-11 cursor-pointer items-center gap-2.5 border px-3.5 py-2 text-[13px] transition-colors sm:min-h-10 ${
                   isSelected
                     ? 'border-ink bg-ink font-semibold text-bg'
                     : 'border-separator-strong bg-transparent font-medium text-muted hover:border-ink hover:text-ink'
@@ -331,8 +349,8 @@ function EligibilityPicker({
         <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <p {...aria.descriptionProps} className="max-w-[78ch] text-[12px] leading-[1.6] text-muted">{description}</p>
           <div className="flex shrink-0 gap-2">
-            <Button type="button" size="sm" className="min-h-8" onClick={onAll}>{allLabel}</Button>
-            <Button type="button" size="sm" className="min-h-8" onClick={onNone}>Clear</Button>
+            <Button type="button" size="sm" className="min-h-11 sm:min-h-8" onClick={onAll}>{allLabel}</Button>
+            <Button type="button" size="sm" className="min-h-11 sm:min-h-8" onClick={onNone}>Clear</Button>
           </div>
         </div>
       </fieldset>
@@ -406,10 +424,11 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
     durationMinutes % 60 ? `${durationMinutes % 60}m` : '',
   ].filter(Boolean).join(' ');
   const plan = episode.plan;
+  const titleId = useId();
 
   return (
     <>
-    <article className="card group relative" aria-busy={busy}>
+    <article className="card group relative min-w-0" aria-busy={busy} aria-labelledby={titleId}>
       <span ref={spineRef} aria-hidden="true" className="absolute inset-y-0 left-0 w-1" />
       <div className="card-body flex gap-3.5">
         <div className="flex flex-none flex-col items-center">
@@ -429,17 +448,17 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
           )}
         </div>
 
-        <div className="grid min-w-0 flex-1 gap-2.5">
+        <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-2.5">
           <div className="flex flex-col items-start gap-3 sm:flex-row">
             <div className="w-full min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <Pill tone="solid" dot>Sub/Show</Pill>
                 <Pill>{template}</Pill>
               </div>
-              <div className="truncate text-[17px] font-extrabold tracking-[-0.01em] text-ink">
+              <h3 id={titleId} className="text-[17px] font-extrabold tracking-[-0.01em] break-words text-ink">
                 {plan?.name || (episode.status === 'failed' ? 'Plan generation failed' : template)}
-              </div>
-              <div className="mt-0.5 truncate text-[12px] text-muted">
+              </h3>
+              <div className="mt-0.5 text-[12px] break-words text-muted">
                 host · <span className="font-semibold text-ink">{host}</span>
                 {guests.length > 0 && <> · with {joinNames(guests)}</>}
               </div>
@@ -454,7 +473,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                 </div>
                 {phase === 'upcoming' && (
                   <Button
-                    type="button" variant="ghost" size="icon"
+                    type="button" variant="ghost" size="icon" className="size-11 sm:size-8" aria-describedby={titleId}
                     aria-label="Regenerate show, keeping host and guests"
                     title="Regenerate show, keeping host and guests"
                     disabled={busy}
@@ -464,7 +483,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                   </Button>
                 )}
                 {phase === 'upcoming' && episode.canShuffle && (
-                  <Button type="button" variant="ghost" size="icon"
+                  <Button type="button" variant="ghost" size="icon" className="size-11 sm:size-8" aria-describedby={titleId}
                     aria-label="Shuffle random host/guests and regenerate show"
                     title="Shuffle random host/guests and regenerate show"
                     disabled={busy} onClick={() => void previewShuffle()}>
@@ -472,7 +491,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
                   </Button>
                 )}
                 {plan && (
-                  <Button type="button" variant="ghost" size="icon"
+                  <Button type="button" variant="ghost" size="icon" className="size-11 sm:size-8" aria-describedby={titleId}
                     aria-label={episode.savedShowId ? 'Open saved show' : 'Save as regular show'}
                     title={episode.savedShowId ? 'Open saved show' : 'Save as regular show'}
                     disabled={busy} onClick={() => void openSave()}>
@@ -510,7 +529,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
               <div>
                 <p className={`${briefExpanded ? '' : 'line-clamp-2 '}max-w-[90ch] text-[12px] leading-[1.55] break-words text-muted italic`}>{plan.topic}</p>
                 <Button
-                  type="button" variant="link" size="sm" className="mt-1 px-0"
+                  type="button" variant="link" size="sm" className="mt-1 min-h-11 px-0 sm:min-h-0"
                   aria-expanded={briefExpanded}
                   aria-label={`${briefExpanded ? 'Collapse' : 'Read full'} brief for ${plan.name}`}
                   onClick={() => setBriefExpanded(expanded => !expanded)}
@@ -520,7 +539,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
               </div>
               {plan.rationale && (
                 <details className="text-[10px] text-muted">
-                  <summary className="w-fit cursor-pointer hover:text-ink">Why these settings</summary>
+                  <summary className="min-h-11 w-fit cursor-pointer py-3 hover:text-ink sm:min-h-0 sm:py-0">Why these settings</summary>
                   <p className="mt-1 max-w-[90ch] leading-[1.5]">{plan.rationale}</p>
                 </details>
               )}
