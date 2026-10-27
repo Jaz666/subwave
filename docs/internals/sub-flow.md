@@ -2,7 +2,14 @@
 
 Prepared: 9 October 2026 (Europe/London)
 
+Updated: 27 October 2026 — added the optional Driving Beat development plan.
+
 Status: proposal for later implementation. This document does not authorise changes to the running station. Recheck the current upstream code before development; this plan reflects the station inspected on 8–9 October 2026.
+
+This document covers two complementary Library → Sub/Flow features: owner-defined
+protected track sequences (the original plan below), and [optional Driving Beat
+analysis](#driving-beat-development-plan) for rhythmic continuity between ordinary
+selections. They can be delivered independently.
 
 ## Objective
 
@@ -176,3 +183,200 @@ Keep the work in a dedicated feature branch and PR. Include an explanatory intro
 - How an explicit mid-Flow stop should behave and be presented.
 
 These choices can be resolved before development starts; they do not block producing this plan.
+
+
+## Driving Beat development plan
+
+Added: 27 October 2026. Status: proposal, not implemented by this document.
+Source checked: `feat/sub-flow` at
+`b43b09f2fd905dbc1a89895594a8dfc40242b602`; recheck current upstream before coding.
+The earlier source-inspection date applies to the protected-Flow plan above.
+
+### Goal and agreed direction
+
+The motivating observation was two tracks with very close BPM and a strong,
+driving beat playing consecutively: a satisfying continuation that currently
+happens rarely. Help the picker recognise and sustain that rhythmic momentum
+when appropriate to the show, while retaining deliberate changes of pace.
+
+- Add Driving Beat as an optional analysis step in Library → Sub/Flow.
+- Use the existing Librosa-based analyser before considering Essentia or another
+  native dependency. No new dependency is required by this proposal.
+- Use existing analysis to prioritise likely candidates for the optional pass.
+- Keep ordinary analysis unchanged when the option is disabled; do not require
+  all tracks to be reanalysed or repeat CLAP/Demucs work.
+- Treat an unmeasured track as unknown, not as having weak drive.
+- Keep Danceability separate and deferred. A propulsive track need not be easy
+  to dance to, and relaxed music can be highly danceable.
+
+Driving Beat is a property estimated for a track; rhythmic compatibility is a
+relationship between tracks. Similar BPM alone establishes neither strong drive
+nor a compatible groove. A rhythmic match does not automatically create a
+protected Flow or suppress normal speech, imaging or transitions.
+
+### Current foundations and limitations
+
+`controller/scripts/analyze_worker.py` defaults to the first 40 seconds for head
+analysis (`ANALYZE_SECONDS`) and roughly the final 20 seconds for ending analysis
+(`ANALYZE_OUTRO_SECONDS`), when the complete source is available. Head analysis
+includes BPM, beat timestamps and `estimate_pace()`. The pace curve is normalised
+against that window's own peak: useful for within-track variation, not a calibrated
+comparison of drive across recordings. A beat grid is an estimate, not independent
+proof that the pulse is prominent or reliable.
+
+Optional CLAP processing samples multiple positions, but produces sound embeddings
+rather than an explicit driving-beat measurement. Decoded buffers can only be
+reused within a compatible analysis operation; previously stored embeddings do
+not preserve those samples for a later backfill.
+
+Start with these existing integration points:
+
+- Worker facets and decoding: `controller/scripts/analyze_worker.py`.
+- Analysis transport and capabilities: `controller/src/music/analyzer.ts` and
+  `controller/src/music/analyze-capability.ts`.
+- Dispatch, backfill and persistence: `controller/src/music/analyze-dispatch.ts`,
+  `controller/src/music/analyze-library.ts`, `controller/src/music/analyze.ts`.
+- Existing tempo comparison, including half/double-time handling:
+  `controller/src/music/mix.ts` (`bpmCompat`).
+- Picker integration and recovery: `controller/src/broadcast/dj-agent.ts` and its
+  current supporting modules. Trace both Agentic and Shortlist routes before
+  selecting the shared integration point.
+
+Recheck storage, facet contracts, settings schemas and API/UI locations before
+implementation. Prefer extending these mechanisms over a second analysis queue,
+separate service or independent selection engine.
+
+### Phase A — define and validate the measurement
+
+1. Audit current predecessor BPM/energy use in discovery, selection, final guards
+   and corrective re-picks. Determine whether missing rhythm information or weak
+   use of existing continuity signals explains the rare pairings; document the
+   baseline before adding another preference.
+2. Prototype a score using pulse prominence, beat-aligned onset strength,
+   rhythmic regularity and persistence. Librosa onset envelopes and tempograms
+   are candidate inputs, not a proven formula. Regular beat timestamps alone
+   can reflect the tracker's assumptions; validate against independent onset
+   evidence. Avoid reducing drive to BPM, loudness or onset density alone.
+3. Compare opening plus one middle sample against opening-only analysis. Reuse
+   an ending buffer when available for exit characteristics. Start with the
+   smallest useful sampling scheme; add more windows only if evaluation shows
+   a material improvement. Short tracks need deduplicated/clipped windows.
+4. Establish cross-track calibration and an explicit confidence/coverage model.
+   Preserve window offsets and component evidence sufficient to explain results.
+   Keep any entry/exit measurements distinct from the overall score. If a 0–1
+   score is used, it is a calibrated descriptor, not a probability.
+5. Evaluate by listening to representative, legally available fixtures: disco,
+   funk, reggae, electronic music, rock, sparse/ambient material, quiet intros,
+   breakdowns, live tempo drift and half/double-time estimates. Include slow but
+   driving tracks and loud/fast tracks without a sustained pulse.
+6. Benchmark incremental decode/CPU time, peak memory and end-to-end throughput
+   on AMD64 and ARM64 hardware where available. Separate lean and heavy analysis
+   costs; do not infer a fixed percentage from the number of windows.
+
+Exit: a documented, reproducible score that usefully distinguishes sustained
+rhythmic drive, with known failure cases and measured incremental cost. If this
+fails, retain an experiment rather than exposing an authoritative library score.
+
+### Phase B — optional facet, storage and targeted backfill
+
+1. Add an independently versioned Driving Beat facet using the existing worker
+   protocol, capability negotiation and backfill infrastructure. Store score,
+   confidence, sampled coverage and algorithm version under validated contracts.
+   Record unavailable, failed and unmeasurable outcomes distinctly; prevent
+   unsupported workers or repeatedly unmeasurable files creating endless work.
+2. Keep the normal head/tail defaults unchanged. Run the optional facet on new
+   tracks when enabled and allow a separate resumable backfill for existing
+   tracks. No repeated tagging, loudness, CLAP or Demucs is required just to add
+   Driving Beat. Reuse fetch/decode within the same job where practical.
+3. Rank the backfill using existing BPM/beat evidence, opening pace shape,
+   opening/ending tempo agreement, and softer genre/mood/energy clues. These
+   are prioritisation hints, not eligibility gates or evidence of strong drive.
+4. Once reliable strong-drive examples exist, prioritise other tracks with
+   compatible tempos to grow useful follow-up pools. Keep part of background
+   capacity for less obvious candidates, so quiet intros and poorly measured
+   music are not permanently excluded. Do not use private Musical Leanings to
+   bias analysis coverage or discovery.
+5. Respect existing concurrency, resource and playback-priority limits. Support
+   pause/resume, bounded retries and cancellation; source/algorithm changes
+   invalidate only the affected facet. Missing or incomplete body audio must
+   produce explicit reduced coverage or unavailability, never a fabricated middle.
+6. Scope settings and stored results according to current station/library
+   ownership. Preserve track-ID recovery and existing database migration rules.
+
+Exit: optional work can resume after restart, never changes normal scan behaviour
+when disabled, and measures previously analysed tracks without repeating other
+expensive facets. Cached values remain usable when background work is paused.
+
+### Phase C — Library → Sub/Flow controls
+
+Provide an enable switch, independently pausable backfill, counts for pending,
+measured, uncertain/failed and unavailable tracks, and the current candidate
+priority explanation. Display score and confidence with sampled coverage; unknown
+must remain visibly different from a measured low value. Allow inspection of
+likely follow-ups and audition through existing preview facilities.
+
+Keep protected Flow management alongside these controls but preserve its separate
+meaning. Saving an auditioned pairing as a protected Flow must be an explicit
+operator action using the original Flow definition/validation rules.
+
+### Phase D — continuity in selection
+
+1. Make use of Driving Beat an explicit opt-in continuity preference, separate
+   from enabling computation. Proposed first version: a per-show preference
+   with default off; settle its exact presentation before implementation.
+2. Compare actual predecessor/exit and candidate/entry information, using
+   existing octave-safe tempo compatibility plus reliable drive measurements.
+   High drive and compatible BPM can favour momentum; matching drive alone
+   cannot guarantee the same groove. Explain uncertainty honestly.
+3. Use a bounded preference among otherwise eligible candidates, with a small
+   opportunity to discover compatible follow-ups if the ordinary candidate set
+   misses them. Preserve show filters, artist/album cooldowns, blocklists and
+   Musical Leanings review boundaries. Do not impose a hard rhythmic filter or
+   let a continuity run starve selection or trap the station indefinitely.
+4. Apply the same interpretation to both picker modes and corrective recovery.
+   Missing/low-confidence scores use existing selection behaviour without a
+   fabricated zero score or universal penalty for unanalysed music. Verify the
+   effect under partial library coverage before rollout.
+5. For a protected Flow, compare its first member for entry and its last member
+   for exit. Never reorder or substitute internal members to improve rhythmic
+   compatibility. Recheck the actual predecessor after queue/guard changes.
+6. Record whether continuity evidence was available, how it affected choice and
+   whether later guards changed the selection. Avoid attributing a random good
+   pairing or Flow expansion to Driving Beat.
+
+Exit: evaluated listening sessions show more suitable momentum-preserving pairs
+without overriding eligibility, reducing variety unacceptably, or penalising
+missing analysis. Compare against the Phase A baseline.
+
+### Verification and delivery order
+
+Deliver measurement/benchmarks, optional facet/backfill, Library controls, then
+opt-in selection use. The analysis can ship before protected Flows, and protected
+Flows do not depend on this score. Do not add time-stretching, automatic beat
+matching or new transition effects as part of this work.
+
+Use repository test runners with isolated state. Verify score behaviour on the
+listening fixtures; short/silent/truncated inputs; sample offsets and bounds;
+confidence and version persistence; unsupported-worker handling; prioritisation
+without exclusions; no rerun of other facets; pause/restart recovery; missing-data
+selection; both pickers/recovery; and unchanged protected internal joins. Run the
+required lint, schema-mirror/type checks and affected full suites for code changes.
+Capture performance measurements before enabling broad backfill. Native ARM64
+support for the lean analyser must remain intact; CPU-only Librosa processing
+must not acquire a TensorFlow, Essentia or GPU requirement.
+
+Develop in an isolated checkout. Docker rebuilds, station restarts and deployment
+remain with the station owner under the original plan's operating constraints.
+This documentation change runs no analysis and changes no live settings.
+
+### Open decisions
+
+- Measured score formula, calibration, confidence threshold and window lengths.
+- Minimum useful sampling coverage and whether separate entry/exit drive scores
+  earn their added processing/storage cost in the first release.
+- Backfill resource budget and allocation for less obvious candidates.
+- Exact opt-in continuity control and how long momentum should be sustained.
+- Operational benchmark and listening-quality criteria required for rollout.
+
+Danceability remains a later, separately evaluated descriptor. The initial goal
+is the narrower, observable benefit of better rhythmic continuity.
