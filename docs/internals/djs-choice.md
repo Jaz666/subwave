@@ -9,6 +9,39 @@ Historical development plan: [djs-choice-development-plan.md](djs-choice-develop
 
 ## Final submission checks — 27 October 2026
 
+### UIAudit follow-up
+
+Addressed the six technical UI findings together:
+
+- Constrain episode grid tracks and wrap titles/cast names, including valid
+  long titles that previously hid mobile actions despite zero page overflow.
+- Increase narrow-screen list height to fit two collapsed cards and provide
+  44px touch areas for episode, eligibility, save and disclosure controls.
+- Give episodes labelled articles and h3 headings; describe repeated icon
+  actions with their episode title while keeping the existing tooltips.
+- Keep an eligibility draft and its saved baseline independently of unrelated
+  Settings refreshes. Show unsaved state; a received conflicting eligibility
+  update preserves local edits and requires an explicit discard/reload.
+- Derive shared accent fill/text colours from the station palette for contrast.
+  Bind the admin muted utility to its existing local muted token rather than
+  the root palette. This also affects other admin pages using these controls.
+
+Web lint/TypeScript and the admin-query audit pass. Isolated browser checks
+passed in light/dark modes at 1280px, 375px and 320px: a valid 58-character title
+keeps actions inside the card; two collapsed cards fit the scrolling region;
+mobile controls meet the checked 44px target; episode headings/labels and
+keyboard scrolling work. The regular-show save no longer resets unfinished
+eligibility edits. Saving settings and handling a simulated concurrent update
+also pass. No real controller or station writes were made.
+
+Computed default-theme contrast is approximately 5.46:1 for white accent-button
+labels, 4.81:1 for light introductory copy and 5.11:1 for dark introductory copy.
+Custom palettes still require their own contrast review. The mechanical scan
+found no new issues in the changed components; its global stylesheet findings
+refer to existing animation/accent rules outside this change. The selected
+529/14 regression counts below predate this UI-only follow-up; those suites
+were not rerun for it.
+
 Merged upstream `develop` at `45725ad7` in `98e7a79b`. The Android lyrics fix
 merged without conflicts. No broadcast or generation policy changed in this
 review pass, and the running station was not updated or restarted.
