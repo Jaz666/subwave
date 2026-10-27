@@ -107,6 +107,12 @@ the current track's genre metadata. Missing context or an unsupported connection
 makes it stand down, including on manual runs. Solo shows also stand down.
 When it runs, each presenter gets at most two turns.
 
+The discussion can explore subjective taste, discovery, listening habits and
+hypothetical associations as well as musical qualities. Presenters may gently
+disagree when their persona-led views differ; neither conflict nor agreement is
+required, and the exchange need not finish with a shared verdict. It does not
+invent personal memories or use opinions as evidence about the current track.
+
 The check is conservative text/genre matching, not audio analysis. A relevant
 genre does not prove an instrument, lyric, influence or historical claim. The
 brief tells the DJs to stand down if the question needs unsupported facts and
