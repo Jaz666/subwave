@@ -514,10 +514,35 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     rationale: normalizeShowProse(music.rationale),
   }));
   validateShowMusicContract({ genres: parsed.genres, eras: mergeEraWindows(parsed.eras) }, { genres: intended, eras: agreedEras });
-  validateShowBrief(
-    { name: input.nameMode === 'custom' ? input.customName! : parsed.name, topic: parsed.topic, talkingPoint: parsed.talkingPoint },
-    agreedEras, personaNames, castNames,
-  );
+  const validateProse = () => validateShowBrief(parsed, agreedEras, personaNames, castNames);
+  try { validateProse(); }
+  catch (error) {
+    if (!(error instanceof Error) || !error.message.startsWith('The show brief promises')) throw error;
+    // One bounded editorial repair. Music settings have already been validated
+    // and are deliberately absent from the response schema.
+    const proseSchema = z.object({
+      name: input.nameMode === 'custom' ? z.literal(input.customName!) : generatedShowPlanSchema.shape.name,
+      topic: settingsSchema.shape.topic,
+      talkingPoint: baseConceptSchema.shape.talkingPoint,
+    });
+    const repaired = proseSchema.parse(await djObject({
+      system: `${proseInstruction} Repair only the dated wording in this radio brief. Return name, topic and talkingPoint. Do not return or change music settings.`,
+      prompt: [
+        `Problem: ${error.message}`,
+        `Fixed contract: ${JSON.stringify({ genres: intended, eras: agreedEras, cast: castNames })}`,
+        agreedEras.length
+          ? 'Every year or decade mentioned must fit the exact supplied eras. Do not broaden a short period to a whole decade or present day.'
+          : 'The music has NO era restriction. Remove EVERY year, decade and period promise from ALL three fields, even dates used to describe the DJs’ tastes. Do not replace them with modern, contemporary, recent or new-release promises. Describe tastes and the musical connection without dates.',
+        `Keep the selected musical idea and actual presenters. Preserve the title unless it contradicts the period; an operator title must remain exact. Do not invent history or add styles. Current prose: ${JSON.stringify({ name: parsed.name, topic: parsed.topic, talkingPoint: parsed.talkingPoint })}`,
+      ].join('\n\n'),
+      schema: proseSchema, temperature: 0.1, kind: 'generateShowPlan.briefRepair',
+      telemetry: { show: input.show?.id, occurrence: input.occurrence.id, template: input.template, pass: generationPass },
+    }));
+    parsed.name = input.nameMode === 'custom' ? input.customName! : normalizeShowProse(repaired.name);
+    parsed.topic = normalizeShowProse(repaired.topic);
+    parsed.talkingPoint = normalizeShowProse(repaired.talkingPoint);
+    validateProse();
+  }
   if (parsed.moods.some(mood => !moods.includes(mood))) throw new Error('Music settings returned a mood outside the station vocabulary');
   return generatedShowPlanSchema.parse({
     ...concept, ...parsed, ...(strictGenres ? { filtersStrict: true } : {}),

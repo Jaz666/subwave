@@ -40,6 +40,32 @@ their soft-filter descriptions. Semantic review of generated prose remains open.
 
 ## Purpose
 
+### Bounded repair of dated prose — 27 October 2026
+
+A Common Ground regeneration still returned 502 when both concept and compiler
+described favourite decades as the episode's period despite empty era filters.
+This differs from the genre-comparison false positive: period promises still
+need to match the agreed era contract. A final period rejection now gets one
+small editorial repair call. Its schema contains only name, topic and
+talkingPoint; validated music settings are not editable. The repaired prose is
+checked again for era, cast and appearance violations before publication.
+Custom operator titles remain exact. A failed repair preserves the accepted
+episode and returns the error; there is no further repair loop.
+
+Ordinary successful generation still uses two logical calls. This exceptional
+path adds one `generateShowPlan.briefRepair` call, with the existing shared SDK
+retries/recovery still applicable. Coverage correction can still add its bounded
+generation pair. Genre, era, strictness and coverage policies are unchanged.
+
+Nineteen takeover/planning checks and controller TypeScript pass. The added
+tests exercise a dated compiler response, prove the repair schema excludes
+filters even when the stub tries to return them, and stop after one still-invalid
+repair. Normal previews retain two-call assertions. Scoped lint has no errors
+(existing `any` warnings remain). An isolated two-hour Common Ground preview
+with the affected cast passed in two calls: strict Indie Rock/Alternative Rock,
+empty eras and 11,213 eligible tracks against 60 required. No live episode was
+saved, regenerated or aired by the preview.
+
 ### Shared comparison handling — 27 October 2026
 
 The follow-up audit confirmed that all four other templates shared the same
