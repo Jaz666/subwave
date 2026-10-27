@@ -165,9 +165,9 @@ const NAV_SECTIONS: NavSection[] = [
         label: 'Library',
         icon: Disc3,
         children: [
-          { href: '/admin/library/sub-flow', id: 'sub-flow', label: 'Sub/Flow', icon: AudioLines },
           { href: '/admin/playlists', id: 'playlists', label: 'Playlists', icon: ListMusic },
           { href: '/observatory', id: 'observatory', label: 'Observatory', icon: Telescope },
+          { href: '/admin/library/sub-flow', id: 'sub-flow', label: 'Sub/Flow', icon: AudioLines },
         ],
       },
       {

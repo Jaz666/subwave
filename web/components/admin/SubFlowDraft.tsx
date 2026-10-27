@@ -73,6 +73,7 @@ export default function SubFlowDraft() {
               <InputGroupInput aria-label="Search example albums" placeholder="Search albums or artists" value={query} onChange={event => setQuery(event.target.value)} />
             </InputGroup>
             <Btn type="submit" tone="accent" disabled={!query.trim()}>Search</Btn>
+            <Btn onClick={() => { setQuery(''); setSearched(false); setAlbumOpen(false); }}>Clear</Btn>
           </form>
           {searched && !albumOpen && (matches ? (
             <button type="button" onClick={() => setAlbumOpen(true)} className="flex items-center gap-3 border border-separator-strong p-3 text-left hover:bg-ink-soft">
