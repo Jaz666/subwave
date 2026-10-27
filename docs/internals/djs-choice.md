@@ -1,11 +1,70 @@
 # Sub/Shows implementation and design record
 
-Updated: 26 October 2026. Five templates are implemented on the feature branch
+Updated: 27 October 2026. Five templates are implemented on the feature branch
 and undergoing pre-review checks. Dated trial sections retain earlier design
 decisions; the current template policies and review evidence below supersede
 those snapshots.
 
 Historical development plan: [djs-choice-development-plan.md](djs-choice-development-plan.md).
+
+## Final submission checks — 27 October 2026
+
+Merged upstream `develop` at `45725ad7` in `98e7a79b`. The Android lyrics fix
+merged without conflicts. No broadcast or generation policy changed in this
+review pass, and the running station was not updated or restarted.
+
+- Full controller and web lint/TypeScript checks pass. Controller lint reports
+  1,746 warnings and zero errors; this is not a warning-free repository.
+- Regenerating the browser schema produces no tracked difference.
+- The selected controller groups report 529 passing tests: show (323), takeover
+  (30), skill-notebook (17), skill-special-guest (11), cohosted-skill (12),
+  stem-seam-cues (11), cue-landing (13), voice-air-events (22),
+  pause-voice-delivery (3), and handoff (87). The web query/show groups report
+  another 14 passing tests, and the admin-query audit passes. These counts are
+  reported across the selected groups, not a complete repository suite.
+- Both earlier Codex review threads are resolved; the selected-guest and shared
+  cache reconciler regression checks are included above.
+
+An isolated Chromium session against the feature web checkout also passed:
+
+- Desktop (1280 × 1000) heading/action alignment and mobile (375 × 950)
+  layout without horizontal page overflow; stripe summaries and collapsed
+  settings were visually inspected.
+- Upcoming/Past regions overflow independently, accept keyboard focus and
+  respond to Page Down.
+- Save as regular show can be cancelled without saving. Saving preserves the
+  accepted genre filters and removes the generated-template configuration.
+- Common Ground shelf options retain a fixed host/custom title on reopening.
+  Applying the preset alone writes nothing. Two simulated HTML drops create
+  distinct configured shows, persisted together through Save the week.
+- Selecting another template and refreshing both reset the temporary preset.
+  The successful session reported no browser exceptions.
+
+All API responses and writes in this browser session were intercepted in memory
+using generic fixtures. It did not contact the controller, run live generation
+or alter station data. This is a browser smoke check, not a real mixer test or
+an exhaustive pointer, assistive-technology or device matrix. The preview used
+webpack because Turbopack cannot resolve this checkout's linked dependencies;
+no dependency or application source change was needed.
+
+### Time Capsule takeover boundary triage
+
+The 26 October takeover ran from 14:54:47 to 15:54:47 GMT, with strict Indie
+Rock/Alternative Rock and 1985–1989 filters. Two tracks started inside that
+window after being selected before activation. Fifteen consecutive subsequent
+tracks matched the contract, including a reissue whose original release year
+qualified. The final track began 112 seconds before expiry after being selected
+with the following regular show's context.
+
+This follows existing shared queue policy: `PICK_SHOW_LOOKAHEAD_SEC` in
+`controller/src/broadcast/queue/pure.ts` is 120 seconds, identical to upstream.
+Selection intentionally anticipates the next show; takeover activation also
+does not flush already-selected tracks. The live session remains with the
+outgoing show until the actual boundary. This triages the observation as an
+existing timing policy, without changing normal programming during this review.
+Strict library acceptance therefore does not guarantee every track starting
+inside a nominal wall-clock interval matches that interval's filters. A change
+to queue flushing or selection lead time would need a separate policy decision.
 
 ## Maintainability and upstream reconciliation — 26 October 2026
 
