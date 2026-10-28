@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { Disc3, Plus, Search, Trash2, X } from 'lucide-react';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../ui/input-group';
+import { V3AlertDialog } from '../ui/alert-dialog';
 import { Btn, Card, Pill } from './ui';
 import { ADMIN_API_URL, useAdminAuth } from '../../lib/adminAuth';
 import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
@@ -27,6 +28,7 @@ export default function SubFlowDraft() {
   const name = useWatch({ control: nameForm.control, name: 'name' }) ?? '';
   const [editing, setEditing] = useState<{ id: string; revision: number } | null>(null);
   const [enabled, setEnabled] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<Flow | null>(null);
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const flowsQuery = useAdminQuery({
     key: ['sub-flow', 'definitions'], adminFetch, enabled: hydrated && !needsAuth,
@@ -180,12 +182,23 @@ export default function SubFlowDraft() {
             <Btn sm disabled={saveFlow.isPending} onClick={() => { setEditing({ id: flow.id, revision: flow.revision }); nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled); }}>Edit</Btn>
             <Btn sm disabled={setFlowEnabled.isPending} onClick={() => { void setFlowEnabled.mutateAsync(flow).catch(() => {}); }}>{flow.enabled ? 'Disable' : 'Enable'}</Btn>
             {(flow.verification === 'failed' || !flow.orderVerified) && <Btn sm disabled={saveFlow.isPending} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>}
-            <Btn sm disabled={deleteFlow.isPending} aria-label={`Delete ${flow.name}`} onClick={() => {
-              if (!window.confirm(`Delete “${flow.name}”? This cannot be undone.`)) return;
-              void deleteFlow.mutateAsync(flow).then(() => { if (editing?.id === flow.id) reset(); }).catch(() => {});
-            }}><Trash2 size={14} /></Btn>
+            <Btn sm disabled={deleteFlow.isPending} aria-label={`Delete ${flow.name}`} onClick={() => setPendingDelete(flow)}><Trash2 size={14} /></Btn>
           </div>)}</div>}
       </Card>
+      <V3AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={open => { if (!open) setPendingDelete(null); }}
+        title="Delete Flow?"
+        description={`Delete “${pendingDelete?.name ?? ''}”? This cannot be undone.`}
+        confirmLabel="Delete Flow"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => {
+          if (!pendingDelete || deleteFlow.isPending) return;
+          const flow = pendingDelete;
+          void deleteFlow.mutateAsync(flow).then(() => { if (editing?.id === flow.id) reset(); }).catch(() => {});
+        }}
+      />
     </div>
   );
 }
