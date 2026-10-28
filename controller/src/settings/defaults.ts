@@ -807,6 +807,8 @@ export const DEFAULTS = {
   // on how album-heavy their catalogue is. Off means an upgrade is
   // byte-identical. See music/recency.ts albumKey.
   picker: {
+    flowProtectBeforeSec: 5,
+    flowProtectAfterSec: 5,
     flowAllowAboveMax: false,
     albumHours: 0,
     // Minimum track length in SECONDS below which a track is never PICKED

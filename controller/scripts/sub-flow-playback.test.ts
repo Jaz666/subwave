@@ -58,8 +58,11 @@ test.after(async () => {
 });
 
 test('preparation checks both fingerprints and publishes exactly the checked decoded samples', async () => {
+  const settings = await import('../src/settings.js');
+  await settings.update({ picker: { flowProtectBeforeSec: 3, flowProtectAfterSec: 7 } });
   const flow = await prepareFlow(definition);
   try {
+    await settings.update({ picker: { flowProtectBeforeSec: 5, flowProtectAfterSec: 5 } });
     const result = await readFile(flow.path);
     assert.deepEqual(result.subarray(44), Buffer.concat([audio.one.subarray(44), audio.two.subarray(44)]));
     assert.equal((await stat(flow.path)).mode & 0o222, 0);
@@ -67,6 +70,10 @@ test('preparation checks both fingerprints and publishes exactly the checked dec
     assert.deepEqual(flow.members.map(member => member.duration), [2, 2]);
     const uri = flowPlaybackUri(flow, 10);
     assert.match(uri, /subwave_flow_count="2"/);
+    assert.match(uri, /subwave_flow_before="3"/);
+    assert.match(uri, /subwave_flow_after="7"/);
+    assert.match(flowPlaybackUri({ ...flow, members: flow.members.map(member => ({ ...member, duration: 20 })) }, 30), /subwave_flow_entry="16.9".*liq_cross_duration="12.9"/);
+    await assert.rejects(() => queue.queueFlow(flow), /Rebuild the broadcast service/);
     assert.match(uri, /subwave_flow_1_offset="2"/);
     assert.match(uri, /liq_cross_duration="0"/);
     assert.doesNotMatch(uri, /liq_cue_|liq_amplify|liq_washout|subhttp/);
@@ -85,12 +92,16 @@ test('a changed companion refuses the complete occurrence and removes partial au
 
 test('queue admission is durable and whole, and cancelling any member cancels the whole unsent Flow', async () => {
   const flow = await prepareFlow(definition);
+  flow.protectBeforeSec = 3; flow.protectAfterSec = 7;
+  mixer.version = 2;
   queue.upcoming = []; queue.current = null;
   let drains = 0;
   queue.drainToLiquidsoap = async () => {
     drains++;
     const saved = JSON.parse(await readFile(config.queue.file, 'utf8'));
     assert.equal(saved.upcoming.length, 2);
+    assert.equal(saved.upcoming[0].flow.protectBeforeSec, 3);
+    assert.equal(saved.upcoming[1].flow.protectAfterSec, 7);
   };
   try {
     assert.equal(await queue.queueFlow(flow), 2);
@@ -105,7 +116,7 @@ test('queue admission is durable and whole, and cancelling any member cancels th
     assert.deepEqual(await queue.removeUpcoming('two'), { ok: true });
     assert.equal(queue.upcoming.length, 0);
     await assert.rejects(() => stat(flow.path));
-  } finally { queue.upcoming = []; await discardFlow(flow); }
+  } finally { mixer.version = 1; queue.upcoming = []; await discardFlow(flow); }
 });
 
 test('recovery recognises a delivered occurrence without submitting it again', async () => {

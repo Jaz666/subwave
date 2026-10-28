@@ -34,15 +34,21 @@ the complete member list and definition revision before handing over that one
 file. Later definition edits, disabling and deletion do not change it.
 
 Playback permits one queued/playing Flow at a time and requires the
-broadcast capability `subflow.status` version 1. Listener requests, explicitly
+broadcast capability `subflow.status` version 1 or 2 (custom protection times
+require version 2). Listener requests, explicitly
 ordered playlists and `auto.m3u` still play individual tracks. Manual Flow admission
 bypasses individual cuts, silence trimming, per-track gain changes and internal
 mixing. The mixer retains one outer track boundary, so requests, beds and jingles
 cannot split it. Speech, over-music imaging and SFX must fit wholly outside
-five-second windows around each join, including lead-in and duck recovery;
+the configured windows before and after each join (five seconds each by
+default), including lead-in and duck recovery;
 overlapping windows leave no safe interval between them. Existing speech finishes
 before entry. Outer transitions are plain crossfades, shortened or omitted when
 needed to preserve a nearby join.
+
+Library → Sub/Flow's **Join protection** settings apply to newly prepared
+occurrences; queued and playing Flows keep their captured values. See
+[Sub/Flow definitions](sub-flow-definitions.md#join-protection-settings).
 
 **Operator track queuing.** `POST /dj/queue-track` is shared by Library,
 Extended Sleeve Notes / Station Brain and Observatory. Once a track is selected,

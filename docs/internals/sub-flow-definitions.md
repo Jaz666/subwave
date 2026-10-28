@@ -24,9 +24,9 @@ cannot be overwritten by an earlier check. If the controller restarts during
 a check, the editor offers the check again.
 
 “Checked at save” describes a baseline, not proof that the original recording
-was complete or has not changed since. It also does not mean protected playback
-exists. Playback integration must check the same prepared bytes against the
-saved fingerprints before admitting a complete Flow; it must not refetch a
+was complete or has not changed since. Playback preparation checks the same
+prepared bytes against the saved fingerprints before admitting a complete
+Flow; it must not refetch a
 different representation after checking. Unknown or stale library durations
 cannot guarantee completeness, and decode success is not an audio-quality
 guarantee.
@@ -34,6 +34,27 @@ guarantee.
 Backups include definitions. Restore validates the file before changing state,
 then clears fingerprints and marks each restored Flow for another check on the
 destination station. Audio files and credentials are not included in this file.
+
+## Join protection settings
+
+Library → Sub/Flow has station-wide **Join protection** controls between the
+builder and saved Flows. Before and after each join are separate whole-second
+settings from 1 to 30, both defaulting to 5. They prevent speech, jingles and
+duck recovery from covering the joins; speech may play elsewhere in the Flow.
+Overlapping windows remain continuously protected.
+
+The values live in `picker.flowProtectBeforeSec` and
+`picker.flowProtectAfterSec`. Preparing a Flow captures both values in its
+durable playback occurrence, so a later settings change does not alter a
+queued or playing sequence. Older occurrences retain 5/5 protection. Entry
+speech uses the before-join budget; outer crossfades respect the respective
+before/after windows. Internal audio remains untouched.
+
+Broadcast capability version 2 reads the separate window annotations and still
+accepts older symmetric annotations. The controller accepts version 1 for
+default 5/5 occurrences, but refuses custom windows until broadcast is rebuilt.
+Rebuild controller, web and broadcast when installing this change. No further
+restart is needed when the operator subsequently changes the settings.
 
 ## Deferred: listener-request integration
 
