@@ -179,6 +179,45 @@ test('album loading preserves disc and track gaps in positions sent to the edito
   assert.deepEqual(tracks.map(track => [track.id, track.order]), [['a', 0], ['b', 1], ['c', 3], ['d', 5], ['e', 6]]);
 });
 
+test('join previews require an adjacent pair and never save a Flow', async () => {
+  broken = 'none';
+  const app = express();
+  app.use(express.json()); app.use(router);
+  const fixture = await listen(app);
+  const preview = (trackIds: string[]) => originalFetch(`${fixture.url}/library/sub-flow/join-preview`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ trackIds }),
+  });
+  try {
+    for (const ids of [['one'], ['one', 'two', 'three'], ['one', 'three'], ['two', 'one'], ['one', 'other']]) {
+      assert.equal((await preview(ids)).status, 400);
+    }
+    const response = await preview(['one', 'two']);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /audio\/wav/);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const wav = Buffer.from(await response.arrayBuffer());
+    assert.equal(wav.readUInt32LE(40), pcmSize * 2);
+    assert.deepEqual(flows.list(), []);
+  } finally { await fixture.close(); }
+});
+
+test('only one preview is prepared at a time and cancellation releases it', async () => {
+  let unblock!: () => void;
+  let entered!: () => void;
+  const wait = new Promise<void>(resolve => { unblock = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  pauseStream = async () => { pauseStream = null; entered(); await wait; };
+  const abort = new AbortController();
+  const first = flows.previewJoin(['one', 'two'], abort.signal);
+  const rejected = assert.rejects(() => first);
+  await started;
+  try {
+    await assert.rejects(() => flows.previewJoin(['one', 'two'], new AbortController().signal), /Another join/);
+  } finally { abort.abort(); unblock(); }
+  await rejected;
+  assert.ok((await flows.previewJoin(['one', 'two'], new AbortController().signal)).length > 44);
+});
+
 test('a partial album response cannot establish adjacency', async () => {
   incompleteAlbum = true;
   try { await assert.rejects(() => flows.save(null, { name: 'Partial', enabled: true, trackIds: ['one', 'two'] }), /complete album/); }

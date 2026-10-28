@@ -13,6 +13,17 @@ track length, seed-vs-pick,
 dead-air trim, festivals, listener request hardening, likes, and the blocklist
 rules.
 
+**Sub/Flow join previews.** The editor's play buttons audition up to ten seconds
+on either side of each join through the browser. `POST /library/sub-flow/join-preview`
+requires admin authentication and a pair that passes the same current album-order,
+archive and blocklist checks as saving. It downloads the raw sources and fully
+decodes them using the definition-time audio checks, then joins the decoded tail
+and head as stereo PCM WAV without fades, silence padding or normalisation.
+Only one preview is prepared at a time; disconnecting cancels the work and temporary
+downloads are removed. Nothing is saved or sent to the station queue. This auditions
+the source seam, not Liquidsoap's protected playback path. The browser stops the
+preview when the editor's tracks change or the page closes.
+
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
 only when a supported preference advantage genuinely
