@@ -365,13 +365,16 @@ export function linkPrompt({
   guestContribution = null,
   extendedSleeveNote = null,
   structuredSpark = false,
+  flow = null,
 }: any): string {
   const speaker = persona || settings.getEffectivePersona();
   const rules = [
     structuredSpark
       ? 'Put only the words to be spoken on air in speech. Keep the private Spark decision and its reason separate; follow the required response shape.'
       : 'Output only the words to be spoken on air.',
-    'The named track is already playing. Give a natural introduction in the presenter’s voice that identifies the supplied artist and track title, keeping their roles distinct. Focus on this track and do not refer to the previous track.',
+    flow
+      ? 'Introduce the supplied ordered album sequence as one continuous Flow. The first listed track is playing now; later tracks follow in the supplied order. Never present a later member as the current opening track. Do not describe internal protection, selection or queue mechanics. Do not refer to the previous track.'
+      : 'The named track is already playing. Give a natural introduction in the presenter’s voice that identifies the supplied artist and track title, keeping their roles distinct. Focus on this track and do not refer to the previous track.',
     'FACTUAL GROUNDING: Music facts are limited to the supplied Verified Facts, Sleeve Notes, Story Spark and episode source data. Use no remembered artist, recording, album, release, chart, reputation, influence or history information. Preserve meaning, relationships, attribution and qualifiers when paraphrasing; never add causes, intent, chronology or other unsupported detail.',
     'Preserve the time framing of supplied facts. If a fact describes a past event, retain past-tense wording and any explicit date. Do not recast a historical event as a recent development.',
     '“First station play” is not a premiere or a world premiere. An album fact never means the album belongs to the station or presenter.',
@@ -401,6 +404,7 @@ export function linkPrompt({
   const sections = [
     'Task: Write a natural, brief DJ introduction to the track now playing. Identify the supplied artist and track; any Story Spark is optional material to weave into that link, not a script to read out.',
     facts,
+    flow ? `Ordered album sequence (library facts): ${JSON.stringify(flow)}` : '',
     extendedSleeveNote?.wording ? storySparkPacket(extendedSleeveNote,
       sparkSpeechWordBudget(current, speaker, includeIntroBudget), speaker?.scriptLength === 'one-liner', current) : '',
     `Rules:\n${rules.map((rule) => `- ${rule}`).join('\n')}`,
@@ -471,7 +475,7 @@ export async function generateLink(args: any) {
   }
   let extendedSleeveNote: ReturnType<typeof selectExtendedSleeveNote> = null;
   try {
-    if (!args.suppressExtendedSleeveNote && extendedSleeveNoteAllowedForVocalRunway(firstVocalMsFor(args.current))) {
+    if (!args.flow && !args.suppressExtendedSleeveNote && extendedSleeveNoteAllowedForVocalRunway(firstVocalMsFor(args.current))) {
       extendedSleeveNote = selectExtendedSleeveNote(args.current);
     }
   } catch {
@@ -496,7 +500,7 @@ export async function generateLink(args: any) {
   } else {
     script = await djText({
       system: djSystem(speaker), prompt, temperature: 0.95,
-      topP: 0.92, repeatPenalty: 1.2, seed: randomSeed(), kind: 'generateLink',
+      topP: 0.92, repeatPenalty: 1.2, seed: randomSeed(), kind: args.flow ? 'generateFlowLink' : 'generateLink',
     });
   }
   if (extendedSleeveNote) {
