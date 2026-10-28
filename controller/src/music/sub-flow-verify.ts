@@ -38,7 +38,11 @@ export async function verifyTrack(id: string, expectedDuration: number | null, o
     const duration = await new Promise<number>((resolve, reject) => {
       const proc = spawn('ffmpeg', ['-v', 'error', '-xerror', '-i', path, '-map', '0:a:0', '-f', 's16le', '-ac', '2', '-ar', '44100', '-'], { timeout: TIMEOUT_MS, signal });
       let bytes = 0;
-      proc.stdout.on('data', (chunk: Buffer) => { bytes += chunk.length; options.onPcm?.(chunk); });
+      proc.stdout.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        try { options.onPcm?.(chunk); }
+        catch (error) { proc.kill(); reject(error); }
+      });
       proc.stderr.resume();
       proc.once('error', () => reject(new Error('Audio verification could not start')));
       proc.once('close', code => code === 0 && bytes > 0 ? resolve(bytes / (44100 * 4)) : reject(new Error('The downloaded track could not be fully decoded')));

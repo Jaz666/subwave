@@ -24,6 +24,38 @@ downloads are removed. Nothing is saved or sent to the station queue. This audit
 the source seam, not Liquidsoap's protected playback path. The browser stops the
 preview when the editor's tracks change or the page closes.
 
+**Manual protected Sub/Flow playback.** Library → Sub/Flow's **Queue Flow**
+prepares the complete enabled, checked definition before queue admission. Each
+raw source must still match its saved SHA-256, byte count and decoded duration;
+a changed or unavailable member refuses the whole occurrence. The checked PCM
+is published as one read-only stereo WAV in `state/sub-flow-playback/`, shared
+with broadcast, limited to 512 MiB per occurrence. The queue durably captures
+the complete member list and definition revision before handing over that one
+file. Later definition edits, disabling and deletion do not change it.
+
+This first release permits one queued/playing Flow at a time and requires the
+new broadcast image (`subflow.status` version 1). Ordinary picks, requests and
+`auto.m3u` do not automatically expand a member into a Flow. Manual Flow admission
+bypasses individual cuts, silence trimming, per-track gain changes and internal
+mixing. The mixer retains one outer track boundary, so requests, beds and jingles
+cannot split it. Speech, over-music imaging and SFX must fit wholly outside
+five-second windows around each join, including lead-in and duck recovery;
+overlapping windows leave no safe interval between them. Existing speech finishes
+before entry. Outer transitions are plain crossfades, shortened or omitted when
+needed to preserve a nearby join.
+
+The Dash queue labels every member **Flow**. Cancelling any unstarted member
+cancels the whole occurrence; once playing, the Skip dialog explicitly ends the
+whole Flow. Individual member metadata follows the output audio clock, retaining
+the ordinary history/scrobble path. Recovery recognises an already-delivered
+occurrence and never resubmits it; a lost mixer occurrence cancels the remainder
+instead of replaying members. Finished/cancelled audio is removed. Render the
+actual mixer offline with `python3 scripts/sub-flow-playback-test.py`, using
+`LIQUIDSOAP_BIN` and `LIQUIDSOAP_STDLIB` for the pinned 2.4.6 runtime. The optional
+`SUB_FLOW_MEMBERS=3`, `SUB_FLOW_SHORT=1`, `SUB_FLOW_PREEXISTING=1`,
+`SUB_FLOW_JINGLE=1`, `SUB_FLOW_ROTATE=1`, `SUB_FLOW_OVERLAP=1` and `SUB_FLOW_IDLE=1`
+cases cover the key boundaries.
+
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
 only when a supported preference advantage genuinely
