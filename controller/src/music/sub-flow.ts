@@ -12,6 +12,7 @@ import { verifyTrack } from './sub-flow-verify.js';
 import { subFlowInputSchema } from '../schemas/sub-flow.js';
 import { albumNeighbours, assertAdjacent, orderedAlbumSongs } from './sub-flow-order.js';
 import { renderJoin } from './sub-flow-preview.js';
+import { prepareFlow, discardFlow } from './sub-flow-playback.js';
 
 const trackSchema = z.object({
   id: z.string().min(1).max(128), title: z.string().min(1).max(500),
@@ -129,6 +130,26 @@ async function checkTrackOrder(ids: string[], songs: any[]) {
 }
 
 let previewBusy = false;
+let preparingPlayback = false;
+export async function preparePlayback(id: string, revision: number) {
+  const startedGeneration = generation;
+  if (preparingPlayback) throw new Error('A Flow is already being prepared. Try again shortly.');
+  const flow = read().find(item => item.id === id);
+  if (!flow || flow.revision !== revision) throw new Error('This Flow changed or was deleted; reload before queueing it.');
+  if (!flow.enabled) throw new Error('Enable the Flow before queueing it.');
+  preparingPlayback = true;
+  try {
+    await blocklist.load();
+    await checkTrackOrder(flow.tracks.map(track => track.id), await Promise.all(flow.tracks.map(track => subsonic.getSong(track.id))));
+    const prepared = await prepareFlow(flow);
+    const current = read().find(item => item.id === id);
+    if (generation !== startedGeneration || !current?.enabled || current.revision !== revision) {
+      await discardFlow(prepared);
+      throw new Error('This Flow changed while its audio was being prepared. Queue it again.');
+    }
+    return prepared;
+  } finally { preparingPlayback = false; }
+}
 export async function previewJoin(input: unknown, signal: AbortSignal) {
   const ids = z.array(z.string().min(1).max(128)).length(2).parse(input);
   if (previewBusy) throw new Error('Another join preview is being prepared. Try again shortly.');
