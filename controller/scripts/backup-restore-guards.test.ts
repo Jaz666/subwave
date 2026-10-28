@@ -69,6 +69,7 @@ test('Flow backups are validated and restored as needing re-verification', async
   const ok = await restore(backupOf([['sub-flows.json', JSON.stringify([flow])]]));
   assert.equal(ok.status, 200);
   assert.equal(subFlows.list()[0]?.verification, 'failed');
+  assert.equal(subFlows.list()[0]?.orderVerified, false);
   assert.equal(subFlows.list()[0]?.tracks[0]?.fingerprint, null);
   const bad = await restore(backupOf([['sub-flows.json', JSON.stringify([flow, flow])]]));
   assert.equal(bad.status, 400);

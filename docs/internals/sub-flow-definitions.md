@@ -3,9 +3,17 @@
 The Library editor stores two- or three-track Flow definitions in the active
 station's `sub-flows.json`. Saving resolves every track against Navidrome,
 rejects missing or blocked tracks and overlapping enabled definitions, and
-starts a background check. Updates and deletes require the current revision.
-Changing the enabled state does not need the music server and can be used to
-disable a definition whose source is unavailable.
+starts a background check. All members must be consecutive, in album order,
+on the same album. The order check uses the complete unfiltered album, including
+blocked or archived tracks, and rejects incomplete or ambiguous numbering.
+Multi-disc boundaries are supported when their order is unambiguous. Updates
+and deletes require the current revision. Disabling does not need the music
+server, but enabling checks the track order again.
+
+Definitions saved before the order check, or restored from backup, are marked
+for an order check. They remain visible rather than being silently deleted or
+changed. Playback integration must recheck the current album order before
+admission, since the library may have changed after a definition was saved.
 
 One worker at a time downloads each raw track, checks the response, hashes the
 downloaded bytes and decodes the whole file with FFmpeg to measure its duration.

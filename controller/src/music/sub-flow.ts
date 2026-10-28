@@ -10,6 +10,7 @@ import * as subsonic from './subsonic.js';
 import * as blocklist from './blocklist.js';
 import { verifyTrack } from './sub-flow-verify.js';
 import { subFlowInputSchema } from '../schemas/sub-flow.js';
+import { assertAdjacent, orderedAlbumSongs } from './sub-flow-order.js';
 
 const trackSchema = z.object({
   id: z.string().min(1).max(128), title: z.string().min(1).max(500),
@@ -20,6 +21,7 @@ const trackSchema = z.object({
 const flowSchema = z.object({
   id: z.string().uuid(), name: z.string().min(1).max(200), enabled: z.boolean(),
   revision: z.number().int().positive(), tracks: z.array(trackSchema).min(2).max(3),
+  orderVerified: z.boolean().default(false),
   verification: z.enum(['pending', 'verified', 'failed']), verificationError: z.string().max(500).nullable(),
   createdAt: z.string(), updatedAt: z.string(),
 });
@@ -64,7 +66,7 @@ export function list(): Flow[] {
 }
 export function validateBackup(data: unknown) { return storeSchema.parse(data); }
 export function restore(data: unknown) {
-  const flows = validateBackup(data).map(flow => ({ ...flow, verification: 'failed' as const, verificationError: 'Restored Flow needs verification.', tracks: flow.tracks.map(track => ({ ...track, fingerprint: null })) }));
+  const flows = validateBackup(data).map(flow => ({ ...flow, orderVerified: false, verification: 'failed' as const, verificationError: 'Restored Flow needs verification.', tracks: flow.tracks.map(track => ({ ...track, fingerprint: null })) }));
   generation++;
   active.clear();
   write(flows);
@@ -99,7 +101,30 @@ function updateResult(flow: Flow, startedGeneration: number, fingerprints: Await
   write(flows);
 }
 
+export async function albumTracks(albumId: string) {
+  await blocklist.load();
+  const result = await subsonic.getAlbumWithSongs(albumId, { requireComplete: true });
+  if (!result) throw new Error('The complete album track list is unavailable');
+  const ordered = orderedAlbumSongs(albumId, result.album);
+  const allowed = new Set(result.songs.map(song => song.id));
+  return ordered.flatMap((song, order) => allowed.has(song.id) ? [{ ...song, order }] : []);
+}
+
+async function checkTrackOrder(ids: string[], songs: any[]) {
+  if (songs.length !== ids.length || songs.some((song, i) => !song || song.id !== ids[i] || subsonic.isStationArchive(song) || blocklist.hitOf(song))) {
+    throw new Error('A selected track is missing or blocked');
+  }
+  const albumId = songs[0]?.albumId;
+  if (typeof albumId !== 'string' || !albumId || songs.some(song => song?.albumId !== albumId)) {
+    throw new Error('Flow tracks must be consecutive tracks from the same album, in album order');
+  }
+  const album = await subsonic.getAlbumWithSongs(albumId, { requireComplete: true });
+  if (!album) throw new Error('The complete album track list is unavailable');
+  assertAdjacent(ids, orderedAlbumSongs(albumId, album.album));
+}
+
 export async function save(id: string | null, input: unknown): Promise<Flow> {
+  const startedGeneration = generation;
   const parsed = subFlowInputSchema.parse(input);
   await blocklist.load();
   const songs = await Promise.all(parsed.trackIds.map(trackId => subsonic.getSong(trackId)));
@@ -109,6 +134,8 @@ export async function save(id: string | null, input: unknown): Promise<Flow> {
     return trackSchema.parse({ id: song.id, title: song.title, artist: song.artist ?? null, album: song.album ?? null,
       duration: Number(song.duration) > 0 ? Number(song.duration) : null, fingerprint: null });
   });
+  await checkTrackOrder(parsed.trackIds, songs);
+  if (generation !== startedGeneration) throw new Error('Flows were restored; reload before saving');
   const flows = read();
   const old = id ? flows.find(flow => flow.id === id) : undefined;
   if (id && (!old || old.revision !== parsed.revision)) throw new Error('This Flow changed or was deleted; reload before saving');
@@ -116,7 +143,7 @@ export async function save(id: string | null, input: unknown): Promise<Flow> {
   if (!id && flows.length >= 1000) throw new Error('The Flow limit has been reached');
   const now = new Date().toISOString();
   const flow: Flow = { id: old?.id ?? randomUUID(), name: parsed.name, enabled: parsed.enabled, tracks,
-    revision: (old?.revision ?? 0) + 1, verification: 'pending', verificationError: null, createdAt: old?.createdAt ?? now, updatedAt: now };
+    revision: (old?.revision ?? 0) + 1, orderVerified: true, verification: 'pending', verificationError: null, createdAt: old?.createdAt ?? now, updatedAt: now };
   write(old ? flows.map(item => item.id === id ? flow : item) : [...flows, flow]);
   schedule(flow);
   return flow;
@@ -129,13 +156,23 @@ export function remove(id: string, revision: number) {
   write(flows.filter(flow => flow.id !== id));
 }
 
-export function setEnabled(id: string, revision: number, enabled: boolean) {
+export async function setEnabled(id: string, revision: number, enabled: boolean) {
+  const startedGeneration = generation;
+  if (enabled) {
+    const initial = read().find(flow => flow.id === id);
+    if (!initial || initial.revision !== revision) throw new Error('This Flow changed or was deleted; reload before changing it');
+    const ids = initial.tracks.map(track => track.id);
+    await blocklist.load();
+    const songs = await Promise.all(ids.map(trackId => subsonic.getSong(trackId)));
+    await checkTrackOrder(ids, songs);
+  }
+  if (generation !== startedGeneration) throw new Error('Flows were restored; reload before changing this Flow');
   const flows = read();
   const index = flows.findIndex(flow => flow.id === id);
   const old = flows[index];
   if (!old || old.revision !== revision) throw new Error('This Flow changed or was deleted; reload before changing it');
   if (enabled && flows.some(flow => flow.id !== id && flow.enabled && flow.tracks.some(track => old.tracks.some(member => member.id === track.id)))) throw new Error('A track already belongs to another enabled Flow');
-  const flow: Flow = { ...old, enabled, revision: old.revision + 1, updatedAt: new Date().toISOString(),
+  const flow: Flow = { ...old, enabled, orderVerified: enabled ? true : old.orderVerified, revision: old.revision + 1, updatedAt: new Date().toISOString(),
     verification: old.verification === 'pending' ? 'failed' : old.verification,
     verificationError: old.verification === 'pending' ? 'Verification was interrupted; check the Flow again.' : old.verificationError };
   flows[index] = flow;

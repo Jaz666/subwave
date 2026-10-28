@@ -29,12 +29,27 @@ wav.writeUInt32LE(44100, 24); wav.writeUInt32LE(44100 * 4, 28); wav.writeUInt16L
 wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(pcmSize, 40);
 let broken: 'none' | 'json' | 'short' = 'none';
 let pauseStream: (() => Promise<void>) | null = null;
+let pauseAlbum: (() => Promise<void>) | null = null;
+let incompleteAlbum = false;
 globalThis.fetch = (async input => {
   const url = new URL(String(input));
   if (url.pathname.endsWith('/getSong')) {
     const id = url.searchParams.get('id');
-    const song = { id, title: `Track ${id}`, artist: 'Artist', album: 'Album', duration: 2 };
+    const song = { id, title: `Track ${id}`, artist: 'Artist', album: 'Album', albumId: id === 'other' ? 'another-album' : 'album-one', duration: 2 };
     return new Response(JSON.stringify({ 'subsonic-response': { status: 'ok', song } }), { status: 200 });
+  }
+  if (url.pathname.endsWith('/getAlbum')) {
+    if (pauseAlbum) await pauseAlbum();
+    if (url.searchParams.get('id') === 'album-hidden') {
+      const songs = [
+        { id: 'a', albumId: 'album-hidden', track: 1 },
+        { id: 'hidden', albumId: 'album-hidden', track: 2, path: 'archive/2026-01-01/01-00.mp3' },
+        { id: 'c', albumId: 'album-hidden', track: 3 },
+      ];
+      return new Response(JSON.stringify({ 'subsonic-response': { status: 'ok', album: { id: 'album-hidden', songCount: 3, song: songs } } }), { status: 200 });
+    }
+    const songs = ['one', 'two', 'three', 'four'].map((id, index) => ({ id, albumId: 'album-one', track: index + 1, discNumber: 1 }));
+    return new Response(JSON.stringify({ 'subsonic-response': { status: 'ok', album: { id: 'album-one', songCount: songs.length + (incompleteAlbum ? 1 : 0), song: songs } } }), { status: 200 });
   }
   if (url.pathname.endsWith('/stream')) {
     if (pauseStream) await pauseStream();
@@ -60,12 +75,13 @@ test('Flow save, verification, revision guards, disabling, and restore', async (
   assert.equal(created.verification, 'pending');
   const checked = await settled(created.id);
   assert.equal(checked.verification, 'verified');
+  assert.equal(checked.orderVerified, true);
   assert.equal(checked.tracks[0]?.fingerprint?.sha256, createHash('sha256').update(wav).digest('hex'));
   assert.equal(checked.tracks[0]?.fingerprint?.decodedSeconds, 2);
   assert.equal(JSON.parse(readFileSync(join(root, 'state', 'sub-flows.json'), 'utf8'))[0].id, created.id);
   await assert.rejects(() => flows.save(null, input), /another enabled Flow/);
-  assert.throws(() => flows.setEnabled(created.id, 999, false), /changed/);
-  const disabled = flows.setEnabled(created.id, checked.revision, false);
+  await assert.rejects(() => flows.setEnabled(created.id, 999, false), /changed/);
+  const disabled = await flows.setEnabled(created.id, checked.revision, false);
   assert.equal(disabled.enabled, false);
   assert.equal(disabled.tracks[0]?.fingerprint?.sha256, checked.tracks[0]?.fingerprint?.sha256);
   broken = 'json';
@@ -81,6 +97,7 @@ test('Flow save, verification, revision guards, disabling, and restore', async (
   assert.equal(truncatedResult.tracks[0]?.fingerprint, null);
   flows.restore([checked]);
   assert.equal(flows.list()[0]?.verification, 'failed');
+  assert.equal(flows.list()[0]?.orderVerified, false);
   assert.equal(flows.list()[0]?.tracks[0]?.fingerprint, null);
   assert.throws(() => flows.validateBackup([checked, checked]), /Duplicate/);
   assert.throws(() => flows.remove(created.id, 999), /changed/);
@@ -97,6 +114,9 @@ test('the admin API saves, lists, disables, and deletes a Flow', async () => {
   try {
     const headers = { 'content-type': 'application/json' };
     const url = `${fixture.url}/library/sub-flow`;
+    const invalid = await originalFetch(url, { method: 'POST', headers, body: JSON.stringify({ name: 'Gap', enabled: true, trackIds: ['one', 'three'] }) });
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(flows.list(), []);
     const response = await originalFetch(url, { method: 'POST', headers, body: JSON.stringify({ name: 'API pair', enabled: true, trackIds: ['one', 'two'] }) });
     assert.equal(response.status, 201);
     const created = (await response.json() as { flow: { id: string; revision: number } }).flow;
@@ -121,7 +141,7 @@ test('an in-flight check cannot overwrite a later disable', async () => {
   pauseStream = async () => { pauseStream = null; entered(); await wait; };
   const flow = await flows.save(null, { name: 'Race', enabled: true, trackIds: ['one', 'two'] });
   await started;
-  const disabled = flows.setEnabled(flow.id, flow.revision, false);
+  const disabled = await flows.setEnabled(flow.id, flow.revision, false);
   unblock();
   const next = await flows.save(null, { name: 'Next', enabled: true, trackIds: ['three', 'four'] });
   await settled(next.id); // the single verification worker has finished the older job
@@ -132,6 +152,56 @@ test('an in-flight check cannot overwrite a later disable', async () => {
   assert.equal(current?.tracks[0]?.fingerprint, null);
   flows.remove(flow.id, disabled.revision);
   flows.remove(next.id, next.revision);
+});
+
+test('Flow admission refuses gaps, reversed order and mixed albums', async () => {
+  for (const trackIds of [['one', 'three'], ['two', 'one'], ['one', 'other']]) {
+    await assert.rejects(() => flows.save(null, { name: 'Invalid', enabled: true, trackIds }), /consecutive tracks/);
+  }
+  assert.deepEqual(flows.list(), []);
+});
+
+test('unavailable album tracks do not disappear from the order', async () => {
+  const tracks = await flows.albumTracks('album-hidden');
+  assert.deepEqual(tracks.map(track => [track.id, track.order]), [['a', 0], ['c', 2]]);
+});
+
+test('a partial album response cannot establish adjacency', async () => {
+  incompleteAlbum = true;
+  try { await assert.rejects(() => flows.save(null, { name: 'Partial', enabled: true, trackIds: ['one', 'two'] }), /complete album/); }
+  finally { incompleteAlbum = false; }
+  assert.deepEqual(flows.list(), []);
+});
+
+test('a legacy non-adjacent Flow cannot be re-enabled', async () => {
+  broken = 'none';
+  const created = await flows.save(null, { name: 'Old', enabled: false, trackIds: ['one', 'two'] });
+  const checked = await settled(created.id);
+  const legacy = { ...checked, orderVerified: false, tracks: [checked.tracks[0]!, { ...checked.tracks[1]!, id: 'three' }] };
+  flows.restore([legacy]);
+  assert.equal(flows.list()[0]?.orderVerified, false);
+  await assert.rejects(() => flows.setEnabled(created.id, checked.revision, true), /consecutive/);
+  assert.equal(flows.list()[0]?.enabled, false);
+  flows.remove(created.id, checked.revision);
+});
+
+test('a restore cannot race an in-flight order check', async () => {
+  broken = 'none';
+  const created = await flows.save(null, { name: 'Race restore', enabled: false, trackIds: ['one', 'two'] });
+  const checked = await settled(created.id);
+  let unblock!: () => void;
+  let entered!: () => void;
+  const wait = new Promise<void>(resolve => { unblock = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  pauseAlbum = async () => { pauseAlbum = null; entered(); await wait; };
+  const enabling = flows.setEnabled(created.id, checked.revision, true);
+  await started;
+  flows.restore([{ ...checked, tracks: [checked.tracks[0]!, { ...checked.tracks[1]!, id: 'three' }] }]);
+  unblock();
+  await assert.rejects(() => enabling, /restored/);
+  assert.equal(flows.list()[0]?.enabled, false);
+  assert.equal(flows.list()[0]?.orderVerified, false);
+  flows.remove(created.id, checked.revision);
 });
 
 test('a corrupt store is never silently replaced by a new save', async () => {

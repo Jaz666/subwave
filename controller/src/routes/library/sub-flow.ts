@@ -20,10 +20,10 @@ router.put('/library/sub-flow/:id', requireAdmin, async (req, res) => {
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Flow could not be saved' }); }
 });
 
-router.patch('/library/sub-flow/:id/enabled', requireAdmin, (req, res) => {
+router.patch('/library/sub-flow/:id/enabled', requireAdmin, async (req, res) => {
   const { revision, enabled } = req.body ?? {};
   if (!Number.isInteger(revision) || revision < 1 || typeof enabled !== 'boolean') return res.status(400).json({ error: 'A revision and enabled state are required' });
-  try { res.json({ flow: flows.setEnabled(req.params.id, revision, enabled) }); }
+  try { res.json({ flow: await flows.setEnabled(req.params.id, revision, enabled) }); }
   catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Flow could not be changed' }); }
 });
 
@@ -50,11 +50,11 @@ router.get('/library/sub-flow/albums', requireAdmin, async (req, res) => {
 
 router.get('/library/sub-flow/albums/:id/tracks', requireAdmin, async (req, res) => {
   try {
-    const songs = await subsonic.getAlbum(req.params.id);
+    const songs = await flows.albumTracks(req.params.id);
     res.json({ tracks: songs.map((song: any) => ({
       id: song.id, title: song.title, artist: song.artist ?? null,
       album: song.album ?? null, duration: song.duration ?? null,
-      discNumber: song.discNumber ?? null, track: song.track ?? null,
+      discNumber: song.discNumber ?? null, track: song.track ?? null, order: song.order,
     })) });
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : 'Album tracks could not be loaded' });
