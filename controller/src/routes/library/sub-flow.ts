@@ -2,8 +2,24 @@ import express from 'express';
 import { requireAdmin } from '../../middleware/auth.js';
 import * as subsonic from '../../music/subsonic.js';
 import * as flows from '../../music/sub-flow.js';
+import { queue } from '../../broadcast/queue.js';
+import { flowPlaybackStatus } from '../../broadcast/liquidsoap-control.js';
+import { discardFlow } from '../../music/sub-flow-playback.js';
 
 export const router = express.Router();
+
+router.post('/library/sub-flow/:id/queue', requireAdmin, async (req, res) => {
+  const revision = req.body?.revision;
+  if (!Number.isInteger(revision) || revision < 1) return res.status(400).json({ error: 'A revision is required' });
+  try {
+    await flowPlaybackStatus();
+    const prepared = await flows.preparePlayback(req.params.id, revision);
+    try {
+      const depth = await queue.queueFlow(prepared);
+      res.json({ ok: true, queueDepth: depth, occurrenceId: prepared.occurrenceId });
+    } catch (error) { await discardFlow(prepared); throw error; }
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Flow could not be queued' }); }
+});
 
 router.post('/library/sub-flow/join-preview', requireAdmin, async (req, res) => {
   const abort = new AbortController();

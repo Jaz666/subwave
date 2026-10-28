@@ -15,6 +15,7 @@ import { subFlowNameSchema } from '../../lib/schemas.generated';
 import { albumSelection } from './library/sub-flow-order';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { dashKeys } from './dash/queries';
 
 type Track = { id: string; title: string; duration: number | null; artist: string | null; album: string | null; order?: number };
 type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean; revision: number; orderVerified: boolean; verification: 'pending' | 'verified' | 'failed'; verificationError: string | null };
@@ -31,6 +32,7 @@ export default function SubFlowDraft() {
   const [editing, setEditing] = useState<{ id: string; revision: number } | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<Flow | null>(null);
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const preview = useJoinPreview(JSON.stringify(tracks.map(track => track.id)), adminFetch);
   const flowsQuery = useAdminQuery({
@@ -60,6 +62,16 @@ export default function SubFlowDraft() {
       body: JSON.stringify({ revision: flow.revision, enabled: !flow.enabled }),
     }),
     onDone: async (_data, _value, client) => { await client.invalidateQueries({ queryKey: ['sub-flow', 'definitions'] }); },
+  });
+  const queueFlow = useAdminMutation({
+    adminFetch,
+    request: (flow: Flow, fetcher) => adminJson(fetcher, `/library/sub-flow/${encodeURIComponent(flow.id)}/queue`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: flow.revision }),
+    }),
+    onDone: async (_data, flow, client) => {
+      setQueuedMessage(`“${flow.name}” queued with protected joins. View it in the Dash queue.`);
+      await client.invalidateQueries({ queryKey: dashKeys.status() });
+    },
   });
   const albums = useAdminQuery({
     key: ['sub-flow', 'albums', submitted], adminFetch,
@@ -111,7 +123,7 @@ export default function SubFlowDraft() {
         <p className="mt-1 text-sm text-muted">Keep two or three album tracks together, in the order they were meant to play.</p>
       </div>
       <div role="status" className="border border-separator-strong bg-bg p-3 text-sm text-muted">
-        Saved Flows are checked in the background. Protected playback is not connected yet.
+        Queue a checked Flow to play it together, with five seconds of protection either side of each join. Queue one Flow at a time. Ordinary track selection does not start a Flow automatically.
       </div>
       <Card title="Build a Sub/Flow" sub="Choose an album, then add its tracks in order">
         <fieldset disabled={saveFlow.isPending} className="grid min-w-0 gap-5">
@@ -194,12 +206,16 @@ export default function SubFlowDraft() {
       </Card>
 
       <Card title="Saved Flows" sub={`${flows.length} Flow${flows.length === 1 ? '' : 's'}`}>
+        {queueFlow.isPending && <p role="status" className="mb-3 text-sm text-muted">Preparing the complete Flow and checking its audio…</p>}
+        {queuedMessage && <p role="status" className="mb-3 text-sm text-muted">{queuedMessage}</p>}
         {flowsQuery.isLoading ? <p className="text-sm text-muted">Loading Flows…</p> : flowsQuery.isError ? <p className="text-sm text-muted">Could not load saved Flows. Refresh the page to try again.</p> : flows.length === 0 ? <p className="text-sm text-muted">No Flows saved yet. Build one above to see it here.</p> : <div className="grid gap-3">{flows.map(flow =>
           <div key={flow.id} className="flex flex-wrap items-center gap-3 border border-separator-strong p-3">
             <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill><Pill>{flow.verification === 'pending' ? 'Checking…' : flow.verification === 'verified' ? 'Audio checked at save' : 'Needs attention'}</Pill>{!flow.orderVerified && <Pill>Check track order</Pill>}</div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p>{flow.verificationError && <p className="mt-1 text-xs text-muted">{flow.verificationError}</p>}</div>
+            <Btn sm tone="accent" disabled={queueFlow.isPending || !flow.enabled || flow.verification !== 'verified' || !flow.orderVerified}
+              onClick={() => { setQueuedMessage(null); void queueFlow.mutateAsync(flow).catch(() => {}); }}>Queue Flow</Btn>
             <Btn sm disabled={saveFlow.isPending} onClick={() => { setEditing({ id: flow.id, revision: flow.revision }); nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled); }}>Edit</Btn>
             <Btn sm disabled={setFlowEnabled.isPending} onClick={() => { void setFlowEnabled.mutateAsync(flow).catch(() => {}); }}>{flow.enabled ? 'Disable' : 'Enable'}</Btn>
-            {(flow.verification === 'failed' || !flow.orderVerified) && <Btn sm disabled={saveFlow.isPending} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>}
+            <Btn sm disabled={saveFlow.isPending || flow.verification === 'pending'} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>
             <Btn sm disabled={deleteFlow.isPending} aria-label={`Delete ${flow.name}`} onClick={() => setPendingDelete(flow)}><Trash2 size={14} /></Btn>
           </div>)}</div>}
       </Card>
