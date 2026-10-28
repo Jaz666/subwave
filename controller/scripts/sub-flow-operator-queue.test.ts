@@ -150,5 +150,3 @@ test('a disabled definition retains ordinary operator queuing, including explici
   assert.deepEqual(queue.upcoming.map(item => item.track.id), [songs[1]!.id, songs[1]!.id]);
   assert.equal(streams, 0);
 });
-
-
