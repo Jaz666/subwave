@@ -41,7 +41,7 @@ function JoinProtection() {
       });
     }
   }, [settings.data, isDirty, form]);
-  return <Card title="Join protection" sub="Keep joins clear of speech and jingles">
+  return <Card headingLevel={2} title="Join protection" sub="Keep joins clear of speech and jingles">
     <form onSubmit={form.handleSubmit(async values => {
       setMessage('');
       try {
@@ -74,6 +74,7 @@ export default function SubFlowDraft() {
   const [editing, setEditing] = useState<{ id: string; revision: number } | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<Flow | null>(null);
+  const savedHeading = useRef<HTMLSpanElement>(null);
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const preview = useJoinPreview(JSON.stringify(tracks.map(track => track.id)), adminFetch);
@@ -128,6 +129,13 @@ export default function SubFlowDraft() {
   const availableTracks = albumTracks.data?.tracks ?? [];
 
   const reset = () => { setTracks([]); nameForm.reset({ name: '' }); setEditing(null); setEnabled(true); };
+  const edit = (flow: Flow) => {
+    // A saved Flow must not be checked against a previously browsed album.
+    setQuery(''); setSubmitted(''); setAlbum(null);
+    setEditing({ id: flow.id, revision: flow.revision });
+    nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled);
+    requestAnimationFrame(() => nameForm.setFocus('name'));
+  };
   const selectedOrder = albumSelection(tracks.map(track => track.id), availableTracks);
   const selectionValid = !!selectedOrder && selectedOrder.every((id, index) => id === tracks[index]?.id);
   const albumLoaded = !!album && !!albumTracks.data;
@@ -159,7 +167,7 @@ export default function SubFlowDraft() {
   };
 
   return (
-    <div className="grid min-w-0 gap-5">
+    <div className="grid min-w-0 gap-5 max-sm:[&_[data-slot=input-group]]:min-h-11 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 max-sm:[&_input]:min-h-11 [@media(pointer:coarse)]:[&_[data-slot=input-group]]:min-h-11 [@media(pointer:coarse)]:[&_button]:min-h-11 [@media(pointer:coarse)]:[&_button]:min-w-11 [@media(pointer:coarse)]:[&_input]:min-h-11">
       <section className="card">
         <div className="p-4">
           <Eyebrow className="text-vermilion">Library</Eyebrow>
@@ -168,7 +176,7 @@ export default function SubFlowDraft() {
           <p className="mt-2 max-w-3xl text-[11px] leading-[1.6] text-muted">Build a Flow below, then queue it yourself or let the DJ choose it when it suits the show. Choosing any of its tracks from the Library plays the whole Flow. Only one Flow can be queued or playing at a time. Listener requests and playlists set to play in order still play tracks separately.</p>
         </div>
       </section>
-      <Card title="Build a Sub/Flow" sub="Choose an album, then add its tracks in order">
+      <Card headingLevel={2} title="Build a Sub/Flow" sub="Choose an album, then add its tracks in order">
         <fieldset disabled={saveFlow.isPending} className="grid min-w-0 gap-5">
           <form onSubmit={findAlbum} className="flex flex-wrap gap-2">
             <InputGroup className="min-w-0 flex-1">
@@ -188,7 +196,7 @@ export default function SubFlowDraft() {
           </div>}
 
           <div>
-            <div className="mb-2 flex items-baseline justify-between gap-2"><h2 className="text-sm font-bold">Flow tracks</h2><span className="text-xs text-muted">{tracks.length} of 3 · at least 2 required</span></div>
+            <div className="mb-2 flex items-baseline justify-between gap-2"><h3 className="text-sm font-bold">Flow tracks</h3><span className="text-xs text-muted">{tracks.length} of 3 · at least 2 required</span></div>
             <TooltipProvider delayDuration={250}><div className="grid items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
               {[0, 1, 2].map(index => {
                 const track = tracks[index];
@@ -233,9 +241,9 @@ export default function SubFlowDraft() {
           {album && <div className="grid gap-4 border-t border-separator-strong pt-5 sm:grid-cols-[180px_minmax(0,1fr)]">
             <div>
               <div className="grid aspect-square w-full max-w-44 place-items-center overflow-hidden border border-separator-strong bg-ink-soft text-muted">{!artFailed && album.coverArt ? <img src={`${ADMIN_API_URL}/cover/${encodeURIComponent(album.coverArt)}`} alt="" className="h-full w-full object-cover" onError={() => setArtFailed(true)} /> : <Disc3 size={52} aria-label="Artwork unavailable" />}</div>
-              <h2 className="mt-3 font-bold">{album.name}</h2><p className="text-sm text-muted">{[album.artist, album.year].filter(Boolean).join(' · ')}</p>
+              <h3 className="mt-3 font-bold">{album.name}</h3><p className="text-sm text-muted">{[album.artist, album.year].filter(Boolean).join(' · ')}</p>
             </div>
-            <div className="min-w-0"><h2 className="mb-2 text-sm font-bold">Album tracks</h2><p className="mb-2 text-xs text-muted">Drag a track to a slot or use Add.</p>
+            <div className="min-w-0"><h3 className="mb-2 text-sm font-bold">Album tracks</h3><p className="mb-2 text-xs text-muted">Drag a track to a slot or use Add.</p>
               {albumTracks.isFetching && <p className="text-sm text-muted">Loading tracks…</p>}
               {albumTracks.isError && <p className="text-sm text-muted">Could not load this album. Search and try again.</p>}
               {!albumTracks.isFetching && !albumTracks.isError && availableTracks.length === 0 && <p className="text-sm text-muted">No tracks found for this album.</p>}
@@ -249,18 +257,20 @@ export default function SubFlowDraft() {
       </Card>
 
       <JoinProtection />
-      <Card title="Saved Flows" sub={`${flows.length} Flow${flows.length === 1 ? '' : 's'}`}>
+      <Card headingLevel={2} anchor="saved-flows" title={<span ref={savedHeading} tabIndex={-1} className="focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-vermilion">Saved Flows</span>} sub={`${flows.length} Flow${flows.length === 1 ? '' : 's'}`}>
         {queueFlow.isPending && <p role="status" className="mb-3 text-sm text-muted">Preparing the complete Flow and checking its audio…</p>}
         {queuedMessage && <p role="status" className="mb-3 text-sm text-muted">{queuedMessage}</p>}
         {flowsQuery.isLoading ? <p className="text-sm text-muted">Loading Flows…</p> : flowsQuery.isError ? <p className="text-sm text-muted">Could not load saved Flows. Refresh the page to try again.</p> : flows.length === 0 ? <p className="text-sm text-muted">No Flows saved yet. Build one above to see it here.</p> : <div className="grid gap-3">{flows.map(flow =>
-          <div key={flow.id} className="flex flex-wrap items-center gap-3 border border-separator-strong p-3">
-            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill><Pill>{flow.verification === 'pending' ? 'Checking…' : flow.verification === 'verified' ? 'Audio checked at save' : 'Needs attention'}</Pill>{!flow.orderVerified && <Pill>Check track order</Pill>}</div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p>{flow.verificationError && <p className="mt-1 text-xs text-muted">{flow.verificationError}</p>}</div>
+          <div key={flow.id} className="grid min-w-0 gap-3 border border-separator-strong p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div className="min-w-0 [overflow-wrap:anywhere]"><div className="flex flex-wrap items-center gap-2"><strong className="min-w-0 text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill><Pill>{flow.verification === 'pending' ? 'Checking…' : flow.verification === 'verified' ? 'Audio checked at save' : 'Needs attention'}</Pill>{!flow.orderVerified && <Pill>Check track order</Pill>}</div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p>{flow.verificationError && <p className="mt-1 text-xs text-muted">{flow.verificationError}</p>}</div>
+            <div className="flex min-w-0 flex-wrap gap-2">
             <Btn sm tone="accent" disabled={queueFlow.isPending || !flow.enabled || flow.verification !== 'verified' || !flow.orderVerified}
               onClick={() => { setQueuedMessage(null); void queueFlow.mutateAsync(flow).catch(() => {}); }}>Queue Flow</Btn>
-            <Btn sm disabled={saveFlow.isPending} onClick={() => { setEditing({ id: flow.id, revision: flow.revision }); nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled); }}>Edit</Btn>
+            <Btn sm disabled={saveFlow.isPending} onClick={() => edit(flow)}>Edit</Btn>
             <Btn sm disabled={setFlowEnabled.isPending} onClick={() => { void setFlowEnabled.mutateAsync(flow).catch(() => {}); }}>{flow.enabled ? 'Disable' : 'Enable'}</Btn>
             <Btn sm disabled={saveFlow.isPending || flow.verification === 'pending'} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>
             <Btn sm disabled={deleteFlow.isPending} aria-label={`Delete ${flow.name}`} onClick={() => setPendingDelete(flow)}><Trash2 size={14} /></Btn>
+            </div>
           </div>)}</div>}
       </Card>
       <V3AlertDialog
@@ -274,7 +284,10 @@ export default function SubFlowDraft() {
         onConfirm={() => {
           if (!pendingDelete || deleteFlow.isPending) return;
           const flow = pendingDelete;
-          void deleteFlow.mutateAsync(flow).then(() => { if (editing?.id === flow.id) reset(); }).catch(() => {});
+          void deleteFlow.mutateAsync(flow).then(() => {
+            if (editing?.id === flow.id) reset();
+            savedHeading.current?.focus();
+          }).catch(() => {});
         }}
       />
     </div>
