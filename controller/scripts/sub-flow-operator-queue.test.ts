@@ -95,26 +95,25 @@ async function submit(body: object) {
   const response = await originalFetch(`${base}/dj/queue-track`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { status: response.status, body: await response.json() as { track?: { id: string }; flow?: { size: number }; queuePosition?: number; reason?: string; error?: string } };
 }
-{
-  test('Library: selecting any member queues the complete protected Flow from its first track', async () => {
-    for (const selected of songs) {
-      for (const item of queue.upcoming) if (item.flow) await discardFlow(item.flow);
-      queue.upcoming = [{ track: { id: 'ahead', title: 'Ahead' } }]; expectFlowPlayback(false);
-      queue.history = [{ track: selected }];
-      const input = selected;
-      const result = await submit(input);
-      assert.equal(result.status, 200, JSON.stringify(result.body));
-      assert.deepEqual(queue.upcoming.slice(1).map(item => item.track.id), songs.map(song => song.id));
-      assert.ok(queue.upcoming.slice(1).every(item => item.operator && item.requestedBy === 'studio' && !item.aiPicked && item.flow));
-      assert.equal(queue.pendingListenerRequests(), 0);
-      assert.equal(result.body.track?.id, songs[0]!.id);
-      assert.equal(result.body.flow?.size, 3);
-      assert.equal(result.body.queuePosition, 2);
-      assert.match(result.body.reason ?? '', /starting with “Part 1”/);
-      assert.doesNotMatch(JSON.stringify(result.body), /audio.wav|sha256/);
-    }
-  });
-}
+test('Library: selecting any member queues the complete protected Flow from its first track', async () => {
+  for (const selected of songs) {
+    for (const item of queue.upcoming) if (item.flow) await discardFlow(item.flow);
+    queue.upcoming = [{ track: { id: 'ahead', title: 'Ahead' } }]; expectFlowPlayback(false);
+    queue.history = [{ track: selected }];
+    const input = selected;
+    const result = await submit(input);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.deepEqual(queue.upcoming.slice(1).map(item => item.track.id), songs.map(song => song.id));
+    assert.ok(queue.upcoming.slice(1).every(item => item.operator && item.requestedBy === 'studio' && !item.aiPicked && item.flow));
+    assert.equal(queue.pendingListenerRequests(), 0);
+    assert.equal(result.body.track?.id, songs[0]!.id);
+    assert.equal(result.body.flow?.size, 3);
+    assert.equal(result.body.queuePosition, 2);
+    assert.match(result.body.reason ?? '', /starting with “Part 1”/);
+    assert.doesNotMatch(JSON.stringify(result.body), /audio.wav|sha256/);
+  }
+});
+
 test('a changed or blocked companion refuses the whole Flow without appending the selected member', async () => {
   changed = true;
   let result = await submit(songs[1]!);

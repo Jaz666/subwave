@@ -647,6 +647,16 @@ export async function getAlbum(id, { signal }: { signal?: AbortSignal } = {}) {
   return rejectArchive(r.album?.song || []);
 }
 
+/** Album identity plus playable songs for background, source-backed matching. */
+export async function getAlbumWithSongs(id: string, { requireComplete = false, signal }: { requireComplete?: boolean; signal?: AbortSignal } = {}): Promise<{ album: any; songs: any[] } | null> {
+  const r = await call('getAlbum', { id }, { ...RETRY_FAST_TRANSPORT, signal });
+  if (requireComplete && (!r.album || r.album.id !== id || !Array.isArray(r.album.song))) {
+    throw new Error(`Incomplete Navidrome walk: malformed album ${id}`);
+  }
+  if (!r.album) return null;
+  return { album: r.album, songs: rejectArchive(r.album.song || []) };
+}
+
 // Single song lookup. The Child carries albumId, which is how manual album
 // tagging resolves a whole album from one track id.
 export async function getSong(id) {

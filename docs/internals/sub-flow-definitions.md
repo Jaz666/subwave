@@ -60,13 +60,13 @@ restart is needed when the operator subsequently changes the settings.
 
 Listener-request expansion is deliberately deferred as of 2026-10-28 while
 another contributor improves requests. Do not enable it as part of the current
-Sub/Flow work. Include this follow-up in the eventual Sub/Flow PR; no PR has
-been opened for it yet. The recommendations below are proposals, not approved
-request policy.
+Sub/Flow work. This follow-up accompanies the draft Sub/Flow PR. The
+recommendations below are proposals, not approved request policy.
 
-Automatic DJ selection and operator queuing from Library, Extended Sleeve
-Notes and Observatory can expand an enabled Flow member into the complete
-sequence. Listener requests still queue individual tracks. Their discovery
+Automatic DJ selection and operator queuing from Library and Observatory
+can expand an enabled Flow member into the complete sequence. The tested station
+also integrates Extended Sleeve Notes, which is separate from this draft.
+Listener requests still queue individual tracks. Their discovery
 scope intentionally leaves `automaticFlows` off. Consequently, listener
 requests do not currently receive the protected Flow playback contract.
 

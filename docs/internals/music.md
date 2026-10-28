@@ -50,8 +50,8 @@ Library → Sub/Flow's **Join protection** settings apply to newly prepared
 occurrences; queued and playing Flows keep their captured values. See
 [Sub/Flow definitions](sub-flow-definitions.md#join-protection-settings).
 
-**Operator track queuing.** `POST /dj/queue-track` is shared by Library,
-Extended Sleeve Notes / Station Brain and Observatory. Once a track is selected,
+**Operator track queuing.** `POST /dj/queue-track` is shared by Library and
+Observatory. Once a track is selected,
 any enabled Flow membership resolves to the complete checked sequence. Choosing
 the second or third member still starts with the first. The response identifies
 the actual entry, Flow name/count and first queue position; confirmations name
@@ -63,6 +63,11 @@ queued/playing Flow refuses the whole operation (409), never a fragment. Disable
 definitions queue individual tracks as before. Album blocks, ordered playlists
 and listener requests use separate endpoints/policies and are unchanged.
 Pinned by `sub-flow-operator-queue.test.ts`.
+
+The station also exercises this admission path from Extended Sleeve Notes.
+That feature is separate from this draft: when merging its Station Brain
+selection endpoint, retain Flow expansion after resolving the selected track
+and retain its enable-state checks around preparation.
 
 The Dash queue labels every member **Flow**. Cancelling any unstarted member
 cancels the whole occurrence; once playing, the Skip dialog explicitly ends the

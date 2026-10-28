@@ -186,10 +186,9 @@ test('speech waits for the mixer window and is cancelled if its publication beco
   let wanted = true;
   checked = new Promise<void>(resolve => { seen = resolve; });
   const stale = airVoice(config.liquidsoap.sayFile, path, 'An outdated clip', 0, { beforeWrite: () => wanted });
-  const cancelled = assert.rejects(() => stale, /cancelled/);
   await checked;
   wanted = false;
-  await cancelled;
+  assert.equal(await stale, null);
   await assert.rejects(() => stat(config.liquidsoap.sayFile));
   expectFlowPlayback(false);
 });

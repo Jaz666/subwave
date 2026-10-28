@@ -2662,6 +2662,7 @@ class Queue {
         onQueued: q => this.onQueued(q, seg),
         beforeWrite: () => !hostSpeech || session.isHostSpeechCurrent(hostSpeech),
       });
+      if (!handoff) return { accepted: false, deferred: false, completed: Promise.resolve(false) };
       // Bookkeeping runs when the words reach the stream, not at handoff
       // (#1382). A mixer that writes no marker resolves immediately with a null
       // stamp, which is the old timing byte for byte.
@@ -3461,7 +3462,7 @@ class Queue {
       // Not deferred: introAired is already set and the queue state has to reach
       // disk whether or not the words are audible yet.
       this.persist();
-      this.onSpoken(handoff, seg);
+      if (handoff) this.onSpoken(handoff, seg);
     } catch (err) {
       this.log('error', `Air intro failed: ${(err as Error).message}`);
     }
