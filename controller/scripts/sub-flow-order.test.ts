@@ -37,3 +37,24 @@ test('track numbers can also continue across disc boundaries', () => {
   const continuous = { ...album, song: album.song.map(song => song.discNumber === 2 ? { ...song, track: song.track + 2 } : song) };
   assert.doesNotThrow(() => assertAdjacent(['b', 'c'], orderedAlbumSongs('album', continuous)));
 });
+
+test('missing non-audio discs do not reject valid pairs on other discs', () => {
+  // The station's Dark Side of the Moon box set contains audio discs 1, 2 and 6.
+  const song = [1, 2, 6].flatMap(discNumber => Array.from({ length: discNumber === 6 ? 16 : 10 }, (_, i) => ({
+    id: `${discNumber}-${i + 1}`, discNumber, track: i + 1,
+  })));
+  const ordered = orderedAlbumSongs('album', { id: 'album', songCount: 36, song });
+  assert.equal(ordered.length, 36);
+  assert.doesNotThrow(() => assertAdjacent(['1-1', '1-2'], ordered));
+  assert.doesNotThrow(() => assertAdjacent(['6-8', '6-9'], ordered));
+  assert.throws(() => assertAdjacent(['2-10', '6-1'], ordered), /consecutive/);
+});
+
+test('missing track numbers prevent only joins across the gap', () => {
+  const ordered = orderedAlbumSongs('album', { id: 'album', songCount: 4, song: [
+    { id: 'a', track: 2 }, { id: 'b', track: 3 }, { id: 'c', track: 5 }, { id: 'd', track: 6 },
+  ] });
+  assert.doesNotThrow(() => assertAdjacent(['a', 'b'], ordered));
+  assert.doesNotThrow(() => assertAdjacent(['c', 'd'], ordered));
+  assert.throws(() => assertAdjacent(['b', 'c'], ordered), /consecutive/);
+});

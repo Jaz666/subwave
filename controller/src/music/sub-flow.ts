@@ -10,7 +10,7 @@ import * as subsonic from './subsonic.js';
 import * as blocklist from './blocklist.js';
 import { verifyTrack } from './sub-flow-verify.js';
 import { subFlowInputSchema } from '../schemas/sub-flow.js';
-import { assertAdjacent, orderedAlbumSongs } from './sub-flow-order.js';
+import { albumNeighbours, assertAdjacent, orderedAlbumSongs } from './sub-flow-order.js';
 
 const trackSchema = z.object({
   id: z.string().min(1).max(128), title: z.string().min(1).max(500),
@@ -107,7 +107,11 @@ export async function albumTracks(albumId: string) {
   if (!result) throw new Error('The complete album track list is unavailable');
   const ordered = orderedAlbumSongs(albumId, result.album);
   const allowed = new Set(result.songs.map(song => song.id));
-  return ordered.flatMap((song, order) => allowed.has(song.id) ? [{ ...song, order }] : []);
+  let order = -1;
+  return ordered.flatMap((song, index) => {
+    order += index > 0 && !albumNeighbours(ordered[index - 1]!, song) ? 2 : 1;
+    return allowed.has(song.id) ? [{ ...song, order }] : [];
+  });
 }
 
 async function checkTrackOrder(ids: string[], songs: any[]) {

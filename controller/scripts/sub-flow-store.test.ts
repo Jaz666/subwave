@@ -40,6 +40,14 @@ globalThis.fetch = (async input => {
   }
   if (url.pathname.endsWith('/getAlbum')) {
     if (pauseAlbum) await pauseAlbum();
+    if (url.searchParams.get('id') === 'album-gaps') {
+      const song = [
+        { id: 'a', track: 1, discNumber: 1 }, { id: 'b', track: 2, discNumber: 1 },
+        { id: 'c', track: 1, discNumber: 6 }, { id: 'd', track: 3, discNumber: 6 },
+        { id: 'e', track: 4, discNumber: 6 },
+      ];
+      return new Response(JSON.stringify({ 'subsonic-response': { status: 'ok', album: { id: 'album-gaps', songCount: song.length, song } } }), { status: 200 });
+    }
     if (url.searchParams.get('id') === 'album-hidden') {
       const songs = [
         { id: 'a', albumId: 'album-hidden', track: 1 },
@@ -164,6 +172,11 @@ test('Flow admission refuses gaps, reversed order and mixed albums', async () =>
 test('unavailable album tracks do not disappear from the order', async () => {
   const tracks = await flows.albumTracks('album-hidden');
   assert.deepEqual(tracks.map(track => [track.id, track.order]), [['a', 0], ['c', 2]]);
+});
+
+test('album loading preserves disc and track gaps in positions sent to the editor', async () => {
+  const tracks = await flows.albumTracks('album-gaps');
+  assert.deepEqual(tracks.map(track => [track.id, track.order]), [['a', 0], ['b', 1], ['c', 3], ['d', 5], ['e', 6]]);
 });
 
 test('a partial album response cannot establish adjacency', async () => {
