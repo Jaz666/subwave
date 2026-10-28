@@ -44,6 +44,20 @@ overlapping windows leave no safe interval between them. Existing speech finishe
 before entry. Outer transitions are plain crossfades, shortened or omitted when
 needed to preserve a nearby join.
 
+**Operator track queuing.** `POST /dj/queue-track` is shared by Library,
+Extended Sleeve Notes / Station Brain and Observatory. Once a track is selected,
+any enabled Flow membership resolves to the complete checked sequence. Choosing
+the second or third member still starts with the first. The response identifies
+the actual entry, Flow name/count and first queue position; confirmations name
+the whole Flow. Operator overrides retain the manual Queue Flow exemptions from
+recency, show filters and length limits, while all sources must still pass the
+saved fingerprint, current order, availability and absolute blocklist checks.
+An unchecked/changed/unavailable Flow, an already queued companion or another
+queued/playing Flow refuses the whole operation (409), never a fragment. Disabled
+definitions queue individual tracks as before. Album blocks, ordered playlists
+and listener requests use separate endpoints/policies and are unchanged.
+Pinned by `sub-flow-operator-queue.test.ts`.
+
 The Dash queue labels every member **Flow**. Cancelling any unstarted member
 cancels the whole occurrence; once playing, the Skip dialog explicitly ends the
 whole Flow. Individual member metadata follows the output audio clock, retaining

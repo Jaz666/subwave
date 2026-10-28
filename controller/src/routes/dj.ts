@@ -14,6 +14,8 @@ import { queue } from '../broadcast/queue.js';
 import * as dj from '../llm/dj.js';
 import * as subsonic from '../music/subsonic.js';
 import * as library from '../music/library.js';
+import * as subFlows from '../music/sub-flow.js';
+import { discardFlow } from '../music/sub-flow-playback.js';
 import { isInstrumental } from '../music/lyric-vocal.js';
 import * as settings from '../settings.js';
 import { runStationId, runHourlyCheck, runLink, runBanter, runProgrammeIntro, runProgrammeFeature, runProgrammeOutro, refreshAutoPlaylist, syncSkillCrons } from '../broadcast/scheduler.js';
@@ -48,7 +50,7 @@ import { mapPool } from '../util/async-pool.js';
 import { readFile, rm, stat, mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { STATE_DIR } from '../config.js';
-import { skipTrack } from '../broadcast/liquidsoap-control.js';
+import { skipTrack, flowPlaybackStatus } from '../broadcast/liquidsoap-control.js';
 import { getFullContext } from '../context.js';
 import { randomUUID } from 'node:crypto';
 import * as silenceTrim from '../music/silence-trim.js';
@@ -1006,6 +1008,33 @@ router.post('/dj/queue-track', requireAdmin, async (req, res) => {
       const selected=await selectBrainQueueTrack(parsed.data);
       if (!settings.get().djBehaviour.extendedSleeveNotes) return res.status(409).json({error:'Extended Sleeve Notes is disabled'});
       track=selected.track;reason=selected.reason;
+    }
+    // Library, Station Brain and Observatory share this single-track operator
+    // endpoint. Resolve before push; album blocks and listener requests have
+    // their own ordering policies and must not expand implicitly here.
+    const flow = subFlows.list().find(flow => flow.enabled && flow.tracks.some(member => member.id === track.id));
+    if (flow) {
+      let prepared: Awaited<ReturnType<typeof subFlows.preparePlayback>> | null = null;
+      try {
+        if (queue.current?.flow || queue.upcoming.some(item => item.flow)) throw new Error('A Flow is already queued or playing.');
+        await flowPlaybackStatus();
+        prepared = await subFlows.preparePlayback(flow.id, flow.revision);
+        if (selection && !settings.get().djBehaviour.extendedSleeveNotes) throw new Error('Extended Sleeve Notes is disabled');
+        const queueDepth = await queue.queueFlow(prepared);
+        const first = prepared.members[0]!;
+        return res.json({
+          ok: true,
+          track: { id: first.id, title: first.title, artist: first.artist },
+          flow: { id: flow.id, name: flow.name, size: prepared.members.length },
+          reason: `“${track.title}” is part of Flow “${flow.name}”; queued all ${prepared.members.length} tracks starting with “${first.title}”.`,
+          queuePosition: queueDepth - prepared.members.length + 1,
+          queueDepth,
+        });
+      } catch (error) {
+        if (prepared) await discardFlow(prepared);
+        // Refuse the whole unit; never silently fall back to the clicked member.
+        throw Object.assign(error instanceof Error ? error : new Error(String(error)), { status: 409 });
+      }
     }
     // Explicit operator action — bypass the request/AI dedup guard (#619) so a
     // deliberate manual queue always fires, even for an already-queued track.

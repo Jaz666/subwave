@@ -139,13 +139,15 @@ export default function ConnectionsVisualizer({
     request: (_vars, fetcher) => adminJson(fetcher, '/sleeve-notes/connections/populate', { method: 'POST' }),
     onDone: async (_data, _vars, client) => { await client.invalidateQueries({ queryKey: connectionKeys.all() }); },
   });
-  const queueTrack=useAdminMutation<{track:{id:string;title:string;artist:string|null};queuePosition:number;reason:string}, {entityType:string;entityId:string}>({
+  const queueTrack=useAdminMutation<{track:{id:string;title:string;artist:string|null};queuePosition:number;reason:string;flow?:{name:string;size:number}}, {entityType:string;entityId:string}>({
     adminFetch,
     request:(selection,fetcher)=>adminJson(fetcher,'/dj/queue-track',{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({selection}),
     }),
     onDone:async(result,_vars,client)=>{
-      notify.ok(`Queued “${result.track.title}” · position ${result.queuePosition}`);
+      notify.ok(result.flow
+        ? `Queued Flow “${result.flow.name}” · ${result.flow.size} tracks starting with “${result.track.title}” · position ${result.queuePosition}`
+        : `Queued “${result.track.title}” · position ${result.queuePosition}`);
       await client.invalidateQueries({queryKey:['sleeve-notes','live-summary']});
     },
   });
