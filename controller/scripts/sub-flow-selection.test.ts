@@ -115,6 +115,8 @@ test('Flow introduction names the ordered sequence, budgets its real entry and d
   const entry = resolve(['member-2'])[0]!;
   const prompt = linkPrompt({ current: entry, flow: flowForPrompt(entry.subFlow) });
   assert.match(prompt, /first listed track is playing now/);
+  assert.match(prompt, /Here’s a nice flow of tracks from \[album\] by \[artist\]/);
+  assert.match(prompt, /rather than listing every track title/);
   assert.match(prompt, /Track 1.*Track 2.*Track 3/s);
   const short = { ...entry, duration: 2 };
   assert.equal(trimLinkToIntro('Here is our next sequence.', short), null);
