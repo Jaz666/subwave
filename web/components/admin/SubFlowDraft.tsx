@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import { Disc3, Plus, Search, Trash2, X } from 'lucide-react';
+import { Fragment, useState, type FormEvent } from 'react';
+import { Disc3, Loader2, Play, Plus, Search, Square, Trash2, X } from 'lucide-react';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../ui/input-group';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Btn, Card, Pill } from './ui';
@@ -13,6 +13,8 @@ import { useZodForm } from '../../lib/form';
 import { TextField } from '../../lib/form-fields';
 import { subFlowNameSchema } from '../../lib/schemas.generated';
 import { albumSelection } from './library/sub-flow-order';
+import { useJoinPreview } from './library/useJoinPreview';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 type Track = { id: string; title: string; duration: number | null; artist: string | null; album: string | null; order?: number };
 type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean; revision: number; orderVerified: boolean; verification: 'pending' | 'verified' | 'failed'; verificationError: string | null };
@@ -30,6 +32,7 @@ export default function SubFlowDraft() {
   const [enabled, setEnabled] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<Flow | null>(null);
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
+  const preview = useJoinPreview(JSON.stringify(tracks.map(track => track.id)), adminFetch);
   const flowsQuery = useAdminQuery({
     key: ['sub-flow', 'definitions'], adminFetch, enabled: hydrated && !needsAuth,
     refetchInterval: 5000,
@@ -131,10 +134,14 @@ export default function SubFlowDraft() {
 
           <div>
             <div className="mb-2 flex items-baseline justify-between gap-2"><h2 className="text-sm font-bold">Flow tracks</h2><span className="text-xs text-muted">{tracks.length} of 3 · at least 2 required</span></div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <TooltipProvider delayDuration={250}><div className="grid items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
               {[0, 1, 2].map(index => {
                 const track = tracks[index];
-                return <div key={index} onDragOver={event => event.preventDefault()} onDrop={event => {
+                const next = tracks[index + 1];
+                const isActive = preview.active === index;
+                const canPreview = !!track && !!next && (!albumLoaded || !!albumSelection([track.id, next.id], availableTracks));
+                const label = isActive && preview.loading ? 'Cancel join preview' : isActive && preview.playing ? 'Stop join preview' : 'Listen to join';
+                return <Fragment key={index}><div onDragOver={event => event.preventDefault()} onDrop={event => {
                   event.preventDefault();
                   const selected = availableTracks.find(item => item.id === event.dataTransfer.getData('text/plain'));
                   if (selected) add(selected);
@@ -144,9 +151,20 @@ export default function SubFlowDraft() {
                     <div className="mt-3 flex gap-1">
                       <Btn sm aria-label={`Remove ${track.title}`} onClick={() => setTracks(current => current.filter(item => item.id !== track.id))}><X size={14} /></Btn>
                     </div></> : <p className="mt-2 text-sm text-muted">Drag or add a track</p>}
-                </div>;
+                </div>{index < 2 && <div className="flex items-center justify-center">
+                  <Tooltip><TooltipTrigger asChild><span tabIndex={canPreview ? undefined : 0}>
+                    <Btn className="size-11 p-0" disabled={!canPreview} aria-label={`${label} between tracks ${index + 1} and ${index + 2}`} aria-pressed={isActive}
+                      onClick={() => { if (track && next) void preview.toggle(index, [track.id, next.id]); }}>
+                      {isActive && preview.loading ? <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : isActive && preview.playing ? <Square size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                    </Btn>
+                  </span></TooltipTrigger><TooltipContent className="max-w-72 rounded-none border border-border bg-ink leading-5 whitespace-normal text-bg">
+                    {canPreview ? `${label} · up to 10 seconds either side` : 'Choose two neighbouring album tracks to listen to their join.'}
+                  </TooltipContent></Tooltip>
+                </div>}</Fragment>;
               })}
-            </div>
+            </div></TooltipProvider>
+            {preview.active != null && preview.loading && <p role="status" className="mt-2 text-xs text-muted">Preparing join preview… press again to cancel.</p>}
+            {preview.message && <p role="status" className="mt-2 text-sm text-muted">{preview.message}</p>}
             {tracks.length > 0 && <p className="mt-2 text-xs text-muted">Add neighbouring tracks from the same album. They stay in album order.</p>}
             {tracks.length > 1 && albumLoaded && !selectionValid && <p role="alert" className="mt-2 text-sm text-muted">Choose consecutive tracks from this album, with no gaps.</p>}
           </div>

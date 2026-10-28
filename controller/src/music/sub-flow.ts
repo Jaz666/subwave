@@ -11,6 +11,7 @@ import * as blocklist from './blocklist.js';
 import { verifyTrack } from './sub-flow-verify.js';
 import { subFlowInputSchema } from '../schemas/sub-flow.js';
 import { albumNeighbours, assertAdjacent, orderedAlbumSongs } from './sub-flow-order.js';
+import { renderJoin } from './sub-flow-preview.js';
 
 const trackSchema = z.object({
   id: z.string().min(1).max(128), title: z.string().min(1).max(500),
@@ -125,6 +126,20 @@ async function checkTrackOrder(ids: string[], songs: any[]) {
   const album = await subsonic.getAlbumWithSongs(albumId, { requireComplete: true });
   if (!album) throw new Error('The complete album track list is unavailable');
   assertAdjacent(ids, orderedAlbumSongs(albumId, album.album));
+}
+
+let previewBusy = false;
+export async function previewJoin(input: unknown, signal: AbortSignal) {
+  const ids = z.array(z.string().min(1).max(128)).length(2).parse(input);
+  if (previewBusy) throw new Error('Another join preview is being prepared. Try again shortly.');
+  previewBusy = true;
+  try {
+    await blocklist.load();
+    const songs = await Promise.all(ids.map(id => subsonic.getSong(id)));
+    await checkTrackOrder(ids, songs);
+    signal.throwIfAborted();
+    return await renderJoin(songs.map(song => ({ id: song.id, duration: Number(song.duration) > 0 ? Number(song.duration) : null })), signal);
+  } finally { previewBusy = false; }
 }
 
 export async function save(id: string | null, input: unknown): Promise<Flow> {

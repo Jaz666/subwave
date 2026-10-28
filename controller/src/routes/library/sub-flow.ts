@@ -5,6 +5,18 @@ import * as flows from '../../music/sub-flow.js';
 
 export const router = express.Router();
 
+router.post('/library/sub-flow/join-preview', requireAdmin, async (req, res) => {
+  const abort = new AbortController();
+  const cancel = () => abort.abort();
+  res.once('close', cancel);
+  try {
+    const audio = await flows.previewJoin(req.body?.trackIds, abort.signal);
+    if (!abort.signal.aborted) res.set('Cache-Control', 'no-store').type('audio/wav').send(audio);
+  } catch (error) {
+    if (!abort.signal.aborted) res.status(400).json({ error: error instanceof Error ? error.message : 'Join preview could not be prepared' });
+  } finally { res.off('close', cancel); }
+});
+
 router.get('/library/sub-flow', requireAdmin, (_req, res) => {
   try { res.json({ flows: flows.list() }); }
   catch { res.status(500).json({ error: 'Saved Flows could not be read' }); }
