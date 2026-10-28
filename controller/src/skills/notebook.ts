@@ -42,6 +42,8 @@ export function registerSkillNotebook(skill: string, directory: string, enabled:
   }
 }
 function normalizedText(text: string) { return text.toLowerCase().replace(/[“”‘’"']/g, '').replace(/\s+/g, ' ').trim(); }
+function nameWords(text: string) { return normalizedText(text.normalize('NFKC').replace(/[’']s\b/gi, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+function contributorName(text: string) { return nameWords(text).replace(/^listener\s+/, ''); }
 function pathFor(skill: string) {
   const registered = registrations.get(skill);
   if (!registered) throw new Error('skill notebook is not registered');
@@ -149,7 +151,7 @@ export function cancelNotebookRun(lease: Pick<NotebookLease, 'skill' | 'occurren
   } else forgetPending(entry);
   save(doc);
 }
-export function stageNotebook(lease: NotebookLease, updateValue: unknown, lines: Array<{ persona: { id: string }; text: string }>) {
+export function stageNotebook(lease: NotebookLease, updateValue: unknown, lines: Array<{ persona: { id: string; name?: string }; text: string }>) {
   const update = notebookMemoryUpdateSchema.parse(updateValue);
   const { doc, entry, pending } = pendingFor(lease);
   if (!pending || pending.revision !== lease.snapshot.revision || entry.revision !== lease.snapshot.revision) throw new Error('notebook lease expired or its revision changed');
@@ -159,9 +161,18 @@ export function stageNotebook(lease: NotebookLease, updateValue: unknown, lines:
   if (update.topic && (!lines[update.topic.turn - 1] || !normalizedText(lines[update.topic.turn - 1].text).includes(normalizedText(update.topic.value)))) {
     throw new Error('the proposed notebook topic must be spoken in its referenced turn');
   }
+  const contributions = new Set(entry.history.map(item => JSON.stringify([contributorName(item.contributor), normalizedText(item.summary)])));
   for (const contribution of update.contributions) {
-    if (!lines[contribution.turn - 1]) throw new Error('notebook contribution references a missing turn');
+    const line = lines[contribution.turn - 1];
+    if (!line) throw new Error('notebook contribution references a missing turn');
     if (entry.topic === null && update.topic && contribution.turn < update.topic.turn) throw new Error('a contribution cannot precede the first topic introduction');
+    const name = contributorName(contribution.contributor);
+    if (!name || (name !== contributorName(line.persona.name ?? '') && !` ${nameWords(line.text)} `.includes(` ${name} `))) {
+      throw new Error('notebook contributor must be named in the referenced speech or be its presenter');
+    }
+    const key = JSON.stringify([name, normalizedText(contribution.summary)]);
+    if (contributions.has(key)) throw new Error('notebook contribution duplicates an existing contributor and summary');
+    contributions.add(key);
   }
   pending.update = update;
   pending.clips = lines.map(line => ({ voiceId: randomBytes(8).toString('hex'), text: line.text, personaId: line.persona.id,
@@ -232,7 +243,7 @@ export function notebookPrompt(snapshot: NotebookSnapshot) {
   // The model needs continuity, not receipt IDs, epochs or persistence bookkeeping.
   const editorial = { topic: snapshot.topic, contributionCount: snapshot.contributionCount,
     history: snapshot.history.map(({ contributor, summary }) => ({ contributor, summary })) };
-  return `\n\nShow skill notebook (committed facts from this skill and this airing only):\n${JSON.stringify(editorial)}\n\nReturn memoryUpdate separately from speech. It has topic: null or {value, turn}, and contributions: [{turn, contributor, summary}]. Turns are numbered from 1. If topic is empty, propose a fixed topic and speak that exact topic in its referenced turn. Otherwise retain the existing topic; use topic: null unless explicitly repeating it. The topic and history are continuity already heard on air, not source material to copy into this update. Continue the requested mode; do not treat an established topic as a first call or deny contributions already recorded. Record only NEW opinions or substantive points actually voiced in THIS segment. Topic introductions, repeated questions, invitations to contribute and routine acknowledgements are not contributions: use contributions: [] when there are no new points. Never copy history into updates. Attach each item to the turn that actually voices that opinion, including when a presenter reads someone else’s words; an introduction or later reaction is not that turn. A solo segment has only turn 1; discussion indexes refer only to the returned lines, never history. Keep summaries concise and faithful, without adding an opinion or imagined future speech. Never read memoryUpdate, notebook fields or internal IDs aloud. Updates commit only when the corresponding turn reaches air.`;
+  return `\n\nShow skill notebook (committed facts from this skill and this airing only):\n${JSON.stringify(editorial)}\n\nReturn memoryUpdate separately from speech. It has topic: null or {value, turn}, and contributions: [{turn, contributor, summary}]. Turns are numbered from 1. If topic is empty, propose a fixed topic and speak that exact topic in its referenced turn. Otherwise retain the existing topic; use topic: null unless explicitly repeating it. The topic and history are continuity already heard on air, not source material to copy into this update. Continue the requested mode; do not treat an established topic as a first call or deny contributions already recorded. Record only NEW opinions or substantive points actually voiced in THIS segment. Topic introductions, repeated questions, invitations to contribute and routine acknowledgements are not contributions: use contributions: [] when there are no new points. Never copy history into updates or submit an already recorded contributor-and-summary pair. Name a quoted contributor in the turn that reads their opinion; use the full persona name for a presenter’s own opinion. Attach each item to the turn that actually voices that opinion, including when a presenter reads someone else’s words; an introduction or later reaction is not that turn. A solo segment has only turn 1; discussion indexes refer only to the returned lines, never history. Keep summaries concise and faithful, without adding an opinion or imagined future speech. Never read memoryUpdate, notebook fields or internal IDs aloud. Updates commit only when the corresponding turn reaches air.`;
 }
 export interface RecoveredNotebookSpeech { kind: string; createdAt: number; notBefore: number; clips: Array<{ text: string; wavPath: string; persona: ReturnType<typeof settings.get>['personas'][number]; meta: Record<string, unknown> }> }
 export async function recoverSkillNotebooks(): Promise<RecoveredNotebookSpeech[]> {

@@ -739,7 +739,13 @@ references are 1-based: solo speech has only turn 1, while discussions reference
 the returned lines. Record only new opinions actually voiced in this segment;
 introductions, invitations and repeated questions are not contributions. Empty
 contribution arrays are valid. Do not copy previous notebook history into updates.
-Fictional contributors require explicit permission in the skill brief.
+Fictional contributors require explicit permission in the skill brief. A quoted
+contributor must be named in the referenced speech; a presenter’s own opinion
+may use that turn’s full persona name without a spoken self-introduction. Name
+matching ignores case, punctuation and a leading “Listener” label. An exact
+contributor-and-summary duplicate in retained history or the current update is
+rejected; a new opinion from the same contributor is allowed. These checks do
+not detect paraphrased repetition or establish that an opinion matches its summary.
 
 Limits are 500 characters for the topic, 100 for a contributor and 240 for a
 summary, with at most 16 new contributions per segment. The notebook retains the

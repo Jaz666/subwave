@@ -25,7 +25,7 @@ const file = join(directory, 'notebook.json');
 const topic = 'Do songs need a chorus?';
 const epoch = Date.now();
 const update = { topic: { value: topic, turn: 1 }, contributions: [{ turn: 2, contributor: 'Sam North', summary: 'A memorable melody matters more than a chorus.' }] };
-const lines = [{ persona: host, text: topic }, { persona: host, text: 'Sam says a memorable melody matters more than a chorus.' }];
+const lines = [{ persona: host, text: topic }, { persona: host, text: 'Sam North says a memorable melody matters more than a chorus.' }];
 
 beforeEach(() => {
   mock.timers.enable({ apis: ['Date'], now: epoch });
@@ -176,7 +176,7 @@ test('history is bounded while the lifetime contribution count remains accurate'
   for (let index = 1; index <= NOTEBOOK_HISTORY_LIMIT + 2; index++) {
     const lease = notebook.beginSkillNotebook(skill);
     const text = `New point ${index}`;
-    const [ref] = notebook.stageNotebook(lease, { topic: null, contributions: [{ turn: 1, contributor: 'Listener', summary: text }] }, [{ persona: host, text }]);
+    const [ref] = notebook.stageNotebook(lease, { topic: null, contributions: [{ turn: 1, contributor: host.name, summary: text }] }, [{ persona: host, text }]);
     render(ref, text); notebook.notebookCanPublish(ref); air(ref);
   }
   const saved = notebook.readSkillNotebook(skill);
