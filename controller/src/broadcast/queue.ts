@@ -8,6 +8,7 @@ import { basename } from 'node:path';
 import { config } from '../config.js';
 import { createSerialFileWriter, writeFileAtomic } from '../util/atomic-file.js';
 import * as subsonic from '../music/subsonic.js';
+import { flowSelectionFits } from '../music/sub-flow-selection.js';
 import { discardFlow, expectFlowPlayback, flowPlaybackUri, sweepFlowAudio, type FlowPlayback } from '../music/sub-flow-playback.js';
 import * as mix from '../music/mix.js';
 import * as library from '../music/library.js';
@@ -1076,16 +1077,34 @@ class Queue {
     return this.upcoming.length;
   }
 
-  async queueFlow(flow: FlowPlayback) {
-    // Manual first release: one prepared occurrence at a time. Members are
+  async queueFlow(flow: FlowPlayback, options: { automatic?: boolean } & Partial<Pick<QueueItem,
+    'intent' | 'introScript' | 'introLabelChecked' | 'introKind' | 'introPersona' | 'introHostSpeech' | 'linkPrev' | 'linkClockAt'>> & { selectionShowAt?: Date | number | null } = {}) {
+    // One prepared occurrence at a time. Members are
     // committed together, before the sender can see any of them.
     if (this.current?.flow || this.upcoming.some(item => item.flow)) throw new Error('A Flow is already queued or playing.');
     if (flow.members.some(track => blocklist.hitOf(track))) throw new Error('A Flow track is now blocked.');
     const queued = this.queuedIds();
     if (flow.members.some(track => queued.has(track.id) || this.current?.track.id === track.id)) throw new Error('A Flow track is already queued or playing.');
+    const at = options.selectionShowAt instanceof Date ? options.selectionShowAt.getTime() : options.selectionShowAt;
+    const show = settings.resolveActiveShow(new Date(Math.max(Date.now(), at ?? 0)));
+    if (options.automatic) {
+      const rejection = this.automaticFlowRejection(flow, show, this.flowQueueStartMs());
+      if (rejection) throw new Error(rejection);
+    }
     const items: QueueItem[] = flow.members.map((track, index) => ({
       track: { ...track, crossSec: index < flow.members.length - 1 ? 0 : undefined },
-      requestedBy: 'studio', operator: true, queuedAt: new Date().toISOString(), sent: false,
+      ...(index === 0 ? {
+        intent: options.intent, introScript: options.introScript, introKind: options.introKind,
+        introLabelChecked: options.introLabelChecked, introPersona: options.introPersona,
+        introHostSpeech: options.introHostSpeech,
+        linkPrev: options.linkPrev,
+        linkClockAt: options.linkClockAt == null ? null : new Date(options.linkClockAt).getTime(),
+        introSessionKey: options.introScript ? session.getSession()?.key ?? null : null,
+      } : {}),
+      requestedBy: options.automatic ? null : 'studio', operator: !options.automatic,
+      aiPicked: !!options.automatic, showKey: showKeyAt(at ?? Date.now()),
+      selectionShowAt: at ?? null,
+      queuedAt: new Date().toISOString(), sent: false,
       flow: { ...flow, index },
     }));
     this._flowAdmission = true;
@@ -1097,6 +1116,26 @@ class Queue {
     this.log('queued', `Sub/Flow “${flow.label}” — ${items.length} tracks, protected joins`);
     void this.drainToLiquidsoap();
     return this.upcoming.length;
+  }
+
+  flowQueueStartMs(): number | null {
+    let seconds = this.current ? this.remainingSecOnAir() : 0;
+    if (seconds == null) return null;
+    for (const item of this.upcoming) {
+      const duration = Number(item.track.duration);
+      if (!(duration > 0)) return null;
+      seconds += duration + (item.bedDelaySec ?? 0) + (item.pauseDelaySec ?? 0);
+    }
+    return Date.now() + seconds * 1000;
+  }
+
+  automaticFlowRejection(flow: FlowPlayback, show: ReturnType<typeof settings.resolveActiveShow>, startMs: number | null): string | null {
+    const allow = show?.flowAllowAboveMax ?? settings.get().picker.flowAllowAboveMax;
+    const max = settings.effectiveMaxTrackSec(show);
+    if (!allow && max && flow.members.some(track => track.duration > max)) return 'A Flow member exceeds the maximum track length.';
+    if (startMs == null && settings.effectiveFadeAtShowEnd(show)) return 'The Flow start time is unknown at a firm show boundary.';
+    if (startMs != null && !flowSelectionFits(flow.members.reduce((sum, track) => sum + track.duration, 0), startMs)) return 'The complete Flow does not fit before the show boundary.';
+    return null;
   }
 
   // A request the MIXER will silently eat (#1594). Log only — nothing is
@@ -1970,7 +2009,7 @@ class Queue {
   }
 
   aboveAutomaticCeiling(item: QueueItem, preparing = false): boolean {
-    return !item.requestedBy && !item.sent && !item.lengthPolicyCommitted && (preparing || (!item.bedded && item.pauseDelaySec == null))
+    return !item.flow && !item.requestedBy && !item.sent && !item.lengthPolicyCommitted && (preparing || (!item.bedded && item.pauseDelaySec == null))
       && aboveKnownTrackCeiling(item.track, this.selectionMaxSecFor(item));
   }
 
@@ -2078,7 +2117,10 @@ class Queue {
             const remaining = this.remainingUntilItemAirs(item);
             if (!force && remaining != null && remaining > Number(settings.get().crossfadeDuration || 10) + 10) break;
             const members = this.upcoming.filter(candidate => candidate.flow?.occurrenceId === item.flow!.occurrenceId);
-            if (members.length !== item.flow.members.length || item.flow.index !== 0 || !existsSync(item.flow.path)
+            const show = settings.resolveActiveShow(new Date(Date.now() + (remaining ?? 0) * 1000));
+            const rejected = item.aiPicked ? this.automaticFlowRejection(item.flow, show, remaining == null ? null : Date.now() + (remaining + this.hiddenDelayBeforeItemAirs(item)) * 1000) : null;
+            if (rejected) this.log('picker', `Flow “${item.flow.label}” refused at delivery: ${rejected}`);
+            if (rejected || members.length !== item.flow.members.length || item.flow.index !== 0 || !existsSync(item.flow.path)
                 || members.some(member => blocklist.hitOf(member.track))) {
               this.upcoming = this.upcoming.filter(candidate => !members.includes(candidate));
               this.log('error', `Sub/Flow “${item.flow.label}” could not be delivered intact; cancelled the whole occurrence.`);
@@ -3410,6 +3452,7 @@ class Queue {
       };
       const handoff = await this._airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),
+        beforeWrite: () => !item.flow || (this.current?.flow?.occurrenceId === item.flow.occurrenceId && this.current?.flow?.index === 0),
       });
       // Not deferred: introAired is already set and the queue state has to reach
       // disk whether or not the words are audible yet.
@@ -4030,6 +4073,7 @@ class Queue {
   // show, requests exempt), so the pick look-ahead and the drain agree on how
   // long the anchor plays. Null when its length is unknown.
   heldPlayableSec(item: QueueItem): number | null {
+    if (item.flow) return Number(item.track.duration) || null;
     const trim = silenceTrim.resolveSilenceTrim(item.track);
     return heldAnchorPlayableSec({
       durationSec: knownDurationSec(item.track),

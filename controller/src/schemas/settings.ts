@@ -984,6 +984,7 @@ export const audioPatchSchema = settingsBlockOf({
 // reproduce: `settingsNumberLike` is chosen on merit (Number() refuses '6abc'
 // and keeps the fraction) rather than to preserve an accident.
 export const pickerPatchSchema = settingsBlockOf({
+  flowAllowAboveMax: z.boolean(),
   albumHours: settingsNumberLike(
     PICKER_ALBUM_HOURS_BOUNDS,
     `picker.albumHours must be between ${PICKER_ALBUM_HOURS_BOUNDS.min} and ${PICKER_ALBUM_HOURS_BOUNDS.max} (0 = off)`,

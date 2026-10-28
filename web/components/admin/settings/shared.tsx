@@ -250,6 +250,7 @@ export interface ScrobbleForm {
 // settings key from `llm` because the album cooldown is not LLM config — the
 // stateless pool picker enforces it too.
 export interface PickerForm {
+  flowAllowAboveMax: boolean;
   // Hours, as typed. 0/'' = off.
   albumHours: string;
   // Seconds, as typed. 0/'' = off (the shipped default). A show's own
@@ -554,6 +555,7 @@ export interface SettingsData {
       navidrome?: Partial<ScrobbleNavidromeForm>;
     };
     picker?: {
+      flowAllowAboveMax?: boolean;
       albumHours?: number;
       minTrackLengthSeconds?: number;
     };

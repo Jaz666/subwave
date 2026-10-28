@@ -1344,6 +1344,7 @@ export async function load() {
       // composes explicitly. The crossfade floor is NOT re-applied on load —
       // load is lenient by contract, and a crossfade lowered after the fact
       // must not delete a floor the operator set deliberately.
+      flowAllowAboveMax: stored.picker?.flowAllowAboveMax === true,
       minTrackLengthSeconds:
         coerceMinTrackLengthSeconds(stored.picker?.minTrackLengthSeconds, false)
         ?? DEFAULTS.picker.minTrackLengthSeconds,
@@ -2224,6 +2225,7 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
   }
   if ('picker' in patch) {
     const pk = parseSettingsPatchKey<Record<string, unknown>>('picker', patch.picker);
+    if (pk.flowAllowAboveMax !== undefined) next.picker.flowAllowAboveMax = pk.flowAllowAboveMax as boolean;
     if (pk.albumHours !== undefined) next.picker.albumHours = pk.albumHours as number;
     if (pk.minTrackLengthSeconds !== undefined) {
       // Whole seconds — the schema's bounds check is deliberately number-like

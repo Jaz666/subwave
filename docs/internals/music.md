@@ -33,9 +33,9 @@ with broadcast, limited to 512 MiB per occurrence. The queue durably captures
 the complete member list and definition revision before handing over that one
 file. Later definition edits, disabling and deletion do not change it.
 
-This first release permits one queued/playing Flow at a time and requires the
-new broadcast image (`subflow.status` version 1). Ordinary picks, requests and
-`auto.m3u` do not automatically expand a member into a Flow. Manual Flow admission
+Playback permits one queued/playing Flow at a time and requires the
+broadcast capability `subflow.status` version 1. Listener requests, explicitly
+ordered playlists and `auto.m3u` still play individual tracks. Manual Flow admission
 bypasses individual cuts, silence trimming, per-track gain changes and internal
 mixing. The mixer retains one outer track boundary, so requests, beds and jingles
 cannot split it. Speech, over-music imaging and SFX must fit wholly outside
@@ -55,6 +55,43 @@ actual mixer offline with `python3 scripts/sub-flow-playback-test.py`, using
 `SUB_FLOW_MEMBERS=3`, `SUB_FLOW_SHORT=1`, `SUB_FLOW_PREEXISTING=1`,
 `SUB_FLOW_JINGLE=1`, `SUB_FLOW_ROTATE=1`, `SUB_FLOW_OVERLAP=1` and `SUB_FLOW_IDLE=1`
 cases cover the key boundaries.
+
+**Automatic Sub/Flow selection.** Agentic discovery, Track Shortlist and pool
+recovery resolve a hit on any enabled member into one candidate before final
+choice. The candidate's identity and musical measurements belong to the first
+track; its ordered member list and combined duration are supplied to the model.
+Multiple members discovered together give one opportunity. All members must pass
+blocklist, recent-track and hard-repeat checks, external artist/album spacing,
+playlist inclusion/exclusion, prepared-episode membership and strict show locks.
+Internal artist/album repetition is intentional; it does not relax checks against
+previous music. A failed or unchecked enabled definition cannot fall back to a
+single member on these paths. A changed definition invalidates the selection.
+Requests, explicitly ordered playlist walks and the mixer coast are unchanged;
+expansion there needs separate ordering/request policy.
+
+The combined duration meets the minimum selection length, so a short album intro
+is eligible as part of its longer sequence. Maximum length applies **per member**,
+including under the legacy cut mode: automatic Flows are rejected rather than
+cut. `picker.flowAllowAboveMax` defaults false; a show's nullable
+`flowAllowAboveMax` inherits it or explicitly overrides it. The controls are in
+Music selection and the show's track-length settings. Neither override permits a
+Flow to cross an armed show-finish boundary. Full duration is checked against the
+selection forecast, admission queue forecast and live mixer handoff; an unknown
+start at a firm finish refuses the automatic occurrence. Manual Queue Flow keeps
+its explicit operator exemptions.
+
+Selection rechecks the unit after corrective guards, before any listener-facing
+link. Optional links use `generateFlowLink` with the actual first track and ordered
+sequence, never the discovery trigger as the opening track. They retain the normal
+link frequency/voice/host rules, are budgeted to the safe first-track runway and
+are dropped if they cannot fit; no link is attached to companions. Mixer protection
+remains authoritative, and an entry introduction waiting until a later member is
+cancelled. Flow entry/exit effects remain plain crossfades for this version.
+The complete audio is fingerprint-checked again before durable admission using
+the existing manual playback path. Automatic occurrences retain AI selection
+attribution and the same whole-Flow cancel/skip and recovery behavior.
+Pinned by `sub-flow-selection.test.ts`, `sub-flow-auto-pick.test.ts` and the
+existing `sub-flow-playback.test.ts`.
 
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
