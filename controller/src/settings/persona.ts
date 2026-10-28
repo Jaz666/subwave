@@ -266,6 +266,7 @@ function resolveShowShape(show, s, date?: Date, occurrence?: { source: 'schedule
     // See effectiveFadeAtShowEnd() — a resolved show that dropped this field
     // would read as "inherit" on every path, which is how the #779 blocklist
     // no-op happened.
+    flowAllowAboveMax: typeof show.flowAllowAboveMax === 'boolean' ? show.flowAllowAboveMax : null,
     fadeAtShowEnd: typeof show.fadeAtShowEnd === 'boolean' ? show.fadeAtShowEnd : null,
     // Explicit opt-in; an older persisted show keeps ordinary ducked speech.
     pauseTalk: show.pauseTalk === true,

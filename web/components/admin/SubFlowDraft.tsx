@@ -123,7 +123,7 @@ export default function SubFlowDraft() {
         <p className="mt-1 text-sm text-muted">Keep two or three album tracks together, in the order they were meant to play.</p>
       </div>
       <div role="status" className="border border-separator-strong bg-bg p-3 text-sm text-muted">
-        Queue a checked Flow to play it together, with five seconds of protection either side of each join. Queue one Flow at a time. Ordinary track selection does not start a Flow automatically.
+        Queue a checked Flow to play it together, with five seconds of protection either side of each join. Queue one Flow at a time. Automatic DJ picks of any member start the complete enabled, checked Flow when every track fits the show rules. Listener requests, ordered playlists and the offline fallback still play individual tracks.
       </div>
       <Card title="Build a Sub/Flow" sub="Choose an album, then add its tracks in order">
         <fieldset disabled={saveFlow.isPending} className="grid min-w-0 gap-5">

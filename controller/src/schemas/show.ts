@@ -381,6 +381,7 @@ function showObjectSchema(ctx: ShowSchemaContext) {
       // Show-boundary fade (#1574). TRI-STATE like maxTrackSeconds: null =
       // inherit. A plain showBool() would read an untouched show as an explicit
       // false and opt it out of a station default just turned on.
+      flowAllowAboveMax: z.boolean().nullable().optional().transform(v => v ?? null),
       fadeAtShowEnd: z
         .union([z.null(), z.literal(''), z.boolean()])
         .optional()
@@ -675,6 +676,7 @@ export function repairShowForLoad(
       : undefined,
     preparationSkill: typeof raw.preparationSkill === 'string' ? raw.preparationSkill.trim().slice(0, SHOW_SEGMENT_SKILL_MAX) : undefined,
     generation,
+    flowAllowAboveMax: typeof raw.flowAllowAboveMax === 'boolean' ? raw.flowAllowAboveMax : null,
     // Sub/Shows use the normal talk scheduler, including legacy saved slots
     // that were automatically created with Programme mode enabled.
     programme: generation?.mode === 'generated' ? false : raw.programme,
