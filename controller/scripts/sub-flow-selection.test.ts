@@ -70,8 +70,13 @@ test('a definition edited or disabled during selection refuses the stale unit', 
 });
 
 test('global override persists through cold load and a show can explicitly turn it off', async () => {
-  await coldLoadSettings({ picker: { flowAllowAboveMax: true } });
+  await coldLoadSettings({ picker: { flowAllowAboveMax: true, flowProtectBeforeSec: 8, flowProtectAfterSec: 12 } });
   assert.equal(settings.get().picker.flowAllowAboveMax, true);
+  assert.equal(settings.get().picker.flowProtectBeforeSec, 8);
+  assert.equal(settings.get().picker.flowProtectAfterSec, 12);
+  await assert.rejects(() => settings.update({ picker: { flowProtectBeforeSec: 0 } }));
+  await assert.rejects(() => settings.update({ picker: { flowProtectAfterSec: 31 } }));
+  await settings.update({ picker: { flowProtectBeforeSec: 5, flowProtectAfterSec: 5 } });
   const personaId = settings.get().personas[0]!.id;
   await settings.update({ picker: { flowAllowAboveMax: false }, shows: [
     { id: 'flow_show', name: 'Flow Show', personaId, flowAllowAboveMax: false },

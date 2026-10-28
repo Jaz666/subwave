@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { verifyTrack } from './sub-flow-verify.js';
 import type { Flow } from './sub-flow.js';
+import * as settings from '../settings.js';
 
 export const FLOW_BUFFER_SEC = 5;
 const RATE = 44100;
@@ -22,10 +23,13 @@ export interface FlowPlayback {
   revision: number;
   label: string;
   path: string;
+  protectBeforeSec?: number;
+  protectAfterSec?: number;
   members: { id: string; title: string; artist: string | null; album: string | null; duration: number }[];
 }
 
 export async function prepareFlow(flow: Flow): Promise<FlowPlayback> {
+  const { flowProtectBeforeSec: protectBeforeSec, flowProtectAfterSec: protectAfterSec } = settings.get().picker;
   if (flow.verification !== 'verified' || !flow.orderVerified || flow.tracks.some(track => !track.fingerprint)) {
     throw new Error('Check the Flow audio and track order before queueing it.');
   }
@@ -67,7 +71,7 @@ export async function prepareFlow(flow: Flow): Promise<FlowPlayback> {
     // Broadcast and controller can run as different users on the shared volume.
     await chmod(dir, 0o755);
     published = true;
-    return { occurrenceId: randomUUID(), definitionId: flow.id, revision: flow.revision, label: flow.name, path, members };
+    return { occurrenceId: randomUUID(), definitionId: flow.id, revision: flow.revision, label: flow.name, path, members, protectBeforeSec, protectAfterSec };
   } finally {
     if (fd != null) closeSync(fd);
     if (!published) await rm(dir, { recursive: true, force: true });
@@ -97,12 +101,16 @@ export async function sweepFlowAudio(keep: string[]) {
 export function flowPlaybackUri(flow: FlowPlayback, crossSec: number) {
   const first = flow.members[0]!;
   const last = flow.members.at(-1)!;
+  // Missing values belong to occurrences queued before configurable windows.
+  const before = flow.protectBeforeSec ?? FLOW_BUFFER_SEC;
+  const after = flow.protectAfterSec ?? FLOW_BUFFER_SEC;
   const fields: Record<string, string | number> = {
     title: first.title, artist: first.artist ?? '', album: first.album ?? '', subsonic_id: first.id,
     subwave_flow: flow.occurrenceId, subwave_flow_index: 0, subwave_flow_count: flow.members.length,
     subwave_flow_buffer: FLOW_BUFFER_SEC,
-    subwave_flow_entry: Math.max(0, first.duration - FLOW_BUFFER_SEC - 0.1),
-    liq_cross_duration: Math.max(0, Math.min(crossSec, last.duration - FLOW_BUFFER_SEC - 0.1)),
+    subwave_flow_before: before, subwave_flow_after: after,
+    subwave_flow_entry: Math.max(0, first.duration - before - 0.1),
+    liq_cross_duration: Math.max(0, Math.min(crossSec, last.duration - after - 0.1)),
   };
   let offset = 0;
   flow.members.forEach((track, index) => {

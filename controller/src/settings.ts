@@ -1380,6 +1380,10 @@ export async function load() {
       // load is lenient by contract, and a crossfade lowered after the fact
       // must not delete a floor the operator set deliberately.
       flowAllowAboveMax: stored.picker?.flowAllowAboveMax === true,
+      flowProtectBeforeSec: typeof stored.picker?.flowProtectBeforeSec === 'number' && Number.isFinite(stored.picker.flowProtectBeforeSec)
+        ? Math.max(1, Math.min(30, Math.round(stored.picker.flowProtectBeforeSec))) : DEFAULTS.picker.flowProtectBeforeSec,
+      flowProtectAfterSec: typeof stored.picker?.flowProtectAfterSec === 'number' && Number.isFinite(stored.picker.flowProtectAfterSec)
+        ? Math.max(1, Math.min(30, Math.round(stored.picker.flowProtectAfterSec))) : DEFAULTS.picker.flowProtectAfterSec,
       minTrackLengthSeconds:
         coerceMinTrackLengthSeconds(stored.picker?.minTrackLengthSeconds, false)
         ?? DEFAULTS.picker.minTrackLengthSeconds,
@@ -2298,6 +2302,8 @@ export async function prepareUpdate(patch, { themeIds }: { themeIds?: ReadonlySe
   if ('picker' in patch) {
     const pk = parseSettingsPatchKey<Record<string, unknown>>('picker', patch.picker);
     if (pk.flowAllowAboveMax !== undefined) next.picker.flowAllowAboveMax = pk.flowAllowAboveMax as boolean;
+    if (pk.flowProtectBeforeSec !== undefined) next.picker.flowProtectBeforeSec = pk.flowProtectBeforeSec as number;
+    if (pk.flowProtectAfterSec !== undefined) next.picker.flowProtectAfterSec = pk.flowProtectAfterSec as number;
     if (pk.albumHours !== undefined) next.picker.albumHours = pk.albumHours as number;
     if (pk.minTrackLengthSeconds !== undefined) {
       // Whole seconds — the schema's bounds check is deliberately number-like
