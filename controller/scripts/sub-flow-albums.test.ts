@@ -26,7 +26,10 @@ test('album search and album tracks use the library catalog', async () => {
     calls.push(url);
     const result = url.pathname.endsWith('/search3')
       ? { searchResult3: { album: [{ id: 'album-1', name: 'Get a Grip', artist: 'Aerosmith' }] } }
-      : { album: { song: [{ id: 'one', title: 'Intro' }, { id: 'two', title: 'Eat the Rich' }] } };
+      : { album: { id: 'album-1', songCount: 2, song: [
+        { id: 'one', title: 'Intro', albumId: 'album-1', track: 1 },
+        { id: 'two', title: 'Eat the Rich', albumId: 'album-1', track: 2 },
+      ] } };
     return new Response(JSON.stringify({ 'subsonic-response': { status: 'ok', ...result } }), { status: 200 });
   }) as typeof fetch;
   assert.deepEqual(await subsonic.searchAlbums('Get a Grip'), [{ id: 'album-1', name: 'Get a Grip', artist: 'Aerosmith' }]);
@@ -46,6 +49,7 @@ test('album search and album tracks use the library catalog', async () => {
     assert.equal(albums.albums[0].name, 'Get a Grip');
     const tracks = await (await fetch(`${base}/library/sub-flow/albums/album-1/tracks`)).json() as any;
     assert.deepEqual(tracks.tracks.map((song: any) => song.title), ['Intro', 'Eat the Rich']);
+    assert.deepEqual(tracks.tracks.map((song: any) => song.order), [0, 1]);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }

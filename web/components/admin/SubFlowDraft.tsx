@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { ArrowDown, ArrowUp, Disc3, Plus, Search, Trash2, X } from 'lucide-react';
+import { Disc3, Plus, Search, Trash2, X } from 'lucide-react';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../ui/input-group';
 import { Btn, Card, Pill } from './ui';
 import { ADMIN_API_URL, useAdminAuth } from '../../lib/adminAuth';
@@ -11,9 +11,10 @@ import { useWatch } from 'react-hook-form';
 import { useZodForm } from '../../lib/form';
 import { TextField } from '../../lib/form-fields';
 import { subFlowNameSchema } from '../../lib/schemas.generated';
+import { albumSelection } from './library/sub-flow-order';
 
-type Track = { id: string; title: string; duration: number | null; artist: string | null; album: string | null };
-type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean; revision: number; verification: 'pending' | 'verified' | 'failed'; verificationError: string | null };
+type Track = { id: string; title: string; duration: number | null; artist: string | null; album: string | null; order?: number };
+type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean; revision: number; orderVerified: boolean; verification: 'pending' | 'verified' | 'failed'; verificationError: string | null };
 type Album = { id: string; name: string; artist: string | null; year: number | null; coverArt: string | null };
 
 export default function SubFlowDraft() {
@@ -63,31 +64,24 @@ export default function SubFlowDraft() {
   const albumTracks = useAdminQuery({
     key: ['sub-flow', 'album', album?.id], adminFetch,
     enabled: hydrated && !needsAuth && !!album,
-    request: (fetcher, signal) => adminJson<{ tracks: Track[] }>(fetcher, `/library/sub-flow/albums/${encodeURIComponent(album?.id ?? '')}/tracks`, undefined, signal),
+    request: (fetcher, signal) => adminJson<{ tracks: (Track & { order: number })[] }>(fetcher, `/library/sub-flow/albums/${encodeURIComponent(album?.id ?? '')}/tracks`, undefined, signal),
   });
   const availableTracks = albumTracks.data?.tracks ?? [];
 
   const reset = () => { setTracks([]); nameForm.reset({ name: '' }); setEditing(null); setEnabled(true); };
-  const add = (track: Track, index = tracks.length) => {
-    if (saveFlow.isPending || tracks.some(t => t.id === track.id) || tracks.length >= 3) return;
+  const selectedOrder = albumSelection(tracks.map(track => track.id), availableTracks);
+  const selectionValid = !!selectedOrder && selectedOrder.every((id, index) => id === tracks[index]?.id);
+  const albumLoaded = !!album && !!albumTracks.data;
+  const canAdd = (track: Track) => !saveFlow.isPending && tracks.length < 3 && !tracks.some(t => t.id === track.id)
+    && !!albumSelection([...tracks.map(item => item.id), track.id], availableTracks);
+  const add = (track: Track) => {
+    if (!canAdd(track)) return;
     setTracks(current => {
       if (current.some(t => t.id === track.id) || current.length >= 3) return current;
       const next = [...current];
-      next.splice(Math.min(index, current.length), 0, track);
-      return next;
-    });
-  };
-  const move = (index: number, direction: number) => {
-    setTracks(current => {
-      const other = index + direction;
-      if (other < 0 || other >= current.length) return current;
-      const next = [...current];
-      const first = next[index];
-      const second = next[other];
-      if (!first || !second) return current;
-      next[index] = second;
-      next[other] = first;
-      return next;
+      next.push(track);
+      const ids = albumSelection(next.map(item => item.id), availableTracks);
+      return ids ? ids.map(id => next.find(item => item.id === id)!) : current;
     });
   };
   const save = async () => {
@@ -141,23 +135,23 @@ export default function SubFlowDraft() {
                 return <div key={index} onDragOver={event => event.preventDefault()} onDrop={event => {
                   event.preventDefault();
                   const selected = availableTracks.find(item => item.id === event.dataTransfer.getData('text/plain'));
-                  if (selected) add(selected, index);
+                  if (selected) add(selected);
                 }} className="min-w-0 border border-separator-strong bg-bg p-3">
                   <span className="text-xs text-muted">Track {index + 1}</span>
                   {track ? <><p className="mt-1 truncate text-sm font-bold" title={track.title}>{track.title}</p><p className="text-xs text-muted">{fmtDuration(track.duration) ?? 'Duration unknown'}</p>
                     <div className="mt-3 flex gap-1">
-                      <Btn sm aria-label={`Move ${track.title} earlier`} onClick={() => move(index, -1)} disabled={index === 0}><ArrowUp size={14} /></Btn>
-                      <Btn sm aria-label={`Move ${track.title} later`} onClick={() => move(index, 1)} disabled={index === tracks.length - 1}><ArrowDown size={14} /></Btn>
                       <Btn sm aria-label={`Remove ${track.title}`} onClick={() => setTracks(current => current.filter(item => item.id !== track.id))}><X size={14} /></Btn>
                     </div></> : <p className="mt-2 text-sm text-muted">Drag or add a track</p>}
                 </div>;
               })}
             </div>
+            {tracks.length > 0 && <p className="mt-2 text-xs text-muted">Add neighbouring tracks from the same album. They stay in album order.</p>}
+            {tracks.length > 1 && albumLoaded && !selectionValid && <p role="alert" className="mt-2 text-sm text-muted">Choose consecutive tracks from this album, with no gaps.</p>}
           </div>
 
           <div className="flex flex-wrap items-end gap-2">
             <TextField control={nameForm.control} name="name" label="Flow name" placeholder="Name this Flow" maxLength={200} className="min-w-48 flex-1" />
-            <Btn tone="accent" onClick={() => { void save(); }} disabled={!name.trim() || tracks.length < 2 || saveFlow.isPending}>{saveFlow.isPending ? 'Saving…' : editing ? 'Update Flow' : 'Save Flow'}</Btn>
+            <Btn tone="accent" onClick={() => { void save(); }} disabled={!name.trim() || tracks.length < 2 || saveFlow.isPending || (albumLoaded && !selectionValid)}>{saveFlow.isPending ? 'Saving…' : editing ? 'Update Flow' : 'Save Flow'}</Btn>
             <Btn onClick={reset}>Clear</Btn>
           </div>
 
@@ -172,7 +166,7 @@ export default function SubFlowDraft() {
               {!albumTracks.isFetching && !albumTracks.isError && availableTracks.length === 0 && <p className="text-sm text-muted">No tracks found for this album.</p>}
               {availableTracks.map((track, index) => <div key={track.id} draggable onDragStart={event => event.dataTransfer.setData('text/plain', track.id)} className="flex items-center gap-3 border-b border-separator-strong py-3">
                 <span className="w-5 text-right text-xs text-muted">{index + 1}</span><span className="min-w-0 flex-1 truncate text-sm">{track.title}</span><span className="text-xs text-muted">{fmtDuration(track.duration)}</span>
-                <Btn sm onClick={() => add(track)} disabled={tracks.some(item => item.id === track.id) || tracks.length >= 3} aria-label={`Add ${track.title} to Flow`}><Plus size={14} /> Add</Btn>
+                <Btn sm onClick={() => add(track)} disabled={!canAdd(track)} aria-label={`Add ${track.title} to Flow`}><Plus size={14} /> Add</Btn>
               </div>)}
             </div>
           </div>}
@@ -182,10 +176,10 @@ export default function SubFlowDraft() {
       <Card title="Saved Flows" sub={`${flows.length} Flow${flows.length === 1 ? '' : 's'}`}>
         {flowsQuery.isLoading ? <p className="text-sm text-muted">Loading Flows…</p> : flowsQuery.isError ? <p className="text-sm text-muted">Could not load saved Flows. Refresh the page to try again.</p> : flows.length === 0 ? <p className="text-sm text-muted">No Flows saved yet. Build one above to see it here.</p> : <div className="grid gap-3">{flows.map(flow =>
           <div key={flow.id} className="flex flex-wrap items-center gap-3 border border-separator-strong p-3">
-            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill><Pill>{flow.verification === 'pending' ? 'Checking…' : flow.verification === 'verified' ? 'Checked at save' : 'Needs attention'}</Pill></div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p>{flow.verificationError && <p className="mt-1 text-xs text-muted">{flow.verificationError}</p>}</div>
+            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{flow.name}</strong><Pill>{flow.enabled ? 'Enabled' : 'Disabled'}</Pill><Pill>{flow.verification === 'pending' ? 'Checking…' : flow.verification === 'verified' ? 'Audio checked at save' : 'Needs attention'}</Pill>{!flow.orderVerified && <Pill>Check track order</Pill>}</div><p className="mt-1 text-xs text-muted">{flow.tracks.map(track => track.title).join(' → ')}</p>{flow.verificationError && <p className="mt-1 text-xs text-muted">{flow.verificationError}</p>}</div>
             <Btn sm disabled={saveFlow.isPending} onClick={() => { setEditing({ id: flow.id, revision: flow.revision }); nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled); }}>Edit</Btn>
             <Btn sm disabled={setFlowEnabled.isPending} onClick={() => { void setFlowEnabled.mutateAsync(flow).catch(() => {}); }}>{flow.enabled ? 'Disable' : 'Enable'}</Btn>
-            {flow.verification === 'failed' && <Btn sm disabled={saveFlow.isPending} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>}
+            {(flow.verification === 'failed' || !flow.orderVerified) && <Btn sm disabled={saveFlow.isPending} onClick={() => { void saveFlow.mutateAsync({ id: flow.id, revision: flow.revision, name: flow.name, enabled: flow.enabled, trackIds: flow.tracks.map(track => track.id) }).catch(() => {}); }}>Check again</Btn>}
             <Btn sm disabled={deleteFlow.isPending} aria-label={`Delete ${flow.name}`} onClick={() => {
               if (!window.confirm(`Delete “${flow.name}”? This cannot be undone.`)) return;
               void deleteFlow.mutateAsync(flow).then(() => { if (editing?.id === flow.id) reset(); }).catch(() => {});
