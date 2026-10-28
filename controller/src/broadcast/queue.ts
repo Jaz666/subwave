@@ -1079,6 +1079,10 @@ class Queue {
 
   async queueFlow(flow: FlowPlayback, options: { automatic?: boolean } & Partial<Pick<QueueItem,
     'intent' | 'introScript' | 'introLabelChecked' | 'introKind' | 'introPersona' | 'introHostSpeech' | 'linkPrev' | 'linkClockAt'>> & { selectionShowAt?: Date | number | null } = {}) {
+    if ((flow.protectBeforeSec ?? 5) !== 5 || (flow.protectAfterSec ?? 5) !== 5) {
+      const status = await liquidsoapControl.flowPlaybackStatus();
+      if (status.version < 2) throw new Error('Rebuild the broadcast service to use custom Flow protection times.');
+    }
     // One prepared occurrence at a time. Members are
     // committed together, before the sender can see any of them.
     if (this.current?.flow || this.upcoming.some(item => item.flow)) throw new Error('A Flow is already queued or playing.');

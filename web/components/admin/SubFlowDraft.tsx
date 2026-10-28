@@ -1,17 +1,18 @@
 'use client';
 
-import { Fragment, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Disc3, Loader2, Play, Plus, Search, Square, Trash2, X } from 'lucide-react';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '../ui/input-group';
 import { V3AlertDialog } from '../ui/alert-dialog';
-import { Btn, Card, Pill } from './ui';
+import { Btn, Card, Eyebrow, Pill } from './ui';
 import { ADMIN_API_URL, useAdminAuth } from '../../lib/adminAuth';
 import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
 import { fmtDuration } from './library/bits';
 import { useWatch } from 'react-hook-form';
 import { useZodForm } from '../../lib/form';
 import { TextField } from '../../lib/form-fields';
-import { subFlowNameSchema } from '../../lib/schemas.generated';
+import { flowProtectionSchema, subFlowNameSchema } from '../../lib/schemas.generated';
+import { useSettingsMutation, useSettingsQuery } from './settings/queries';
 import { albumSelection } from './library/sub-flow-order';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
@@ -20,6 +21,47 @@ import { dashKeys } from './dash/queries';
 type Track = { id: string; title: string; duration: number | null; artist: string | null; album: string | null; order?: number };
 type Flow = { id: string; name: string; tracks: Track[]; enabled: boolean; revision: number; orderVerified: boolean; verification: 'pending' | 'verified' | 'failed'; verificationError: string | null };
 type Album = { id: string; name: string; artist: string | null; year: number | null; coverArt: string | null };
+
+function JoinProtection() {
+  const { adminFetch, hydrated, needsAuth } = useAdminAuth();
+  const settings = useSettingsQuery<{ values?: { picker?: { flowProtectBeforeSec?: number; flowProtectAfterSec?: number } } }>({
+    adminFetch, enabled: hydrated && !needsAuth, refetchOnMount: 'always',
+  });
+  const form = useZodForm(flowProtectionSchema, { flowProtectBeforeSec: 5, flowProtectAfterSec: 5 });
+  const { isDirty } = form.formState;
+  const loadedSettings = useRef<typeof settings.data>(undefined);
+  const save = useSettingsMutation({ adminFetch });
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    if (settings.data && !isDirty && loadedSettings.current !== settings.data) {
+      loadedSettings.current = settings.data;
+      form.reset({
+        flowProtectBeforeSec: settings.data.values?.picker?.flowProtectBeforeSec ?? 5,
+        flowProtectAfterSec: settings.data.values?.picker?.flowProtectAfterSec ?? 5,
+      });
+    }
+  }, [settings.data, isDirty, form]);
+  return <Card title="Join protection" sub="Keep joins clear of speech and jingles">
+    <form onSubmit={form.handleSubmit(async values => {
+      setMessage('');
+      try {
+        const receipt = await save.mutateAsync({ picker: values });
+        form.reset(values);
+        setMessage(receipt.refreshError ? 'Saved, but could not reload settings. Reload the page to check the saved values.' : 'Join protection saved. It applies to newly queued Flows.');
+      } catch { setMessage('Could not save join protection. Your changes are still here; try again.'); }
+    })} className="grid gap-4">
+      <p className="text-sm text-muted">Choose how many seconds to keep clear before and after each join. Speech and jingles can play elsewhere in the Flow. Changes apply to newly queued Flows.</p>
+      {settings.isError && <p role="alert" className="text-sm text-muted">Could not load join protection. <Btn sm onClick={() => { void settings.refetch(); }}>Try again</Btn></p>}
+      <fieldset disabled={!settings.data || save.isPending} className="flex flex-wrap items-end gap-4">
+        <TextField control={form.control} name="flowProtectBeforeSec" label="Before join (seconds)" numeric min={1} max={30} step={1} className="w-full sm:w-52" />
+        <TextField control={form.control} name="flowProtectAfterSec" label="After join (seconds)" numeric min={1} max={30} step={1} className="w-full sm:w-52" />
+        <Btn type="submit" tone="accent" disabled={!isDirty}>{save.isPending ? 'Saving…' : 'Save protection'}</Btn>
+      </fieldset>
+      <p className="text-xs text-muted">1–30 seconds on each side. The default is 5 seconds.</p>
+      {message && <p role="status" className="text-sm text-muted">{message}</p>}
+    </form>
+  </Card>;
+}
 
 export default function SubFlowDraft() {
   const [query, setQuery] = useState('');
@@ -118,13 +160,14 @@ export default function SubFlowDraft() {
 
   return (
     <div className="grid min-w-0 gap-5">
-      <div>
-        <h1 className="text-2xl font-bold text-ink">Sub/Flow</h1>
-        <p className="mt-1 text-sm text-muted">Keep two or three album tracks together, in the order they were meant to play.</p>
-      </div>
-      <div role="status" className="border border-separator-strong bg-bg p-3 text-sm text-muted">
-        Queue a checked Flow to play it together, with five seconds of protection either side of each join. Queue one Flow at a time. Automatic DJ picks of any member start the complete enabled, checked Flow when every track fits the show rules. Listener requests, ordered playlists and the offline fallback still play individual tracks.
-      </div>
+      <section className="card">
+        <div className="p-4">
+          <Eyebrow className="text-vermilion">Library</Eyebrow>
+          <h1 className="mt-1.5 text-[22px] font-extrabold tracking-[-0.02em]">Sub/Flow</h1>
+          <p className="mt-1 max-w-3xl text-[11px] leading-[1.6] text-muted">Keep two or three neighbouring album tracks together, with no gaps between them. Speech and jingles stay clear of the joins.</p>
+          <p className="mt-2 max-w-3xl text-[11px] leading-[1.6] text-muted">Build a Flow below, then queue it yourself or let the DJ choose it when it suits the show. Choosing any of its tracks from the Library plays the whole Flow. Only one Flow can be queued or playing at a time. Listener requests and playlists set to play in order still play tracks separately.</p>
+        </div>
+      </section>
       <Card title="Build a Sub/Flow" sub="Choose an album, then add its tracks in order">
         <fieldset disabled={saveFlow.isPending} className="grid min-w-0 gap-5">
           <form onSubmit={findAlbum} className="flex flex-wrap gap-2">
@@ -205,6 +248,7 @@ export default function SubFlowDraft() {
         </fieldset>
       </Card>
 
+      <JoinProtection />
       <Card title="Saved Flows" sub={`${flows.length} Flow${flows.length === 1 ? '' : 's'}`}>
         {queueFlow.isPending && <p role="status" className="mb-3 text-sm text-muted">Preparing the complete Flow and checking its audio…</p>}
         {queuedMessage && <p role="status" className="mb-3 text-sm text-muted">{queuedMessage}</p>}

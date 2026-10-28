@@ -14,7 +14,7 @@ import { speechPaceScale } from '../../audio/tts.js';
 import { normalizeForDisplay, normalizeForSpeech, spokenWordScale, stripSpeakerLabel } from '../../audio/speech-text.js';
 import { introMsOf } from './runs.js';
 import * as subFlows from '../../music/sub-flow.js';
-import { discardFlow, FLOW_BUFFER_SEC } from '../../music/sub-flow-playback.js';
+import { discardFlow } from '../../music/sub-flow-playback.js';
 import { flowForPrompt } from '../../music/sub-flow-selection.js';
 import { flowPlaybackStatus } from '../liquidsoap-control.js';
 import { VOCAL_RUNWAY_FLOOR_MS } from '../vocal-runway.js';
@@ -92,7 +92,7 @@ export function trimLinkToIntro(text: string | null | undefined, song: any, pers
   const display = normalizeForDisplay(clean);
   // Flow links may use only the actual entry's safe opening, never a companion's.
   const flowRunway = song?.subFlow
-    ? Math.max(0, Number(song.duration ?? song.duration_sec) - FLOW_BUFFER_SEC - 4) * 1000 : null;
+    ? Math.max(0, Number(song.duration ?? song.duration_sec) - settings.get().picker.flowProtectBeforeSec - 4) * 1000 : null;
   if (flowRunway != null && flowRunway < VOCAL_RUNWAY_FLOOR_MS) return null;
   if (!speaker?.djMode && flowRunway == null) return display || null;
   // A DURATION budget, so it is counted on the words the engine will read.

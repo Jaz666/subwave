@@ -18,7 +18,7 @@ const PORT = parseInt(process.env.LIQUIDSOAP_PORT || '1234', 10);
 export async function flowPlaybackStatus(): Promise<{ version: number; pending: string; playing: string }> {
   try {
     const status = JSON.parse(await sendCommand('subflow.status'));
-    if (status.version !== 1 || typeof status.pending !== 'string' || typeof status.playing !== 'string') throw new Error();
+    if (![1, 2].includes(status.version) || typeof status.pending !== 'string' || typeof status.playing !== 'string') throw new Error();
     return status;
   } catch { throw new Error('Protected Flow playback is unavailable. Rebuild the broadcast service before queueing a Flow.'); }
 }

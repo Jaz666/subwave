@@ -335,24 +335,27 @@ flow_output_id = ref("")
 flow_clock = ref(0.)
 flow_origin = ref(-1.)
 flow_offsets = ref([0.])
-flow_buffer = ref(5.)
+flow_before = ref(5.)
+flow_after = ref(5.)
+flow_trailing_until = ref(-1.)
 flow_last_event = ref("")
 flow_started_id = ref("")
 
 def flow_fits(clip_sec) =
   if flow_pending_id() != "" then false
+  elsif flow_clock() < flow_trailing_until() then false
   elsif flow_origin() < 0. then true
-  elsif (idle_mode() or not stream_on()) and not list.for_all(fun(offset) -> flow_clock() >= flow_origin() + offset + flow_buffer(), flow_offsets()) then false
+  elsif (idle_mode() or not stream_on()) and not list.for_all(fun(offset) -> flow_clock() >= flow_origin() + offset + flow_after(), flow_offsets()) then false
   else
     list.for_all(fun(offset) ->
-      flow_clock() >= flow_origin() + offset + flow_buffer() + 0.05 or
-      (clip_sec > 0. and flow_clock() + clip_sec + 1.2 < flow_origin() + offset - flow_buffer()),
+      flow_clock() >= flow_origin() + offset + flow_after() + 0.05 or
+      (clip_sec > 0. and flow_clock() + clip_sec + 1.2 < flow_origin() + offset - flow_before()),
       flow_offsets())
   end
 end
 
 server.register("subflow.status", fun(_) -> json.stringify(compact=true, {
-  version=1, pending=flow_pending_id(), playing=flow_output_id()
+  version=2, pending=flow_pending_id(), playing=flow_output_id()
 }))
 server.register("subflow.can_air", fun(arg) -> string(flow_fits(float_of_string(default=0., arg))))
 server.register("subflow.cancel", fun(occurrence) -> begin
@@ -1643,9 +1646,17 @@ flow_output.on_metadata(synchronous=true, fun(m) -> begin
   occurrence = m["subwave_flow"]
   index = int_of_string(default=0, m["subwave_flow_index"])
   if occurrence != "" and index == 0 and flow_started_id() != occurrence then
+    # A long trailing window can outlast the previous Flow's final member.
+    if flow_origin() >= 0. then
+      flow_trailing_until := list.fold(fun(until, offset) ->
+        if flow_clock() >= flow_origin() + offset then max(until, flow_origin() + offset + flow_after()) else until end,
+        flow_trailing_until(), flow_offsets())
+    end
     flow_started_id := occurrence
     flow_origin := flow_clock()
-    flow_buffer := float_of_string(default=5., m["subwave_flow_buffer"])
+    legacy_buffer = float_of_string(default=5., m["subwave_flow_buffer"])
+    flow_before := float_of_string(default=legacy_buffer, m["subwave_flow_before"])
+    flow_after := float_of_string(default=legacy_buffer, m["subwave_flow_after"])
     count = int_of_string(default=2, m["subwave_flow_count"])
     flow_offsets := list.map(fun(i) -> float_of_string(default=1e12, m["subwave_flow_#{i}_offset"]), list.init(count - 1, fun(i) -> i + 1))
     flow_pending_id := ""
@@ -1876,7 +1887,7 @@ end
 
 def flow_channel_fits(channel_empty, clip_sec, padding) =
   flow_fits(if clip_sec > 0. then clip_sec + padding else 0. end) and
-  (flow_origin() < 0. or list.for_all(fun(offset) -> flow_clock() >= flow_origin() + offset + flow_buffer(), flow_offsets()) or
+  (flow_origin() < 0. or list.for_all(fun(offset) -> flow_clock() >= flow_origin() + offset + flow_after(), flow_offsets()) or
    channel_empty)
 end
 

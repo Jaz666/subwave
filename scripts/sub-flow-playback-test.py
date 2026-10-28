@@ -26,6 +26,8 @@ def write_wav(path, samples):
 
 
 def main(directory):
+    before = int(os.environ.get('SUB_FLOW_BEFORE', '5'))
+    after = int(os.environ.get('SUB_FLOW_AFTER', '5'))
     rng = random.Random(41)
     lengths = [12 * RATE + 123, 12 * RATE + 321, 12 * RATE + 155]
     count = int(os.environ.get('SUB_FLOW_MEMBERS', '2'))
@@ -50,7 +52,8 @@ def main(directory):
         (directory / 'liquidsoap_jingle_ratio.txt').write_text('1')
     fields = {'title': 'one', 'artist': 'Test', 'album': 'Test', 'subsonic_id': 'one',
               'subwave_flow': 'test-occurrence', 'subwave_flow_count': str(count), 'subwave_flow_index': '0',
-              'subwave_flow_buffer': '5', 'subwave_flow_entry': str(max(0, lengths[0] / RATE - 5.1)), 'liq_cross_duration': '1'}
+              'subwave_flow_buffer': '5', 'subwave_flow_before': str(before), 'subwave_flow_after': str(after),
+              'subwave_flow_entry': str(max(0, lengths[0] / RATE - before - 0.1)), 'liq_cross_duration': '1'}
     offset = 0
     for i, length in enumerate(lengths):
         for key, value in {'id': ['one', 'two', 'three'][i], 'title': ['one', 'two', 'three'][i],
@@ -131,9 +134,9 @@ thread.run(delay={sum(lengths) / RATE + (24 if os.environ.get('SUB_FLOW_PREEXIST
     seam = 0
     for length in lengths[:-1]:
         seam += length
-        start = max(0, seam - 5*RATE)
-        reference = expected[start:seam + 5*RATE]
-        actual = pcm[alignment + start:alignment + seam + 5*RATE]
+        start = max(0, seam - before*RATE)
+        reference = expected[start:seam + after*RATE]
+        actual = pcm[alignment + start:alignment + seam + after*RATE]
         assert len(actual) == len(reference)
         maximum = max(abs(a-b) for a,b in zip(actual, reference))
         if maximum > 2:
