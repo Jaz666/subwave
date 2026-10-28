@@ -711,7 +711,12 @@ Generation proposes `memoryUpdate` separately from speech, and the controller
 commits each update only when its associated turn reaches air.
 
 The file is `notebook.json` alongside the skill's other files. Tools must not
-write it. See [Show skill notebooks](internals/show-skill-notebook.md) for the
+write it. A quoted contributor must be named in the referenced speech; a
+presenter’s own opinion may use that turn’s full persona name. Matching ignores
+case, punctuation and a leading “Listener” label. Duplicate contributor-and-summary
+pairs in retained history or the new update are rejected; new opinions from the
+same contributor remain allowed. These checks do not detect paraphrased repetition
+or prove that a summary matches the speech. See [Show skill notebooks](internals/show-skill-notebook.md) for the
 output contract, bounds, delivery/recovery behaviour and operator reset API.
 
 ### Special guests from the prompt

@@ -173,7 +173,7 @@ export function createShowPreparation(deps: PreparationDeps) {
   let generatedNeedsPrune = false;
   const newestGenerated = (items: Iterable<GeneratedShowRecord>) => [...items]
     .filter(record => record.occurrence.endsAt + GENERATED_SHOW_HISTORY_MS > now())
-    // Keep aired history, but a never-started plan must still match its saved slot.
+    // Keep aired history, but a never-started plan needs its saved slot and a resolvable cast.
     .filter(record => record.occurrence.source !== 'scheduled' || record.occurrence.startsAt <= now()
       || deps.isScheduledOccurrenceCurrent?.(record.occurrence) !== false)
     .sort((a, b) => b.occurrence.startsAt - a.occurrence.startsAt)
@@ -533,7 +533,8 @@ export const showPreparation = createShowPreparation({
     if (show?.generation?.mode !== 'generated') return false;
     const current = resolveShowOccurrence({ at: occurrence.startsAt, showId: occurrence.showId,
       schedule: station.schedule, override: null, parts: ms => zonedParts(new Date(ms)) });
-    return current?.id === occurrence.id && current.endsAt === occurrence.endsAt;
+    if (current?.id !== occurrence.id || current.endsAt !== occurrence.endsAt) return false;
+    return resolveGeneratedShowCast({ show, occurrence: current, personas: station.personas ?? [] }) !== null;
   },
   generate: generateShowPlan,
   execute: async (snap, context) => {

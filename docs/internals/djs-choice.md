@@ -455,3 +455,24 @@ The previous station source state is `478713de`. Revert this integration commit
 and rebuild controller to roll back. The operator's next action is
 `docker compose up -d --build --no-deps controller`, then
 `curl -fsS http://localhost:7700/api/health`.
+
+### Station source integration — 28 October 2026
+
+Candidate: upstream develop `9394ecde` plus the PR fixes through `91d696b2`.
+Integrated upstream with the existing station branch, including its Sub/Flow
+work. Resolved release metadata to 1.28.0 and preserved both location filtering
+and temporary-cast/notebook/Look Ahead support in segment tools. Applied the
+future-plan cast invalidation and notebook attribution/duplicate checks as scoped
+patches, retaining the station’s extracted WAV-duration helper import.
+
+Rollback source: `654ff6a5`. No runtime settings, skills, notebook files or
+accepted plans were edited, and no services were built or restarted. The operator
+rebuilds controller, web and broadcast for the changed application and mixer
+sources. Rebuild the optional tts-heavy service as well if it is enabled, to pick
+up upstream Chatterbox leveling and PocketTTS changes.
+
+Integration verification: controller and web TypeScript checks pass in the
+isolated candidate worktree; whitespace checks pass. The segment-tools and
+future-plan invalidation implementations match PR candidate `91d696b2` exactly;
+the notebook differs only in the retained station audio-helper import. Sub/Flow
+source files are unchanged. No test suites were added or run for this integration.
