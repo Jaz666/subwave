@@ -149,6 +149,33 @@ class CoverageTests(unittest.TestCase):
     def test_missing_exit_evidence_does_not_fabricate_tail(self):
         self.assertEqual(prepare.requested_regions(self.analysis(drop=80), 68.), [('head', 0., 68.)])
 
+    def test_overrange_stems_are_preserved_as_float_without_scaling(self):
+        import numpy as np
+        audio = np.full((2, prepare.STEM_SR), .2, dtype=np.float32)
+        levels = dict(zip(prepare.STEMS, [1.25, -1.15, .05, .05]))
+        detector = types.SimpleNamespace(separate=lambda y: {
+            name: np.full_like(y, level) for name, level in levels.items()})
+        written, subtypes = {}, {}
+        def write(path, data, sr, **kwargs):
+            subtypes[path.name] = kwargs['subtype']
+            written[path.name] = data.copy() if kwargs['subtype'] == 'FLOAT' else np.clip(data, -1, 1)
+        fake_sf = types.SimpleNamespace(write=write,
+            read=lambda p, **_: (written[p.name], prepare.STEM_SR),
+            info=lambda p: types.SimpleNamespace(frames=len(written[p.name]), channels=2, samplerate=prepare.STEM_SR))
+        with tempfile.TemporaryDirectory() as folder, patch.object(prepare, 'decode', return_value=audio), \
+                patch.dict('sys.modules', {'soundfile': fake_sf}):
+            coverage = prepare.separate_regions('unused', Path(folder), [('head', 0., 1.)], detector)
+        self.assertEqual(subtypes['head-drums.wav'], 'FLOAT')
+        self.assertEqual(subtypes['head-bass.wav'], 'FLOAT')
+        self.assertEqual(subtypes['head-vocals.flac'], 'PCM_24')
+        self.assertEqual(float(written['head-drums.wav'].max()), 1.25)
+        self.assertLess(coverage[0]['reconstruction_error_relative'], 1e-6)
+        detector.separate = lambda y: {name: np.full_like(y, np.nan) for name in prepare.STEMS}
+        with tempfile.TemporaryDirectory() as folder, patch.object(prepare, 'decode', return_value=audio), \
+                patch.dict('sys.modules', {'soundfile': fake_sf}):
+            with self.assertRaisesRegex(ValueError, 'invalid separated stem'):
+                prepare.separate_regions('unused', Path(folder), [('head', 0., 1.)], detector)
+
     def test_stem_slices_retain_exact_source_clock_and_validate_reconstruction(self):
         import numpy as np
         audio = np.ones((2, 8 * prepare.STEM_SR), dtype=np.float32) * .2
@@ -156,7 +183,7 @@ class CoverageTests(unittest.TestCase):
         written = {}
         def write(path, data, sr, **_kw):
             written[path.name] = data.copy()
-        fake_sf = types.SimpleNamespace(write=write, info=lambda p: types.SimpleNamespace(
+        fake_sf = types.SimpleNamespace(write=write, read=lambda p, **_: (written[p.name], prepare.STEM_SR), info=lambda p: types.SimpleNamespace(
             frames=len(written[p.name]), channels=2, samplerate=prepare.STEM_SR))
         with tempfile.TemporaryDirectory() as folder, patch.object(prepare, 'decode', return_value=audio), \
                 patch.dict('sys.modules', {'soundfile': fake_sf}):

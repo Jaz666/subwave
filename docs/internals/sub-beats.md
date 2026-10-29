@@ -116,7 +116,7 @@ The initial requested stem coverage is source zero through 68 seconds, plus an
 exit region ending at the latest supported grid before any detected sustained
 percussion loss. The exit includes a 16-bar overlap plus eight seconds of lead
 and two seconds of tail. Separation includes four seconds of source context on
-each available side; the saved FLACs contain only the requested interval.
+each available side; the saved stems contain only the requested interval.
 `--head-seconds` accepts 40–600 seconds for longer openings. This is an explicit
 coverage request, not proof that it suffices for every pair: the later pair
 planner must derive its required coverage from the entire timing map and request
@@ -125,7 +125,7 @@ more when needed. No fixed 68-second ceiling should reach playback integration.
 Bundles are keyed by source SHA-256, algorithm/Librosa version, requested coverage
 and separator model/settings/package versions. A manifest records absolute source
 sample ranges, reconstruction error, file lengths and SHA-256 hashes. Stem shape,
-finite samples, PCM clipping, written coverage and reconstruction are checked
+finite samples, clipping-free storage, written coverage and reconstruction are checked
 before publication. A source change during preparation fails the job. Cache
 reuse verifies the manifest and every saved file; damaged bundles are declined
 with their path for inspection, never silently trusted or overwritten.
@@ -282,3 +282,17 @@ reproduced the sender error with the previous rules. Replacing the broad
 `!**/.env.example` exception with explicit root/controller/web example-file
 paths passed the same context-only build. This test rebuilt no station
 services and read no real cache files. Cache permissions remain unchanged.
+
+## Over-range separated stems
+
+Ayla preparation exposed a validator rejecting finite separated stems at or
+above full scale. Those values can cancel when the stems reconstruct the
+source. Preserve over-range stems as 32-bit floating-point WAV, keeping
+24-bit FLAC for stems below full scale. Do not clip or independently scale
+stems. Validate the saved/reloaded sum against the source, retaining the
+existing 10% reconstruction tolerance and finite/shape/coverage guards. The
+storage policy is part of the separator cache identity, so existing bundles
+are retained but new requests use a distinct key. Consumers must use each
+bundle's listed filenames rather than assume every stem ends in `.flac`.
+
+Verification: all 22 Sub/Beats Python checks and the registered analyzer Python suites pass, including over-range cancellation, unscaled float storage and invalid-sample rejection.
