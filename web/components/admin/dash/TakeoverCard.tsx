@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Controller } from 'react-hook-form';
 import type { z } from 'zod';
 import Link from 'next/link';
-import { ShowGenerationNotice } from '../shows/ShowGenerationNotice';
+import { ShowGenerationDialog, ShowGenerationNotice } from '../shows/ShowGenerationNotice';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { useAdminMutation, useAdminQuery } from '../../../lib/admin-query';
 import { notify, errorMessage } from '../../../lib/notify';
@@ -186,6 +186,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
   const activateMutation = useActivateTakeoverMutation(adminFetch);
   const prepare = prepareMutation.mutateAsync;
   const [retryVersion, setRetryVersion] = useState(0);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [preparation, setPreparation] = useState<{
     key: string; status: 'generating' | 'ready' | 'failed'; preview?: TakeoverPreview; error?: string;
   } | null>(null);
@@ -205,7 +206,13 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
     const timer = window.setTimeout(() => {
       void prepare({ request: JSON.parse(previewKey) as TakeoverPreviewRequest, signal: controller.signal })
         .then(preview => { if (!cancelled) setPreparation({ key: previewKey, status: 'ready', preview }); })
-        .catch(error => { if (!cancelled) setPreparation({ key: previewKey, status: 'failed', error: errorMessage(error) }); });
+        .catch(error => {
+          if (!cancelled) {
+            const message = errorMessage(error);
+            setPreparation({ key: previewKey, status: 'failed', error: message });
+            setGenerationError(message);
+          }
+        });
     }, 500);
     return () => { cancelled = true; window.clearTimeout(timer); controller.abort(); };
   }, [previewKey, retryVersion, prepare]);
@@ -233,7 +240,11 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
       }
     } catch (e) {
       if (e instanceof TakeoverError) applyServerFieldErrors(form, e.fieldErrors);
-      if (chosenTemplate && previewKey) setPreparation({ key: previewKey, status: 'failed', error: errorMessage(e) });
+      if (chosenTemplate && previewKey) {
+        const message = errorMessage(e);
+        setPreparation({ key: previewKey, status: 'failed', error: message });
+        setGenerationError(message);
+      }
       else notify.err(errorMessage(e));
     }
   });
@@ -276,6 +287,7 @@ export function TakeoverCard({ tz, locale }: { tz?: string; locale?: StationLoca
         </span>
       }
     >
+      <ShowGenerationDialog message={generationError} onDismiss={() => setGenerationError(null)} />
       {live && (pinned || defaultTakeover) ? (
         <div className="grid gap-2.5">
           <div className="grid gap-1 border border-[color-mix(in_oklab,var(--accent)_35%,transparent)] bg-[var(--accent-soft)] px-2.5 py-2">

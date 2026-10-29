@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShowGenerationNotice } from './shows/ShowGenerationNotice';
+import { ShowGenerationDialog, ShowGenerationNotice } from './shows/ShowGenerationNotice';
 import { ChevronDown, RefreshCw, Save, Shuffle, ExternalLink } from 'lucide-react';
 import type { AdminFetch } from '@/lib/admin-query';
 import { fieldAria } from '@/lib/form';
@@ -368,6 +368,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
   settings: SettingsResponse;
 }) {
   const regenerate = useRegenerateGeneratedEpisodeMutation(adminFetch);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const draftMutation = useGeneratedShowDraftMutation(adminFetch);
   const shuffle = useShuffleGeneratedEpisodeMutation(adminFetch);
   const [saveDraft, setSaveDraft] = useState<GeneratedShowDraft | null>(null);
@@ -379,7 +380,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
   };
   const previewShuffle = async () => {
     try { setCastPreview(await shuffle.mutateAsync(episode.occurrence.id)); }
-    catch { /* Mutation displays the error. */ }
+    catch (error) { setGenerationError(errorMessage(error)); }
   };
   const confirmShuffle = async () => {
     if (!castPreview) return;
@@ -387,7 +388,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
       await regenerate.mutateAsync({ occurrenceId: episode.occurrence.id, castSeed: castPreview.castSeed,
         cast: { hostPersonaId: castPreview.hostPersonaId, guestPersonaIds: castPreview.guestPersonaIds } });
       notify.ok('Cast shuffled and episode regenerated.');
-    } catch { /* The accepted plan is retained on failure. */ }
+    } catch (error) { setGenerationError(errorMessage(error)); }
     finally { setCastPreview(null); }
   };
   const [briefExpanded, setBriefExpanded] = useState(false);
@@ -395,7 +396,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
     try {
       await regenerate.mutateAsync(episode.occurrence.id);
       notify.ok('Episode plan regenerated.');
-    } catch { /* The mutation reports the failure; the accepted plan stays visible. */ }
+    } catch (error) { setGenerationError(errorMessage(error)); }
   };
   const spineRef = useRef<HTMLSpanElement>(null);
   useDynamicStyle(spineRef, { background: generatedShowColor(episode.template) });
@@ -510,7 +511,12 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
               )}
             </div>
           </div>
-          {episode.status === 'failed' && episode.reason && <ShowGenerationNotice message={episode.reason} />}
+          {episode.status === 'failed' && episode.reason && <div className="grid justify-items-start gap-2">
+            <ShowGenerationNotice message={episode.reason} />
+            <Button type="button" variant="outline" size="sm" onClick={() => setGenerationError(episode.reason!)}>
+              View guidance
+            </Button>
+          </div>}
           {plan ? (
             <>
               <div className="flex flex-wrap gap-1">
@@ -548,6 +554,7 @@ function GeneratedEpisodeRow({ episode, personas, timezone, apiBase, adminFetch,
         </div>
       </div>
     </article>
+    <ShowGenerationDialog message={generationError} onDismiss={() => setGenerationError(null)} />
     <V3AlertDialog open={!!castPreview} onOpenChange={open => { if (!open) setCastPreview(null); }}
       title="Shuffle host and guests"
       description={castPreview ? <>

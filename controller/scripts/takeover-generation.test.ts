@@ -15,7 +15,9 @@ const library = await import('../src/music/library.js');
 const db = await import('../src/music/library-db.js');
 const { showSchema, SHOW_GENERATION_TEMPLATES } = await import('../src/schemas/show.js');
 const { generateShowPlan } = await import('../src/broadcast/show-generation.js');
-const { showPreparation } = await import('../src/broadcast/show-preparation.js');
+const { DJ_SOULS } = await import('../src/settings/vocab.js');
+const { discoveryPalette } = await import('../src/broadcast/show-discovery-policy.js');
+const { showPreparation, generateAcceptedShowPlan } = await import('../src/broadcast/show-preparation.js');
 const { prepareTakeoverPreview, activateTakeoverPreview, takeoverPreviewRequestSchema } = await import('../src/broadcast/takeover-generation.js');
 await settings.load();
 await library.load();
@@ -58,6 +60,7 @@ beforeEach(async () => {
     const body = JSON.parse(String(init?.body));
     const concept = body.messages.some((message: { content?: string }) => message.content?.includes('mandatory musical-readiness gate'));
     const repair = body.messages.some((message: { content?: string }) => message.content?.includes('Repair only the dated wording'));
+    if (concept) assert.match(JSON.stringify(body.messages), /\[\d+ tracks; \d+ artists\]/, 'every concept gets indexed artist breadth');
     if (repair) {
       repairCalls++;
       assert.deepEqual(Object.keys(body.tools[0].function.parameters.properties).sort(), ['name', 'talkingPoint', 'topic']);
@@ -73,7 +76,7 @@ beforeEach(async () => {
     const output = concept ? {
       assessment: { problem: refuse ? 'library-fit' : 'none', reason: refuse ? 'No coherent musical fit.' : '',
         evidence: (planningTemplate === 'common-ground' ? [persona, guest] : [persona])
-          .map(p => ({ personaId: p.id, source: 'soul', quote: p.soul })) },
+          .map(p => ({ personaId: p.id, source: 'soul', quote: settings.get().personas.find(current => current.id === p.id)?.soul ?? p.soul })) },
       proposal: refuse ? null : { name: plan.name, topic: planningTemplate === 'dj-choice' ? plan.topic
         : 'Alex Vale explores a coherent palette through spare arrangements and memorable melodies. The episode connects familiar musical interests to a focused listening idea, with room for differing perspectives on texture and rhythm.', intendedGenres: plan.genres, eras: conceptEras, talkingPoint: plan.talkingPoint,
         ...(planningTemplate === 'deep-discovery' ? { discoveryFocus: 'A smaller folk neighbourhood connected by spare arrangements.' } : {}),
@@ -95,7 +98,7 @@ beforeEach(async () => {
   await settings.update({ personas: [persona], shows: [], scheduleOverride: null, timezone: 'UTC',
     schedule: Object.fromEntries(Array.from({ length: 7 }, (_, day) => [day, Array(24).fill(null)])),
     subShows: { eligibleHostPersonaIds: [persona.id], eligibleGuestPersonaIds: [] },
-    llm: { provider: 'openai-compatible', model: 'fixture-model', baseUrl: 'http://127.0.0.1:9/v1',
+    llm: { artistVarietyWindow: 25, provider: 'openai-compatible', model: 'fixture-model', baseUrl: 'http://127.0.0.1:9/v1',
       compatibleMode: 'local', fallback: { enabled: false } },
   });
   for (const record of await showPreparation.generatedRecords()) await showPreparation.discardPreparedGenerated(record.occurrence.id);
@@ -115,22 +118,31 @@ function regular(id: string) {
     .parse({ name: 'Regular fixture', personaId: persona.id, genres: ['Folk'] }), id };
 }
 
-test('the six-field compiler preserves the controller contract for every template', async () => {
+test('all templates validate zero and one guest with full strict-pool acceptance', async () => {
   await settings.update({ personas: [persona, guest] });
   for (let index = 0; index < 200; index++) {
     db.upsertTrackMeta(`other-${index}`, { title: `Other ${index}`, artist: `Other artist ${index}`, genres: ['Other'], year: 1982, duration: 240 });
     db.upsertTrackTags(`other-${index}`, { moods: ['reflective'], energy: 'low', source: 'llm' });
   }
+  for (let index = 0; index < 40; index++) db.upsertTrackMeta(`fixture-${index}`, { year: 1982 });
   library.stats({ fresh: true });
   const customName = "Operator's Fixed Title";
-  for (const template of SHOW_GENERATION_TEMPLATES) {
+  for (const template of SHOW_GENERATION_TEMPLATES) for (const guestCount of [0, 1]) {
     planningTemplate = template;
     compilerPatch = { name: customName };
     const before = modelCalls;
-    const generated = await generateShowPlan({ template, planningPrompt: '', nameMode: 'custom', customName,
-      show: { id: 'fixture' }, cast: { hostPersonaId: persona.id, guestPersonaIds: template === 'common-ground' ? [guest.id] : [] },
-      occurrence: { id: `compiler-${template}`, startsAt: epoch, endsAt: epoch + 3600_000 },
-    });
+    const input = { template, planningPrompt: '', nameMode: 'custom' as const, customName,
+      configuration: 'guest-matrix', minimumCoverage: null, artistSpacing: 25,
+      show: { id: 'fixture' }, cast: { hostPersonaId: persona.id, guestPersonaIds: guestCount ? [guest.id] : [] },
+      occurrence: { id: `compiler-${template}-${guestCount}`, showId: 'fixture', source: 'scheduled' as const,
+        startsAt: epoch, endsAt: epoch + 3600_000 },
+    };
+    if ((template === 'common-ground' && guestCount === 0) || (template === 'outside-comfort-zone' && guestCount === 1)) {
+      await assert.rejects(generateAcceptedShowPlan(input), /requires a host and exactly one distinct guest|requires a solo host/);
+      assert.equal(modelCalls, before, 'unsupported casts fail before model calls');
+      continue;
+    }
+    const generated = await generateAcceptedShowPlan(input);
     assert.equal(modelCalls - before, 2);
     assert.equal(generated.name, customName);
     assert.equal(generated.filtersStrict, true);
@@ -138,6 +150,121 @@ test('the six-field compiler preserves the controller contract for every templat
     assert.deepEqual(generated.eras, template === 'time-capsule' ? [{ fromYear: 1980, toYear: 1984 }] : []);
     assert.match(generated.topic, /Talking point \(optional thread\):/);
   }
+});
+
+test('untouched default Souls need persistent actionable guidance before any model call', async () => {
+  for (const soul of DJ_SOULS) {
+    await settings.update({ personas: [{ ...persona, soul, musicLean: '' }] });
+    await assert.rejects(prepareTakeoverPreview(request()), error => {
+      assert.match(String(error), /More musical detail needed/);
+      assert.match(String(error), /Soul or optional Musical Leanings/);
+      assert.match(String(error), /https:\/\/github.com\/perminder-klair\/subwave\/discussions\/1817/);
+      return true;
+    });
+  }
+  assert.equal(modelCalls, 0);
+  assert.deepEqual(settings.get().shows, []);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('presentation-only Soul cannot pass readiness using a real but non-musical quotation', async () => {
+  await settings.update({ personas: [{ ...persona, soul: 'A relaxed presenter with dry humour.', musicLean: '' }] });
+  await assert.rejects(prepareTakeoverPreview(request()), /More musical detail needed/);
+  assert.equal(modelCalls, 1);
+  assert.equal(settings.get().scheduleOverride, null);
+});
+
+test('Common Ground checks musical evidence for the guest as well as the host', async () => {
+  planningTemplate = 'common-ground';
+  await settings.update({ personas: [persona, { ...guest, soul: 'A welcoming presenter with dry humour.', musicLean: '' }] });
+  await assert.rejects(generateShowPlan({ template: 'common-ground', planningPrompt: '', show: { id: 'fixture' },
+    cast: { hostPersonaId: persona.id, guestPersonaIds: [guest.id] },
+    occurrence: { id: 'sparse-guest', startsAt: epoch, endsAt: epoch + 3600_000 },
+  }), /More musical detail needed: Riley Stone/);
+  assert.equal(modelCalls, 1);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('musical Leanings alone support a first show without regular shows', async () => {
+  await settings.update({ personas: [{ ...persona, soul: 'A relaxed presenter with dry humour.', musicLean: 'Loves Folk.' }] });
+  const preview = await prepareTakeoverPreview(request());
+  assert.deepEqual(preview.plan.genres, ['Folk']);
+  assert.equal(modelCalls, 2);
+  assert.deepEqual(settings.get().shows, []);
+});
+
+test('a uniform library cannot pretend to contain underrepresented genres', async () => {
+  await assert.rejects(prepareTakeoverPreview({ ...request(), template: 'deep-discovery' }), /no smaller genre pools/);
+  assert.equal(modelCalls, 0);
+});
+
+test('artist coverage follows zero, default and maximum spacing without relaxing filters', async () => {
+  for (let index = 0; index < 40; index++) db.upsertTrackMeta(`fixture-${index}`, { artist: `Artist ${index % 6}` });
+  library.stats({ fresh: true });
+  for (const spacing of [0, 5, 25]) {
+    await settings.update({ llm: { artistVarietyWindow: spacing } });
+    const before = modelCalls;
+    if (spacing === 25) {
+      await assert.rejects(prepareTakeoverPreview(request()), /needs at least 26 distinct artists.*only 6/);
+      assert.equal(modelCalls - before, 4);
+    } else {
+      const preview = await prepareTakeoverPreview(request());
+      assert.deepEqual(preview.plan.genres, ['Folk']);
+      assert.equal(preview.plan.filtersStrict, true);
+      assert.equal(modelCalls - before, 2);
+    }
+  }
+  assert.equal(settings.get().scheduleOverride, null);
+});
+
+test('a small diverse library fits a shorter slot but cannot fill twice an hour airtime', async () => {
+  await settings.update({ llm: { artistVarietyWindow: 5 } });
+  db.pruneMissingTracks(new Set(Array.from({ length: 20 }, (_, index) => `fixture-${index}`)));
+  library.stats({ fresh: true });
+  const preview = await prepareTakeoverPreview({ ...request(), minutes: 30 });
+  assert.equal(preview.plan.filtersStrict, true);
+  await assert.rejects(prepareTakeoverPreview(request()), /needs at least 30 eligible tracks.*only 20/);
+  assert.equal(settings.get().scheduleOverride, null);
+});
+
+test('artist-aware core ranking retains viable rare styles without changing rarity classification', () => {
+  const counts = { ...Object.fromEntries(Array.from({ length: 61 }, (_, i) => [`Narrow style ${i}`, 30])), 'Wide style': 30, Mainstream: 10000 };
+  const original = discoveryPalette(counts, 15);
+  const ranked = discoveryPalette(counts, 15, [], () => 0, { counts: { 'Wide style': 30 }, minimum: 26 });
+  assert.equal(original.choices.some(genre => genre.name === 'Wide style'), false);
+  assert.equal(ranked.choices[0].name, 'Wide style');
+  assert.equal(ranked.choices.some(genre => genre.name === 'Narrow style 0'), false);
+  assert.deepEqual(ranked.core, original.core);
+  assert.equal(ranked.ceiling, original.ceiling);
+  assert.deepEqual(discoveryPalette(counts, 15, [], () => 0, { counts: {}, minimum: 26 }).choices, original.choices);
+});
+
+test('thirty-plus tracks from three artists fail the spacing-25 check after one correction', async () => {
+  for (let index = 0; index < 40; index++) db.upsertTrackMeta(`fixture-${index}`, { artist: `Small pool artist ${index % 3}` });
+  library.stats({ fresh: true });
+  await assert.rejects(prepareTakeoverPreview(request()), /needs at least 26 distinct artists.*only 3/);
+  assert.equal(modelCalls, 4);
+  assert.equal(settings.get().scheduleOverride, null);
+  assert.deepEqual(await showPreparation.generatedRecords(), []);
+});
+
+test('a single-destination template cannot offer genres already too small for artist spacing', async () => {
+  for (let index = 0; index < 40; index++) db.upsertTrackMeta(`fixture-${index}`, { artist: `Small pool artist ${index % 3}` });
+  library.stats({ fresh: true });
+  await assert.rejects(prepareTakeoverPreview({ ...request(), template: 'outside-comfort-zone' }), /no available genre palette/);
+  assert.equal(modelCalls, 0);
+  assert.equal(settings.get().scheduleOverride, null);
+});
+
+test('Time Capsule repairs partial-decade prose without changing the accepted year range', async () => {
+  planningTemplate = 'time-capsule';
+  for (let index = 0; index < 40; index++) db.upsertTrackMeta(`fixture-${index}`, { year: 1982 });
+  library.stats({ fresh: true });
+  compilerPatch = { topic: 'Folk from the mid-1980s.' };
+  const preview = await prepareTakeoverPreview({ ...request(), template: 'time-capsule' });
+  assert.equal(repairCalls, 1);
+  assert.deepEqual(preview.plan.eras, [{ fromYear: 1980, toYear: 1984 }]);
+  assert.doesNotMatch(preview.plan.topic, /mid-1980s/);
 });
 
 test('compiler attempts to add, remove or broaden fixed filters are ignored', async () => {
