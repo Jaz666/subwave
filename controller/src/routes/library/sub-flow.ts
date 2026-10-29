@@ -38,6 +38,22 @@ router.get('/library/sub-flow', requireAdmin, (_req, res) => {
   catch { res.status(500).json({ error: 'Saved Flows could not be read' }); }
 });
 
+router.get('/library/sub-flow/:id/album', requireAdmin, async (req, res) => {
+  const flow = flows.list().find(flow => flow.id === req.params.id);
+  if (!flow) return res.status(404).json({ error: 'Flow not found' });
+  try {
+    const song = await subsonic.getSong(flow.tracks[0]!.id);
+    if (!song?.albumId) throw new Error('The saved track’s album is unavailable');
+    const result = await subsonic.getAlbumWithSongs(song.albumId, { requireComplete: true });
+    if (!result) throw new Error('The saved track’s album is unavailable');
+    const album = result.album;
+    res.json({ album: { id: album.id, name: album.name, artist: album.artist ?? null,
+      year: album.year ?? null, coverArt: album.coverArt ?? null } });
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Album could not be loaded' });
+  }
+});
+
 router.post('/library/sub-flow', requireAdmin, async (req, res) => {
   try { res.status(201).json({ flow: await flows.save(null, req.body) }); }
   catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Flow could not be saved' }); }
