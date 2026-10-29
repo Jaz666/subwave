@@ -132,14 +132,20 @@ def separate_regions(path, stage, regions, detector):
         reconstructed = np.zeros((2, stop - first), dtype=np.float32)
         for stem in STEMS:
             part = stems[stem][:, first - left:stop - left]
-            if part.shape != reconstructed.shape or not np.isfinite(part).all() or np.max(np.abs(part)) >= 1:
-                raise ValueError('invalid or clipping separated stem')
-            target = stage / f'{name}-{stem}.flac'
-            sf.write(target, part.T, STEM_SR, subtype='PCM_24')
+            if part.shape != reconstructed.shape or not np.isfinite(part).all():
+                raise ValueError('invalid separated stem')
+            # Separation can exceed full scale while stems cancel in the sum.
+            # Float WAV preserves those samples without clipping or rescaling.
+            floating = np.max(np.abs(part)) >= 1
+            target = stage / f'{name}-{stem}.{"wav" if floating else "flac"}'
+            sf.write(target, part.T, STEM_SR, subtype='FLOAT' if floating else 'PCM_24')
             info = sf.info(target)
             if (info.frames, info.channels, info.samplerate) != (stop - first, 2, STEM_SR):
                 raise ValueError('written stem coverage mismatch')
-            reconstructed += part
+            saved, sr = sf.read(target, dtype='float32', always_2d=True)
+            if sr != STEM_SR or saved.T.shape != part.shape or not np.isfinite(saved).all():
+                raise ValueError('invalid written stem')
+            reconstructed += saved.T
         source = audio[:, first:stop]
         error = float(np.sqrt(np.mean((reconstructed - source)**2)) / max(1e-12, np.sqrt(np.mean(source**2))))
         if not math.isfinite(error) or error > .1:
@@ -164,7 +170,7 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
         import analyze_worker as worker
         identity['separator'] = {'model': worker.DEMUCS_MODEL, 'overlap': worker.DEMUCS_OVERLAP,
                                  'shifts': 1, 'context_seconds': 4, 'sample_rate': STEM_SR,
-                                 'subtype': 'PCM_24', 'demucs': importlib.metadata.version('demucs'),
+                                 'subtype': 'PCM_24-or-FLOAT-v1', 'demucs': importlib.metadata.version('demucs'),
                                  'torch': importlib.metadata.version('torch')}
 
     def build(stage):
