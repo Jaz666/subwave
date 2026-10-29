@@ -30,3 +30,11 @@ test('supported analyzers receive complete source and shared-cache proof', async
   assert.equal(result.status, 'prepared');
   assert.deepEqual(payload, { path: '/audio', state_dir: '/state', cache_id: 'shared-cache-id-1', complete: true });
 });
+
+test('Sub/Beats preserves the analyzer failure detail for the preparation list', async () => {
+  globalThis.fetch = (async url => String(url).endsWith('/health')
+    ? Response.json({ ok: true, engines: ['analyze'], analyze_subbeats_capable: true })
+    : Response.json({ detail: 'CUDA out of memory' }, { status: 422 })) as typeof fetch;
+  await assert.rejects(analyzer.prepareSubbeats('/audio', '/state', 'shared-cache-id-1'),
+    /analyze sidecar 422: CUDA out of memory/);
+});

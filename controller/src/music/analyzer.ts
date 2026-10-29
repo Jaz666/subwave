@@ -1217,7 +1217,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
     const response = await fetchWithTimeout(`${_sidecarBase}/prepare-subbeats`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeoutMs,
     });
-    if (!response.ok) throw new Error('The analyzer could not prepare this recording; check the analysis log');
+    if (!response.ok) await sidecarFailure(response);
     answer = await response.json() as WorkerMessage;
   } else {
     answer = await localRequestRaw({ op: 'prepare_subbeats', ...payload }, timeoutMs);

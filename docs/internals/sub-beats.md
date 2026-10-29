@@ -257,3 +257,15 @@ experiment directory, outside Git. No full production build, deployment, station
 restart or real playback test was performed. Normal transitions and general stem
 cache retention are unchanged. Pair planning/rendering and playback integration
 remain the next development stage.
+
+## Preparation error reporting
+
+Station attempts returned HTTP 422 after Demucs selected CUDA on the RTX
+3060. The HTTP status alone does not identify the underlying failure.
+Sub/Beats now uses the existing sidecar error reader, preserving the worker's
+error detail in the managed log and failed queue row. Previously this path
+discarded that detail and misleadingly directed the operator to an analysis
+log that did not contain it. Retry one failed track after updating the
+controller to establish the cause; no GPU-memory or audio-validation changes
+are justified without that evidence. Future image rebuilds are run by the
+owner, using supplied commands.
