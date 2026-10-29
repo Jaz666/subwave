@@ -380,3 +380,14 @@ This documentation change runs no analysis and changes no live settings.
 
 Danceability remains a later, separately evaluated descriptor. The initial goal
 is the narrower, observable benefit of better rhythmic continuity.
+
+
+## Sub/Beats development follow-up — 29 October 2026
+
+Subsequent owner-approved listening experiments extended the original Driving Beat
+proposal to prepared beat matching, long stem transitions and vocal separation.
+The current scope, separate state-folder cache and deferred general stem-cache
+improvements are maintained in [Sub/Beats development](sub-beats.md). This follow-up
+supersedes the earlier exclusion of beat matching for Sub/Beats; protected Sub/Flow
+internal joins retain their original meaning. Initial implementation is an explicit
+local preparation job, with worker/page/playback integration still to follow.
