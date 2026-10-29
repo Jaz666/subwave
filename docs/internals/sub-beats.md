@@ -257,3 +257,28 @@ experiment directory, outside Git. No full production build, deployment, station
 restart or real playback test was performed. Normal transitions and general stem
 cache retention are unchanged. Pair planning/rendering and playback integration
 remain the next development stage.
+
+## Test station deployment — 2026-10-29
+
+The preparation UI/queue candidate from `feat/sub-beats` (`6969aab8`,
+`b5146aa1`, `0d1b47d4`) is integrated onto the station's existing
+`test-station/sleeve-notes-clean-20261014` branch. The station's Sub/Flow
+routes, Library card and schemas are retained; its retired original plan
+document is not restored. Both remotes were fetched before integration.
+
+The route is `/admin/library/subbeats` (Library → Sub/Beats), behind the
+existing admin login. No tracks are automatically admitted by deployment.
+Preparation remains separate from playback. The state/cache location is
+`/home/jaz666/Docker/subwave/state/subbeats/`.
+
+Rollback source is `rollback/pre-subbeats-20261029` (`8f55bffa`). Original
+controller, web and CUDA analyzer images are retained locally as
+`subwave-local/{controller,web,analyzer}:pre-subbeats-20261029`. The running
+Compose configuration uses `docker-compose.yml`,
+`docker-compose.analyzer-gpu.yml` and `docker-compose.discord.yml`. Recreate
+only controller, web and analyzer for this deployment; broadcast stays live.
+The two new cache directories receive the same writable permissions as the
+updated bootstrap script, without requiring a broadcast restart.
+
+Pre-integration verification is recorded above. Deployment checks and final
+service status are appended after the candidate is built and started.
