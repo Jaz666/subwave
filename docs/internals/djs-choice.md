@@ -492,3 +492,27 @@ broad checks were rerun in the station checkout. The patch applied cleanly and
 whitespace checks pass. No runtime state was edited and no services were built
 or restarted. Rebuild controller to apply it. Roll back by reverting this
 integration commit and rebuilding controller; previous source is `45367b3f`.
+
+### Station generation and guidance integration — 29 October 2026
+
+Applied candidate `09d4c1fc` after station source `a2c31e7a`. Genre choices now
+include indexed artist breadth; Deep Discovery prioritises rare cores that can
+meet Artist Spacing, while Outside the Comfort Zone excludes single destinations
+already known to lack the required artists. Exact filtered coverage remains the
+acceptance gate. Time Capsule partial-decade prose uses numeric year bounds.
+Generation, shuffle and takeover failures now open a persistent, dismissible
+Subwave dialog, including the Musical Leanings guide where applicable. Failed
+episode cards can reopen guidance. The station's focus restoration and touch
+target improvements in the shared alert dialog were preserved during integration.
+
+Candidate verification: 33 focused takeover/generation tests pass, including
+sparse/default DJ setups and small/narrow libraries; the earlier show suite
+passed 254 tests. Controller and web TypeScript, scoped lint, two guidance tests
+and three alert-dialog tests pass. Isolated live previews were recorded before
+integration; no station model calls or test suites were run for deployment.
+
+No runtime state was edited and no services were rebuilt or restarted. Rebuild
+controller and web with `docker compose up -d --build --no-deps controller web`,
+then check `curl -fsS http://localhost:7700/api/health`. Previous source is
+`a2c31e7a`; revert this integration commit and rebuild those services to roll back.
+The candidate remains local: no PR branch was pushed as part of this deployment.

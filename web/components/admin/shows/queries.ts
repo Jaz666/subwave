@@ -96,6 +96,7 @@ export function useGeneratedEpisodeHistoryQuery(adminFetch: AdminFetch, enabled:
 export function useRegenerateGeneratedEpisodeMutation(adminFetch: AdminFetch) {
   return useAdminMutation<{ ok: boolean }, string | { occurrenceId: string; castSeed: string; cast: { hostPersonaId: string; guestPersonaIds: string[] } }>({
     adminFetch,
+    toastOnError: false,
     request: (input, fetcher) => adminJson<{ ok: boolean }>(fetcher, '/shows/generated/regenerate', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -123,6 +124,7 @@ export function useGeneratedShowDraftMutation(adminFetch: AdminFetch) {
 export function useShuffleGeneratedEpisodeMutation(adminFetch: AdminFetch) {
   return useAdminMutation<ShuffledEpisodeCast, string>({
     adminFetch,
+    toastOnError: false,
     request: (occurrenceId, fetcher) => adminJson(fetcher, '/shows/generated/shuffle', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ occurrenceId }),
     }),

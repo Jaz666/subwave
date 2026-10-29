@@ -2,7 +2,7 @@ import { genreRuns } from '../music/genre-fold.js';
 
 // Relative catalogue rarity, measured with the same hierarchical genre counts
 // as selection. No fixed library size or station-specific genre list.
-export function discoveryPalette(counts: Record<string, number>, repertoireEstimate = 1, anchorGenres: readonly string[] = [], random?: () => number) {
+export function discoveryPalette(counts: Record<string, number>, repertoireEstimate = 1, anchorGenres: readonly string[] = [], random?: () => number, artistCoverage?: { counts: Record<string, number>; minimum: number }) {
   const all = Object.entries(counts).filter(([name, tracks]) => name.trim() && tracks > 0)
     .map(([name, tracks]) => ({ name, tracks })).sort((a, b) => a.tracks - b.tracks || a.name.localeCompare(b.name));
   // The long tail includes many singleton tags. Its upper quartile retains
@@ -19,10 +19,15 @@ export function discoveryPalette(counts: Record<string, number>, repertoireEstim
   // Draw once per candidate, never in the comparator. Generation varies both
   // the bounded sample and its presentation; diagnostic callers stay stable.
   const order = new Map(all.map(genre => [genre.name, random?.() ?? 0]));
-  const rank = (a: typeof all[number], b: typeof all[number]) => affinity.get(b.name)! - affinity.get(a.name)!
+  const artistFit = (name: string) => Number(!!artistCoverage && (artistCoverage.counts[name] ?? 0) >= artistCoverage.minimum);
+  const rank = (a: typeof all[number], b: typeof all[number]) => artistFit(b.name) - artistFit(a.name) || affinity.get(b.name)! - affinity.get(a.name)!
     || order.get(a.name)! - order.get(b.name)!
     || (viable.length ? a.tracks - b.tracks : b.tracks - a.tracks) || a.name.localeCompare(b.name);
-  const coreChoices = [...(viable.length ? viable : core)].sort(rank).slice(0, 60);
+  const candidates = viable.length ? viable : core;
+  const artistViable = candidates.filter(genre => artistFit(genre.name));
+  // Prefer cores that can carry the spacing requirement themselves when
+  // available. Keep combination-based discovery possible in narrower libraries.
+  const coreChoices = [...(artistViable.length ? artistViable : candidates)].sort(rank).slice(0, 60);
   // Bound neighbours by size BEFORE applying affinity: familiar large genres
   // must not re-enter the prompt simply because they match the host's tastes.
   const neighbours = all.filter(genre => genre.tracks > ceiling).slice(0, 20).sort(rank);

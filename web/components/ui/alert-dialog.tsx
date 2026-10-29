@@ -23,7 +23,8 @@ export interface V3AlertDialogProps {
    *  `description`, which renders as a paragraph. */
   details?: ReactNode;
   confirmLabel?: string;
-  cancelLabel?: string;
+  /** Set null for a notice with a single dismissal action. */
+  cancelLabel?: string | null;
   danger?: boolean;
   onConfirm?: () => void;
   /** Optional second action between cancel and confirm, for a choice that is
@@ -81,9 +82,9 @@ export function V3AlertDialog({
             {details}
           </div>
           <div className="flex justify-end gap-2 border-t border-ink px-5 py-3 max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 [@media(pointer:coarse)]:[&_button]:min-h-11 [@media(pointer:coarse)]:[&_button]:min-w-11">
-            <AlertDialog.Cancel className="v3-eyebrow v3-focus cursor-pointer border border-ink bg-transparent px-3.5 py-1.5 text-[10px] text-ink">
+            {cancelLabel !== null && <AlertDialog.Cancel className="v3-eyebrow v3-focus cursor-pointer border border-ink bg-transparent px-3.5 py-1.5 text-[10px] text-ink">
               {cancelLabel}
-            </AlertDialog.Cancel>
+            </AlertDialog.Cancel>}
             {altLabel && (
               <AlertDialog.Action
                 onClick={latch.once(onAlt)}

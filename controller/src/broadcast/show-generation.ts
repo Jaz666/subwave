@@ -4,6 +4,7 @@ import * as settings from '../settings.js';
 import * as library from '../music/library.js';
 import { resolveEraYear } from '../music/era-year.js';
 import { genreRuns, normGenre, tagCoversGenre } from '../music/genre-fold.js';
+import { artistRootKey } from '../music/recency.js';
 import { zonedParts } from '../time.js';
 import type { ShowGenerationConfig } from '../schemas/show.js';
 import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show-preparation.js';
@@ -224,18 +225,34 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const byGenre = input.template === 'deep-discovery' && libraryStats
     ? discoveryGenreCounts(Object.keys(indexedGenreCounts ?? {}), library.candidateFilterTracks())
     : indexedGenreCounts;
+  // The model needs artist breadth as well as track totals: an album-sized
+  // genre can pass track coverage while making the spacing setting impossible.
+  const artistsByGenre = new Map(Object.keys(byGenre ?? {}).map(name => [normGenre(name), new Set<string>()]));
+  const runsByTag = new Map<string, string[]>();
+  for (const track of library.candidateFilterTracks()) {
+    const artist = artistRootKey(track.artist ?? '');
+    if (!artist) continue;
+    for (const tag of track.genres?.length ? track.genres : track.genre ? [track.genre] : []) {
+      let runs = runsByTag.get(tag);
+      if (!runs) { runs = genreRuns(tag).filter(key => artistsByGenre.has(key)); runsByTag.set(tag, runs); }
+      for (const key of runs) artistsByGenre.get(key)!.add(artist);
+    }
+  }
+  const artistCounts = Object.fromEntries(Object.keys(byGenre ?? {}).map(name => [name, artistsByGenre.get(normGenre(name))!.size]));
   const repertoireEstimate = discovery ? Math.max(1, Math.ceil(requiredTracks / 2))
     : input.minimumCoverage ?? Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const discoveryAnchors = discovery ? [...existingShows.flatMap(show => show.genres),
     ...Object.keys(byGenre ?? {}).filter(genre => tagCoversGenre(`${host.soul} ${host.musicLean}`, normGenre(genre)))] : [];
-  const discoveryOptions = discovery ? discoveryPalette(byGenre ?? {}, repertoireEstimate, discoveryAnchors, Math.random) : null;
+  const discoveryOptions = discovery ? discoveryPalette(byGenre ?? {}, repertoireEstimate, discoveryAnchors, Math.random, { counts: artistCounts, minimum: requiredArtists }) : null;
   if (discoveryOptions && !discoveryOptions.core.length) throw libraryFitError('Deep Discovery needs meaningfully less-represented genres, but this catalogue has no smaller genre pools to explore.');
   const genreChoices = discoveryOptions?.choices ?? showGenreChoices(byGenre ?? {}, input.template, repertoireEstimate);
   const choices = genreChoices.filter(genre => (!outside || !familiarGenres.has(normGenre(genre.name)))
-    && (!(outside || timeCapsule) || !umbrellaGenres.has(normGenre(genre.name))));
+    && (!(outside || timeCapsule) || !umbrellaGenres.has(normGenre(genre.name)))
+    && (!outside || artistCounts[genre.name] >= requiredArtists));
   if (!libraryStats) throw new ShowPlanningError('library-unavailable', 'Music library information is unavailable. Check the library connection and indexing, then try again.');
   if (!choices.length) throw libraryFitError('The indexed library has no available genre palette supporting this template.');
   const counts = byGenre ?? {};
+  const paletteEntry = (genre: typeof choices[number]) => `${genre.name} [${genre.tracks} tracks; ${artistCounts[genre.name]} artists]`;
   const moods = moodNames;
   const estimate = Math.max(1, Math.ceil((input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
   const currentYear = new Date(input.occurrence.startsAt).getUTCFullYear();
@@ -312,7 +329,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       .describe('2–3 sentences explaining the musical connection and what each DJ brings; reflect musicalConnection; put the optional conversational thread in talkingPoint'),
     talkingPoint: baseConceptSchema.shape.talkingPoint,
   }) : baseConceptSchema;
-  const proseInstruction = `The music pool must support at least ${requiredArtists} distinct artists after filters and exclusions for the operator’s Artist Spacing setting of ${artistSpacing} slots. More tracks by the same few artists do not provide variety. Do not impose unnecessary mood or energy filters. Write grammatical prose with intact punctuation. Apostrophes are valid inside JSON strings: retain them in contractions and possessives, never replace them with spaces ("we'll", not "we ll"; "the DJ's taste", not "the DJ s taste"). If unsure, use full forms such as "we will" or "the tastes of the host" instead. Preserve correct punctuation when copying or editing the concept.`;
+  const proseInstruction = `The music pool must support at least ${requiredArtists} distinct artists after filters and exclusions for the operator’s Artist Spacing setting of ${artistSpacing} slots. More tracks by the same few artists do not provide variety. Indexed artist counts are advisory: overlapping genre counts cannot be summed. Prefer a connected palette with artist breadth beyond the minimum; a large track count by a few artists is insufficient. Do not impose unnecessary mood or energy filters. Write grammatical prose with intact punctuation. Apostrophes are valid inside JSON strings: retain them in contractions and possessives, never replace them with spaces ("we'll", not "we ll"; "the DJ's taste", not "the DJ s taste"). If unsure, use full forms such as "we will" or "the tastes of the host" instead. Preserve correct punctuation when copying or editing the concept.`;
   const talkingPointInstruction = 'Return talkingPoint separately from topic: one short, open question naturally suggested by this episode’s music and cast. Choose the angle that offers a fresh conversation for this episode rather than defaulting to a technical discussion of sound. Musical qualities are welcome, but subjective taste, listening habits, hypothetical settings or associations, discovery and what might change someone’s mind are equally valid. Invite room for different views without assigning opinions, manufacturing an argument or requiring agreement. Include at least one selected genre naturally so the question remains explicitly connected to the music; do not list the whole palette. It must be usable across the episode rather than depend on a named artist, particular track or sequence. Frame personal angles as opinions or possibilities, never invented memories, gigs or past listening experiences. Keep it within the declared palette and era; do not promise extra music or assume lyrics, instruments, production facts, history or social/cultural effects. This is an optional thread for occasional comments, not a script, mandatory feature or question to repeat on every link. Keep it to one sentence, with no Talking point label; the controller adds the label.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const assessmentSchema = z.object({
@@ -326,7 +343,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
 `;
   const response = await djObject({
     system: readinessInstruction + proseInstruction + '\n\n' + (timeCapsule
-      ? 'Plan one era-led radio episode interpreted through this host’s musical tastes. Choose a precise closed period with library coverage, then a coherent genre palette and short brief. Do not invent historical facts or personal memories. Return only requested JSON.'
+      ? 'Plan one era-led radio episode interpreted through this host’s musical tastes. Choose a precise closed period with library coverage, then a coherent genre palette and short brief. Describe a partial decade using its exact four-digit year bounds or era-neutral wording, never a whole-decade label or early/mid/late shorthand. Do not invent historical facts or personal memories. Return only requested JSON.'
       : outside
       ? 'Plan one solo musical radio episode exploring a neighbouring territory outside the DJ’s familiar repertoire. Establish a supported starting point, a credible musical bridge and one focused destination, then write the brief and title. Return only the requested JSON.'
       : commonGround
@@ -337,7 +354,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       `Host: ${JSON.stringify(identity(host))}`,
       `Guest perspectives (optional, host remains musical lead): ${JSON.stringify(guests.map(identity))}`,
       `Supporting regular-show music filters: ${JSON.stringify(existingShows)}`,
-      `Local slot: ${showTime(input)}. Available genres: ${choices.map(g => g.name).join('; ')}`,
+      `Local slot: ${showTime(input)}. Available genres: ${choices.map(paletteEntry).join('; ')}`,
       `Library period evidence (five-year bins, top six genres each; counts overlap): ${JSON.stringify(periodEvidence)}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
@@ -352,7 +369,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
     ].filter(Boolean).join('\n\n') : outside ? [
       `Host: ${JSON.stringify(identity(host))}`,
       `Scheduled regular-show filters, evidence of established repertoire rather than limits on taste: ${JSON.stringify(existingShows)}`,
-      `Local slot: ${showTime(input)}. Available destination genres and indexed counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
+      `Local slot: ${showTime(input)}. Available destination genres and indexed counts: ${choices.map(paletteEntry).join('; ')}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
       'Fill departure first. Soul is primary; optional Musical Leanings supplement it. Use regular-show filters to distinguish documented repertoire from a plausible new destination. If no shows exist, explicitly acknowledge that the familiar territory is inferred from persona preferences. Never invent a dislike, a lack of knowledge or a past listening habit.',
@@ -367,7 +384,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       `Host (presentation lead only): ${JSON.stringify(identity(host))}`,
       `Guest (equal musical influence): ${JSON.stringify(identity(guests[0]))}`,
       `Supporting repertoire filters: ${JSON.stringify([{ dj: host.name, shows: existingShows }, { dj: guests[0]?.name, shows: scheduledShowsForHost(guests[0]!.id, input.show?.id) }])}`,
-      `Local slot: ${showTime(input)}. Available genre names and indexed counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
+      `Local slot: ${showTime(input)}. Available genre names and indexed counts: ${choices.map(paletteEntry).join('; ')}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
       'Fill musicalConnection first with a specific supported taste for each DJ and the musical thread connecting them. Do not infer a preference for a different genre just because its name shares a word with a stated preference. Find ONE specific musical connection that this particular pair could explore together. First identify each DJ’s actual musical interests in their Soul and optional Musical Leanings, then find a shared musical characteristic or a defensible bridge between them. Persona preferences take precedence over supporting show filters. Presentation style, speaking pace and personality are not musical preferences. Where a taste is inferred rather than stated, frame the territory as an invitation to explore it, not an established shared love.',
@@ -382,13 +399,13 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       `Guests (secondary): ${JSON.stringify(guests.map(identity))}`,
       `Template: ${input.template}; local slot: ${showTime(input)}.`,
       `Familiar repertoire, not speech instructions: ${JSON.stringify(existingShows)}`,
-      discoveryOptions ? `These choices are present in the indexed library and have been pre-screened for this slot’s repertoire cue. Exact filtered coverage will be verified by the controller; missing numeric counts are not evidence of a musical-fit failure. Their order varies between runs and is not a suggested playlist or genre combination. Explore any part of the host’s musical tastes, choosing the musical connection before its genres. Underrepresented core choices: ${choices.filter(genre => genre.tracks <= discoveryOptions.ceiling).map(g => g.name).join('; ')}. Supporting neighbours (not core): ${choices.filter(genre => genre.tracks > discoveryOptions.ceiling).map(g => g.name).join('; ')}.` : `Available genre palette, with indexed matching-track counts: ${choices.map(g => `${g.name}:${g.tracks}`).join('; ')}`,
+      discoveryOptions ? `These choices are present in the indexed library and have been pre-screened for this slot’s repertoire cue. Exact filtered coverage will be verified by the controller. Track/artist counts are advisory indexed coverage before other filters; they overlap across labels and cannot be summed. Choose enough artist breadth, not simply enough album tracks. Their order varies between runs and is not a suggested playlist or genre combination. Explore any part of the host’s musical tastes, choosing the musical connection before its genres. Underrepresented core choices: ${choices.filter(genre => genre.tracks <= discoveryOptions.ceiling).map(paletteEntry).join('; ')}. Supporting neighbours (not core): ${choices.filter(genre => genre.tracks > discoveryOptions.ceiling).map(paletteEntry).join('; ')}.` : `Available genre palette, with indexed matching-track counts: ${choices.map(paletteEntry).join('; ')}`,
       input.planningPrompt ? `Operator direction: ${input.planningPrompt}` : null,
       input.coverageCorrection || null,
       input.nameMode === 'custom' ? `Use this exact title: ${input.customName}` : 'Derive an original title from the brief.',
       'The Soul is primary and may contain all musical preferences. Musical Leanings is optional supplementary guidance. Choose a musical angle that fits stated preferences; calm speech, banter and personality do not impose music filters.',
       input.template === 'deep-discovery'
-        ? `Fill discoveryFocus first: identify one specific musical neighbourhood suggested by this host’s stated tastes, with one audible thread such as a particular approach to rhythm, texture, arrangement or songwriting. Then select a coherent core from the CORE choices that realises that idea. intendedGenres must include at least one CORE choice. Do not combine unrelated folk, jazz, rock and electronic labels simply because they are all small pools. The musical connection must explain every selected genre, not just the first two. At least half of the final unique eligible track pool must match core genres; a token rare tag beside a large popular genre fails. Supporting neighbours are optional, must follow the same musical thread, and cannot replace the core. Regular-show filters describe familiar territory, not the target palette. Build a coherent neighbourhood around this core, expanding into adjacent genres to provide at least ${requiredTracks} unique matching tracks at a four-minute average: twice the slot airtime, to allow for playback exclusions. Use up to 15 genres as needed. Counts overlap; include enough breadth, not only tiny tags. Adjacent neighbours may support the rare core only while core-matching tracks remain at least half the eligible pool. Rarity alone does not connect genres; avoid a generic genre journey or repeating the Soul.`
+        ? `Fill discoveryFocus first: identify one specific musical neighbourhood suggested by this host’s stated tastes, with one audible thread such as a particular approach to rhythm, texture, arrangement or songwriting. Then select a coherent core from the CORE choices that realises that idea. intendedGenres must include at least one CORE choice. Prefer a musically connected CORE choice that already reaches the required artist breadth; use narrower styles only in a connected combination with enough distinct artists overall. Do not combine unrelated folk, jazz, rock and electronic labels simply because they are all small pools. The musical connection must explain every selected genre, not just the first two. At least half of the final unique eligible track pool must match core genres; a token rare tag beside a large popular genre fails. Supporting neighbours are optional, must follow the same musical thread, and cannot replace the core. Regular-show filters describe familiar territory, not the target palette. Build a coherent neighbourhood around this core, expanding into adjacent genres to provide at least ${requiredTracks} unique matching tracks at a four-minute average: twice the slot airtime, to allow for playback exclusions. Use up to 15 genres as needed. Counts overlap; include enough breadth, not only tiny tags. Adjacent neighbours may support the rare core only while core-matching tracks remain at least half the eligible pool. Rarity alone does not connect genres; avoid a generic genre journey or repeating the Soul.`
         : djChoice
           ? `Make this recognisably the host’s usual musical territory, with occasional sideways steps. Build the main genre core from their regular show filters, interpreted through the Soul and optional Musical Leanings. Add only a few musically adjacent genres absent from those shows; guests may suggest connections without displacing the host’s familiar centre. If there are no regular shows, infer the familiar core from the Soul and optional Musical Leanings. Do not chase rarity or invent a restrictive theme that crowds out familiar favourites. Choose specific styles where supported rather than unexplained catch-all genres. Use up to 15 genres as needed, covering at least ${requiredTracks} unique matching tracks at a four-minute average, twice the slot airtime. A smaller number of adjacent genres does not guarantee an occasional playback proportion; do not promise a fixed running order or ratio.`
           : 'Include familiar anchors when available and related wider-reaching choices from the supplied palette.',
@@ -447,7 +464,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   let music: z.infer<typeof settingsSchema>;
   try {
     music = await djObject({
-      system: `${proseInstruction} Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Expand a short accepted topic into a fuller presentation brief while preserving its musical premise and concrete details. Preserve a correct talkingPoint. Repair contradictions and unsupported promises, but do not anonymise the DJs or replace the idea with a generic journey.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a final name, fuller topic, separate talkingPoint, moods, energies and rationale. The controller supplies fixed genres, eras and strictness. Extra prose adds presentation context only, never new selection constraints. Remove unsupported promises; do not introduce another idea. Describe the required genre palette faithfully. ${timeCapsule ? 'Preserve the required closed era exactly; leave moods and energies empty.' : 'Default mood and energy lists to empty.'}`,
+      system: `${proseInstruction} Compile and edit the accepted musical proposal. ${discovery ? 'Make the brief describe the required genres and discoveryFocus specifically. Name the selected styles in its opening sentence. Rewrite a generic or contradictory draft around that music; do not merely remove a few genre words while keeping an unrelated premise. Host tastes explain the connection, not additional music being played.' : 'Expand a short accepted topic into a fuller presentation brief while preserving its musical premise and concrete details. Preserve a correct talkingPoint. Repair contradictions and unsupported promises, but do not anonymise the DJs or replace the idea with a generic journey.'} Keep its distinctive musical idea, genre palette, agreed era, title and cast. Return a final name, fuller topic, separate talkingPoint, moods, energies and rationale. The controller supplies fixed genres, eras and strictness. Extra prose adds presentation context only, never new selection constraints. Remove unsupported promises; do not introduce another idea. Describe the required genre palette faithfully. ${timeCapsule ? 'Preserve the required closed era exactly; describe it with its full four-digit year bounds or era-neutral wording, never decade shorthand or early/mid/late qualifiers. Leave moods and energies empty.' : 'Default mood and energy lists to empty.'}`,
       prompt: [
         `Accepted proposal: ${JSON.stringify(concept)}`,
         draftIssue ? `Detected draft problem: ${draftIssue.replace(' Please regenerate the episode.', '')} Repair this before publishing. Check the entire draft for similar contradictions; do not merely copy it. Remove unselected style promises rather than adding filters. Preserve the musical angle that fits the selected palette.` : 'No concrete contract mismatch was found. Preserve the premise and concrete details while expanding only the presentation context where useful.',
@@ -500,7 +517,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
         `Problem: ${error.message}`,
         `Fixed contract: ${JSON.stringify({ genres: intended, eras: agreedEras, cast: castNames })}`,
         agreedEras.length
-          ? 'Every year or decade mentioned must fit the exact supplied eras. Do not broaden a short period to a whole decade or present day.'
+          ? 'Use only exact full four-digit years or year ranges from the supplied eras, or remove date wording. Remove ALL decade shorthand and early/mid/late qualifiers from name, topic and talkingPoint; replace them with the exact numeric range or era-neutral wording. Do not broaden a short period to a whole decade or present day.'
           : 'The music has NO era restriction. Remove EVERY year, decade and period promise from ALL three fields, even dates used to describe the DJs’ tastes. Do not replace them with modern, contemporary, recent or new-release promises. Describe tastes and the musical connection without dates.',
         `Keep the selected musical idea and actual presenters. Preserve the title unless it contradicts the period; an operator title must remain exact. Do not invent history or add styles. Current prose: ${JSON.stringify({ name: parsed.name, topic: parsed.topic, talkingPoint: parsed.talkingPoint })}`,
       ].join('\n\n'),
