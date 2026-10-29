@@ -1,3 +1,4 @@
+import { subbeatsEventSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -256,6 +257,8 @@ interface WorkerMessage {
   tail_silence_ms?: unknown;
   tail_start_ms?: unknown;
   stems_cached?: boolean;
+  subbeats_capable?: boolean;
+  subbeats_result?: unknown;
   text_embeddings?: unknown;
   // render_transition op fields
   path?: string;
@@ -280,6 +283,7 @@ let _localAudioCapable: boolean | null = null;
 let _localVocalCapable: boolean | null = null;
 let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
+let _localSubbeatsCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
 // Local twins of _sidecarAudioError / _sidecarVocalError — see there.
 let _localAudioError: string | null = null;
@@ -340,6 +344,7 @@ function startWorker(): Promise<void> {
           if (typeof msg.tail_vocal_capable === 'boolean' && _localVocalError === null) _localTailVocalCapable = msg.tail_vocal_capable;
           if (typeof msg.text_embedding_capable === 'boolean' && _localAudioError === null) _localTextCapable = msg.text_embedding_capable;
           _localFacetsCapable = msg.facets_capable === true;
+          _localSubbeatsCapable = msg.subbeats_capable === true;
         }
         // After the ready assignments, so a reported loss always wins.
         noteLocalCapabilityLoss(msg);
@@ -425,13 +430,13 @@ function localRequest(req: ({ url: string } | { path: string }) & AnalyzeRequest
 }
 
 // The worker's raw answer (flat or facet shape), for the facet protocol.
-function localRequestRaw(req: object): Promise<WorkerMessage> {
+function localRequestRaw(req: object, timeoutMs = config.analyzer.requestTimeoutMs): Promise<WorkerMessage> {
   const id = `a${++reqSeq}`;
   return new Promise<WorkerMessage>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error('analyze request timed out'));
-    }, config.analyzer.requestTimeoutMs);
+    }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     proc?.stdin.write(JSON.stringify({ id, ...req }) + '\n');
   });
@@ -496,6 +501,7 @@ let _sidecarVocalCapable: boolean | null = null;
 let _sidecarTailVocalCapable: boolean | null = null;
 // Facet protocol (version signal; null on old sidecars).
 let _sidecarFacetsCapable: boolean | null = null;
+let _sidecarSubbeatsCapable: boolean | null = null;
 // The CLAP TEXT tower (embed-text).
 let _sidecarTextCapable: boolean | null = null;
 // Why a capability is false, when the cause is a failed model load rather than
@@ -519,6 +525,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_tail_vocal_capable?: boolean | null;
       analyze_text_capable?: boolean | null;
       analyze_facets_capable?: boolean | null;
+      analyze_subbeats_capable?: boolean | null;
       analyze_audio_error?: string | null;
       analyze_vocal_error?: string | null;
     };
@@ -529,6 +536,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarVocalCapable = typeof body.analyze_vocal_capable === 'boolean' ? body.analyze_vocal_capable : null;
       _sidecarTailVocalCapable = typeof body.analyze_tail_vocal_capable === 'boolean' ? body.analyze_tail_vocal_capable : null;
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
+      _sidecarSubbeatsCapable = typeof body.analyze_subbeats_capable === 'boolean' ? body.analyze_subbeats_capable : null;
       _sidecarTextCapable = typeof body.analyze_text_capable === 'boolean' ? body.analyze_text_capable : null;
       _sidecarAudioError = typeof body.analyze_audio_error === 'string' ? body.analyze_audio_error : null;
       _sidecarVocalError = typeof body.analyze_vocal_error === 'string' ? body.analyze_vocal_error : null;
@@ -939,12 +947,15 @@ function subsonicErrorMessage(body: string): string {
 // any error; the caller falls back to the url path for that one track.
 export async function downloadCapped(
   songId: string,
+  opts: { maxBytes?: number; timeoutMs?: number } = {},
 ): Promise<{ path: string; complete: boolean }> {
+  const maxBytes = opts.maxBytes ?? ANALYZE_MAX_BYTES;
+  if (opts.maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)) throw new Error('Invalid analysis download limit');
   mkdirSync(ANALYZE_TMP_DIR, { recursive: true });
   const dest = `${ANALYZE_TMP_DIR}/${encodeURIComponent(songId)}.audio`;
   const url = subsonic.getRawStreamUrl(songId);
   const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), config.analyzer.requestTimeoutMs);
+  const t = setTimeout(() => ac.abort(), opts.timeoutMs ?? config.analyzer.requestTimeoutMs);
   try {
     recordHttpAttempt('stream', 'analysis-download');
     const res = await fetch(url, {
@@ -971,7 +982,7 @@ export async function downloadCapped(
       for await (const chunk of res.body as AsyncIterable<Uint8Array>) {
         read += chunk.length;
         yield chunk;
-        if (read >= ANALYZE_MAX_BYTES) return; // enough audio for the window
+        if (read >= maxBytes) return; // enough audio for the window
       }
     }
     await pipeline(capped(), createWriteStream(dest));
@@ -989,7 +1000,7 @@ export async function downloadCapped(
     // A read that hit the cap stopped early, so the tail is missing. Exactly
     // cap bytes counts as incomplete too: that only skips outro analysis,
     // never mis-measures it.
-    return { path: dest, complete: read < ANALYZE_MAX_BYTES };
+    return { path: dest, complete: read < maxBytes };
   } catch (err) {
     // Drop the staging file on every failure: createWriteStream truncates
     // `dest` into existence, and only the success path hands a path back for
@@ -1180,4 +1191,42 @@ export function shutdown(): void {
   try { proc?.stdin.end(); } catch { /* ignore */ }
   try { proc?.kill(); } catch { /* ignore */ }
   proc = null; ready = false; booting = null;
+}
+
+
+// Explicit background work; never called from playback's deadline path.
+export async function subbeatsAvailable(): Promise<boolean> {
+  const backend = await resolveBackend();
+  if (backend === 'sidecar') {
+    await sidecarReachable();
+    return _sidecarSubbeatsCapable === true;
+  }
+  if (backend === 'local') {
+    if (!ready) await startWorker();
+    return _localSubbeatsCapable === true;
+  }
+  return false;
+}
+
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string) {
+  if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
+  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true };
+  const timeoutMs = 30 * 60_000;
+  let answer: WorkerMessage;
+  if (_backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/prepare-subbeats`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeoutMs,
+    });
+    if (!response.ok) throw new Error('The analyzer could not prepare this recording; check the analysis log');
+    answer = await response.json() as WorkerMessage;
+  } else {
+    answer = await localRequestRaw({ op: 'prepare_subbeats', ...payload }, timeoutMs);
+  }
+  return subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
+}
+
+export function subbeatsCapability(): boolean | null {
+  if (_backend === 'sidecar') return _sidecarSubbeatsCapable;
+  if (_backend === 'local') return _localSubbeatsCapable;
+  return null;
 }

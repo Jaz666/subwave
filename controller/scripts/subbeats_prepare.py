@@ -150,8 +150,10 @@ def separate_regions(path, stage, regions, detector):
     return coverage
 
 
-def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DEFAULT_BUDGET):
+def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DEFAULT_BUDGET, expected_cache_id=None):
     import librosa
+    if expected_cache_id is not None:
+        require_shared_cache(state_dir, expected_cache_id)
     if not math.isfinite(head_seconds) or not 40 <= head_seconds <= 600:
         raise ValueError('head coverage must be 40–600 seconds')
     path = Path(path).resolve(strict=True)
@@ -179,10 +181,37 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
                     worker._touch_heavy()
         if digest(path) != identity['source_sha256']:
             raise ValueError('source changed during preparation')
+        if expected_cache_id is not None:
+            require_shared_cache(state_dir, expected_cache_id)
         return {'analysis_status': analysis['status'], 'stem_regions': coverage,
                 'pair_ready': False}
 
     return prepare_cached(state_dir, identity, build, budget)
+
+
+def require_shared_cache(state_dir, expected):
+    marker = Path(state_dir) / 'subbeats' / '.cache-id'
+    try:
+        if isinstance(expected, str) and len(expected) >= 16 and marker.read_text().strip() == expected:
+            return
+    except OSError:
+        pass
+    raise ValueError('Sub/Beats cache is not shared with this analyzer')
+
+
+def prepare_request(req):
+    """Shared-volume proof is required for managed jobs, including remote analyzers."""
+    state_dir = Path(req['state_dir'])
+    expected = req.get('cache_id')
+    require_shared_cache(state_dir, expected)
+    if req.get('complete') is not True:
+        raise ValueError('Sub/Beats requires the complete recording')
+    result = prepare(req['path'], state_dir, expected_cache_id=expected)
+    return {'ok': True, 'subbeats_used_models': not result.get('cache_hit', False) and bool(result['metadata']['stem_regions']), 'subbeats_result': {
+        'status': ('prepared' if result['metadata']['stem_regions'] else 'unmeasurable'),
+        'bundleKey': Path(result['directory']).name,
+        'error': None,
+    }}
 
 
 def main():

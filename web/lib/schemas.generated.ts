@@ -5458,6 +5458,35 @@ export const subFlowInputSchema = subFlowNameSchema.extend({
   revision: z.number().int().positive().optional(),
 }).strict().refine(value => new Set(value.trackIds).size === value.trackIds.length, 'Tracks must be different');
 
+// ─── from controller/src/schemas/subbeats.ts ─────────────────────────────
+
+export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
+export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
+export const subbeatsJobSchema = z.object({
+  id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
+  status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
+  bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
+});
+export const subbeatsQueueSchema = z.object({
+  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(500),
+});
+export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(100) });
+export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
+export const subbeatsEventSchema = z.object({
+  id: z.string().min(1).max(200),
+  status: subbeatsStatusSchema.exclude(['queued']),
+  bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
+  error: z.string().max(1000).nullable().default(null),
+});
+export const subbeatsCandidateSchema = z.object({
+  id: z.string(), title: z.string(), artist: z.string(), album: z.string(),
+  bpm: z.number().nullable(), hasBeatGrid: z.boolean(),
+});
+export const subbeatsCandidatePageSchema = z.object({ rows: z.array(subbeatsCandidateSchema), hasMore: z.boolean() });
+export const subbeatsViewSchema = subbeatsQueueSchema.extend({
+  capable: z.boolean().nullable(), maintenanceRunning: z.boolean(), progress: z.string().nullable(),
+});
+
 // ─── from controller/src/schemas/transitions.ts ──────────────────────────
 
 // Why a DJ transition effect did not make it onto a seam — the vocabulary of the

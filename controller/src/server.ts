@@ -348,6 +348,13 @@ app.listen(config.server.port, async (err?: Error) => {
     console.error('[tagger] restart recovery failed:', err.message);
   }
 
+  try {
+    const { recoverSubbeats } = await import('./music/subbeats-manager.js');
+    recoverSubbeats();
+  } catch (err: unknown) {
+    console.error('[subbeats] restart recovery failed:', err instanceof Error ? err.message : String(err));
+  }
+
   // So a restart doesn't re-air the same "on this day" fact (#577).
   try {
     const n = loadCuriosityLedger();

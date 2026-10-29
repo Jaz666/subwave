@@ -88,7 +88,7 @@ function bootstrap(
 // "relocate the stem cache to a bigger disk" did not work even once the
 // entrypoint stopped aborting.
 const SUBDIRS = [
-  'voice', 'voices', 'archive', 'jingles', 'logs', 'sessions', 'sfx', 'stems', 'transitions',
+  'voice', 'voices', 'archive', 'jingles', 'logs', 'sessions', 'sfx', 'stems', 'transitions', 'subbeats', 'subbeats/v1',
 ];
 
 const tmp = mkdtempSync(join(tmpdir(), 'subwave-state-bootstrap-'));
@@ -165,7 +165,7 @@ for (const s of SUPERVISORS) {
     const { root, dir } = scratch();
     const r = bootstrap(s.path, s.lib, root, dir);
     assert.equal(r.status, 0, `exited ${r.status}: ${r.out}`);
-    for (const d of ['stems', 'transitions']) {
+    for (const d of ['stems', 'transitions', 'subbeats', 'subbeats/v1']) {
       const mode = statSync(join(dir, d)).mode & 0o777;
       assert.equal(mode & 0o002, 0o002, `${d} not writable by other uids (mode ${mode.toString(8)})`);
     }

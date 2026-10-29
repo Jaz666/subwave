@@ -61,8 +61,9 @@ def prepare_cached(state_dir, identity, build, budget=DEFAULT_BUDGET):
     if root.is_symlink():
         raise ValueError('versioned cache must not be a symlink')
     root.mkdir(exist_ok=True)
-    # ponytail: one local writer; integrate controller scheduling before adding parallel jobs.
-    with open(root / '.prepare.lock', 'a') as lock:
+    # ponytail: one cache writer; use region locks only if parallel preparation is needed.
+    descriptor = os.open(root / '.prepare.lock', os.O_RDONLY | os.O_CREAT, 0o644)
+    with os.fdopen(descriptor, 'r') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
