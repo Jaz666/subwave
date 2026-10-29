@@ -476,3 +476,19 @@ isolated candidate worktree; whitespace checks pass. The segment-tools and
 future-plan invalidation implementations match PR candidate `91d696b2` exactly;
 the notebook differs only in the retained station audio-helper import. Sub/Flow
 source files are unchanged. No test suites were added or run for this integration.
+
+### Station artist-diversity integration
+
+Applied feature commit `59ef1707` to the station after source state `45367b3f`,
+preserving the intervening Flow work. All five templates now require distinct
+artists based on Music Selection > Advanced > Artist Spacing, in addition to
+track coverage. Counts use the effective pool after filters and exclusions;
+spacing 25 requires 26 artists for a one-hour slot. Short slots cap this at the
+required track-pool size. Takeover activation rechecks variety, and changing the
+spacing setting refreshes upcoming plans while leaving on-air plans fixed.
+
+The feature candidate passed controller TypeScript and scoped lint; no tests or
+broad checks were rerun in the station checkout. The patch applied cleanly and
+whitespace checks pass. No runtime state was edited and no services were built
+or restarted. Rebuild controller to apply it. Roll back by reverting this
+integration commit and rebuilding controller; previous source is `45367b3f`.

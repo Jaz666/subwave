@@ -1,5 +1,5 @@
 import { discoveryCoreGenres, discoveryPoolProblem } from './show-discovery-policy.js';
-import { ShowPlanningError, coverageError, coverageUnavailable, libraryFitError } from './show-planning-policy.js';
+import { ShowPlanningError, coverageError, coverageUnavailable, libraryFitError, requiredShowArtists, artistCoverageError } from './show-planning-policy.js';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import * as settings from '../settings.js';
@@ -38,6 +38,7 @@ export interface GeneratedShowSnapshot {
   nameMode?: 'random' | 'custom';
   customName?: string;
   minimumCoverage: number | null;
+  artistSpacing?: number;
   coverageCorrection?: string;
   cast: GeneratedShowCast;
   show: any;
@@ -77,6 +78,8 @@ export function preparationGrounding(result: AcceptedPreparation, music: 'restri
 export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, generate: (snapshot: GeneratedShowSnapshot) => Promise<GeneratedShowPlan> = generateShowPlan, diagnose: typeof diagnoseShowCandidates = diagnoseShowCandidates, discoveryCounts: () => Promise<Record<string, number>> = loadDiscoveryGenreCounts): Promise<GeneratedShowPlan> {
   const minimumTracks = Math.max(snapshot.minimumCoverage ?? 0,
     Math.ceil(2 * (snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 240_000));
+  const artistSpacing = snapshot.artistSpacing ?? settings.get().llm.artistVarietyWindow;
+  const minimumArtists = requiredShowArtists(minimumTracks, artistSpacing);
   const accept = (raw: GeneratedShowPlan) => {
     const plan = generatedShowPlanSchema.parse({ ...raw, filtersStrict: true });
     if (snapshot.template === 'outside-comfort-zone' && plan.genres.length !== 1) throw new Error('Outside the Comfort Zone requires one destination genre');
@@ -111,24 +114,26 @@ export async function generateAcceptedShowPlan(snapshot: GeneratedShowSnapshot, 
         : (await diagnosePlan({ ...plan, genres: core })).library.effective;
       discoveryIssue = discoveryPoolProblem(core, coreCount, diagnostic.library.effective);
     }
-    return { count: diagnostic.library.effective, warnings: diagnostic.warnings, discoveryIssue };
+    return { count: diagnostic.library.effective, artists: diagnostic.artists, warnings: diagnostic.warnings, discoveryIssue };
   };
   let plan = accept(await generate(snapshot));
   const enough = (coverage: Awaited<ReturnType<typeof validateCoverage>>) =>
-    coverage.count >= minimumTracks && !coverage.discoveryIssue;
+    coverage.count >= minimumTracks && coverage.artists >= minimumArtists && !coverage.discoveryIssue;
   let coverage = await validateCoverage(plan);
   if (enough(coverage)) return plan;
   const previousDestination = plan.genres[0];
   plan = accept(await generate({
     ...snapshot,
-    coverageCorrection: `${coverage.discoveryIssue ? `Discovery correction: ${coverage.discoveryIssue} Choose a coherent rare core and reduce or replace dominating neighbours. Do not add broad fallback genres. ` : ''}Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Sub/Shows). ${snapshot.template === 'outside-comfort-zone' ? 'Choose a different single neighbouring destination with sufficient coverage. Do not retain the failed destination or add broad fallback genres.' : snapshot.template === 'time-capsule' ? 'Choose a better-covered closed period of at most ten years and a coherent connected genre palette. Update the brief to match the new period and genres. Keep both year bounds and strict filtering; never remove the era restriction.' : snapshot.template === 'deep-discovery' ? 'Keep a coherent underrepresented core covering at least half the eligible pool. Reduce dominating neighbours; add adjacent core styles only if needed for coverage. Do not substitute popular genres. Remove unnecessary mood, era or energy restrictions.' : 'Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions.'} Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
+    coverageCorrection: `${coverage.discoveryIssue ? `Discovery correction: ${coverage.discoveryIssue} Choose a coherent rare core and reduce or replace dominating neighbours. Do not add broad fallback genres. ` : ''}Previous genres: ${plan.genres.join(', ')}. After filters and configured exclusions, the previous settings leave ${coverage.count} unique eligible tracks from ${coverage.artists} distinct artists. Artist Spacing is ${artistSpacing} slots: require at least ${minimumArtists} distinct artists after all filters and exclusions. Do not pad the pool with more tracks by the same few artists. Required: at least ${minimumTracks} tracks (four-minute average, twice the slot airtime for Sub/Shows). ${snapshot.template === 'outside-comfort-zone' ? 'Choose a different single neighbouring destination with sufficient coverage. Do not retain the failed destination or add broad fallback genres.' : snapshot.template === 'time-capsule' ? 'Choose a better-covered closed period of at most ten years and a coherent connected genre palette. Update the brief to match the new period and genres. Keep both year bounds and strict filtering; never remove the era restriction.' : snapshot.template === 'deep-discovery' ? 'Keep a coherent underrepresented core covering at least half the eligible pool. Reduce dominating neighbours; add adjacent core styles only if needed for coverage. Do not substitute popular genres. Remove unnecessary mood, era or energy restrictions.' : 'Expand into musically adjacent genres and remove unnecessary mood, era or energy restrictions.'} Genre counts overlap. Diagnostic: ${coverage.warnings.join(' ')}`,
   }));
   if (snapshot.template === 'outside-comfort-zone' && plan.genres[0] === previousDestination) {
+    if (coverage.artists < minimumArtists) throw artistCoverageError(minimumArtists, coverage.artists, artistSpacing);
     throw coverageError(Math.round((snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 60_000), minimumTracks, coverage.count);
   }
   coverage = await validateCoverage(plan);
   if (!enough(coverage)) {
     if (coverage.discoveryIssue) throw libraryFitError(coverage.discoveryIssue);
+    if (coverage.artists < minimumArtists) throw artistCoverageError(minimumArtists, coverage.artists, artistSpacing);
     throw coverageError(Math.round((snapshot.occurrence.endsAt - snapshot.occurrence.startsAt) / 60_000), minimumTracks, coverage.count);
   }
   return plan;
@@ -503,12 +508,12 @@ export function buildGeneratedSnapshot(show: Show | undefined, occurrence: Prepa
     settings.get().timezone, settings.get().locale, settings.moodVocab(),
     show.playlistIds, show.playlistStrict, show.excludedPlaylistIds,
     show.maxTrackSeconds, show.minTrackLengthSeconds,
-    show.vocals,
+    show.vocals, settings.get().llm.artistVarietyWindow,
   ]);
   return {
     occurrence, configuration, castSeed: seed, castOrigin: seed ? origin : undefined, template: config.template,
     planningPrompt: config.planningPrompt, nameMode: config.nameMode, customName: config.customName,
-    minimumCoverage: config.minimumCoverage, cast,
+    minimumCoverage: config.minimumCoverage, artistSpacing: settings.get().llm.artistVarietyWindow, cast,
     existingShows,
     show: {
       id: show.id, name: show.name, topic: show.topic,

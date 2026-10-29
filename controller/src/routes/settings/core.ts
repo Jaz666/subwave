@@ -249,11 +249,12 @@ export async function logCompatDetection(): Promise<void> {
 // a key from a newer version must cost one setting, not the whole restore.
 router.post('/settings', requireAdmin, validateSettingsBody(), async (req, res) => {
   try {
+    const artistSpacing = settings.get().llm.artistVarietyWindow;
     const result = await settings.update(req.body || {});
-    if (req.body?.subShows && (
+    if (artistSpacing !== settings.get().llm.artistVarietyWindow || (req.body?.subShows && (
       'eligibleHostPersonaIds' in req.body.subShows
       || 'eligibleGuestPersonaIds' in req.body.subShows
-    )) {
+    ))) {
       void prepareUpcomingGeneratedShows()
         .catch(err => queue.log('error', `[shows] generated show preparation failed after Sub/Shows settings change: ${err.message}`));
     }

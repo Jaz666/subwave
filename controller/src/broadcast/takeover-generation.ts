@@ -9,7 +9,7 @@ import type { GeneratedShowPlan } from '../schemas/show-preparation.js';
 import { diagnoseShowCandidates } from '../music/show-candidates.js';
 import { BoundedKeyMap } from '../util/bounded-key-map.js';
 import { resolveTakeoverWindowNow } from './takeover-window.js';
-import { coverageUnavailable, ShowPlanningError } from './show-planning-policy.js';
+import { coverageUnavailable, ShowPlanningError, requiredShowArtists, artistCoverageError } from './show-planning-policy.js';
 import {
   buildGeneratedSnapshot, generateAcceptedShowPlan, showPreparation,
   type GeneratedShowSnapshot,
@@ -92,6 +92,9 @@ async function activate(draft: Draft): Promise<Activated> {
   }
   const requiredTracks = Math.ceil(2 * (draft.snapshot.occurrence.endsAt - draft.snapshot.occurrence.startsAt) / 240_000);
   if (coverage.library.effective < requiredTracks) throw new Error('The available music pool changed. Retry generation.');
+  const artistSpacing = settings.get().llm.artistVarietyWindow;
+  const requiredArtists = requiredShowArtists(requiredTracks, artistSpacing);
+  if (coverage.artists < requiredArtists) throw artistCoverageError(requiredArtists, coverage.artists, artistSpacing);
   const current = buildGeneratedSnapshot(templateShow(draft.request.template), draft.snapshot.occurrence,
     draft.snapshot.castSeed, draft.snapshot.castOrigin);
   if (!current || current.configuration !== draft.snapshot.configuration
