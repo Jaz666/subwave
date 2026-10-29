@@ -15,6 +15,15 @@ export function libraryFitError(reason: string): ShowPlanningError {
 export function coverageError(minutes: number, required: number, count: number): ShowPlanningError {
   return new ShowPlanningError('library-coverage', `Not enough matching music: this ${minutes}-minute show needs at least ${required} eligible tracks, but the proposed settings match only ${count} after filters and exclusions. Try a shorter slot, choose another Sub/Show type, or add more suitable music.`);
 }
+// A spacing window of N needs N+1 artists for rotation. Very short slots
+// cannot require more artists than their twice-airtime track pool. Zero still
+// keeps the picker's always-on back-to-back artist guard.
+export function requiredShowArtists(tracks: number, spacing: number): number {
+  return Math.min(Math.max(1, tracks), Math.max(1, spacing) + 1);
+}
+export function artistCoverageError(required: number, count: number, spacing: number): ShowPlanningError {
+  return new ShowPlanningError('library-coverage', `Not enough artist variety: Artist Spacing is ${spacing} slots, so this Sub/Show needs at least ${required} distinct artists, but its filters and exclusions leave only ${count}. Choose a better-covered musical direction, a shorter slot, or add suitable music. Artist Spacing is configured in Music Selection > Advanced.`);
+}
 export function coverageUnavailable(warnings: string[]): boolean {
   return warnings.some(warning => /not (?:present|counted|an active lock)|could not|failed to resolve|filter is not active/i.test(warning));
 }

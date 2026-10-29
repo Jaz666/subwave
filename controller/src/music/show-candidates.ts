@@ -6,10 +6,11 @@ import { applyStrictLocks, hasEraBound, type VocalMode } from './show-filter.js'
 import { applyKnownTrackCeiling } from './track-duration.js';
 import { applyTrackFloor } from './track-floor.js';
 import { resolveExcludedPlaylistIds, resolveShowPlaylistPool } from './show-playlist.js';
+import { artistRootKey } from './recency.js';
 
 export type Candidate = { id?: string; title?: string | null; artist?: string | null; album?: string | null; albumId?: string | null; artistId?: string | null; lastfmTags?: string[] | null; year?: number | null; originalYear?: number | null; isCompilation?: boolean | null; yearUntrusted?: boolean | null; genres?: string[] | null; genre?: string | null; moods?: string[] | null; audioMoods?: string[] | null; energy?: string | null; vocalRanges?: unknown[] | null; vocalRangesInvalid?: boolean; duration?: number | null; durationSec?: number | null };
 type Locks = { genres: string[]; eras: Array<{ fromYear?: number | null; toYear?: number | null }>; moods: string[]; energies: string[]; vocals: VocalMode | null };
-export interface ShowCandidateDiagnostic { strict: boolean; library: { indexed: number; matchingFilters: number; afterExclusions: number; effective: number }; playlist: null | { total: number; matchingFilters: number; afterExclusions: number; effective: number }; warnings: string[] }
+export interface ShowCandidateDiagnostic { strict: boolean; artists: number; library: { indexed: number; matchingFilters: number; afterExclusions: number; effective: number }; playlist: null | { total: number; matchingFilters: number; afterExclusions: number; effective: number }; warnings: string[] }
 export type CandidateCoverage = { mood: boolean; energy: boolean; vocal: boolean };
 
 function hasMusicFilter(show: any): boolean { return !!(show?.genres?.length || show?.moods?.length || show?.energies?.length || show?.vocals || hasEraBound(show?.eras)); }
@@ -52,6 +53,7 @@ export function buildShowCandidateDiagnostic({ show, libraryRows, playlistRows, 
   const playlistStrict = !!(show?.playlistStrict && playlistRows);
   return {
     strict,
+    artists: new Set((playlistStrict ? playlistEffective ?? [] : libraryEffective).map(row => artistRootKey(row.artist ?? '')).filter(Boolean)).size,
     library: { indexed: libraryRows.length, matchingFilters: libraryFiltered.length, afterExclusions: exclude(libraryFiltered, excludedIds).length, effective: playlistStrict ? (playlistEffective?.length ?? 0) : libraryEffective.length },
     playlist: playlistRows == null ? null : { total: playlistRows.length, matchingFilters: playlistFiltered!.length, afterExclusions: exclude(playlistFiltered!, excludedIds).length, effective: playlistEffective!.length },
     warnings,

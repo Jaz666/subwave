@@ -9,7 +9,7 @@ import type { ShowGenerationConfig } from '../schemas/show.js';
 import { generatedShowPlanSchema, type GeneratedShowPlan } from '../schemas/show-preparation.js';
 import { djObject } from '../llm/sdk.js';
 import { DJ_SOULS } from '../settings/vocab.js';
-import { ShowPlanningError, musicalDetailError, libraryFitError, missingMusicalEvidence } from './show-planning-policy.js';
+import { ShowPlanningError, musicalDetailError, libraryFitError, missingMusicalEvidence, requiredShowArtists } from './show-planning-policy.js';
 import { discoveryPalette } from './show-discovery-policy.js';
 import { hasEraReference, normalizeShowProse, validateShowBrief } from './show-brief-contract.js';
 
@@ -34,6 +34,7 @@ export interface GeneratedShowInput {
   nameMode?: 'random' | 'custom';
   customName?: string;
   minimumCoverage?: number | null;
+  artistSpacing?: number;
   coverageCorrection?: string;
   cast: GeneratedShowCast;
   show: any;
@@ -187,6 +188,8 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
   const timeCapsule = input.template === 'time-capsule';
   const genreLimit = 15;
   const requiredTracks = Math.max(input.minimumCoverage ?? 0, Math.ceil(2 * (input.occurrence.endsAt - input.occurrence.startsAt) / 240_000));
+  const artistSpacing = input.artistSpacing ?? settings.get().llm.artistVarietyWindow;
+  const requiredArtists = requiredShowArtists(requiredTracks, artistSpacing);
   const generationPass = input.coverageCorrection ? 'coverage-correction' : 'initial';
   const personas = settings.get().personas ?? [];
   const moodNames = settings.moodVocab();
@@ -309,7 +312,7 @@ export async function generateShowPlan(input: GeneratedShowInput): Promise<Gener
       .describe('2–3 sentences explaining the musical connection and what each DJ brings; reflect musicalConnection; put the optional conversational thread in talkingPoint'),
     talkingPoint: baseConceptSchema.shape.talkingPoint,
   }) : baseConceptSchema;
-  const proseInstruction = `Write grammatical prose with intact punctuation. Apostrophes are valid inside JSON strings: retain them in contractions and possessives, never replace them with spaces ("we'll", not "we ll"; "the DJ's taste", not "the DJ s taste"). If unsure, use full forms such as "we will" or "the tastes of the host" instead. Preserve correct punctuation when copying or editing the concept.`;
+  const proseInstruction = `The music pool must support at least ${requiredArtists} distinct artists after filters and exclusions for the operator’s Artist Spacing setting of ${artistSpacing} slots. More tracks by the same few artists do not provide variety. Do not impose unnecessary mood or energy filters. Write grammatical prose with intact punctuation. Apostrophes are valid inside JSON strings: retain them in contractions and possessives, never replace them with spaces ("we'll", not "we ll"; "the DJ's taste", not "the DJ s taste"). If unsure, use full forms such as "we will" or "the tastes of the host" instead. Preserve correct punctuation when copying or editing the concept.`;
   const talkingPointInstruction = 'Return talkingPoint separately from topic: one short, open question naturally suggested by this episode’s music and cast. Choose the angle that offers a fresh conversation for this episode rather than defaulting to a technical discussion of sound. Musical qualities are welcome, but subjective taste, listening habits, hypothetical settings or associations, discovery and what might change someone’s mind are equally valid. Invite room for different views without assigning opinions, manufacturing an argument or requiring agreement. Include at least one selected genre naturally so the question remains explicitly connected to the music; do not list the whole palette. It must be usable across the episode rather than depend on a named artist, particular track or sequence. Frame personal angles as opinions or possibilities, never invented memories, gigs or past listening experiences. Keep it within the declared palette and era; do not promise extra music or assume lyrics, instruments, production facts, history or social/cultural effects. This is an optional thread for occasional comments, not a script, mandatory feature or question to repeat on every link. Keep it to one sentence, with no Talking point label; the controller adds the label.';
   const identity = (p: any) => ({ name: p.name, soul: p.soul, ...(p.musicLean ? { musicalLeanings: p.musicLean } : {}) });
   const assessmentSchema = z.object({

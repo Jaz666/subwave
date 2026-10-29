@@ -48,7 +48,7 @@ function fixture(name: string) {
       return { name: `Episode ${calls}`, topic: 'A grounded musical brief.', genres: ['Folk'], moods: [], eras: [],
         energies: [], filtersStrict: true, rationale: '' };
     },
-    diagnose: async () => ({ strict: true, library: { indexed: 100, matchingFilters: count, afterExclusions: count, effective: count }, playlist: null, warnings: [] }),
+    diagnose: async () => ({ strict: true, artists: count, library: { indexed: 100, matchingFilters: count, afterExclusions: count, effective: count }, playlist: null, warnings: [] }),
   };
   let owner = createShowPreparation(deps);
   return {
@@ -222,7 +222,7 @@ test('an edited boundary between adjacent Sub/Shows replaces both obsolete futur
       return latest?.id === occurrence.id && latest.endsAt === occurrence.endsAt;
     },
     generate: async () => ({ name: `Episode ${++calls}`, topic: 'A musical brief.', genres: ['Folk'], moods: [], eras: [], energies: [], filtersStrict: true, rationale: '' }),
-    diagnose: async () => ({ strict: true, library: { indexed: 100, matchingFilters: 100, afterExclusions: 100, effective: 100 }, playlist: null, warnings: [] }),
+    diagnose: async () => ({ strict: true, artists: 100, library: { indexed: 100, matchingFilters: 100, afterExclusions: 100, effective: 100 }, playlist: null, warnings: [] }),
   };
   const owner = createShowPreparation(deps);
   for (const hour of [10, 12]) await owner.ensureGenerated({ context: context(at(hour)), source: 'scheduled' });
