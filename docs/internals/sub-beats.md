@@ -319,3 +319,9 @@ log that did not contain it. Retry one failed track after updating the
 controller to establish the cause; no GPU-memory or audio-validation changes
 are justified without that evidence. Future image rebuilds are run by the
 owner, using supplied commands.
+
+Docker build contexts must exclude runtime state after the `.env.example`
+exception, including `state/**`. A private prepared bundle exposed traversal
+of `state/subbeats/v1` during an owner-run controller rebuild. The final
+exclusions prevent inspecting or sending runtime caches; do not broaden
+bundle permissions to work around a build-context error.
