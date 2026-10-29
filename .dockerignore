@@ -1,4 +1,4 @@
-# Both compose files build with `context: ..` (the repo root), so this is the
+# Compose builds use the repo root as context, so this is the
 # .dockerignore that actually applies — the per-service web/.dockerignore is
 # inert. Without these excludes, `COPY web/ ./` and `COPY controller/ ./` drag
 # the host's stale node_modules into the image, merging on top of the fresh
@@ -7,7 +7,6 @@
 **/.next
 .git
 .backups
-state
 
 # Dev-only env files MUST NOT leak into the prod web image — Next.js bakes
 # NEXT_PUBLIC_* values into the static client bundle at build time, so a
@@ -17,3 +16,8 @@ state
 **/.env
 **/.env.*
 !**/.env.example
+
+# Keep runtime state excluded after the broad env-example exception above.
+# Exclude descendants too so Docker need not traverse private cache bundles.
+state
+state/**
