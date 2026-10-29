@@ -66,7 +66,8 @@ function JoinProtection() {
 export default function SubFlowDraft() {
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
-  const [album, setAlbum] = useState<Album | null>(null);
+  const [browsedAlbum, setAlbum] = useState<Album | null>(null);
+  const [albumFlow, setAlbumFlow] = useState<{ id: string; revision: number } | null>(null);
   const [artFailed, setArtFailed] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
   const nameForm = useZodForm(subFlowNameSchema, { name: '' });
@@ -121,6 +122,12 @@ export default function SubFlowDraft() {
     enabled: hydrated && !needsAuth && !!submitted,
     request: (fetcher, signal) => adminJson<{ albums: Album[] }>(fetcher, `/library/sub-flow/albums?q=${encodeURIComponent(submitted)}`, undefined, signal),
   });
+  const savedAlbum = useAdminQuery({
+    key: ['sub-flow', 'saved-album', albumFlow?.id, albumFlow?.revision], adminFetch,
+    enabled: hydrated && !needsAuth && !!albumFlow,
+    request: (fetcher, signal) => adminJson<{ album: Album }>(fetcher, `/library/sub-flow/${encodeURIComponent(albumFlow?.id ?? '')}/album`, undefined, signal),
+  });
+  const album = browsedAlbum ?? (albumFlow ? savedAlbum.data?.album : null) ?? null;
   const albumTracks = useAdminQuery({
     key: ['sub-flow', 'album', album?.id], adminFetch,
     enabled: hydrated && !needsAuth && !!album,
@@ -132,6 +139,7 @@ export default function SubFlowDraft() {
   const edit = (flow: Flow) => {
     // A saved Flow must not be checked against a previously browsed album.
     setQuery(''); setSubmitted(''); setAlbum(null);
+    setAlbumFlow({ id: flow.id, revision: flow.revision }); setArtFailed(false);
     setEditing({ id: flow.id, revision: flow.revision });
     nameForm.reset({ name: flow.name }); setTracks([...flow.tracks]); setEnabled(flow.enabled);
     requestAnimationFrame(() => nameForm.setFocus('name'));
@@ -164,6 +172,7 @@ export default function SubFlowDraft() {
     if (text === submitted) void albums.refetch();
     else setSubmitted(text);
     setAlbum(null);
+    setAlbumFlow(null);
   };
 
   return (
@@ -184,8 +193,12 @@ export default function SubFlowDraft() {
               <InputGroupInput aria-label="Search albums" placeholder="Search albums or artists" value={query} onChange={event => setQuery(event.target.value)} />
             </InputGroup>
             <Btn type="submit" tone="accent" disabled={!query.trim()}>Search</Btn>
-            <Btn onClick={() => { setQuery(''); setSubmitted(''); setAlbum(null); }}>Clear</Btn>
+            <Btn onClick={() => { setQuery(''); setSubmitted(''); setAlbum(null); setAlbumFlow(null); }}>Clear</Btn>
           </form>
+          {albumFlow && !album && <div aria-live="polite">
+            {savedAlbum.isFetching && <p className="text-sm text-muted">Loading saved Flow’s album…</p>}
+            {savedAlbum.isError && <p role="alert" className="text-sm text-muted">Could not load this Flow’s album. <Btn sm onClick={() => { void savedAlbum.refetch(); }}>Try again</Btn></p>}
+          </div>}
           {submitted && !album && <div className="grid gap-2" aria-live="polite">
             {albums.isFetching && <p className="text-sm text-muted">Searching albums…</p>}
             {albums.isError && <p className="text-sm text-muted">Could not search albums. Try again.</p>}
