@@ -14,9 +14,11 @@ export interface ProviderMeta {
   envVar?: string;
 }
 
-// Order mirrors the controller's settings.LLM_PROVIDERS. The grid renders
-// data.llm.providers (server-authoritative) and looks each id up here, so a
-// provider the server adds first still renders as a bare card.
+// Client-side order (local, then vendors, then aggregators), which is NOT the
+// controller's settings.LLM_PROVIDERS order. Settings renders
+// data.llm.providers (server-authoritative, server order) and looks each id up
+// here, so a provider the server adds first still renders as a bare card; only
+// onboarding renders in this order, through PROVIDER_IDS.
 export const PROVIDERS: ProviderMeta[] = [
   { id: 'ollama',            label: 'Ollama',            blurb: 'Homelab box · no key',          kind: 'local' },
   { id: 'locca',             label: 'locca',             blurb: 'Local llama.cpp · no key',       kind: 'local' },

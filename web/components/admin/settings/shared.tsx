@@ -23,6 +23,7 @@ export const KEY_HINTS: Record<string, string> = {
   GOOGLE_GENERATIVE_AI_API_KEY: 'AIza...',
   DEEPSEEK_API_KEY: 'sk-...',
   OPENROUTER_API_KEY: 'sk-or-v1-...',
+  REQUESTY_API_KEY: 'Requesty API key',
   AI_GATEWAY_API_KEY: 'gateway API key',
   ELEVENLABS_API_KEY: 'el_...',
   // Fish keys have no documented prefix — point at where to mint one instead.

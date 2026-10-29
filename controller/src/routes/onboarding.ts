@@ -2,7 +2,7 @@
 // probes; /onboarding/save is the only mutation path.
 
 import express from 'express';
-import { generateText } from 'ai';
+import { generateText, createGateway } from 'ai';
 import { createOllama } from 'ai-sdk-ollama';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -96,6 +96,11 @@ router.post('/onboarding/test-llm', requireAdmin, validateBody(llmProbeSchema), 
         // OpenAI-compatible gateway at a fixed base URL; model ids are
         // provider/model (openai/gpt-4o-mini).
         m = createOpenAI({ baseURL: DEFAULT_REQUESTY_BASE_URL, apiKey: apiKey || 'unused' }).chat(model);
+        break;
+      case 'gateway':
+        // Vercel AI Gateway; with no apiKey the SDK resolves env / OIDC
+        // credentials, as the registry's client does.
+        m = createGateway(apiKey ? { apiKey } : {})(model);
         break;
       case 'ollama':
       default: {

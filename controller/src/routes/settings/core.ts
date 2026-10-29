@@ -193,15 +193,15 @@ router.get('/settings', requireAdmin, async (req, res) => {
       // Which provider API keys are present in the environment; the UI keys
       // its "key missing" alerts off this.
       env: {
-        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
-        ELEVENLABS_API_KEY: !!process.env.ELEVENLABS_API_KEY,
-        FISH_API_KEY: !!process.env.FISH_API_KEY,
-        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-        GOOGLE_GENERATIVE_AI_API_KEY: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-        DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
         OPENROUTER_API_KEY: !!process.env.OPENROUTER_API_KEY,
         REQUESTY_API_KEY: !!process.env.REQUESTY_API_KEY,
+        ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+        GOOGLE_GENERATIVE_AI_API_KEY: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+        DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
         AI_GATEWAY_API_KEY: !!process.env.AI_GATEWAY_API_KEY,
+        ELEVENLABS_API_KEY: !!process.env.ELEVENLABS_API_KEY,
+        FISH_API_KEY: !!process.env.FISH_API_KEY,
         SEARCH_API_KEY: !!process.env.SEARCH_API_KEY,
         EMBEDDING_API_KEY: !!process.env.EMBEDDING_API_KEY,
         LASTFM_API_KEY: !!process.env.LASTFM_API_KEY,

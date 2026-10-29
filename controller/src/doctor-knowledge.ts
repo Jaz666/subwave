@@ -110,7 +110,7 @@ with $5/mo free credits and requires a card on file); 'searxng' is keyless but n
 a self-hosted instance URL; 'keenable' is keyless web search, and a Keenable key in
 SEARCH_API_KEY only raises its rate limit. If a keyed provider is selected without a
 key, news segments can't fetch — tell them to add the key or switch to
-DuckDuckGo/SearXNG.
+DuckDuckGo or Keenable (both keyless), or to a self-hosted SearXNG.
 
 ## Backups
 There is a Backup feature (Admin → Backup) that exports settings, personas, custom

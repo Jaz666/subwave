@@ -264,7 +264,7 @@ export function buildEmbeddingModel(cfg: EmbeddingCfg) {
       throw new Error(
         `Provider "${cfg.provider}" has no text-embedding support. Pick an ` +
           `embedding-capable provider in Settings → Library tagger → Embedding ` +
-          `(ollama, openai, google, openrouter, requesty, locca, or openai-compatible).`,
+          `(ollama, openai-compatible, locca, openrouter, requesty, openai, or google).`,
       );
   }
 }

@@ -21,11 +21,11 @@ const PATH = `${STATE_DIR}/secrets.env`;
 // Keys the wizard may write; anything else is ignored, so the form cannot be
 // abused as a generic env-var setter.
 export const SECRET_ENV_KEYS = [
+  'OPENROUTER_API_KEY',
+  'REQUESTY_API_KEY',
   'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GOOGLE_GENERATIVE_AI_API_KEY',
-  'OPENROUTER_API_KEY',
-  'REQUESTY_API_KEY',
   'DEEPSEEK_API_KEY',
   'AI_GATEWAY_API_KEY',
   'ELEVENLABS_API_KEY',

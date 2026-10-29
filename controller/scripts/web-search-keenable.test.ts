@@ -4,19 +4,20 @@
 // settings + SEARCH_API_KEY resolution. The fixture is a recorded keyless
 // response: `description` is empty and the page text sits in `snippet`, which
 // is the shape every real result has.
-// Run: `tsx scripts/web-search-keenable.test.ts` (folded into `npm test`).
+// Run: `npm test -- web-search-keenable`.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, test } from 'node:test';
+import { createTempDir, removeTempDir } from './test-utils/temp-dir.js';
 
-const stateDir = mkdtempSync(join(tmpdir(), 'subwave-keenable-'));
+const stateDir = createTempDir(join(tmpdir(), 'subwave-keenable-'));
 process.env.STATE_DIR = stateDir;
 delete process.env.SEARCH_API_KEY;
-after(() => rmSync(stateDir, { recursive: true, force: true }));
+after(() => removeTempDir(stateDir));
 
 const settings = await import('../src/settings.js');
 const { buildKeenableRequest, parseKeenableResponse, keenableSearch } =

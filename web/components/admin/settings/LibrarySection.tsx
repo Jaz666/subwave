@@ -135,7 +135,7 @@ export function LibrarySection({ data, form, setForm, busy, saveSettings, adminF
   // Embedding-capable subset, not the full LLM list: deepseek, gateway and
   // anthropic have no embeddings endpoint (#493, #522).
   const embedProviders = data.embedding?.providers ||
-    ['ollama', 'openai-compatible', 'locca', 'openrouter', 'openai', 'google', 'requesty'];
+    ['ollama', 'openai-compatible', 'locca', 'openrouter', 'requesty', 'openai', 'google'];
   // Keep a stale explicit choice visible so the Select isn't blank.
   const providers = e.provider && !embedProviders.includes(e.provider)
     ? [e.provider, ...embedProviders]

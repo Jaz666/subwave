@@ -104,6 +104,19 @@ async function probeKey(
         return { ok: true, message: `✓ OpenRouter key valid · model responded` };
       } catch (err) { return { ok: false, message: briefLlmError(err) }; }
     }
+    case 'REQUESTY_API_KEY': {
+      // The model list is public, but a bearer Requesty can't verify is a 403
+      // ("Invalid authorization token"), so a bad key fails here; no model is
+      // called, as in the CLI's probeRequesty.
+      const r = await fetch(`${llmProvider.DEFAULT_REQUESTY_BASE_URL}/models`, {
+        headers: { Authorization: `Bearer ${value}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!r.ok) {
+        return { ok: false, message: r.status === 401 || r.status === 403 ? 'Key rejected — check it\'s correct and active' : `Request failed (${r.status})` };
+      }
+      return { ok: true, message: '✓ Requesty key valid' };
+    }
     case 'AI_GATEWAY_API_KEY': {
       return { ok: true, message: 'Key format looks valid — confirm via a live LLM call' };
     }
@@ -149,6 +162,11 @@ async function probeKey(
         return { ok: true, message: '✓ Brave Search key valid' };
       }
       if (provider === 'keenable') {
+        // keenableSearch sends only a keen_ value and runs keyless otherwise,
+        // so any other key is not a rejected key, just one that goes unused.
+        if (!value.startsWith('keen_')) {
+          return { ok: false, message: 'Not a Keenable key (they start with keen_) — searches run keyless without one' };
+        }
         const r = await fetch('https://api.keenable.ai/v1/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-API-Key': value, 'X-Keenable-Title': 'subwave' },

@@ -26,11 +26,13 @@ const SEARCH_PROVIDER_LABELS: Record<string, string> = {
 
 // Providers that authenticate with SEARCH_API_KEY. They share the key slot —
 // the controller probes the right endpoint based on the provider we send along.
-// `optional` marks a provider that works without a key (the key raises limits).
-const KEYED_PROVIDERS: Record<string, { name: string; placeholder: string; keyUrl: string; optional?: boolean }> = {
+// `optional` marks a provider that works without a key (the key raises limits)
+// and uses the shared slot only when the value starts with `prefix`, so a key
+// left over from another provider is ignored rather than sent.
+const KEYED_PROVIDERS: Record<string, { name: string; placeholder: string; keyUrl: string; optional?: boolean; prefix?: string }> = {
   tavily: { name: 'Tavily', placeholder: 'tvly-…', keyUrl: 'https://app.tavily.com/home' },
   brave: { name: 'Brave Search', placeholder: 'BSA…', keyUrl: 'https://api-dashboard.search.brave.com/app/keys' },
-  keenable: { name: 'Keenable', placeholder: 'keen_…', keyUrl: 'https://keenable.ai/console', optional: true },
+  keenable: { name: 'Keenable', placeholder: 'keen_…', keyUrl: 'https://keenable.ai/console', optional: true, prefix: 'keen_' },
 };
 
 const searchProviderLabel = (id: string | undefined): string =>
@@ -211,14 +213,17 @@ export function SearchSection({ data, form, setForm, busy, saveSettings, adminFe
                 </div>
                 <div className="field-hint">
                   {keyed.optional && <>Not needed to search; a key raises the rate limit. </>}
+                  {keyed.prefix && <>Only a <code>{keyed.prefix}…</code> key is used: any other key on file, such as one saved for Tavily or Brave, is ignored and searches run keyless. </>}
                   Get one at <a href={keyed.keyUrl} target="_blank" rel="noreferrer" className="underline">{keyed.keyUrl.replace(/^https:\/\//, '')}</a>.
                   Stored alongside the other admin settings. Falls back to
                   <code> SEARCH_API_KEY</code> in <code>.env</code> when blank. Set
                   one or the other, not both.
                 </div>
               </div>
-              {/* A keyless provider isn't "missing" anything, so skip the red banner. */}
-              {(!keyed.optional || apiKeySet) && <KeyStatus envVar="SEARCH_API_KEY" present={apiKeySet} />}
+              {/* A keyless provider isn't "missing" anything, so skip the red banner,
+                  and a key on file may be another provider's, which a prefix-gated
+                  provider ignores, so "ready to use" would overclaim. */}
+              {!keyed.optional && <KeyStatus envVar="SEARCH_API_KEY" present={apiKeySet} />}
               {keyTest && <KeyTestResult result={keyTest} />}
             </>
           )}

@@ -260,9 +260,9 @@ export const EMBEDDING_PROVIDERS = [
   'openai-compatible',
   'locca',
   'openrouter',
+  'requesty',
   'openai',
   'google',
-  'requesty',
 ];
 
 // Ollama context window; 0 disables, else floored into [2048, 131072].
