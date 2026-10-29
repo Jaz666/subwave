@@ -6,6 +6,14 @@ beat-matched transition when suitable. The operator selects tracks to prepare;
 playback should then run unattended. This is separate from protected Sub/Flow
 sequences. Never alter a protected sequence's internal joins.
 
+## Library location
+
+Owner decision, 29 October 2026: place the Sub/Beats page in **Library →
+Sub/Beats**, alongside the other library tools. Candidate discovery, queuing
+deeper analysis and preparation progress belong on this page. Keep protected
+Sub/Flow management separate. This records the navigation requirement; the page
+is not implemented by the initial cache increment.
+
 ## Agreed audio direction
 
 Development listening favoured a 16-bar stem exchange, four extra bars of vocal
