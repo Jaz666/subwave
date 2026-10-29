@@ -396,6 +396,26 @@ def test_concurrency_env_validation():
             os.environ["SUBWAVE_TEST_CONCURRENCY"] = old
 
 
+async def test_subbeats_contract():
+    assert server.StdioWorker._wants_models({'op': 'prepare_subbeats'})
+    assert server.StdioWorker._used_models({'subbeats_used_models': True})
+    assert not server.StdioWorker._used_models({'subbeats_result': {'status': 'prepared'}, 'subbeats_used_models': False})
+    original = server.analyzer_pool
+    seen = []
+    class Pool:
+        async def request(self, payload):
+            seen.append(payload)
+            return {'ok': True, 'subbeats_result': {'status': 'prepared', 'bundleKey': 'a' * 64}}
+    server.analyzer_pool = Pool()
+    try:
+        body = {'path': '/recording', 'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'complete': True}
+        result = await server.prepare_subbeats(types.SimpleNamespace(model_dump=lambda: body))
+        assert seen == [{'id': '1', 'op': 'prepare_subbeats', **body}]
+        assert result['subbeats_result']['status'] == 'prepared'
+    finally:
+        server.analyzer_pool = original
+
+
 async def main():
     test_concurrency_env_validation()
     await test_pool_concurrency()
@@ -409,6 +429,7 @@ async def main():
     await test_latched_capability_error_does_not_fan_out()
     await test_path_contract()
     await test_facet_contract()
+    await test_subbeats_contract()
 
 
 asyncio.run(main())

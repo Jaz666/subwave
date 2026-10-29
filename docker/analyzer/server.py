@@ -353,6 +353,8 @@ class StdioWorker:
         flags opt every request in."""
         if payload.get("texts") is not None:
             return True
+        if payload.get("op") == "prepare_subbeats":
+            return True
         if payload.get("op"):
             return False
         facets = payload.get("facets")
@@ -368,6 +370,8 @@ class StdioWorker:
     def _used_models(msg: dict[str, Any]) -> bool:
         """Whether a response proves model use (flat or facet shape)."""
         if any(k in msg for k in ("audio_embedding", "vocal_ranges", "stems_cached")):
+            return True
+        if msg.get("subbeats_used_models") is True:
             return True
         facets = msg.get("facets")
         if isinstance(facets, dict):
@@ -663,6 +667,7 @@ async def health():
         # older workers never emit the key, so this stays None and the
         # controller keeps sending flat requests to them.
         "analyze_facets_capable": analyzer_pool.capability("facets_capable", "facets"),
+        "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
         # Best-effort residency (#1204): whether CLAP/Demucs are believed
         # loaded right now — lets an operator confirm the idle release
         # without grepping logs. None while the worker is down.
@@ -781,6 +786,22 @@ async def analyze(req: AnalyzeRequest):
     if "audio_embedding" in msg:
         out["audio_embedding"] = msg["audio_embedding"]
     return out
+
+
+class SubbeatsPrepareRequest(BaseModel):
+    path: str
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    complete: bool
+
+
+@app.post("/prepare-subbeats")
+async def prepare_subbeats(req: SubbeatsPrepareRequest):
+    payload = {"id": "1", "op": "prepare_subbeats", **req.model_dump()}
+    msg = await analyzer_pool.request(payload)
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Sub/Beats preparation failed")
+    return {"ok": True, "subbeats_result": msg.get("subbeats_result")}
 
 
 class RenderTransitionRequest(BaseModel):

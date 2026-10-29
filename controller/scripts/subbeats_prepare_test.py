@@ -186,6 +186,25 @@ class CoverageTests(unittest.TestCase):
                     prepare.prepare(source, state, analysis_only=True)
             self.assertEqual(list((state / 'subbeats/v1').iterdir()), [state / 'subbeats/v1/.prepare.lock'])
 
+    def test_managed_jobs_require_matching_shared_cache_and_complete_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'subbeats'
+            root.mkdir()
+            (root / '.cache-id').write_text('shared-cache-identity')
+            req = {'state_dir': folder, 'path': 'unused', 'cache_id': 'other-cache-identity', 'complete': True}
+            with self.assertRaisesRegex(ValueError, 'not shared'):
+                prepare.prepare_request(req)
+            req['cache_id'] = 'shared-cache-identity'
+            req['complete'] = False
+            with self.assertRaisesRegex(ValueError, 'complete'):
+                prepare.prepare_request(req)
+            req['complete'] = True
+            result = {'directory': str(root / 'v1' / ('a' * 64)), 'metadata': {'stem_regions': [{'name': 'head'}]}}
+            with patch.object(prepare, 'prepare', return_value=result):
+                self.assertEqual(prepare.prepare_request(req)['subbeats_result']['status'], 'prepared')
+                result['cache_hit'] = True
+                self.assertFalse(prepare.prepare_request(req)['subbeats_used_models'])
+
     def test_sparse_and_regular_grids_keep_distinct_confidence(self):
         import numpy as np
         class FakeLibrosa:

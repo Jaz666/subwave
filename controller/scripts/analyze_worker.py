@@ -2698,6 +2698,7 @@ def main():
         "text_embedding_capable": text_capable,
         # Version signal: this worker understands {"facets": [...]} requests.
         "facets_capable": True,
+        "subbeats_capable": vocal_capable,
     })
 
     for line in sys.stdin:
@@ -2710,6 +2711,13 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "prepare_subbeats":
+            try:
+                from subbeats_prepare import prepare_request
+                emit({"id": rid, **prepare_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         # Transition render (feature: stem-blend transitions) — dispatched by
         # op key; a pure mix of cached stems, seconds of CPU, no model.
         if req.get("op") == "render_transition":

@@ -30,7 +30,65 @@ Stem Blend, cue points, loudness and settings. Commit cue changes only after a
 prepared pair passes checks and before publication to the mixer. Keep native
 playback untouched until queue integration is implemented and validated.
 
-## First development increment: local preparation/cache
+## Current Library preparation workflow
+
+The development branch now includes **Library → Sub/Beats** at
+`/admin/library/subbeats`, linked from the Library page and its navigation group.
+It suggests starting points using existing tempo/beat evidence (not a confirmed
+drive score), supports artist/title/album search, and queues selected recordings
+for deeper preparation. Search can find tracks without existing tempo analysis.
+
+The controller alone owns `state/subbeats/queue.json`, saving admissions, pause
+state, per-track attempts and results atomically. Managed children read that file
+and report outcomes on the existing stdio/progress channel; they never overwrite
+it. This preserves tracks added or paused while another is processing. The saved
+list has at most 500 tracks and each admission accepts at most 100 IDs. Only
+known library IDs can be admitted. Duplicate queued/running tracks are ignored;
+explicit Recheck/Retry can refresh terminal results without automatic retry loops.
+
+Sub/Beats uses the normal tagger/analyzer single-flight process slot, pidfile,
+process-group Stop/restart handling, run logs, and quiet-time policy. Preparation
+runs one track at a time and waits behind ordinary maintenance. Pause finishes
+the current track and leaves the rest queued. The normal Stop control also
+pauses the saved Sub/Beats list. On controller restart an interrupted active
+track becomes a visible failure requiring explicit retry, while queued work
+resumes after normal maintenance recovery. Closing the browser does not stop it.
+Sub/Beats completion skips normal catalogue/playlist refreshes and stem sweeps.
+
+The existing analyzer worker and sidecar accept the optional `prepare_subbeats`
+operation / `/prepare-subbeats` endpoint. Only an explicitly capable heavy
+analyzer is used; older/lean backends are unavailable for this job. It reuses the
+normal capped source downloader with a separate 256 MiB / five-minute allowance
+for these full-recording jobs (ordinary analysis retains its 12 MiB default). It
+requires the complete recording, never a byte
+prefix or a URL fallback. A cache UUID marker must match on both sides of the
+shared state volume, including a check before publication. Unshared remote
+analyzers decline rather than creating a private cache elsewhere. Preparation has
+a separate 30-minute request deadline, leaving normal analysis deadlines intact.
+The sidecar image includes both preparation modules; no dependency pins changed.
+
+The Library page distinguishes queued, preparing, prepared, unmeasurable,
+unavailable and failed results. Prepared means track resources were validated;
+it does not mean any pair is ready for playback. Completed results can be
+rechecked explicitly, using the cache when source and analysis identities match.
+No automatic pair selection or rendered transition has been connected to playback.
+
+Admin-only endpoints:
+
+- `GET /library/subbeats` — saved list and current maintenance progress.
+- `GET /library/subbeats/candidates?q=…&offset=…` — bounded discovery pages.
+- `POST /library/subbeats/queue` with `{ "ids": ["track-id"] }` — persist selection.
+- `POST /library/subbeats/pause` with `{ "paused": true }` — pause/resume admission.
+
+Both container bootstraps prepare `subbeats/` and `subbeats/v1/` for the shared
+controller/analyzer users. The cache lock works through a readable descriptor,
+so a cache initially created by the developer's user can be reused by the
+analyzer without rewriting existing stem files. Runtime folder permissions are
+applied only when the owner deploys/restarts; this source change does not operate
+the live station.
+
+## First development increment: local preparation/cache (historical foundation)
+
 
 `controller/scripts/subbeats_prepare.py` is an explicit local development job,
 not an installed background service, API or playback hook. It reuses the normal
@@ -75,8 +133,8 @@ with their path for inspection, never silently trusted or overwritten.
 A nonblocking local file lock allows one preparation at a time. Complete bundles
 are published by directory rename; failed jobs clean their own staging files.
 A killed process may leave a `.pending-*` directory, which remains unpublished
-and counts against capacity. Automatic recovery/cleanup is deferred to worker
-queue integration.
+and counts against capacity. Automatic cleanup of abandoned staging directories remains later cache
+maintenance work. Managed queue recovery does not adopt incomplete bundles.
 
 The initial budget is **5 GiB**. Existing bundles are never automatically evicted
 in this increment: a full cache declines new work, and publication beyond the
@@ -100,10 +158,9 @@ integration concern; this preparation step does not render transitions.
 
 ## Later development on this feature branch
 
-1. Connect preparation to the existing worker/job infrastructure, with persistent
-   queued/running/failed/unavailable states, pause/restart and bounded retries.
-   Add demand-led candidate controls on the Sub/Beats page. Keep production
-   worker and sidecar capability negotiation explicit.
+1. Broaden driving-beat validation and negative fixtures, and evaluate the
+   existing-data candidate ordering. Preparation/page integration is implemented
+   above; it still needs owner deployment and listening-led development.
 2. Derive/expand stem coverage from the pair timing map, confirm four-bar kick
    loops, validate source-zero release and vocal separation, and prepare pair
    clips before playback deadlines. Apply the normal shared loudness gain.
@@ -158,6 +215,45 @@ Verification for this increment: `npm test -- analyzer-python` passed, including
 Python compilation and `git diff --check` passed. The full controller/web suites
 and production builds were not run for this local Python development entrypoint.
 
-Next: connect this preparation job to the existing managed worker infrastructure
-and persist job progress before adding the Sub/Beats candidate/analysis page.
-Keep the initial cache work independent of general-cache replacement policy.
+That increment established the local cache foundation. The next increment
+implemented the managed preparation/page workflow described above. Pair-render
+integration and general-cache replacement policy remain separate later work.
+
+### Managed preparation and Library page evidence — 29 October 2026
+
+The next increment adds the workflow above without operating the station.
+Verified with isolated state and fixture audio/analyzer endpoints:
+
+- 14 Sub/Beats checks: admin-only routes, bounded/validated admission, discovery
+  with missing or malformed existing analysis, durable state and retries, real
+  managed-child stdio delivery, admissions during an active job, pause/resume,
+  Stop preserving queued work, and a refused process-lock write failing safely.
+- 45 analyzer checks, including the existing Python suites and 21 cache/
+  preparation cases. New contracts cover unsupported/older backends, shared
+  cache proof, complete-source requirements, sidecar forwarding, actual heavy
+  model-use accounting, and larger job-specific downloads leaving normal caps
+  unchanged.
+- 50 existing tagger checks, 16 bootstrap checks (both container entrypoints),
+  and 14 quiet-time checks passed.
+- 29 web Library checks and nine admin-query audit checks passed; the static
+  admin-query ownership audit passed. Controller and web `npm run lint` passed,
+  including TypeScript (controller retains its pre-existing lint warnings).
+- Existing browser scripts passed: all 24 Library search checks and all six
+  query-cache checks, including tagging/blocking cache propagation, tab reuse
+  and signed-out request behaviour. They ran against the temporary fixture
+  library on ports 7791/7793, with no live library or service credentials.
+- Desktop (1440 px) and mobile (390 px) screens rendered without horizontal
+  overflow or uncaught page errors; admission survived a reload. Empty candidate
+  and failed-progress states were exercised; unknown queue state disables
+  admission. A bounded follow-up confirmed the shared checkbox controls and
+  Library/Sub/Beats breadcrumb. The UI detector reported no findings.
+- A real Python worker protocol smoke test used hard-linked copies of the
+  validated La Primavera cache in a temporary state directory. It advertised
+  support, verified the matching cache marker and returned the same prepared
+  bundle with `subbeats_used_models: false`. No fresh separation was needed.
+
+Temporary preview servers were stopped. Screenshots/logs remain in the isolated
+experiment directory, outside Git. No full production build, deployment, station
+restart or real playback test was performed. Normal transitions and general stem
+cache retention are unchanged. Pair planning/rendering and playback integration
+remain the next development stage.

@@ -1,5 +1,6 @@
 // Admin-gated music-library management surface. Route order stays explicit.
 import express from 'express';
+import { router as subbeatsRoutes } from './library/subbeats.js';
 import { router as browseRoutes } from './library/browse.js';
 import { router as scenesRoutes } from './library/scenes.js';
 import { router as observatoryRoutes } from './library/observatory.js';
@@ -12,3 +13,5 @@ router.use(scenesRoutes);
 router.use(observatoryRoutes);
 router.use(maintenanceRoutes);
 router.use(blocklistRoutes);
+
+router.use(subbeatsRoutes);

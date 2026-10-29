@@ -111,15 +111,16 @@ async function readQuietConfig(): Promise<QuietConfig> {
 // How often the paused pass re-checks Icecast (one status fetch, no history).
 const QUIET_POLL_MS = 30_000;
 
-interface QuietGate {
+export interface QuietGate {
   state: QuietState;
   paused: boolean; // for one-per-transition logging, not decision logic
 }
 
 // Block until the gate allows the next track. Sits BETWEEN tracks, so only the
 // next compute waits. Unbounded by design (Stop button / admin toggle).
-async function waitForQuiet(gate: QuietGate, progress: { done: number; total: number }): Promise<void> {
+export async function waitForQuiet(gate: QuietGate, progress: { done: number; total: number }, shouldStop?: () => boolean): Promise<boolean> {
   for (;;) {
+    if (shouldStop?.()) return false;
     const quiet = await readQuietConfig();
     // Skip the probe while off; the pure helper still resets the quiet clock.
     const count = quiet.enabled ? await probeListenerCount() : null;
@@ -137,7 +138,7 @@ async function waitForQuiet(gate: QuietGate, progress: { done: number; total: nu
         // The per-track reporter only fires every 25 tracks, so restore now.
         reportProgress({ phase: 'analyze', label: 'Analysing audio', done: progress.done, total: progress.total });
       }
-      return;
+      return true;
     }
     // An unknown count never reaches here: the gate fails open.
     const why = count && count > 0 ? `${count} listening` : 'waiting out the quiet window';
