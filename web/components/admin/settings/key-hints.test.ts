@@ -1,6 +1,7 @@
 // Every LLM provider that takes a key gets a placeholder in its key field.
-// KEY_HINTS is keyed by env var and hand-kept beside providerMeta.ts, so a new
-// provider could ship with a blank key input; Requesty did.
+// KEY_HINTS is keyed by env var. Requesty shipped with a blank key input while
+// it was hand-kept; its LLM half now comes from the provider catalogue's
+// keyPlaceholder, and this guards that derivation.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

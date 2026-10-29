@@ -14,7 +14,8 @@ import { Card, Btn, Seg } from '../ui';
 import { Advanced } from './section-chrome';
 import { EmbeddingProviderSelector } from '../embedding/EmbeddingProviderSelector';
 import { ModelCombobox } from '../llm/ModelCombobox';
-import { LLM_ENV_VARS, llmProviderLabel } from '../llm/providerMeta';
+import { EMBED_MODEL_SUGGESTIONS, LLM_ENV_VARS, llmProviderLabel } from '../llm/providerMeta';
+import { EMBEDDING_PROVIDER_IDS } from '../../../lib/schemas.generated';
 import { cn } from '../../../lib/cn';
 import { HeaderRowsEditor } from './LlmSection';
 import { effectiveCompatMode } from './compat-mode';
@@ -23,30 +24,6 @@ import {
   headerMap,
   type SectionProps,
 } from './shared';
-
-// Ollama wants the short tag, not an HF/locca repo id (those 404). dim is
-// shown so an already-tagged library can be matched.
-const EMBED_MODEL_SUGGESTIONS: Record<string, { id: string; dim: number }[]> = {
-  ollama: [
-    { id: 'nomic-embed-text', dim: 768 },
-    { id: 'mxbai-embed-large', dim: 1024 },
-    { id: 'bge-m3', dim: 1024 },
-    { id: 'all-minilm', dim: 384 },
-  ],
-  openai: [
-    { id: 'text-embedding-3-small', dim: 1536 },
-    { id: 'text-embedding-3-large', dim: 3072 },
-  ],
-  google: [{ id: 'text-embedding-004', dim: 768 }],
-  openrouter: [
-    { id: 'openai/text-embedding-3-small', dim: 1536 },
-    { id: 'openai/text-embedding-3-large', dim: 3072 },
-  ],
-  requesty: [
-    { id: 'openai/text-embedding-3-small', dim: 1536 },
-    { id: 'openai/text-embedding-3-large', dim: 3072 },
-  ],
-};
 
 const LLM_BATCH_SIZES = [5, 10, 25] as const;
 
@@ -134,8 +111,7 @@ export function LibrarySection({ data, form, setForm, busy, saveSettings, adminF
 
   // Embedding-capable subset, not the full LLM list: deepseek, gateway and
   // anthropic have no embeddings endpoint (#493, #522).
-  const embedProviders = data.embedding?.providers ||
-    ['ollama', 'openai-compatible', 'locca', 'openrouter', 'requesty', 'openai', 'google'];
+  const embedProviders = data.embedding?.providers || [...EMBEDDING_PROVIDER_IDS];
   // Keep a stale explicit choice visible so the Select isn't blank.
   const providers = e.provider && !embedProviders.includes(e.provider)
     ? [e.provider, ...embedProviders]

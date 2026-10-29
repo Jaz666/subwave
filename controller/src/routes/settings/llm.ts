@@ -8,6 +8,7 @@ import * as llmProvider from '../../llm/provider.js';
 import { probeEmbeddingConfig } from '../../music/embeddings.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { SECRET_ENV_KEYS } from '../../setup/secrets.js';
+import { OPENAI_COMPATIBLE_GATEWAYS, openaiCompatibleGateway } from '../../schemas/providers.js';
 import { applyCustomHeadersPatch } from '../../settings/vocab.js';
 import type { EmbeddingCfg } from '../../llm/provider.js';
 import { listenbrainzApiBase } from '../../broadcast/scrobble.js';
@@ -103,19 +104,6 @@ async function probeKey(
         await generateText({ model: m, prompt: 'Reply with the single word OK.', maxOutputTokens: 32, abortSignal: AbortSignal.timeout(15000) });
         return { ok: true, message: `✓ OpenRouter key valid · model responded` };
       } catch (err) { return { ok: false, message: briefLlmError(err) }; }
-    }
-    case 'REQUESTY_API_KEY': {
-      // The model list is public, but a bearer Requesty can't verify is a 403
-      // ("Invalid authorization token"), so a bad key fails here; no model is
-      // called, as in the CLI's probeRequesty.
-      const r = await fetch(`${llmProvider.DEFAULT_REQUESTY_BASE_URL}/models`, {
-        headers: { Authorization: `Bearer ${value}` },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok) {
-        return { ok: false, message: r.status === 401 || r.status === 403 ? 'Key rejected — check it\'s correct and active' : `Request failed (${r.status})` };
-      }
-      return { ok: true, message: '✓ Requesty key valid' };
     }
     case 'AI_GATEWAY_API_KEY': {
       return { ok: true, message: 'Key format looks valid — confirm via a live LLM call' };
@@ -225,8 +213,22 @@ async function probeKey(
       }
       return { ok: true, message: `✓ ListenBrainz token valid${j.user_name ? ` · user: ${j.user_name}` : ''}` };
     }
-    default:
-      return { ok: false, message: `No probe defined for ${key}` };
+    default: {
+      // A fixed-endpoint gateway's model list, with the key as a Bearer; no
+      // model is called, as in the CLI's probeGatewayModels. Requesty's list is
+      // public, but a bearer it can't verify is a 403 ("Invalid authorization
+      // token"), so 401 and 403 both read as a rejected key.
+      const gw = OPENAI_COMPATIBLE_GATEWAYS.find(g => g.envVar === key);
+      if (!gw) return { ok: false, message: `No probe defined for ${key}` };
+      const r = await fetch(`${gw.openaiCompatible.baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${value}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!r.ok) {
+        return { ok: false, message: r.status === 401 || r.status === 403 ? 'Key rejected — check it\'s correct and active' : `Request failed (${r.status})` };
+      }
+      return { ok: true, message: `✓ ${gw.label} key valid` };
+    }
   }
 }
 
@@ -359,8 +361,11 @@ router.post('/settings/llm/probe-compat', requireAdmin, async (req, res) => {
 });
 
 // Providers whose model API returns one mixed chat+embedding list with no type
-// flag, so scope=embedding has to trim them by the name heuristic below.
-const MIXED_MODEL_LIST_PROVIDERS = new Set(['ollama', 'openai-compatible', 'locca', 'requesty']);
+// flag, so scope=embedding has to trim them by the name heuristic below. Every
+// fixed-endpoint gateway is one: its {base}/models list is passed through whole.
+const MIXED_MODEL_LIST_PROVIDERS = new Set([
+  'ollama', 'openai-compatible', 'locca', ...OPENAI_COMPATIBLE_GATEWAYS.map(gw => gw.id),
+]);
 
 // Name heuristic: almost all embedding models carry "embed", the rest come from
 // a short list of families. An unmatched model can still be typed by hand.
@@ -531,21 +536,6 @@ router.get('/settings/llm/models', requireAdmin, async (req, res) => {
         break;
       }
 
-      case 'requesty': {
-        const apiKey = resolveKey('REQUESTY_API_KEY');
-        if (!apiKey) throw new Error('REQUESTY_API_KEY not set');
-        const r = await fetch(`${llmProvider.DEFAULT_REQUESTY_BASE_URL}/models`, {
-          signal: ctrl.signal,
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-        });
-        if (!r.ok) throw new Error(`Requesty HTTP ${r.status}`);
-        const data = (await r.json()) as { data?: unknown };
-        models = Array.isArray(data?.data)
-          ? (data.data as { id?: unknown }[]).map((m) => m?.id).filter((id): id is string => typeof id === 'string').sort()
-          : [];
-        break;
-      }
-
       case 'gateway': {
         // Use the SDK's getAvailableModels() rather than a hand-rolled URL, so
         // the key/OIDC resolves exactly as the registry's createGateway does.
@@ -568,8 +558,24 @@ router.get('/settings/llm/models', requireAdmin, async (req, res) => {
         break;
       }
 
-      default:
-        return res.json({ ok: false, models: [], provider, error: `unknown provider: ${provider}` });
+      default: {
+        // A fixed-endpoint OpenAI-compatible gateway: {base}/models with its key
+        // as a Bearer.
+        const gw = openaiCompatibleGateway(provider);
+        if (!gw) return res.json({ ok: false, models: [], provider, error: `unknown provider: ${provider}` });
+        const apiKey = resolveKey(gw.envVar);
+        if (!apiKey) throw new Error(`${gw.envVar} not set`);
+        const r = await fetch(`${gw.openaiCompatible.baseUrl}/models`, {
+          signal: ctrl.signal,
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+        });
+        if (!r.ok) throw new Error(`${gw.label} HTTP ${r.status}`);
+        const data = (await r.json()) as { data?: unknown };
+        models = Array.isArray(data?.data)
+          ? (data.data as { id?: unknown }[]).map((m) => m?.id).filter((id): id is string => typeof id === 'string').sort()
+          : [];
+        break;
+      }
     }
 
     // Mixed-list providers only; the rest were already filtered by their API.

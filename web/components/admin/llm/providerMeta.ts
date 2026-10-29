@@ -1,5 +1,9 @@
+import { LLM_PROVIDER_CATALOG, type LlmProviderEntry } from '../../../lib/schemas.generated';
 
-export type ProviderKind = 'local' | 'self-hosted' | 'cloud';
+// Every table here derives from the provider catalogue
+// (controller/src/schemas/providers.ts, mirrored by gen:schemas).
+
+export type ProviderKind = LlmProviderEntry['kind'];
 
 export interface ProviderMeta {
   id: string;
@@ -14,23 +18,17 @@ export interface ProviderMeta {
   envVar?: string;
 }
 
-// Client-side order (local, then vendors, then aggregators), which is NOT the
-// controller's settings.LLM_PROVIDERS order. Settings renders
-// data.llm.providers (server-authoritative, server order) and looks each id up
-// here, so a provider the server adds first still renders as a bare card; only
-// onboarding renders in this order, through PROVIDER_IDS.
-export const PROVIDERS: ProviderMeta[] = [
-  { id: 'ollama',            label: 'Ollama',            blurb: 'Homelab box · no key',          kind: 'local' },
-  { id: 'locca',             label: 'locca',             blurb: 'Local llama.cpp · no key',       kind: 'local' },
-  { id: 'openai-compatible', label: 'OpenAI-compatible', blurb: 'llama.cpp · vLLM · LM Studio',   kind: 'self-hosted' },
-  { id: 'anthropic',         label: 'Anthropic',         blurb: 'Claude · cloud',                 kind: 'cloud', envVar: 'ANTHROPIC_API_KEY' },
-  { id: 'openai',            label: 'OpenAI',            blurb: 'GPT · cloud',                    kind: 'cloud', envVar: 'OPENAI_API_KEY' },
-  { id: 'google',            label: 'Google',            blurb: 'Gemini · cloud',                 kind: 'cloud', envVar: 'GOOGLE_GENERATIVE_AI_API_KEY' },
-  { id: 'deepseek',          label: 'DeepSeek',          blurb: 'Chat & reasoner · cloud',        kind: 'cloud', envVar: 'DEEPSEEK_API_KEY' },
-  { id: 'openrouter',        label: 'OpenRouter',        blurb: 'Multi-vendor aggregator',        kind: 'cloud', envVar: 'OPENROUTER_API_KEY' },
-  { id: 'requesty',          label: 'Requesty',          blurb: 'Multi-vendor aggregator',        kind: 'cloud', envVar: 'REQUESTY_API_KEY' },
-  { id: 'gateway',           label: 'AI Gateway',        blurb: 'Vercel · multi-vendor',          kind: 'cloud', envVar: 'AI_GATEWAY_API_KEY' },
-];
+// Onboarding's order: on-box servers, then your own server, then vendors, then
+// gateways. It is NOT the controller's settings.LLM_PROVIDERS (catalogue) order.
+// Settings renders data.llm.providers (server-authoritative, server order) and
+// looks each id up here, so a provider the server adds first still renders as a
+// bare card; only onboarding renders in this order, through PROVIDER_IDS.
+const onboardingRank = (p: LlmProviderEntry) =>
+  p.kind === 'local' ? 0 : p.kind === 'self-hosted' ? 1 : p.group === 'vendor' ? 2 : 3;
+
+export const PROVIDERS: ProviderMeta[] = [...LLM_PROVIDER_CATALOG]
+  .sort((a, b) => onboardingRank(a) - onboardingRank(b))
+  .map(({ id, label, blurb, kind, envVar }) => ({ id, label, blurb, kind, ...(envVar ? { envVar } : {}) }));
 
 export const PROVIDER_META: Record<string, ProviderMeta> = Object.fromEntries(
   PROVIDERS.map(p => [p.id, p]),
@@ -45,18 +43,15 @@ export const LLM_ENV_VARS: Record<string, string> = Object.fromEntries(
 );
 
 // Longer descriptors for the dropdown and the "Routing now" banner.
-export const LLM_PROVIDER_LABELS: Record<string, string> = {
-  ollama: 'Ollama (local/cloud)',
-  locca: 'locca (local llama.cpp, host)',
-  'openai-compatible': 'OpenAI-compatible (llama.cpp, vLLM, LM Studio)',
-  anthropic: 'Anthropic (Claude)',
-  openai: 'OpenAI (GPT)',
-  google: 'Google (Gemini)',
-  deepseek: 'DeepSeek',
-  openrouter: 'OpenRouter (multi-vendor aggregator)',
-  requesty: 'Requesty (multi-vendor aggregator)',
-  gateway: 'Vercel AI Gateway (multi-vendor aggregator)',
-};
+export const LLM_PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
+  LLM_PROVIDER_CATALOG.map(p => [p.id, p.longLabel]),
+);
+
+// Embedding model suggestions per provider, for the Library model picker. dim
+// is shown so an already-tagged library can be matched.
+export const EMBED_MODEL_SUGGESTIONS: Record<string, { id: string; dim: number }[]> = Object.fromEntries(
+  LLM_PROVIDER_CATALOG.flatMap(p => (p.embedding?.suggestions ? [[p.id, [...p.embedding.suggestions]]] : [])),
+);
 
 export const llmProviderLabel = (id: string | undefined): string =>
   (id && LLM_PROVIDER_LABELS[id]) || id || '—';

@@ -1,5 +1,6 @@
-// Settings search finds the LLM Provider card by any provider's id. The
-// keywords are hand-kept beside providerMeta.ts, and locca had dropped out.
+// Settings search finds the LLM Provider card by any provider's id. locca had
+// dropped out of the hand-kept keywords; they now derive from the provider
+// catalogue's ids.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

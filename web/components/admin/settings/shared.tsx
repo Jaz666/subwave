@@ -15,16 +15,14 @@ import { useSectionChrome, useReportDirty } from './section-chrome';
 import { Button } from '../../ui/button';
 import { FieldError } from '../../ui/field';
 import type { TransitionEffect, JingleRotateOwner, JinglePlacement, GeminiSafety } from '../../../lib/schemas.generated';
+import { LLM_PROVIDER_CATALOG } from '../../../lib/schemas.generated';
 export type { TransitionEffect } from '../../../lib/schemas.generated';
 
 export const KEY_HINTS: Record<string, string> = {
-  ANTHROPIC_API_KEY: 'sk-ant-...',
-  OPENAI_API_KEY: 'sk-...',
-  GOOGLE_GENERATIVE_AI_API_KEY: 'AIza...',
-  DEEPSEEK_API_KEY: 'sk-...',
-  OPENROUTER_API_KEY: 'sk-or-v1-...',
-  REQUESTY_API_KEY: 'Requesty API key',
-  AI_GATEWAY_API_KEY: 'gateway API key',
+  // The LLM providers' key fields, from the provider catalogue.
+  ...Object.fromEntries(
+    LLM_PROVIDER_CATALOG.flatMap(p => (p.envVar && p.keyPlaceholder ? [[p.envVar, p.keyPlaceholder]] : [])),
+  ),
   ELEVENLABS_API_KEY: 'el_...',
   // Fish keys have no documented prefix — point at where to mint one instead.
   FISH_API_KEY: 'key from fish.audio/app/api-keys',

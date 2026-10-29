@@ -19,7 +19,8 @@ import {
   normalizeNavidromeCredentials,
   type LlmProbeInput,
 } from '../schemas/onboarding.js';
-import { DEFAULT_LOCCA_BASE_URL, DEFAULT_REQUESTY_BASE_URL, OPENROUTER_APP_HEADERS, noThinkFetch } from '../llm/provider.js';
+import { DEFAULT_LOCCA_BASE_URL, OPENROUTER_APP_HEADERS, noThinkFetch } from '../llm/provider.js';
+import { openaiCompatibleGateway } from '../schemas/providers.js';
 import * as settings from '../settings.js';
 import * as jingles from '../broadcast/jingles.js';
 import { queue } from '../broadcast/queue.js';
@@ -92,11 +93,6 @@ router.post('/onboarding/test-llm', requireAdmin, validateBody(llmProbeSchema), 
       case 'openrouter':
         m = createOpenRouter({ headers: OPENROUTER_APP_HEADERS, ...(apiKey ? { apiKey } : {}) })(model);
         break;
-      case 'requesty':
-        // OpenAI-compatible gateway at a fixed base URL; model ids are
-        // provider/model (openai/gpt-4o-mini).
-        m = createOpenAI({ baseURL: DEFAULT_REQUESTY_BASE_URL, apiKey: apiKey || 'unused' }).chat(model);
-        break;
       case 'gateway':
         // Vercel AI Gateway; with no apiKey the SDK resolves env / OIDC
         // credentials, as the registry's client does.
@@ -104,6 +100,13 @@ router.post('/onboarding/test-llm', requireAdmin, validateBody(llmProbeSchema), 
         break;
       case 'ollama':
       default: {
+        // A fixed-endpoint OpenAI-compatible gateway from the catalogue; model
+        // ids are provider/model (openai/gpt-4o-mini). Any other id is Ollama.
+        const gw = openaiCompatibleGateway(provider);
+        if (gw) {
+          m = createOpenAI({ baseURL: gw.openaiCompatible.baseUrl, apiKey: apiKey || 'unused' }).chat(model);
+          break;
+        }
         const url = ollamaUrl || 'http://localhost:11434';
         m = createOllama({ baseURL: url })(model);
         break;
