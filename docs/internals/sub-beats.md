@@ -282,3 +282,28 @@ updated bootstrap script, without requiring a broadcast restart.
 
 Pre-integration verification is recorded above. Deployment checks and final
 service status are appended after the candidate is built and started.
+
+Operator preference (2026-10-29): for future deployments, provide the exact
+rebuild and health-check commands for the owner to run; avoid spending agent
+usage waiting on image builds. The current deployment was already building
+when this preference was given.
+
+Deployment completed: controller, CUDA analyzer and web images built
+successfully and were recreated with `--no-deps --no-build`. Broadcast was
+not restarted and retains two active stream mounts. Edge health is 200
+`on-air`; both Library Sub/Beats and Sub/Flow pages return 200. Authenticated
+Sub/Beats state/candidate reads return 200, with 50 candidate rows and more
+available. Preparation list is empty. Analyzer health reports
+`analyze_subbeats_capable: true`; controller capability remains unknown until
+its normal lazy backend probe, with admission available. No audio job was
+started for deployment verification.
+
+Integrated checks: all 14 Sub/Beats tests passed; web lint/typecheck and its
+production build passed. Controller ESLint has zero errors, but its full
+typecheck remains blocked by 13 existing missing-`artists` errors in four
+show test files. Those files and `show-candidates.ts` are byte-identical to
+rollback source; no Sub/Beats type errors were reported. Controller runtime
+build and health passed. Previous feature-branch verification is preserved
+above. The next acceptance step is selecting a small batch in Library →
+Sub/Beats and checking preparation results; playback integration remains
+future development.
