@@ -275,3 +275,10 @@ exception, including `state/**`. A private prepared bundle exposed traversal
 of `state/subbeats/v1` during an owner-run controller rebuild. The final
 exclusions prevent inspecting or sending runtime caches; do not broaden
 bundle permissions to work around a build-context error.
+
+Correction: final state exclusions alone did not prevent BuildKit traversal.
+An isolated context with an unreadable `state/subbeats/v1/private` directory
+reproduced the sender error with the previous rules. Replacing the broad
+`!**/.env.example` exception with explicit root/controller/web example-file
+paths passed the same context-only build. This test rebuilt no station
+services and read no real cache files. Cache permissions remain unchanged.

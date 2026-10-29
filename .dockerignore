@@ -15,7 +15,9 @@
 # .env.example whitelisted so docs/templates still ship.
 **/.env
 **/.env.*
-!**/.env.example
+!.env.example
+!controller/.env.example
+!web/.env.example
 
 # Keep runtime state excluded after the broad env-example exception above.
 # Exclude descendants too so Docker need not traverse private cache bundles.
