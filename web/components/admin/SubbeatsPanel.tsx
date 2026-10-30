@@ -88,8 +88,8 @@ export default function SubbeatsPanel() {
 
     <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to hear an experimental 16-bar stem mix in your browser. Station playback is unaffected.</p>
-      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">This first preview checks sustained kicks and matches the tempo. Phrase alignment and vocal handling are experimental; the incoming tempo stays matched until the preview ends.</p>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to hear an experimental stem mix in your browser. It prefers 16 bars, using 8 or 4 when needed. Station playback is unaffected.</p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Prepared phrase maps guide the alignment where available. Phrase detection and vocal handling remain experimental; the incoming tempo stays matched until the preview ends.</p>
       {prepared < 2 ? <p className="mt-4 text-sm text-muted">Prepare at least two tracks to try a transition.</p> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         {([{ id: 'subbeats-outgoing', label: 'Outgoing track', value: outgoing, change: setOutgoing, other: incoming },
           { id: 'subbeats-incoming', label: 'Incoming track', value: incoming, change: setIncoming, other: outgoing }]).map(field => <div key={field.id} className="min-w-0">
@@ -109,7 +109,7 @@ export default function SubbeatsPanel() {
         <select id="subbeats-bar-shift" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={barShift} onChange={event => setBarShift(Number(event.target.value))}>
           <option value={-2}>−2 bars · earlier</option>
           <option value={-1}>−1 bar · earlier</option>
-          <option value={0}>0 · original alignment</option>
+          <option value={0}>0 · automatic alignment</option>
           <option value={1}>+1 bar · later</option>
           <option value={2}>+2 bars · later</option>
         </select>
@@ -126,7 +126,7 @@ export default function SubbeatsPanel() {
           className="mt-2 h-8 w-full cursor-pointer accent-ink" aria-valuetext={`${clock(preview.position)} of ${clock(preview.duration)}`}
           onChange={event => preview.seek(Number(event.target.value))} />
         {currentStage && <p role="status" className="mt-1 text-sm font-medium text-ink">{currentStage}</p>}
-        <p className="mt-1 text-xs leading-relaxed text-muted">Stages describe the planned fades, not detected musical phrases. Vocal stages apply where vocals are present. Select a time to jump there.</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">The timeline shows planned fades and phrase references. Counted references are inferred from the opening. Vocal stages apply where vocals are present. Select a time to jump there.</p>
         {preview.timeline ? <ol className="mt-3 grid gap-1">
           {preview.timeline.events.map((event, index) => {
             const current = preview.position >= event.at && (index === preview.timeline!.events.length - 1 || preview.position < preview.timeline!.events[index + 1]!.at);

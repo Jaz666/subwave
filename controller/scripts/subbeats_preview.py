@@ -10,31 +10,34 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 4
+VERSION = 6
 PREVIEW_BUDGET = 200 * 1024**2
 
 
-def fit_grid(peaks, bpm, duration, outgoing=False):
+def fit_grid(peaks, bpm, duration, outgoing=False, *, beats=64, phrase_origin=None, reference_period=None, source_start=0):
     import numpy as np
     period = 60 / bpm
-    candidates = peaks[(peaks >= (4 if outgoing else 0)) & (peaks + 64 * period <= duration)]
+    candidates = peaks[(peaks >= (4 if outgoing and phrase_origin is None else 0)) & (peaks + beats * period <= duration)]
+    if phrase_origin is not None:
+        counts = np.rint((candidates + source_start - phrase_origin) / reference_period).astype(int)
+        candidates = candidates[(counts % 16 == 0) & (np.abs(candidates + source_start - phrase_origin - counts * reference_period) <= .25 * period)]
     for start in (candidates[::-1] if outgoing else candidates):
-        slots = start + np.arange(64) * period
+        slots = start + np.arange(beats) * period
         indices = np.abs(peaks[:, None] - slots).argmin(axis=0)
         found = peaks[indices]
         good = np.abs(found - slots) <= .13 * period
         if not good[:16].all() or good.mean() < .85:
             continue
-        fitted, origin = np.polyfit(np.arange(64)[good], found[good], 1)
-        if abs(fitted / period - 1) > .03 or np.max(np.abs(found[good] - (origin + np.arange(64)[good] * fitted))) > .13 * period:
+        fitted, origin = np.polyfit(np.arange(beats)[good], found[good], 1)
+        if abs(fitted / period - 1) > .03 or np.max(np.abs(found[good] - (origin + np.arange(beats)[good] * fitted))) > .13 * period:
             continue
-        if origin < 0 or origin + 64 * fitted > duration:
+        if origin < 0 or origin + beats * fitted > duration:
             continue
         return float(origin), float(fitted)
     raise ValueError('No sustained four-to-the-floor run fits the prepared region. Try another pair.')
 
 
-def kick_grid(drums, bpm, outgoing=False):
+def kick_grid(drums, bpm, outgoing=False, **grid):
     import numpy as np
     from scipy.signal import butter, sosfiltfilt, find_peaks
     mono = drums.mean(axis=0)
@@ -46,7 +49,7 @@ def kick_grid(drums, bpm, outgoing=False):
         raise ValueError('No clear kick pattern in the prepared drums. Try another pair.')
     peaks, _ = find_peaks(energy, distance=max(1, round(.65 * 60 / bpm * STEM_SR / hop)),
                           prominence=max(1e-6, float(np.percentile(energy, 95)) * .15))
-    return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing)
+    return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing, **grid)
 
 
 def load_region(folder, record, name):
@@ -172,6 +175,30 @@ def validate_bar_shift(value):
     return value
 
 
+def preserve_cue_phase(source_cue, rate, detected_cue, period):
+    """Refine sub-beat timing without renumbering an already measured opening."""
+    expected = source_cue / rate
+    offset_beats = round((detected_cue - expected) / period)
+    refined = detected_cue - offset_beats * period
+    if abs(refined - expected) > .15 * period or refined < -.05 * period:
+        raise ValueError('Tempo matching did not preserve the incoming beat phase. Try another pair.')
+    return max(0., refined)
+
+
+def load_structure(root, folder, record, librosa_version):
+    from subbeats_cache import cache_key
+    from subbeats_structure import VERSION as structure_version
+    identity = {'source_sha256': record['identity']['source_sha256'], 'mode': 'structure',
+                'structure_version': structure_version, 'librosa': librosa_version,
+                'rhythm_sha256': digest(folder / 'rhythm.npz')}
+    dest = root / 'v1' / cache_key(identity)
+    if not dest.exists():
+        return None, None
+    if cached_entry(dest, identity) is None:
+        raise ValueError('The structure map failed integrity checks. Recheck the track.')
+    return json.loads((dest / 'structure.json').read_text()), digest(dest / 'manifest.json')
+
+
 def render_preview(req):
     import numpy as np
     import librosa
@@ -200,7 +227,8 @@ def render_preview(req):
     gains = [float(req.get(name, 0)) for name in ('out_gain_db', 'in_gain_db')]
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
-    fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
+    structure, structure_hash = load_structure(root, folders[1], records[1], librosa.__version__)
+    fingerprint = json.dumps({'structure': structure_hash, 'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
                               'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
@@ -220,24 +248,72 @@ def render_preview(req):
             raise ValueError('The preview cache is full (200 MB).')
         out_parts, out_bpm = load_region(folders[0], records[0], 'exit')
         in_parts, in_bpm = load_region(folders[1], records[1], 'head')
-        out_cue, period = kick_grid(out_parts['drums'], out_bpm, True)
-        in_cue, in_period = kick_grid(in_parts['drums'], in_bpm)
+        phrase_bars = None
+        if structure is not None:
+            # Source-zero head grid supplies an explicit, inferred phrase origin.
+            head, head_bpm = load_region(folders[0], records[0], 'head')
+            head_cue, head_period = kick_grid(head['drums'], head_bpm)
+            del head
+            if head_cue >= head_period:
+                raise ValueError('The outgoing opening does not establish phrase phase. Try another pair.')
+            region = next(r for r in records[0]['metadata']['stem_regions'] if r['name'] == 'exit')
+            for bars in (16, 8, 4):
+                try:
+                    out_cue, period = kick_grid(out_parts['drums'], out_bpm, True, beats=bars * 4,
+                        phrase_origin=head_cue, reference_period=head_period,
+                        source_start=region['start_sample'] / STEM_SR)
+                    phrase_bars = bars
+                    break
+                except ValueError:
+                    continue
+            if phrase_bars is None:
+                raise ValueError('No complete phrase-aligned exit fits the prepared audio. Try another pair.')
+        else:
+            out_cue, period = kick_grid(out_parts['drums'], out_bpm, True)
+        if phrase_bars:
+            for bars in (b for b in (16, 8, 4) if b <= phrase_bars):
+                try:
+                    in_cue, in_period = kick_grid(in_parts['drums'], in_bpm, beats=bars * 4)
+                    phrase_bars = bars
+                    break
+                except ValueError:
+                    if bars == 4:
+                        raise
+        else:
+            in_cue, in_period = kick_grid(in_parts['drums'], in_bpm)
         rate = in_period / period
         if abs(rate - 1) > .08:
             raise ValueError('These tempos are too far apart for this preview. Try another pair.')
         if abs(rate - 1) > .0001:
             in_parts = {name: librosa.effects.time_stretch(part, rate=rate) for name, part in in_parts.items()}
-            in_cue, _ = kick_grid(in_parts['drums'], 60 / period)
+            detected_cue, _ = kick_grid(in_parts['drums'], 60 / period, beats=(phrase_bars or 16) * 4)
+            in_cue = preserve_cue_phase(in_cue, rate, detected_cue, period)
         out_parts = {name: part * 10**(gains[0] / 20) for name, part in out_parts.items()}
         in_parts = {name: part * 10**(gains[1] / 20) for name, part in in_parts.items()}
-        audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift)
+        plan = None
+        if phrase_bars:
+            from subbeats_phrases import plan_phrase, mix_phrase, phrase_timeline
+            candidates = [{**c, 'at_seconds': c['at_seconds'] / rate} for c in structure['candidates']]
+            plan = plan_phrase(in_cue, period, in_parts['drums'].shape[1] / STEM_SR,
+                               out_parts['drums'].shape[1] / STEM_SR, out_cue, candidates,
+                               bar_shift=bar_shift, allowed_bars=tuple(b for b in (16, 8, 4) if b <= phrase_bars))
+            phrase_bars = plan['bars']
+            plan['incoming_reference_source_seconds'] = plan['incoming_reference'] * rate
+            plan['outgoing_source_start_seconds'] = region['start_sample'] / STEM_SR + out_cue
+            audio, intro_vocals = mix_phrase(out_parts, in_parts, plan, STEM_SR)
+            timeline = phrase_timeline(plan, intro_vocals)
+            timeline['duration'] = audio.shape[1] / STEM_SR
+        else:
+            audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift)
+            prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
+            intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
+            timeline = preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR, bar_shift)
+            timeline['events'][0]['label'] += '; phrase map unavailable, beat matching only'
         stage = Path(tempfile.mkdtemp(prefix='.pending-', dir=previews))
         try:
             sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='PCM_16')
-            prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
-            intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
-            metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR, bar_shift),
-                        'bars': 16, 'bar_shift': bar_shift, 'bpm': 60 / period, 'incoming_rate': rate,
+            metadata = {'timeline': timeline, 'phrase_plan': plan,
+                        'bars': phrase_bars or 16, 'bar_shift': bar_shift, 'bpm': 60 / period, 'incoming_rate': rate,
                         'experimental': True, 'native_tempo_return': False, 'phrase_verified': False}
             record = {'identity': {'fingerprint': fingerprint}, 'metadata': metadata,
                       'files': {'preview.wav': {'bytes': (stage / 'preview.wav').stat().st_size,
