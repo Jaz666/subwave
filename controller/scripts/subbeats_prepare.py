@@ -118,6 +118,29 @@ def requested_regions(analysis, head_seconds):
     return regions
 
 
+def write_flac_region(stage, name, parts):
+    """Shared storage contract for fresh separation and CPU-only conversion."""
+    import numpy as np
+    import soundfile as sf
+    peak = max(float(np.max(np.abs(part))) for part in parts.values())
+    storage_gain = .999 / peak if peak >= 1 else 1.
+    reconstructed = np.zeros_like(next(iter(parts.values())), dtype=np.float32)
+    for stem, part in parts.items():
+        target = stage / f'{name}-{stem}.flac'
+        sf.write(target, (part * storage_gain).T, STEM_SR, subtype='PCM_24')
+        info = sf.info(target)
+        if (info.frames, info.channels, info.samplerate) != (part.shape[1], 2, STEM_SR):
+            raise ValueError('written stem coverage mismatch')
+        saved, sr = sf.read(target, dtype='float32', always_2d=True)
+        if sr != STEM_SR or saved.T.shape != part.shape or not np.isfinite(saved).all():
+            raise ValueError('invalid written stem')
+        restored = saved.T / storage_gain
+        if not np.allclose(restored, part, rtol=1e-6, atol=2**-22 / storage_gain):
+            raise ValueError('FLAC conversion changed stem samples beyond PCM tolerance')
+        reconstructed += restored
+    return storage_gain, reconstructed
+
+
 def separate_regions(path, stage, regions, detector):
     import numpy as np
     import soundfile as sf
@@ -139,20 +162,7 @@ def separate_regions(path, stage, regions, detector):
         for part in parts.values():
             if part.shape != reconstructed.shape or not np.isfinite(part).all():
                 raise ValueError('invalid separated stem')
-        # One gain preserves relative stem levels and their cancellation. Readers
-        # divide by storage_gain before mixing; older bundles default to 1.
-        peak = max(float(np.max(np.abs(part))) for part in parts.values())
-        storage_gain = .999 / peak if peak >= 1 else 1.
-        for stem, part in parts.items():
-            target = stage / f'{name}-{stem}.flac'
-            sf.write(target, (part * storage_gain).T, STEM_SR, subtype='PCM_24')
-            info = sf.info(target)
-            if (info.frames, info.channels, info.samplerate) != (stop - first, 2, STEM_SR):
-                raise ValueError('written stem coverage mismatch')
-            saved, sr = sf.read(target, dtype='float32', always_2d=True)
-            if sr != STEM_SR or saved.T.shape != part.shape or not np.isfinite(saved).all():
-                raise ValueError('invalid written stem')
-            reconstructed += saved.T / storage_gain
+        storage_gain, reconstructed = write_flac_region(stage, name, parts)
         source = audio[:, first:stop]
         error = float(np.sqrt(np.mean((reconstructed - source)**2)) / max(1e-12, np.sqrt(np.mean(source**2))))
         if not math.isfinite(error) or error > .1:
@@ -181,6 +191,15 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
                                  'subtype': 'PCM_24-shared-gain-v1', 'demucs': importlib.metadata.version('demucs'),
                                  'torch': importlib.metadata.version('torch')}
 
+    if not analysis_only:
+        # Reuse a verified converted bundle without another separation pass.
+        from subbeats_cache import cache_key, cached_entry
+        legacy = {**identity, 'separator': {**identity['separator'], 'subtype': 'PCM_24-or-FLOAT-v1'}}
+        dest = Path(state_dir) / 'subbeats' / 'v1' / cache_key(legacy)
+        previous = cached_entry(dest, legacy)
+        if previous and previous['metadata'].get('storage_format') == 'PCM_24-shared-gain-v1':
+            return {'cache_hit': True, 'directory': str(dest), **previous}
+
     def build(stage):
         analysis = analyze(path, stage, librosa)
         coverage = []
@@ -197,7 +216,8 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
             raise ValueError('source changed during preparation')
         if expected_cache_id is not None:
             require_shared_cache(state_dir, expected_cache_id)
-        return {'analysis_status': analysis['status'], 'stem_regions': coverage,
+        return {'storage_format': 'PCM_24-shared-gain-v1',
+                'analysis_status': analysis['status'], 'stem_regions': coverage,
                 'pair_ready': False}
 
     return prepare_cached(state_dir, identity, build, budget)

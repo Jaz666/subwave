@@ -345,3 +345,32 @@ Verification: the registered analyzer Python suites pass, including all 22
 Sub/Beats checks. The shared-gain regression models 24-bit PCM quantization
 and verifies restored stem balance and reconstructed source level. No GPU
 job, cache migration, image rebuild or station restart was performed.
+
+## CPU-only conversion of existing prepared bundles
+
+`subbeats_convert.py --state-dir PATH` converts the paused preparation list's
+verified mixed FLAC/WAV bundles, without downloading tracks or importing GPU
+models. It holds the existing preparation lock. The same FLAC writer is used
+by new separation and conversion, including saved-sample and restored-level
+validation. Conversion checks both individual stems and their summed audio.
+
+Bundle keys and original preparation identity remain stable: identity records
+preparation provenance, while `metadata.storage_format` records current
+encoding and each region's `storage_gain` records reversible attenuation.
+Artifacts and hashes are regenerated; analysis files are copied unchanged.
+New preparation requests recognize a verified converted legacy bundle and
+reuse it without separation. Prepared queue entries are never rewritten.
+
+Publication uses Linux `renameat2(RENAME_EXCHANGE)` on the same cache
+filesystem. Stage and original are hash-checked before exchange, and the
+published bundle is checked again before deleting the old files. A failed
+post-publication check swaps the original back. If rollback itself fails,
+the old staging directory is retained rather than deleted. A killed process
+may leave a `.convert-*` directory for inspection; no automatic cleanup is
+performed. Unsupported atomic exchange fails before changing the original.
+Only conversions which reduce artifact size are published.
+
+The isolated tests exercise retained keys, restored levels, unchanged analysis,
+cache integrity, repeated conversion, corrupt input, refused exchange and
+pre-publication conversion failure. The registered analyzer Python suites
+pass. Live conversion results are recorded after execution.
