@@ -77,7 +77,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 | `sfx.txt` | 0.5 s poll | sound effect → `sfx_queue` |
 | `auto.m3u` | telnet `auto.reload` | the coast playlist for the current mood |
 | `jingles.m3u` | telnet `jingles.reload` | the mixer's own jingle rotate, rebuilt by `broadcast/jingles.ts` |
-| `liquidsoap_*.txt` | once, at startup | crossfade, jingle ratio, duck depths, per-mount enable/bitrate…, written by `settings.update()`; a change needs `/restart-mixer` |
+| `liquidsoap_*.txt` | once, at startup | crossfade, jingle ratio, duck depths, per-mount enable…, written by `settings.update()`; a change needs `/restart-mixer`. The Icecast renderers read the stream bitrates and hand them on as `SUBWAVE_*_BITRATE` (`infrastructure.md`) |
 
 **Liquidsoap → Controller.** Marker files written by `radio.liq` (the rules are in `liquidsoap/CLAUDE.md`):
 - `now-playing.json`: the live track, from `music_meta`, the pre-cross handle.
@@ -104,6 +104,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 - **A behaviour-preserving refactor preserves behaviour, accidental leniency included.** Tightening it is a separate PR, stated as a behaviour change (`schemas.md`, on the patch registry).
 - **Keep the broadcast entrypoint and the AIO supervisor in lockstep.** `docker/broadcast-entrypoint.sh` and the AIO duplicate six things (`infrastructure.md` lists them, and six tests drive both copies), so fix one, fix both.
 - **State bootstrap is never fatal.** Guard each step and warn; Icecast and the dead-air guard must still come up.
+- **The admin lockout counts distinct guesses, never requests**, and `ADMIN_LOCKOUT=off` (env only) is the operator's final say (`infrastructure.md`). The web console sends `X-Subwave-Console` so it is never answered with a Basic challenge.
 - **The listener-country chain fails open link by link** (`broadcast/listener-country.ts`). A later link runs when an earlier one misses (`XX`/`T1`), not only when it is absent.
 
 **Timing** (`broadcast.md`)

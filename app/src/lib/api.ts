@@ -3,7 +3,7 @@
 
 import { lyricsResultFor, type LyricsResult } from './lyrics';
 import type { StreamFormat } from './streamFormat';
-import { stationAuthResult, withStreamAuth, type StationAuthResult } from './station-password';
+import { rateLimitedUntil, stationAuthResult, withStreamAuth, type StationAuthResult } from './station-password';
 import {
   normalizeStationBase,
   resolveStationConnection,
@@ -79,6 +79,10 @@ export interface StationApi {
   /** Check a private-station password against `POST /station-auth` (#478),
    *  which fails closed and is rate-limited. Never throws. */
   checkStationAuth(password: string): Promise<StationAuthResult>;
+  /** When the latest `/station-auth` answer said to ask again: a 429's
+   *  `Retry-After`, or 0 for none. The limit covers the whole address, so this
+   *  holds whichever check saw it. */
+  stationAuthHeldUntil(): number;
   /** Absolute URL for an album cover. It still carries the login as URL
    *  userinfo for RNTP's iOS lock-screen artwork, which loads it with a bare
    *  URLSession request that takes no headers; every loader that does take
@@ -130,6 +134,10 @@ function mountFor(format: StreamFormat): string {
 // Compose timeouts manually: RN fetch lacks AbortSignal.timeout and any.
 export const FETCH_TIMEOUT_MS = 8000;
 
+/** What can still end a request past its headers, for readJson: fetch resolves
+ *  on them, and fetchWithTimeout lets go of its timer and the caller's signal. */
+const openRequests = new WeakMap<Response, { ctrl: AbortController; outer?: AbortSignal | null }>();
+
 function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
@@ -139,26 +147,49 @@ function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
     if (outer.aborted) ctrl.abort();
     else outer.addEventListener('abort', onAbort);
   }
-  return fetch(url, { ...init, signal: ctrl.signal }).finally(() => {
-    clearTimeout(timer);
-    outer?.removeEventListener('abort', onAbort);
-  });
+  return fetch(url, { ...init, signal: ctrl.signal })
+    .then((res) => {
+      openRequests.set(res, { ctrl, outer });
+      return res;
+    })
+    .finally(() => {
+      clearTimeout(timer);
+      outer?.removeEventListener('abort', onAbort);
+    });
 }
 
-/** A refusal's JSON body, or undefined when it is not JSON or has not arrived
- *  within FETCH_TIMEOUT_MS. fetch resolves on the headers, so fetchWithTimeout's
- *  timer has already stopped, and aborting would not help: on iOS, expo/fetch's
- *  native text() settles only on a complete body. */
-async function refusalBody(res: Response): Promise<unknown> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const giveUp = new Promise<undefined>((resolve) => {
-    timer = setTimeout(resolve, FETCH_TIMEOUT_MS);
+/** A station response's JSON body, with its own FETCH_TIMEOUT_MS from the start
+ *  of the read, so a call takes at most twice that: headers, then body. The
+ *  deadline or the caller's signal aborts the request, which is what closes the
+ *  connection of a stalled body, and rejects here too, because the abort alone
+ *  doesn't end the read: expo/fetch's native text() waits for a complete body.
+ *  After a cancel iOS never has one (NativeResponse.swift ends in errorReceived),
+ *  and Android calls whatever arrived complete (NativeResponse.kt), so the read
+ *  never settles on one and resolves with a truncated body on the other. */
+async function readJson(res: Response): Promise<unknown> {
+  const { ctrl, outer } = openRequests.get(res) ?? {};
+  let stop = () => {};
+  const stopped = new Promise<never>((_, reject) => {
+    stop = () => {
+      ctrl?.abort();
+      reject(new Error('Request aborted'));
+    };
   });
+  const timer = setTimeout(stop, FETCH_TIMEOUT_MS);
+  if (outer?.aborted) stop();
+  else outer?.addEventListener('abort', stop);
   try {
-    return await Promise.race([res.json().catch(() => undefined), giveUp]);
+    return await Promise.race([res.json(), stopped]);
   } finally {
     clearTimeout(timer);
+    outer?.removeEventListener('abort', stop);
   }
+}
+
+/** A /station-auth answer's JSON body, or undefined when it is not JSON or has
+ *  not arrived in time (readJson). */
+function refusalBody(res: Response): Promise<unknown> {
+  return readJson(res).catch(() => undefined);
 }
 
 type StationRequestInit = Omit<RequestInit, 'headers'> & { headers?: Record<string, string> };
@@ -180,12 +211,13 @@ export function createApi(
   const getJson = async <T>(p: string, signal?: AbortSignal): Promise<T> => {
     const res = await send(p, { signal });
     if (!res.ok) throw new Error(`${res.status} ${api(p)}`);
-    return (await res.json()) as T;
+    return (await readJson(res)) as T;
   };
   // Images keep the login in the URL as well, for the one loader that takes
   // no headers (see cover()). It is the same login as the header, so the two
   // never disagree.
   const asset = (p: string) => `${requestBase}/api${p}`;
+  let stationAuthHold = 0;
   const onStation = (url: string) => url.startsWith(`${requestBase}/`) || url.startsWith(`${cleanBase}/`);
   const probeHealth = async (signal?: AbortSignal): Promise<HealthResult> => {
     try {
@@ -239,15 +271,17 @@ export function createApi(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password }),
         });
+        stationAuthHold = res.status === 429 ? rateLimitedUntil(res.headers.get('Retry-After'), Date.now()) : 0;
         return stationAuthResult(res.status, {
           challenged: res.headers.has('www-authenticate'),
-          // Only a refusal's body is read: it says who refused (stationAuthResult).
-          body: res.status === 401 ? await refusalBody(res) : undefined,
+          // Only these bodies are read: they say who answered (stationAuthResult).
+          body: res.status === 200 || res.status === 401 ? await refusalBody(res) : undefined,
         });
       } catch {
         return stationAuthResult(null);
       }
     },
+    stationAuthHeldUntil: () => stationAuthHold,
     pollRequest: async (id) => {
       const res = await send(`/request/${encodeURIComponent(id)}`);
       if (res.status === 404) return { success: false, status: 'unknown' };
