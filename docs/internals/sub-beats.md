@@ -296,3 +296,20 @@ are retained but new requests use a distinct key. Consumers must use each
 bundle's listed filenames rather than assume every stem ends in `.flac`.
 
 Verification: all 22 Sub/Beats Python checks and the registered analyzer Python suites pass, including over-range cancellation, unscaled float storage and invalid-sample rejection.
+
+## Endpoint rounding after overnight preparation (2026-10-30)
+
+The station queue contains 40 prepared tracks and nine failed tracks, all with
+`requested region is outside decoded source coverage`. Independent 22.05 kHz
+analysis and 44.1 kHz stem decodes can round their end samples differently.
+A real FFmpeg reproduction using 48,001 input samples at 48 kHz gives
+22,051 analysis samples and 44,101 stem samples: the inferred stem endpoint
+is one sample beyond actual coverage.
+
+Allow at most one analysis sample (two stem samples, about 45 microseconds)
+of end rounding, and record the actual decoded endpoint. Do not pad audio or
+alter start positions. Larger overruns, negative starts and empty regions
+still fail. Existing successful bundles remain valid; no cache identity
+change or repeat separation is needed for those 40 tracks. Retry only failed
+tracks after the owner rebuilds the analyzer. This fixes a demonstrated
+rounding case; successful retries confirm its application to the nine tracks.

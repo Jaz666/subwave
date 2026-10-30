@@ -125,7 +125,12 @@ def separate_regions(path, stage, regions, detector):
     coverage = []
     for name, start, end in regions:
         first, stop = round(start * STEM_SR), round(end * STEM_SR)
-        if stop > audio.shape[1] or first >= stop:
+        # The 22.05 kHz analysis endpoint can round up by one analysis
+        # sample relative to the independently decoded 44.1 kHz stems.
+        if first < 0 or stop > audio.shape[1] + STEM_SR // SR:
+            raise ValueError('requested region is outside decoded source coverage')
+        stop = min(stop, audio.shape[1])
+        if first >= stop:
             raise ValueError('requested region is outside decoded source coverage')
         left, right = max(0, first - 4 * STEM_SR), min(audio.shape[1], stop + 4 * STEM_SR)
         stems = detector.separate(audio[:, left:right])
