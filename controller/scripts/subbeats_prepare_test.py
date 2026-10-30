@@ -262,5 +262,57 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(silent, [])
 
 
+class ConversionTests(unittest.TestCase):
+    def test_atomic_conversion_preserves_key_levels_and_analysis(self):
+        import numpy as np
+        import subbeats_convert as convert
+        def read(path, **_):
+            with np.load(path) as data:
+                return data['audio'].copy(), prepare.STEM_SR
+        def write(path, data, sr, **kw):
+            self.assertEqual(kw['subtype'], 'PCM_24')
+            with open(path, 'wb') as output:
+                np.savez_compressed(output, audio=data)
+        fake_sf = types.SimpleNamespace(read=read, write=write,
+            info=lambda p: types.SimpleNamespace(frames=read(p)[0].shape[0], channels=2, samplerate=prepare.STEM_SR))
+        with tempfile.TemporaryDirectory() as folder, patch.dict('sys.modules', {'soundfile': fake_sf}):
+            state = Path(folder)
+            levels = dict(zip(prepare.STEMS, [1.25, -1.15, .05, .05]))
+            identity = {'separator': {'subtype': 'PCM_24-or-FLOAT-v1'}}
+            def build(stage):
+                for stem, level in levels.items():
+                    with (stage / f'head-{stem}.wav').open('wb') as output:
+                        np.savez(output, audio=np.full((441, 2), level, dtype=np.float32))
+                (stage / 'analysis.json').write_text('{"pair_ready":false}')
+                return {'stem_regions': [{'name': 'head', 'start_sample': 0, 'end_sample': 441}], 'pair_ready': False}
+            original = cache.prepare_cached(state, identity, build)
+            path = Path(original['directory']); key = path.name; root = path.parent
+            with patch.object(convert, 'exchange', side_effect=OSError('exchange refused')):
+                with self.assertRaisesRegex(OSError, 'exchange refused'):
+                    convert.convert_bundle(root, key)
+            self.assertIsNotNone(cache.cached_entry(path, identity))
+            self.assertEqual(len(list(root.glob('.convert-*'))), 0)
+            with patch.object(convert, 'write_flac_region', side_effect=ValueError('bad conversion')):
+                with self.assertRaisesRegex(ValueError, 'bad conversion'):
+                    convert.convert_bundle(root, key)
+            self.assertEqual(cache.cached_entry(path, identity)['files'], original['files'])
+            result = convert.convert_bundle(root, key)
+            self.assertTrue(result['converted'])
+            self.assertLess(result['after'], result['before'])
+            record = cache.cached_entry(path, identity)
+            self.assertIsNotNone(record)
+            self.assertEqual(record['identity'], identity)
+            self.assertEqual((path / 'analysis.json').read_text(), '{"pair_ready":false}')
+            gain = record['metadata']['stem_regions'][0]['storage_gain']
+            self.assertFalse(list(path.glob('*.wav')))
+            for stem, level in levels.items():
+                values, _ = read(path / f'head-{stem}.flac')
+                np.testing.assert_allclose(values / gain, level, rtol=1e-6)
+            self.assertFalse(convert.convert_bundle(root, key)['converted'])
+            (path / 'head-drums.flac').write_bytes(b'corrupted')
+            with self.assertRaisesRegex(ValueError, 'integrity'):
+                convert.convert_bundle(root, key)
+
+
 if __name__ == '__main__':
     unittest.main()
