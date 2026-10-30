@@ -218,6 +218,7 @@ function localConfigured(): boolean {
 // A line of JSON from the stdio worker, or the sidecar's /analyze body — same
 // payload; ready/fatal/id are worker-only.
 interface WorkerMessage {
+  subbeats_preview?: string;
   id?: string;
   ok?: boolean;
   ready?: boolean;
@@ -1229,4 +1230,29 @@ export function subbeatsCapability(): boolean | null {
   if (_backend === 'sidecar') return _sidecarSubbeatsCapable;
   if (_backend === 'local') return _localSubbeatsCapable;
   return null;
+}
+
+// Isolated cache-only audition; never called from the broadcast queue.
+export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0]): Promise<Buffer> {
+  const backend = await resolveBackend();
+  signal.throwIfAborted();
+  if (!backend) throw new Error('An analyzer is needed to prepare a preview.');
+  const payload = { out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0 };
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/subbeats-preview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      timeoutMs: 180_000, bodyDeadline: true, signal,
+    });
+    if (response.status === 404) throw new Error('Update the analyzer to enable Sub/Beats previews.');
+    if (!response.ok) await sidecarFailure(response);
+    if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('The analyzer returned an invalid preview.');
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (audio.length > 24 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
+    return audio;
+  }
+  const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, 180_000);
+  signal.throwIfAborted();
+  const path = answer.subbeats_preview;
+  if (typeof path !== 'string' || !path.startsWith(`${stateDir}/subbeats/previews/`) || path.includes('..')) throw new Error('The analyzer returned an invalid preview.');
+  return readFileSync(path);
 }

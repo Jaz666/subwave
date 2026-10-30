@@ -4,12 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useDebounceValue } from 'usehooks-ts';
 import { z } from 'zod';
-import { ArrowLeft, Pause, Play, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2 } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
 import { subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
 
 const subbeatsKeys = {
@@ -31,6 +32,9 @@ export default function SubbeatsPanel() {
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);
+  const [outgoing, setOutgoing] = useState('');
+  const [incoming, setIncoming] = useState('');
+  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready]), adminFetch, '/library/subbeats/join-preview');
   const state = useAdminQuery({
     key: subbeatsKeys.state, adminFetch, enabled: ready, refetchInterval: 3000,
     request: async (fetcher, signal) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats', undefined, signal)),
@@ -71,13 +75,35 @@ export default function SubbeatsPanel() {
       <Link href="/admin/library" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted underline-offset-4 hover:text-ink hover:underline"><ArrowLeft size={14} /> Library</Link>
       <h1 className="font-display text-3xl font-bold text-ink">Sub/Beats</h1>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Find tracks with a driving beat and queue deeper analysis. Preparation continues in the background when you leave this page.</p>
-      <p className="mt-2 max-w-prose text-sm text-muted">During development, this prepares tracks only. Playback continues using your existing transitions.</p>
+      <p className="mt-2 max-w-prose text-sm text-muted">Previews are for listening only. Station playback continues using your existing transitions.</p>
     </header>
 
     {state.isError && <div role="alert" className="flex flex-wrap items-center gap-3 border border-ink p-4 text-sm">
       <span>Could not load preparation progress. Your saved list has been kept.</span>
       <Button onClick={() => void state.refetch()}><RefreshCw /> Retry</Button>
     </div>}
+
+    <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
+      <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to hear an experimental 16-bar stem mix in your browser. Station playback is unaffected.</p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">This first preview checks sustained kicks and matches the tempo. Phrase alignment and vocal handling are experimental; the incoming tempo stays matched until the preview ends.</p>
+      {prepared < 2 ? <p className="mt-4 text-sm text-muted">Prepare at least two tracks to try a transition.</p> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        {([{ id: 'subbeats-outgoing', label: 'Outgoing track', value: outgoing, change: setOutgoing, other: incoming },
+          { id: 'subbeats-incoming', label: 'Incoming track', value: incoming, change: setIncoming, other: outgoing }]).map(field => <div key={field.id} className="min-w-0">
+          <label htmlFor={field.id} className="mb-1 block text-sm font-medium">{field.label}</label>
+          <select id={field.id} className="h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={field.value} onChange={e => field.change(e.target.value)}>
+            <option value="">Choose a prepared track</option>
+            {jobs.filter(j => j.status === 'prepared').map(j => <option key={j.id} value={j.id} disabled={j.id === field.other}>{j.artist} — {j.title}</option>)}
+          </select>
+        </div>)}
+        <Button className="self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming])}>
+          {preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.playing ? <Square /> : <Play />}
+          {preview.loading ? 'Cancel preview' : preview.playing ? 'Stop preview' : 'Play preview'}
+        </Button>
+      </div>}
+      {preview.loading && <p role="status" className="mt-3 text-sm text-muted">Preparing preview… press again to cancel.</p>}
+      {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
+    </section>
 
     <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
       <section className="order-2 min-w-0 border border-ink lg:order-1" aria-labelledby="subbeats-candidates">

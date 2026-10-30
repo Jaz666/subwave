@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
+  'subbeats_preview_test.py', // isolated preview planning, coverage and cached-level restoration
   'subbeats_prepare_test.py', // isolated Sub/Beats publication, reuse, budget and source coverage
   'analyzer_sidecar_contract_test.py', // typed missing-path response for URL fallback (#1331)
   'analyzer_embedding_test.py', // batched CLAP + embedding-only backfills (#1426)

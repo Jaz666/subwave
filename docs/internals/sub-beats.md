@@ -397,3 +397,78 @@ No rebuild or recheck is needed to use these converted cache artifacts in the
 future pair reader. Next development step: consume verified bundle files and
 region storage gains when evaluating beat/phrase alignment, before playback
 integration.
+
+## Browser transition auditions
+
+Library → Sub/Beats now offers two prepared-track selectors and a Play/Stop/
+Cancel preview button. It reuses Sub/Flow's browser join player, with an
+optional endpoint argument retaining Sub/Flow's existing default. Changing
+tracks, leaving the page or losing authentication aborts the request and
+releases its audio/object URL. Only one audition plays in that player.
+
+`POST /library/subbeats/join-preview` is admin-only. It accepts two distinct
+prepared library IDs, checks current availability and the blocklist, resolves
+the normal `resolveGainDb` playback gains, and sends only their saved bundle
+keys, gains and shared-cache marker to the analyzer. It never calls queue,
+picker, source download, ordinary analysis, settings writes or mixer controls.
+One controller preview request is admitted at a time; client disconnect aborts
+the HTTP wait. A worker already rendering may finish its bounded cached clip.
+
+The analyzer's `/subbeats-preview` endpoint dispatches `preview_subbeats` to
+the existing worker. This operation does not request/load GPU models. It reads
+and hash-verifies dedicated cached head/exit stems, restores region storage
+gains, and uses existing NumPy/SciPy/Librosa/SoundFile packages on CPU. A
+low-frequency drum-attack grid must support the first 16 consecutive quarter
+notes and at least 85% of a 64-beat span; grid fitting and prepared-coverage
+checks can decline a pair. Outgoing BPM is held as master; incoming stems are
+pitch-preservingly stretched to match and their kick phase is checked again.
+Tempo differences above 8% are declined.
+
+The experimental 16-bar exchange includes outgoing lead and eight seconds of
+incoming follow-through. Normal vocal exchange leaves four bars of separation;
+when source-zero incoming vocals precede its first beat, this first version
+withholds outgoing vocals for the audition rather than overlap them. Drum,
+bass and other-stem envelopes and one constant output headroom gain are used.
+There is no per-stem normalisation, clipping or output limiter. Playback gains
+and both source manifests participate in cache identity, so conversion or
+loudness-setting changes cannot reuse an obsolete preview.
+
+This is a bounded listening experiment, not the complete automatic pair
+planner. Phrase/downbeat numbering and vocal handling are experimental. It
+has no instrumental-loop extension or gradual native-BPM return yet; the
+incoming track stays at matched tempo until the clip ends. Insufficient
+coverage or confidence produces a readable decline, without changing the
+station's normal transition choice. The page states these limits explicitly.
+
+WAV auditions live separately under `<stateDir>/subbeats/previews/`, with a
+200 MiB cap and atomic publication; they are returned as no-store audio and
+are not added to the prepared queue. There is no automatic preview eviction
+in this increment. No new package or analyzer dependency pin is required.
+Controller, analyzer and web need rebuilding to expose the feature; the owner
+runs rebuilds. Broadcast does not need restarting.
+
+Audition decoding is capped at 90 seconds per region, including long heads
+explicitly prepared by development tools; this prevents an unusually long
+head from making the pitch-preserving preview allocate unbounded memory.
+The full bundle is still integrity-checked and its file coverage verified.
+
+Verification for this increment: 17 controller Sub/Beats tests pass; the
+registered analyzer Python suites pass, including 23 cache/conversion checks,
+four numerical preview checks and preview sidecar transport/model-use checks.
+Controller ESLint reports zero errors (existing warnings), and the final
+controller typecheck passes. Web lint/typecheck, 29 Library tests, nine
+admin-query tests and the static query audit pass. All 24 browser Library
+search checks and six query-cache checks pass against an isolated fixture.
+The new preview controls pass play/stop/cancel, duplicate-selection, decline
+and overflow checks at 1440px and 390px; no browser page errors or mechanical
+UI detector findings. Temporary API/web servers are stopped.
+
+A real full-stdio worker audition of Ayla → Love Stimulation from the
+converted cache returns a 39.351-second, 44.1 kHz stereo WAV in about 21 seconds
+on CPU (first direct cold render took about 38 seconds). Worker stderr reports
+only readiness, with no model load. The experiment used standalone copies in
+`/tmp` inside the analyzer; its installed service/image was not changed.
+Prepared queue data and on-air playback remain unchanged. No production image
+build or service restart was performed. The candidate is copied into the test
+station checkout for the owner to rebuild; pre-preview source rollback is
+`e6ddfee8` (also retained as `rollback/pre-subbeats-preview-20261030`).

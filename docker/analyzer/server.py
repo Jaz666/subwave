@@ -804,6 +804,24 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
     return {"ok": True, "subbeats_result": msg.get("subbeats_result")}
 
 
+class SubbeatsPreviewRequest(BaseModel):
+    out_gain_db: float = Field(default=0, ge=-120, le=40)
+    in_gain_db: float = Field(default=0, ge=-120, le=40)
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    out_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    in_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+@app.post("/subbeats-preview")
+async def subbeats_preview(req: SubbeatsPreviewRequest):
+    from fastapi.responses import FileResponse
+    msg = await analyzer_pool.request({"id": "1", "op": "preview_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Preview could not be prepared")
+    return FileResponse(msg["subbeats_preview"], media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
+
 class RenderTransitionRequest(BaseModel):
     # Stem-blend transition render. The controller supplies per-track
     # alignment data straight from library.db — the worker never re-detects.
