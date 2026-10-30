@@ -135,29 +135,32 @@ def separate_regions(path, stage, regions, detector):
         left, right = max(0, first - 4 * STEM_SR), min(audio.shape[1], stop + 4 * STEM_SR)
         stems = detector.separate(audio[:, left:right])
         reconstructed = np.zeros((2, stop - first), dtype=np.float32)
-        for stem in STEMS:
-            part = stems[stem][:, first - left:stop - left]
+        parts = {stem: stems[stem][:, first - left:stop - left] for stem in STEMS}
+        for part in parts.values():
             if part.shape != reconstructed.shape or not np.isfinite(part).all():
                 raise ValueError('invalid separated stem')
-            # Separation can exceed full scale while stems cancel in the sum.
-            # Float WAV preserves those samples without clipping or rescaling.
-            floating = np.max(np.abs(part)) >= 1
-            target = stage / f'{name}-{stem}.{"wav" if floating else "flac"}'
-            sf.write(target, part.T, STEM_SR, subtype='FLOAT' if floating else 'PCM_24')
+        # One gain preserves relative stem levels and their cancellation. Readers
+        # divide by storage_gain before mixing; older bundles default to 1.
+        peak = max(float(np.max(np.abs(part))) for part in parts.values())
+        storage_gain = .999 / peak if peak >= 1 else 1.
+        for stem, part in parts.items():
+            target = stage / f'{name}-{stem}.flac'
+            sf.write(target, (part * storage_gain).T, STEM_SR, subtype='PCM_24')
             info = sf.info(target)
             if (info.frames, info.channels, info.samplerate) != (stop - first, 2, STEM_SR):
                 raise ValueError('written stem coverage mismatch')
             saved, sr = sf.read(target, dtype='float32', always_2d=True)
             if sr != STEM_SR or saved.T.shape != part.shape or not np.isfinite(saved).all():
                 raise ValueError('invalid written stem')
-            reconstructed += saved.T
+            reconstructed += saved.T / storage_gain
         source = audio[:, first:stop]
         error = float(np.sqrt(np.mean((reconstructed - source)**2)) / max(1e-12, np.sqrt(np.mean(source**2))))
         if not math.isfinite(error) or error > .1:
             raise ValueError('separated stems do not reconstruct the source within tolerance')
         coverage.append({'name': name, 'start_sample': first, 'end_sample': stop,
                          'sample_rate': STEM_SR, 'context_start_sample': left,
-                         'context_end_sample': right, 'reconstruction_error_relative': error})
+                         'context_end_sample': right, 'storage_gain': storage_gain,
+                         'reconstruction_error_relative': error})
     return coverage
 
 
@@ -175,7 +178,7 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
         import analyze_worker as worker
         identity['separator'] = {'model': worker.DEMUCS_MODEL, 'overlap': worker.DEMUCS_OVERLAP,
                                  'shifts': 1, 'context_seconds': 4, 'sample_rate': STEM_SR,
-                                 'subtype': 'PCM_24-or-FLOAT-v1', 'demucs': importlib.metadata.version('demucs'),
+                                 'subtype': 'PCM_24-shared-gain-v1', 'demucs': importlib.metadata.version('demucs'),
                                  'torch': importlib.metadata.version('torch')}
 
     def build(stage):
