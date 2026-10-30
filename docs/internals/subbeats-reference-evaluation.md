@@ -60,7 +60,8 @@ Development audio, the renderer, audit JSON and render results are saved outside
 Git in `/home/jaz666/codex/driving-beat-evaluation-20261028/`. Full source decoding,
 time stretching and rendering ran on the test machine's CPU. Existing prepared
 stems were read; there was no new separation, GPU work, live playback change or
-cache rewrite. The browser preview remains at the rolled-back version 4 behavior.
+cache rewrite. At this initial evaluation, the browser preview remained at the rolled-back
+version 4 behavior; the later annotated version 5 is described below.
 
 The analyzer test runner includes reference-window arithmetic, tempo-alias kick
 evidence, unchanged default long-fit behavior, fixture checks and a read-only
@@ -82,10 +83,19 @@ through 00:58.75, then fades over one bar, ending at 01:00.46. The renderer chec
 the support envelope numerically and applies one constant output gain to prevent
 clipping. It does not suppress incoming drums or automatically detect readiness;
 listening must establish whether the combined rhythm and release are suitable.
-Production playback and the browser renderer remain unchanged pending that check.
+This offline trial initially left playback and the browser renderer unchanged.
+The owner accepted the sustained-rhythm result; it now informs the browser
+reference renderer, while production station transitions remain unchanged.
 
 The accepted reference envelope is now available in the browser's annotated
 preview mode; see `sub-beats.md` → Annotated browser preview with sustained
 rhythm. The fixture JSON moved to `controller/scripts/` so the controller image
 ships the same reference data as the evaluation tests. No broadcast integration
 or automatic track approval follows from these annotations.
+
+Latest listening result: **1998 → Universal Nation also works at 16 bars** in the
+browser preview. Both 16 and 32 bars are accepted for this pair. Diving Faces →
+Beachball at four bars is accepted. Mystery Land → 1998 remains incompatible for
+this approach after the full-pattern loop trial. See the
+[session handover](../investigations/2026-10-30-subbeats-handover.md) for the current
+continuation plan, implementation state and evidence locations.
