@@ -437,6 +437,11 @@ async def test_subbeats_preview_contract():
         assert result.headers['Cache-Control'] == 'no-store'
         import json
         assert json.loads(result.headers['X-Subbeats-Timeline'])['duration'] == 44
+        body['reference'] = {'out_seconds':219, 'in_resolve':68, 'bars':32,
+                             'out_url':'http://source/out', 'in_url':'http://source/in'}
+        await server.subbeats_preview(types.SimpleNamespace(model_dump=lambda: body))
+        assert seen[-1]['reference'] == body['reference']
+        assert not server.StdioWorker._wants_models(seen[-1])
     finally:
         server.analyzer_pool = original
 

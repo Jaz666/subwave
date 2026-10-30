@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
+  'subbeats_reference_preview_test.py', // sustained rhythm, source verification and credential-free preview cache
   'subbeats_reference_test.py', // human-timed windows, tempo aliases and read-only coverage audit
   'subbeats_structure_test.py', // full-recording structural candidate evidence and independent cache
   'subbeats_preview_test.py', // isolated preview planning, coverage and cached-level restoration

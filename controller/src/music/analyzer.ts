@@ -1233,12 +1233,15 @@ export function subbeatsCapability(): boolean | null {
   return null;
 }
 
-// Isolated cache-only audition; never called from the broadcast queue.
-export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+// Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
+export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await resolveBackend();
   signal.throwIfAborted();
   if (!backend) throw new Error('An analyzer is needed to prepare a preview.');
-  const payload = { out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift };
+  const payload = { out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,
+    ...(reference ? { reference: { out_seconds: reference.out_seconds, in_resolve: reference.in_resolve, bars: reference.bars,
+      out_url: subsonic.getRawStreamUrl(reference.out_id), in_url: subsonic.getRawStreamUrl(reference.in_id) } } : {}) };
   if (backend === 'sidecar' && _sidecarBase) {
     const response = await fetchWithTimeout(`${_sidecarBase}/subbeats-preview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -1251,11 +1254,14 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
     if (audio.length > 24 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
     const raw = response.headers.get('x-subbeats-timeline');
     const timeline = raw ? subbeatsTimelineSchema.parse(JSON.parse(raw)) : null;
+    if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
     return { audio, timeline };
   }
   const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, 180_000);
   signal.throwIfAborted();
   const path = answer.subbeats_preview;
   if (typeof path !== 'string' || !path.startsWith(`${stateDir}/subbeats/previews/`) || path.includes('..')) throw new Error('The analyzer returned an invalid preview.');
-  return { audio: readFileSync(path), timeline: answer.subbeats_timeline ? subbeatsTimelineSchema.parse(answer.subbeats_timeline) : null };
+  const timeline = answer.subbeats_timeline ? subbeatsTimelineSchema.parse(answer.subbeats_timeline) : null;
+  if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
+  return { audio: readFileSync(path), timeline };
 }

@@ -5483,11 +5483,18 @@ export const subbeatsCandidateSchema = z.object({
   bpm: z.number().nullable(), hasBeatGrid: z.boolean(),
 });
 export const subbeatsCandidatePageSchema = z.object({ rows: z.array(subbeatsCandidateSchema), hasMore: z.boolean() });
+export const subbeatsReferenceSchema = z.object({
+  id: z.string(), introResolve: z.number().finite().positive().max(1200),
+  introBars: z.array(z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32)])).min(1).max(4),
+  outroStart: z.number().finite().positive().max(1200),
+});
 export const subbeatsViewSchema = subbeatsQueueSchema.extend({
   capable: z.boolean().nullable(), maintenanceRunning: z.boolean(), progress: z.string().nullable(),
+  references: z.array(subbeatsReferenceSchema).default([]),
 });
 
 export const subbeatsTimelineSchema = z.object({
+  kind: z.literal('reference').optional(),
   duration: z.number().finite().positive().max(120),
   events: z.array(z.object({ at: z.number().finite().nonnegative().max(120), label: z.string().min(1).max(180) })).min(1).max(12),
 }).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
@@ -5496,6 +5503,7 @@ export const subbeatsTimelineSchema = z.object({
 export const subbeatsPreviewSchema = z.object({
   trackIds: z.array(z.string().min(1).max(200)).length(2),
   barShift: z.number().int().min(-2).max(2).default(0),
+  referenceBars: z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32)]).optional(),
 });
 
 // ─── from controller/src/schemas/transitions.ts ──────────────────────────

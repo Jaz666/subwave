@@ -804,6 +804,14 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
     return {"ok": True, "subbeats_result": msg.get("subbeats_result")}
 
 
+class SubbeatsReferencePreview(BaseModel):
+    out_seconds: float = Field(gt=0, lt=1200, allow_inf_nan=False)
+    in_resolve: float = Field(gt=0, lt=1200, allow_inf_nan=False)
+    bars: int = Field(ge=4, le=32, strict=True)
+    out_url: str
+    in_url: str
+
+
 class SubbeatsPreviewRequest(BaseModel):
     bar_shift: int = Field(default=0, ge=-2, le=2, strict=True)
     out_gain_db: float = Field(default=0, ge=-120, le=40)
@@ -812,6 +820,7 @@ class SubbeatsPreviewRequest(BaseModel):
     cache_id: str = Field(min_length=16, max_length=100)
     out_key: str = Field(pattern=r"^[a-f0-9]{64}$")
     in_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reference: SubbeatsReferencePreview | None = None
 
 
 @app.post("/subbeats-preview")

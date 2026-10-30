@@ -85,7 +85,7 @@ WORKDIR /app
 COPY docker/analyzer/server.py /app/server.py
 # The SAME worker the controller runs in-process — single source of truth.
 COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
-COPY controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py /app/workers/
+COPY controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.

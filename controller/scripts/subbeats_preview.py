@@ -1,4 +1,4 @@
-"""Experimental cache-only 16-bar audition. CPU only; no station playback hooks."""
+"""Isolated beat-only and owner-annotated browser auditions. CPU only."""
 import fcntl
 import hashlib
 import json
@@ -10,8 +10,37 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 4
+VERSION = 5
 PREVIEW_BUDGET = 200 * 1024**2
+
+
+def trim_previews(previews):
+    """Under the preview lock, recycle only verified generated audition folders."""
+    from re import fullmatch
+    candidates = []
+    for folder in previews.iterdir():
+        if folder.is_symlink() or not folder.is_dir() or not fullmatch('[a-f0-9]{64}', folder.name):
+            continue
+        try:
+            manifest = folder / 'manifest.json'
+            record = json.loads(manifest.read_text())
+            identity = record['identity']
+            fingerprint = json.loads(identity['fingerprint'])
+            if (set(identity) == {'fingerprint'} and isinstance(fingerprint, dict)
+                    and type(fingerprint.get('version')) is int
+                    and set(record['files']) == {'preview.wav'}
+                    and {p.name for p in folder.iterdir()} == {'manifest.json', 'preview.wav'}
+                    and hashlib.sha256(identity['fingerprint'].encode()).hexdigest() == folder.name
+                    and cached_entry(folder, identity)):
+                candidates.append((manifest.stat().st_mtime_ns, folder))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    for _, folder in sorted(candidates):
+        if tree_bytes(previews) <= PREVIEW_BUDGET:
+            break
+        shutil.rmtree(folder)
+    if tree_bytes(previews) > PREVIEW_BUDGET:
+        raise ValueError('The preview cache is full (200 MB); unrecognised files have been kept.')
 
 
 def fit_grid(peaks, bpm, duration, outgoing=False, beats=64):
@@ -51,7 +80,7 @@ def kick_grid(drums, bpm, outgoing=False, beats=64):
     return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing, beats)
 
 
-def load_region(folder, record, name):
+def load_region(folder, record, name, limit_seconds=90):
     import numpy as np
     import soundfile as sf
     region = next((r for r in record['metadata']['stem_regions'] if r['name'] == name), None)
@@ -71,7 +100,7 @@ def load_region(folder, record, name):
         if (info.samplerate, info.channels, info.frames) != (STEM_SR, 2, expected):
             raise ValueError('Invalid cached stem coverage. Recheck the track.')
         # Keep audition memory bounded even for explicitly prepared long heads.
-        frames = min(expected, 90 * STEM_SR)
+        frames = min(expected, limit_seconds * STEM_SR)
         data, sr = sf.read(path, frames=frames, dtype='float32', always_2d=True)
         if sr != STEM_SR or data.shape != (frames, 2) or not np.isfinite(data).all():
             raise ValueError('Invalid cached stem coverage. Recheck the track.')
@@ -174,12 +203,42 @@ def validate_bar_shift(value):
     return value
 
 
-def render_preview(req):
+def render_beat_preview(folders, records, gains, bar_shift):
+    import numpy as np
+    import librosa
+    out_parts, out_bpm = load_region(folders[0], records[0], 'exit')
+    in_parts, in_bpm = load_region(folders[1], records[1], 'head')
+    out_cue, period = kick_grid(out_parts['drums'], out_bpm, True)
+    in_cue, in_period = kick_grid(in_parts['drums'], in_bpm)
+    rate = in_period / period
+    if abs(rate - 1) > .08:
+        raise ValueError('These tempos are too far apart for this preview. Try another pair.')
+    if abs(rate - 1) > .0001:
+        in_parts = {name: librosa.effects.time_stretch(part, rate=rate) for name, part in in_parts.items()}
+        in_cue, _ = kick_grid(in_parts['drums'], 60 / period)
+    out_parts = {name: part * 10**(gains[0] / 20) for name, part in out_parts.items()}
+    in_parts = {name: part * 10**(gains[1] / 20) for name, part in in_parts.items()}
+    audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift)
+    prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
+    intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
+    metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR, bar_shift),
+                'bars': 16, 'bar_shift': bar_shift, 'bpm': 60 / period, 'incoming_rate': rate,
+                'experimental': True, 'native_tempo_return': False, 'phrase_verified': False}
+    return audio, metadata
+
+
+def render_preview(req, fetch_source=None):
     import numpy as np
     import librosa
     import soundfile as sf
     from re import fullmatch
     bar_shift = validate_bar_shift(req.get('bar_shift', 0))
+    reference = None
+    if req.get('reference') is not None:
+        from subbeats_reference_preview import validate_reference
+        reference = validate_reference(req['reference'])
+        if bar_shift:
+            raise ValueError('Annotated previews use the saved release point. Reset the bar shift.')
     state = Path(req['state_dir'])
     require_shared_cache(state, req['cache_id'])
     keys = [req['out_key'], req['in_key']]
@@ -203,7 +262,7 @@ def render_preview(req):
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
     fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
-                              'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
+                              'reference': reference, 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
     if previews.is_symlink():
@@ -218,36 +277,20 @@ def render_preview(req):
                 raise ValueError('The saved preview failed integrity checks.')
             return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
             'subbeats_timeline': record['metadata']['timeline']}
-        if tree_bytes(previews) >= PREVIEW_BUDGET:
-            raise ValueError('The preview cache is full (200 MB).')
-        out_parts, out_bpm = load_region(folders[0], records[0], 'exit')
-        in_parts, in_bpm = load_region(folders[1], records[1], 'head')
-        out_cue, period = kick_grid(out_parts['drums'], out_bpm, True)
-        in_cue, in_period = kick_grid(in_parts['drums'], in_bpm)
-        rate = in_period / period
-        if abs(rate - 1) > .08:
-            raise ValueError('These tempos are too far apart for this preview. Try another pair.')
-        if abs(rate - 1) > .0001:
-            in_parts = {name: librosa.effects.time_stretch(part, rate=rate) for name, part in in_parts.items()}
-            in_cue, _ = kick_grid(in_parts['drums'], 60 / period)
-        out_parts = {name: part * 10**(gains[0] / 20) for name, part in out_parts.items()}
-        in_parts = {name: part * 10**(gains[1] / 20) for name, part in in_parts.items()}
-        audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift)
+        if reference is not None:
+            from subbeats_reference_preview import render_reference
+            audio, metadata = render_reference(req, folders, records, gains, fetch_source)
+        else:
+            audio, metadata = render_beat_preview(folders, records, gains, bar_shift)
         stage = Path(tempfile.mkdtemp(prefix='.pending-', dir=previews))
         try:
             sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='PCM_16')
-            prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
-            intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
-            metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR, bar_shift),
-                        'bars': 16, 'bar_shift': bar_shift, 'bpm': 60 / period, 'incoming_rate': rate,
-                        'experimental': True, 'native_tempo_return': False, 'phrase_verified': False}
             record = {'identity': {'fingerprint': fingerprint}, 'metadata': metadata,
                       'files': {'preview.wav': {'bytes': (stage / 'preview.wav').stat().st_size,
                                                 'sha256': digest(stage / 'preview.wav')}}}
             (stage / 'manifest.json').write_text(json.dumps(record, indent=2) + '\n')
             require_shared_cache(state, req['cache_id'])
-            if tree_bytes(previews) > PREVIEW_BUDGET:
-                raise ValueError('The preview cache is full (200 MB).')
+            trim_previews(previews)
             os.rename(stage, dest)
         finally:
             if stage.exists():

@@ -1782,10 +1782,13 @@ def render_transition(req):
     }
 
 
-def fetch_audio(url):
+def fetch_audio(url, max_bytes=None):
     """Download (capped) to a temp file. Returns (path, complete) — `complete`
     is False when the byte cap truncated the download, which vetoes outro
     analysis (the file's "tail" would be mid-song audio)."""
+    max_bytes = ANALYZE_MAX_BYTES if max_bytes is None else max_bytes
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError('Invalid audio download limit')
     suffix = ".audio"
     fd, path = tempfile.mkstemp(suffix=suffix, prefix="swanalyze_")
     try:
@@ -1799,9 +1802,9 @@ def fetch_audio(url):
                         break
                     out.write(chunk)
                     read += len(chunk)
-                    if read >= ANALYZE_MAX_BYTES:
+                    if read >= max_bytes:
                         break
-        return path, read < ANALYZE_MAX_BYTES
+        return path, read < max_bytes
     except BaseException:
         try:
             os.remove(path)
@@ -2714,7 +2717,7 @@ def main():
         if req.get("op") == "preview_subbeats":
             try:
                 from subbeats_preview import render_preview
-                emit({"id": rid, **render_preview(req)})
+                emit({"id": rid, **render_preview(req, fetch_source=fetch_audio)})
             except Exception as error:
                 emit({"id": rid, "ok": False, "error": str(error)})
             continue

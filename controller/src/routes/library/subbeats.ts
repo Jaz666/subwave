@@ -10,10 +10,12 @@ import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
 import { previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
 import { tagger } from '../../broadcast/tagger.js';
+import { subbeatsReferences } from '../../music/subbeats-references.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
-  maintenanceRunning: tagger.running, progress: tagger.running ? tagger.progress?.label ?? null : null });
+  maintenanceRunning: tagger.running, progress: tagger.running ? tagger.progress?.label ?? null : null,
+  references: subbeatsReferences });
 
 router.get('/library/subbeats', requireAdmin, (_req, res) => {
   try { res.json(view()); }
@@ -62,8 +64,16 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     for (const track of songs) {
       if (!track || blocklist.hitOf(track)) throw new Error('A selected track is unavailable or blocked. Choose another pair.');
     }
+    let reference;
+    if (parsed.data.referenceBars !== undefined) {
+      const [outgoing, incoming] = parsed.data.trackIds.map(id => subbeatsReferences.find(ref => ref.id === id));
+      if (!outgoing || !incoming || !incoming.introBars.includes(parsed.data.referenceBars)) throw new Error('Choose an annotated pair and a suitable intro length.');
+      if (parsed.data.barShift !== 0) throw new Error('Annotated previews use the saved release point. Reset the bar shift.');
+      reference = { out_seconds: outgoing.outroStart, in_resolve: incoming.introResolve,
+        bars: parsed.data.referenceBars, out_id: outgoing.id, in_id: incoming.id };
+    }
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
-    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift);
+    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference);
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

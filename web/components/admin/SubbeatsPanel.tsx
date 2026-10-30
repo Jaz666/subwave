@@ -36,11 +36,18 @@ export default function SubbeatsPanel() {
   const [outgoing, setOutgoing] = useState('');
   const [incoming, setIncoming] = useState('');
   const [barShift, setBarShift] = useState(0);
-  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, barShift]), adminFetch, '/library/subbeats/join-preview');
+  const [chosenBars, setChosenBars] = useState<number | null>(null);
   const state = useAdminQuery({
     key: subbeatsKeys.state, adminFetch, enabled: ready, refetchInterval: 3000,
     request: async (fetcher, signal) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats', undefined, signal)),
   });
+  const outReference = state.data?.references.find(ref => ref.id === outgoing);
+  const inReference = state.data?.references.find(ref => ref.id === incoming);
+  const annotated = Boolean(outReference && inReference);
+  const referenceBars = annotated && inReference
+    ? chosenBars !== null && inReference.introBars.some(bars => bars === chosenBars) ? chosenBars : Math.max(...inReference.introBars)
+    : undefined;
+  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, barShift, referenceBars]), adminFetch, '/library/subbeats/join-preview');
   const candidates = useAdminQuery({
     key: subbeatsKeys.candidates(q, offset), adminFetch, enabled: ready,
     request: async (fetcher, signal) => subbeatsCandidatePageSchema.parse(await adminJson(fetcher,
@@ -88,23 +95,32 @@ export default function SubbeatsPanel() {
 
     <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to hear an experimental 16-bar stem mix in your browser. Station playback is unaffected.</p>
-      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">This first preview checks sustained kicks and matches the tempo. Phrase alignment and vocal handling are experimental; the incoming tempo stays matched until the preview ends.</p>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to audition a transition. Tracks with saved reference points use a musical blend with rhythm continuing through the incoming release.</p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Reference points come from listening annotations, not automatic phrase detection. Other pairs use the earlier 16-bar stem preview. Incoming tempo stays matched until the preview ends.</p>
       {prepared < 2 ? <p className="mt-4 text-sm text-muted">Prepare at least two tracks to try a transition.</p> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         {([{ id: 'subbeats-outgoing', label: 'Outgoing track', value: outgoing, change: setOutgoing, other: incoming },
           { id: 'subbeats-incoming', label: 'Incoming track', value: incoming, change: setIncoming, other: outgoing }]).map(field => <div key={field.id} className="min-w-0">
           <label htmlFor={field.id} className="mb-1 block text-sm font-medium">{field.label}</label>
-          <select id={field.id} className="h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={field.value} onChange={e => { field.change(e.target.value); setBarShift(0); }}>
+          <select id={field.id} className="h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={field.value} onChange={e => { field.change(e.target.value); setBarShift(0); setChosenBars(null); }}>
             <option value="">Choose a prepared track</option>
             {jobs.filter(j => j.status === 'prepared').map(j => <option key={j.id} value={j.id} disabled={j.id === field.other}>{j.artist} — {j.title}</option>)}
           </select>
         </div>)}
-        <Button className="self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], { barShift })}>
+        <Button className="self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], annotated ? { referenceBars } : { barShift })}>
           {preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.playing ? <Square /> : <Play />}
           {preview.loading ? 'Cancel preview' : preview.playing ? 'Stop preview' : 'Play preview'}
         </Button>
       </div>}
-      {prepared >= 2 && <div className="mt-4 max-w-sm">
+      {annotated && outReference && inReference && <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="max-w-sm">
+          <label htmlFor="subbeats-reference-bars" className="mb-1 block text-sm font-medium">Transition length</label>
+          <select id="subbeats-reference-bars" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={referenceBars} onChange={event => setChosenBars(Number(event.target.value))}>
+            {inReference.introBars.map(bars => <option key={bars} value={bars}>{bars} bars</option>)}
+          </select>
+        </div>
+        <p className="self-end text-sm leading-relaxed text-muted">Saved reference points: outgoing outro {clock(outReference.outroStart)}; incoming release {clock(inReference.introResolve)}. The outgoing rhythm continues to the release, then hands over across one bar. A four-bar drums and bass loop extends the ending when needed.</p>
+      </div>}
+      {prepared >= 2 && !annotated && <div className="mt-4 max-w-sm">
         <label htmlFor="subbeats-bar-shift" className="mb-1 block text-sm font-medium">Incoming bar shift · testing</label>
         <select id="subbeats-bar-shift" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={barShift} onChange={event => setBarShift(Number(event.target.value))}>
           <option value={-2}>−2 bars · earlier</option>
@@ -126,7 +142,7 @@ export default function SubbeatsPanel() {
           className="mt-2 h-8 w-full cursor-pointer accent-ink" aria-valuetext={`${clock(preview.position)} of ${clock(preview.duration)}`}
           onChange={event => preview.seek(Number(event.target.value))} />
         {currentStage && <p role="status" className="mt-1 text-sm font-medium text-ink">{currentStage}</p>}
-        <p className="mt-1 text-xs leading-relaxed text-muted">Stages describe the planned fades, not detected musical phrases. Vocal stages apply where vocals are present. Select a time to jump there.</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">Stages show the rendered fades, loop support and handover where used. Reference times are listening annotations, not automatically detected phrases. Select a time to jump there.</p>
         {preview.timeline ? <ol className="mt-3 grid gap-1">
           {preview.timeline.events.map((event, index) => {
             const current = preview.position >= event.at && (index === preview.timeline!.events.length - 1 || preview.position < preview.timeline!.events[index + 1]!.at);
