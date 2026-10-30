@@ -118,3 +118,51 @@ test('prepared preview returns isolated audio without changing the preparation l
     assert.deepEqual(subbeatsStore.read(), before);
   } finally { globalThis.fetch = realFetch; analyzer.shutdown(); }
 });
+
+test('annotated preview resolves server-owned points and URLs, rejects unsuitable windows and old analyzers', async () => {
+  const analyzer = await import('../src/music/analyzer.js');
+  const { subbeatsReferences } = await import('../src/music/subbeats-references.js');
+  const ids = ['4yJmvI0lrITSbffov6oEO6', '4d45b9VOH8reQ0PSjcuOB4'];
+  for (const [index, id] of ids.entries()) {
+    db.upsertTrackMeta(id, { title:id, artist:'Reference artist',album:'Reference collection' });
+    subbeatsStore.enqueue([{ id, title:id, artist:'Reference artist',album:'' }]);
+    subbeatsStore.event({ id, status:'running' }, [id]);
+    subbeatsStore.event({ id, status:'prepared', bundleKey:(index ? 'd' : 'c').repeat(64) }, [id]);
+  }
+  const view = subbeatsViewSchema.parse(await (await fetch(base+'/library/subbeats', {headers})).json());
+  assert.deepEqual(view.references, subbeatsReferences);
+  const before = subbeatsStore.read();
+  const realFetch = globalThis.fetch;
+  let seen: Record<string, unknown> | undefined;
+  let oldAnalyzer = false;
+  const audio = Buffer.alloc(44); audio.write('RIFF'); audio.write('WAVE',8);
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze']});
+      seen = JSON.parse(String(init?.body));
+      return new Response(audio, {headers:{'Content-Type':'audio/wav','X-Subbeats-Timeline':JSON.stringify({
+        ...(oldAnalyzer ? {} : {kind:'reference'}), duration:76,events:[{at:0,label:'Outgoing original'},{at:59,label:'Incoming release'}],
+      })}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  analyzer._resetBackendCacheForTests();
+  try {
+    const response = await post('/library/subbeats/join-preview', { trackIds:ids, referenceBars:32,
+      reference:{out_url:'http://untrusted',in_resolve:1} });
+    assert.equal(response.status,200); await response.arrayBuffer();
+    const ref = seen!.reference as Record<string,unknown>;
+    assert.equal(ref.out_seconds,219); assert.equal(ref.in_resolve,68); assert.equal(ref.bars,32);
+    assert.ok(String(ref.out_url).includes(ids[0])); assert.ok(String(ref.in_url).includes(ids[1]));
+    assert.ok(!JSON.stringify(ref).includes('untrusted'));
+    for (const body of [
+      {trackIds:ids,referenceBars:4}, {trackIds:ids,referenceBars:15},
+      {trackIds:ids,referenceBars:32,barShift:1},
+      {trackIds:['beat-grid','tempo-only'],referenceBars:16},
+    ]) assert.equal((await post('/library/subbeats/join-preview',body)).status,400);
+    oldAnalyzer=true;
+    const stale = await post('/library/subbeats/join-preview',{trackIds:ids,referenceBars:32});
+    assert.equal(stale.status,400); assert.match((await stale.json() as {error:string}).error,/Update the analyzer/);
+    assert.deepEqual(subbeatsStore.read(),before);
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});

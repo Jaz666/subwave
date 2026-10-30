@@ -1,6 +1,6 @@
 # Annotated compilation reference evaluation
 
-The eight owner references in `subbeats-reference-tracks.json` are development
+The eight owner references in `controller/scripts/subbeats-reference-tracks.json` are development
 fixtures, not production overrides. Their timestamps anchor the proposed windows;
 MixMeister's displayed bar counts are estimates, not a verified phrase origin.
 In particular, Diving Faces resolves at **00:27**, with a suitable 16-bar window.
@@ -16,7 +16,7 @@ remain possible.
 ## Read-only cache audit
 
 Run `controller/scripts/subbeats_reference.py --state-dir PATH --references
-docs/internals/subbeats-reference-tracks.json` in the analyzer Python environment.
+controller/scripts/subbeats-reference-tracks.json` in the analyzer Python environment.
 It verifies prepared bundle integrity and reads stems without modifying the cache.
 Tempo candidates require kick evidence. A short four-bar fit is explicitly marked;
 the production preview still requires its existing default 64-beat fit.
@@ -83,3 +83,9 @@ the support envelope numerically and applies one constant output gain to prevent
 clipping. It does not suppress incoming drums or automatically detect readiness;
 listening must establish whether the combined rhythm and release are suitable.
 Production playback and the browser renderer remain unchanged pending that check.
+
+The accepted reference envelope is now available in the browser's annotated
+preview mode; see `sub-beats.md` → Annotated browser preview with sustained
+rhythm. The fixture JSON moved to `controller/scripts/` so the controller image
+ships the same reference data as the evaluation tests. No broadcast integration
+or automatic track approval follows from these annotations.

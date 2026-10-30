@@ -468,8 +468,33 @@ def t_partial_url_download_is_removed_when_fetch_is_interrupted():
             aw.urllib.request.urlopen = original_urlopen
 
 
+def t_explicit_download_cap_preserves_default_and_completeness():
+    import io
+    original_urlopen, original_cap = aw.urllib.request.urlopen, aw.ANALYZE_MAX_BYTES
+    aw.urllib.request.urlopen = lambda *a, **k: io.BytesIO(b'audio123')
+    aw.ANALYZE_MAX_BYTES = 4
+    try:
+        for kwargs, expected_complete in [({}, False), ({'max_bytes': 20}, True), ({'max_bytes': 8}, False)]:
+            path, complete = aw.fetch_audio('http://example.test/audio', **kwargs)
+            try:
+                assert complete is expected_complete
+                with open(path, 'rb') as saved:
+                    assert saved.read() == b'audio123'
+            finally:
+                os.unlink(path)
+        for invalid in (0, -1, True, '20'):
+            try:
+                aw.fetch_audio('http://example.test/audio', max_bytes=invalid)
+                raise AssertionError('Invalid cap accepted')
+            except ValueError:
+                pass
+    finally:
+        aw.urllib.request.urlopen, aw.ANALYZE_MAX_BYTES = original_urlopen, original_cap
+
+
 def run_lightweight():
     print("incomplete FLAC predecode")
+    test("explicit download cap retains default completeness semantics", t_explicit_download_cap_preserves_default_and_completeness)
     test("known-incomplete openable FLAC is predecoded", t_known_incomplete_openable_flac_is_predecoded)
     test("complete and unknown FLAC keep the original path", t_complete_and_unknown_openable_flac_keep_original)
     test("codec identity does not come from the filename", t_incomplete_non_flac_keeps_original)

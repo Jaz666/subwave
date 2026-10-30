@@ -40,7 +40,7 @@ class ReferenceTests(unittest.TestCase):
             with self.assertRaises(ValueError): fit_grid(peaks, 120, 10, beats=count)
 
     def test_eight_annotations_preserve_estimates_and_confirmed_madagascar_tempo(self):
-        data = json.loads((Path(__file__).resolve().parents[2] / 'docs/internals/subbeats-reference-tracks.json').read_text())
+        data = json.loads((Path(__file__).with_name('subbeats-reference-tracks.json')).read_text())
         self.assertEqual(len(data['tracks']), 8)
         diving = next(t for t in data['tracks'] if t['title'] == 'Diving Faces')
         self.assertEqual((diving['intro_resolve_seconds'], diving['estimated_intro_bar_count'], diving['intro_lengths_bars']), (27, 15, [16]))

@@ -1,6 +1,6 @@
 """Read-only audit of annotated compilation tracks; no automatic phrase origin.
 
-Development references are local to this evaluation, never production overrides.
+Owner references anchor evaluation and browser auditions, never picker rules.
 Quarter-note fits check tempo only; the owner's resolve point anchors the window.
 """
 import argparse

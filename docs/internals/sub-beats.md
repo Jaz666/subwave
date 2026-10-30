@@ -659,3 +659,79 @@ references: Bullet's exit covers source 234.353–271.805 seconds (starts after
 03:41), and B.B.E.'s covers 234.009–271.677 seconds (stops before the complete
 natural outro from 04:09). Preserve these bundles; prepare appropriate extra
 coverage only after the reference/source coordinates are confirmed.
+
+## Annotated browser preview with sustained rhythm
+
+The browser preview now has an explicit reference mode for the eight owner
+annotations in `controller/scripts/subbeats-reference-tracks.json`. These are
+listening fixtures, not picker rules, track approvals or automatic phrase
+analysis. If both selected tracks have references, the page shows the outgoing
+outro and incoming release times and offers only the incoming track's supplied
+4/8/16/32-bar lengths. The longest supplied length is the default. Other pairs
+retain the existing 16-bar stem audition and its manual bar shift. Reference
+mode does not apply bar shifts or guess an absolute bar origin from file zero.
+
+`referenceBars` requests are validated against the server-owned annotations.
+Clients cannot supply source URLs or substitute timestamps. The controller
+continues to enforce prepared status, library availability, the blocklist and
+normal playback gains. It supplies raw original-recording URLs privately to the
+analyzer for this mode. Old analyzer responses without the reference timeline
+marker are declined instead of silently playing the earlier preview method.
+
+The CPU renderer repeats the accepted offline approach: snap annotations only
+to the nearby quarter-note grid, work backwards by the selected complete bars,
+blend original musical audio over that window, and retain drums+bass support
+through the incoming release. The rhythm hands over across the following bar.
+The original outgoing recording plays to its natural end; if it ends earlier,
+a one-beat blend moves into a phase-continuous four-bar drums+bass extension.
+The same loop fills lost rhythm as the musical fade progresses. Its seam is
+10ms without shortening the beat cycle. One constant composite loop gain and
+one constant output headroom gain are used, without independent stem leveling.
+Incoming tempo remains matched through the preview. This is a full-mix blend
+with rhythm support, not the earlier Stem Blend vocal policy.
+
+Original sources are fetched serially to bounded temporary files (256 MiB each),
+decoded from sample zero, and removed on success or failure. Completeness and
+prepared duration are required. An exact source hash is accepted directly;
+when container/tag bytes differ, the first eight seconds must match the restored
+prepared head reconstruction within 10% relative RMS error at the same sample
+clock. Silent or mismatching heads are declined. This permits the raw recordings
+used in the accepted auditions without treating a changed recording as aligned.
+No source URLs or their credentials enter cache identity, metadata or browser
+responses. Cached previews need no source fetch.
+
+The timeline reports actual source entry times, the loop source, original EOF
+extension when used, the annotated incoming release and the one-bar handover.
+It remains seekable and browser-only. Changing either track or transition length
+cancels and discards the current audition, as does leaving the page or losing
+authentication. No broadcast, picker, settings or preparation-list writes occur;
+no GPU models or new separation are requested.
+
+Preview format is version 5. The 200 MiB preview cache now recycles its oldest
+verified generated audition folders under the existing preview lock. Only
+hash-valid fingerprint-named folders containing exactly a manifest and the
+listed `preview.wav` qualify. Unrecognised files, preparation bundles and ordinary
+stems are never removed. A saved clip already downloaded by the browser keeps
+playing when its disk cache entry is recycled. Publication stays atomic.
+
+The eight annotations do not establish pair suitability: 1998 → Universal Nation
+(32 bars) and Diving Faces → Beachball (4 bars) passed listening. Mystery Land →
+1998 failed, including a full-pattern loop trial because an unwanted effect
+repeats with the useful pattern. Retain this as a negative reference for later
+selection work, not an automatic rule excluding either track with other partners.
+Windows before source zero, ambiguous kick grids, unsuitable loop level/coverage
+and excessive tempo adjustments produce readable declines. Station playback
+continues using its normal transitions; automatic selection and native-tempo
+return are separate future work.
+
+Verification: the controller Sub/Beats route/manager suites pass (18 tests), as
+do all registered analyzer Python suites, including five sustained-reference
+checks and the explicit-download-cap regression. Controller and web lint and
+typechecks pass; controller retains its existing lint warnings. All 29 Library
+web tests, nine admin-query tests, the static query audit, Library search checks
+and all six browser query-cache checks pass. Desktop/mobile browser checks cover
+reference defaults and allowed lengths, source/EOF timing, seeking and replay,
+cancellation on length changes, the four-bar pair, unchanged legacy bar shifts
+and horizontal overflow. Both accepted real-source pairs reproduce their offline
+WAVs within one PCM16 sample step; repeated requests use saved audio without
+fetching originals. No image rebuild or service restart was run.
