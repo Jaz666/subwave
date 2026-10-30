@@ -14,27 +14,29 @@ VERSION = 4
 PREVIEW_BUDGET = 200 * 1024**2
 
 
-def fit_grid(peaks, bpm, duration, outgoing=False):
+def fit_grid(peaks, bpm, duration, outgoing=False, beats=64):
     import numpy as np
+    if type(beats) is not int or beats not in (16, 32, 64, 128):
+        raise ValueError('Kick fit requires 4, 8, 16 or 32 complete bars')
     period = 60 / bpm
-    candidates = peaks[(peaks >= (4 if outgoing else 0)) & (peaks + 64 * period <= duration)]
+    candidates = peaks[(peaks >= (4 if outgoing else 0)) & (peaks + beats * period <= duration)]
     for start in (candidates[::-1] if outgoing else candidates):
-        slots = start + np.arange(64) * period
+        slots = start + np.arange(beats) * period
         indices = np.abs(peaks[:, None] - slots).argmin(axis=0)
         found = peaks[indices]
         good = np.abs(found - slots) <= .13 * period
         if not good[:16].all() or good.mean() < .85:
             continue
-        fitted, origin = np.polyfit(np.arange(64)[good], found[good], 1)
-        if abs(fitted / period - 1) > .03 or np.max(np.abs(found[good] - (origin + np.arange(64)[good] * fitted))) > .13 * period:
+        fitted, origin = np.polyfit(np.arange(beats)[good], found[good], 1)
+        if abs(fitted / period - 1) > .03 or np.max(np.abs(found[good] - (origin + np.arange(beats)[good] * fitted))) > .13 * period:
             continue
-        if origin < 0 or origin + 64 * fitted > duration:
+        if origin < 0 or origin + beats * fitted > duration:
             continue
         return float(origin), float(fitted)
     raise ValueError('No sustained four-to-the-floor run fits the prepared region. Try another pair.')
 
 
-def kick_grid(drums, bpm, outgoing=False):
+def kick_grid(drums, bpm, outgoing=False, beats=64):
     import numpy as np
     from scipy.signal import butter, sosfiltfilt, find_peaks
     mono = drums.mean(axis=0)
@@ -46,7 +48,7 @@ def kick_grid(drums, bpm, outgoing=False):
         raise ValueError('No clear kick pattern in the prepared drums. Try another pair.')
     peaks, _ = find_peaks(energy, distance=max(1, round(.65 * 60 / bpm * STEM_SR / hop)),
                           prominence=max(1e-6, float(np.percentile(energy, 95)) * .15))
-    return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing)
+    return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing, beats)
 
 
 def load_region(folder, record, name):
