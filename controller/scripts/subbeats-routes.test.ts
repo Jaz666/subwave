@@ -90,7 +90,7 @@ test('prepared preview returns isolated audio without changing the preparation l
     if (String(url).startsWith('http://127.0.0.1:9/')) {
       if (String(url).endsWith('/health')) return Response.json({ ok: true, engines: ['analyze'] });
       payload = JSON.parse(String(init?.body));
-      return new Response(audio, { headers: { 'Content-Type': 'audio/wav' } });
+      return new Response(audio, { headers: { 'Content-Type': 'audio/wav', 'X-Subbeats-Timeline': JSON.stringify({ duration: 44, events: [{ at: 0, label: 'Outgoing lead' }, { at: 36, label: 'Exchange complete' }] }) } });
     }
     return realFetch(url, init);
   }) as typeof fetch;
@@ -99,6 +99,8 @@ test('prepared preview returns isolated audio without changing the preparation l
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type')!, /audio\/wav/);
     assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(JSON.parse(response.headers.get('x-subbeats-timeline')!).events[1].at, 36);
+    assert.equal(response.headers.get('access-control-expose-headers'), 'X-Subbeats-Timeline');
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), audio);
     assert.deepEqual(subbeatsStore.read(), before);
     assert.equal((payload as { out_key: string }).out_key, 'a'.repeat(64));

@@ -522,3 +522,47 @@ Prepared queue data and on-air playback remain unchanged. No production image
 build or service restart was performed. The candidate is copied into the test
 station checkout for the owner to rebuild; pre-preview source rollback is
 `e6ddfee8` (also retained as `rollback/pre-subbeats-preview-20261030`).
+
+## Testing timeline for browser auditions
+
+Each rendered preview now includes a timeline derived from the same cue,
+beat-period and intro-vocal mode used by its mix envelopes. It marks incoming
+entry, beat alignment, vocal-gap/fade stages, incoming instruments reaching
+full level, outgoing instruments fading, and the incoming-only follow-through.
+Simultaneous events share one row. Intro-vocal previews omit the normal vocal
+gap labels and explain that outgoing vocals are withheld. These are planned
+mix stages, not detected phrases or promises that a vocal stem is non-silent.
+
+The worker stores timing in the preview manifest and returns it on both render
+and cache hit. The analyzer and authenticated controller expose validated
+`X-Subbeats-Timeline` metadata alongside the existing WAV; it is explicitly
+exposed for cross-origin development access. The shared schema checks finite,
+bounded, sorted timestamps starting at zero. Preview version 3 gives old clips
+a new cache identity, so timings are generated on the next CPU audition; the
+49 prepared stem bundles need no further work.
+
+The browser adds elapsed/total time, a seek slider, the current stage, and
+clickable timestamp rows. It retains the loaded Sub/Beats clip after the end
+for seeking and replay without another render. Stop, pair change, auth change
+and unmount still release the audio and object URL. Sub/Flow previews without
+timing metadata retain their previous end/cleanup behaviour and do not acquire
+playhead-driven UI updates.
+
+Verified: six controller route tests, numerical timeline tests for normal and
+intro-vocal exchanges, analyzer transport tests and the registered Python
+suites pass. Controller types and web lint/types pass. Desktop/mobile browser
+checks cover live position, timestamp seeking, stage highlight, retained timing
+after finish, replay without another request, and clearing on pair change;
+there are no page errors or horizontal overflow. All 24 Library search and six
+query-cache browser checks pass on the isolated fixture. The mechanical UI
+detector reports no findings. No deployment build or station restart is run;
+the owner rebuilds analyzer, controller and web to expose the timeline.
+
+Real-worker smoke verification: Ayla → Love Stimulation renders a 39.351s
+clip whose timing includes beat alignment at 4.000s, the normal vocal gap
+starting at 7.419s, incoming vocal fade at 14.257s, and incoming-only playback
+at 31.351s. A second request returns identical timing from the verified cache.
+The standalone worker completes both requests in about 19s on CPU, with no
+model load reported. Temporary fixture servers are stopped. Final focused
+controller/web ESLint checks pass; the pre-timeline test-station source is
+retained as `rollback/pre-subbeats-timeline-20261030` before integration.

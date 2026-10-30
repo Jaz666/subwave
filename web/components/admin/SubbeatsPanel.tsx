@@ -22,6 +22,7 @@ const LABEL: Record<Status, string> = {
   queued: 'Queued', running: 'Preparing', prepared: 'Prepared', unmeasurable: 'No reliable beat data',
   unavailable: 'Unavailable', failed: 'Needs retry',
 };
+const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const finished = (status: Status | undefined) => status != null && ['queued', 'running', 'prepared', 'unmeasurable'].includes(status);
 
 export default function SubbeatsPanel() {
@@ -68,6 +69,7 @@ export default function SubbeatsPanel() {
     const priority = (s: Status) => s === 'running' ? 0 : s === 'queued' ? 1 : s === 'failed' || s === 'unavailable' ? 2 : 3;
     return priority(a.status) - priority(b.status) || b.updatedAt.localeCompare(a.updatedAt);
   });
+  const currentStage = preview.timeline?.events.reduce((label, event) => event.at <= preview.position ? event.label : label, '');
   const changePage = (next: number) => { setOffset(next); setSelected(new Set()); };
 
   return <div className="grid min-w-0 gap-6">
@@ -103,6 +105,28 @@ export default function SubbeatsPanel() {
       </div>}
       {preview.loading && <p role="status" className="mt-3 text-sm text-muted">Preparing preview… press again to cancel.</p>}
       {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
+      {preview.duration > 0 && <div className="mt-5 border-t border-ink/20 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <label htmlFor="subbeats-preview-position" className="text-sm font-medium">Preview timeline · testing</label>
+          <span className="shrink-0 font-mono text-xs text-muted tabular-nums">{clock(preview.position)} / {clock(preview.duration)}</span>
+        </div>
+        <input id="subbeats-preview-position" type="range" min={0} max={preview.duration} step={0.1} value={Math.min(preview.position, preview.duration)}
+          className="mt-2 h-8 w-full cursor-pointer accent-ink" aria-valuetext={`${clock(preview.position)} of ${clock(preview.duration)}`}
+          onChange={event => preview.seek(Number(event.target.value))} />
+        {currentStage && <p role="status" className="mt-1 text-sm font-medium text-ink">{currentStage}</p>}
+        <p className="mt-1 text-xs leading-relaxed text-muted">Stages describe the planned fades, not detected musical phrases. Vocal stages apply where vocals are present. Select a time to jump there.</p>
+        {preview.timeline ? <ol className="mt-3 grid gap-1">
+          {preview.timeline.events.map((event, index) => {
+            const current = preview.position >= event.at && (index === preview.timeline!.events.length - 1 || preview.position < preview.timeline!.events[index + 1]!.at);
+            return <li key={`${event.at}-${index}`} aria-current={current ? 'step' : undefined}>
+              <button type="button" onClick={() => preview.seek(event.at)} className={`grid min-h-10 w-full grid-cols-[3.5rem_minmax(0,1fr)] items-start gap-2 border-l-2 px-3 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${current ? 'border-ink bg-ink-soft font-medium text-ink' : 'border-transparent text-muted hover:bg-ink-soft hover:text-ink'}`}>
+                <span className="font-mono text-xs tabular-nums">{clock(event.at)}</span><span className="break-words">{event.label}</span>
+              </button>
+            </li>;
+          })}
+        </ol> : <p className="mt-3 text-sm text-muted">Stage timing is unavailable for this preview.</p>}
+      </div>}
+
     </section>
 
     <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">

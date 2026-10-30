@@ -819,7 +819,7 @@ async def subbeats_preview(req: SubbeatsPreviewRequest):
     msg = await analyzer_pool.request({"id": "1", "op": "preview_subbeats", **req.model_dump()})
     if not msg.get("ok"):
         raise HTTPException(422, msg.get("error") or "Preview could not be prepared")
-    return FileResponse(msg["subbeats_preview"], media_type="audio/wav", headers={"Cache-Control": "no-store"})
+    return FileResponse(msg["subbeats_preview"], media_type="audio/wav", headers={"Cache-Control": "no-store", "X-Subbeats-Timeline": json.dumps(msg.get("subbeats_timeline"), separators=(",", ":"))})
 
 
 class RenderTransitionRequest(BaseModel):
