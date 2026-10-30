@@ -374,3 +374,26 @@ The isolated tests exercise retained keys, restored levels, unchanged analysis,
 cache integrity, repeated conversion, corrupt input, refused exchange and
 pre-publication conversion failure. The registered analyzer Python suites
 pass. Live conversion results are recorded after execution.
+
+Live conversion completed 2026-10-30: all 49 prepared bundles converted on
+CPU using the analyzer's existing NumPy/SoundFile runtime; no model load,
+separation, image build or service restart. Listed artifacts reduced from
+4,299,780,520 to 3,346,483,816 bytes: 953,296,704 bytes saved (22.17%).
+The whole versioned cache now occupies 3,416,533,383 bytes, including earlier
+development bundles. All 392 listed stem files are FLAC. Maximum conversion
+sum RMS error was 9.386e-8, below the 1e-6 absolute guard. Every original,
+staged and published bundle passed its integrity checks. Analysis files,
+source clocks, prepared statuses and bundle keys were retained; no conversion
+stages remain. Preparation was paused for conversion then restored to its
+previous unpaused state. Controller reports 49 prepared, no active maintenance;
+edge health is `on-air`.
+
+All 23 Sub/Beats checks and the registered analyzer Python suites pass,
+including post-publication rollback and converted-bundle reuse without
+analysis/separation. Source is integrated into the station checkout, but the
+running analyzer image has not been rebuilt with the legacy reuse lookup;
+avoid Recheck of these completed tracks until a future analyzer rebuild.
+No rebuild or recheck is needed to use these converted cache artifacts in the
+future pair reader. Next development step: consume verified bundle files and
+region storage gains when evaluating beat/phrase alignment, before playback
+integration.

@@ -278,7 +278,13 @@ class ConversionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.dict('sys.modules', {'soundfile': fake_sf}):
             state = Path(folder)
             levels = dict(zip(prepare.STEMS, [1.25, -1.15, .05, .05]))
-            identity = {'separator': {'subtype': 'PCM_24-or-FLOAT-v1'}}
+            source = state / 'source.mp3'
+            source.write_bytes(b'original source fixture')
+            identity = {'source_sha256': cache.digest(source), 'analysis_version': prepare.ANALYSIS_VERSION,
+                'librosa': 'test', 'mode': 'analysis_and_stems', 'head_seconds': 68.,
+                'separator': {'model': 'test', 'overlap': .25, 'shifts': 1, 'context_seconds': 4,
+                    'sample_rate': prepare.STEM_SR, 'subtype': 'PCM_24-or-FLOAT-v1',
+                    'demucs': 'test', 'torch': 'test'}}
             def build(stage):
                 for stem, level in levels.items():
                     with (stage / f'head-{stem}.wav').open('wb') as output:
@@ -296,6 +302,14 @@ class ConversionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'bad conversion'):
                     convert.convert_bundle(root, key)
             self.assertEqual(cache.cached_entry(path, identity)['files'], original['files'])
+            calls = []
+            def refuse_published(path, identity):
+                calls.append(path)
+                return None if len(calls) == 4 else cache.cached_entry(path, identity)
+            with patch.object(convert, 'cached_entry', side_effect=refuse_published):
+                with self.assertRaisesRegex(ValueError, 'restored original'):
+                    convert.convert_bundle(root, key)
+            self.assertEqual(cache.cached_entry(path, identity)['files'], original['files'])
             result = convert.convert_bundle(root, key)
             self.assertTrue(result['converted'])
             self.assertLess(result['after'], result['before'])
@@ -309,6 +323,13 @@ class ConversionTests(unittest.TestCase):
                 values, _ = read(path / f'head-{stem}.flac')
                 np.testing.assert_allclose(values / gain, level, rtol=1e-6)
             self.assertFalse(convert.convert_bundle(root, key)['converted'])
+            worker = types.SimpleNamespace(DEMUCS_MODEL='test', DEMUCS_OVERLAP=.25)
+            with patch.dict('sys.modules', {'librosa': types.SimpleNamespace(__version__='test'), 'analyze_worker': worker}), \
+                    patch.object(prepare.importlib.metadata, 'version', return_value='test'), \
+                    patch.object(prepare, 'analyze', side_effect=AssertionError('no re-analysis or separation')):
+                reused = prepare.prepare(source, state)
+            self.assertTrue(reused['cache_hit'])
+            self.assertEqual(Path(reused['directory']).name, key)
             (path / 'head-drums.flac').write_bytes(b'corrupted')
             with self.assertRaisesRegex(ValueError, 'integrity'):
                 convert.convert_bundle(root, key)
