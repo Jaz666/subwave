@@ -53,12 +53,28 @@ station has not been rendered yet.
 
 The Opus mount's entry also carries `encoding`: `cbr` only when every `%opus`
 encoder in the `radio.liq` liquidsoap is about to load says `vbr="none"` and none
-sets `dtx=true` (DTX can drop silent frames in any mode), `vbr` otherwise, and
+sets `dtx` to anything but a literal `false` (DTX can drop silent frames in any
+mode), `vbr` otherwise, and
 absent when there is no encoder to read (`opus_encoding`). It is
 read from the encoder line itself rather than declared beside it, so the edit
 that changes the encoder (#2138) changes the answer, and a later image cannot
 carry a stale claim. It exists for the web idle skip, which may treat a
 byte-sized Opus burst as seconds only on a running mount that says `cbr`.
+
+`opus_encoding` and `controller/scripts/opus-cbr.test.ts` read a file the same
+way, and `scripts/test-utils/opus-cbr-table.ts` holds both to one table of edits
+to the real `radio.liq` (#2164): both comment forms are cut, whichever starts
+first, and `vbr='none'` and `%opus (…)` count. Every doubt reads as not `cbr`.
+That covers no `vbr` at all or a bare `%opus` (2.4.6 defaults to constrained VBR,
+byte for byte), `vbr` given twice (the last one wins), a `(` inside the call (the
+first `)` then need not close it, and `bitrate=(96), dtx=true` is DTX on 2.4.6),
+a `#<` that never closes (2.4.6 refuses that file unless the `#<` sat in a string,
+and then what follows is real code), an `%ffmpeg` libopus encoder, and a no-break
+or em space, which 2.4.6 takes as whitespace: both readers work in ASCII, and
+`opus_encoding` in the C locale, so no `LC_ALL` changes the answer. Neither reader
+is a lexer. A `#` or `#<` in a string reads as a comment, a block comment's nesting
+is ignored, though 2.4.6 nests them, and an `%ffmpeg` encoder that names its codec
+any way but `libopus` goes unseen.
 
 **The bitrate each burst is sized for is the bitrate liquidsoap encodes at
 (#2143).** The renderer used to read `liquidsoap_stream_bitrate.txt` to size the
