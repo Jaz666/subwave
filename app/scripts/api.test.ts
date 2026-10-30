@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
-import { createApi, loginHeaders, type StationApi } from '../src/lib/api.ts';
+import { createApi, FETCH_TIMEOUT_MS, loginHeaders, type StationApi } from '../src/lib/api.ts';
 import { authorizationFor, type StationCredentials } from '../src/lib/station-credentials.ts';
 import { loginRefused } from '../src/lib/station-login.ts';
 import type { StationAuthResult } from '../src/lib/station-password.ts';
@@ -143,7 +143,9 @@ test('only a Basic challenge refuses the login; /station-auth reads any challeng
     [null, false, 'denied'],
   ];
   let header: string | null = null;
-  stubFetch(t, () => new Response('', { status: 401, headers: header === null ? {} : { 'WWW-Authenticate': header } }));
+  stubFetch(t, () =>
+    Response.json({ ok: false }, { status: 401, headers: header === null ? {} : { 'WWW-Authenticate': header } }),
+  );
   const api = createApi('https://radio.example', LOGIN);
   for (const [h, refused, stationAuth] of cases) {
     header = h;
@@ -155,9 +157,9 @@ test('only a Basic challenge refuses the login; /station-auth reads any challeng
 test("/station-auth reads a proxy's login challenge as unverified, never a wrong password", async (t) => {
   const replies = [
     new Response('', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="radio"' } }),
-    new Response('', { status: 401 }),
-    new Response('', { status: 200 }),
-    new Response('', { status: 429 }),
+    Response.json({ ok: false }, { status: 401 }),
+    Response.json({ ok: true }, { status: 200 }),
+    Response.json({ ok: false, error: 'too many attempts' }, { status: 429 }),
   ];
   stubFetch(t, () => replies.shift()!);
   const api = createApi('https://radio.example', LOGIN);
@@ -165,6 +167,82 @@ test("/station-auth reads a proxy's login challenge as unverified, never a wrong
   assert.equal(await api.checkStationAuth('station-pw'), 'denied');
   assert.equal(await api.checkStationAuth('station-pw'), 'ok');
   assert.equal(await api.checkStationAuth('station-pw'), 'rate-limited');
+});
+
+test("/station-auth reads only the controller's own 401 as a wrong password (#2143)", async (t) => {
+  // The controller's refusal is `401 {"ok":false}` on every version that has
+  // the route. A forward-auth proxy's 401 carries no challenge and never
+  // reached the password check, so the saved password must survive it.
+  const cases: [reply: () => Response, result: StationAuthResult][] = [
+    [() => Response.json({ ok: false }, { status: 401 }), 'denied'],
+    // oauth2-proxy's API routes: plain text.
+    [() => new Response('Unauthorized\n', { status: 401, headers: { 'Content-Type': 'text/plain' } }), 'unavailable'],
+    // nginx auth_request passes the 401 on with its own page.
+    [
+      () =>
+        new Response('<html><head><title>401 Authorization Required</title></head></html>', {
+          status: 401,
+          headers: { 'Content-Type': 'text/html' },
+        }),
+      'unavailable',
+    ],
+    [() => new Response('', { status: 401 }), 'unavailable'],
+    [() => Response.json({ status: 'KO', message: 'Unauthorized' }, { status: 401 }), 'unavailable'],
+  ];
+  let reply = cases[0][0];
+  stubFetch(t, () => reply());
+  const api = createApi('https://radio.example', LOGIN);
+  for (const [r, result] of cases) {
+    reply = r;
+    assert.equal(await api.checkStationAuth('station-pw'), result, (await r().text()) || '(empty)');
+  }
+});
+
+test('/station-auth gives up on a 401 whose body never arrives, and keeps the password', async (t) => {
+  // On a device fetch resolves on the headers, so the fetch's own timer has
+  // stopped by the time the body is read. A body that stalls there must not
+  // leave the visit check, the prompt or the stuck check waiting forever.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  stubFetch(t, () => new Response(new ReadableStream(), { status: 401 }));
+  const settle = async () => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  };
+  let result: StationAuthResult | undefined;
+  void createApi('https://radio.example', LOGIN)
+    .checkStationAuth('station-pw')
+    .then((r) => {
+      result = r;
+    });
+  await settle();
+  assert.equal(result, undefined, 'still reading the body');
+  t.mock.timers.tick(FETCH_TIMEOUT_MS);
+  await settle();
+  assert.equal(result, 'unavailable');
+});
+
+test('/station-auth still hears a refusal that lands just inside the timeout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let body!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      body = controller;
+    },
+  });
+  stubFetch(t, () => new Response(stream, { status: 401 }));
+  const check = createApi('https://radio.example', LOGIN).checkStationAuth('station-pw');
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(FETCH_TIMEOUT_MS - 1);
+  body.enqueue(new TextEncoder().encode('{"ok":false}'));
+  body.close();
+  assert.equal(await check, 'denied');
+});
+
+test('/station-auth leaves no timer running once a 401 is read', async (t) => {
+  const armed = t.mock.method(globalThis, 'setTimeout');
+  const cleared = t.mock.method(globalThis, 'clearTimeout');
+  stubFetch(t, () => Response.json({ ok: false }, { status: 401 }));
+  assert.equal(await createApi('https://radio.example', LOGIN).checkStationAuth('station-pw'), 'denied');
+  assert.equal(cleared.mock.callCount(), armed.mock.callCount());
 });
 
 test('the stream URL never carries the login; the station password rides as ?auth=', () => {
