@@ -1,4 +1,4 @@
-import { subbeatsEventSchema } from '../schemas/subbeats.js';
+import { subbeatsEventSchema, subbeatsTimelineSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -219,6 +219,7 @@ function localConfigured(): boolean {
 // payload; ready/fatal/id are worker-only.
 interface WorkerMessage {
   subbeats_preview?: string;
+  subbeats_timeline?: unknown;
   id?: string;
   ok?: boolean;
   ready?: boolean;
@@ -1233,7 +1234,7 @@ export function subbeatsCapability(): boolean | null {
 }
 
 // Isolated cache-only audition; never called from the broadcast queue.
-export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0]): Promise<Buffer> {
+export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0]): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await resolveBackend();
   signal.throwIfAborted();
   if (!backend) throw new Error('An analyzer is needed to prepare a preview.');
@@ -1248,11 +1249,13 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
     if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('The analyzer returned an invalid preview.');
     const audio = Buffer.from(await response.arrayBuffer());
     if (audio.length > 24 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
-    return audio;
+    const raw = response.headers.get('x-subbeats-timeline');
+    const timeline = raw ? subbeatsTimelineSchema.parse(JSON.parse(raw)) : null;
+    return { audio, timeline };
   }
   const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, 180_000);
   signal.throwIfAborted();
   const path = answer.subbeats_preview;
   if (typeof path !== 'string' || !path.startsWith(`${stateDir}/subbeats/previews/`) || path.includes('..')) throw new Error('The analyzer returned an invalid preview.');
-  return readFileSync(path);
+  return { audio: readFileSync(path), timeline: answer.subbeats_timeline ? subbeatsTimelineSchema.parse(answer.subbeats_timeline) : null };
 }

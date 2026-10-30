@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 2
+VERSION = 3
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -87,6 +87,33 @@ def load_region(folder, record, name):
     while bpm > 180:
         bpm /= 2
     return parts, bpm
+
+
+def preview_timeline(in_cue, period, intro_vocals, duration):
+    """Describe the actual mixer envelopes, not inferred musical phrases."""
+    lead = max(4., in_cue + 2.)
+    incoming = round((lead - in_cue) * STEM_SR) / STEM_SR
+    events = [{'at': 0., 'label': 'Outgoing instrumental lead' if intro_vocals else 'Outgoing lead'}]
+    events.append({'at': incoming, 'label': 'Incoming opening enters; outgoing vocals withheld' if intro_vocals else 'Incoming instruments begin entering'})
+    events.append({'at': lead, 'label': 'Beats aligned; 16-bar exchange starts'})
+    if not intro_vocals:
+        events.extend([
+            {'at': lead + 8 * period, 'label': 'Outgoing vocal fade complete; four-bar vocal gap starts'},
+            {'at': lead + 24 * period, 'label': 'Incoming vocal fade starts'},
+            {'at': lead + 32 * period, 'label': 'Incoming vocal fade complete'},
+        ])
+    events.extend([
+        {'at': lead + 32 * period - in_cue, 'label': 'Incoming instruments reach full mix level'},
+        {'at': lead + 32 * period, 'label': 'Outgoing instruments begin fading'},
+        {'at': lead + 64 * period, 'label': 'Exchange complete; incoming track alone at matched tempo'},
+    ])
+    merged = []
+    for event in sorted(events, key=lambda event: event['at']):
+        if merged and abs(event['at'] - merged[-1]['at']) < 1e-6:
+            merged[-1]['label'] += '; ' + event['label']
+        else:
+            merged.append(event)
+    return {'duration': duration, 'events': merged}
 
 
 def mix_preview(out_parts, in_parts, out_cue, in_cue, period):
@@ -176,7 +203,8 @@ def render_preview(req):
             record = cached_entry(dest, {'fingerprint': fingerprint})
             if record is None:
                 raise ValueError('The saved preview failed integrity checks.')
-            return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav')}
+            return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
+            'subbeats_timeline': record['metadata']['timeline']}
         if tree_bytes(previews) >= PREVIEW_BUDGET:
             raise ValueError('The preview cache is full (200 MB).')
         out_parts, out_bpm = load_region(folders[0], records[0], 'exit')
@@ -195,7 +223,10 @@ def render_preview(req):
         stage = Path(tempfile.mkdtemp(prefix='.pending-', dir=previews))
         try:
             sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='PCM_16')
-            metadata = {'bars': 16, 'bpm': 60 / period, 'incoming_rate': rate,
+            prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
+            intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
+            metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR),
+                        'bars': 16, 'bpm': 60 / period, 'incoming_rate': rate,
                         'experimental': True, 'native_tempo_return': False, 'phrase_verified': False}
             record = {'identity': {'fingerprint': fingerprint}, 'metadata': metadata,
                       'files': {'preview.wav': {'bytes': (stage / 'preview.wav').stat().st_size,
@@ -208,4 +239,5 @@ def render_preview(req):
         finally:
             if stage.exists():
                 shutil.rmtree(stage)
-    return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav')}
+    return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
+            'subbeats_timeline': record['metadata']['timeline']}

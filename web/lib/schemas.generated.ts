@@ -5125,6 +5125,12 @@ export const subbeatsViewSchema = subbeatsQueueSchema.extend({
   capable: z.boolean().nullable(), maintenanceRunning: z.boolean(), progress: z.string().nullable(),
 });
 
+export const subbeatsTimelineSchema = z.object({
+  duration: z.number().finite().positive().max(120),
+  events: z.array(z.object({ at: z.number().finite().nonnegative().max(120), label: z.string().min(1).max(180) })).min(1).max(12),
+}).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
+  event.at <= value.duration && (i === 0 || event.at >= value.events[i - 1]!.at)), 'Invalid preview stage timing');
+
 // ─── from controller/src/schemas/transitions.ts ──────────────────────────
 
 // Why a DJ transition effect did not make it onto a seam — the vocabulary of the

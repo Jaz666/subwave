@@ -65,8 +65,11 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
       if (!track || blocklist.hitOf(track)) throw new Error('A selected track is unavailable or blocked. Choose another pair.');
     }
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
-    const audio = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0));
-    if (!abort.signal.aborted) res.set('Cache-Control', 'no-store').type('audio/wav').send(audio);
+    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0));
+    if (!abort.signal.aborted) {
+      if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
+      res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);
+    }
   } catch (error) {
     if (!abort.signal.aborted) res.status(400).json({ error: error instanceof Error ? error.message : 'Preview could not be prepared.' });
   } finally { previewBusy = false; res.off('close', cancel); }

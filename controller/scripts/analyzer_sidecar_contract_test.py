@@ -427,7 +427,7 @@ async def test_subbeats_preview_contract():
     class Pool:
         async def request(self, payload):
             seen.append(payload)
-            return {'ok': True, 'subbeats_preview': '/state/subbeats/previews/a/preview.wav'}
+            return {'ok': True, 'subbeats_preview': '/state/subbeats/previews/a/preview.wav', 'subbeats_timeline': {'duration': 44, 'events': [{'at': 0, 'label': 'Outgoing lead'}]}}
     server.analyzer_pool = Pool()
     try:
         body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64}
@@ -435,6 +435,8 @@ async def test_subbeats_preview_contract():
         assert seen == [{'id': '1', 'op': 'preview_subbeats', **body}]
         assert result.media_type == 'audio/wav'
         assert result.headers['Cache-Control'] == 'no-store'
+        import json
+        assert json.loads(result.headers['X-Subbeats-Timeline'])['duration'] == 44
     finally:
         server.analyzer_pool = original
 

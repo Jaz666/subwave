@@ -39,6 +39,21 @@ class PreviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'coverage'):
                 preview.mix_preview(out, short, 8, 0, .5)
 
+    def test_timeline_matches_mix_envelopes_and_intro_vocal_mode(self):
+        timing = preview.preview_timeline(0, .5, False, 44)
+        stages = timing['events']
+        self.assertEqual(timing['duration'], 44)
+        self.assertEqual(stages[0]['at'], 0)
+        self.assertTrue(any(e['at'] == 4 and 'Beats aligned' in e['label'] for e in stages))
+        self.assertTrue(any(e['at'] == 8 and 'four-bar vocal gap' in e['label'] for e in stages))
+        self.assertTrue(any(e['at'] == 16 and 'Incoming vocal fade starts' in e['label'] for e in stages))
+        self.assertTrue(any(e['at'] == 36 and 'Exchange complete' in e['label'] for e in stages))
+        self.assertEqual(sum(e['at'] == 20 for e in stages), 1, 'simultaneous stages share a row')
+        intro = preview.preview_timeline(4, .5, True, 46)
+        self.assertTrue(any(e['at'] == 2 and 'opening enters' in e['label'] for e in intro['events']))
+        self.assertFalse(any('vocal gap' in e['label'] for e in intro['events']))
+        self.assertEqual([e['at'] for e in intro['events']], sorted(e['at'] for e in intro['events']))
+
     def test_cached_gain_is_restored_and_bad_gain_declined(self):
         region = {'name': 'head', 'start_sample': 0, 'end_sample': 100, 'storage_gain': .5}
         record = {'metadata': {'stem_regions': [region]},
