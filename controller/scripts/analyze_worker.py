@@ -2711,6 +2711,13 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "preview_subbeats":
+            try:
+                from subbeats_preview import render_preview
+                emit({"id": rid, **render_preview(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         if req.get("op") == "prepare_subbeats":
             try:
                 from subbeats_prepare import prepare_request

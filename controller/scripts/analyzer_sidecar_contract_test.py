@@ -416,6 +416,30 @@ async def test_subbeats_contract():
         server.analyzer_pool = original
 
 
+async def test_subbeats_preview_contract():
+    assert not server.StdioWorker._wants_models({'op': 'preview_subbeats'})
+    assert not server.StdioWorker._used_models({'subbeats_preview': '/state/subbeats/previews/a/preview.wav'})
+    responses = types.ModuleType('fastapi.responses')
+    responses.FileResponse = lambda path, **kwargs: types.SimpleNamespace(path=path, **kwargs)
+    sys.modules['fastapi.responses'] = responses
+    original = server.analyzer_pool
+    seen = []
+    class Pool:
+        async def request(self, payload):
+            seen.append(payload)
+            return {'ok': True, 'subbeats_preview': '/state/subbeats/previews/a/preview.wav'}
+    server.analyzer_pool = Pool()
+    try:
+        body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64}
+        result = await server.subbeats_preview(types.SimpleNamespace(model_dump=lambda: body))
+        assert seen == [{'id': '1', 'op': 'preview_subbeats', **body}]
+        assert result.media_type == 'audio/wav'
+        assert result.headers['Cache-Control'] == 'no-store'
+    finally:
+        server.analyzer_pool = original
+
+
+
 async def main():
     test_concurrency_env_validation()
     await test_pool_concurrency()
@@ -430,6 +454,7 @@ async def main():
     await test_path_contract()
     await test_facet_contract()
     await test_subbeats_contract()
+    await test_subbeats_preview_contract()
 
 
 asyncio.run(main())

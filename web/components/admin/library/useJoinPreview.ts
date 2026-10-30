@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { adminResponse, type AdminFetch } from '../../../lib/admin-query';
+import { adminResponse, AdminResponseError, type AdminFetch } from '../../../lib/admin-query';
 
-export function useJoinPreview(trackKey: string, adminFetch: AdminFetch) {
+export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoint = '/library/sub-flow/join-preview') {
   const [active, setActive] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -36,7 +36,7 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch) {
     const ac = new AbortController();
     request.current = ac;
     try {
-      const response = await adminResponse(adminFetch, '/library/sub-flow/join-preview', {
+      const response = await adminResponse(adminFetch, endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ trackIds }), signal: ac.signal,
       });
@@ -55,7 +55,8 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch) {
     } catch (error) {
       if (ac.signal.aborted) return;
       clear(); setActive(null); setLoading(false); setPlaying(false);
-      setMessage(error instanceof Error ? error.message : 'Could not prepare the preview. Try again.');
+      setMessage(error instanceof AdminResponseError && typeof error.body.error === 'string'
+        ? error.body.error : error instanceof Error ? error.message : 'Could not prepare the preview. Try again.');
     }
   };
   return { active, loading, playing, message, toggle };
