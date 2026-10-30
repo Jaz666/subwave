@@ -65,3 +65,21 @@ cache rewrite. The browser preview remains at the rolled-back version 4 behavior
 The analyzer test runner includes reference-window arithmetic, tempo-alias kick
 evidence, unchanged default long-fit behavior, fixture checks and a read-only
 cache audit. These do not establish that automatic resolve detection is solved.
+
+## Listening correction: sustain rhythm to the release
+
+The owner preferred the 32-bar placement but heard the beat disappear before the
+release. The eventual station mixer must control the musical crossfade and the
+outgoing rhythm's lifetime separately. Retain rhythm through the incoming release,
+extending beyond source EOF when needed, then hand over rhythm separately from
+vocals and other musical content. Crossfade progress alone is not evidence that
+the incoming rhythm can take over.
+
+`reference-1998-to-universal-32-bars-held-beat.wav` is a controlled correction in
+the external evaluation directory. It preserves the placement and full-mix fade,
+adding back the loop's lost rhythm as that fade progresses. Support continues
+through 00:58.75, then fades over one bar, ending at 01:00.46. The renderer checks
+the support envelope numerically and applies one constant output gain to prevent
+clipping. It does not suppress incoming drums or automatically detect readiness;
+listening must establish whether the combined rhythm and release are suitable.
+Production playback and the browser renderer remain unchanged pending that check.
