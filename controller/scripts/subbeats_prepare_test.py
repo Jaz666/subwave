@@ -192,6 +192,14 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(coverage[1]['end_sample'], 7 * prepare.STEM_SR)
             self.assertLess(coverage[1]['reconstruction_error_relative'], 1e-6)
             self.assertEqual(len(written), 8)
+            for extra in (1, 2):
+                rounded = prepare.separate_regions('unused', Path(folder),
+                    [('exit', 5., 8. + extra / prepare.STEM_SR)], detector)
+                self.assertEqual(rounded[0]['end_sample'], audio.shape[1])
+                self.assertEqual(len(written['exit-drums.flac']), 3 * prepare.STEM_SR)
+            for region in [('bad', 5., 8. + 3 / prepare.STEM_SR), ('bad', 8., 8. + 1 / prepare.STEM_SR), ('bad', -1., 2.)]:
+                with self.assertRaisesRegex(ValueError, 'coverage'):
+                    prepare.separate_regions('unused', Path(folder), [region], detector)
             with self.assertRaisesRegex(ValueError, 'coverage'):
                 prepare.separate_regions('unused', Path(folder), [('bad', 0., 9.)], detector)
             broken = types.SimpleNamespace(separate=lambda y: {name: np.zeros_like(y) for name in prepare.STEMS})
