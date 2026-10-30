@@ -594,3 +594,71 @@ rejection. Analyzer Python suite, controller typecheck, focused controller lint,
 full web lint/typecheck and nine query-audit tests pass. Desktop/mobile browser
 checks cover all shift requests, clearing stale audio, cancelling pending work,
 pair reset, and layout without horizontal overflow.
+
+## Full-recording structural landmark candidates
+
+The requested planning model is destination-first: choose an incoming musical
+arrival/natural release, place a 16-bar exchange around it, and sustain an
+appropriate outgoing instrumental loop until that destination when needed.
+Markers are not restricted to an intro/outro window. Beat matching and multiples
+of four beats alone cannot resolve a one-bar phrase ambiguity.
+
+`controller/scripts/subbeats_structure.py` adds an independent CPU-only map to
+managed preparation/recheck. It reuses verified full-recording beat evidence,
+decodes the complete recording at 11.025 kHz, and uses Librosa STFT, mel spectra
+and chroma to measure beat-synchronous energy, bass, texture and harmonic
+changes. It compares 4-, 16- and 32-beat contexts around each measured beat and
+retains multiple local peaks across the whole recording. There is no first/last
+16-bar search restriction or fixed phrase spacing. Candidate context is bounded
+by actual measured beats; it does not extrapolate a grid through missing audio.
+
+Each candidate records its source position, beat index, evidence, strength,
+available surrounding beats, supported rhythm coverage, and tentative local
+four-beat phase support. Confidence is a heuristic low/medium label, not a
+calibrated probability. Changes without supported beat evidence remain low
+confidence. No candidate claims verified phrasing, vocal safety, a suitable loop
+seam, or pair readiness. A track without sufficient evidence reports
+`no_clear_landmarks` instead of inventing a resolve point. There is no trained
+musical-resolution or downbeat model here; audible validation remains necessary.
+
+Structure maps and compact beat feature arrays are separate integrity-checked
+artifacts in the existing `state/subbeats/v1` cache, keyed by source hash,
+structure algorithm/Librosa version and rhythm artifact hash. They use the same
+budget, single-writer lock and atomic publication as existing bundles. Changing
+this detector does not invalidate or rewrite prepared stems. Managed Recheck
+adds the map after reusing a valid stem bundle; subsequent rechecks reuse both.
+A changed source retains the existing full-preparation invalidation behavior.
+The worker exposes the structure artifact key as `subbeats_structure_key` for
+development tooling. No preview alignment is changed by this map yet.
+
+For CPU-only development runs on a complete source with matching verified rhythm:
+
+```bash
+python controller/scripts/subbeats_structure.py /path/to/complete.audio \
+  --state-dir /path/to/state --bundle-dir /path/to/state/subbeats/v1/BUNDLE_KEY
+```
+
+Results are `structure.json` (all candidate landmarks) and
+`structure-features.npz` (compact energy/spectrum/chroma per measured beat).
+
+Validation: five numerical/isolated-cache tests cover arrivals/releases beyond
+intro/outro windows, nearby fill release/arrival preservation, harmonic changes
+without a level jump, steady/silent input, invalid data, independent cache reuse,
+algorithm invalidation, and unchanged stem files/manifests. The full analyzer
+Python suite and controller lint/typecheck pass (existing lint warnings only).
+
+A CPU-only evaluation of the three reference recordings retained:
+
+| Recording | Candidates across full track | After 1 minute | Nearest to owner's reference |
+| --- | ---: | ---: | --- |
+| Liquid Child — Diving Faces | 48 | 34 | 27.330 s, medium confidence |
+| Planet Perfecto — Bullet in the Gun (Saturday remix) | 58 | 56 | 28.050 s, low confidence |
+| B.B.E. — 7 Days and 1 Week | 31 | 20 | 24.044 s, low confidence |
+
+These are retained candidates, not 137 verified mix points. In particular,
+B.B.E.'s 25-second reference remains unresolved, and Planet Perfecto's nearby
+arrival lacks supported local rhythm in this analysis. Repeated runs returned
+verified cache hits. Evaluation used temporary analysis-only bundles and did not
+load Demucs, change the 49 prepared library bundles, or alter previews/playback.
+The next planner still needs to select compatible phrase positions, establish
+loop safety/coverage, and validate audible results before automatic use.
