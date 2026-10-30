@@ -14,7 +14,7 @@ import { getFullContext, geocodePlace } from '../context.js';
 import { queue } from '../broadcast/queue.js';
 import * as session from '../broadcast/session.js';
 import { getStreamStatus } from '../broadcast/listeners.js';
-import { isIdle } from '../broadcast/stream-idle.js';
+import { idleWindow, isIdle } from '../broadcast/stream-idle.js';
 import { currentStarve } from '../broadcast/music-starve.js';
 import { getSetupStatusSync } from '../setup/firstRun.js';
 import { clockDisplay, getStationTimezone, zonedParts } from '../time.js';
@@ -460,6 +460,12 @@ router.get('/state', (req, res) => {
     needsSetup: getSetupStatusSync().needsSetup,
     // Programme paused by the idle gate (zero listeners), not broken.
     streamIdle: isIdle(),
+    // The latest idle pause as ages in ms ({ startedMsAgo, endedMsAgo }, null
+    // before the first since boot or once withdrawn: new mounts, a status poll
+    // that cannot vouch for them, an idle command the mixer did not confirm).
+    // The web player sizes its skip over a woken station's stale silence from
+    // it (#2072).
+    streamIdleWindow: idleWindow(),
     // Music chain starved (#1300), emergency loop on air. Not streamIdle, which
     // is a deliberate pause.
     musicStarved: starve.starved,
