@@ -242,10 +242,12 @@ class CoverageTests(unittest.TestCase):
                 prepare.prepare_request(req)
             req['complete'] = True
             result = {'directory': str(root / 'v1' / ('a' * 64)), 'metadata': {'stem_regions': [{'name': 'head'}]}}
-            with patch.object(prepare, 'prepare', return_value=result):
+            with patch.object(prepare, 'prepare', return_value=result), \
+                    patch('subbeats_structure.prepare_structure', return_value={'directory': str(root / 'v1' / ('b' * 64))}) as structure:
                 self.assertEqual(prepare.prepare_request(req)['subbeats_result']['status'], 'prepared')
                 result['cache_hit'] = True
                 self.assertFalse(prepare.prepare_request(req)['subbeats_used_models'])
+                structure.assert_called_with(req['path'], Path(folder), result['directory'], expected_cache_id=req['cache_id'])
 
     def test_sparse_and_regular_grids_keep_distinct_confidence(self):
         import numpy as np
