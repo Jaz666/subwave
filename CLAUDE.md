@@ -80,7 +80,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 - **One writer per file**: `queue.playJingle()` is the only writer of `jingle-now.txt` (the automatic rotate calls it), and `queue.onSpoken()` is the only place post-air bookkeeping happens.
 - **A pushed track is "handed over", never "playable".** Resolution is the `proto_subhttp` probe outcome, consumed by `queue.verifyPushResolved()`; never infer it from `dj_queue.queue()` membership.
 - **Policy lives in its own module** (`*-policy.ts`, `dj-budget.ts`, `talk-scheduler.ts`, `util/request-guard.ts`, `music/blocklist-rules.ts`, …). A decision reached from several call sites is made in one place, and a second copy of the check is the bug.
-- **A gate's failure direction is deliberate; never unify two.** `POST /listener-auth` fails open while listener auth is off, while `POST /station-auth` and `middleware/station-auth.ts` fail closed. The listener-count gates fail open on an unknown count, while `presentListeners()` fails closed. `validate*Strict` throws and `normalize*` repairs or drops, and neither restates a rule.
+- **A gate's failure direction is deliberate; never unify two.** `POST /listener-auth` fails open while listener auth is off, while `POST /station-auth` and `middleware/station-auth.ts` fail closed. The listener-count gates fail open on an unknown count, while `presentListeners()` fails closed, and the idle wake probe (`peekListeners()`) commits nothing and acts only on a positive reading. `validate*Strict` throws and `normalize*` repairs or drops, and neither restates a rule.
 - **A validated shape is defined once**, in `controller/src/schemas/<feature>.ts`, and mirrored to `web/lib/schemas.generated.ts` by `npm run gen:schemas` (CI diffs it; never hand-edit it). Those files import only `zod`; impure rules go in a `*-server.ts` sibling.
 - **A behaviour-preserving refactor preserves behaviour, accidental leniency included.** Tightening it is a separate PR, stated as a behaviour change (`schemas.md`, on the patch registry).
 - **Keep the broadcast entrypoint and the AIO supervisor in lockstep.** `docker/broadcast-entrypoint.sh` and the AIO duplicate six things (`infrastructure.md` lists them, and four tests drive both copies), so fix one, fix both.
@@ -88,7 +88,8 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 - **The listener-country chain fails open link by link** (`broadcast/listener-country.ts`). A later link runs when an earlier one misses (`XX`/`T1`), not only when it is absent.
 
 **Timing** (`broadcast.md`)
-- **Published timestamps are live-edge**, and listeners sit `stream.bufferSeconds` (22 s) behind. Listener surfaces add the offset; operator surfaces don't. `<burst-size>` is bytes, computed per mount. Never judge the cushion with `buffered.end − currentTime`.
+- **Published timestamps are live-edge**, and listeners sit `stream.bufferSeconds` (22 s) behind. Listener surfaces add the offset (`useStationFeed.leadMs`, which is less whatever the web player skipped); operator surfaces don't. `<burst-size>` is bytes, computed per mount. Never judge the cushion with `buffered.end − currentTime`.
+- **The web player skips only stale idle silence, never music, and only on the MP3 mount** (`web/lib/idleSkip.ts`). Opus is CBR since #2138, but an older broadcast image's VBR Opus burst reaches back past the pause, and the player cannot tell which one it is tuned to.
 - **Every scheduled spoken segment is a row in one slot table** (`broadcast/talk-scheduler.ts`), driven by one per-minute `talkTick`, one talker per minute. A slot is a window, and a held row postpones, never cancels. A second talk cron is the bug.
 - **The one sanctioned exception is the over-music jingle ID** (`jinglePlacement: over | both`): the now-playing watcher offers it once per song, at the opening, and it stands down to any speech rather than taking a slot (`broadcast.md`).
 - **A rendered segment is placed, not trimmed**: the lever at a boundary is which boundary it takes (`broadcast/vocal-runway.ts`).
@@ -104,6 +105,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 - Ducking is `smooth_add`, never an RMS follower; `p` is the fraction of the music left up.
 - Every transition effect runs on Liquidsoap's single streaming thread, so its cost is its shape: the dissolve sums its combs and subtracts the dry once, never per tap.
 - Both sides of a rendered seam are gained by `music/loudness.ts` `resolveGainDb`, never from the analyzer's LUFS.
+- The Opus encoder is hard CBR (`vbr="none"`): `<burst-size>` is bytes, and VBR idle silence stretched a new listener's burst back past the pause (#2138).
 
 **Library, picker, LLM, TTS** (`music.md`, `broadcast.md`)
 - Write `genres`, never `genre` (a generated column); `subsonic.songGenres()` is the one ingest normaliser. Genre matching is one-directional.
@@ -130,6 +132,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 - `requestedBy` says which exemptions a track gets, not who is waiting. Count waiting listeners as `queue.pendingListenerRequests()` plus the requests still resolving in `routes/request.ts`, which hold no queue slot yet.
 - Gate before generation, never at `speak()`.
 - Public reads are explicit allowlists: never widen one to TTS config, skills or behaviour dials. A persona's `soul` is a system prompt, published only behind `publishPersonaSouls`, and absent (not empty) when off.
+- A DJ template without `{location}` withholds the place from every model: prompts and skill tools see the live context only through `settings.spokenContext()` (`buildContextLines`, `segment-tools.ts`); display and operator surfaces keep it (#2099).
 - Absent or malformed settings coerce to the pre-existing behaviour, so an upgrade is byte-identical. The exceptions, each announced, are legacy `llm.pickerAgent: false` → Track Shortlist, and the Lyrics panel with its LRCLIB fallback (`settings.lyrics`), which an upgrade turns on.
 - A multi-station switch is a pointer write + mixer restart + controller `process.exit`; never hot-swap state paths in-process.
 - A scheduled job deletes only files it wrote itself, matched on an anchored name (`backup/pure.ts`).

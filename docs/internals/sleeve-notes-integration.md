@@ -276,3 +276,21 @@ build, container restart or live database operation was performed during this
 PR reconciliation. Upstream's MP3 cue-landing, mobile lyrics and appearance-modal
 changes are retained; the shared queue merge preserves feature cancellation and
 speech reservations.
+
+## Stats redesign reconciliation — 30 October
+
+Adopt upstream's numbered Stats layout and weekly recap. Keep its extracted
+Stats sections and slowest-render detail, moving the existing voice generation
+and speaking-pace figures into Engine room. Retain per-engine/presenter histories
+and deferred-work counts. Deferred research is excluded from failed-call labels,
+request-path completion ratios and the LLM health sample; an entirely deferred
+sample is idle rather than a successful or failed set of model calls.
+
+Regression checks cover both the upstream slowest-render field and retained pace
+fields in the same controller response, display of those fields in the new page,
+older responses without pace fields, and deferred-work health. Verified 29 focused
+controller checks (Stats, TTS measurements, research budget and broadcast gates),
+all 541 web tests, controller/web lint and types, generated schema parity and
+isolated desktop/mobile browser checks. Controller lint has 1,747 warnings and
+zero errors. No production build, station deployment or database changes are
+part of this reconciliation.

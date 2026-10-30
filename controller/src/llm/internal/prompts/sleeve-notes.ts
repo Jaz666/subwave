@@ -4,6 +4,7 @@
 
 import * as settings from '../../../settings.js';
 import { trackEraYear } from '../../../music/show-filter.js';
+import { albumIsCompilation } from '../../../music/album-facts.js';
 import { unairedFlag, type AiredIndex } from '../../../music/airing.js';
 import { canonicalReleaseForLocalTrack } from '../../../sleeve-notes/research-repository.js';
 
@@ -31,7 +32,7 @@ export function sleeveNotesFor(track: any): string[] {
   }
   const album = text(canonicalRelease?.title ?? track?.album);
   const title = text(track?.title);
-  if (album && album.toLocaleLowerCase() !== title.toLocaleLowerCase()) {
+  if (album && album.toLocaleLowerCase() !== title.toLocaleLowerCase() && !albumIsCompilation(track)) {
     notes.push(`Album: ${album}.`);
   }
   const canonicalYear = canonicalRelease?.date?.match(/^(\d{4})(?:-|$)/)?.[1];
