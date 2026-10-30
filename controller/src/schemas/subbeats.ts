@@ -32,3 +32,8 @@ export const subbeatsTimelineSchema = z.object({
   events: z.array(z.object({ at: z.number().finite().nonnegative().max(120), label: z.string().min(1).max(180) })).min(1).max(12),
 }).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
   event.at <= value.duration && (i === 0 || event.at >= value.events[i - 1]!.at)), 'Invalid preview stage timing');
+
+export const subbeatsPreviewSchema = z.object({
+  trackIds: z.array(z.string().min(1).max(200)).length(2),
+  barShift: z.number().int().min(-2).max(2).default(0),
+});

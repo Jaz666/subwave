@@ -1234,11 +1234,11 @@ export function subbeatsCapability(): boolean | null {
 }
 
 // Isolated cache-only audition; never called from the broadcast queue.
-export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0]): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await resolveBackend();
   signal.throwIfAborted();
   if (!backend) throw new Error('An analyzer is needed to prepare a preview.');
-  const payload = { out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0 };
+  const payload = { out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift };
   if (backend === 'sidecar' && _sidecarBase) {
     const response = await fetchWithTimeout(`${_sidecarBase}/subbeats-preview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),

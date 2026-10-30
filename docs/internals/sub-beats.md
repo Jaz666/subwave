@@ -566,3 +566,31 @@ The standalone worker completes both requests in about 19s on CPU, with no
 model load reported. Temporary fixture servers are stopped. Final focused
 controller/web ESLint checks pass; the pre-timeline test-station source is
 retained as `rollback/pre-subbeats-timeline-20261030` before integration.
+
+## Preview bar alignment control
+
+Browser auditions offer an incoming bar shift from −2 to +2, default zero.
+Negative brings the incoming audio earlier; positive brings it later. Each bar
+is four beats at the matched tempo. This moves the actual incoming source and
+its instrumental entry ramp relative to the outgoing exchange. Vocal fade
+windows remain fixed to preserve the four-bar vocal gap. Opening vocals still
+use the original detected cue, with outgoing vocals withheld.
+
+Changing the shift stops/cancels the loaded preview; Play renders or retrieves
+that alignment. Changing either track resets the shift to zero. The timeline
+shows the shifted incoming beat reference and entry/full-level times. Available
+outgoing lead and incoming coverage are checked for every shift; unsupported
+coverage declines rather than silently padding or trimming the source.
+
+The authenticated request accepts integer `barShift` in [−2, 2], default zero;
+controller forwards `bar_shift` through both analyzer paths. Worker validates
+again, stores the shift in metadata, and includes it in the version-4 preview
+cache identity. Existing prepared FLAC bundles are reused unchanged. This is
+preview-only and does not alter station playback or saved transition settings.
+
+Validation: numerical audio-marker checks cover all five shifts, default-zero
+parity and invalid values; authenticated route tests cover forwarding and input
+rejection. Analyzer Python suite, controller typecheck, focused controller lint,
+full web lint/typecheck and nine query-audit tests pass. Desktop/mobile browser
+checks cover all shift requests, clearing stale audio, cancelling pending work,
+pair reset, and layout without horizontal overflow.

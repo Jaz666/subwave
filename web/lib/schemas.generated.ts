@@ -5493,6 +5493,11 @@ export const subbeatsTimelineSchema = z.object({
 }).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
   event.at <= value.duration && (i === 0 || event.at >= value.events[i - 1]!.at)), 'Invalid preview stage timing');
 
+export const subbeatsPreviewSchema = z.object({
+  trackIds: z.array(z.string().min(1).max(200)).length(2),
+  barShift: z.number().int().min(-2).max(2).default(0),
+});
+
 // ─── from controller/src/schemas/transitions.ts ──────────────────────────
 
 // Why a DJ transition effect did not make it onto a seam — the vocabulary of the

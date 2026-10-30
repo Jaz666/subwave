@@ -105,5 +105,16 @@ test('prepared preview returns isolated audio without changing the preparation l
     assert.deepEqual(subbeatsStore.read(), before);
     assert.equal((payload as { out_key: string }).out_key, 'a'.repeat(64));
     assert.equal((payload as { in_key: string }).in_key, 'b'.repeat(64));
+    assert.equal((payload as { bar_shift: number }).bar_shift, 0);
+    for (const barShift of [-2, -1, 1, 2]) {
+      const shifted = await post('/library/subbeats/join-preview', { trackIds: ['beat-grid', 'tempo-only'], barShift });
+      assert.equal(shifted.status, 200);
+      await shifted.arrayBuffer();
+      assert.equal((payload as { bar_shift: number }).bar_shift, barShift);
+    }
+    for (const barShift of [-3, 3, .5, true, '1', null]) {
+      assert.equal((await post('/library/subbeats/join-preview', { trackIds: ['beat-grid', 'tempo-only'], barShift })).status, 400);
+    }
+    assert.deepEqual(subbeatsStore.read(), before);
   } finally { globalThis.fetch = realFetch; analyzer.shutdown(); }
 });
