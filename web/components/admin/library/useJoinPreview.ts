@@ -26,7 +26,7 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoin
     return clear;
   }, [trackKey, clear]);
 
-  const toggle = async (index: number, trackIds: string[]) => {
+  const toggle = async (index: number, trackIds: string[], options?: { barShift: number }) => {
     // A second click cancels preparation or stops playback. Only one join plays.
     if (active === index && (loading || !audio.current?.paused)) {
       clear(); setActive(null); setLoading(false); setPlaying(false); setMessage(null); setPosition(0); setDuration(0); setTimeline(null); return;
@@ -42,7 +42,7 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoin
     try {
       const response = await adminResponse(adminFetch, endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackIds }), signal: ac.signal,
+        body: JSON.stringify({ trackIds, ...options }), signal: ac.signal,
       });
       const rawTiming = response.headers.get('x-subbeats-timeline');
       const timing = rawTiming ? subbeatsTimelineSchema.parse(JSON.parse(rawTiming)) : null;

@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 3
+VERSION = 4
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -89,13 +89,16 @@ def load_region(folder, record, name):
     return parts, bpm
 
 
-def preview_timeline(in_cue, period, intro_vocals, duration):
+def preview_timeline(in_cue, period, intro_vocals, duration, bar_shift=0):
     """Describe the actual mixer envelopes, not inferred musical phrases."""
-    lead = max(4., in_cue + 2.)
-    incoming = round((lead - in_cue) * STEM_SR) / STEM_SR
+    shift = validate_bar_shift(bar_shift) * 4 * period
+    lead = max(4., in_cue - shift + 2., -shift)
+    incoming = round((lead - in_cue + shift) * STEM_SR) / STEM_SR
     events = [{'at': 0., 'label': 'Outgoing instrumental lead' if intro_vocals else 'Outgoing lead'}]
     events.append({'at': incoming, 'label': 'Incoming opening enters; outgoing vocals withheld' if intro_vocals else 'Incoming instruments begin entering'})
-    events.append({'at': lead, 'label': 'Beats aligned; 16-bar exchange starts'})
+    events.append({'at': lead, 'label': 'Beats aligned; 16-bar exchange starts' if not bar_shift else '16-bar exchange starts'})
+    if bar_shift:
+        events.append({'at': lead + shift, 'label': f'Incoming beat reference ({bar_shift:+d} bars); beats remain matched'})
     if not intro_vocals:
         events.extend([
             {'at': lead + 8 * period, 'label': 'Outgoing vocal fade complete; four-bar vocal gap starts'},
@@ -103,7 +106,7 @@ def preview_timeline(in_cue, period, intro_vocals, duration):
             {'at': lead + 32 * period, 'label': 'Incoming vocal fade complete'},
         ])
     events.extend([
-        {'at': lead + 32 * period - in_cue, 'label': 'Incoming instruments reach full mix level'},
+        {'at': lead + 32 * period - in_cue + shift, 'label': 'Incoming instruments reach full mix level'},
         {'at': lead + 32 * period, 'label': 'Outgoing instruments begin fading'},
         {'at': lead + 64 * period, 'label': 'Exchange complete; incoming track alone at matched tempo'},
     ])
@@ -116,15 +119,16 @@ def preview_timeline(in_cue, period, intro_vocals, duration):
     return {'duration': duration, 'events': merged}
 
 
-def mix_preview(out_parts, in_parts, out_cue, in_cue, period):
+def mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift=0):
     import numpy as np
     overlap = 64 * period
-    lead = max(4., in_cue + 2.)
+    shift = validate_bar_shift(bar_shift) * 4 * period
+    lead = max(4., in_cue - shift + 2., -shift)
     if lead > out_cue:
         raise ValueError('This opening needs an outgoing loop beyond the prepared lead. Try another pair.')
     tail = 8.
     total = round((lead + overlap + tail) * STEM_SR)
-    incoming_start = round((lead - in_cue) * STEM_SR)
+    incoming_start = round((lead - in_cue + shift) * STEM_SR)
     needed = total - incoming_start
     if in_parts['drums'].shape[1] < needed:
         raise ValueError('The incoming head needs more prepared coverage for this preview. Try another pair.')
@@ -146,7 +150,7 @@ def mix_preview(out_parts, in_parts, out_cue, in_cue, period):
                 in_env[:] = 1
         else:
             out_env = np.clip((64 * period - time) / (32 * period), 0, 1)
-            in_env = np.clip((time + in_cue) / (32 * period), 0, 1)
+            in_env = np.clip((time + in_cue - shift) / (32 * period), 0, 1)
         outgoing = out_parts[stem][:, first:stop]
         mix[:, :outgoing.shape[1]] += outgoing * out_env[:outgoing.shape[1]]
         # Short onset ramp avoids introducing the incoming prefix abruptly.
@@ -162,11 +166,18 @@ def mix_preview(out_parts, in_parts, out_cue, in_cue, period):
     return mix
 
 
+def validate_bar_shift(value):
+    if type(value) is not int or not -2 <= value <= 2:
+        raise ValueError('Incoming bar shift must be a whole number from -2 to +2.')
+    return value
+
+
 def render_preview(req):
     import numpy as np
     import librosa
     import soundfile as sf
     from re import fullmatch
+    bar_shift = validate_bar_shift(req.get('bar_shift', 0))
     state = Path(req['state_dir'])
     require_shared_cache(state, req['cache_id'])
     keys = [req['out_key'], req['in_key']]
@@ -189,7 +200,7 @@ def render_preview(req):
     gains = [float(req.get(name, 0)) for name in ('out_gain_db', 'in_gain_db')]
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
-    fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains,
+    fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
                               'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
@@ -219,14 +230,14 @@ def render_preview(req):
             in_cue, _ = kick_grid(in_parts['drums'], 60 / period)
         out_parts = {name: part * 10**(gains[0] / 20) for name, part in out_parts.items()}
         in_parts = {name: part * 10**(gains[1] / 20) for name, part in in_parts.items()}
-        audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period)
+        audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift)
         stage = Path(tempfile.mkdtemp(prefix='.pending-', dir=previews))
         try:
             sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='PCM_16')
             prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
             intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
-            metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR),
-                        'bars': 16, 'bpm': 60 / period, 'incoming_rate': rate,
+            metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR, bar_shift),
+                        'bars': 16, 'bar_shift': bar_shift, 'bpm': 60 / period, 'incoming_rate': rate,
                         'experimental': True, 'native_tempo_return': False, 'phrase_verified': False}
             record = {'identity': {'fingerprint': fingerprint}, 'metadata': metadata,
                       'files': {'preview.wav': {'bytes': (stage / 'preview.wav').stat().st_size,

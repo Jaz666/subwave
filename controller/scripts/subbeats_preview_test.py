@@ -54,6 +54,27 @@ class PreviewTests(unittest.TestCase):
         self.assertFalse(any('vocal gap' in e['label'] for e in intro['events']))
         self.assertEqual([e['at'] for e in intro['events']], sorted(e['at'] for e in intro['events']))
 
+    def test_bar_shift_moves_audio_relative_to_exchange_without_changing_tempo(self):
+        with patch.object(preview, 'STEM_SR', 1000):
+            out = {s: np.zeros((2, 60000), dtype=np.float32) for s in preview.STEMS}
+            inc = {s: np.zeros((2, 60000), dtype=np.float32) for s in preview.STEMS}
+            # An incoming instrumental marker six seconds into the source.
+            inc['drums'][:, 6000:6100] = .2
+            for shift in range(-2, 3):
+                audio = preview.mix_preview(out, inc, 12, 0, .5, shift)
+                lead = max(4., 2. - shift * 2, -shift * 2)
+                marker = round((lead + shift * 2 + 6) * 1000)
+                self.assertEqual(int(np.flatnonzero(audio[0])[0]), marker)
+                timing = preview.preview_timeline(0, .5, False, audio.shape[1] / 1000, shift)
+                self.assertTrue(any(e['at'] == lead + shift * 2 for e in timing['events']))
+                # Vocal exchange windows stay fixed to retain the four-bar gap.
+                self.assertTrue(any(e['at'] == lead + 12 and 'Incoming vocal fade starts' in e['label'] for e in timing['events']))
+            np.testing.assert_array_equal(preview.mix_preview(out, inc, 12, 0, .5),
+                                          preview.mix_preview(out, inc, 12, 0, .5, 0))
+        for value in (-3, 3, .5, True, '1', None):
+            with self.assertRaisesRegex(ValueError, 'bar shift'):
+                preview.validate_bar_shift(value)
+
     def test_cached_gain_is_restored_and_bad_gain_declined(self):
         region = {'name': 'head', 'start_sample': 0, 'end_sample': 100, 'storage_gain': .5}
         record = {'metadata': {'stem_regions': [region]},

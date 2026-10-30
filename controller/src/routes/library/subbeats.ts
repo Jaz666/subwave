@@ -1,11 +1,10 @@
 import express from 'express';
-import { z } from 'zod';
 import { config } from '../../config.js';
 import { resolveGainDb } from '../../music/loudness.js';
 import * as blocklist from '../../music/blocklist.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
-import { subbeatsEnqueueSchema, subbeatsPauseSchema } from '../../schemas/subbeats.js';
+import { subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
 import * as db from '../../music/library-db.js';
 import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
@@ -45,9 +44,8 @@ router.post('/library/subbeats/pause', requireAdmin, validateBody(subbeatsPauseS
 });
 
 let previewBusy = false;
-const previewInput = z.object({ trackIds: z.array(z.string().min(1).max(200)).length(2) });
 router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => {
-  const parsed = previewInput.safeParse(req.body);
+  const parsed = subbeatsPreviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose two prepared tracks.' });
   if (previewBusy) return res.status(409).json({ error: 'Another transition preview is being prepared. Try again shortly.' });
   const abort = new AbortController();
@@ -65,7 +63,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
       if (!track || blocklist.hitOf(track)) throw new Error('A selected track is unavailable or blocked. Choose another pair.');
     }
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
-    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0));
+    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift);
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);
