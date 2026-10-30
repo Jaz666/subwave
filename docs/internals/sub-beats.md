@@ -363,3 +363,35 @@ still fail. Existing successful bundles remain valid; no cache identity
 change or repeat separation is needed for those 40 tracks. Retry only failed
 tracks after the owner rebuilds the analyzer. This fixes a demonstrated
 rounding case; successful retries confirm its application to the nine tracks.
+
+## Prepared-library review and consistent FLAC storage (2026-10-30)
+
+All 49 admitted tracks are prepared, each with both head and exit regions.
+Their listed artifacts total 4,299,780,520 bytes. The whole versioned cache
+including earlier development bundles occupies 4,369,818,223 bytes of the
+5 GiB budget. All 49 bundles contain WAVs (106 floating-point stems overall).
+The largest saved-stem reconstruction relative error is 0.05723, within the
+0.1 guard. Two tracks have late percussion-drop candidates. These results
+verify preparation coverage, not four-to-the-floor classification, downbeat
+phase, vocal separation suitability or readiness of any transition pair.
+
+New preparations now store all four stems as 24-bit FLAC. For each region,
+measure the largest absolute sample across all four cropped stems. When it
+reaches full scale, multiply every stem by `0.999 / peak`; otherwise gain is
+one. Record this multiplier as `stem_regions[].storage_gain`. A consumer
+must divide decoded samples by that value before mixing. Existing bundles
+without this field have gain one and may contain floating-point WAVs. Never
+normalize stems independently or apply a limiter at preparation time.
+
+Reconstruction validation uses saved/reloaded PCM with the recorded gain
+restored, so quantization is included in the check. The storage policy changes
+the cache identity to `PCM_24-shared-gain-v1`. Existing bundles are retained,
+not rewritten, and the 49 prepared tracks need no repeat GPU work. Readers
+must support both versions before pair rendering is integrated. An explicit
+CPU-only conversion of existing bundles can be considered separately if disk
+pressure warrants it; no migration or eviction is performed by this change.
+
+Verification: the registered analyzer Python suites pass, including all 22
+Sub/Beats checks. The shared-gain regression models 24-bit PCM quantization
+and verifies restored stem balance and reconstructed source level. No GPU
+job, cache migration, image rebuild or station restart was performed.
