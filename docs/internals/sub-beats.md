@@ -1,5 +1,7 @@
 # Sub/Beats development
 
+Current continuation notes: [2026-10-30 session handover](../investigations/2026-10-30-subbeats-handover.md).
+
 Sub/Beats identifies likely sustained four-to-the-floor tracks, prepares deeper
 Librosa analysis and dedicated stem regions, and eventually offers a prepared
 beat-matched transition when suitable. The operator selects tracks to prepare;
@@ -685,10 +687,11 @@ The owner's revised listening references, explicitly as displayed in MixMeister:
 | Bullet in the Gun, outgoing | Outro starts 03:41 | Let the recording play naturally while bringing in the next track. When its available audio ends, extend drums and bass with a loop until the incoming full sixteen-bar intro reaches its destination. |
 | 7 Days and 1 Week, incoming | Natural complete sixteen-bar intro | Play the existing opening as recorded; do not replace it with a counted reconstruction. |
 | 7 Days and 1 Week, outgoing | Natural sixteen-bar outro starts 04:09 | Use that natural outro. |
-| Diving Faces, incoming | Natural resolve at the fifteenth bar, approximately 00:25 | Treat this as a shortened intro. Do not snap its destination to the inferred sixteen-bar boundary near 00:27. |
+| Diving Faces, incoming | **Later corrected to 00:27**, display count approximately 15 | Use a suitable 16-bar window. The displayed count does not establish a shortened phrase. See the current reference fixture and session handover. |
 
-These supersede the earlier Diving Faces 27-second reference and any assertion
-that a source-zero kick count establishes either recording's phrase phase.
+The later eight-track annotation table supersedes the intermediate Diving Faces
+25-second interpretation: use **00:27**, with the displayed bar count only an
+estimate. A source-zero kick count does not establish either recording's phrase phase.
 Before another render, reconcile MixMeister display/clip positions with the
 exact prepared source and stem coverage; do not silently equate display time,
 raw-source time and preview time. For example, the currently prepared Bullet
@@ -765,8 +768,10 @@ stems are never removed. A saved clip already downloaded by the browser keeps
 playing when its disk cache entry is recycled. Publication stays atomic.
 
 The eight annotations do not establish pair suitability: 1998 → Universal Nation
-(32 bars) and Diving Faces → Beachball (4 bars) passed listening. Mystery Land →
-1998 failed, including a full-pattern loop trial because an unwanted effect
+(16 and 32 bars) and Diving Faces → Beachball (4 bars) passed listening.
+The 16-bar 1998 → Universal Nation browser preview was accepted at session end;
+32 bars was the earlier preferred audition, not a universal default rule.
+Mystery Land → 1998 failed, including a full-pattern loop trial because an unwanted effect
 repeats with the useful pattern. Retain this as a negative reference for later
 selection work, not an automatic rule excluding either track with other partners.
 Windows before source zero, ambiguous kick grids, unsuitable loop level/coverage
