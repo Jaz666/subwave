@@ -663,76 +663,49 @@ load Demucs, change the 49 prepared library bundles, or alter previews/playback.
 The next planner still needs to select compatible phrase positions, establish
 loop safety/coverage, and validate audible results before automatic use.
 
-## Phrase-counted browser planning
+## Rejected phrase-counting attempt: pre-mixed compilation sources
 
-The owner corrected B.B.E.'s reference from 25 seconds to approximately 28:
-its opening is immediate, and the later marker confirms sixteen complete bars.
-A musical boundary can be counted even when there is no strong sound change.
-The automatic planner uses complete 4-, 8- or 16-bar windows (four beats per
-bar), preferring sixteen. A one-bar-late novelty peak cannot reset that count.
+The owner rejected the phrase-counted preview implementation after listening.
+It has been reverted completely, including its opening-phase assumption, new
+loop mixer and post-stretch cue correction. The earlier manual bar-shift preview
+and full-recording structure maps remain. Rechecked prepared bundles are retained;
+rejected version-6 preview artifacts are no longer selected by the restored
+version-4 renderer. No cache files are deleted during rollback.
 
-`subbeats_phrases.py` selects destinations supported by structural evidence
-near a four-bar boundary, or explicitly inferred 4/8/16-bar counts from an
-immediate sustained opening. Structural changes are snapped to the measured
-kick grid within half a beat. Candidate scoring does not move the actual beat
-phase to a bass/synth transient later in the beat. Suitable destinations beyond
-sixteen bars remain eligible when their opening hold, full exchange and follow-
-through all fit the prepared coverage. Holding sections are zero, 4, 8 or 16
-bars; instrumental leads are complete 4/8/16-bar blocks. Insufficient coverage
-is declined, rather than cutting the opening or inventing an odd-length window.
+These tracks come from a pre-mixed compilation. Source zero and the first
+sustained kick do not establish a clean musical phrase origin. An edit may have
+shortened an intro or outro, and boundaries must be established independently
+for each usable region. Preferred 4/8/16-bar mixing sections are a planning goal;
+they must not force an edited recording to have a complete sixteen-bar intro.
 
-The outgoing phase is inferred from the source-zero opening kick fit. Exit fits
-are restricted to the same four-bar phase, checked against the local kick grid;
-they no longer choose the latest arbitrary quarter-note onset. This assumes an
-immediate opening establishes phrase origin; it is not a trained downbeat
-classifier and cannot prove there was no phrase edit elsewhere in the recording.
-Unknown outgoing opening phase declines the phrase audition. Metadata retains
-`phrase_verified: false` and labels counted vs change-supported references.
+The owner's revised listening references, explicitly as displayed in MixMeister:
 
-The mixer preserves incoming source zero and sustains a four-bar outgoing
-instrumental loop through the lead/holding section, then uses the measured
-natural outgoing exit for the complete exchange. Outgoing vocals are never
-looped. Loop boundaries use 5 ms seam ramps without shifting beats. Sixteen-bar
-exchanges retain the established two-bar outgoing vocal fade, four-bar gap and
-two-bar incoming fade. Incoming opening vocals, or shorter 4/8-bar exchanges,
-withhold outgoing vocals instead of shortening the separation. This does not
-establish vocal/tonal loop safety for broadcast; listening review is required.
+| Recording / role | Reference | Required behavior |
+| --- | --- | --- |
+| Bullet in the Gun, outgoing | Outro starts 03:41 | Let the recording play naturally while bringing in the next track. When its available audio ends, extend drums and bass with a loop until the incoming full sixteen-bar intro reaches its destination. |
+| 7 Days and 1 Week, incoming | Natural complete sixteen-bar intro | Play the existing opening as recorded; do not replace it with a counted reconstruction. |
+| 7 Days and 1 Week, outgoing | Natural sixteen-bar outro starts 04:09 | Use that natural outro. |
+| Diving Faces, incoming | Natural resolve at the fifteenth bar, approximately 00:25 | Treat this as a shortened intro. Do not snap its destination to the inferred sixteen-bar boundary near 00:27. |
 
-A render check exposed a related counting bug: after stretching, kick detection
-could select a later sustained run (three beats late in Diving Faces). The
-preview now refines the sub-beat phase while retaining the original source cue's
-beat number; integer-beat advances are removed. An inconsistent fractional phase
-is declined. This correction also applies to beat-only previews.
+These supersede the earlier Diving Faces 27-second reference and any assertion
+that a source-zero kick count establishes either recording's phrase phase.
+Before another render, reconcile MixMeister display/clip positions with the
+exact prepared source and stem coverage; do not silently equate display time,
+raw-source time and preview time. For example, the currently prepared Bullet
+recording decodes to about 04:31.8, so the stated short outgoing runway needs
+its actual MixMeister clip/end position established. Existing fixed exit stems
+must be checked against the owner's earlier outro positions before reuse.
 
-The version-6 preview cache identity includes the matching structure manifest
-hash. Existing prepared stems/maps remain unchanged; the three rechecked tracks
-need no further preparation. When an incoming structure map is absent, the
-existing beat-only preview is explicitly labelled as such. Manual ±1/±2-bar
-shifts remain diagnostic overrides and are marked as overriding phrase alignment.
-Zero now means automatic alignment. Timeline events include the incoming source
-reference time, counted/change-supported evidence, loops and actual window size.
-All changes remain isolated from live station playback and normal transitions.
+Next development should begin with these manually specified reference cases,
+including partial phrases and a drums+bass extension after the actual outgoing
+end. Validate those auditions first, then improve automatic landmark selection
+against the accepted placements. No replacement automatic planner is deployed
+as part of this rollback.
 
-Validation: eight phrase-policy/rendering tests plus the complete analyzer Python
-suite pass. They cover 16-bar preference, 8/4-bar fallback, rejection of partial
-and one-bar-offset windows, a 24-bar destination with an eight-bar opening hold,
-no looped outgoing vocals, shorter-window vocal withholding, all manual offsets,
-original beat numbering after stretch, source-zero preservation and headroom.
-Controller lint/typecheck and web lint/typecheck pass; controller retains its
-existing lint warnings. Desktop/mobile audition tests use the rendered WAV and
-real timeline metadata, covering the source-0:28 counted reference, seeking,
-replay reuse, cancellation, override reset and layout. All 24 Library search
-checks and six query-cache regressions pass.
-
-Two CPU-only renders from the rechecked prepared bundles both select sixteen
-bars and a four-bar instrumental lead loop:
-
-| Pair | Incoming source reference | Evidence | Clip length |
-| --- | ---: | --- | ---: |
-| Bullet in the Gun → 7 Days and 1 Week | 27.744 s | counted opening | 42.588 s |
-| 7 Days and 1 Week → Diving Faces | 27.376 s | structural change | 42.585 s |
-
-These are ready for listening review with incoming shift zero. There is no new
-Demucs preparation, no live transition change and no further recheck needed for
-the three reference recordings. Source is integrated into the test-station
-checkout; the owner rebuilds analyzer, controller and web.
+Rollback checks: the restored runtime/UI files match commit `ef969239` exactly;
+the analyzer Python suite and Library web tests pass. Read-only cache inspection
+also confirms why existing exit stems cannot simply be reused for the corrected
+references: Bullet's exit covers source 234.353–271.805 seconds (starts after
+03:41), and B.B.E.'s covers 234.009–271.677 seconds (stops before the complete
+natural outro from 04:09). Preserve these bundles; prepare appropriate extra
+coverage only after the reference/source coordinates are confirmed.
