@@ -252,3 +252,20 @@ test('an unreadable policy is surfaced and never replaced by an edit', async () 
     assert.notEqual((await cache.admissionSignals()).selectiveStems, true, 'unreadable opt-in preserves upstream admission');
   } finally { writeFileSync(file, before); }
 });
+
+
+test('entry removal is authenticated, rejects active preparation and returns updated state', async () => {
+  const route = '/library/subbeats/entries/remove-route';
+  assert.equal((await fetch(base+route,{method:'DELETE'})).status,401);
+  subbeatsStore.enqueue([{id:'remove-route',title:'Remove',artist:'Artist',album:''}]);
+  assert.equal((await fetch(base+route,{method:'DELETE',headers})).status,409);
+  subbeatsStore.event({id:'remove-route',status:'running'},['remove-route']);
+  subbeatsStore.event({id:'remove-route',status:'prepared',bundleKey:'e'.repeat(64)},['remove-route']);
+  const cache = await import('../src/music/stem-cache.js');
+  const {mkdirSync,writeFileSync} = await import('node:fs');
+  const {join} = await import('node:path');
+  mkdirSync(cache.stemsRoot(),{recursive:true});writeFileSync(join(cache.stemsRoot(),cache.STEMS_MARKER),'{}');
+  const response = await fetch(base+route,{method:'DELETE',headers});
+  assert.equal(response.status,200);
+  assert.equal(subbeatsViewSchema.parse(await response.json()).jobs.some(job=>job.id==='remove-route'),false);
+});

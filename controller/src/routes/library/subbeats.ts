@@ -1,4 +1,5 @@
-import { startSubbeatsCleanup, startSubbeatsCleanupEstimate, subbeatsCleanupState } from '../../music/subbeats-stem-cleanup.js';
+import { removeSubbeatsEntry, subbeatsRemovalRunning } from '../../music/subbeats-removal.js';
+import { startSubbeatsCleanup, startSubbeatsCleanupEstimate, subbeatsCleanupState, invalidateSubbeatsCleanupEstimate } from '../../music/subbeats-stem-cleanup.js';
 import { statfs } from 'node:fs/promises';
 import * as stemCache from '../../music/stem-cache.js';
 import { readSubbeatsStemPolicy, updateSubbeatsStemPolicy } from '../../music/subbeats-stem-policy.js';
@@ -35,7 +36,9 @@ router.get('/library/subbeats/candidates', requireAdmin, async (req, res) => {
   } catch { res.status(503).json({ error: 'Tracks could not be loaded. Retry shortly.' }); }
 });
 router.post('/library/subbeats/queue', requireAdmin, validateBody(subbeatsEnqueueSchema), async (req, res) => {
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
   await library.load();
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
   const tracks = [...new Set<string>(req.body.ids)].map(id => db.getTrack(id));
   if (tracks.some(t => !t)) return res.status(400).json({ error: 'Some tracks are no longer in the library' });
   try {
@@ -53,9 +56,19 @@ router.post('/library/subbeats/pause', requireAdmin, validateBody(subbeatsPauseS
 });
 
 let previewBusy = false;
+router.delete('/library/subbeats/entries/:id', requireAdmin, async (req,res) => {
+  if (tagger.running || previewBusy || subbeatsCleanupState().busy) return res.status(409).json({error:'Wait for analysis, preview rendering or cache cleanup to finish before removing an entry'});
+  try {
+    await removeSubbeatsEntry(req.params.id);
+    res.json(view());
+  } catch (error) { res.status(409).json({error:error instanceof Error ? error.message : 'The entry could not be removed. Retry shortly.'}); }
+  finally { invalidateSubbeatsCleanupEstimate(); }
+});
+
 router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => {
   const parsed = subbeatsPreviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose two prepared tracks.' });
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish before preparing a preview'});
   if (previewBusy) return res.status(409).json({ error: 'Another transition preview is being prepared. Try again shortly.' });
   const abort = new AbortController();
   const cancel = () => abort.abort();
@@ -101,6 +114,7 @@ router.get('/library/subbeats/cache', requireAdmin, async (_req, res) => {
   } catch { res.status(503).json({ error: 'Stem cache details could not be read. Saved policy has been kept.' }); }
 });
 router.post('/library/subbeats/cache', requireAdmin, validateBody(subbeatsStemPolicyPatchSchema), async (req, res) => {
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish before changing cache choices'});
   await library.load();
   if (req.body.track?.include && !db.getTrack(req.body.track.id)) return res.status(400).json({ error: 'Track is no longer in the library' });
   if (req.body.enabled === true && req.body.confirmCleanup !== true) return res.status(400).json({error:'Confirm the seven-day stem cleanup before enabling it'});
@@ -114,11 +128,13 @@ router.post('/library/subbeats/cache', requireAdmin, validateBody(subbeatsStemPo
 
 router.get('/library/subbeats/cache/cleanup', requireAdmin, (_req, res) => res.json(subbeatsCleanupState()));
 router.post('/library/subbeats/cache/estimate', requireAdmin, async (_req, res) => {
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
   await library.load();
   try { startSubbeatsCleanupEstimate(); res.status(202).json(subbeatsCleanupState()); }
   catch (error) { res.status(409).json({error:error instanceof Error ? error.message : 'A cache scan is already running'}); }
 });
 router.post('/library/subbeats/cache/cleanup', requireAdmin, async (_req, res) => {
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
   await library.load();
   try { startSubbeatsCleanup(); res.status(202).json(subbeatsCleanupState()); }
   catch { res.status(409).json({error:'Cleanup could not start'}); }

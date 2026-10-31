@@ -1,5 +1,6 @@
 // Durable admissions share the existing managed maintenance slot. The controller
 // owns queue state; the child only reports per-track events and honors pause.
+import { subbeatsRemovalRunning } from './subbeats-removal.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.js';
@@ -24,7 +25,7 @@ export function kickSubbeats(delayMs = 0): void {
       const migrate = !migrationAttempted && existsSync(join(config.stateDir, 'subbeats', 'v1'));
       if ((state.paused || !ids.length) && !migrate) return;
       const locked = readPidfile();
-      if (tagger.running || (locked && isPidAlive(locked.pid))) { kickSubbeats(5000); return; }
+      if (subbeatsRemovalRunning() || tagger.running || (locked && isPidAlive(locked.pid))) { kickSubbeats(5000); return; }
       admitted = state.paused ? [] : ids;
       migrationAttempted = true;
       subbeatsStore.cacheId();

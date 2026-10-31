@@ -58,6 +58,55 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Remove a Sub/Beats entry — 31 October 2026
+
+Owner choice: removal deletes the preparation entry and its extended cached
+files, while retaining the library recording, ordinary head/tail stems and
+manual regular-cache inclusion. Prepared Tracks offers Remove alongside the
+pair selectors; Preparation also offers it for terminal entries, including
+failed jobs and entries whose catalogue row has disappeared. A standard
+confirmation names the artist/track and explains deletion and later re-preparation.
+Queued/running work is excluded. Active maintenance, preview rendering and
+selective cache work refuse a conflicting removal; the existing manager defers
+new preparation while removal runs. Queue admissions and new preview/cache
+operations are also gated during removal.
+
+`DELETE /library/subbeats/entries/:id` is admin-only and returns the existing
+Sub/Beats view. The removal module preflights the marked cache, safe track ID,
+real parent directories and legacy paths before deleting anything. It removes
+only `<track>/subbeats`, never `<track>` or the ordinary stem files. A legacy
+active bundle is removed only when no other queue entry references its key;
+unrelated legacy structure/experimental artifacts and bounded preview outputs
+are retained. Existing quarantine is untouched. The queue record is removed
+through the store only after file deletion succeeds. A partial filesystem
+failure retains the entry for retry; ordinary stems remain outside every delete
+path. Missing entries/files are harmless on repeat requests. Failed final queue
+writes also retain the saved entry so removal can be retried.
+
+Usage and reclaim estimates are invalidated after deletion. The UI refreshes
+prepared/explore rows, preparation state and cache views, and clears a removed
+track from either preview selector, including changes observed by polling.
+Tracks return to their ordinary Explore eligibility and can be prepared again;
+removal does not block them or automatically requeue them. Explicit removal
+is separate from automatic seven-day selective quarantine.
+
+Deployment changes controller and web only. No real entry/cache deletion or
+station restart is performed by the agent. Previous station source: `4c7a1280`.
+
+Verification: all 47 Sub/Beats checks passed, then all six removal regressions
+passed after adding the no-files snapshot case. Controller lint/typecheck and
+web lint/typecheck passed (controller's existing warnings remain). Library web
+tests (32), admin-query audit and its nine tests passed. Isolated desktop/mobile
+browser checks exercised cancel, confirmed file deletion, regular-stem retention,
+preview selection clearing and re-preparation eligibility, with no page errors
+or horizontal overflow. Library search verification and all six query-cache
+checks passed. Screenshots and `removal-results.json` are in the existing
+`/home/jaz666/codex/subbeats-cleanup-evaluation-20261031/` evidence folder outside
+Git. Clearing an entry without artifacts preserves the usage snapshot, avoiding
+an unnecessary full cache walk. The owner rebuilds controller/web and verifies
+health before trying Remove on a chosen real entry.
+
+
 ## Shared-cache migration lock correction — 31 October 2026
 
 The first station migration stopped before copying any bundle: the analyzer
