@@ -58,6 +58,44 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Library usability audit fixes — 31 October 2026
+
+The five UI audit findings are addressed within the existing Library styles:
+
+- Explore/Prepared use compact desktop result columns and stacked mobile rows.
+  Previous/Next controls appear above and below the results.
+- Explore/Prepared search, genre, collection, analysis status and result offset
+  are mirrored into the route query string using Library's replaceState pattern.
+  Refresh/bookmarks restore the current view; malformed values fall back safely.
+  Each page retains independent filters. Bulk selections remain temporary and
+  clear on refresh or when leaving Sub/Beats; pair/shift behavior is unchanged.
+- Page selection disables when no additional rows can be admitted and none are
+  selected on that page. Partially selected pages at capacity still allow
+  deselection. Batch/list capacity feedback appears beside the bulk controls.
+- Feature actions, search inputs, preview timeline and touch row-selection hit
+  areas have at least 44-pixel height. Desktop row checkboxes retain the shared
+  compact appearance; mobile/coarse-pointer hit areas grow without enlarging
+  the checkbox artwork. No global shared-control sizes changed.
+- Empty Preparation/Preview views link to Explore; empty Prepared results also
+  provide a direct way to prepare more tracks.
+
+Verification used the isolated 2,500-track fixture, with desktop/mobile workflow
+checks and focused checks at 1440, 768, 390 and 320 pixels: filter refresh and
+bookmarks, malformed URL recovery, selection/deselection at the batch limit,
+empty-state links and no horizontal overflow. A full 500-entry list blocks new
+selection but permits failed-entry retry selection; measured mobile controls
+meet the 44-pixel hit-area height. Existing pair/shift persistence,
+audio cleanup, independent filters and page-specific candidate reads still pass.
+The Library tests (32), admin-query tests (9), static query audit, Library search
+browser checks and all six query-cache checks passed. Web lint/typecheck and the
+UI detector passed. Scripts, screenshots and results are under
+`/home/jaz666/codex/subbeats-audit-fixes-evaluation-20261031/` outside Git.
+
+Source is prepared on `feat/sub-beats` for the test-station checkout. Only `web`
+needs rebuilding for this increment. The owner runs station builds/restarts.
+The deferred transition-method chooser, waveform editing and audio clash judging
+remain outside this UI refinement.
+
 ## Library sub-pages — 31 October 2026
 
 Sub/Beats stays under the existing Library sidebar entry and uses the Library's
