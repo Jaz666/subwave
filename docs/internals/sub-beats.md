@@ -58,6 +58,72 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Shared regular and extended stem storage — 31 October 2026
+
+Managed Sub/Beats now stores each track's integrity-checked extended bundles in
+`<stemsRoot>/<trackId>/subbeats/v1/<bundleKey>`. Ordinary head/tail files retain
+their existing names and coverage. The extended files are not interchangeable
+with the shorter ordinary windows, so no files are renamed over normal stems.
+Both use `audio.stemCacheGb` (currently 1,000 GiB on the owner's station); the
+managed path no longer uses the old separate 5 GiB limit. Queue, policy, shared
+volume proof and bounded preview outputs remain under `state/subbeats`.
+Standalone development commands retain their old default paths and 5 GiB cap;
+reference audit/conversion accept `--stems-root` for shared-cache artifacts.
+
+On restart, the existing managed maintenance slot schedules a migration when
+legacy `state/subbeats/v1` exists, even with no queued work or with preparation
+paused. Every managed batch also checks migration before preparation. It takes
+the old publisher's nonblocking lock, maps referenced bundles to track IDs,
+includes structure evidence for those recordings, copies into a staging folder
+on the destination disk, verifies file hashes, publishes atomically, verifies
+the destination again, and only then removes the old bundle. This works across
+filesystems and is safe to retry after partial success. A shared bundle linked
+to several tracks is removed only after every destination is verified. Damaged
+or unreferenced development bundles remain in the legacy folder for inspection;
+no blanket directory deletion or symlink redirection is performed. Insufficient
+budget, collisions, copy errors or a missing share preserve the old source.
+A failed migration stops preparation; queue/resume manually to retry once the
+cause is fixed. Migration logs its verified bundle count in the analysis log.
+
+The controller obtains live-cache usage once per managed batch, marks its usage
+snapshot as being written, and supplies remaining bytes to the analyzer. Each
+publication consumes that allowance; cache hits consume none. Failures stop the
+batch and invalidate the snapshot because partial publications may exist. The
+normal size walk and incremental accounting now include nested extended files;
+the snapshot is invalidated after all Sub/Beats writes, including failures.
+There is no new quota sweep or eviction algorithm. Normal budget eviction still
+applies to the whole track folder. Prepared tracks retain their existing
+protection from selective quarantine; that protection is not a quota exemption.
+No quarantine folder is moved into live storage or counted as free space.
+
+The controller requires the analyzer's shared-cache protocol version 2 before
+new preparation or migration; an older analyzer cannot silently keep writing to
+the small cache. Preview requests carry track IDs and the shared stems root,
+read the migrated location first, and fall back to legacy bundles while a
+migration is waiting. Preview reading does not require working Demucs models.
+Both the state-volume cache ID and stems-volume marker remain required.
+The cache chart's purple segment now includes the extended files in prepared
+track folders. Earlier separate-cache descriptions below are historical.
+
+Deployment requires rebuilding **analyzer, controller and web**, with the
+existing GPU and Discord overlays. No agent-run restart or live migration is
+performed. The previous station source is `97f72cf3`. Reverting code alone does
+not move migrated files back: preserve the shared cache and queue and reverse
+only verified bundle copies if an old analyzer is deliberately restored.
+
+Verification: controller Sub/Beats suites passed (41 tests), stem suites passed
+(123 tests), and the final managed-worker checks passed (4 tests). All registered
+analyzer Python suites passed, including 31 cache/preparation checks covering
+migration, interrupted copies, shared references, quota limits and shared/legacy
+bundle lookup. Controller and web lint/typechecks passed; controller keeps its
+1,741 existing warnings. All 32 Library web tests passed. No live station, real
+cache migration, container build
+or listening test was run. Source is developed on `feat/sub-beats` and then
+cherry-picked to the station integration branch; both are pushed. The next
+acceptance step is the owner-run analyzer/controller/web rebuild, `/api/health`,
+then checking the analysis log's migration result and an existing prepared-pair
+preview before starting a larger preparation batch.
+
 ## Cache colour breakdown — 31 October 2026
 
 The Cache page uses a labelled stacked bar: blue for kept regular stems, purple

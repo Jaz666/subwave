@@ -80,7 +80,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
         bars: parsed.data.referenceBars, out_id: outgoing.id, in_id: incoming.id };
     }
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
-    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference);
+    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds});
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

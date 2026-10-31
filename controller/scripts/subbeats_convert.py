@@ -104,6 +104,7 @@ def convert_bundle(root, key):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--stems-root', type=Path)
     parser.add_argument('--state-dir', required=True, type=Path)
     args = parser.parse_args()
     parent = args.state_dir / 'subbeats'
@@ -113,10 +114,21 @@ def main():
     queue = json.loads((parent / 'queue.json').read_text())
     if not queue.get('paused') or any(j['status'] in ('queued', 'running') for j in queue['jobs']):
         raise ValueError('pause preparation and finish pending work before conversion')
-    with (root / '.prepare.lock').open('r') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        for key in dict.fromkeys(j['bundleKey'] for j in queue['jobs'] if j['status'] == 'prepared'):
-            print(json.dumps(convert_bundle(root, key)), flush=True)
+    from subbeats_cache import track_cache_root
+    seen = set()
+    for job in queue['jobs']:
+        if job['status'] != 'prepared':
+            continue
+        selected = track_cache_root(args.stems_root, job['id']) if args.stems_root else root
+        key = job['bundleKey']
+        if not (selected / key).exists():
+            selected = root
+        if (str(selected), key) in seen:
+            continue
+        seen.add((str(selected),key))
+        with (selected / '.prepare.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            print(json.dumps(convert_bundle(selected, key)), flush=True)
 
 
 if __name__ == '__main__':

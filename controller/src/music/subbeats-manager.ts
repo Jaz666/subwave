@@ -1,5 +1,7 @@
 // Durable admissions share the existing managed maintenance slot. The controller
 // owns queue state; the child only reports per-track events and honors pause.
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { config } from '../config.js';
 import { createSubbeatsStore } from './subbeats-store.js';
 import { startSubbeats, tagger } from '../broadcast/tagger.js';
@@ -7,9 +9,11 @@ import { queue } from '../broadcast/queue.js';
 import { isPidAlive, readPidfile } from './tagger-lock.js';
 
 export const subbeatsStore = createSubbeatsStore(config.stateDir);
+let migrationAttempted = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 export function kickSubbeats(delayMs = 0): void {
+  if (delayMs === 0) migrationAttempted = false; // A manual queue/resume also retries a failed migration.
   if (timer) return;
   timer = setTimeout(() => {
     timer = null;
@@ -17,13 +21,15 @@ export function kickSubbeats(delayMs = 0): void {
     try {
       const state = subbeatsStore.read();
       const ids = state.jobs.filter(j => j.status === 'queued').slice(0, 100).map(j => j.id);
-      if (state.paused || !ids.length) return;
+      const migrate = !migrationAttempted && existsSync(join(config.stateDir, 'subbeats', 'v1'));
+      if ((state.paused || !ids.length) && !migrate) return;
       const locked = readPidfile();
       if (tagger.running || (locked && isPidAlive(locked.pid))) { kickSubbeats(5000); return; }
-      admitted = ids;
+      admitted = state.paused ? [] : ids;
+      migrationAttempted = true;
       subbeatsStore.cacheId();
       let reported = false;
-      startSubbeats(ids, raw => { subbeatsStore.event(raw, ids); reported = true; }, stopped => {
+      startSubbeats(admitted, raw => { subbeatsStore.event(raw, ids); reported = true; }, stopped => {
         if (stopped) subbeatsStore.pause(true);
         if (!reported && !subbeatsStore.read().paused) subbeatsStore.failQueued(ids, 'Preparation could not start. Check the analysis log, then queue again.');
         subbeatsStore.interrupted('Preparation was interrupted. Queue this track again to retry.');

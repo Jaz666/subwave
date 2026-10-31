@@ -668,6 +668,7 @@ async def health():
         # controller keeps sending flat requests to them.
         "analyze_facets_capable": analyzer_pool.capability("facets_capable", "facets"),
         "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
+        "analyze_subbeats_cache_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_cache_version") == 2 for w in analyzer_pool.ready_workers) else None),
         # Best-effort residency (#1204): whether CLAP/Demucs are believed
         # loaded right now — lets an operator confirm the idle release
         # without grepping logs. None while the worker is down.
@@ -788,10 +789,24 @@ async def analyze(req: AnalyzeRequest):
     return out
 
 
-class SubbeatsPrepareRequest(BaseModel):
-    path: str
+class SubbeatsCacheRequest(BaseModel):
     state_dir: str
     cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    remaining_bytes: int = Field(ge=0, strict=True)
+
+
+@app.post("/migrate-subbeats")
+async def migrate_subbeats(req: SubbeatsCacheRequest):
+    msg = await analyzer_pool.request({"id": "1", "op": "migrate_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Sub/Beats migration failed")
+    return msg
+
+
+class SubbeatsPrepareRequest(SubbeatsCacheRequest):
+    path: str
+    track_id: str
     complete: bool
 
 
@@ -801,7 +816,7 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
     msg = await analyzer_pool.request(payload)
     if not msg.get("ok"):
         raise HTTPException(422, msg.get("error") or "Sub/Beats preparation failed")
-    return {"ok": True, "subbeats_result": msg.get("subbeats_result")}
+    return {"ok": True, "subbeats_result": msg.get("subbeats_result"), "cache_added_bytes": msg.get("cache_added_bytes")}
 
 
 class SubbeatsReferencePreview(BaseModel):
@@ -818,6 +833,8 @@ class SubbeatsPreviewRequest(BaseModel):
     in_gain_db: float = Field(default=0, ge=-120, le=40)
     state_dir: str
     cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    track_ids: list[str] = Field(min_length=2, max_length=2)
     out_key: str = Field(pattern=r"^[a-f0-9]{64}$")
     in_key: str = Field(pattern=r"^[a-f0-9]{64}$")
     reference: SubbeatsReferencePreview | None = None

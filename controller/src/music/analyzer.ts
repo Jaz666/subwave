@@ -260,6 +260,9 @@ interface WorkerMessage {
   tail_start_ms?: unknown;
   stems_cached?: boolean;
   subbeats_capable?: boolean;
+  subbeats_cache_version?: number;
+  cache_added_bytes?: number;
+  migrated?: number;
   subbeats_result?: unknown;
   text_embeddings?: unknown;
   // render_transition op fields
@@ -285,6 +288,7 @@ let _localAudioCapable: boolean | null = null;
 let _localVocalCapable: boolean | null = null;
 let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
+let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
 // Local twins of _sidecarAudioError / _sidecarVocalError — see there.
@@ -346,7 +350,8 @@ function startWorker(): Promise<void> {
           if (typeof msg.tail_vocal_capable === 'boolean' && _localVocalError === null) _localTailVocalCapable = msg.tail_vocal_capable;
           if (typeof msg.text_embedding_capable === 'boolean' && _localAudioError === null) _localTextCapable = msg.text_embedding_capable;
           _localFacetsCapable = msg.facets_capable === true;
-          _localSubbeatsCapable = msg.subbeats_capable === true;
+          _localSubbeatsShared = msg.subbeats_cache_version === 2;
+          _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared;
         }
         // After the ready assignments, so a reported loss always wins.
         noteLocalCapabilityLoss(msg);
@@ -503,6 +508,7 @@ let _sidecarVocalCapable: boolean | null = null;
 let _sidecarTailVocalCapable: boolean | null = null;
 // Facet protocol (version signal; null on old sidecars).
 let _sidecarFacetsCapable: boolean | null = null;
+let _sidecarSubbeatsShared = false;
 let _sidecarSubbeatsCapable: boolean | null = null;
 // The CLAP TEXT tower (embed-text).
 let _sidecarTextCapable: boolean | null = null;
@@ -528,6 +534,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_text_capable?: boolean | null;
       analyze_facets_capable?: boolean | null;
       analyze_subbeats_capable?: boolean | null;
+      analyze_subbeats_cache_version?: number;
       analyze_audio_error?: string | null;
       analyze_vocal_error?: string | null;
     };
@@ -538,7 +545,8 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarVocalCapable = typeof body.analyze_vocal_capable === 'boolean' ? body.analyze_vocal_capable : null;
       _sidecarTailVocalCapable = typeof body.analyze_tail_vocal_capable === 'boolean' ? body.analyze_tail_vocal_capable : null;
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
-      _sidecarSubbeatsCapable = typeof body.analyze_subbeats_capable === 'boolean' ? body.analyze_subbeats_capable : null;
+      _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
+      _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared;
       _sidecarTextCapable = typeof body.analyze_text_capable === 'boolean' ? body.analyze_text_capable : null;
       _sidecarAudioError = typeof body.analyze_audio_error === 'string' ? body.analyze_audio_error : null;
       _sidecarVocalError = typeof body.analyze_vocal_error === 'string' ? body.analyze_vocal_error : null;
@@ -1210,9 +1218,34 @@ export async function subbeatsAvailable(): Promise<boolean> {
   return false;
 }
 
-export async function prepareSubbeats(path: string, stateDir: string, cacheId: string) {
+async function sharedSubbeatsBackend() {
+  const backend = await resolveBackend();
+  if (!backend) throw new Error('An analyzer is needed for Sub/Beats');
+  if (backend === 'sidecar') await sidecarReachable();
+  else if (!ready) await startWorker();
+  if (backend === 'sidecar' ? !_sidecarSubbeatsShared : !_localSubbeatsShared) throw new Error('Update the analyzer to use the shared Sub/Beats stem cache');
+  return backend;
+}
+
+export type SubbeatsSharedCache = {stems_root:string; remaining_bytes:number};
+export async function migrateSubbeatsCache(stateDir:string, cacheId:string, shared:SubbeatsSharedCache) {
+  await sharedSubbeatsBackend();
+  const payload = {state_dir:stateDir, cache_id:cacheId, ...shared};
+  let answer:WorkerMessage;
+  if (_backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/migrate-subbeats`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), timeoutMs:30*60_000});
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'migrate_subbeats', ...payload},30*60_000);
+  return {addedBytes:cacheGrowth(answer), migrated:answer.migrated ?? 0};
+}
+function cacheGrowth(answer:WorkerMessage):number {
+  if (!Number.isSafeInteger(answer.cache_added_bytes) || answer.cache_added_bytes! < 0) throw new Error('Analyzer did not report shared-cache usage; update the analyzer');
+  return answer.cache_added_bytes!;
+}
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache) {
   if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
-  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true };
+  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared };
   const timeoutMs = 30 * 60_000;
   let answer: WorkerMessage;
   if (_backend === 'sidecar' && _sidecarBase) {
@@ -1224,7 +1257,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   } else {
     answer = await localRequestRaw({ op: 'prepare_subbeats', ...payload }, timeoutMs);
   }
-  return subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
+  return {...subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result), addedBytes:cacheGrowth(answer)};
 }
 
 export function subbeatsCapability(): boolean | null {
@@ -1235,11 +1268,10 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
-  const backend = await resolveBackend();
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
-  if (!backend) throw new Error('An analyzer is needed to prepare a preview.');
-  const payload = { out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,
+  const payload = { ...shared, out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,
     ...(reference ? { reference: { out_seconds: reference.out_seconds, in_resolve: reference.in_resolve, bars: reference.bars,
       out_url: subsonic.getRawStreamUrl(reference.out_id), in_url: subsonic.getRawStreamUrl(reference.in_id) } } : {}) };
   if (backend === 'sidecar' && _sidecarBase) {

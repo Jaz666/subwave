@@ -241,13 +241,18 @@ class CoverageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'complete'):
                 prepare.prepare_request(req)
             req['complete'] = True
+            stems = Path(folder) / 'stems'
+            stems.mkdir()
+            (stems / '.subwave-stems').touch()
+            req.update(stems_root=str(stems), track_id='track', remaining_bytes=10000)
             result = {'directory': str(root / 'v1' / ('a' * 64)), 'metadata': {'stem_regions': [{'name': 'head'}]}}
             with patch.object(prepare, 'prepare', return_value=result), \
                     patch('subbeats_structure.prepare_structure', return_value={'directory': str(root / 'v1' / ('b' * 64))}) as structure:
                 self.assertEqual(prepare.prepare_request(req)['subbeats_result']['status'], 'prepared')
                 result['cache_hit'] = True
                 self.assertFalse(prepare.prepare_request(req)['subbeats_used_models'])
-                structure.assert_called_with(req['path'], Path(folder), result['directory'], expected_cache_id=req['cache_id'])
+                self.assertEqual(structure.call_args.kwargs['cache_root'], stems / 'track/subbeats/v1')
+                self.assertEqual(structure.call_args.kwargs['expected_cache_id'], req['cache_id'])
 
     def test_sparse_and_regular_grids_keep_distinct_confidence(self):
         import numpy as np
@@ -335,6 +340,119 @@ class ConversionTests(unittest.TestCase):
             (path / 'head-drums.flac').write_bytes(b'corrupted')
             with self.assertRaisesRegex(ValueError, 'integrity'):
                 convert.convert_bundle(root, key)
+
+
+class SharedCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = Path(self.tmp.name)
+        self.stems = self.state / 'shared-stems'
+        self.stems.mkdir()
+        (self.stems / '.subwave-stems').touch()
+        self.identity = {'source_sha256':'original', 'mode':'analysis_and_stems'}
+        self.old = cache.prepare_cached(self.state, self.identity, self.build)
+        self.key = Path(self.old['directory']).name
+        (self.state / 'subbeats/queue.json').write_text(json.dumps({'jobs':[{'id':'track','bundleKey':self.key}]}))
+        self.allowance = {'bytes':100000, 'root':self.stems}
+
+    def build(self, stage):
+        (stage / 'head-drums.flac').write_bytes(b'extended stems')
+        return {'stem_regions':[{'name':'head'}]}
+
+    def test_migration_reuses_verified_bundle_and_regular_stems_survive(self):
+        regular = self.stems / 'track'
+        regular.mkdir()
+        (regular / 'head-drums.flac').write_bytes(b'regular stems')
+        self.assertEqual(cache.bundle_folder(self.state,self.key,self.stems,'track'),Path(self.old['directory']))
+        before = self.allowance['bytes']
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+        dest = regular / 'subbeats/v1' / self.key
+        self.assertIsNotNone(cache.cached_entry(dest,self.identity))
+        self.assertEqual(cache.bundle_folder(self.state,self.key,self.stems,'track'),dest)
+        self.assertFalse(Path(self.old['directory']).exists())
+        self.assertEqual((regular / 'head-drums.flac').read_bytes(),b'regular stems')
+        self.assertEqual(before-self.allowance['bytes'],cache.tree_bytes(dest))
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),0)
+        reused = cache.prepare_cached(self.state,self.identity,lambda _:self.fail('separated again'),
+                                     cache_root=dest.parent,allowance=self.allowance)
+        self.assertTrue(reused['cache_hit'])
+
+    def test_structure_follows_its_source_and_unreferenced_experiments_remain(self):
+        structure_identity = {'source_sha256':'original','mode':'structure'}
+        structure = cache.prepare_cached(self.state,structure_identity,self.build)
+        unrelated = cache.prepare_cached(self.state,{'source_sha256':'experiment'},self.build)
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),2)
+        dest = cache.track_cache_root(self.stems,'track')
+        self.assertIsNotNone(cache.cached_entry(dest / Path(structure['directory']).name,structure_identity))
+        self.assertTrue(Path(unrelated['directory']).exists())
+
+    def test_budget_or_collision_never_removes_old_bundle(self):
+        self.allowance['bytes'] = 1
+        with self.assertRaisesRegex(RuntimeError,'budget'):
+            cache.migrate_shared(self.state,self.stems,self.allowance)
+        old = Path(self.old['directory'])
+        self.assertTrue(old.exists())
+        dest = cache.track_cache_root(self.stems,'track') / self.key
+        dest.mkdir(parents=True)
+        (dest / 'sentinel').write_text('keep')
+        self.allowance['bytes'] = 100000
+        with self.assertRaisesRegex(ValueError,'collision'):
+            cache.migrate_shared(self.state,self.stems,self.allowance)
+        self.assertTrue(old.exists())
+        self.assertEqual((dest / 'sentinel').read_text(),'keep')
+
+    def test_copy_failure_preserves_source_and_retry_finishes(self):
+        with patch.object(cache.shutil,'copytree',side_effect=OSError('disk full')):
+            with self.assertRaisesRegex(OSError,'disk full'):
+                cache.migrate_shared(self.state,self.stems,self.allowance)
+        self.assertTrue(Path(self.old['directory']).exists())
+        self.assertEqual(list(cache.track_cache_root(self.stems,'track').glob('.migrate-*')),[])
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+
+    def test_damaged_bundle_stays_in_legacy_cache(self):
+        (Path(self.old['directory']) / 'head-drums.flac').write_bytes(b'corrupt')
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),0)
+        self.assertTrue(Path(self.old['directory']).exists())
+
+    def test_shared_budget_charges_only_new_bytes_and_refuses_oversize(self):
+        dest = cache.track_cache_root(self.stems,'other')
+        before = self.allowance['bytes']
+        result = cache.prepare_cached(self.state,self.identity,self.build,budget=1,cache_root=dest,allowance=self.allowance)
+        self.assertEqual(before-self.allowance['bytes'],cache.tree_bytes(Path(result['directory'])))
+        after = self.allowance['bytes']
+        self.assertTrue(cache.prepare_cached(self.state,self.identity,self.build,cache_root=dest,allowance=self.allowance)['cache_hit'])
+        self.assertEqual(self.allowance['bytes'],after)
+        self.allowance['bytes'] = 1
+        with self.assertRaisesRegex(RuntimeError,'budget'):
+            cache.prepare_cached(self.state,{'new':'bundle'},self.build,cache_root=dest,allowance=self.allowance)
+        self.assertTrue(Path(result['directory']).exists())
+
+    def test_multiple_tracks_publish_before_the_original_is_removed(self):
+        (self.state / 'subbeats/queue.json').write_text(json.dumps({'jobs':[
+            {'id':'first','bundleKey':self.key},{'id':'second','bundleKey':self.key}]}))
+        size = cache.tree_bytes(Path(self.old['directory']))
+        self.allowance['bytes'] = size
+        with self.assertRaisesRegex(RuntimeError,'budget'):
+            cache.migrate_shared(self.state,self.stems,self.allowance)
+        self.assertTrue(Path(self.old['directory']).exists())
+        self.allowance['bytes'] = size
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+        self.assertFalse(Path(self.old['directory']).exists())
+        for track_id in ['first','second']:
+            self.assertIsNotNone(cache.cached_entry(cache.track_cache_root(self.stems,track_id) / self.key,self.identity))
+
+    def test_unmounted_share_and_symlink_track_are_refused(self):
+        (self.stems / '.subwave-stems').unlink()
+        with self.assertRaisesRegex(ValueError,'offline'):
+            cache.track_cache_root(self.stems,'track')
+        (self.stems / '.subwave-stems').touch()
+        (self.stems / 'track').symlink_to(self.state,target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'symlink'):
+            cache.track_cache_root(self.stems,'track')
+        for track_id in ['../escape','.','..','/absolute','a/b']:
+            with self.assertRaisesRegex(ValueError,'track id'):
+                cache.track_cache_root(self.stems,track_id)
 
 
 if __name__ == '__main__':

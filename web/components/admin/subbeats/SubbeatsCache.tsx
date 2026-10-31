@@ -86,7 +86,7 @@ export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsC
     {query.isError && <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 text-sm">Could not read cache details. Saved choices have been kept.<Button className="min-h-11" onClick={() => void query.refetch()}>Retry</Button></div>}
     {data && <>
       <div className="mt-5 grid gap-6 lg:grid-cols-2">
-        <div><h3 className="text-sm font-semibold">Regular stems · cache budget</h3>
+        <div><h3 className="text-sm font-semibold">Shared stems · cache budget</h3>
           {(data.usage || breakdown) ? <><p className="mt-2 text-sm tabular-nums">{space(liveBytes)} used of {space(data.budgetBytes)}{data.usage && ` · ${data.usage.dirs.toLocaleString()} tracks`}</p>
             <SpaceBar label="Stem cache space" segments={cacheSegments} total={Math.max(data.budgetBytes,liveBytes)+quarantineBytes} />
             <p className="mt-2 text-xs leading-relaxed text-muted">{estimate ? `Colour breakdown measured ${new Date(estimate.measuredAt).toLocaleString()}. Approximate file sizes; quarantine is shown in addition to the live cache budget.` : 'Calculate reclaimable space below to measure the colour breakdown, including quarantine.'}</p>
@@ -103,7 +103,7 @@ export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsC
             ]} />
             <p className="mt-2 text-xs leading-relaxed text-muted">Shared with everything else on this disk, including quarantine.</p>
           </> : <p className="mt-2 text-sm text-muted">Disk space is unavailable. Check that the stem-cache disk is connected.</p>}
-          <p className="mt-3 text-xs leading-relaxed text-muted">Extended Sub/Beats stems currently use a separate 5 GiB cache. Its usage is not included here. Purple identifies regular-cache stems belonging to prepared Sub/Beats tracks.</p>
+          <p className="mt-3 text-xs leading-relaxed text-muted">Regular and extended Sub/Beats stems share this cache budget. Purple includes all cached stems belonging to prepared Sub/Beats tracks. Existing prepared bundles move automatically after the updated controller and analyzer start.</p>
         </div>
       </div>
       <div className="mt-6 border-t border-ink/20 pt-5">

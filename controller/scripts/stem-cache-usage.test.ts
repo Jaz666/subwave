@@ -17,7 +17,7 @@
 
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rmSync, writeFileSync } from 'node:fs';
+import { rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { listen } from './test-utils/http.js';
@@ -97,4 +97,17 @@ test('GET /stem-cache/usage: the stored size and the budget in force', async () 
   const none = await (await fetch(`${s.url}/stem-cache/usage`)).json() as { usage: unknown };
   assert.equal(none.usage, null);
   await s.close();
+});
+
+
+test('shared usage counts extended artifacts inside the track without adding a synthetic track', async () => {
+  const track = join(root,'extended-track');
+  const nested = join(track,'subbeats','v1','bundle');
+  mkdirSync(nested,{recursive:true});
+  writeFileSync(join(track,'head-drums.flac'),'regular');
+  writeFileSync(join(nested,'head-drums.flac'),'extended');
+  await stemCache.invalidateUsageSnapshot();
+  const measured = await stemCache.usage();
+  assert.equal(measured.bytes,15);
+  assert.equal(measured.dirs,1);
 });
