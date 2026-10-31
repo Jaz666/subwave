@@ -18,7 +18,7 @@ import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, 
 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
-  candidates: (q: string, offset: number, scope: string, genre: string, status: string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, offset] as const,
+  candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, offset] as const,
 };
 type Status = z.infer<typeof subbeatsStatusSchema>;
 const LABEL: Record<Status, string> = {
@@ -39,9 +39,9 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const ready = hydrated && !needsAuth;
   const { browseRestored, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
-    jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift } = useSubbeatsWorkspace();
+    jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
-  const { query, offset, scope, genre, status } = browse[browsePage];
+  const { query, offset, scope, genre, status, sort } = browse[browsePage];
   const updateBrowse = (patch: Partial<SubbeatsBrowseState>) => setBrowse(current => ({
     ...current, [browsePage]: { ...current[browsePage], ...patch },
   }));
@@ -60,9 +60,9 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   });
   const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, barShift]), adminFetch, '/library/subbeats/join-preview');
   const candidates = useAdminQuery({
-    key: subbeatsKeys.candidates(q, offset, scope, genre, status), adminFetch, enabled: ready && browsing && browseRestored,
+    key: subbeatsKeys.candidates(q, offset, scope, genre, status, sort), adminFetch, enabled: ready && browsing && browseRestored,
     request: async (fetcher, signal) => subbeatsCandidatePageSchema.parse(await adminJson(fetcher,
-      `/library/subbeats/candidates?${new URLSearchParams({ q, offset: String(offset), scope, genre, status })}`, undefined, signal)),
+      `/library/subbeats/candidates?${new URLSearchParams({ q, offset: String(offset), scope, genre, status, sort })}`, undefined, signal)),
   });
   const enqueue = useAdminMutation({
     adminFetch,
@@ -95,7 +95,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const ranked = jobs.filter(job => (jobStatus === 'all' || job.status === jobStatus)
     && `${job.artist} ${job.title} ${job.album}`.toLowerCase().includes(jobQuery.trim().toLowerCase())).sort((a, b) => {
     const priority = (s: Status) => s === 'running' ? 0 : s === 'queued' ? 1 : s === 'failed' || s === 'unavailable' ? 2 : 3;
-    return priority(a.status) - priority(b.status) || b.updatedAt.localeCompare(a.updatedAt);
+    const names = a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' }) || a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id);
+    if (jobSort === 'artist') return names;
+    if (jobSort === 'title') return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) || names;
+    if (jobSort === 'oldest') return a.updatedAt.localeCompare(b.updatedAt) || names;
+    if (jobSort === 'newest') return b.updatedAt.localeCompare(a.updatedAt) || names;
+    return priority(a.status) - priority(b.status) || b.updatedAt.localeCompare(a.updatedAt) || names;
   });
   const activeJobPage = Math.min(jobPage, Math.max(0, Math.ceil(ranked.length / 20) - 1));
   const previewJobs = jobs.filter(job => job.status === 'prepared' && (job.id === outgoing || job.id === incoming
@@ -207,7 +212,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
             <span>Outgoing: {byId.get(outgoing)?.title || 'Choose a track'} · Incoming: {byId.get(incoming)?.title || 'Choose a track'}</span>
             <Link href="/admin/library/subbeats/preview" className="min-h-11 py-3 underline underline-offset-4">Open preview</Link>
           </div>}
-          <div className={page === 'prepared' ? 'mt-4 max-w-sm' : 'mt-4 grid min-w-0 gap-3 sm:grid-cols-3'}>
+          <div className={page === 'prepared' ? 'mt-4 grid min-w-0 gap-3 sm:grid-cols-2' : 'mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4'}>
             {page === 'explore' && <div><label htmlFor="subbeats-scope" className="mb-1 block text-sm font-medium">Collection</label>
               <select id="subbeats-scope" className={SELECT_CLASS} value={scope} onChange={event => {
                 setScope(event.target.value as typeof scope); setGenre(''); setStatus('all'); setOffset(0);
@@ -226,12 +231,21 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 {Object.entries(BROWSE_LABEL).map(([value, label]) => <option key={value} value={value}>{label} ({candidates.data?.statuses.find(item => item.value === value)?.count ?? 0})</option>)}
               </select>
             </div>}
+            <div><label htmlFor="subbeats-sort" className="mb-1 block text-sm font-medium">Sort by</label>
+              <select id="subbeats-sort" className={SELECT_CLASS} value={sort} onChange={event => updateBrowse({ sort: event.target.value as SubbeatsBrowseState['sort'], offset: 0 })}>
+                <option value="recommended">Beat evidence first</option>
+                <option value="artist-asc">Artist · A–Z</option><option value="artist-desc">Artist · Z–A</option>
+                <option value="title-asc">Track title · A–Z</option><option value="title-desc">Track title · Z–A</option>
+                <option value="album-asc">Album · A–Z</option>
+                <option value="bpm-asc">BPM · low to high</option><option value="bpm-desc">BPM · high to low</option>
+              </select>
+            </div>
           </div>
           <label htmlFor="subbeats-search" className="mt-4 mb-1 block text-sm font-medium">Search this collection</label>
           <Input className="min-h-11" id="subbeats-search" type="search" maxLength={200} placeholder="Artist, track or album" value={query} onChange={e => {
             setQuery(e.target.value); setOffset(0);
           }} />
-          <Button className="mt-3 min-h-11" disabled={!query && !genre && status === 'all' && scope === (page === 'prepared' ? 'prepared' : 'dance')} onClick={() => setBrowse(current => ({ ...current, [browsePage]: subbeatsInitialBrowse(page === 'prepared' ? 'prepared' : 'dance') }))}>Reset filters</Button>
+          <Button className="mt-3 min-h-11" disabled={!query && !genre && sort === 'recommended' && status === 'all' && scope === (page === 'prepared' ? 'prepared' : 'dance')} onClick={() => setBrowse(current => ({ ...current, [browsePage]: subbeatsInitialBrowse(page === 'prepared' ? 'prepared' : 'dance') }))}>Reset filters</Button>
           {page === 'explore' && <p className="mt-2 text-xs leading-relaxed text-muted">Choose Entire library to find tracks outside the dance suggestions or without tempo data.</p>}
           <p className="mt-3 text-sm tabular-nums" role="status">{candidates.data ? `${candidates.data.total.toLocaleString()} matching tracks${page === 'explore' ? ` · ${candidates.data.selectableCount.toLocaleString()} available to queue` : ''}` : 'Loading matching counts…'}</p>
           {page === 'explore' && <><div className="mt-3 flex flex-wrap items-center gap-3">
@@ -308,6 +322,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <div className="grid gap-3 border-b border-ink p-4">
           <div><label htmlFor="subbeats-job-search" className="mb-1 block text-sm font-medium">Find preparation entries</label><Input className="min-h-11" id="subbeats-job-search" type="search" value={jobQuery} placeholder="Artist, track or album" onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /></div>
           <div><label htmlFor="subbeats-job-status" className="mb-1 block text-sm font-medium">Preparation status</label><select id="subbeats-job-status" className={SELECT_CLASS} value={jobStatus} onChange={event => { setJobStatus(event.target.value); setJobPage(0); }}><option value="all">All entries ({jobs.length})</option>{Object.entries(LABEL).map(([value, label]) => <option key={value} value={value}>{label} ({jobs.filter(job => job.status === value).length})</option>)}</select></div>
+          <div><label htmlFor="subbeats-job-sort" className="mb-1 block text-sm font-medium">Sort by</label>
+            <select id="subbeats-job-sort" className={SELECT_CLASS} value={jobSort} onChange={event => { setJobSort(event.target.value); setJobPage(0); }}>
+              <option value="priority">Active &amp; needs attention first</option><option value="newest">Recently updated</option>
+              <option value="oldest">Oldest update first</option><option value="artist">Artist · A–Z</option><option value="title">Track title · A–Z</option>
+            </select>
+          </div>
         </div>
         {jobs.length > 0 && !ranked.length && <p className="p-4 text-sm text-muted">No preparation entries match. Clear the search or choose another status.</p>}
         {!jobs.length && <div className="p-6 text-sm"><p className="text-muted">Your preparation list is empty. Choose tracks on Explore, then select Queue analysis.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div>}
