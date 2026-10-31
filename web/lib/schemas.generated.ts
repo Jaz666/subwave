@@ -5483,8 +5483,10 @@ export const subbeatsEventSchema = z.object({
   error: z.string().max(1000).nullable().default(null),
 });
 export const subbeatsBrowseStatusSchema = z.enum(['not-started', 'queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
+export const subbeatsSortSchema = z.enum(['recommended', 'artist-asc', 'artist-desc', 'title-asc', 'title-desc', 'album-asc', 'bpm-asc', 'bpm-desc']);
 export const subbeatsBrowseQuerySchema = z.object({
   q: z.string().trim().max(200).default(''),
+  sort: subbeatsSortSchema.default('recommended'),
   offset: z.coerce.number().int().min(0).max(1000000).default(0),
   scope: z.enum(['dance', 'library', 'prepared']).optional(),
   genre: z.string().trim().max(200).default(''),

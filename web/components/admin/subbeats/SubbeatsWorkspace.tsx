@@ -3,17 +3,18 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { z } from 'zod';
 import { usePathname } from 'next/navigation';
-import { subbeatsBrowseStatusSchema } from '../../../lib/schemas.generated';
+import { subbeatsBrowseStatusSchema, subbeatsSortSchema } from '../../../lib/schemas.generated';
 import type { SubbeatsCandidate } from '../library/subbeats-selection';
 
 export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview';
 export type SubbeatsBrowseState = {
+  sort: z.infer<typeof subbeatsSortSchema>;
   query: string; offset: number; genre: string;
   scope: 'dance' | 'library' | 'prepared';
   status: 'all' | z.infer<typeof subbeatsBrowseStatusSchema>;
 };
 export const subbeatsInitialBrowse = (scope: SubbeatsBrowseState['scope']): SubbeatsBrowseState => ({
-  query: '', offset: 0, genre: '', scope, status: 'all',
+  sort: 'recommended', query: '', offset: 0, genre: '', scope, status: 'all',
 });
 
 function useWorkspaceState() {
@@ -23,6 +24,7 @@ function useWorkspaceState() {
   const [selected, setSelected] = useState<SubbeatsCandidate[]>([]);
   const [browse, setBrowse] = useState({ explore: subbeatsInitialBrowse('dance'), prepared: subbeatsInitialBrowse('prepared') });
   const [jobQuery, setJobQuery] = useState('');
+  const [jobSort, setJobSort] = useState('priority');
   const [jobStatus, setJobStatus] = useState('all');
   const [jobPage, setJobPage] = useState(0);
   const [previewSearch, setPreviewSearch] = useState('');
@@ -34,10 +36,12 @@ function useWorkspaceState() {
   useEffect(() => {
     if (browsePage) {
       const params = new URLSearchParams(window.location.search);
-      if (['q', 'genre', 'scope', 'status', 'offset'].some(key => params.has(key))) {
+      if (['q', 'genre', 'scope', 'status', 'offset', 'sort'].some(key => params.has(key))) {
+        const sort = subbeatsSortSchema.safeParse(params.get('sort') ?? 'recommended');
         const status = subbeatsBrowseStatusSchema.safeParse(params.get('status') ?? 'all');
         const offset = Number(params.get('offset') ?? 0);
         setBrowse(current => ({ ...current, [browsePage]: {
+          sort: sort.success ? sort.data : 'recommended',
           query: (params.get('q') ?? '').slice(0, 200),
           genre: (params.get('genre') ?? '').slice(0, 200),
           scope: browsePage === 'prepared' ? 'prepared' : params.get('scope') === 'library' ? 'library' : 'dance',
@@ -52,8 +56,9 @@ function useWorkspaceState() {
     if (!browsePage || restoredPath !== pathname) return;
     const current = browse[browsePage];
     const params = new URLSearchParams(window.location.search);
-    for (const key of ['q', 'genre', 'scope', 'status', 'offset']) params.delete(key);
+    for (const key of ['q', 'genre', 'scope', 'status', 'offset', 'sort']) params.delete(key);
     if (current.query.trim()) params.set('q', current.query.trim());
+    if (current.sort !== 'recommended') params.set('sort', current.sort);
     if (current.genre) params.set('genre', current.genre);
     if (current.scope === 'library') params.set('scope', 'library');
     if (current.status !== 'all') params.set('status', current.status);
@@ -62,7 +67,7 @@ function useWorkspaceState() {
     window.history.replaceState(window.history.state, '', `${pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }, [browse, browsePage, pathname, restoredPath]);
   return { browseRestored: restoredPath === pathname, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
-    jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift };
+    jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift };
 }
 
 const Workspace = createContext<ReturnType<typeof useWorkspaceState> | null>(null);

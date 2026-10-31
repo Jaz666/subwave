@@ -23,6 +23,17 @@ type BrowseFilters = Omit<z.infer<typeof subbeatsBrowseQuerySchema>, 'q' | 'offs
 export function subbeatsCandidates(q: string, offset = 0, filters: Partial<BrowseFilters> = {},
   jobs: Array<Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status'>> = []) {
   const scope = filters.scope ?? (q ? 'library' : 'dance');
+  // Only fixed SQL fragments can select the ordering; never interpolate query text.
+  const order = {
+    recommended: 'hasBeatGrid DESC, confidence DESC, LOWER(artist), LOWER(title), id',
+    'artist-asc': 'LOWER(artist), LOWER(title), id',
+    'artist-desc': 'LOWER(artist) DESC, LOWER(title), id',
+    'title-asc': 'LOWER(title), LOWER(artist), id',
+    'title-desc': 'LOWER(title) DESC, LOWER(artist), id',
+    'album-asc': 'LOWER(album), LOWER(artist), LOWER(title), id',
+    'bpm-asc': 'bpm IS NULL, bpm, LOWER(artist), LOWER(title), id',
+    'bpm-desc': 'bpm IS NULL, bpm DESC, LOWER(artist), LOWER(title), id',
+  }[filters.sort ?? 'recommended'];
   const params = { q: `%${q.toLowerCase()}%`, offset,
     // Preserve legacy manual-search calls; the page sends an explicit scope.
     genre: filters.genre ?? '', status: filters.status ?? 'all',
@@ -45,7 +56,7 @@ export function subbeatsCandidates(q: string, offset = 0, filters: Partial<Brows
       SELECT 1 FROM json_each(base.genres)
       WHERE type = 'text' AND value = @genre COLLATE NOCASE)),
     filtered AS MATERIALIZED (SELECT * FROM genre_filtered WHERE @status = 'all' OR status = @status),
-    ordered AS MATERIALIZED (SELECT * FROM filtered ORDER BY hasBeatGrid DESC, confidence DESC, LOWER(artist), LOWER(title), id)
+    ordered AS MATERIALIZED (SELECT * FROM filtered ORDER BY ${order})
     SELECT
       (SELECT COUNT(*) FROM filtered) total,
       (SELECT json_group_array(json_object('id',id,'title',title,'artist',artist,'album',album,

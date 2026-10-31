@@ -70,7 +70,7 @@ test('explicit collection scoping keeps dance search narrow and whole-library se
 
 test('invalid filters are rejected and browsing never changes the saved preparation list', async () => {
   const before = subbeatsStore.read();
-  for (const query of ['scope=invalid','status=invalid','offset=-1','offset=1.5','genre=x&genre=y']) {
+  for (const query of ['sort=invalid','sort=title-asc&sort=title-desc','scope=invalid','status=invalid','offset=-1','offset=1.5','genre=x&genre=y']) {
     assert.equal((await fetch(`${base}/library/subbeats/candidates?${query}`, {headers})).status, 400);
   }
   await browse('scope=dance&status=failed');
@@ -90,4 +90,37 @@ test('browse counts and beat-data ranking follow metadata changes without a manu
     assert.equal(refreshed.rows[0].id, 'dance-134');
     assert.equal(refreshed.rows[0].hasBeatGrid, true);
   } finally { update.run(138, JSON.stringify(['Trance']), null, 'dance-134'); }
+});
+
+test('sorts the complete matching collection before pagination and bulk selection', async () => {
+  const descending = await browse('scope=dance&sort=title-desc');
+  assert.equal(descending.rows[0].id, 'dance-134');
+  const next = await browse('scope=dance&sort=title-desc&offset=50');
+  assert.equal(next.rows[0].id, 'dance-084');
+  assert.equal(descending.selectableRows[0].id, 'dance-134');
+  assert.equal(descending.total, 135);
+  assert.deepEqual(descending.genres, (await browse('scope=dance')).genres);
+});
+
+test('named sorts have deterministic ties and keep missing BPMs last in both directions', async () => {
+  const fixtures = [
+    ['sort-a', 'Alpha', 'Zulu', 'Z', 140], ['sort-b', 'Zulu', 'Alpha', 'A', 120],
+    ['sort-c', 'Beta', 'Alpha', 'B', null], ['sort-d', 'Beta', 'Alpha', 'B', 120],
+  ] as const;
+  try {
+    for (const [id,title,artist,album,bpm] of fixtures) {
+      db.upsertTrackMeta(id, {title,artist,album:`Sort fixture ${album}`,genres:['House']});
+      db.getDb()!.prepare('UPDATE tracks SET bpm=? WHERE id=?').run(bpm,id);
+    }
+    const expected = {
+      recommended: ['c','d','b','a'], 'artist-asc': ['c','d','b','a'], 'artist-desc': ['a','c','d','b'],
+      'title-asc': ['a','c','d','b'], 'title-desc': ['b','c','d','a'], 'album-asc': ['b','c','d','a'],
+      'bpm-asc': ['d','b','a','c'], 'bpm-desc': ['a','d','b','c'],
+    };
+    for (const [sort, ids] of Object.entries(expected)) {
+      const page = await browse(`scope=library&q=Sort%20fixture&sort=${sort}`);
+      assert.deepEqual(page.rows.map(row=>row.id), ids.map(id=>`sort-${id}`), sort);
+      assert.deepEqual(page.selectableRows.map(row=>row.id), page.rows.map(row=>row.id), sort);
+    }
+  } finally { for (const [id] of fixtures) db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id); }
 });

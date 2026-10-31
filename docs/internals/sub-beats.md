@@ -58,6 +58,41 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Library sorting — 31 October 2026
+
+Explore and Prepared tracks now offer Sort by: beat evidence first (the existing
+order), artist A–Z/Z–A, title A–Z/Z–A, album A–Z and BPM low/high. The controller
+sorts the full filtered collection before pagination and before choosing the
+bounded matching-selection rows. Stable title/artist/id ties prevent duplicate
+or missing rows when paging an unchanged collection; missing BPM sorts last in
+both tempo directions. The validated sort enum selects fixed SQL fragments.
+Counts and facets are unchanged by sort choice.
+
+Each browsing page retains its independent sort in the workspace and query
+string. Refresh/bookmarks restore it, invalid URL sort values return to the
+existing default, and Reset filters also resets sorting. A sort change returns
+to page one without dropping selections. Changing other filters keeps the sort.
+
+Preparation offers active/needs-attention first (existing priority), recently
+updated, oldest update first, artist A–Z and title A–Z. This sorts the full saved
+list before its 20-entry pagination; changing sort resets the page. Its choice
+persists while moving between the Sub/Beats pages, like its other list controls,
+and resets on refresh/leaving the workspace.
+
+Verification: existing Sub/Beats tests passed (25), followed by all seven browse
+checks including the two new sorting regressions. These cover all eight track
+orders, missing BPMs, stable ties, pagination, matching-selection order, unchanged
+facets and invalid sort rejection. Controller/web lint and typechecks passed
+(controller retains 1,741 existing warnings), as did 32 Library tests, nine query
+audit tests, the static query audit, Library search checks and all six query-cache
+checks. Isolated browser checks at 1440/768/390/320 pixels cover independent sort
+state, refresh, filtering, pagination reset, retained selection, preparation sort,
+invalid URL recovery, 44-pixel sort controls and no overflow. Evidence lives in
+`/home/jaz666/codex/subbeats-sorting-evaluation-20261031/` outside Git.
+
+This increment requires controller and web rebuilds, with no analyzer change.
+The owner runs station builds/restarts.
+
 ## Library usability audit fixes — 31 October 2026
 
 The five UI audit findings are addressed within the existing Library styles:
