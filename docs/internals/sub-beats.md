@@ -23,6 +23,29 @@ existing compose overlays. Until then, the running page remains the previous
 annotated preview. Roll back this page change by reverting its scoped commit;
 prepared caches and analyzer/controller services do not need changes.
 
+## Deferred preview controls — owner decisions, 31 October 2026
+
+Pause mixing work while improving which tracks qualify for Sub/Beats analysis.
+Return to these controls later:
+
+- Offer a preview method choice: simple beat-matched crossfade or the existing
+  16-bar stem exchange. Do not assume stem mixing is necessary for every pair.
+- Display each track as a waveform with coloured intro/outro blocks. Each block
+  spans **16 bars**, not 16 beats, and moves forwards/backwards in one-bar steps.
+- Keep automatic positions as the default; optionally save per-track adjustments
+  and provide a reset to detected positions. Manual tweaking must not be required.
+- Leave LLM listening/clash judging aside; do not add work to the station LLM.
+
+Current qualification baseline (code inspection, 31 October): unfiltered discovery
+suggests tracks with stored BPM between 90 and 180, ordered by presence of at
+least 16 stored beats, then existing analysis confidence. Searching bypasses that
+BPM restriction; queue admission accepts any known library track. These are
+suggestions, not a four-to-the-floor eligibility test. Full preparation seeks
+64-beat local timing fits with RMS residual below 35 ms and relatively strong
+percussive onset support. That evidence alone does not verify a kick on each
+quarter note, usable mixing windows, or pair suitability. The next task is to
+agree and validate qualification criteria before changing admission or analysis.
+
 Current continuation notes: [2026-10-30 session handover](../investigations/2026-10-30-subbeats-handover.md).
 
 Sub/Beats identifies likely sustained four-to-the-floor tracks, prepares deeper
