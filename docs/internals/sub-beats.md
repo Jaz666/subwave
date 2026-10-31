@@ -1,5 +1,28 @@
 # Sub/Beats development
 
+## Current direction — 31 October 2026
+
+Owner decision: return to the earlier 16-bar stem mix as the development baseline.
+The Library preview now requests that existing renderer for every prepared pair,
+including the annotated reference tracks. The manual incoming ±2-bar shift and
+seekable stage timeline remain. Incoming tempo stays matched through the preview;
+native-tempo return remains future work. No new separation or preparation is needed.
+
+The annotated full-mix/rhythm-loop experiment below and the 30 October handover
+remain historical evidence, not the current browser behavior. Its renderer and
+explicit reference API requests remain available for comparison, but the page no
+longer chooses them automatically. No automatic planner or playback integration
+is introduced. Next, listen to the existing 16-bar stem previews before changing
+timing or selection policy.
+
+Validation: 29 Library web tests, web lint/typecheck and the registered analyzer
+Python suites passed, including six original stem-preview checks. No new browser
+or listening validation was run. Source is intended for cherry-pick onto
+`test-station/sleeve-notes-clean-20261014`; the owner rebuilds only `web` with the
+existing compose overlays. Until then, the running page remains the previous
+annotated preview. Roll back this page change by reverting its scoped commit;
+prepared caches and analyzer/controller services do not need changes.
+
 Current continuation notes: [2026-10-30 session handover](../investigations/2026-10-30-subbeats-handover.md).
 
 Sub/Beats identifies likely sustained four-to-the-floor tracks, prepares deeper
