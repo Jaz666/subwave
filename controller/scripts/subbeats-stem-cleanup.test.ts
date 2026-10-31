@@ -20,6 +20,7 @@ const ids = ['dance','rock','played','starred','manual','prepared','orphan-playe
 for (const id of ids) {
   if (id !== 'orphan-played') db.upsertTrackMeta(id,{title:id,genres:[id === 'dance' ? 'House' : 'Rock'],duration:200});
   const dir = join(root,id);mkdirSync(dir);writeFileSync(join(dir,'head-drums.flac'),'1234567890');
+  if (id === 'prepared') { const extended = join(dir,'subbeats','v1','bundle'); mkdirSync(extended,{recursive:true}); writeFileSync(join(extended,'head-drums.flac'),'extended'); }
   const old = new Date(now - 2 * day);utimesSync(dir,old,old);
 }
 db.upsertTrackAnalysis('dance',{bpm:138,bars:[0,2000]});
@@ -39,7 +40,7 @@ test('the estimate is read-only and protects plays, stars, preparation and manua
   const before = readFileSync(join(stateDir,'subbeats','stem-policy.json'),'utf8');
   const estimate = await cleanup.estimateSubbeatsCleanup({signals,now});
   assert.equal(estimate.folders,1);assert.equal(estimate.bytes,10);
-  assert.deepEqual(estimate.breakdown,{keptBytes:50,preparedBytes:10,candidateBytes:10,recentBytes:0,quarantineBytes:0});
+  assert.deepEqual(estimate.breakdown,{keptBytes:50,preparedBytes:18,candidateBytes:10,recentBytes:0,quarantineBytes:0});
   assert.ok(existsSync(join(root,'rock')));assert.equal(existsSync(qu('rock')),false);
   assert.equal(readFileSync(join(stateDir,'subbeats','stem-policy.json'),'utf8'),before);
 });

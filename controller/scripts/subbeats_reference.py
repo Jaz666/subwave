@@ -50,7 +50,7 @@ def covers(regions, start, end):
                and end <= r['end_sample'] / r['sample_rate'] for r in regions)
 
 
-def audit(state_dir, references):
+def audit(state_dir, references, stems_root=None):
     root = Path(state_dir) / 'subbeats'
     jobs = json.loads((root / 'queue.json').read_text())['jobs']
     rows = []
@@ -58,7 +58,8 @@ def audit(state_dir, references):
         job = next((j for j in jobs if j['id'] == ref['id'] and j['status'] == 'prepared'), None)
         if job is None:
             raise ValueError(f"Reference track is not prepared: {ref['title']}")
-        folder = root / 'v1' / job['bundleKey']
+        from subbeats_cache import bundle_folder
+        folder = bundle_folder(state_dir, job['bundleKey'], stems_root, job['id'])
         identity = json.loads((folder / 'manifest.json').read_text())['identity']
         record = cached_entry(folder, identity)
         if record is None:
@@ -94,6 +95,7 @@ def audit(state_dir, references):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state-dir', type=Path, required=True)
+    parser.add_argument('--stems-root', type=Path)
     parser.add_argument('--references', type=Path, required=True)
     args = parser.parse_args()
-    print(json.dumps(audit(args.state_dir, json.loads(args.references.read_text())), indent=2, allow_nan=False))
+    print(json.dumps(audit(args.state_dir, json.loads(args.references.read_text()), args.stems_root), indent=2, allow_nan=False))

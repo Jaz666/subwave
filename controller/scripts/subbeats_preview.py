@@ -248,8 +248,12 @@ def render_preview(req, fetch_source=None):
     if root.is_symlink() or (root / 'v1').is_symlink():
         raise ValueError('Prepared cache must not be a symlink.')
     records, folders = [], []
-    for key in keys:
-        folder = root / 'v1' / key
+    from subbeats_cache import bundle_folder
+    track_ids = req.get('track_ids')
+    if track_ids is not None and (not isinstance(track_ids, list) or len(track_ids) != 2):
+        raise ValueError('Choose two prepared track ids')
+    for index, key in enumerate(keys):
+        folder = bundle_folder(state, key, req.get('stems_root'), track_ids[index]) if track_ids is not None else bundle_folder(state,key)
         try:
             identity = json.loads((folder / 'manifest.json').read_text())['identity']
         except (OSError, ValueError, KeyError) as error:

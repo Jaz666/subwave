@@ -174,7 +174,7 @@ def separate_regions(path, stage, regions, detector):
     return coverage
 
 
-def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DEFAULT_BUDGET, expected_cache_id=None):
+def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DEFAULT_BUDGET, expected_cache_id=None, cache_root=None, allowance=None):
     import librosa
     if expected_cache_id is not None:
         require_shared_cache(state_dir, expected_cache_id)
@@ -195,7 +195,7 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
         # Reuse a verified converted bundle without another separation pass.
         from subbeats_cache import cache_key, cached_entry
         legacy = {**identity, 'separator': {**identity['separator'], 'subtype': 'PCM_24-or-FLOAT-v1'}}
-        dest = Path(state_dir) / 'subbeats' / 'v1' / cache_key(legacy)
+        dest = (Path(cache_root) if cache_root is not None else Path(state_dir) / 'subbeats' / 'v1') / cache_key(legacy)
         previous = cached_entry(dest, legacy)
         if previous and previous['metadata'].get('storage_format') == 'PCM_24-shared-gain-v1':
             return {'cache_hit': True, 'directory': str(dest), **previous}
@@ -220,7 +220,7 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
                 'analysis_status': analysis['status'], 'stem_regions': coverage,
                 'pair_ready': False}
 
-    return prepare_cached(state_dir, identity, build, budget)
+    return prepare_cached(state_dir, identity, build, budget, cache_root=cache_root, allowance=allowance)
 
 
 def require_shared_cache(state_dir, expected):
@@ -240,10 +240,13 @@ def prepare_request(req):
     require_shared_cache(state_dir, expected)
     if req.get('complete') is not True:
         raise ValueError('Sub/Beats requires the complete recording')
-    result = prepare(req['path'], state_dir, expected_cache_id=expected)
+    from subbeats_cache import shared_context, track_cache_root
+    allowance = shared_context(req)
+    cache_root = track_cache_root(req['stems_root'], req['track_id'])
+    result = prepare(req['path'], state_dir, expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_structure import prepare_structure
-    structure = prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected)
-    return {'ok': True, 'subbeats_used_models': not result.get('cache_hit', False) and bool(result['metadata']['stem_regions']), 'subbeats_result': {
+    structure = prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
+    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': not result.get('cache_hit', False) and bool(result['metadata']['stem_regions']), 'subbeats_result': {
         'status': ('prepared' if result['metadata']['stem_regions'] else 'unmeasurable'),
         'bundleKey': Path(result['directory']).name,
         'error': None,

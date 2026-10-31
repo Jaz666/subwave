@@ -1,7 +1,7 @@
 // The analyzer writes cached head/tail stems on the shared volume. The controller manages
 // paths and evicts by the same priority the backfill uses.
 
-import { readdir, stat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
+import { readdir, stat, lstat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
@@ -261,14 +261,17 @@ async function measureDir(dir: string): Promise<{ dir: string; bytes: number; mt
     const st = await stat(dir);
     if (!st.isDirectory()) return null;
     const files = await readdir(dir);
-    const stats = await Promise.all(
-      files.map(f => stat(path.join(dir, f)).catch(() => null)), // file vanished mid-scan
-    );
+    const stats = await Promise.all(files.map(async f => {
+      const target = path.join(dir, f);
+      const st = await lstat(target).catch(() => null);
+      if (!st || st.isSymbolicLink()) return null;
+      return st.isDirectory() ? measureDir(target) : {bytes:st.size, mtimeMs:st.mtimeMs};
+    }));
     let bytes = 0;
     let mtimeMs = 0;
     for (const fst of stats) {
       if (!fst) continue;
-      bytes += fst.size;
+      bytes += fst.bytes;
       if (fst.mtimeMs > mtimeMs) mtimeMs = fst.mtimeMs;
     }
     return { dir, bytes, mtimeMs };
@@ -482,15 +485,12 @@ export async function markPassPending(): Promise<boolean> {
 
 // Bytes on disk under one track dir (one readdir + a stat per file).
 async function dirBytes(dir: string): Promise<number | null> {
-  try {
-    let bytes = 0;
-    for (const f of await readdir(dir)) {
-      try { bytes += (await stat(path.join(dir, f))).size; } catch { /* vanished */ }
-    }
-    return bytes;
-  } catch {
-    return null; // never written (failed separation, or offline)
-  }
+  return (await measureDir(dir))?.bytes ?? null;
+}
+
+export async function invalidateUsageSnapshot(): Promise<void> {
+  snapshotUntrusted = true;
+  await rm(snapshotPath(), {force:true});
 }
 
 // End of an analysis pass: add the NET-NEW dirs it allocated to the snapshot

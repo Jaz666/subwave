@@ -2702,6 +2702,7 @@ def main():
         # Version signal: this worker understands {"facets": [...]} requests.
         "facets_capable": True,
         "subbeats_capable": vocal_capable,
+        "subbeats_cache_version": 2,
     })
 
     for line in sys.stdin:
@@ -2714,6 +2715,18 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "migrate_subbeats":
+            try:
+                from subbeats_cache import shared_context, migrate_shared
+                from subbeats_prepare import require_shared_cache
+                require_shared_cache(req['state_dir'], req['cache_id'])
+                allowance = shared_context(req)
+                moved = migrate_shared(req['state_dir'], req['stems_root'], allowance)
+                emit({"id": rid, "ok": True, "migrated": moved,
+                      "cache_added_bytes": req['remaining_bytes'] - allowance['bytes']})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         if req.get("op") == "preview_subbeats":
             try:
                 from subbeats_preview import render_preview

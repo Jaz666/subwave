@@ -120,7 +120,7 @@ def extract(y, times, librosa):
     return energy, spectrum, harmonic
 
 
-def prepare_structure(path, state_dir, bundle_dir, *, budget=DEFAULT_BUDGET, expected_cache_id=None):
+def prepare_structure(path, state_dir, bundle_dir, *, budget=DEFAULT_BUDGET, expected_cache_id=None, cache_root=None, allowance=None):
     import numpy as np
     import librosa
     from subbeats_prepare import decode, require_shared_cache
@@ -165,7 +165,7 @@ def prepare_structure(path, state_dir, bundle_dir, *, budget=DEFAULT_BUDGET, exp
             require_shared_cache(state_dir, expected_cache_id)
         return {'structure_status': result['status'], 'candidate_count': len(candidates),
                 'coverage': 'full_recording', 'pair_ready': False}
-    return prepare_cached(state_dir, structure_identity, build, budget)
+    return prepare_cached(state_dir, structure_identity, build, budget, cache_root=cache_root, allowance=allowance)
 
 
 if __name__ == '__main__':

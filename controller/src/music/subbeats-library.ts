@@ -1,11 +1,13 @@
 // Managed Sub/Beats child: reads the controller-owned list, reports outcomes on
-// stdio. No ordinary analysis writes, tagging, library walk or normal stem sweep.
+// stdio. Extended bundles share the ordinary cache budget; metadata stays here.
 import { readFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { config } from '../config.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import * as analyzer from './analyzer.js';
+import * as stemCache from './stem-cache.js';
+import * as library from './library.js';
 import { waitForQuiet, type QuietGate } from './analyze.js';
 import { loadSecretsIntoEnv } from '../setup/secrets.js';
 import { loadNavidromeConfig } from '../setup/config.js';
@@ -15,7 +17,8 @@ import { SUBBEATS_EVENT_PREFIX, subbeatsEnqueueSchema } from '../schemas/subbeat
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 
 async function main() {
-  const ids = subbeatsEnqueueSchema.parse({ ids: process.argv.slice(2) }).ids;
+  const args = process.argv.slice(2);
+  const ids = args.length ? subbeatsEnqueueSchema.parse({ ids:args }).ids : [];
   await loadSecretsIntoEnv();
   await loadNavidromeConfig();
   await settings.load();
@@ -24,37 +27,47 @@ async function main() {
   const gate: QuietGate = { state: { quietSince: null }, paused: false };
   const emit = (event: object) => console.log(SUBBEATS_EVENT_PREFIX + JSON.stringify(event));
   let done = 0;
-  const capable = await analyzer.subbeatsAvailable();
-  for (const id of ids) {
-    const state = readSubbeatsQueue(config.stateDir);
-    if (state.paused) break;
-    const job = state.jobs.find(j => j.id === id);
-    if (job?.status !== 'queued') continue;
-    if (!await waitForQuiet(gate, { done, total: ids.length }, () => readSubbeatsQueue(config.stateDir).paused)) break;
-    reportProgress({ phase: 'analyze', label: `Preparing Sub/Beats: ${job.artist} — ${job.title}`, done, total: ids.length });
-    emit({ id, status: 'running' });
-    let localPath: string | null = null;
-    try {
-      if (!capable) {
-        emit({ id, status: 'unavailable', error: 'Sub/Beats needs an updated heavy analyzer' });
-        continue;
+  await library.load();
+  const root = await stemCache.stemsRootStatus({prepare:true});
+  if (!root.online) throw new Error(root.message ?? 'Shared stem cache is offline');
+  reportProgress({phase:'analyze',label:'Checking shared cache space and migrating prepared bundles',done:0,total:ids.length});
+  let remaining = Math.max(0, Math.floor(stemCache.budgetBytes() - (await stemCache.usage()).bytes));
+  await stemCache.markPassPending();
+  try {
+    const migrated = await analyzer.migrateSubbeatsCache(config.stateDir, cacheId, {stems_root:stemCache.stemsRoot(),remaining_bytes:remaining});
+    remaining = Math.max(0, remaining - migrated.addedBytes);
+    if (migrated.migrated) console.log(`[info] Moved ${migrated.migrated} verified Sub/Beats bundles into the shared stem cache`);
+    if (ids.length && !await analyzer.subbeatsAvailable()) throw new Error('Update the heavy analyzer to prepare Sub/Beats stems');
+    for (const id of ids) {
+      const state = readSubbeatsQueue(config.stateDir);
+      if (state.paused) break;
+      const job = state.jobs.find(j => j.id === id);
+      if (job?.status !== 'queued') continue;
+      if (!await waitForQuiet(gate, { done, total: ids.length }, () => readSubbeatsQueue(config.stateDir).paused)) break;
+      reportProgress({ phase: 'analyze', label: `Preparing Sub/Beats: ${job.artist} — ${job.title}`, done, total: ids.length });
+      emit({ id, status: 'running' });
+      let localPath: string | null = null;
+      try {
+        const source = await analyzer.downloadCapped(id, { maxBytes: 256 * 1024 * 1024, timeoutMs: 5 * 60_000 });
+        localPath = source.path;
+        if (!source.complete) {
+          emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
+          continue;
+        }
+        const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining});
+        remaining = Math.max(0, remaining - result.addedBytes);
+        emit({id, ...result});
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        reportEvent({ kind: 'error', text: `${job.artist} — ${job.title}: ${message}` });
+        emit({ id, status: 'failed', error: message.slice(0, 1000) });
+        break; // A failed writer may have published partial results; refresh usage before retrying.
+      } finally {
+        if (localPath) await rm(localPath, { force: true }).catch(() => {});
+        done++;
       }
-      const source = await analyzer.downloadCapped(id, { maxBytes: 256 * 1024 * 1024, timeoutMs: 5 * 60_000 });
-      localPath = source.path;
-      if (!source.complete) {
-        emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
-        continue;
-      }
-      emit({ id, ...await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId) });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      reportEvent({ kind: 'error', text: `${job.artist} — ${job.title}: ${message}` });
-      emit({ id, status: 'failed', error: message.slice(0, 1000) });
-    } finally {
-      if (localPath) await rm(localPath, { force: true }).catch(() => {});
-      done++;
     }
-  }
+  } finally { await stemCache.invalidateUsageSnapshot(); }
   reportProgress({ phase: 'done', label: 'Sub/Beats preparation finished', done, total: ids.length });
   analyzer.shutdown();
 }

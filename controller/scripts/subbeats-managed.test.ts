@@ -6,14 +6,16 @@ import { readFileSync, mkdirSync, rmdirSync } from 'node:fs';
 
 let release: (() => void) | null = null;
 let requests = 0;
+let migrations = 0;
 const fixture = createServer(async (req, res) => {
   if (req.url === '/health') {
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, engines: ['analyze'], analyze_subbeats_capable: true })); return;
+    res.end(JSON.stringify({ ok: true, engines: ['analyze'], analyze_subbeats_capable: true, analyze_subbeats_cache_version:2 })); return;
   }
   if (req.url?.startsWith('/rest/stream')) {
     res.setHeader('Content-Type', 'audio/mpeg'); res.end(Buffer.alloc(2048, 1)); return;
   }
+  if (req.url === '/migrate-subbeats') { migrations++; res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({ok:true,migrated:0,cache_added_bytes:0})); return; }
   if (req.url === '/prepare-subbeats') {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -23,7 +25,7 @@ const fixture = createServer(async (req, res) => {
     requests++;
     if (requests === 1 || requests === 4) await new Promise<void>(resolve => { release = resolve; });
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null } })); return;
+    res.end(JSON.stringify({ ok: true, cache_added_bytes:0, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null } })); return;
   }
   res.writeHead(404).end();
 });
@@ -87,4 +89,17 @@ test('a refused process-lock write cannot orphan or crash a managed child', asyn
     assert.doesNotThrow(() => startSubbeats(['first'], () => {}, () => { closed = true; }));
     await waitUntil(() => closed && !tagger.running);
   } finally { rmdirSync(file); }
+});
+
+
+test('legacy migration uses the managed slot while preparation is paused', async () => {
+  const {join} = await import('node:path');
+  mkdirSync(join(process.env.STATE_DIR!, 'subbeats','v1'),{recursive:true});
+  const before = store.read();
+  const count = migrations;
+  const sources = requests;
+  kickSubbeats();
+  await waitUntil(() => migrations > count && !tagger.running);
+  assert.deepEqual(store.read(),before);
+  assert.equal(requests,sources,'migration must not download or separate tracks');
 });

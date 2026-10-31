@@ -127,7 +127,7 @@ test('prepared preview returns isolated audio without changing the preparation l
   let payload: unknown;
   globalThis.fetch = (async (url, init) => {
     if (String(url).startsWith('http://127.0.0.1:9/')) {
-      if (String(url).endsWith('/health')) return Response.json({ ok: true, engines: ['analyze'] });
+      if (String(url).endsWith('/health')) return Response.json({ ok: true, engines: ['analyze'], analyze_subbeats_cache_version:2 });
       payload = JSON.parse(String(init?.body));
       return new Response(audio, { headers: { 'Content-Type': 'audio/wav', 'X-Subbeats-Timeline': JSON.stringify({ duration: 44, events: [{ at: 0, label: 'Outgoing lead' }, { at: 36, label: 'Exchange complete' }] }) } });
     }
@@ -177,7 +177,7 @@ test('annotated preview resolves server-owned points and URLs, rejects unsuitabl
   const audio = Buffer.alloc(44); audio.write('RIFF'); audio.write('WAVE',8);
   globalThis.fetch = (async (url, init) => {
     if (String(url).startsWith('http://127.0.0.1:9/')) {
-      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze']});
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
       seen = JSON.parse(String(init?.body));
       return new Response(audio, {headers:{'Content-Type':'audio/wav','X-Subbeats-Timeline':JSON.stringify({
         ...(oldAnalyzer ? {} : {kind:'reference'}), duration:76,events:[{at:0,label:'Outgoing original'},{at:59,label:'Incoming release'}],
