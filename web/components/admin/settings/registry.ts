@@ -133,8 +133,8 @@ export const SECTIONS = [
     // The whole stem story on one page: the cache/blends settings (moved off
     // Broadcast & mixer) above the orphan-dir cleanup. The old
     // ?section=orphans link redirects here (SettingsPanel RENAMED).
-    // `transitions` is split at the leaf: the crossfade curve and the DJ
-    // transition effects stay on Broadcast & mixer, where their cards are.
+    // `transitions` is split at the leaf: DJ transition effects stay on
+    // Broadcast & mixer, where their card is.
     id: 'stems', group: 'operations', label: 'Stems',
     hint: 'cache · blends · cleanup', icon: Layers,
     formKeys: STEM_FORM_KEYS,
@@ -150,8 +150,8 @@ export const SECTIONS = [
     // shows at all. Without it, toggling "Fade out at a show change" alone
     // never registers as a change and the save prompt never appears.
     // The stem fields of 'transitions' moved to the Stems section with their
-    // card; the crossfade curve and the effects stay here with theirs.
-    formKeys: ['crossfadeDuration', 'ducking', 'maxTrackSeconds', 'maxTrackLengthMode', 'fadeAtShowEnd', 'silenceTrim', 'transitions.equalPowerCrossfade', 'transitions.effects', 'stream', 'loudness'],
+    // card; the effects stay here with theirs.
+    formKeys: ['crossfadeDuration', 'ducking', 'maxTrackSeconds', 'maxTrackLengthMode', 'fadeAtShowEnd', 'silenceTrim', 'transitions.effects', 'stream', 'loudness'],
   },
 ] as const satisfies readonly SectionSpec[];
 

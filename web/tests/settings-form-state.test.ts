@@ -125,11 +125,11 @@ test('Broadcast & mixer and Stems split transitions at the leaf: each page sees 
   const broadcast = sectionById('broadcast')!.formKeys;
   const stems = sectionById('stems')!.formKeys;
   const baseline = settingsForm({});
-  // The crossfade curve lives on Broadcast & mixer: its save bar comes up,
+  // Crossfade duration lives on Broadcast & mixer: its save bar comes up,
   // with the restart warning, and the Stems page stays clean.
   const curve = structuredClone(baseline);
-  curve.transitions.equalPowerCrossfade = !baseline.transitions.equalPowerCrossfade;
-  assert.deepEqual(dirtyPaths(curve, baseline, broadcast), ['transitions.equalPowerCrossfade']);
+  curve.crossfadeDuration = String(Number(baseline.crossfadeDuration) + 1);
+  assert.deepEqual(dirtyPaths(curve, baseline, broadcast), ['crossfadeDuration']);
   assert.deepEqual(dirtyPaths(curve, baseline, stems), []);
   const restartWarn = (keys: readonly string[]) => RESTART_PATHS.some(path =>
     keys.some(key => path === key || path.startsWith(`${key}.`)) && !samePath(curve, baseline, path));
@@ -155,7 +155,7 @@ test('the Stems save and the Broadcast save post disjoint fields, so neither com
   const danger = dangerSavePayload(form).patch;
   assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'stemBlends']);
   assert.deepEqual(Object.keys(stems.audio).sort(), ['stemCache', 'stemCacheGb']);
-  assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects', 'equalPowerCrossfade']);
+  assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects']);
   assert.equal('audio' in danger, false);
   assert.deepEqual(Object.keys(stems).sort(), ['audio', 'transitions']);
 });

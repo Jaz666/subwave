@@ -58,6 +58,32 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Upstream stem-cache management integration — 31 October 2026
+
+Integrated the three commits of upstream PR #2178 at reviewed head
+`22c8c6ea5c1112b1ef8619fadadc0a19a5c760c9` individually, avoiding unrelated
+upstream branch changes. Settings → Stems now owns cache/blend settings,
+measured usage, budget-cut confirmation and optional orphan cleanup. Broadcast
+and Stems save only their own fields. Existing admission rules below and their
+Settings explanation are preserved; cleanup still considers library membership,
+not admission eligibility. Adapting cleanup to those rules and consolidating the
+separate extended Sub/Beats cache remain subsequent work.
+
+Two reviewed bugs are fixed: the quarantine timestamp must be written before
+moving a live folder, and unknown quarantine dates never fall back to old
+folder mtimes. Missing, malformed or unreadable dates retain the quarantine
+until repaired. Failed deletions do not report their directory size as reclaimed.
+Automatic orphan cleanup remains disabled by default; no cleanup was run.
+
+Verification: 39 orphan tests (including three new filesystem regressions),
+109 stem tests, 32 Settings tests and nine admin-query tests passed. The static
+admin-query audit and controller/web lint plus typechecks passed; controller
+retains its existing 1,741 lint warnings. No full-suite or browser run was made.
+Development commits are integrated into the test-station source checkout after
+push; no rebuild, restart, settings write or cache mutation is performed.
+Rollback is the preceding station commit `58e7f40c`. Next: adapt cache management
+to the owner-approved admission rules and shared extended-stem storage.
+
 ## Played/starred exceptions to stem admission — 31 October 2026
 
 This supersedes the genre-only admission restriction below. The owner requires:
