@@ -1,3 +1,4 @@
+import { startSubbeatsCleanup, startSubbeatsCleanupEstimate, subbeatsCleanupState } from '../../music/subbeats-stem-cleanup.js';
 import { statfs } from 'node:fs/promises';
 import * as stemCache from '../../music/stem-cache.js';
 import { readSubbeatsStemPolicy, updateSubbeatsStemPolicy } from '../../music/subbeats-stem-policy.js';
@@ -102,6 +103,23 @@ router.get('/library/subbeats/cache', requireAdmin, async (_req, res) => {
 router.post('/library/subbeats/cache', requireAdmin, validateBody(subbeatsStemPolicyPatchSchema), async (req, res) => {
   await library.load();
   if (req.body.track?.include && !db.getTrack(req.body.track.id)) return res.status(400).json({ error: 'Track is no longer in the library' });
-  try { res.json(updateSubbeatsStemPolicy(req.body)); }
+  if (req.body.enabled === true && req.body.confirmCleanup !== true) return res.status(400).json({error:'Confirm the seven-day stem cleanup before enabling it'});
+  try {
+    const policy = updateSubbeatsStemPolicy(req.body);
+    startSubbeatsCleanup();
+    res.json(policy);
+  }
   catch { res.status(503).json({ error: 'Cache policy could not be saved. Retry shortly.' }); }
+});
+
+router.get('/library/subbeats/cache/cleanup', requireAdmin, (_req, res) => res.json(subbeatsCleanupState()));
+router.post('/library/subbeats/cache/estimate', requireAdmin, async (_req, res) => {
+  await library.load();
+  try { startSubbeatsCleanupEstimate(); res.status(202).json(subbeatsCleanupState()); }
+  catch (error) { res.status(409).json({error:error instanceof Error ? error.message : 'A cache scan is already running'}); }
+});
+router.post('/library/subbeats/cache/cleanup', requireAdmin, async (_req, res) => {
+  await library.load();
+  try { startSubbeatsCleanup(); res.status(202).json(subbeatsCleanupState()); }
+  catch { res.status(409).json({error:'Cleanup could not start'}); }
 });

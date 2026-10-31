@@ -209,21 +209,22 @@ test('annotated preview resolves server-owned points and URLs, rejects unsuitabl
 test('regular stem policy is opt-in, persists exceptions separately and never edits the preparation queue', async () => {
   const { readSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
   const before = subbeatsStore.read();
-  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,regularIds:[]});
-  for (const path of ['/library/subbeats/cache']) {
-    assert.equal((await fetch(base + path)).status, 401);
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:[]});
+  for (const path of ['/library/subbeats/cache', '/library/subbeats/cache/cleanup', '/library/subbeats/cache/estimate']) {
+    if (!path.endsWith('/estimate')) assert.equal((await fetch(base + path)).status, 401);
     assert.equal((await fetch(base + path, {method:'POST',headers:{'Content-Type':'application/json'},body:'{"enabled":true}'})).status, 401);
   }
   assert.equal((await post('/library/subbeats/cache', {track:{id:'missing',include:true}})).status, 400);
   assert.equal((await post('/library/subbeats/cache', {enabled:'true'})).status, 400);
-  assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 200);
+  assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 400, 'old admission consent must not authorise deletion');
+  assert.equal((await post('/library/subbeats/cache', {enabled:true,confirmCleanup:true})).status, 200);
   await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
   await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
-  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:true,regularIds:['quiet-intro']});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:true,cleanupEnabled:true,regularIds:['quiet-intro']});
   await post('/library/subbeats/cache', {enabled:false});
-  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,regularIds:['quiet-intro']});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:['quiet-intro']});
   await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:false}});
-  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,regularIds:[]});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:[]});
   assert.deepEqual(subbeatsStore.read(), before);
   const { subbeatsCacheViewSchema } = await import('../src/schemas/subbeats.js');
   const cache = await import('../src/music/stem-cache.js');
@@ -245,7 +246,7 @@ test('an unreadable policy is surfaced and never replaced by an edit', async () 
   try {
     writeFileSync(file, '{broken');
     assert.equal((await fetch(base + '/library/subbeats/cache', {headers})).status, 503);
-    assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 503);
+    assert.equal((await post('/library/subbeats/cache', {enabled:true,confirmCleanup:true})).status, 503);
     assert.equal(readFileSync(file, 'utf8'), '{broken');
     const cache = await import('../src/music/stem-cache.js');
     assert.notEqual((await cache.admissionSignals()).selectiveStems, true, 'unreadable opt-in preserves upstream admission');

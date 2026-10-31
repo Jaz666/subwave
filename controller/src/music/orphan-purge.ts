@@ -140,6 +140,11 @@ export async function runOrphanPurge(opts: {
   resolveNames?: (ids: string[]) => Promise<ReadonlyMap<string, OrphanTrackName>>;
   /** The automatic pass: refuse a plan above AUTO_MAX_SHARE of the cache. */
   automatic?: boolean;
+  /** Optional retention policy; the default remains library membership. */
+  keepTrack?: (id: string) => boolean;
+  beforeMutations?: () => Promise<void>;
+  allowDeletion?: () => boolean;
+  skipCollisions?: boolean;
 }): Promise<PurgeReport> {
   if (!opts.confirm) return purgePass(opts);
   if (confirmedPassRunning) {
@@ -181,6 +186,7 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
     return { ...empty, refused: true, reason: 'empty library id set: refusing (a closed or half-loaded database must never quarantine the cache)' };
   }
   const known = new Set(opts.knownIds);
+  const keepTrack = opts.keepTrack ?? ((id: string) => known.has(id));
   const inFlightMs = opts.inFlightMs ?? IN_FLIGHT_MS;
   const report: PurgeReport = { ...empty };
 
@@ -201,7 +207,7 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   const cacheEntries: Array<{ name: string; known: boolean }> = [];
   const orphanNames: string[] = [];
   for (const name of entries) {
-    if (known.has(name)) cacheEntries.push({ name, known: true });
+    if (keepTrack(name)) cacheEntries.push({ name, known: true });
     else orphanNames.push(name);
   }
   const ages = await mapPool(orphanNames, stemCache.SCAN_CONCURRENCY,
@@ -230,7 +236,7 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   for (const name of quNames) {
     const entryDir = path.join(qu, name);
     const liveSlotFree = !(await stat(path.join(root, name)).then(() => true, () => false));
-    quEntries.push({ name, known: known.has(name), ageMs: await quarantinedAgeMs(entryDir, now), liveSlotFree });
+    quEntries.push({ name, known: keepTrack(name), ageMs: await quarantinedAgeMs(entryDir, now), liveSlotFree });
   }
   const qplan = planQuarantinePurge(quEntries, { now, confirm: opts.confirm, ...(opts.graceMs !== undefined ? { graceMs: opts.graceMs } : {}) });
   report.released = qplan.released;
@@ -239,57 +245,67 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   report.supersededCount = qplan.superseded.length;
 
   if (opts.confirm) {
-    // 1. Releases first: an id that is both known now and sitting in the
-    //    quarantine gets its copy back rather than being re-quarantined below.
-    for (const name of qplan.released) {
-      try {
-        await rename(path.join(qu, name), path.join(root, name));
-      } catch { report.failed += 1; }
-    }
-    // 2. Aged (and superseded-with-fresh-copy) quarantines: delete for good.
-    for (const { name } of qplan.deleted) {
-      const entryDir = path.join(qu, name);
-      try {
-        const bytes = await dirBytes(entryDir);
-        await rm(entryDir, { recursive: true, force: true });
-        report.freedBytes += bytes;
-        report.deletedCount += 1;
-      } catch { report.failed += 1; }
-    }
-    // 3. Orphans: move into quarantine (same-filesystem rename; no merge).
-    await mkdirSafe(qu);
-    const names = opts.resolveNames && plan.quarantine.length
-      ? await opts.resolveNames(plan.quarantine.map(q => q.name))
-      : undefined;
-    for (const { name } of plan.quarantine) {
-      const from = path.join(root, name);
-      const to = path.join(qu, name);
-      const collision = await stat(to).then(() => true, () => false);
-      if (collision) {
-        // A quarantine entry for the same id already exists — it can only have
-        // been re-created in the library and orphaned again. Keep the OLDER
-        // quarantine (it is closer to its real age), drop the newer copy.
-        const existingAge = await quarantinedAgeMs(to, now);
-        const freshAge = await quarantinedAgeMs(from, now);
+    await opts.beforeMutations?.();
+    try {
+      // 1. Releases first: an id that is both known now and sitting in the
+      //    quarantine gets its copy back rather than being re-quarantined below.
+      for (const name of qplan.released) {
         try {
-          if (existingAge >= freshAge) { await rm(from, { recursive: true, force: true }); }
-          else { await stampQuarantine(from, now); await rm(to, { recursive: true, force: true }); await rename(from, to); }
+          await rename(path.join(qu, name), path.join(root, name));
+        } catch { report.failed += 1; }
+      }
+      // 2. Aged (and superseded-with-fresh-copy) quarantines: delete for good.
+      for (const { name } of qplan.deleted) {
+        if (opts.allowDeletion && (!opts.allowDeletion() || keepTrack(name))) continue;
+        const entryDir = path.join(qu, name);
+        try {
+          const bytes = await dirBytes(entryDir);
+          if (opts.allowDeletion && (!opts.allowDeletion() || keepTrack(name))) continue;
+          await rm(entryDir, { recursive: true, force: true });
+          report.freedBytes += bytes;
+          report.deletedCount += 1;
+        } catch { report.failed += 1; }
+      }
+      // 3. Orphans: move into quarantine (same-filesystem rename; no merge).
+      await mkdirSafe(qu);
+      const names = opts.resolveNames && plan.quarantine.length
+        ? await opts.resolveNames(plan.quarantine.map(q => q.name))
+        : undefined;
+      await opts.beforeMutations?.();
+      for (const { name } of plan.quarantine) {
+        if (keepTrack(name)) continue;
+        const from = path.join(root, name);
+        const to = path.join(qu, name);
+        const collision = await stat(to).then(() => true, () => false);
+        if (collision && opts.skipCollisions) continue;
+        if (collision) {
+          // A quarantine entry for the same id already exists — it can only have
+          // been re-created in the library and orphaned again. Keep the OLDER
+          // quarantine (it is closer to its real age), drop the newer copy.
+          const existingAge = await quarantinedAgeMs(to, now);
+          const freshAge = await quarantinedAgeMs(from, now);
+          try {
+            if (existingAge >= freshAge) { await rm(from, { recursive: true, force: true }); }
+            else { await stampQuarantine(from, now); await rm(to, { recursive: true, force: true }); await rename(from, to); }
+            await writeNameSidecar(to, names?.get(name), now);
+            report.quarantined += 1;
+          } catch { report.failed += 1; }
+          continue;
+        }
+        try {
+          await stampQuarantine(from, now);
+          if (keepTrack(name)) continue;
+          await rename(from, to);
           await writeNameSidecar(to, names?.get(name), now);
           report.quarantined += 1;
         } catch { report.failed += 1; }
-        continue;
       }
-      try {
-        await stampQuarantine(from, now);
-        await rename(from, to);
-        await writeNameSidecar(to, names?.get(name), now);
-        report.quarantined += 1;
-      } catch { report.failed += 1; }
-    }
-    if (report.quarantined || report.deletedCount || report.released.length) {
-      // The usage snapshot cached the pre-purge totals; drop it so the next
-      // sweep walks again instead of trusting bytes that no longer exist.
-      await rm(path.join(config.stateDir, 'stem-cache-usage.json'), { force: true }).catch(() => {});
+    } finally {
+      if (report.quarantined || report.deletedCount || report.released.length) {
+        // The usage snapshot cached the pre-purge totals; drop it so the next
+        // sweep walks again instead of trusting bytes that no longer exist.
+        await rm(path.join(config.stateDir, 'stem-cache-usage.json'), { force: true }).catch(() => {});
+      }
     }
   } else {
     // Dry run: every count, zero mutations.
