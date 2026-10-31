@@ -58,6 +58,24 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Shared-cache migration lock correction — 31 October 2026
+
+The first station migration stopped before copying any bundle: the analyzer
+(uid 10001) could not open the existing `.prepare.lock` for append. The normal
+publisher intentionally opens this file read-only, which still supports Linux
+exclusive flock and works when the file belongs to another UID. Migration now
+uses the identical `O_RDONLY | O_CREAT` lock mode, with no permission changes.
+The shared-path conversion command uses the same correction.
+A regression check makes the existing lock read-only, runs migration, and checks
+that its mode is unchanged. The failed station run was
+`tagger-run-20261031-194310-analyze.log`; its error was EACCES on the lock.
+Rebuild the analyzer, then resume preparation to retry (or restart controller
+to schedule the migration again). The agent does not run either operation.
+Previous station source: `865c93a0`.
+Validation: all registered analyzer Python suites passed, including 32
+cache/preparation checks. Controller typecheck passed. No station restart,
+permission change or live migration is performed by the agent.
+
 ## Shared regular and extended stem storage — 31 October 2026
 
 Managed Sub/Beats now stores each track's integrity-checked extended bundles in

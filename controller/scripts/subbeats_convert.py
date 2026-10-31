@@ -126,7 +126,8 @@ def main():
         if (str(selected), key) in seen:
             continue
         seen.add((str(selected),key))
-        with (selected / '.prepare.lock').open('a') as lock:
+        descriptor = os.open(selected / '.prepare.lock', os.O_RDONLY | os.O_CREAT, 0o644)
+        with os.fdopen(descriptor, 'r') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             print(json.dumps(convert_bundle(selected, key)), flush=True)
 
