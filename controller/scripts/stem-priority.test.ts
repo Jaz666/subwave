@@ -8,7 +8,7 @@
 // filter's lesson — so the first block below scores every crafted row BOTH
 // ways and demands the same integer, branch by branch.
 //
-// The second property is that nothing is starved. `ORDER BY id` over opaque
+// The second property is that no eligible track is starved. `ORDER BY id` over opaque
 // Navidrome hashes was a lottery, but a FROZEN one: on a library bigger than
 // the stem budget the same tail lost every night. The tie class (both grids,
 // never aired, unliked — most of a real library) is redrawn per pass, and the
@@ -148,7 +148,7 @@ const rows: Array<{ id: string; bars: string | null; outro: string | null; durat
   { id: 'listener-like',  bars,       outro: outro(),                      duration: 200 },
 ];
 for (const r of rows) {
-  db.upsertTrackMeta(r.id, { title: `Song ${r.id}`, artist: 'A', album: 'B', duration: r.duration });
+  db.upsertTrackMeta(r.id, { title: `Song ${r.id}`, artist: 'A', album: 'B', duration: r.duration, genres: ['House'] });
   rawAnalysis.run(r.bars, r.outro, r.id);
 }
 
@@ -233,8 +233,10 @@ await test('a track with no library row has no score to find', () => {
 // -------------------------------------------------------------------------
 
 await test('needsStemsIds hands back the scope in descending priority', () => {
+  db.getDb()!.prepare('UPDATE tracks SET bpm=128').run();
   const ordered = db.needsStemsIds(undefined, signals);
-  assert.equal(ordered.length, rows.length, 'nothing has been stem-scanned yet');
+  assert.ok(ordered.length > 0);
+  assert.ok(ordered.every(id => db.canCacheStems(id)), 'only eligible tracks enter the ranked scan');
   const scores = db.stemPriorityIndex(ordered, signals);
   for (let i = 1; i < ordered.length; i++) {
     assert.ok(
@@ -243,7 +245,7 @@ await test('needsStemsIds hands back the scope in descending priority', () => {
     );
   }
   assert.equal(ordered[0], 'heavy', 'the station\'s own heavy rotation goes first');
-  assert.equal(scores.get(ordered[ordered.length - 1]), 0, 'an unblendable track is last');
+  assert.ok(scores.get(ordered[ordered.length - 1])! > 0, 'unblendable tracks are excluded');
 });
 
 await test('a limited run takes the top of the ranking, not the top of the id order', () => {
@@ -260,8 +262,9 @@ await test('the untouched tie class is redrawn per pass, never frozen', () => {
   // forever. 60 identical rows, 5 slots: a frozen order repeats itself.
   for (let i = 0; i < 60; i++) {
     const id = `tie${String(i).padStart(2, '0')}`;
-    db.upsertTrackMeta(id, { title: `Tie ${i}`, artist: 'T', album: 'T', duration: 200 });
+    db.upsertTrackMeta(id, { title: `Tie ${i}`, artist: 'T', album: 'T', duration: 200, genres: ['House'] });
     rawAnalysis.run(bars, outro(), id);
+    db.getDb()!.prepare('UPDATE tracks SET bpm=128 WHERE id=?').run(id);
   }
   // Six tracks outscore the tie class outright, so a 12-slot draw reaches
   // into it by six — a frozen tiebreak would return the same six forever.

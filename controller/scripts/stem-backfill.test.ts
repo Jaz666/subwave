@@ -36,14 +36,16 @@ const db = await import('../src/music/library-db.js');
 const stemCache = await import('../src/music/stem-cache.js');
 await db.open({ embeddingDim: 768, adoptStoredDim: true });
 
-// Three tracks, none analysed yet.
+// Three dance tracks with measured grids and no stem attempts yet.
 for (const id of ['t1', 't2', 't3']) {
-  db.upsertTrackMeta(id, { title: `Song ${id}`, artist: 'A', album: 'B', duration: 200 });
+  db.upsertTrackMeta(id, { title: `Song ${id}`, artist: 'A', album: 'B', duration: 200, genres: ['House'] });
 }
+
+db.getDb()!.prepare('UPDATE tracks SET bpm=120, bars_json=?').run(JSON.stringify([0,2000,4000]));
 
 const scope = () => [...db.needsStemsIds()].sort();
 
-await test('every track needs stems before any pass has run', () => {
+await test('eligible measured tracks need stems before any stem pass has run', () => {
   assert.deepEqual(scope(), ['t1', 't2', 't3']);
   assert.equal(db.stemsCachedCount(), 0);
 });
@@ -51,7 +53,7 @@ await test('every track needs stems before any pass has run', () => {
 await test('an analysis pass WITHOUT the stem cache leaves the scope untouched', () => {
   // This is the exact shape of the bug: bpm/key land, the track counts as
   // analysed, and nothing records a stem attempt — so it must stay in scope.
-  db.upsertTrackAnalysis('t1', { bpm: 120, musicalKey: 'Am' });
+  db.upsertTrackAnalysis('t1', { bpm: 120, musicalKey: 'Am', bars: [0,2000,4000] });
   assert.deepEqual(scope(), ['t1', 't2', 't3']);
   assert.equal(db.stemsCachedCount(), 0);
 });
@@ -81,10 +83,11 @@ await test('a later stem-less pass does not clear an existing stamp', () => {
 await test('limit caps the scope for a resumable overnight run', () => {
   db.upsertTrackAnalysis('t3', { bpm: 90, stemsAttempted: true });
   for (const id of ['t4', 't5', 't6']) {
-    db.upsertTrackMeta(id, { title: `Song ${id}`, artist: 'A', album: 'B', duration: 200 });
+    db.upsertTrackMeta(id, { title: `Song ${id}`, artist: 'A', album: 'B', duration: 200, genres: ['House'] });
   }
-  // Which two is the ranking's business (none of these rows carries a bar
-  // grid, so they tie at zero and the draw is random); that a limited run
+  db.getDb()!.prepare("UPDATE tracks SET bpm=120, bars_json=? WHERE id IN ('t4','t5','t6')").run(JSON.stringify([0,2000,4000]));
+  // Which two is the ranking's business (these rows have equal grid and
+  // curation scores, so the draw is random); that a limited run
   // takes exactly two, and that the stamps carry the resumption, is this
   // test's.
   const first = db.needsStemsIds(2);
@@ -99,9 +102,10 @@ await test('clearAnalysis only resets the stamps when the pass will rewrite stem
   // isn't going to rewrite stems, so clearing would re-separate the whole
   // library the next time the operator turned the cache on.
   db.clearAnalysis({ keepVocal: true });
-  assert.equal(scope().length, 1, 'stamps survive a cache-off re-analyse');
+  assert.equal(db.stemsCachedCount(), 5, 'stamps survive a cache-off re-analyse');
+  assert.deepEqual(scope(), [], 'cleared measurements must be established again');
   db.clearAnalysis({ keepVocal: true, clearStems: true });
-  assert.deepEqual(scope(), ['t1', 't2', 't3', 't4', 't5', 't6']);
+  assert.deepEqual(scope(), [], 'a full re-analysis must establish beat evidence again before caching');
   assert.equal(db.stemsCachedCount(), 0);
 });
 

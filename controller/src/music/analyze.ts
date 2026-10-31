@@ -338,7 +338,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
     // The loop spends stemSlotsLeft in ids order and the earlier widenings'
     // tracks run FIRST, draining slots before this slice is reached. Reserve
     // them up front, or the announcement over-promises.
-    const reserved = ids.filter(id => !existingStemDirs.has(id)).length;
+    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id)).length;
     const backfillSlots = Math.max(0, stemSlotsLeft - reserved);
     if (backfillSlots <= 0) {
       console.log(
@@ -378,10 +378,10 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   }
 
   // Only ids pulled in solely by the CLAP widening may take the fast path;
-  // vocal and stem work applies to every id, so those runs stay full.
+  // Vocal work applies to every id; stem work only to eligible recordings.
   const fullAnalysisIds = new Set(bpmIds);
-  if (vocalBackfill || stemCache) {
-    for (const id of ids) fullAnalysisIds.add(id);
+  for (const id of ids) {
+    if (vocalBackfill || (stemCache && db.canCacheStems(id))) fullAnalysisIds.add(id);
   }
 
   // A facet plan replaces everything the widenings above decided: the plan's
@@ -508,6 +508,10 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
     const want = planned.get(id);
     // A planned track gets stems only when its plan asks for them.
     if (plan && (!want?.stems || planStemsOffline)) return undefined;
+    if (!plan && !stemCache) return undefined;
+    // Existing dirs and explicit plans do not bypass selective admission.
+    // Fresh tracks gain their beat evidence first and join the next backfill.
+    if (!db.canCacheStems(id)) return undefined;
     const trackStemDecision = stemCacheStore.stemWriteDecision({
       cacheOn: plan ? true : stemCache,
       slotsLeft: stemSlotsLeft,

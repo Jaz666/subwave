@@ -98,7 +98,8 @@ export function checkFacets(sample = 10): FacetCheckReport {
       return !(cell?.status === 'unmeasurable' && cell.unmeasurable_reason != null
         && cell.version >= db.FACET_VERSIONS[facet]);
     }));
-    const b = new Set(db.facetNeedsIds(facet));
+    // Stem attempts remain historical facts; admission is a separate policy.
+    const b = new Set(db.facetNeedsIds(facet).filter(id => facet !== 'stems' || db.canCacheStems(id)));
     const onlyLegacy = [...a].filter(id => !b.has(id));
     const onlyFacet = [...b].filter(id => !a.has(id));
     return {

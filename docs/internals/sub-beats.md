@@ -58,6 +58,45 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Selective ordinary stem admission — 31 October 2026
+
+Owner-approved first step toward sharing the existing cache: ordinary library
+analysis still creates stems automatically, but only for dance-family genres,
+90–180 BPM, and a usable measured head OR tail bar grid. This uses the same broad
+genre matcher as Sub/Beats discovery; it does not require a completed deeper
+Sub/Beats preparation. A grid needs at least two finite, nonnegative, strictly
+increasing bar positions within known duration. Tail-only admission also needs
+valid outro metadata and a known duration.
+
+One pure predicate is registered in SQLite and used by both the ranked backfill
+query and the per-track allocator. Routine analysis, explicit facet plans and
+existing cached directories all obey that admission gate. Only eligible ordinary
+analysis work reserves new cache slots; noneligible tracks still receive their
+usual beat, loudness, embedding and vocal analysis. Fresh recordings establish
+beat evidence first, then become eligible for a later automatic stem backfill.
+An excluded track receives no false stem-attempt stamp, so new evidence can
+qualify it later.
+
+The original September 7 stem-priority policy (`f8339d17`, #1622/#1630) remains
+unchanged: head/tail seam sides multiply the existing airplay and curation score,
+with operator hearts, listener likes, recent rotation and historical plays all
+retained. Random ties in backfill and the same ranking for eviction remain.
+Admission filters candidates before that ranking; it does not replace it.
+
+Verification: 81 stem/cache/seam tests, 33 acoustic-plan tests and 13 facet-planner
+regressions passed. New checks cover admission in both JS and SQLite, malformed
+and missing evidence, automatic later backfill after initial measurement,
+continued non-dance analysis, and explicit-plan/existing-directory bypasses.
+The played/starred ranking and its scan/eviction regression tests still pass.
+Controller lint/typecheck passed with the existing 1,741 warnings. Web lint/typecheck,
+25 Settings tests and the Settings UI detector passed too.
+
+Existing cached audio and the byte budget are unchanged. This increment does not
+reclaim existing files or move Sub/Beats bundles out of their separate 5 GB cache.
+Shared storage, safe reuse of compatible regions and reclaim management remain
+follow-up work. Rebuild controller and web for the admission change and corrected
+Settings copy; no analyzer rebuild is needed. The owner runs station commands.
+
 ## Library sorting — 31 October 2026
 
 Explore and Prepared tracks now offer Sort by: beat evidence first (the existing

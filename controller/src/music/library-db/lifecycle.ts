@@ -2,6 +2,7 @@
 // of the handle in handle.ts.
 
 import Database from 'better-sqlite3';
+import { stemCacheEligible } from '../stem-eligibility.js';
 import { subbeatsDanceGenresFromJson } from '../subbeats-eligibility.js';
 import { instrumentalFromJson } from '../lyric-vocal.js';
 import * as sqliteVec from 'sqlite-vec';
@@ -47,6 +48,7 @@ export async function open(opts: {
   db.pragma('journal_size_limit = 67108864'); // 64 MiB
   sqliteVec.load(db);
   db.function('is_instrumental', { deterministic: true }, instrumentalFromJson);
+  db.function('stem_cache_eligible', { deterministic: true }, stemCacheEligible);
   db.function('subbeats_dance_genres', { deterministic: true }, subbeatsDanceGenresFromJson);
 
   // migrate() may adopt the stored dim; trust its return as the live schema dim.

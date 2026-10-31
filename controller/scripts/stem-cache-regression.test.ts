@@ -14,6 +14,7 @@ const GB = 1024 ** 3;
 const HOUR = 3600_000;
 let writeWindow: 'head' | 'tail' = 'head';
 let writeBytes = 0;
+let cacheExpected = true;
 const requestSchema = z.object({ stems_dir: z.string().optional() });
 const snapshotSchema = z.object({
   bytes: z.number(), dirs: z.number(),
@@ -42,10 +43,11 @@ const fixture = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = requestSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-    assert.ok(body.stems_dir, 'analysis must allocate a stem directory');
-    payload(body.stems_dir, writeWindow, writeBytes);
+    if (cacheExpected) assert.ok(body.stems_dir, 'eligible analysis must allocate a stem directory');
+    else assert.equal(body.stems_dir, undefined, 'ineligible analysis must not allocate cache space');
+    if (body.stems_dir) payload(body.stems_dir, writeWindow, writeBytes);
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, bpm: 120, key: 'Am', stems_cached: true }));
+    res.end(JSON.stringify({ ok: true, bpm: 120, key: 'Am', bars: [0,2000,4000], stems_cached: body.stems_dir ? true : null }));
     return;
   }
   res.setHeader('Content-Type', 'audio/mpeg');
@@ -75,6 +77,7 @@ before(async () => {
 });
 
 beforeEach(async () => {
+  cacheExpected = true;
   await settings.update({ audio: { stemCache: true, stemCacheGb: 1, analyzeQuietOnly: false } });
   await db.open({ embeddingDim: 768, adoptStoredDim: true });
 });
@@ -93,7 +96,10 @@ after(async () => {
   rmSync(stateDir, { recursive: true, force: true });
 });
 
-const addTrack = (id: string) => db.upsertTrackMeta(id, { title: id, artist: 'A', album: 'B', duration: 200 });
+const addTrack = (id: string) => {
+  db.upsertTrackMeta(id, { title: id, artist: 'A', album: 'B', duration: 200, genres: ['House'] });
+  db.getDb()!.prepare('UPDATE tracks SET bpm=120,bars_json=? WHERE id=?').run('[0,2000,4000]',id);
+};
 const runPass = () => runAnalysisPass({ audioBackfill: false, vocalBackfill: false });
 
 test('reanalysis completes a partial stem dir and evicts its growth above budget', async () => {
@@ -172,4 +178,22 @@ test('a successful no-work analysis pass leaves no pending snapshot marker', asy
   assert.equal(result.available, true);
   assert.equal(snapshot().pending, undefined);
   assert.equal((await cache.sweep(GB)).skipped, 'snapshot');
+});
+
+
+test('ordinary analysis measures fresh tracks and later backfills stems only for eligible dance recordings', async () => {
+  db.upsertTrackMeta('fresh-dance', {title:'Fresh dance',genres:['House'],duration:200});
+  addTrack('rock');
+  db.upsertTrackMeta('rock', {genres:['Rock']});
+  cacheExpected = false;
+  assert.equal((await runPass()).analyzed, 2, 'all genres still receive ordinary analysis');
+  assert.equal(existsSync(cache.dirFor('fresh-dance')), false);
+  assert.equal(existsSync(cache.dirFor('rock')), false);
+  assert.deepEqual(db.needsStemsIds(), ['fresh-dance']);
+  cacheExpected = true;
+  writeBytes = 100;
+  assert.equal((await runPass()).analyzed, 1, 'a later automatic pass selects only the measured dance recording');
+  assert.equal(existsSync(cache.dirFor('fresh-dance')), true);
+  assert.equal(existsSync(cache.dirFor('rock')), false);
+  assert.equal(db.getDb()!.prepare('SELECT stems_at FROM tracks WHERE id=?').pluck().get('rock'), null);
 });

@@ -105,6 +105,12 @@ function dedupe(ids: readonly string[] | undefined): string[] {
   return [...new Set(ids.map(String).filter(Boolean))];
 }
 
+const STEM_ELIGIBLE_SQL = 'stem_cache_eligible(t.genres, t.bpm, t.bars_json, t.outro_json, t.duration_sec) = 1';
+
+export function canCacheStems(id: string): boolean {
+  return !!requireDb().prepare(`SELECT 1 FROM tracks t WHERE t.id = ? AND ${STEM_ELIGIBLE_SQL}`).get(id);
+}
+
 // Scan tracks with no stems_at attempt, independent of other analysis scopes. Disk absence is
 // not eligibility because eviction would otherwise cause endless re-separation. Rank by stem
 // priority and randomize ties; attempt stamps make resumption independent of order. #1622.
@@ -112,7 +118,7 @@ export function needsStemsIds(limit?: number, opts: StemScanOpts = {}): string[]
   const { expr, join, params } = buildPriority(opts);
   const sql =
     `SELECT t.id FROM tracks t${join}
-      WHERE t.stems_at IS NULL AND ${analysisFailureExclusion('t')}
+      WHERE t.stems_at IS NULL AND ${STEM_ELIGIBLE_SQL} AND ${analysisFailureExclusion('t')}
       ORDER BY ${expr} DESC, RANDOM()` +
     (limit && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : '');
   const rows = requireDb().prepare(sql).all(params) as Array<{ id: string }>;
