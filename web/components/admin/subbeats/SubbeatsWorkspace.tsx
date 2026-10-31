@@ -1,8 +1,9 @@
 'use client';
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { z } from 'zod';
-import type { subbeatsBrowseStatusSchema } from '../../../lib/schemas.generated';
+import { usePathname } from 'next/navigation';
+import { subbeatsBrowseStatusSchema } from '../../../lib/schemas.generated';
 import type { SubbeatsCandidate } from '../library/subbeats-selection';
 
 export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview';
@@ -16,6 +17,9 @@ export const subbeatsInitialBrowse = (scope: SubbeatsBrowseState['scope']): Subb
 });
 
 function useWorkspaceState() {
+  const pathname = usePathname();
+  const [restoredPath, setRestoredPath] = useState('');
+  const browsePage = pathname === '/admin/library/subbeats' ? 'explore' : pathname === '/admin/library/subbeats/prepared' ? 'prepared' : null;
   const [selected, setSelected] = useState<SubbeatsCandidate[]>([]);
   const [browse, setBrowse] = useState({ explore: subbeatsInitialBrowse('dance'), prepared: subbeatsInitialBrowse('prepared') });
   const [jobQuery, setJobQuery] = useState('');
@@ -25,7 +29,39 @@ function useWorkspaceState() {
   const [outgoing, setOutgoing] = useState('');
   const [incoming, setIncoming] = useState('');
   const [barShift, setBarShift] = useState(0);
-  return { selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+  // Match Library's replaceState convention: filters survive refresh/bookmarks,
+  // while bulk selections stay temporary. Keep each sub-page's filters separate.
+  useEffect(() => {
+    if (browsePage) {
+      const params = new URLSearchParams(window.location.search);
+      if (['q', 'genre', 'scope', 'status', 'offset'].some(key => params.has(key))) {
+        const status = subbeatsBrowseStatusSchema.safeParse(params.get('status') ?? 'all');
+        const offset = Number(params.get('offset') ?? 0);
+        setBrowse(current => ({ ...current, [browsePage]: {
+          query: (params.get('q') ?? '').slice(0, 200),
+          genre: (params.get('genre') ?? '').slice(0, 200),
+          scope: browsePage === 'prepared' ? 'prepared' : params.get('scope') === 'library' ? 'library' : 'dance',
+          status: browsePage === 'prepared' ? 'all' : status.success ? status.data : 'all',
+          offset: Number.isSafeInteger(offset) && offset >= 0 && offset <= 1_000_000 ? offset : 0,
+        } }));
+      }
+    }
+    setRestoredPath(pathname);
+  }, [pathname, browsePage]);
+  useEffect(() => {
+    if (!browsePage || restoredPath !== pathname) return;
+    const current = browse[browsePage];
+    const params = new URLSearchParams(window.location.search);
+    for (const key of ['q', 'genre', 'scope', 'status', 'offset']) params.delete(key);
+    if (current.query.trim()) params.set('q', current.query.trim());
+    if (current.genre) params.set('genre', current.genre);
+    if (current.scope === 'library') params.set('scope', 'library');
+    if (current.status !== 'all') params.set('status', current.status);
+    if (current.offset) params.set('offset', String(current.offset));
+    const query = params.toString();
+    window.history.replaceState(window.history.state, '', `${pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }, [browse, browsePage, pathname, restoredPath]);
+  return { browseRestored: restoredPath === pathname, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift };
 }
 
