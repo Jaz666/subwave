@@ -793,8 +793,8 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                     <div className="field-hint">
                       Keeps stems created by the heavy analyzer (Demucs), using the existing
                       priority and disk budget. Sub/Beats offers optional selective admission
-                      and per-track inclusions on its Cache page. Selective caching is off by
-                      default and does not remove existing stems when enabled.
+                      and per-track inclusions on its Cache page. Cleanup is off by default;
+                      enabling it requires confirmation of the seven-day quarantine.
                     </div>
                   </div>
 

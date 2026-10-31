@@ -15,7 +15,12 @@ export function readSubbeatsStemPolicy() {
 
 export function updateSubbeatsStemPolicy(patch: z.infer<typeof subbeatsStemPolicyPatchSchema>) {
   const state = readSubbeatsStemPolicy();
-  if (patch.enabled !== undefined) state.enabled = patch.enabled;
+  if (patch.enabled !== undefined) {
+    state.enabled = patch.enabled;
+    // Older selective-admission opt-ins never imply permission to delete.
+    if (!patch.enabled) state.cleanupEnabled = false;
+    else if (patch.confirmCleanup === true) state.cleanupEnabled = true;
+  }
   if (patch.track) {
     const ids = new Set(state.regularIds);
     if (patch.track.include) ids.add(patch.track.id); else ids.delete(patch.track.id);

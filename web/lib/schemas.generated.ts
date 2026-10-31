@@ -5532,10 +5532,12 @@ export const subbeatsPreviewSchema = z.object({
 // Kept separate from the bounded extended-preparation queue.
 export const subbeatsStemPolicySchema = z.object({
   enabled: z.boolean().default(false),
+  cleanupEnabled: z.boolean().default(false),
   regularIds: z.array(z.string().min(1).max(200)).max(100000).default([]),
 });
 export const subbeatsStemPolicyPatchSchema = z.object({
   enabled: z.boolean().optional(),
+  confirmCleanup: z.boolean().optional(),
   track: z.object({ id: z.string().min(1).max(200), include: z.boolean() }).optional(),
 }).strict().refine(value => value.enabled !== undefined || value.track !== undefined, 'Choose a cache policy change');
 export const subbeatsCacheViewSchema = z.object({
@@ -5544,6 +5546,15 @@ export const subbeatsCacheViewSchema = z.object({
   usage: z.object({ bytes: z.number().nonnegative(), dirs: z.number().nonnegative(),
     measuredAt: z.string(), fresh: z.boolean(), passRunning: z.boolean() }).nullable(),
   disk: z.object({ total: z.number().positive(), available: z.number().nonnegative() }).nullable(),
+});
+
+export const subbeatsCleanupStateSchema = z.object({
+  busy: z.enum(['estimate','cleanup']).nullable(),
+  estimate: z.object({ folders: z.number().int().nonnegative(), bytes: z.number().nonnegative(),
+    skipped: z.number().int().nonnegative(), measuredAt: z.string() }).nullable(),
+  report: z.object({ quarantined: z.number().int().nonnegative(), deletedCount: z.number().int().nonnegative(),
+    freedBytes: z.number().nonnegative(), failed: z.number().int().nonnegative(), released: z.array(z.string()) }).nullable(),
+  error: z.string().nullable(),
 });
 
 // ─── from controller/src/schemas/transitions.ts ──────────────────────────

@@ -58,6 +58,65 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Explicit cleanup consent and reclaim estimate — 31 October 2026
+
+The Cache opt-in now describes the actual deletion workflow. An operator first
+requests “Calculate reclaimable space”, sees the number of eligible-to-remove
+folders and their approximate file bytes, then confirms “Enable and quarantine”.
+Enabling starts quarantine immediately, as requested by the owner. Space is
+reclaimed only after seven days, never by the initial move. The estimate is an
+explicit background walk; GET/polling endpoints return stored in-memory progress
+and never repeat that walk. Estimates expire after 15 minutes so an old visit
+cannot authorise a cleanup using stale figures. Recently written folders are skipped and unreadable
+candidate sizes fail the estimate rather than silently reporting zero.
+
+`cleanupEnabled` is separate durable consent in the existing stem-policy file,
+defaulting false even when an old `enabled: true` admission opt-in already exists.
+An API enable needs `confirmCleanup: true`; the UI requires a successful estimate
+and a confirmation dialog. Old installations do not acquire deletion permission
+on upgrade. An existing admission-only opt-in remains in force until changed.
+
+The shared quarantine engine now accepts a retention predicate and pre-mutation
+revalidation. Selective cleanup owns `.subbeats-quarantine`, separate from the
+upstream `.orphan-quarantine`. It protects any historical play (including a
+missing catalogue row), Navidrome stars, operator hearts, prepared Sub/Beats
+tracks, manual inclusions and the existing dance/BPM/grid fallback. Stars and
+curation/preparation state must be verified before any cleanup; source failures
+refuse the pass. Protections are refreshed after planning and before mutations;
+new plays/hearts are checked at each candidate. A changed policy stops the pass.
+Analysis writes, an empty library and an offline cache also refuse cleanup.
+
+The initial confirmed pass and manual retries can process the operator-approved
+large plan. Later daily passes share the 04:47 maintenance slot and its existing
+mass-move ceiling. Ordinary orphan cleanup remains independent and runs after
+the selective job. Turning the option off stops further deletion and restores
+quarantined folders into free live slots where possible. Collisions are retained;
+selective cleanup never directly deletes the newer live copy. Unknown quarantine
+dates retain the folder. Usage snapshots are invalidated even if a policy change
+interrupts an already-mutating pass. Normal byte-budget eviction still applies,
+so the played/starred protection is explicitly scoped to this cleanup.
+
+No live cache operation is run by the agent. The separate extended Sub/Beats
+cache is not migrated by this change; consolidation is the next storage step.
+The admission-only section below records the preceding behaviour and is
+superseded by this explicit cleanup consent where it describes deletion.
+
+Verification: controller Sub/Beats tests passed (39), stem tests passed (121),
+and orphan tests passed (39). The final cleanup-only run passed all 10 cases.
+Controller and web lint/typechecks passed; controller retains 1,741 existing
+warnings. Web settings tests (32), admin-query audit and its nine tests passed.
+Isolated desktop/mobile browser checks verified estimate, cancel, immediate
+quarantine, disable/restore and reload, with no page errors or overflow.
+Library search verification and all six query-cache checks passed. Evidence is
+in `/home/jaz666/codex/subbeats-cleanup-evaluation-20261031/` outside Git.
+
+Source integration: commit this scoped change on `feat/sub-beats`, push it, then
+cherry-pick onto `test-station/sleeve-notes-clean-20261014`. The preceding station
+source rollback is `005a1141`. No station rebuild, restart or real cache/state
+mutation is part of this integration. The owner rebuilds controller and web
+using the existing compose overlays and checks `/api/health`. After acceptance,
+continue extended-cache consolidation from `/home/jaz666/codex/subwave-sub-beats`.
+
 ## Optional selective cache policy and manual inclusions — 31 October 2026
 
 Selective regular-stem admission now requires explicit operator opt-in in

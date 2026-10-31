@@ -232,3 +232,15 @@ function outroTailBars(s: string | null): boolean {
     return false;
   }
 }
+
+// Cleanup also protects historical plays whose catalogue row has disappeared.
+export function stemCleanupKeepIds(opts: StemScanOpts): Set<string> {
+  const rows = requireDb().prepare(`SELECT t.id FROM tracks t WHERE ${STEM_ELIGIBLE_SQL}`)
+    .all(admissionParams(opts)) as Array<{id:string}>;
+  const plays = requireDb().prepare("SELECT DISTINCT track_id AS id FROM plays WHERE track_id IS NOT NULL AND track_id != ''").all() as Array<{id:string}>;
+  return new Set([...rows, ...plays].map(row => row.id).concat(
+    opts.operatorLikedIds ?? [], opts.starredIds ?? [], opts.subbeatsIds ?? [], opts.regularStemIds ?? []));
+}
+export function trackHasPlayed(id: string): boolean {
+  return !!requireDb().prepare('SELECT 1 FROM plays WHERE track_id = ? LIMIT 1').get(id);
+}

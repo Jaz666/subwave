@@ -30,6 +30,7 @@ import { getFullContext } from '../context.js';
 import { queue } from './queue.js';
 import { createPoolBuilder } from './auto-pool.js';
 import { applyTrackFloor, capCueOutSec, trackLengthSeconds } from '../music/track-floor.js';
+import { startSubbeatsCleanup } from '../music/subbeats-stem-cleanup.js';
 import { runScheduledOrphanPurge } from '../music/orphan-purge.js';
 import { allTrackIdsOrdered } from '../music/library-db.js';
 import { airableAnchorTracks, coastFloor, COAST_MIN_SEC, rotationCoast, rotationOrder, showNoRepeatGuard } from '../music/show-recency.js';
@@ -1246,6 +1247,7 @@ async function nightlyDoctor() {
 // 04:17 doctor.
 async function stemOrphanPurgeTick() {
   try {
+    await startSubbeatsCleanup(true);
     if (settings.get()?.audio?.stemOrphanPurgeEnabled !== true) return;
     const r = await runScheduledOrphanPurge(allTrackIdsOrdered());
     if (r.refused) { queue.log('error', `Stem orphan purge: refused — ${r.reason}`); return; }

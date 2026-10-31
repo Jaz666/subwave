@@ -561,25 +561,29 @@ export function likeSignals(): StemScanOpts {
 }
 
 // The maintenance child only reads likes; it must never mint a second secret.
-export async function admissionSignals(): Promise<StemScanOpts> {
+export async function admissionSignals({ strict = false } = {}): Promise<StemScanOpts> {
   await likes.load({ readOnly: true });
   const signals: StemScanOpts = likeSignals();
   try {
     const policy = readSubbeatsStemPolicy();
     signals.selectiveStems = policy.enabled;
     signals.regularStemIds = policy.regularIds;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     console.warn('[stems] Could not read Sub/Beats cache policy; preserving original admission');
   }
-  if (!signals.selectiveStems) return signals;
+  if (!signals.selectiveStems && !strict) return signals;
+  if (strict) signals.operatorLikedIds = await likes.operatorHeartsForCleanup();
   try {
-    signals.starredIds = (await subsonic.getStarred()).flatMap(track => track?.id ? [String(track.id)] : []);
-  } catch {
+    signals.starredIds = (await subsonic.getStarred({ strict })).flatMap(track => track?.id ? [String(track.id)] : []);
+  } catch (error) {
+    if (strict) throw error;
     console.warn('[stems] Could not refresh Navidrome stars; local operator hearts still qualify');
   }
   try {
     signals.subbeatsIds = readSubbeatsQueue(config.stateDir).jobs.filter(job => job.status === 'prepared').map(job => job.id);
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     console.warn('[stems] Could not read Sub/Beats preparation; keeping the saved list unchanged');
   }
   return signals;
