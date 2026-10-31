@@ -1,10 +1,10 @@
-// Discovery hints from existing analysis only; no drive score or eligibility claim.
+// Dance-family discovery hints ranked by existing analysis; no drive-score claim.
 import { requireDb } from './handle.js';
 
 export function subbeatsCandidates(q: string, offset = 0) {
   const d = requireDb();
   const where = q ? `(LOWER(COALESCE(title,'')) LIKE @q OR LOWER(COALESCE(artist,'')) LIKE @q OR LOWER(COALESCE(album,'')) LIKE @q)`
-    : 'bpm BETWEEN 90 AND 180';
+    : 'bpm BETWEEN 90 AND 180 AND subbeats_dance_genres(genres) = 1';
   const grid = `CASE WHEN json_valid(beats_json) THEN COALESCE(json_array_length(beats_json),0) >= 16 ELSE 0 END`;
   const params = { q: `%${q.toLowerCase()}%`, offset };
   const rows = d.prepare(`SELECT id, COALESCE(title,'') title, COALESCE(artist,'') artist,

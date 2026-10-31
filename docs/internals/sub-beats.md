@@ -1,6 +1,6 @@
 # Sub/Beats development
 
-## Current direction — 31 October 2026
+## Preview baseline — 31 October 2026
 
 Owner decision: return to the earlier 16-bar stem mix as the development baseline.
 The Library preview now requests that existing renderer for every prepared pair,
@@ -23,6 +23,41 @@ existing compose overlays. Until then, the running page remains the previous
 annotated preview. Roll back this page change by reverting its scoped commit;
 prepared caches and analyzer/controller services do not need changes.
 
+## Dance-music discovery — 31 October 2026
+
+Owner scope: Sub/Beats primarily targets the broad dance-music umbrella. Beat
+metadata alone must not suggest unrelated rock/pop tracks for preparation.
+Default “Tracks to explore” suggestions now require an ingested dance-family
+genre as well as the existing stored 90–180 BPM range. Existing beat data and
+analysis confidence order those suggestions. Matching uses all stored genres,
+with the existing one-directional, word-aligned genre matching rules.
+
+The discovery vocabulary includes broad Dance/Electronic/Electronica/EDM tags,
+house, techno, trance, disco, electro styles, big beat/breakbeat, UK garage,
+drum and bass/jungle, dubstep, harder dance and related club styles. Bare
+Garage/Electro/Acid tags are accepted exactly; Garage Rock and Acid Rock do not
+qualify through those labels. This vocabulary is a discovery hint, not a new
+station-wide taxonomy. A broad Electronic tag can still include unsuitable
+music; audio qualification remains a separate step. Missing genre tags do not
+qualify automatically. No inference is made from artist names.
+
+Explicit search still finds any library track, including missing/mislabelled
+genres and missing tempo, and manual queue admission stays open. Existing
+prepared tracks and saved jobs are retained. No four-to-the-floor approval,
+analysis thresholds, picker rules or station playback policy are changed.
+
+Deployment: this filter requires rebuilding `controller` and `web` through the
+existing compose overlays; the analyzer and prepared caches need no changes.
+The owner runs rebuilds. Revert the scoped dance-discovery commit to restore
+previous default suggestions; leave saved preparation jobs intact.
+
+Validation: Sub/Beats controller suites passed, followed by all nine route/genre
+checks after the final matcher change. Controller and web lint/typechecks and
+29 Library web tests passed. Controller lint retains its existing warnings.
+No browser or live-library inspection was run. Development source on
+`feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
+or restart is performed by the agent.
+
 ## Deferred preview controls — owner decisions, 31 October 2026
 
 Pause mixing work while improving which tracks qualify for Sub/Beats analysis.
@@ -36,17 +71,17 @@ Return to these controls later:
   and provide a reset to detected positions. Manual tweaking must not be required.
 - Leave LLM listening/clash judging aside; do not add work to the station LLM.
 
-Current qualification baseline (code inspection, 31 October): unfiltered discovery
-suggests tracks with stored BPM between 90 and 180, ordered by presence of at
+Earlier qualification baseline (before the dance-music filter, 31 October):
+unfiltered discovery suggests tracks with stored BPM between 90 and 180, ordered by presence of at
 least 16 stored beats, then existing analysis confidence. Searching bypasses that
 BPM restriction; queue admission accepts any known library track. These are
 suggestions, not a four-to-the-floor eligibility test. Full preparation seeks
 64-beat local timing fits with RMS residual below 35 ms and relatively strong
 percussive onset support. That evidence alone does not verify a kick on each
-quarter note, usable mixing windows, or pair suitability. The next task is to
-agree and validate qualification criteria before changing admission or analysis.
+quarter note, usable mixing windows, or pair suitability. Dance-family discovery
+above supersedes that suggestion rule; deeper audio qualification still needs validation before changing admission or analysis.
 
-Current continuation notes: [2026-10-30 session handover](../investigations/2026-10-30-subbeats-handover.md).
+Earlier listening evidence: [2026-10-30 session handover](../investigations/2026-10-30-subbeats-handover.md).
 
 Sub/Beats identifies likely sustained four-to-the-floor tracks, prepares deeper
 Librosa analysis and dedicated stem regions, and eventually offers a prepared
