@@ -58,6 +58,55 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Library sub-pages — 31 October 2026
+
+Sub/Beats stays under the existing Library sidebar entry and uses the Library's
+`lib-tabs` navigation styling. Four real routes replace the combined page:
+
+- `/admin/library/subbeats` — Explore: dance/whole-library discovery, filters,
+  persistent cross-page selection and bounded queue admission.
+- `/admin/library/subbeats/preparation` — Preparation: progress, pause/resume,
+  saved-list search/status filters, pagination and explicit retries.
+- `/admin/library/subbeats/prepared` — Prepared tracks: searchable prepared
+  recordings, genre filter, and Use as outgoing/incoming controls.
+- `/admin/library/subbeats/preview` — Preview: the chosen pair, track search,
+  existing bar-shift control and seekable browser audition.
+
+The existing Sub/Beats URL remains Explore. The sidebar remains one Library
+child; no extra sidebar hierarchy or new global style is introduced. Links have
+an active-page indicator, wrap on phones using the existing Library pattern,
+and update the admin breadcrumb and document title. The admin motion frame keeps
+a stable key within Sub/Beats so it does not remount the nested layout on each
+internal navigation. Each route renders only its own controls. Preparation/Preview do not issue candidate-list reads.
+
+A small provider in the nested route layout retains in-memory selections,
+separate Explore/Prepared filters, preparation filters/page and the chosen pair
+and shift while navigating between these pages. Leaving Sub/Beats clears these
+unsaved choices, as leaving the previous combined page did. The provider holds
+no audio: the preview hook remains page-owned, so navigating away cancels an
+in-flight audition or stops/releases completed audio. Browser back restores the
+chosen pair/shift without restarting playback. No mix method, preparation policy,
+API contract or cache limits change in this increment. Deploy only `web` for
+this navigation change; any earlier unbuilt controller changes still require the
+controller rebuild already supplied.
+
+Verification: 32 Library web tests, nine admin-query tests, the static query audit
+and web lint/typecheck passed. Desktop/mobile browser checks covered all four
+direct routes, active links/sidebar highlighting, cross-page selection, separate
+Explore/Prepared filters, preparation filters, pair/shift persistence, browser
+back, stopped/released audition audio on exit, and no candidate reads on the
+Preparation page. Both viewports had no page errors or horizontal overflow.
+The existing Library search browser checks and all six query-cache checks passed.
+Tests used an isolated 2,500-track fixture API and temporary state, with test:test
+auth. Both temporary servers were stopped and generated Next type-file changes
+restored. Fixture scripts, results and screenshots are under
+`/home/jaz666/codex/subbeats-subpages-evaluation-20261031/` outside Git.
+
+Source belongs to `feat/sub-beats` and is to be cherry-picked into the test
+station checkout. No station rebuild or restart is performed by the agent.
+Next: open Library → Sub/Beats and use the in-tool page navigation after the
+owner's web rebuild; verify the selected pair survives Prepared tracks → Preview.
+
 ## Browsing and selection at library scale — 31 October 2026
 
 The Library page now has explicit Dance candidates, Prepared tracks and Entire
@@ -91,8 +140,8 @@ does not clear unrelated selections.
 The existing 100-track submission, 500-entry list and separate 5 GB prepared-cache
 limits are shown before submission. This increment does not enlarge them, evict
 prepared audio or automatically admit thousands of tracks. Preparation has its
-own search/status counts and 20-entry pages. Preview controls are collapsed by
-default and have a prepared-track search that retains the selected pair. No audio
+own search/status counts and 20-entry pages. Preview controls now live on their own sub-page and have a prepared-track
+search that retains the selected pair. No audio
 rendering or mix policy changes are part of this increment.
 
 A compact SQLite browse index is ensured on database open after migration,
