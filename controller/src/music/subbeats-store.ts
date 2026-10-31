@@ -39,6 +39,13 @@ export function createSubbeatsStore(stateDir: string) {
       state.jobs = [...jobs.values()];
       save(state);
     },
+    remove(id: string) {
+      const state = readSubbeatsQueue(stateDir);
+      const job = state.jobs.find(job => job.id === id);
+      if (job && ['queued', 'running'].includes(job.status)) throw new Error('Wait for preparation to finish before removing this entry');
+      state.jobs = state.jobs.filter(job => job.id !== id);
+      save(state);
+    },
     pause(paused: boolean) { const state = readSubbeatsQueue(stateDir); state.paused = paused; save(state); },
     event(raw: unknown, allowedIds: readonly string[]) {
       const event = subbeatsEventSchema.parse(raw);

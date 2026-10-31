@@ -2,15 +2,16 @@
 
 import { SubbeatsCache, useSubbeatsCache } from './subbeats/SubbeatsCache';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useDebounceValue } from 'usehooks-ts';
 import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
-import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
+import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
 import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useJoinPreview } from './library/useJoinPreview';
@@ -83,6 +84,20 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     })),
     onDone: async (view, _paused, client) => { await client.cancelQueries({ queryKey: subbeatsKeys.state, exact: true }); client.setQueryData(subbeatsKeys.state, view); },
   });
+  const [removing, setRemoving] = useState<{id:string; title:string; artist:string} | null>(null);
+  const remove = useAdminMutation({adminFetch,
+    request:async (id:string, fetcher) => subbeatsViewSchema.parse(await adminJson(fetcher, `/library/subbeats/entries/${encodeURIComponent(id)}`, {method:'DELETE'})),
+    onDone:async (view, id, client) => {
+      await client.cancelQueries({queryKey:subbeatsKeys.state,exact:true});
+      client.setQueryData(subbeatsKeys.state,view);
+      setSelected(current => current.filter(row => row.id !== id));
+      await Promise.all([
+        client.invalidateQueries({queryKey:['library','subbeats','candidates']}),
+        client.invalidateQueries({queryKey:['library','subbeats','cache']}),
+        client.invalidateQueries({queryKey:['library','subbeats','cleanup']}),
+      ]);
+    },
+  });
   const jobs = state.data?.jobs ?? [];
   const byId = new Map(jobs.map(j => [j.id, j]));
   const rows = candidates.data?.rows ?? [];
@@ -120,6 +135,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     }
     previousJobs.current = jobVersion;
   }, [client, jobVersion]);
+  useEffect(() => {
+    if (!state.data) return;
+    const valid = new Set(state.data.jobs.filter(job => job.status === 'prepared').map(job => job.id));
+    if (outgoing && !valid.has(outgoing)) { setOutgoing(''); setBarShift(0); }
+    if (incoming && !valid.has(incoming)) { setIncoming(''); setBarShift(0); }
+  },[state.data,outgoing,incoming,setOutgoing,setIncoming,setBarShift]);
   const addRows = (added: SubbeatsCandidate[]) => setSelected(current => selectSubbeatsRows(current, added, jobs));
 
   const pagination = <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-ink p-4" aria-label="Track pagination">
@@ -153,6 +174,14 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       <Button className="min-h-11" onClick={() => void state.refetch()}><RefreshCw /> Retry</Button>
     </div>}
 
+    {(page === 'prepared' || page === 'preparation') && state.data?.maintenanceRunning && <p className="text-sm text-muted">Removal is available when the current library analysis or preparation run has finished.</p>}
+    {remove.isPending && <p role="status" className="text-sm">Removing the entry and its extended Sub/Beats files…</p>}
+    {remove.isSuccess && <p role="status" className="text-sm">Sub/Beats entry removed. You can prepare the track again from Explore.</p>}
+    {remove.isError && <p role="alert" className="text-sm">{remove.error instanceof AdminResponseError && typeof remove.error.body.error === 'string' ? remove.error.body.error : 'Could not remove the entry. Retry shortly.'}</p>}
+    <V3AlertDialog open={!!removing} onOpenChange={open => { if (!open) setRemoving(null); }}
+      title="Remove Sub/Beats entry?" confirmLabel="Remove entry and files" danger
+      description={removing ? `Remove “${removing.title}” by ${removing.artist} and delete its extended Sub/Beats files? Files needed by another entry are kept. The library track, regular stems and manual regular-cache inclusion stay unchanged. You will need to prepare it again to preview it.` : ''}
+      onConfirm={() => { if (removing) remove.mutate(removing.id); }} />
     {page === 'cache' && <SubbeatsCache cache={cache} />}
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
@@ -215,7 +244,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       {browsing && <section className="min-w-0 border border-ink" aria-labelledby="subbeats-candidates" aria-busy={candidates.isFetching}>
         <div className="border-b border-ink p-4">
           <h2 id="subbeats-candidates" className="font-display text-xl font-bold">{page === 'prepared' ? 'Prepared tracks' : 'Tracks to explore'}</h2>
-          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared resources are saved for reuse. Choose a pair here, then open Preview to listen.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
+          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared resources are saved for reuse. Choose a pair here, then open Preview to listen. Remove an entry to delete its extended files.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
           <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Regular stem inclusion is separate from deeper Sub/Beats preparation. It bypasses selective cache criteria, with the normal priority and space budget.</p>
           {page === 'prepared' && (outgoing || incoming) && <div className="mt-3 flex flex-wrap items-center gap-3 text-sm" role="status">
             <span>Outgoing: {byId.get(outgoing)?.title || 'Choose a track'} · Incoming: {byId.get(incoming)?.title || 'Choose a track'}</span>
@@ -269,10 +298,10 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
               {candidates.data && candidates.data.selectableCount <= SUBBEATS_BATCH_LIMIT ? `Select matching · ${candidates.data.selectableCount} available` : `Select matching · up to ${SUBBEATS_BATCH_LIMIT}`}
             </Button>
           </div>
-          <p id="subbeats-selection-limit" className="mt-2 text-xs text-muted" role="status">{selection.length >= SUBBEATS_BATCH_LIMIT ? 'Batch limit reached. Remove selected tracks or queue this batch before selecting more.' : jobs.length + selection.filter(row => !byId.has(row.id)).length >= SUBBEATS_QUEUE_LIMIT ? 'Preparation list capacity reached. Existing failed or unavailable entries can still be selected for retry.' : ''}</p>
+          <p id="subbeats-selection-limit" className="mt-2 text-xs text-muted" role="status">{selection.length >= SUBBEATS_BATCH_LIMIT ? 'Batch limit reached. Remove selected tracks or queue this batch before selecting more.' : jobs.length + selection.filter(row => !byId.has(row.id)).length >= SUBBEATS_QUEUE_LIMIT ? 'Preparation list capacity reached. Remove completed entries or retry failed ones.' : ''}</p>
           <div className="mt-3 border-t border-ink/20 pt-3">
             <p className="text-sm tabular-nums" aria-live="polite">{selection.length} selected{selection.length > selectionOnPage ? ` · ${selection.length - selectionOnPage} on other pages or filters` : ''}</p>
-            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT} preparation entries used. Prepared audio has a separate 5 GB limit.</p>
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT} preparation entries used. Prepared audio shares the regular stem-cache budget.</p>
             {jobs.length >= SUBBEATS_QUEUE_LIMIT && <p className="mt-2 text-sm">The preparation list is full. Existing failed or unavailable entries can still be retried.</p>}
             <div className="mt-3 flex flex-wrap gap-3">
               <Button className="min-h-11" variant="solid" disabled={!selection.length || enqueue.isPending || !state.data || query.trim() !== q} onClick={() => enqueue.mutate(selection.map(row => row.id))}>
@@ -315,6 +344,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 {page === 'prepared' && <div className="mt-3 flex flex-wrap gap-2 lg:col-span-3">
                   <Button className="min-h-11" aria-pressed={outgoing === row.id} disabled={incoming === row.id} onClick={() => { setOutgoing(row.id); setBarShift(0); }}>{outgoing === row.id ? 'Outgoing selected' : 'Use as outgoing'}</Button>
                   <Button className="min-h-11" aria-pressed={incoming === row.id} disabled={outgoing === row.id} onClick={() => { setIncoming(row.id); setBarShift(0); }}>{incoming === row.id ? 'Incoming selected' : 'Use as incoming'}</Button>
+                  <Button className="min-h-11" disabled={remove.isPending || enqueue.isPending || !!state.data?.maintenanceRunning} aria-label={`Remove Sub/Beats entry for ${row.title} by ${row.artist}`} onClick={() => { remove.reset(); setRemoving(row); }}>Remove</Button>
                 </div>}
               </div>
               <span className="shrink-0 text-right text-sm text-ink tabular-nums">{row.bpm ? row.bpm.toFixed(1) : '—'}<span className="block text-xs text-muted">BPM</span></span>
@@ -334,7 +364,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           </div>
           <p className="mt-3 text-sm tabular-nums" aria-live="polite">{state.isLoading ? 'Loading progress…' : `${prepared} prepared · ${pending} remaining`}</p>
           <p className="mt-2 text-sm leading-relaxed break-words text-muted">{state.data?.paused ? 'Paused. Any track already being prepared will finish first.' : state.data?.progress && pending ? state.data.progress : pending ? 'Queued tracks will run when library analysis is available.' : 'Choose tracks to prepare. Saved results are reused.'}</p>
-          <p className="mt-3 text-xs text-muted">Preparation respects your analysis quiet-time setting. Saved results use the separate 5 GB cache; the list holds up to 500 entries.</p>
+          <p className="mt-3 text-xs text-muted">Preparation respects your analysis quiet-time setting. Saved results share the regular stem-cache budget; the list holds up to 500 entries.</p>
         </div>
         <div className="grid gap-3 border-b border-ink p-4">
           <div><label htmlFor="subbeats-job-search" className="mb-1 block text-sm font-medium">Find preparation entries</label><Input className="min-h-11" id="subbeats-job-search" type="search" value={jobQuery} placeholder="Artist, track or album" onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /></div>
@@ -352,7 +382,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {ranked.slice(activeJobPage * 20, (activeJobPage + 1) * 20).map(job => <li key={job.id} className="p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0"><p className="text-sm font-semibold break-words">{job.title}</p><p className="text-sm break-words text-muted">{job.artist}</p></div>
-              {(job.status !== 'queued' && job.status !== 'running') && <Button className="min-h-11" size="sm" disabled={enqueue.isPending} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>}
+              {(job.status !== 'queued' && job.status !== 'running') && <div className="flex shrink-0 flex-wrap justify-end gap-2"><Button className="min-h-11" size="sm" disabled={enqueue.isPending} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>
+                <Button className="min-h-11" size="sm" aria-label={`Remove Sub/Beats entry for ${job.title} by ${job.artist}`} disabled={remove.isPending || enqueue.isPending || !!state.data?.maintenanceRunning} onClick={() => { remove.reset(); setRemoving(job); }}>Remove</Button></div>}
             </div>
             <p className="mt-2 text-xs font-medium" role={job.status === 'running' ? 'status' : undefined}>{LABEL[job.status]}</p>
             {job.error && <p className="mt-1 text-xs leading-relaxed break-words text-muted">{job.error}</p>}

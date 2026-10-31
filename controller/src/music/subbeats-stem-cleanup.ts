@@ -1,3 +1,4 @@
+import { subbeatsRemovalRunning } from './subbeats-removal.js';
 // Explicit cleanup uses the proven quarantine engine, in its own namespace.
 // Estimates are operator-triggered background walks, never part of a GET/poll.
 // Missing stars/curation/library evidence refuses cleanup, rather than deleting
@@ -38,6 +39,7 @@ async function directoryBytes(dir: string): Promise<number> {
   return bytes;
 }
 async function requireCache() {
+  if (subbeatsRemovalRunning()) throw new Error('Wait for Sub/Beats entry removal to finish before scanning or cleaning the cache');
   if (!(await cache.stemsRootStatus({readOnly:true})).online) throw new Error('Stem cache is offline. Connect it, then retry.');
   if ((await cache.storedUsage())?.passRunning) throw new Error('Analysis is writing stems. Wait for it to finish, then retry cleanup.');
   if (!db.allTrackIdsOrdered().length) throw new Error('The library is empty or unavailable. Cleanup stopped.');
@@ -101,6 +103,7 @@ export async function runSubbeatsCleanup(opts: {now?: number; automatic?: boolea
 
 type CleanupState = z.infer<typeof subbeatsCleanupStateSchema>;
 let state: CleanupState = {busy:null, estimate:null, report:null, error:null};
+export const invalidateSubbeatsCleanupEstimate = () => { state = {...state,estimate:null}; };
 let pendingCleanup: {automatic:boolean} | null = null;
 export const subbeatsCleanupState = (): CleanupState => ({...state,
   estimate:state.estimate && Date.now() - Date.parse(state.estimate.measuredAt) < 15*60_000 ? state.estimate : null,
