@@ -245,7 +245,7 @@ await test('needsStemsIds hands back the scope in descending priority', () => {
     );
   }
   assert.equal(ordered[0], 'heavy', 'the station\'s own heavy rotation goes first');
-  assert.ok(scores.get(ordered[ordered.length - 1])! > 0, 'unblendable tracks are excluded');
+  assert.equal(scores.get(ordered[ordered.length - 1]), 0, 'original admission retains zero-score tracks at lowest priority');
 });
 
 await test('a limited run takes the top of the ranking, not the top of the id order', () => {

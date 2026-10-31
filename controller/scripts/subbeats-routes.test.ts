@@ -205,3 +205,49 @@ test('annotated preview resolves server-owned points and URLs, rejects unsuitabl
     assert.deepEqual(subbeatsStore.read(),before);
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
+
+test('regular stem policy is opt-in, persists exceptions separately and never edits the preparation queue', async () => {
+  const { readSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  const before = subbeatsStore.read();
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,regularIds:[]});
+  for (const path of ['/library/subbeats/cache']) {
+    assert.equal((await fetch(base + path)).status, 401);
+    assert.equal((await fetch(base + path, {method:'POST',headers:{'Content-Type':'application/json'},body:'{"enabled":true}'})).status, 401);
+  }
+  assert.equal((await post('/library/subbeats/cache', {track:{id:'missing',include:true}})).status, 400);
+  assert.equal((await post('/library/subbeats/cache', {enabled:'true'})).status, 400);
+  assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 200);
+  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
+  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:true,regularIds:['quiet-intro']});
+  await post('/library/subbeats/cache', {enabled:false});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,regularIds:['quiet-intro']});
+  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:false}});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,regularIds:[]});
+  assert.deepEqual(subbeatsStore.read(), before);
+  const { subbeatsCacheViewSchema } = await import('../src/schemas/subbeats.js');
+  const cache = await import('../src/music/stem-cache.js');
+  const walks = cache._cacheWalksForTests();
+  const response = await fetch(base + '/library/subbeats/cache', {headers});
+  assert.equal(response.status, 200);
+  const view = subbeatsCacheViewSchema.parse(await response.json());
+  assert.equal(view.policy.enabled, false);
+  assert.equal(cache._cacheWalksForTests(), walks, 'disk visualization must not walk the cache');
+  assert.equal(view.disk, null, 'an unmarked cache must not report the underlying disk as connected');
+});
+
+test('an unreadable policy is surfaced and never replaced by an edit', async () => {
+  const { config } = await import('../src/config.js');
+  const { writeFileSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const file = join(config.stateDir, 'subbeats', 'stem-policy.json');
+  const before = readFileSync(file, 'utf8');
+  try {
+    writeFileSync(file, '{broken');
+    assert.equal((await fetch(base + '/library/subbeats/cache', {headers})).status, 503);
+    assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 503);
+    assert.equal(readFileSync(file, 'utf8'), '{broken');
+    const cache = await import('../src/music/stem-cache.js');
+    assert.notEqual((await cache.admissionSignals()).selectiveStems, true, 'unreadable opt-in preserves upstream admission');
+  } finally { writeFileSync(file, before); }
+});

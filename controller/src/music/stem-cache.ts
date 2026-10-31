@@ -8,6 +8,7 @@ import * as settings from '../settings.js';
 import * as db from './library-db.js';
 import * as likes from '../broadcast/likes.js';
 import * as subsonic from './subsonic.js';
+import { readSubbeatsStemPolicy } from './subbeats-stem-policy.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import { stemEvictionOrder, UNKNOWN_TRACK_PRIORITY } from './stem-priority.js';
 import { mapPool } from '../util/async-pool.js';
@@ -563,6 +564,14 @@ export function likeSignals(): StemScanOpts {
 export async function admissionSignals(): Promise<StemScanOpts> {
   await likes.load({ readOnly: true });
   const signals: StemScanOpts = likeSignals();
+  try {
+    const policy = readSubbeatsStemPolicy();
+    signals.selectiveStems = policy.enabled;
+    signals.regularStemIds = policy.regularIds;
+  } catch {
+    console.warn('[stems] Could not read Sub/Beats cache policy; preserving original admission');
+  }
+  if (!signals.selectiveStems) return signals;
   try {
     signals.starredIds = (await subsonic.getStarred()).flatMap(track => track?.id ? [String(track.id)] : []);
   } catch {

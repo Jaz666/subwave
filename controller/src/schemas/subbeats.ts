@@ -67,3 +67,20 @@ export const subbeatsPreviewSchema = z.object({
   barShift: z.number().int().min(-2).max(2).default(0),
   referenceBars: z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32)]).optional(),
 });
+
+// Kept separate from the bounded extended-preparation queue.
+export const subbeatsStemPolicySchema = z.object({
+  enabled: z.boolean().default(false),
+  regularIds: z.array(z.string().min(1).max(200)).max(100000).default([]),
+});
+export const subbeatsStemPolicyPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  track: z.object({ id: z.string().min(1).max(200), include: z.boolean() }).optional(),
+}).strict().refine(value => value.enabled !== undefined || value.track !== undefined, 'Choose a cache policy change');
+export const subbeatsCacheViewSchema = z.object({
+  policy: subbeatsStemPolicySchema,
+  budgetBytes: z.number().nonnegative(),
+  usage: z.object({ bytes: z.number().nonnegative(), dirs: z.number().nonnegative(),
+    measuredAt: z.string(), fresh: z.boolean(), passRunning: z.boolean() }).nullable(),
+  disk: z.object({ total: z.number().positive(), available: z.number().nonnegative() }).nullable(),
+});

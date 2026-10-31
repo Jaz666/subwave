@@ -270,7 +270,8 @@ function resolveCrumb(pathname: string | null): { section?: string; page: string
   if (pathname?.startsWith('/admin/library/subbeats')) {
     const page = pathname.startsWith('/admin/library/subbeats/preparation') ? 'Preparation'
       : pathname.startsWith('/admin/library/subbeats/prepared') ? 'Prepared tracks'
-        : pathname.startsWith('/admin/library/subbeats/preview') ? 'Preview' : 'Explore';
+        : pathname.startsWith('/admin/library/subbeats/preview') ? 'Preview'
+          : pathname.startsWith('/admin/library/subbeats/cache') ? 'Cache' : 'Explore';
     return { section: 'Library', page: `Sub/Beats · ${page}` };
   }
   if (pathname?.startsWith('/admin/playlists')) return { section: 'Programming', page: 'Playlists' };

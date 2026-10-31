@@ -39,15 +39,15 @@ test('unmeasured tracks become eligible for backfill after ordinary beat analysi
   for (const [id,genres] of [['dance',['House']],['rock',['Rock']]] as const) {
     db.upsertTrackMeta(id, {title:id,genres:[...genres],duration:200});
   }
-  assert.deepEqual(db.needsStemsIds(), []);
+  assert.deepEqual(db.needsStemsIds(undefined, {selectiveStems:true}), []);
   for (const id of ['dance','rock']) db.upsertTrackAnalysis(id, {bpm:138,bars:[0,2000,4000]});
-  assert.deepEqual(db.needsStemsIds(), ['dance']);
-  assert.equal(db.canCacheStems('dance'), true);
-  assert.equal(db.canCacheStems('rock'), false);
-  assert.equal(db.canCacheStems('missing'), false);
+  assert.deepEqual(db.needsStemsIds(undefined, {selectiveStems:true}), ['dance']);
+  assert.equal(db.canCacheStems('dance', {selectiveStems:true}), true);
+  assert.equal(db.canCacheStems('rock', {selectiveStems:true}), false);
+  assert.equal(db.canCacheStems('missing', {selectiveStems:true}), false);
   db.upsertTrackAnalysis('dance', {bpm:138,bars:[0,2000,4000],stemsAttempted:true});
-  assert.deepEqual(db.needsStemsIds(), [], 'a cached/attempted eligible track does not churn');
-  assert.equal(db.canCacheStems('dance'), true, 'existing eligible stems may be refreshed');
+  assert.deepEqual(db.needsStemsIds(undefined, {selectiveStems:true}), [], 'a cached/attempted eligible track does not churn');
+  assert.equal(db.canCacheStems('dance', {selectiveStems:true}), true, 'existing eligible stems may be refreshed');
 });
 
 test('any historical play, operator star, Navidrome star or Sub/Beats preparation bypasses genre, tempo and grid checks', () => {
@@ -55,10 +55,22 @@ test('any historical play, operator star, Navidrome star or Sub/Beats preparatio
     db.upsertTrackMeta(id, {title:id,genres:['Rock']});
   }
   db.recordPlay({trackId:'played-rock',title:'played-rock',artist:'A',album:'B',playedAt:'2000-01-01T00:00:00.000Z',source:'auto',requestedBy:null,showId:null,showName:null});
-  const signals = {operatorLikedIds:['operator-rock'],starredIds:['navidrome-rock'],subbeatsIds:['subbeats-rock'],listenerLikedIds:['listener-rock']};
+  const signals = {selectiveStems:true,operatorLikedIds:['operator-rock'],starredIds:['navidrome-rock'],subbeatsIds:['subbeats-rock'],listenerLikedIds:['listener-rock']};
   for (const id of ['played-rock','operator-rock','navidrome-rock','subbeats-rock']) assert.equal(db.canCacheStems(id, signals), true, id);
   assert.equal(db.canCacheStems('listener-rock', signals), false, 'a listener like alone is not an operator/Navidrome star');
-  assert.equal(db.canCacheStems('navidrome-rock'), false, 'unstarred, unplayed non-dance tracks no longer qualify');
+  assert.equal(db.canCacheStems('navidrome-rock', {selectiveStems:true}), false, 'unstarred, unplayed non-dance tracks no longer qualify');
   assert.equal(db.canCacheStems('missing', {starredIds:['missing']}), false);
   assert.deepEqual(db.needsStemsIds(undefined,signals).sort(), ['navidrome-rock','operator-rock','played-rock','subbeats-rock']);
+});
+
+test('without explicit opt-in every library track keeps original admission', () => {
+  assert.equal(db.canCacheStems('rock'), true);
+  assert.equal(db.canCacheStems('listener-rock'), true);
+  assert.ok(db.needsStemsIds().includes('rock'));
+  assert.equal(db.canCacheStems('missing'), false);
+});
+test('manual regular inclusions bypass the selective criteria and can be removed', () => {
+  assert.equal(db.canCacheStems('rock', {selectiveStems:true,regularStemIds:['rock']}), true);
+  assert.ok(db.needsStemsIds(undefined, {selectiveStems:true,regularStemIds:['rock']}).includes('rock'));
+  assert.equal(db.canCacheStems('rock', {selectiveStems:true}), false);
 });

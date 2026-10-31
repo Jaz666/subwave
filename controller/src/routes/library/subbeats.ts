@@ -1,10 +1,13 @@
+import { statfs } from 'node:fs/promises';
+import * as stemCache from '../../music/stem-cache.js';
+import { readSubbeatsStemPolicy, updateSubbeatsStemPolicy } from '../../music/subbeats-stem-policy.js';
 import express from 'express';
 import { config } from '../../config.js';
 import { resolveGainDb } from '../../music/loudness.js';
 import * as blocklist from '../../music/blocklist.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
-import { subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
+import { subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
 import * as db from '../../music/library-db.js';
 import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
@@ -84,4 +87,21 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
   } catch (error) {
     if (!abort.signal.aborted) res.status(400).json({ error: error instanceof Error ? error.message : 'Preview could not be prepared.' });
   } finally { previewBusy = false; res.off('close', cancel); }
+});
+
+// No cache walk on a read: use the stored measurement and one filesystem stat.
+router.get('/library/subbeats/cache', requireAdmin, async (_req, res) => {
+  try {
+    const online = await stemCache.stemsRootStatus({ readOnly: true });
+    const disk = online.online ? await statfs(stemCache.stemsRoot()).catch(() => null) : null;
+    res.json({ policy: readSubbeatsStemPolicy(), budgetBytes: stemCache.budgetBytes(),
+      usage: await stemCache.storedUsage(),
+      disk: disk && { total: disk.blocks * disk.bsize, available: disk.bavail * disk.bsize } });
+  } catch { res.status(503).json({ error: 'Stem cache details could not be read. Saved policy has been kept.' }); }
+});
+router.post('/library/subbeats/cache', requireAdmin, validateBody(subbeatsStemPolicyPatchSchema), async (req, res) => {
+  await library.load();
+  if (req.body.track?.include && !db.getTrack(req.body.track.id)) return res.status(400).json({ error: 'Track is no longer in the library' });
+  try { res.json(updateSubbeatsStemPolicy(req.body)); }
+  catch { res.status(503).json({ error: 'Cache policy could not be saved. Retry shortly.' }); }
 });

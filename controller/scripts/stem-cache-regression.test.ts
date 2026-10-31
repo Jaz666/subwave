@@ -189,6 +189,8 @@ test('a successful no-work analysis pass leaves no pending snapshot marker', asy
 
 
 test('ordinary analysis measures fresh tracks and later backfills stems only for eligible dance recordings', async () => {
+  const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  updateSubbeatsStemPolicy({enabled:true});
   db.upsertTrackMeta('fresh-dance', {title:'Fresh dance',genres:['House'],duration:200});
   addTrack('rock');
   db.upsertTrackMeta('rock', {genres:['Rock']});
@@ -196,7 +198,7 @@ test('ordinary analysis measures fresh tracks and later backfills stems only for
   assert.equal((await runPass()).analyzed, 2, 'all genres still receive ordinary analysis');
   assert.equal(existsSync(cache.dirFor('fresh-dance')), false);
   assert.equal(existsSync(cache.dirFor('rock')), false);
-  assert.deepEqual(db.needsStemsIds(), ['fresh-dance']);
+  assert.deepEqual(db.needsStemsIds(undefined, {selectiveStems:true}), ['fresh-dance']);
   cacheExpected = true;
   writeBytes = 100;
   assert.equal((await runPass()).analyzed, 1, 'a later automatic pass selects only the measured dance recording');
@@ -207,7 +209,10 @@ test('ordinary analysis measures fresh tracks and later backfills stems only for
 
 
 test('ordinary analysis caches played, Navidrome-starred and Sub/Beats-prepared non-dance tracks without existing beat evidence', async () => {
-  const ids = ['played-rock','starred-rock','subbeats-rock'];
+  const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  updateSubbeatsStemPolicy({enabled:true});
+  updateSubbeatsStemPolicy({track:{id:'manual-rock',include:true}});
+  const ids = ['played-rock','starred-rock','subbeats-rock','manual-rock'];
   for (const id of ids) db.upsertTrackMeta(id, {title:id,genres:['Rock'],duration:200});
   db.recordPlay({trackId:ids[0],title:ids[0],artist:'A',album:'B',playedAt:'2000-01-01T00:00:00.000Z',source:'auto',requestedBy:null,showId:null,showName:null});
   starredIds = [ids[1]];
@@ -218,7 +223,23 @@ test('ordinary analysis caches played, Navidrome-starred and Sub/Beats-prepared 
   store.event({id:ids[2],status:'prepared',bundleKey:'a'.repeat(64)},[ids[2]]);
   const before = store.read();
   writeBytes = 100;
-  assert.equal((await runPass()).analyzed,3);
+  assert.equal((await runPass()).analyzed,4);
   for (const id of ids) assert.equal(existsSync(cache.dirFor(id)),true,id);
   assert.deepEqual(store.read(),before,'ordinary analysis must not rewrite extended Sub/Beats preparation');
+});
+
+test('turning the selective policy off restores regular caching without deleting existing stems', async () => {
+  const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  updateSubbeatsStemPolicy({enabled:true});
+  addTrack('kept-existing');
+  payload(cache.dirFor('kept-existing'), 'head', 100);
+  db.upsertTrackAnalysis('kept-existing', {stemsAttempted:true});
+  updateSubbeatsStemPolicy({enabled:false});
+  addTrack('legacy-rock');
+  db.upsertTrackMeta('legacy-rock', {genres:['Rock']});
+  cacheExpected = true;
+  writeBytes = 100;
+  await runPass();
+  assert.equal(existsSync(cache.dirFor('legacy-rock')), true);
+  assert.equal(existsSync(cache.dirFor('kept-existing')), true);
 });
