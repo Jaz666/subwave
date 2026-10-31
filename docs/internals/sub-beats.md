@@ -58,6 +58,37 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Cache colour breakdown — 31 October 2026
+
+The Cache page uses a labelled stacked bar: blue for kept regular stems, purple
+for regular stems belonging to prepared Sub/Beats tracks, amber for cleanup
+candidates, orange for quarantine, and neutral for remaining live-cache budget.
+Recently written, otherwise unsuitable folders have their own slate segment;
+they are excluded from the deletion estimate. Categories never overlap.
+Quarantine includes both selective and upstream orphan namespaces and is shown
+in addition to the configured live-cache budget. Over-budget live usage expands
+the chart rather than hiding occupied bytes. Disk-wide used/free space remains
+separate. Each segment has a visible name/size, a hover title and an accessible
+chart description, so colour is not the only indication.
+
+The existing explicit background estimate now measures the full breakdown;
+ordinary polling remains read-only and never walks the cache. Before a scan,
+the bar identifies usage as unclassified. A failed or expired scan does not
+present a new classification. Extended Sub/Beats bundles remain in the separate
+5 GiB cache and are explicitly excluded, pending consolidation; purple does not
+claim those bytes. Cleanup policy, consent and timing are unchanged.
+
+Verification: all 39 controller Sub/Beats checks passed, including exact category
+accounting and quarantine measurement. Controller and web lint/typechecks passed
+(controller retains its 1,741 existing warnings). The admin-query audit and all
+nine audit tests passed. Library search verification and all six query-cache
+checks passed. Isolated desktop/mobile checks confirmed distinct
+segment fills, visible legends, no page errors and no horizontal overflow;
+captures are `desktop-colour.png` and `mobile-colour.png` in the existing
+external evidence folder. Station source rollback for this colour change is
+`3c4e26a0`; the owner rebuilds controller and web, with no agent-run deployment
+or changes to the real cache. The next storage step remains consolidation.
+
 ## Explicit cleanup consent and reclaim estimate — 31 October 2026
 
 The Cache opt-in now describes the actual deletion workflow. An operator first

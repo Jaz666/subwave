@@ -32,13 +32,24 @@ export function useSubbeatsCache() {
   return { query, update };
 }
 const space = (bytes: number) => bytes < 1024 ** 3 ? fmtSize(bytes) : `${(bytes / 1024 ** 3).toLocaleString(undefined, { maximumFractionDigits: 1 })} GiB`;
-function SpaceBar({ label, value, total }: { label: string; value: number; total: number }) {
-  const percent = Math.min(100, Math.max(0, total > 0 ? value / total * 100 : 0));
-  return <svg viewBox="0 0 100 4" preserveAspectRatio="none" role="meter" aria-label={label}
-    aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={`${space(value)} of ${space(total)}`}
-    className="mt-3 h-4 w-full border border-ink bg-ink-soft text-ink">
-    <rect width={percent} height={4} fill="currentColor" />
-  </svg>;
+type SpaceSegment = {label:string; bytes:number; color:string};
+function SpaceBar({ label, segments, total }: { label:string; segments:SpaceSegment[]; total:number }) {
+  return <>
+    <svg viewBox="0 0 100 4" preserveAspectRatio="none" role="img" aria-label={`${label}: ${segments.map(segment => `${segment.label} ${space(segment.bytes)}`).join(', ')}`}
+      className="mt-3 h-4 w-full border border-ink bg-ink-soft">
+      {segments.map((segment, index) => {
+        const x = total > 0 ? Math.min(100, segments.slice(0,index).reduce((sum,item) => sum + item.bytes,0) / total * 100) : 0;
+        const width = total > 0 ? Math.min(100 - x, Math.max(0, segment.bytes / total * 100)) : 0;
+        return <rect key={segment.label} x={x} width={width} height={4} className={segment.color}><title>{segment.label}: {space(segment.bytes)}</title></rect>;
+      })}
+    </svg>
+    <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs" aria-label={`${label} legend`}>
+      {segments.map(segment => <li key={segment.label} className="flex items-center gap-2 tabular-nums">
+        <svg aria-hidden="true" viewBox="0 0 10 10" className="h-3 w-3 shrink-0 border border-ink/30"><rect width={10} height={10} className={segment.color} /></svg>
+        {segment.label} · {space(segment.bytes)}
+      </li>)}
+    </ul>
+  </>;
 }
 export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsCache> }) {
   const { query, update } = cache;
@@ -56,6 +67,17 @@ export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsC
     },
   });
   const estimate = cleanup.data?.estimate;
+  const breakdown = estimate?.breakdown;
+  const liveBytes = breakdown ? breakdown.keptBytes + breakdown.preparedBytes + breakdown.candidateBytes + breakdown.recentBytes : data?.usage?.bytes ?? 0;
+  const quarantineBytes = breakdown?.quarantineBytes ?? 0;
+  const cacheSegments: SpaceSegment[] = breakdown ? [
+    {label:'Kept stems',bytes:breakdown.keptBytes,color:'fill-blue-600'},
+    {label:'Sub/Beats prepared',bytes:breakdown.preparedBytes,color:'fill-purple-600'},
+    {label:'Cleanup candidates',bytes:breakdown.candidateBytes,color:'fill-amber-500'},
+    ...(breakdown.recentBytes > 0 ? [{label:'Recently written · skipped',bytes:breakdown.recentBytes,color:'fill-slate-500'}] : []),
+    {label:'Quarantined',bytes:quarantineBytes,color:'fill-orange-700'},
+  ] : [{label:'Cached stems · not classified',bytes:liveBytes,color:'fill-blue-600'}];
+  cacheSegments.push({label:'Available cache budget',bytes:Math.max(0,(data?.budgetBytes ?? 0)-liveBytes),color:'fill-ink-soft'});
   const busy = !!cleanup.data?.busy || action.isPending;
   const canEnable = !!estimate && !busy && !cleanup.data?.error && !cleanup.isError && !action.isError;
   return <section className="min-w-0 border border-ink p-4 sm:p-6" aria-labelledby="subbeats-cache-heading">
@@ -65,19 +87,23 @@ export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsC
     {data && <>
       <div className="mt-5 grid gap-6 lg:grid-cols-2">
         <div><h3 className="text-sm font-semibold">Regular stems · cache budget</h3>
-          {data.usage ? <><p className="mt-2 text-sm tabular-nums">{space(data.usage.bytes)} used of {space(data.budgetBytes)} · {data.usage.dirs.toLocaleString()} tracks</p>
-            <SpaceBar label="Regular stems against cache budget" value={data.usage.bytes} total={data.budgetBytes} />
-            <p className="mt-2 text-xs leading-relaxed text-muted">Measured {new Date(data.usage.measuredAt).toLocaleString()}.{!data.usage.fresh && ' This estimate may be out of date.'}{data.usage.passRunning && ' Analysis is adding stems.'}</p>
-            {data.usage.bytes > data.budgetBytes && <p className="mt-2 text-sm">Over budget by {space(data.usage.bytes - data.budgetBytes)}. The ordinary cache sweep removes lower-priority entries.</p>}
+          {(data.usage || breakdown) ? <><p className="mt-2 text-sm tabular-nums">{space(liveBytes)} used of {space(data.budgetBytes)}{data.usage && ` · ${data.usage.dirs.toLocaleString()} tracks`}</p>
+            <SpaceBar label="Stem cache space" segments={cacheSegments} total={Math.max(data.budgetBytes,liveBytes)+quarantineBytes} />
+            <p className="mt-2 text-xs leading-relaxed text-muted">{estimate ? `Colour breakdown measured ${new Date(estimate.measuredAt).toLocaleString()}. Approximate file sizes; quarantine is shown in addition to the live cache budget.` : 'Calculate reclaimable space below to measure the colour breakdown, including quarantine.'}</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted">{data.usage && `Stored track count measured ${new Date(data.usage.measuredAt).toLocaleString()}.${!data.usage.fresh ? ' This estimate may be out of date.' : ''}${data.usage.passRunning ? ' Analysis is adding stems.' : ''}`}</p>
+            {liveBytes > data.budgetBytes && <p className="mt-2 text-sm">Over budget by {space(liveBytes - data.budgetBytes)}. The ordinary cache sweep removes lower-priority entries.</p>}
           </> : <p className="mt-2 text-sm text-muted">Usage has not been measured yet. The next analysis or cache sweep will update it. Budget: {space(data.budgetBytes)}.</p>}
           <p className="mt-2 text-xs leading-relaxed text-muted">Quarantined folders are outside this budget and still occupy disk space.</p>
         </div>
         <div><h3 className="text-sm font-semibold">Available on the stem-cache disk</h3>
           {data.disk ? <><p className="mt-2 text-sm tabular-nums">{space(data.disk.available)} available of {space(data.disk.total)}</p>
-            <SpaceBar label="Available disk space" value={data.disk.available} total={data.disk.total} />
+            <SpaceBar label="Stem-cache disk" total={data.disk.total} segments={[
+              {label:'Used disk space',bytes:Math.max(0,data.disk.total-data.disk.available),color:'fill-slate-500'},
+              {label:'Available disk space',bytes:data.disk.available,color:'fill-ink-soft'},
+            ]} />
             <p className="mt-2 text-xs leading-relaxed text-muted">Shared with everything else on this disk, including quarantine.</p>
           </> : <p className="mt-2 text-sm text-muted">Disk space is unavailable. Check that the stem-cache disk is connected.</p>}
-          <p className="mt-3 text-xs leading-relaxed text-muted">Extended Sub/Beats stems currently use a separate 5 GiB cache. Its usage is not included in the regular-stem measurement.</p>
+          <p className="mt-3 text-xs leading-relaxed text-muted">Extended Sub/Beats stems currently use a separate 5 GiB cache. Its usage is not included here. Purple identifies regular-cache stems belonging to prepared Sub/Beats tracks.</p>
         </div>
       </div>
       <div className="mt-6 border-t border-ink/20 pt-5">
