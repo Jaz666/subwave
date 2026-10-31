@@ -1,19 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useDebounceValue } from 'usehooks-ts';
 import { z } from 'zod';
-import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2 } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema, type subbeatsBrowseStatusSchema } from '../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
 import { selectSubbeatsRows, subbeatsCanSelect, type SubbeatsCandidate } from './library/subbeats-selection';
+import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, type SubbeatsPage } from './subbeats/SubbeatsWorkspace';
 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
@@ -27,34 +28,39 @@ const LABEL: Record<Status, string> = {
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 const SELECT_CLASS = 'h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
 const BROWSE_LABEL = { 'not-started': 'Not started', ...LABEL };
-type BrowseStatus = 'all' | z.infer<typeof subbeatsBrowseStatusSchema>;
+const PAGES = [
+  { id: 'explore', href: '/admin/library/subbeats', label: 'Explore', sub: 'find candidates', Icon: Search },
+  { id: 'preparation', href: '/admin/library/subbeats/preparation', label: 'Preparation', sub: 'progress & retries', Icon: ListMusic },
+  { id: 'prepared', href: '/admin/library/subbeats/prepared', label: 'Prepared tracks', sub: 'choose a pair', Icon: Music },
+  { id: 'preview', href: '/admin/library/subbeats/preview', label: 'Preview', sub: 'listen & compare', Icon: Play },
+] as const;
 
-export default function SubbeatsPanel() {
+export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPage }) {
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const ready = hydrated && !needsAuth;
-  const [query, setQuery] = useState('');
+  const { selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+    jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift } = useSubbeatsWorkspace();
+  const browsePage = page === 'prepared' ? 'prepared' : 'explore';
+  const { query, offset, scope, genre, status } = browse[browsePage];
+  const updateBrowse = (patch: Partial<SubbeatsBrowseState>) => setBrowse(current => ({
+    ...current, [browsePage]: { ...current[browsePage], ...patch },
+  }));
+  const setQuery = (query: string) => updateBrowse({ query });
+  const setOffset = (offset: number) => updateBrowse({ offset });
+  const setScope = (scope: SubbeatsBrowseState['scope']) => updateBrowse({ scope });
+  const setGenre = (genre: string) => updateBrowse({ genre });
+  const setStatus = (status: SubbeatsBrowseState['status']) => updateBrowse({ status });
   const [q] = useDebounceValue(query.trim(), 300);
-  const [offset, setOffset] = useState(0);
-  const [selected, setSelected] = useState<SubbeatsCandidate[]>([]);
-  const [scope, setScope] = useState<'dance' | 'library' | 'prepared'>('dance');
-  const [genre, setGenre] = useState('');
-  const [status, setStatus] = useState<BrowseStatus>('all');
-  const [jobQuery, setJobQuery] = useState('');
-  const [jobStatus, setJobStatus] = useState('all');
-  const [jobPage, setJobPage] = useState(0);
-  const [previewSearch, setPreviewSearch] = useState('');
+  const browsing = page === 'explore' || page === 'prepared';
   const client = useQueryClient();
   const previousJobs = useRef<string | null>(null);
-  const [outgoing, setOutgoing] = useState('');
-  const [incoming, setIncoming] = useState('');
-  const [barShift, setBarShift] = useState(0);
   const state = useAdminQuery({
     key: subbeatsKeys.state, adminFetch, enabled: ready, refetchInterval: 3000,
     request: async (fetcher, signal) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats', undefined, signal)),
   });
   const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, barShift]), adminFetch, '/library/subbeats/join-preview');
   const candidates = useAdminQuery({
-    key: subbeatsKeys.candidates(q, offset, scope, genre, status), adminFetch, enabled: ready,
+    key: subbeatsKeys.candidates(q, offset, scope, genre, status), adminFetch, enabled: ready && browsing,
     request: async (fetcher, signal) => subbeatsCandidatePageSchema.parse(await adminJson(fetcher,
       `/library/subbeats/candidates?${new URLSearchParams({ q, offset: String(offset), scope, genre, status })}`, undefined, signal)),
   });
@@ -107,18 +113,27 @@ export default function SubbeatsPanel() {
     <header>
       <Link href="/admin/library" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted underline-offset-4 hover:text-ink hover:underline"><ArrowLeft size={14} /> Library</Link>
       <h1 className="font-display text-3xl font-bold text-ink">Sub/Beats</h1>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Find tracks with a driving beat and queue deeper analysis. Preparation continues in the background when you leave this page.</p>
-      <p className="mt-2 max-w-prose text-sm text-muted">Previews are for listening only. Station playback continues using your existing transitions.</p>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">{
+        page === 'explore' ? 'Find dance-music candidates and choose tracks for deeper analysis.'
+          : page === 'preparation' ? 'Monitor preparation, pause queued work and retry individual tracks. Work continues when you leave this page.'
+            : page === 'prepared' ? 'Find prepared recordings and choose an outgoing and incoming track to audition.'
+              : 'Audition a prepared pair. Station playback continues using your existing transitions.'
+      }</p>
     </header>
+
+    <nav aria-label="Sub/Beats pages" className="lib-tabs !flex-wrap sm:!flex-nowrap">
+      {PAGES.map(({ id, href, label, sub, Icon }) => <Link key={id} href={href} aria-current={page === id ? 'page' : undefined}
+        className={`lib-tab !min-h-11 !px-2.5 sm:!px-[18px] ${page === id ? 'on' : ''}`}>
+        <Icon size={17} /><span className="min-w-0"><span className="lib-tab-name">{label}</span><span className="lib-tab-sub !hidden sm:!block">{sub}</span></span>
+      </Link>)}
+    </nav>
 
     {state.isError && <div role="alert" className="flex flex-wrap items-center gap-3 border border-ink p-4 text-sm">
       <span>Could not load preparation progress. Your saved list has been kept.</span>
       <Button onClick={() => void state.refetch()}><RefreshCw /> Retry</Button>
     </div>}
 
-    <details className="min-w-0 border border-ink p-4">
-      <summary className="cursor-pointer py-2 text-sm font-semibold">Preview a transition · {prepared} prepared tracks</summary>
-    <section className="mt-3 min-w-0" aria-labelledby="subbeats-preview">
+    {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to audition a 16-bar, beat-matched stem exchange.</p>
       <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Incoming tempo stays matched until the preview ends. Use the bar shift below to compare alignments.</p>
@@ -159,7 +174,7 @@ export default function SubbeatsPanel() {
           className="mt-2 h-8 w-full cursor-pointer accent-ink" aria-valuetext={`${clock(preview.position)} of ${clock(preview.duration)}`}
           onChange={event => preview.seek(Number(event.target.value))} />
         {currentStage && <p role="status" className="mt-1 text-sm font-medium text-ink">{currentStage}</p>}
-        <p className="mt-1 text-xs leading-relaxed text-muted">Stages show the rendered stem fades and vocal handover, not automatically detected phrases. Select a time to jump there.</p>
+        <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Stages show the rendered stem fades and vocal handover, not automatically detected phrases. Select a time to jump there.</p>
         {preview.timeline ? <ol className="mt-3 grid gap-1">
           {preview.timeline.events.map((event, index) => {
             const current = preview.position >= event.at && (index === preview.timeline!.events.length - 1 || preview.position < preview.timeline!.events[index + 1]!.at);
@@ -172,20 +187,23 @@ export default function SubbeatsPanel() {
         </ol> : <p className="mt-3 text-sm text-muted">Stage timing is unavailable for this preview.</p>}
       </div>}
 
-    </section>
-    </details>
+    </section>}
 
-    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
-      <section className="order-1 min-w-0 border border-ink" aria-labelledby="subbeats-candidates" aria-busy={candidates.isFetching}>
+    <div className="grid min-w-0 gap-6">
+      {browsing && <section className="min-w-0 border border-ink" aria-labelledby="subbeats-candidates" aria-busy={candidates.isFetching}>
         <div className="border-b border-ink p-4">
-          <h2 id="subbeats-candidates" className="font-display text-xl font-bold">Tracks to explore</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted">Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.</p>
-          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-3">
-            <div><label htmlFor="subbeats-scope" className="mb-1 block text-sm font-medium">Collection</label>
+          <h2 id="subbeats-candidates" className="font-display text-xl font-bold">{page === 'prepared' ? 'Prepared tracks' : 'Tracks to explore'}</h2>
+          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared resources are saved for reuse. Choose a pair here, then open Preview to listen.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
+          {page === 'prepared' && (outgoing || incoming) && <div className="mt-3 flex flex-wrap items-center gap-3 text-sm" role="status">
+            <span>Outgoing: {byId.get(outgoing)?.title || 'Choose a track'} · Incoming: {byId.get(incoming)?.title || 'Choose a track'}</span>
+            <Link href="/admin/library/subbeats/preview" className="min-h-11 py-3 underline underline-offset-4">Open preview</Link>
+          </div>}
+          <div className={page === 'prepared' ? 'mt-4 max-w-sm' : 'mt-4 grid min-w-0 gap-3 sm:grid-cols-3'}>
+            {page === 'explore' && <div><label htmlFor="subbeats-scope" className="mb-1 block text-sm font-medium">Collection</label>
               <select id="subbeats-scope" className={SELECT_CLASS} value={scope} onChange={event => {
                 setScope(event.target.value as typeof scope); setGenre(''); setStatus('all'); setOffset(0);
-              }}><option value="dance">Dance candidates</option><option value="prepared">Prepared tracks</option><option value="library">Entire library</option></select>
-            </div>
+              }}><option value="dance">Dance candidates</option><option value="library">Entire library</option></select>
+            </div>}
             <div><label htmlFor="subbeats-genre" className="mb-1 block text-sm font-medium">Genre</label>
               <select id="subbeats-genre" className={SELECT_CLASS} value={genre} onChange={event => { setGenre(event.target.value); setOffset(0); }}>
                 <option value="">All genres</option>
@@ -193,21 +211,21 @@ export default function SubbeatsPanel() {
                 {candidates.data?.genres.map(item => <option key={item.value} value={item.value}>{item.value} ({item.count.toLocaleString()})</option>)}
               </select>
             </div>
-            <div><label htmlFor="subbeats-status" className="mb-1 block text-sm font-medium">Analysis status</label>
-              <select id="subbeats-status" className={SELECT_CLASS} value={status} onChange={event => { setStatus(event.target.value as BrowseStatus); setOffset(0); }}>
+            {page === 'explore' && <div><label htmlFor="subbeats-status" className="mb-1 block text-sm font-medium">Analysis status</label>
+              <select id="subbeats-status" className={SELECT_CLASS} value={status} onChange={event => { setStatus(event.target.value as SubbeatsBrowseState['status']); setOffset(0); }}>
                 <option value="all">All statuses</option>
                 {Object.entries(BROWSE_LABEL).map(([value, label]) => <option key={value} value={value}>{label} ({candidates.data?.statuses.find(item => item.value === value)?.count ?? 0})</option>)}
               </select>
-            </div>
+            </div>}
           </div>
           <label htmlFor="subbeats-search" className="mt-4 mb-1 block text-sm font-medium">Search this collection</label>
           <Input id="subbeats-search" type="search" maxLength={200} placeholder="Artist, track or album" value={query} onChange={e => {
             setQuery(e.target.value); setOffset(0);
           }} />
-          <Button className="mt-3 min-h-11" disabled={!query && !genre && status === 'all' && scope === 'dance'} onClick={() => { setQuery(''); setGenre(''); setStatus('all'); setScope('dance'); setOffset(0); }}>Reset filters</Button>
-          <p className="mt-2 text-xs leading-relaxed text-muted">Choose Entire library to find tracks outside the dance suggestions or without tempo data.</p>
-          <p className="mt-3 text-sm tabular-nums" role="status">{candidates.data ? `${candidates.data.total.toLocaleString()} matching tracks · ${candidates.data.selectableCount.toLocaleString()} available to queue` : 'Loading matching counts…'}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button className="mt-3 min-h-11" disabled={!query && !genre && status === 'all' && scope === (page === 'prepared' ? 'prepared' : 'dance')} onClick={() => setBrowse(current => ({ ...current, [browsePage]: subbeatsInitialBrowse(page === 'prepared' ? 'prepared' : 'dance') }))}>Reset filters</Button>
+          {page === 'explore' && <p className="mt-2 text-xs leading-relaxed text-muted">Choose Entire library to find tracks outside the dance suggestions or without tempo data.</p>}
+          <p className="mt-3 text-sm tabular-nums" role="status">{candidates.data ? `${candidates.data.total.toLocaleString()} matching tracks${page === 'explore' ? ` · ${candidates.data.selectableCount.toLocaleString()} available to queue` : ''}` : 'Loading matching counts…'}</p>
+          {page === 'explore' && <><div className="mt-3 flex flex-wrap items-center gap-3">
             <label className="inline-flex min-h-11 items-center gap-2 text-sm">
               <Checkbox className="size-6" checked={selectable.length > 0 && selectable.every(row => selectedIds.has(row.id)) ? true : selectable.some(row => selectedIds.has(row.id)) ? 'indeterminate' : false}
                 disabled={!selectable.length || candidates.isFetching || query.trim() !== q || !state.data || enqueue.isPending}
@@ -221,7 +239,7 @@ export default function SubbeatsPanel() {
           </div>
           <div className="mt-3 border-t border-ink/20 pt-3">
             <p className="text-sm tabular-nums" aria-live="polite">{selection.length} selected{selection.length > selectionOnPage ? ` · ${selection.length - selectionOnPage} on other pages or filters` : ''}</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT} preparation entries used. Prepared audio has a separate 5 GB limit.</p>
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT} preparation entries used. Prepared audio has a separate 5 GB limit.</p>
             {jobs.length >= SUBBEATS_QUEUE_LIMIT && <p className="mt-2 text-sm">The preparation list is full. Existing failed or unavailable entries can still be retried.</p>}
             <div className="mt-3 flex flex-wrap gap-3">
               <Button className="min-h-11" variant="solid" disabled={!selection.length || enqueue.isPending || !state.data || query.trim() !== q} onClick={() => enqueue.mutate(selection.map(row => row.id))}>
@@ -234,24 +252,28 @@ export default function SubbeatsPanel() {
                 <span className="min-w-0 break-words">{row.artist} — {row.title}</span><Button className="min-h-11 shrink-0" aria-label={`Remove ${row.title} from selection`} disabled={enqueue.isPending} onClick={() => setSelected(current => current.filter(item => item.id !== row.id))}>Remove</Button>
               </li>)}</ul>
             </details>}
-          </div>
+          </div></>}
         </div>
         {candidates.isLoading && <p role="status" className="p-4 text-sm text-muted">Finding tracks…</p>}
         {candidates.isError && <div role="alert" className="flex flex-wrap items-center gap-3 p-4 text-sm">Could not load tracks.<Button onClick={() => void candidates.refetch()}>Retry</Button></div>}
-        {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">No tracks match these filters. Try another genre or status, clear the search, or choose Entire library.</p>}
+        {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{page === 'prepared' ? 'No prepared tracks match. Clear the search or choose another genre. Visit Explore to prepare more tracks.' : 'No tracks match these filters. Try another genre or status, clear the search, or choose Entire library.'}</p>}
         <ul className="divide-y divide-ink/20">
           {rows.map(row => {
             const job = byId.get(row.id);
             return <li key={row.id} className="flex items-start gap-3 p-4">
-              <Checkbox className="mt-0.5 size-6 shrink-0" aria-label={`Select ${row.title} by ${row.artist}`}
+              {page === 'explore' && <Checkbox className="mt-0.5 size-6 shrink-0" aria-label={`Select ${row.title} by ${row.artist}`}
                 checked={selectedIds.has(row.id)} disabled={!subbeatsCanSelect(job?.status ?? row.status) || !state.data || enqueue.isPending || (!selectedIds.has(row.id) && selectSubbeatsRows(selection, [row], jobs).length === selection.length)}
-                onCheckedChange={checked => checked === true ? addRows([row]) : setSelected(current => current.filter(item => item.id !== row.id))} />
+                onCheckedChange={checked => checked === true ? addRows([row]) : setSelected(current => current.filter(item => item.id !== row.id))} />}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold break-words text-ink">{row.title || 'Untitled track'}</p>
                 <p className="text-sm break-words text-muted">{row.artist}</p>
                 <p className="mt-1 text-xs break-words text-muted">{row.album}</p>
                 <p className="mt-1 text-xs break-words text-muted">{row.genres.join(' · ')}</p>
                 <p className="mt-2 text-xs text-muted">{BROWSE_LABEL[job?.status ?? row.status]} · {row.hasBeatGrid ? 'Beat data available' : row.bpm ? 'Tempo estimate only' : 'No tempo data'}</p>
+                {page === 'prepared' && <div className="mt-3 flex flex-wrap gap-2">
+                  <Button className="min-h-11" aria-pressed={outgoing === row.id} disabled={incoming === row.id} onClick={() => { setOutgoing(row.id); setBarShift(0); }}>{outgoing === row.id ? 'Outgoing selected' : 'Use as outgoing'}</Button>
+                  <Button className="min-h-11" aria-pressed={incoming === row.id} disabled={outgoing === row.id} onClick={() => { setIncoming(row.id); setBarShift(0); }}>{incoming === row.id ? 'Incoming selected' : 'Use as incoming'}</Button>
+                </div>}
               </div>
               <span className="shrink-0 text-right text-sm text-ink tabular-nums">{row.bpm ? row.bpm.toFixed(1) : '—'}<span className="block text-xs text-muted">BPM</span></span>
             </li>;
@@ -262,9 +284,9 @@ export default function SubbeatsPanel() {
           <span className="text-xs text-muted tabular-nums">{candidates.data?.total ? `${pageOffset + 1}–${Math.min(pageOffset + rows.length, candidates.data.total)} of ${candidates.data.total.toLocaleString()}` : '0 tracks'}</span>
           <Button disabled={!candidates.data?.hasMore || candidates.isFetching} onClick={() => changePage(pageOffset + SUBBEATS_PAGE_SIZE)}>Next</Button>
         </div>
-      </section>
+      </section>}
 
-      <section className="order-2 min-w-0 self-start border border-ink" aria-labelledby="subbeats-preparation">
+      {page === 'preparation' && <section className="order-2 min-w-0 self-start border border-ink" aria-labelledby="subbeats-preparation">
         <div className="border-b border-ink p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="subbeats-preparation" className="font-display text-xl font-bold">Preparation</h2>
@@ -297,7 +319,7 @@ export default function SubbeatsPanel() {
           <span className="text-xs tabular-nums">{activeJobPage * 20 + 1}–{Math.min((activeJobPage + 1) * 20, ranked.length)} of {ranked.length}</span>
           <Button className="min-h-11" disabled={(activeJobPage + 1) * 20 >= ranked.length} onClick={() => setJobPage(activeJobPage + 1)}>Next entries</Button>
         </div>}
-      </section>
+      </section>}
     </div>
   </div>;
 }
