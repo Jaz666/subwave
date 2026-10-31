@@ -1,5 +1,9 @@
 # Sub/Beats session handover — 2026-10-30
 
+Superseded direction, 31 October: the owner chose to return to the earlier
+16-bar stem preview. See `docs/internals/sub-beats.md` for current browser behavior.
+The annotated results below remain listening evidence.
+
 Read this first when resuming. It records the current accepted behavior; older
 phrase-planner and rollback sections in the internal notes are historical.
 
