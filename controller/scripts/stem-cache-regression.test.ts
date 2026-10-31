@@ -15,6 +15,7 @@ const HOUR = 3600_000;
 let writeWindow: 'head' | 'tail' = 'head';
 let writeBytes = 0;
 let cacheExpected = true;
+let starredIds: string[] = [];
 const requestSchema = z.object({ stems_dir: z.string().optional() });
 const snapshotSchema = z.object({
   bytes: z.number(), dirs: z.number(),
@@ -31,6 +32,11 @@ function payload(dir: string, window: 'head' | 'tail', bytes: number): void {
 }
 
 const fixture = createServer(async (req, res) => {
+  if (req.url?.includes('getStarred2')) {
+    res.setHeader('Content-Type','application/json');
+    res.end(JSON.stringify({'subsonic-response':{status:'ok',version:'1.16.1',starred2:{song:starredIds.map(id=>({id,title:id}))}}}));
+    return;
+  }
   if (req.url === '/health') {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({
@@ -78,6 +84,7 @@ before(async () => {
 
 beforeEach(async () => {
   cacheExpected = true;
+  starredIds = [];
   await settings.update({ audio: { stemCache: true, stemCacheGb: 1, analyzeQuietOnly: false } });
   await db.open({ embeddingDim: 768, adoptStoredDim: true });
 });
@@ -85,7 +92,7 @@ beforeEach(async () => {
 afterEach(() => {
   chmodSync(stateDir, 0o700);
   db.close();
-  for (const name of ['stems', 'stem-cache-usage.json', 'library.db', 'library.db-wal', 'library.db-shm']) {
+  for (const name of ['stems', 'subbeats', 'stem-cache-usage.json', 'library.db', 'library.db-wal', 'library.db-shm']) {
     rmSync(join(stateDir, name), { recursive: true, force: true });
   }
 });
@@ -196,4 +203,22 @@ test('ordinary analysis measures fresh tracks and later backfills stems only for
   assert.equal(existsSync(cache.dirFor('fresh-dance')), true);
   assert.equal(existsSync(cache.dirFor('rock')), false);
   assert.equal(db.getDb()!.prepare('SELECT stems_at FROM tracks WHERE id=?').pluck().get('rock'), null);
+});
+
+
+test('ordinary analysis caches played, Navidrome-starred and Sub/Beats-prepared non-dance tracks without existing beat evidence', async () => {
+  const ids = ['played-rock','starred-rock','subbeats-rock'];
+  for (const id of ids) db.upsertTrackMeta(id, {title:id,genres:['Rock'],duration:200});
+  db.recordPlay({trackId:ids[0],title:ids[0],artist:'A',album:'B',playedAt:'2000-01-01T00:00:00.000Z',source:'auto',requestedBy:null,showId:null,showName:null});
+  starredIds = [ids[1]];
+  const { createSubbeatsStore } = await import('../src/music/subbeats-store.js');
+  const store = createSubbeatsStore(stateDir);
+  store.enqueue([{id:ids[2],title:ids[2],artist:'A',album:'B'}]);
+  store.event({id:ids[2],status:'running'},[ids[2]]);
+  store.event({id:ids[2],status:'prepared',bundleKey:'a'.repeat(64)},[ids[2]]);
+  const before = store.read();
+  writeBytes = 100;
+  assert.equal((await runPass()).analyzed,3);
+  for (const id of ids) assert.equal(existsSync(cache.dirFor(id)),true,id);
+  assert.deepEqual(store.read(),before,'ordinary analysis must not rewrite extended Sub/Beats preparation');
 });

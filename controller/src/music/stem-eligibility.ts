@@ -1,5 +1,6 @@
-// One admission rule for routine writes, planned writes and backfill. This is
-// evidence for caching, not approval of a transition between any two tracks.
+// Dance fallback for tracks without play history, stars or Sub/Beats preparation.
+// Those exceptions live in stem-scan.ts, shared by writes and ranked backfill.
+// Cache admission is not approval of a transition between any two tracks.
 import { subbeatsDanceGenresFromJson } from './subbeats-eligibility.js';
 
 function parse(value: unknown): unknown {

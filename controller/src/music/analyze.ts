@@ -255,6 +255,8 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   // A raw --re-analyze leaves the scope null and redoes the whole library.
   let reAnalyzeScope: string[] | null = null;
   const plan = opts.plan;
+  const stemSignals = stemCache || plan?.items.some(item => item.request.stems)
+    ? await stemCacheStore.admissionSignals() : {};
   if (plan && opts.reAnalyze) console.log('[analyze] facet plan given — ignoring --re-analyze');
   if (opts.reAnalyze && !plan) {
     if (opts.rescan) reAnalyzeScope = db.analysedIds();
@@ -338,7 +340,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
     // The loop spends stemSlotsLeft in ids order and the earlier widenings'
     // tracks run FIRST, draining slots before this slice is reached. Reserve
     // them up front, or the announcement over-promises.
-    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id)).length;
+    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
     const backfillSlots = Math.max(0, stemSlotsLeft - reserved);
     if (backfillSlots <= 0) {
       console.log(
@@ -355,7 +357,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       // the never-starve reasoning live in music/stem-priority.ts; the like
       // signals it reads are resolved here because library-db must not import
       // the likes store.
-      const needing = db.needsStemsIds(undefined, stemCacheStore.likeSignals())
+      const needing = db.needsStemsIds(undefined, stemSignals)
         .filter(id => !seen.has(id));
       // Under --limit, only the slots the bpm/CLAP/vocal scopes haven't already
       // spent are available — sizing off the raw cap would log stem tracks a
@@ -381,7 +383,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   // Vocal work applies to every id; stem work only to eligible recordings.
   const fullAnalysisIds = new Set(bpmIds);
   for (const id of ids) {
-    if (vocalBackfill || (stemCache && db.canCacheStems(id))) fullAnalysisIds.add(id);
+    if (vocalBackfill || (stemCache && db.canCacheStems(id, stemSignals))) fullAnalysisIds.add(id);
   }
 
   // A facet plan replaces everything the widenings above decided: the plan's
@@ -509,9 +511,9 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
     // A planned track gets stems only when its plan asks for them.
     if (plan && (!want?.stems || planStemsOffline)) return undefined;
     if (!plan && !stemCache) return undefined;
-    // Existing dirs and explicit plans do not bypass selective admission.
-    // Fresh tracks gain their beat evidence first and join the next backfill.
-    if (!db.canCacheStems(id)) return undefined;
+    // Played/starred/Sub/Beats exceptions and the dance gate share one policy.
+    // Other fresh tracks gain beat evidence first and join a later backfill.
+    if (!db.canCacheStems(id, stemSignals)) return undefined;
     const trackStemDecision = stemCacheStore.stemWriteDecision({
       cacheOn: plan ? true : stemCache,
       slotsLeft: stemSlotsLeft,
