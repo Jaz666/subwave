@@ -39,6 +39,7 @@ test('the estimate is read-only and protects plays, stars, preparation and manua
   const before = readFileSync(join(stateDir,'subbeats','stem-policy.json'),'utf8');
   const estimate = await cleanup.estimateSubbeatsCleanup({signals,now});
   assert.equal(estimate.folders,1);assert.equal(estimate.bytes,10);
+  assert.deepEqual(estimate.breakdown,{keptBytes:50,preparedBytes:10,candidateBytes:10,recentBytes:0,quarantineBytes:0});
   assert.ok(existsSync(join(root,'rock')));assert.equal(existsSync(qu('rock')),false);
   assert.equal(readFileSync(join(stateDir,'subbeats','stem-policy.json'),'utf8'),before);
 });
@@ -48,6 +49,7 @@ test('explicit cleanup consent quarantines the excluded track and honours the fu
   assert.equal(report?.quarantined,1);assert.equal(report?.freedBytes,0);
   for (const id of ids.filter(id => id !== 'rock')) assert.ok(existsSync(join(root,id)),id);
   assert.ok(existsSync(qu('rock')));
+  assert.ok((await cleanup.estimateSubbeatsCleanup({signals,now})).breakdown.quarantineBytes >= 10);
   assert.equal((await cleanup.runSubbeatsCleanup({signals,now:now+day}))?.deletedCount,0);
 });
 test('new protection is refreshed before deletion, and disabling cleanup restores quarantined stems', async () => {

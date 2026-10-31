@@ -46,22 +46,34 @@ async function requireCache() {
 export async function estimateSubbeatsCleanup(opts: {now?: number; signals?: () => Promise<db.StemScanOpts>} = {}) {
   await requireCache();
   const now = opts.now ?? Date.now();
-  const keep = db.stemCleanupKeepIds(await (opts.signals ?? (() => cache.admissionSignals({strict:true})))());
+  const signals = await (opts.signals ?? (() => cache.admissionSignals({strict:true})))();
+  const keep = db.stemCleanupKeepIds(signals);
+  const prepared = new Set(signals.subbeatsIds ?? []);
   const entries = (await readdir(cache.stemsRoot(), {withFileTypes:true}))
-    .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !keep.has(entry.name));
+    .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
   let failure: unknown = null;
   const measured = await mapPool(entries, cache.SCAN_CONCURRENCY, async entry => {
     if (failure) return null;
     try {
       const dir = path.join(cache.stemsRoot(), entry.name);
-      if (now - (await lstat(dir)).mtimeMs < IN_FLIGHT_MS) return null;
-      return await directoryBytes(dir);
+      const recent = now - (await lstat(dir)).mtimeMs < IN_FLIGHT_MS;
+      const category = prepared.has(entry.name) ? 'preparedBytes' : keep.has(entry.name) ? 'keptBytes' : recent ? 'recentBytes' : 'candidateBytes';
+      return {category, bytes:await directoryBytes(dir)};
     } catch (error) { failure = error; return null; }
   });
   if (failure) throw failure;
-  return {folders:measured.filter(bytes => bytes !== null).length,
-    bytes:measured.reduce<number>((sum, bytes) => sum + (bytes ?? 0), 0),
-    skipped:measured.filter(bytes => bytes === null).length, measuredAt:new Date(opts.now ?? Date.now()).toISOString()};
+  const breakdown = {keptBytes:0, preparedBytes:0, candidateBytes:0, recentBytes:0, quarantineBytes:0};
+  for (const item of measured) if (item) breakdown[item.category as keyof typeof breakdown] += item.bytes;
+  // Both quarantines occupy this disk, but neither consumes the live cache budget.
+  for (const name of [SUBBEATS_QUARANTINE, '.orphan-quarantine']) {
+    const dir = path.join(cache.stemsRoot(), name);
+    const st = await lstat(dir).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return null; throw error; });
+    if (st?.isSymbolicLink()) throw new Error('Quarantine is a symbolic link; cleanup estimate stopped');
+    if (st?.isDirectory()) breakdown.quarantineBytes += await directoryBytes(dir);
+  }
+  return {folders:measured.filter(item => item?.category === 'candidateBytes').length,
+    bytes:breakdown.candidateBytes, breakdown,
+    skipped:measured.filter(item => item?.category === 'recentBytes').length, measuredAt:new Date(opts.now ?? Date.now()).toISOString()};
 }
 
 export async function runSubbeatsCleanup(opts: {now?: number; automatic?: boolean; signals?: () => Promise<db.StemScanOpts>} = {}) {

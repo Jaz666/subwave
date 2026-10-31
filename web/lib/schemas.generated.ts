@@ -5189,7 +5189,10 @@ export const subbeatsCacheViewSchema = z.object({
 export const subbeatsCleanupStateSchema = z.object({
   busy: z.enum(['estimate','cleanup']).nullable(),
   estimate: z.object({ folders: z.number().int().nonnegative(), bytes: z.number().nonnegative(),
-    skipped: z.number().int().nonnegative(), measuredAt: z.string() }).nullable(),
+    skipped: z.number().int().nonnegative(), measuredAt: z.string(),
+    breakdown: z.object({keptBytes:z.number().nonnegative(), preparedBytes:z.number().nonnegative(),
+      candidateBytes:z.number().nonnegative(), recentBytes:z.number().nonnegative(), quarantineBytes:z.number().nonnegative()}),
+  }).nullable(),
   report: z.object({ quarantined: z.number().int().nonnegative(), deletedCount: z.number().int().nonnegative(),
     freedBytes: z.number().nonnegative(), failed: z.number().int().nonnegative(), released: z.array(z.string()) }).nullable(),
   error: z.string().nullable(),
