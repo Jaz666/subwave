@@ -791,11 +791,11 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                       />
                     </div>
                     <div className="field-hint">
-                      Keeps the drum/bass/vocal/other stems the heavy analyzer already separates
-                      during analysis (typically 13&ndash;25&nbsp;MB per track, oldest evicted past
-                      the budget). Needs the heavy analyzer image (Demucs). Turning it on now also
-                      backfills: the analysis pass targets tracks with no cached stems, so an
-                      already-scanned library fills in over successive runs.
+                      Automatically caches stems for any played or starred track, plus tracks
+                      prepared by Sub/Beats. Other tracks need a dance-family genre, 90–180 BPM
+                      and a measured head or tail bar grid. Played and starred tracks qualify
+                      regardless of genre, tempo or grid. Existing priority and budget still apply.
+                      Needs the heavy analyzer image (Demucs).
                     </div>
                   </div>
 
@@ -860,11 +860,9 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                       );
                     })()}
                     <div className="field-hint">
-                      How much disk the stem cache may use before the oldest entries are evicted
-                      (1&ndash;1,000&nbsp;GB). A blend only fires when BOTH tracks of a pair are
-                      cached, so a budget well under your library size means most seams stay
-                      plain crossfades. The backfill stops once the budget is full rather than
-                      separating tracks it would immediately evict.
+                      Maximum space for the existing stem cache (1–1,000 GB). Lower-priority
+                      entries are evicted when the budget is exceeded. Automatic backfill stops
+                      when the cache is full. A stem blend needs cached audio for both tracks.
                     </div>
                   </div>
 

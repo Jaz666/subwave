@@ -14,9 +14,9 @@
 //   simply ages out — never merged over the new copy.
 // - Quarantine age comes from an `.orphaned-at` sidecar written at move time
 //   (the move itself only touches ctime, but writing the sidecars bumps the
-//   dir's mtime, and the stem-priority lesson is that cache mtimes lie); the
-//   entry's own mtime is only the fallback for quarantines that lost the
-//   sidecar.
+//   dir's mtime, and the stem-priority lesson is that cache mtimes lie). A
+//   missing or unreadable timestamp keeps the entry indefinitely: its old
+//   directory mtime cannot prove when quarantine started.
 // - Dirs touched in the last hour are left alone: the analyzer writes stems
 //   into a fresh dir, and a purge must never eat an in-flight set.
 // - An empty id set is REFUSED, not treated as an empty library. The only
@@ -98,17 +98,13 @@ async function dirBytes(dir: string): Promise<number> {
   return total;
 }
 
-// Quarantine age: the sidecar written at move time, else the entry's mtime.
+// Only a valid quarantine stamp proves age. Rename preserves the old mtime.
 async function quarantinedAgeMs(entryDir: string, now: number): Promise<number> {
   try {
     const stamped = Number(await readFileSafe(path.join(entryDir, ORPHANED_AT)));
     if (Number.isFinite(stamped) && stamped > 0) return Math.max(0, now - stamped);
   } catch { /* fall through */ }
-  try {
-    return Math.max(0, now - (await stat(entryDir)).mtimeMs);
-  } catch {
-    return 0;
-  }
+  return 0;
 }
 
 async function readFileSafe(file: string): Promise<string> {
@@ -254,8 +250,9 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
     for (const { name } of qplan.deleted) {
       const entryDir = path.join(qu, name);
       try {
-        report.freedBytes += await dirBytes(entryDir);
+        const bytes = await dirBytes(entryDir);
         await rm(entryDir, { recursive: true, force: true });
+        report.freedBytes += bytes;
         report.deletedCount += 1;
       } catch { report.failed += 1; }
     }
@@ -276,15 +273,15 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
         const freshAge = await quarantinedAgeMs(from, now);
         try {
           if (existingAge >= freshAge) { await rm(from, { recursive: true, force: true }); }
-          else { await rm(to, { recursive: true, force: true }); await rename(from, to); await stampQuarantine(to, now); }
+          else { await stampQuarantine(from, now); await rm(to, { recursive: true, force: true }); await rename(from, to); }
           await writeNameSidecar(to, names?.get(name), now);
           report.quarantined += 1;
         } catch { report.failed += 1; }
         continue;
       }
       try {
+        await stampQuarantine(from, now);
         await rename(from, to);
-        await stampQuarantine(to, now);
         await writeNameSidecar(to, names?.get(name), now);
         report.quarantined += 1;
       } catch { report.failed += 1; }
@@ -303,9 +300,9 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
 }
 
 async function stampQuarantine(entryDir: string, now: number): Promise<void> {
-  try {
-    await writeFile(path.join(entryDir, ORPHANED_AT), String(now));
-  } catch { /* the mtime fallback covers it */ }
+  // Stamp before moving: a failed write must leave the live folder in place,
+  // even if it already contains a readable but stale quarantine timestamp.
+  await writeFile(path.join(entryDir, ORPHANED_AT), String(now));
 }
 
 // Shared like the cache root (stem-cache.ts): mkdir's mode is masked by the
