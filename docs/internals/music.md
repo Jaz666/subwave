@@ -13,6 +13,111 @@ track length, seed-vs-pick,
 dead-air trim, festivals, listener request hardening, likes, and the blocklist
 rules.
 
+**Sub/Flow join previews.** The editor's play buttons audition up to ten seconds
+on either side of each join through the browser. `POST /library/sub-flow/join-preview`
+requires admin authentication and a pair that passes the same current album-order,
+archive and blocklist checks as saving. It downloads the raw sources and fully
+decodes them using the definition-time audio checks, then joins the decoded tail
+and head as stereo PCM WAV without fades, silence padding or normalisation.
+Only one preview is prepared at a time; disconnecting cancels the work and temporary
+downloads are removed. Nothing is saved or sent to the station queue. This auditions
+the source seam, not Liquidsoap's protected playback path. The browser stops the
+preview when the editor's tracks change or the page closes.
+
+**Manual protected Sub/Flow playback.** Library → Sub/Flow's **Queue Flow**
+prepares the complete enabled, checked definition before queue admission. Each
+raw source must still match its saved SHA-256, byte count and decoded duration;
+a changed or unavailable member refuses the whole occurrence. The checked PCM
+is published as one read-only stereo WAV in `state/sub-flow-playback/`, shared
+with broadcast, limited to 512 MiB per occurrence. The queue durably captures
+the complete member list and definition revision before handing over that one
+file. Later definition edits, disabling and deletion do not change it.
+
+Playback permits one queued/playing Flow at a time and requires the
+broadcast capability `subflow.status` version 1 or 2 (custom protection times
+require version 2). Listener requests, explicitly
+ordered playlists and `auto.m3u` still play individual tracks. Manual Flow admission
+bypasses individual cuts, silence trimming, per-track gain changes and internal
+mixing. The mixer retains one outer track boundary, so requests, beds and jingles
+cannot split it. Speech, over-music imaging and SFX must fit wholly outside
+the configured windows before and after each join (five seconds each by
+default), including lead-in and duck recovery;
+overlapping windows leave no safe interval between them. Existing speech finishes
+before entry. Outer transitions are plain crossfades, shortened or omitted when
+needed to preserve a nearby join.
+
+Library → Sub/Flow's **Join protection** settings apply to newly prepared
+occurrences; queued and playing Flows keep their captured values. See
+[Sub/Flow definitions](sub-flow-definitions.md#join-protection-settings).
+
+**Operator track queuing.** `POST /dj/queue-track` is shared by Library and
+Observatory. Once a track is selected,
+any enabled Flow membership resolves to the complete checked sequence. Choosing
+the second or third member still starts with the first. The response identifies
+the actual entry, Flow name/count and first queue position; confirmations name
+the whole Flow. Operator overrides retain the manual Queue Flow exemptions from
+recency, show filters and length limits, while all sources must still pass the
+saved fingerprint, current order, availability and absolute blocklist checks.
+An unchecked/changed/unavailable Flow, an already queued companion or another
+queued/playing Flow refuses the whole operation (409), never a fragment. Disabled
+definitions queue individual tracks as before. Album blocks, ordered playlists
+and listener requests use separate endpoints/policies and are unchanged.
+Pinned by `sub-flow-operator-queue.test.ts`.
+
+The station also exercises this admission path from Extended Sleeve Notes.
+That feature is separate from this draft: when merging its Station Brain
+selection endpoint, retain Flow expansion after resolving the selected track
+and retain its enable-state checks around preparation.
+
+The Dash queue labels every member **Flow**. Cancelling any unstarted member
+cancels the whole occurrence; once playing, the Skip dialog explicitly ends the
+whole Flow. Individual member metadata follows the output audio clock, retaining
+the ordinary history/scrobble path. Recovery recognises an already-delivered
+occurrence and never resubmits it; a lost mixer occurrence cancels the remainder
+instead of replaying members. Finished/cancelled audio is removed. Render the
+actual mixer offline with `python3 scripts/sub-flow-playback-test.py`, using
+`LIQUIDSOAP_BIN` and `LIQUIDSOAP_STDLIB` for the pinned 2.4.6 runtime. The optional
+`SUB_FLOW_MEMBERS=3`, `SUB_FLOW_SHORT=1`, `SUB_FLOW_PREEXISTING=1`,
+`SUB_FLOW_JINGLE=1`, `SUB_FLOW_ROTATE=1`, `SUB_FLOW_OVERLAP=1` and `SUB_FLOW_IDLE=1`
+cases cover the key boundaries.
+
+**Automatic Sub/Flow selection.** Agentic discovery, Track Shortlist and pool
+recovery resolve a hit on any enabled member into one candidate before final
+choice. The candidate's identity and musical measurements belong to the first
+track; its ordered member list and combined duration are supplied to the model.
+Multiple members discovered together give one opportunity. All members must pass
+blocklist, recent-track and hard-repeat checks, external artist/album spacing,
+playlist inclusion/exclusion, prepared-episode membership and strict show locks.
+Internal artist/album repetition is intentional; it does not relax checks against
+previous music. A failed or unchecked enabled definition cannot fall back to a
+single member on these paths. A changed definition invalidates the selection.
+Requests, explicitly ordered playlist walks and the mixer coast are unchanged;
+expansion there needs separate ordering/request policy.
+
+The combined duration meets the minimum selection length, so a short album intro
+is eligible as part of its longer sequence. Maximum length applies **per member**,
+including under the legacy cut mode: automatic Flows are rejected rather than
+cut. `picker.flowAllowAboveMax` defaults false; a show's nullable
+`flowAllowAboveMax` inherits it or explicitly overrides it. The controls are in
+Music selection and the show's track-length settings. Neither override permits a
+Flow to cross an armed show-finish boundary. Full duration is checked against the
+selection forecast, admission queue forecast and live mixer handoff; an unknown
+start at a firm finish refuses the automatic occurrence. Manual Queue Flow keeps
+its explicit operator exemptions.
+
+Selection rechecks the unit after corrective guards, before any listener-facing
+link. Optional links use `generateFlowLink` with the actual first track and ordered
+sequence, never the discovery trigger as the opening track. They retain the normal
+link frequency/voice/host rules, are budgeted to the safe first-track runway and
+are dropped if they cannot fit; no link is attached to companions. Mixer protection
+remains authoritative, and an entry introduction waiting until a later member is
+cancelled. Flow entry/exit effects remain plain crossfades for this version.
+The complete audio is fingerprint-checked again before durable admission using
+the existing manual playback path. Automatic occurrences retain AI selection
+attribution and the same whole-Flow cancel/skip and recovery behavior.
+Pinned by `sub-flow-selection.test.ts`, `sub-flow-auto-pick.test.ts` and the
+existing `sub-flow-playback.test.ts`.
+
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
 only when a supported preference advantage genuinely
