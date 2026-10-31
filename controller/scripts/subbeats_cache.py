@@ -153,7 +153,9 @@ def migrate_shared(state_dir, stems_root, allowance):
         if job.get('bundleKey'):
             owners.setdefault(job['bundleKey'], set()).add(job['id'])
     moved = 0
-    with (root / '.prepare.lock').open('a') as lock:
+    # Match the original publisher: the shared lock may belong to another UID.
+    descriptor = os.open(root / '.prepare.lock', os.O_RDONLY | os.O_CREAT, 0o644)
+    with os.fdopen(descriptor, 'r') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         entries = []
         for folder in root.iterdir():

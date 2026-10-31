@@ -378,6 +378,15 @@ class SharedCacheTests(unittest.TestCase):
                                      cache_root=dest.parent,allowance=self.allowance)
         self.assertTrue(reused['cache_hit'])
 
+    def test_migration_uses_an_existing_read_only_publisher_lock(self):
+        lock = self.state / 'subbeats/v1/.prepare.lock'
+        lock.chmod(0o444)
+        try:
+            self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+            self.assertEqual(lock.stat().st_mode & 0o777,0o444)
+        finally:
+            lock.chmod(0o644)
+
     def test_structure_follows_its_source_and_unreferenced_experiments_remain(self):
         structure_identity = {'source_sha256':'original','mode':'structure'}
         structure = cache.prepare_cached(self.state,structure_identity,self.build)
