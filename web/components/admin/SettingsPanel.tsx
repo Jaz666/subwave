@@ -785,11 +785,10 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                       />
                     </div>
                     <div className="field-hint">
-                      Automatically caches stems for any played or starred track, plus tracks
-                      prepared by Sub/Beats. Other tracks need a dance-family genre, 90–180 BPM
-                      and a measured head or tail bar grid. Played and starred tracks qualify
-                      regardless of genre, tempo or grid. Existing priority and budget still apply.
-                      Needs the heavy analyzer image (Demucs).
+                      Keeps stems created by the heavy analyzer (Demucs), using the existing
+                      priority and disk budget. Sub/Beats offers optional selective admission
+                      and per-track inclusions on its Cache page. Selective caching is off by
+                      default and does not remove existing stems when enabled.
                     </div>
                   </div>
 

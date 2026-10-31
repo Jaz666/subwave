@@ -103,9 +103,9 @@ await test('clearAnalysis only resets the stamps when the pass will rewrite stem
   // library the next time the operator turned the cache on.
   db.clearAnalysis({ keepVocal: true });
   assert.equal(db.stemsCachedCount(), 5, 'stamps survive a cache-off re-analyse');
-  assert.deepEqual(scope(), [], 'cleared measurements must be established again');
+  assert.equal(scope().length, 1, 'original admission retains the one track without a stem attempt');
   db.clearAnalysis({ keepVocal: true, clearStems: true });
-  assert.deepEqual(scope(), [], 'a full re-analysis must establish beat evidence again before caching');
+  assert.deepEqual(scope(), ['t1','t2','t3','t4','t5','t6'], 'original admission needs no beat or genre evidence');
   assert.equal(db.stemsCachedCount(), 0);
 });
 

@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { subbeatsBrowseStatusSchema, subbeatsSortSchema } from '../../../lib/schemas.generated';
 import type { SubbeatsCandidate } from '../library/subbeats-selection';
 
-export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview';
+export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview' | 'cache';
 export type SubbeatsBrowseState = {
   sort: z.infer<typeof subbeatsSortSchema>;
   query: string; offset: number; genre: string;

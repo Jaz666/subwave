@@ -193,7 +193,7 @@ export function planAcoustics(input: PlanInput): AcousticsPlan {
     );
   }
   if (facets.includes('stems')) {
-    warnings.push('stems: played, starred and Sub/Beats-prepared tracks qualify; other tracks need dance-family genres, 90–180 BPM and a usable head or tail bar grid; eligibility and the byte budget are enforced at run time, so fewer than planned may be written');
+    warnings.push('stems: the byte budget and any opted-in Sub/Beats selective admission policy are enforced at run time, so fewer than planned may be written; played, starred, prepared and manually included tracks bypass the selective criteria');
   }
 
   return {

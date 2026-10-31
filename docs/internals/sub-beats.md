@@ -58,6 +58,58 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Optional selective cache policy and manual inclusions — 31 October 2026
+
+Selective regular-stem admission now requires explicit operator opt-in in
+Library → Sub/Beats → Cache. Missing policy state defaults OFF, preserving the
+upstream admission of every library track, subject to its unchanged cache
+budget, attempt stamps and priority. The earlier admission sections describe
+what happens only after opt-in. No migration enables this policy, and neither
+enabling nor disabling it deletes files or starts analysis. Orphan cleanup
+continues to use library membership and its separate opt-in; no exclusion-based
+purge has been added.
+
+The controller owns `state/subbeats/stem-policy.json`, separately from the
+500-entry extended-preparation queue. It stores `enabled` and manual `regularIds`.
+Reads do not create it. Writes validate and atomically persist the document;
+malformed state is surfaced and preserved. Analysis snapshots the policy once
+per pass. An unreadable policy falls back to original unrestricted admission,
+so uncertain state never opts an installation into exclusions.
+
+With selective caching enabled, any historical play, operator heart, Navidrome
+star, completed Sub/Beats preparation or manual regular inclusion bypasses the
+genre/BPM/grid fallback. In Explore (including Entire library) and Prepared
+tracks, “Include in regular stem caching” toggles a per-track exception. It
+does not queue extended preparation, alter tags/stars or guarantee retention
+against ordinary budget eviction. Unchecking removes only this exception;
+played/starred/prepared/dance tracks can still qualify independently. Attempt
+stamps and normal resumption behaviour remain unchanged.
+
+The Cache page shows the saved regular-stem measurement against its budget and
+available space on the mounted cache filesystem. Reads never walk the cache;
+usage is the existing snapshot, with its age and freshness, and capacity comes
+from a filesystem stat only after the root is confirmed online. Unknown usage
+and offline disks are explicit states. Quarantine is excluded from the ordinary
+budget but still occupies disk. Extended Sub/Beats stems remain in their separate
+5 GiB cache and are explicitly excluded from this regular-stem measurement.
+Physical cache consolidation is still subsequent work.
+
+Verification: 112 stem tests, 33 analysis-plan tests, 29 Sub/Beats tests,
+32 Settings tests and 32 Library web tests passed, alongside nine admin-query
+tests and the static query audit. Controller/web lint and typechecks passed
+(controller retains its existing 1,741 warnings); the final themed-bar change
+also passed focused lint and a further web typecheck. Desktop/mobile browser
+checks cover saved opt-in, non-dance manual inclusion/removal, reloads, failed
+writes, offline/unmeasured states and horizontal overflow. Library search and
+all six browser query-cache checks pass. Evidence is under
+`/home/jaz666/codex/subbeats-cache-policy-evaluation-20261031/`.
+
+The candidate is pushed on `feat/sub-beats` and integrated into the test-station
+source checkout. No rebuild, restart, station policy write or cache cleanup is
+performed by the agent. The preceding station source is `f6763e56`. After rebuild,
+selective admission stays OFF until the operator enables it on Sub/Beats → Cache.
+Physical extended-stem cache consolidation remains the next storage increment.
+
 ## Upstream stem-cache management integration — 31 October 2026
 
 Integrated the three commits of upstream PR #2178 at reviewed head

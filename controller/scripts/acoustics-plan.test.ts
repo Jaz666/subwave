@@ -646,6 +646,8 @@ test('fresh tail vocals do not promote an older complete head vocal measurement'
 
 
 test('planned stem requests cannot cache rock or unmeasured dance tracks, even with an existing dir', async () => {
+  const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  updateSubbeatsStemPolicy({enabled:true});
   const cache = await import('../src/music/stem-cache.js');
   const { mkdirSync, writeFileSync, readFileSync } = await import('node:fs');
   vocalCapable = true;
@@ -667,5 +669,5 @@ test('planned stem requests cannot cache rock or unmeasured dance tracks, even w
     }
     assert.equal(readFileSync(sentinel,'utf8'), 'existing audio');
     for (const id of ids) assert.equal(sql().prepare('SELECT stems_at FROM tracks WHERE id=?').pluck().get(id), null);
-  } finally { vocalCapable=false;analyzer._resetBackendCacheForTests(); }
+  } finally { updateSubbeatsStemPolicy({enabled:false});vocalCapable=false;analyzer._resetBackendCacheForTests(); }
 });

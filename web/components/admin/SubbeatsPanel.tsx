@@ -1,11 +1,13 @@
 'use client';
 
+import { SubbeatsCache, useSubbeatsCache } from './subbeats/SubbeatsCache';
+
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useDebounceValue } from 'usehooks-ts';
 import { z } from 'zod';
-import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
 import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
@@ -33,11 +35,14 @@ const PAGES = [
   { id: 'preparation', href: '/admin/library/subbeats/preparation', label: 'Preparation', sub: 'progress & retries', Icon: ListMusic },
   { id: 'prepared', href: '/admin/library/subbeats/prepared', label: 'Prepared tracks', sub: 'choose a pair', Icon: Music },
   { id: 'preview', href: '/admin/library/subbeats/preview', label: 'Preview', sub: 'listen & compare', Icon: Play },
+  { id: 'cache', href: '/admin/library/subbeats/cache', label: 'Cache', sub: 'space & policy', Icon: HardDrive },
 ] as const;
 
 export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPage }) {
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const ready = hydrated && !needsAuth;
+  const cache = useSubbeatsCache();
+  const regularIds = new Set(cache.query.data?.policy.regularIds ?? []);
   const { browseRestored, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
@@ -131,11 +136,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         page === 'explore' ? 'Find dance-music candidates and choose tracks for deeper analysis.'
           : page === 'preparation' ? 'Monitor preparation, pause queued work and retry individual tracks. Work continues when you leave this page.'
             : page === 'prepared' ? 'Find prepared recordings and choose an outgoing and incoming track to audition.'
+              : page === 'cache' ? 'Manage regular stem caching and check the space available.'
               : 'Audition a prepared pair. Station playback continues using your existing transitions.'
       }</p>
     </header>
 
-    <nav aria-label="Sub/Beats pages" className="lib-tabs !flex-wrap sm:!flex-nowrap">
+    <nav aria-label="Sub/Beats pages" className="lib-tabs !flex-wrap">
       {PAGES.map(({ id, href, label, sub, Icon }) => <Link key={id} href={href} aria-current={page === id ? 'page' : undefined}
         className={`lib-tab !min-h-11 !px-2.5 sm:!px-[18px] ${page === id ? 'on' : ''}`}>
         <Icon size={17} /><span className="min-w-0"><span className="lib-tab-name">{label}</span><span className="lib-tab-sub !hidden sm:!block">{sub}</span></span>
@@ -146,6 +152,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       <span>Could not load preparation progress. Your saved list has been kept.</span>
       <Button className="min-h-11" onClick={() => void state.refetch()}><RefreshCw /> Retry</Button>
     </div>}
+
+    {page === 'cache' && <SubbeatsCache cache={cache} />}
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
@@ -208,6 +216,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <div className="border-b border-ink p-4">
           <h2 id="subbeats-candidates" className="font-display text-xl font-bold">{page === 'prepared' ? 'Prepared tracks' : 'Tracks to explore'}</h2>
           <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared resources are saved for reuse. Choose a pair here, then open Preview to listen.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
+          <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Regular stem inclusion is separate from deeper Sub/Beats preparation. It bypasses selective cache criteria, with the normal priority and space budget.</p>
           {page === 'prepared' && (outgoing || incoming) && <div className="mt-3 flex flex-wrap items-center gap-3 text-sm" role="status">
             <span>Outgoing: {byId.get(outgoing)?.title || 'Choose a track'} · Incoming: {byId.get(incoming)?.title || 'Choose a track'}</span>
             <Link href="/admin/library/subbeats/preview" className="min-h-11 py-3 underline underline-offset-4">Open preview</Link>
@@ -281,6 +290,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         {candidates.isLoading && <p role="status" className="p-4 text-sm text-muted">Finding tracks…</p>}
         {candidates.isError && <div role="alert" className="flex flex-wrap items-center gap-3 p-4 text-sm">Could not load tracks.<Button className="min-h-11" onClick={() => void candidates.refetch()}>Retry</Button></div>}
         {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{page === 'prepared' ? 'No prepared tracks match. Clear the search or choose another genre.' : 'No tracks match these filters. Try another genre or status, clear the search, or choose Entire library.'}{page === 'prepared' && <Link href="/admin/library/subbeats" className="mt-2 flex min-h-11 items-center underline underline-offset-4">Explore tracks to prepare more</Link>}</p>}
+        {cache.update.isError && <p role="alert" className="p-4 text-sm">Could not save regular stem inclusion. Your previous choice is still shown. Try again.</p>}
+        {cache.query.isError && <p role="alert" className="p-4 text-sm">Regular stem choices are unavailable. <button className="min-h-11 underline underline-offset-4" onClick={() => void cache.query.refetch()}>Retry</button></p>}
         {pagination}
         <ul className="divide-y divide-ink/20">
           {rows.map(row => {
@@ -295,6 +306,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 <p className="mt-1 text-xs break-words text-muted lg:mt-0">{row.album}</p></div>
                 <p className="mt-1 text-xs break-words text-muted lg:mt-0">{row.genres.join(' · ')}</p>
                 <p className="mt-2 text-xs text-muted lg:mt-0">{BROWSE_LABEL[job?.status ?? row.status]} · {row.hasBeatGrid ? 'Beat data available' : row.bpm ? 'Tempo estimate only' : 'No tempo data'}</p>
+                <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs lg:col-span-3">
+                  <Checkbox aria-label={`Include ${row.title} by ${row.artist} in regular stem caching`} checked={regularIds.has(row.id)}
+                    disabled={!cache.query.data || cache.query.isError || cache.update.isPending}
+                    onCheckedChange={checked => cache.update.mutate({ track: { id: row.id, include: checked === true } })} />
+                  Include in regular stem caching
+                </label>
                 {page === 'prepared' && <div className="mt-3 flex flex-wrap gap-2 lg:col-span-3">
                   <Button className="min-h-11" aria-pressed={outgoing === row.id} disabled={incoming === row.id} onClick={() => { setOutgoing(row.id); setBarShift(0); }}>{outgoing === row.id ? 'Outgoing selected' : 'Use as outgoing'}</Button>
                   <Button className="min-h-11" aria-pressed={incoming === row.id} disabled={outgoing === row.id} onClick={() => { setIncoming(row.id); setBarShift(0); }}>{incoming === row.id ? 'Incoming selected' : 'Use as incoming'}</Button>
