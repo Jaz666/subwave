@@ -193,7 +193,7 @@ export function planAcoustics(input: PlanInput): AcousticsPlan {
     );
   }
   if (facets.includes('stems')) {
-    warnings.push('stems: the stem-cache byte budget is enforced at run time, so fewer than planned may be written');
+    warnings.push('stems: only dance-family tracks at 90–180 BPM with a usable head or tail bar grid are cached; eligibility and the byte budget are enforced at run time, so fewer than planned may be written');
   }
 
   return {

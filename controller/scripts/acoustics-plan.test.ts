@@ -296,6 +296,8 @@ test('a stems plan on an unmounted stems share sends no stems_dir', async () => 
     rmSync(root, { recursive: true, force: true });
     sql().prepare(`UPDATE tracks SET stems_at = 1 WHERE id = 'a'`).run();
     db.upsertTrackMeta('t9', { title: 't9', artist: 'A', album: 'B', duration: 214 });
+    db.upsertTrackMeta('t9', {genres:['House']});
+    db.upsertTrackAnalysis('t9', {bpm:138,bars:[0,2000,4000]});
     const p = P.planAcoustics({ ids: ['t9'], facets: ['stems'], where: { kind: 'all' },
       state: db.loadFacetState(['stems']), capabilities: { clap: true, demucs: true, tailVocal: true } });
     assert.equal(p.items.length, 1);
@@ -385,6 +387,8 @@ test('a stems facet request carries stems_require_marker with its stems_dir', as
   analyzer._resetBackendCacheForTests();
   try {
     db.upsertTrackMeta('t10', { title: 't10', artist: 'A', album: 'B', duration: 214 });
+    db.upsertTrackMeta('t10', {genres:['House']});
+    db.upsertTrackAnalysis('t10', {bpm:138,bars:[0,2000,4000]});
     const p = P.planAcoustics({ ids: ['t10'], facets: ['stems'], where: { kind: 'all' },
       state: db.loadFacetState(['stems']), capabilities: { clap: true, demucs: true, tailVocal: true } });
     assert.equal(p.items.length, 1);
@@ -556,6 +560,8 @@ test('a facet stems plan skips separation while the share is offline', async () 
   const stemCacheStore = await import('../src/music/stem-cache.js');
   const id = 'offline-stems';
   db.upsertTrackMeta(id, { title: id, duration: 214 });
+  db.upsertTrackMeta(id, {genres:['House']});
+  db.upsertTrackAnalysis(id, {bpm:138,bars:[0,2000,4000]});
   rmSync(stemCacheStore.stemsRoot(), { recursive: true, force: true });
   sql().prepare("UPDATE tracks SET stems_at = 1 WHERE id = 'a'").run();
   try {
@@ -579,6 +585,8 @@ test('URL fallback omits stems and leaves a stems-only job retryable', async () 
   writeFileSync(join(root, stemCacheStore.STEMS_MARKER), '');
   const id = 'remote-stems';
   db.upsertTrackMeta(id, { title: id, duration: 214 });
+  db.upsertTrackMeta(id, {genres:['House']});
+  db.upsertTrackAnalysis(id, {bpm:138,bars:[0,2000,4000]});
   rejectSharedPath = true;
   try {
     requests.length = 0;
@@ -634,4 +642,30 @@ test('fresh tail vocals do not promote an older complete head vocal measurement'
     vocalCapable = false;
     analyzer._resetBackendCacheForTests();
   }
+});
+
+
+test('planned stem requests cannot cache rock or unmeasured dance tracks, even with an existing dir', async () => {
+  const cache = await import('../src/music/stem-cache.js');
+  const { mkdirSync, writeFileSync, readFileSync } = await import('node:fs');
+  vocalCapable = true;
+  analyzer._resetBackendCacheForTests();
+  const ids = ['selective-rock', 'selective-unmeasured'];
+  try {
+    for (const id of ids) db.upsertTrackMeta(id, {title:id,genres:[id.endsWith('rock') ? 'Rock' : 'House'],duration:214});
+    db.upsertTrackAnalysis(ids[0], {bpm:138,bars:[0,2000,4000]});
+    const dir = cache.dirFor(ids[0]);
+    mkdirSync(dir, {recursive:true});
+    const sentinel = join(dir, 'head-drums.flac');
+    writeFileSync(sentinel, 'existing audio');
+    requests.length = 0;
+    await runAnalysisPass({plan:facetPlan(ids, ['head','stems'])});
+    assert.equal(requests.length, 2);
+    for (const request of requests) {
+      assert.deepEqual(request.facets, ['head']);
+      assert.equal(request.stems_dir, undefined);
+    }
+    assert.equal(readFileSync(sentinel,'utf8'), 'existing audio');
+    for (const id of ids) assert.equal(sql().prepare('SELECT stems_at FROM tracks WHERE id=?').pluck().get(id), null);
+  } finally { vocalCapable=false;analyzer._resetBackendCacheForTests(); }
 });
