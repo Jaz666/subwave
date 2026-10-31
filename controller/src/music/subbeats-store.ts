@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { writeFileAtomicSync } from '../util/atomic-file.js';
-import { subbeatsQueueSchema, subbeatsEventSchema, type subbeatsJobSchema } from '../schemas/subbeats.js';
+import { SUBBEATS_QUEUE_LIMIT, subbeatsQueueSchema, subbeatsEventSchema, type subbeatsJobSchema } from '../schemas/subbeats.js';
 
 export type SubbeatsJob = z.infer<typeof subbeatsJobSchema>;
 export type SubbeatsQueue = z.infer<typeof subbeatsQueueSchema>;
@@ -35,7 +35,7 @@ export function createSubbeatsStore(stateDir: string) {
         jobs.set(track.id, { ...track, status: 'queued', attempts: previous?.attempts ?? 0,
           bundleKey: null, error: null, updatedAt: new Date().toISOString() });
       }
-      if (jobs.size > 500) throw new Error('The preparation list is full (500 tracks)');
+      if (jobs.size > SUBBEATS_QUEUE_LIMIT) throw new Error(`The preparation list is full (${SUBBEATS_QUEUE_LIMIT} tracks)`);
       state.jobs = [...jobs.values()];
       save(state);
     },

@@ -58,6 +58,78 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Browsing and selection at library scale — 31 October 2026
+
+The Library page now has explicit Dance candidates, Prepared tracks and Entire
+library collections. Search stays within the chosen collection. Dance uses the
+existing genre/90–180 BPM policy; Prepared tracks includes saved prepared jobs
+that still exist in the library. Entire library is the manual override, including
+recordings with no dance tag or tempo data. Legacy API searches without an
+explicit scope retain their previous whole-library behavior.
+
+`GET /library/subbeats/candidates` accepts `q`, `offset`, `scope` (`dance`,
+`prepared`, `library`), `genre` (exact stored label, case-insensitive) and `status`
+(`all`, `not-started`, or an existing preparation status). It returns 50 rows,
+the matching total, genre and status counts, and up to 100 selectable rows from
+the complete filtered result. Genre options describe the collection/search before
+genre/status filtering; status counts describe the chosen genre/search before
+status filtering. All filters apply before pagination. An out-of-range offset
+falls back to the last page. Invalid filters return 400; unavailable state returns
+503 without touching it. Rows/counts/bulk suggestions use one SQL snapshot.
+
+Selections carry across pages, collections, search and filters. A review list
+shows selected titles with individual removal, plus the number currently outside
+the visible page. Select this page affects only the page; Select matching adds
+from the full filtered result but stops at the batch/list limits. No action
+silently queues the full catalogue. Queued, running, prepared and unmeasurable
+entries are excluded from bulk selection; explicit Recheck remains available in
+Preparation. Failed/unavailable entries can be retried even at the 500-entry
+limit because they already own a slot. The controller remains authoritative at
+admission, and failed requests retain the selection. Retrying one sidebar entry
+does not clear unrelated selections.
+
+The existing 100-track submission, 500-entry list and separate 5 GB prepared-cache
+limits are shown before submission. This increment does not enlarge them, evict
+prepared audio or automatically admit thousands of tracks. Preparation has its
+own search/status counts and 20-entry pages. Preview controls are collapsed by
+default and have a prepared-track search that retains the selected pair. No audio
+rendering or mix policy changes are part of this increment.
+
+A compact SQLite browse index is ensured on database open after migration,
+covering metadata, tempo, confidence and the computed beat-data flag. It avoids
+reading the large stored beat arrays for every row during counts/filtering. It
+uses only built-in SQLite functions so child writers can maintain it. Index
+creation failure warns and preserves the existing fallback read path. Deploy
+`controller` and `web` together through the existing overlays; the owner runs
+rebuilds. Revert this increment to restore the previous page/API; the extra
+index is harmless and saved jobs/audio remain intact.
+
+Verification: all 25 controller Sub/Beats tests, 32 Library web tests, nine
+admin-query tests and the static query audit passed. Controller and web
+lint/typechecks passed; controller retains existing warnings. Desktop/mobile
+browser checks with 2,500 dance fixtures covered cross-page/filter selections,
+100-track single submissions, scoped search, prepared browsing, status counts,
+preparation search/pages, searchable preview choices and overflow/page errors.
+The existing Library search checks and all six query-cache browser checks passed.
+All browser writes used a separate temporary state directory and test:test auth;
+temporary servers were stopped and generated Next type-file changes restored.
+
+A read-only extraction of 69,344 station metadata records into an isolated RAM
+projection (without original audio or large beat arrays) gave 11,055 dance
+matches, 1,610 exact House-tagged matches and 49 prepared records. Indexed browse
+queries took approximately 263 ms, 211 ms and 2 ms respectively; the entire
+library took 536 ms. These are isolated scale checks, not a guarantee of live
+cold-disk latency. The station DB was opened read-only and was not indexed or
+otherwise changed by this check. Repeatable browser fixtures, checks, screenshots
+and scale results are retained outside Git under
+`/home/jaz666/codex/subbeats-usability-evaluation-20261031/`.
+
+Development is on `feat/sub-beats`; the scoped source increment is intended for
+cherry-pick into `test-station/sleeve-notes-clean-20261014`. Runtime remains on
+the owner's installed images until they rebuild `controller` and `web`. Next,
+use the new genre/status filters to select a small batch within the existing
+cache limit, then check the preparation results before admitting more.
+
 ## Deferred preview controls — owner decisions, 31 October 2026
 
 Pause mixing work while improving which tracks qualify for Sub/Beats analysis.

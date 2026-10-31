@@ -5098,6 +5098,10 @@ export const stationRenameSchema = z.object({ name: stationNameSchema });
 
 // ─── from controller/src/schemas/subbeats.ts ─────────────────────────────
 
+export const SUBBEATS_BATCH_LIMIT = 100;
+export const SUBBEATS_QUEUE_LIMIT = 500;
+export const SUBBEATS_PAGE_SIZE = 50;
+
 export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
 export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
 export const subbeatsJobSchema = z.object({
@@ -5106,9 +5110,9 @@ export const subbeatsJobSchema = z.object({
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });
 export const subbeatsQueueSchema = z.object({
-  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(500),
+  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(SUBBEATS_QUEUE_LIMIT),
 });
-export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(100) });
+export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT) });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
 export const subbeatsEventSchema = z.object({
   id: z.string().min(1).max(200),
@@ -5116,11 +5120,27 @@ export const subbeatsEventSchema = z.object({
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
   error: z.string().max(1000).nullable().default(null),
 });
+export const subbeatsBrowseStatusSchema = z.enum(['not-started', 'queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
+export const subbeatsBrowseQuerySchema = z.object({
+  q: z.string().trim().max(200).default(''),
+  offset: z.coerce.number().int().min(0).max(1000000).default(0),
+  scope: z.enum(['dance', 'library', 'prepared']).optional(),
+  genre: z.string().trim().max(200).default(''),
+  status: z.union([z.literal('all'), subbeatsBrowseStatusSchema]).default('all'),
+});
 export const subbeatsCandidateSchema = z.object({
   id: z.string(), title: z.string(), artist: z.string(), album: z.string(),
   bpm: z.number().nullable(), hasBeatGrid: z.boolean(),
+  genres: z.array(z.string()).default([]), status: subbeatsBrowseStatusSchema.default('not-started'),
 });
-export const subbeatsCandidatePageSchema = z.object({ rows: z.array(subbeatsCandidateSchema), hasMore: z.boolean() });
+export const subbeatsCandidatePageSchema = z.object({
+  rows: z.array(subbeatsCandidateSchema).max(SUBBEATS_PAGE_SIZE), hasMore: z.boolean(),
+  total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(),
+  genres: z.array(z.object({ value: z.string(), count: z.number().int().positive() })),
+  statuses: z.array(z.object({ value: subbeatsBrowseStatusSchema, count: z.number().int().positive() })),
+  selectableCount: z.number().int().nonnegative(),
+  selectableRows: z.array(subbeatsCandidateSchema).max(SUBBEATS_BATCH_LIMIT),
+});
 export const subbeatsReferenceSchema = z.object({
   id: z.string(), introResolve: z.number().finite().positive().max(1200),
   introBars: z.array(z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32)])).min(1).max(4),

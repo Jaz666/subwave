@@ -12,6 +12,7 @@ import { DB_PATH, getDb, getEmbeddingDim, requireDb, setHandle } from './handle.
 import { ensureStatsIndexes, invalidateStats } from './stats.js';
 import { migrate } from './schema.js';
 import { maybeMigrateFromMoodsJson } from './legacy.js';
+import { ensureSubbeatsIndex } from './subbeats.js';
 import { registerSearchSql } from '../../util/search-pattern.js';
 
 // `reseed`: on an embedding-dim mismatch, drop the stale-dim vectors and rebuild
@@ -56,6 +57,7 @@ export async function open(opts: {
       opts.adoptStoredDim === true,
     ),
   });
+  ensureSubbeatsIndex(db);
   await maybeMigrateFromMoodsJson();
   ensureStatsIndexes();
 }
