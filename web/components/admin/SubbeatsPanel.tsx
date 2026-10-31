@@ -145,7 +145,7 @@ export default function SubbeatsPanel() {
       <section className="order-2 min-w-0 border border-ink lg:order-1" aria-labelledby="subbeats-candidates">
         <div className="border-b border-ink p-4">
           <h2 id="subbeats-candidates" className="font-display text-xl font-bold">Tracks to explore</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted">Tempo and existing beat data suggest starting points. Deeper analysis checks the recording; these suggestions are not confirmed driving beats.</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted">Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.</p>
           <label htmlFor="subbeats-search" className="mt-4 mb-1 block text-sm font-medium">Search your library</label>
           <Input id="subbeats-search" type="search" placeholder="Artist, track or album" value={query} onChange={e => {
             setQuery(e.target.value); setOffset(0); setSelected(new Set());
@@ -164,7 +164,7 @@ export default function SubbeatsPanel() {
         </div>
         {candidates.isLoading && <p role="status" className="p-4 text-sm text-muted">Finding tracks…</p>}
         {candidates.isError && <div role="alert" className="flex flex-wrap items-center gap-3 p-4 text-sm">Could not load tracks.<Button onClick={() => void candidates.refetch()}>Retry</Button></div>}
-        {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{q ? 'No matching tracks. Try another artist, title or album.' : 'No suggestions yet. Search for a track you would like to analyse.'}</p>}
+        {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{q ? 'No matching tracks. Try another artist, title or album.' : 'No dance-music suggestions yet. Search your library to try another track.'}</p>}
         <ul className="divide-y divide-ink/20">
           {rows.map(row => {
             const job = byId.get(row.id);

@@ -2,6 +2,7 @@
 // of the handle in handle.ts.
 
 import Database from 'better-sqlite3';
+import { subbeatsDanceGenresFromJson } from '../subbeats-eligibility.js';
 import { instrumentalFromJson } from '../lyric-vocal.js';
 import * as sqliteVec from 'sqlite-vec';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +46,7 @@ export async function open(opts: {
   db.pragma('journal_size_limit = 67108864'); // 64 MiB
   sqliteVec.load(db);
   db.function('is_instrumental', { deterministic: true }, instrumentalFromJson);
+  db.function('subbeats_dance_genres', { deterministic: true }, subbeatsDanceGenresFromJson);
 
   // migrate() may adopt the stored dim; trust its return as the live schema dim.
   setHandle({

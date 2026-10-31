@@ -17,7 +17,7 @@ for (const [id, bpm, beats] of [
   ['beat-grid', 138, JSON.stringify(Array.from({ length: 20 }, (_, i) => i * 440))],
   ['tempo-only', 135, 'broken'], ['quiet-intro', null, null],
 ] as const) {
-  db.upsertTrackMeta(id, { title: id, artist: 'Test artist', album: 'Test collection' });
+  db.upsertTrackMeta(id, { title: id, artist: 'Test artist', album: 'Test collection', genres: ['Trance'] });
   db.getDb()!.prepare('UPDATE tracks SET bpm=?, beats_json=? WHERE id=?').run(bpm, beats, id);
 }
 const app = express();
@@ -29,6 +29,21 @@ const headers = { Authorization: `Basic ${Buffer.from('test:test').toString('bas
 after(async () => { await new Promise<void>(resolve => server.close(() => resolve())); db.close(); });
 
 const post = (path: string, body: unknown) => fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) });
+
+test('dance discovery handles genre variants and refuses malformed or unrelated tags', async () => {
+  const { subbeatsDanceGenresFromJson: matches } = await import('../src/music/subbeats-eligibility.js');
+  for (const genre of ['Progressive House', 'Tech-House', 'Uplifting Trance', 'Nu-Disco',
+    'Drum & Bass', 'Drum and Bass', 'D&B', 'DnB', 'Big Beat', 'UK Garage', 'Garage',
+    'Dubstep', 'Dance-Pop', 'Jungle', 'Disco', 'EDM', 'Electronica']) {
+    assert.equal(matches(JSON.stringify([genre])), 1, genre);
+  }
+  for (const genre of ['Rock', 'Pop', 'Garage Rock', 'Acid Rock', 'Hardcore Punk',
+    'Ambient', 'Jazz', 'Country', 'Warehouse', 'Trancey']) {
+    assert.equal(matches(JSON.stringify([genre])), 0, genre);
+  }
+  for (const value of [null, '', 'broken', '{}', 'null', '"Dance"', '[1,null,{}]']) assert.equal(matches(value), 0);
+  assert.equal(matches(JSON.stringify(['Rock', 'Breakbeat'])), 1);
+});
 
 test('all Sub/Beats reads and writes require admin authentication', async () => {
   for (const path of ['/library/subbeats', '/library/subbeats/candidates']) assert.equal((await fetch(base + path)).status, 401);
@@ -44,6 +59,30 @@ test('discovery uses existing evidence and search can find tracks without a BPM'
   const searched = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates?q=quiet-intro', { headers })).json());
   assert.equal(searched.rows[0].id, 'quiet-intro');
   assert.equal(searched.rows[0].bpm, null);
+});
+
+test('default suggestions require dance-family genres even with strong beat evidence; search remains open', async () => {
+  const fixtures: Array<[string, string[]]> = [
+    ['kinks', ['Rock']], ['unknown-genre', []], ['punk-hardcore', ['Hardcore Punk']],
+    ['garage-rock', ['Garage Rock']], ['fatboy', ['Big Beat']],
+    ['deep-house', ['Deep House']], ['multi-genre', ['Pop', 'Drum & Bass']],
+    ['broad-electronic', ['Electronic']],
+  ];
+  try {
+    for (const [id, genres] of fixtures) {
+      db.upsertTrackMeta(id, { title: id, artist: id, genres });
+      db.getDb()!.prepare('UPDATE tracks SET bpm=138, beats_json=?, analysis_confidence=1 WHERE id=?')
+        .run(JSON.stringify(Array.from({length:64}, (_,i) => i * 435)), id);
+    }
+    const page = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates', {headers})).json());
+    const ids = new Set(page.rows.map(row => row.id));
+    for (const id of ['fatboy', 'deep-house', 'multi-genre', 'broad-electronic']) assert.ok(ids.has(id), id);
+    for (const id of ['kinks', 'unknown-genre', 'punk-hardcore', 'garage-rock']) assert.ok(!ids.has(id), id);
+    const search = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates?q=kinks', {headers})).json());
+    assert.equal(search.rows[0]?.id, 'kinks');
+  } finally {
+    for (const [id] of fixtures) db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
 });
 
 test('invalid and missing IDs cannot enqueue work; valid admission is durable and idempotent', async () => {
