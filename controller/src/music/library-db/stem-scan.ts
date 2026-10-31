@@ -18,6 +18,9 @@ export interface StemScanOpts {
   operatorLikedIds?: readonly string[];
   listenerLikedIds?: readonly string[];
   nowMs?: number;
+  // Admission exceptions, separate from the unchanged priority weights.
+  starredIds?: readonly string[];
+  subbeatsIds?: readonly string[];
 }
 
 // Use CASE with json_valid before JSON functions; SQLite does not guarantee AND
@@ -105,10 +108,19 @@ function dedupe(ids: readonly string[] | undefined): string[] {
   return [...new Set(ids.map(String).filter(Boolean))];
 }
 
-const STEM_ELIGIBLE_SQL = 'stem_cache_eligible(t.genres, t.bpm, t.bars_json, t.outro_json, t.duration_sec) = 1';
+const STEM_ELIGIBLE_SQL = `(EXISTS (SELECT 1 FROM plays WHERE track_id = t.id)
+  OR t.id IN (SELECT value FROM json_each(:stemAdmissionIds))
+  OR stem_cache_eligible(t.genres, t.bpm, t.bars_json, t.outro_json, t.duration_sec) = 1)`;
 
-export function canCacheStems(id: string): boolean {
-  return !!requireDb().prepare(`SELECT 1 FROM tracks t WHERE t.id = ? AND ${STEM_ELIGIBLE_SQL}`).get(id);
+function admissionParams(opts: StemScanOpts): { stemAdmissionIds: string } {
+  return { stemAdmissionIds: JSON.stringify(dedupe([
+    ...(opts.operatorLikedIds ?? []), ...(opts.starredIds ?? []), ...(opts.subbeatsIds ?? []),
+  ])) };
+}
+
+export function canCacheStems(id: string, opts: StemScanOpts = {}): boolean {
+  return !!requireDb().prepare(`SELECT 1 FROM tracks t WHERE t.id = :id AND ${STEM_ELIGIBLE_SQL}`)
+    .get({id, ...admissionParams(opts)});
 }
 
 // Scan tracks with no stems_at attempt, independent of other analysis scopes. Disk absence is
@@ -121,7 +133,7 @@ export function needsStemsIds(limit?: number, opts: StemScanOpts = {}): string[]
       WHERE t.stems_at IS NULL AND ${STEM_ELIGIBLE_SQL} AND ${analysisFailureExclusion('t')}
       ORDER BY ${expr} DESC, RANDOM()` +
     (limit && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : '');
-  const rows = requireDb().prepare(sql).all(params) as Array<{ id: string }>;
+  const rows = requireDb().prepare(sql).all({ ...params, ...admissionParams(opts) }) as Array<{ id: string }>;
   return rows.map(r => r.id);
 }
 

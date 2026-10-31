@@ -7,6 +7,8 @@ import { config } from '../config.js';
 import * as settings from '../settings.js';
 import * as db from './library-db.js';
 import * as likes from '../broadcast/likes.js';
+import * as subsonic from './subsonic.js';
+import { readSubbeatsQueue } from './subbeats-store.js';
 import { stemEvictionOrder, UNKNOWN_TRACK_PRIORITY } from './stem-priority.js';
 import { mapPool } from '../util/async-pool.js';
 import type { StemScanOpts } from './library-db.js';
@@ -513,6 +515,23 @@ export function likeSignals(): StemScanOpts {
   } catch {
     return {};
   }
+}
+
+// The maintenance child only reads likes; it must never mint a second secret.
+export async function admissionSignals(): Promise<StemScanOpts> {
+  await likes.load({ readOnly: true });
+  const signals: StemScanOpts = likeSignals();
+  try {
+    signals.starredIds = (await subsonic.getStarred()).flatMap(track => track?.id ? [String(track.id)] : []);
+  } catch {
+    console.warn('[stems] Could not refresh Navidrome stars; local operator hearts still qualify');
+  }
+  try {
+    signals.subbeatsIds = readSubbeatsQueue(config.stateDir).jobs.filter(job => job.status === 'prepared').map(job => job.id);
+  } catch {
+    console.warn('[stems] Could not read Sub/Beats preparation; keeping the saved list unchanged');
+  }
+  return signals;
 }
 
 // If priority lookup fails, return null for every dir and use mtime eviction. Dirs for tracks

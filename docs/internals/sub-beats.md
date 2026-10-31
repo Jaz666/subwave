@@ -58,6 +58,44 @@ No browser or live-library inspection was run. Development source on
 `feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
 or restart is performed by the agent.
 
+## Played/starred exceptions to stem admission — 31 October 2026
+
+This supersedes the genre-only admission restriction below. The owner requires:
+
+- Any historically played track, regardless of genre, BPM or beat grid.
+- Any operator-hearted or Navidrome-starred track, with the same exemption.
+- Any other ordinary track only when it passes the dance-family, 90–180 BPM and
+  measured-grid fallback introduced earlier.
+- Sub/Beats-prepared tracks remain admitted independently of that fallback.
+
+The shared SQL predicate applies these OR conditions before the existing ranked
+backfill and per-track write allocation. Any historical play counts, without a
+7/90-day admission cutoff. Those windows still contribute to the unchanged
+priority score. Listener likes retain their existing priority signal; a listener
+like alone is not a star exemption unless it has a corresponding Navidrome star.
+
+Analysis loads likes read-only (never minting or rewriting a second secret),
+refreshes Navidrome stars once per pass and reads completed Sub/Beats admissions.
+If Navidrome is unavailable, local operator hearts still qualify; if the saved
+Sub/Beats list is unreadable, it is preserved and that exception is deferred.
+Pair-specific tempo, alignment and rendering checks remain unchanged, so
+non-dance stem blends remain possible. Cache admission does not approve a pair.
+
+Verification: all 83 stem/cache/seam tests and 33 acoustic-plan tests passed.
+New SQL checks cover arbitrarily old plays, operator hearts, Navidrome stars,
+Sub/Beats-prepared ids, absent BPM/grids, and listener-only likes. The real mocked
+analysis pass creates stems for three non-dance tracks via play/star/Sub/Beats
+exceptions without changing saved Sub/Beats preparation. Existing dance fallback,
+non-dance exclusion and priority/eviction checks still pass. Controller lint and
+typecheck passed with the existing 1,741 warnings. Web lint/typecheck and all
+25 Settings tests passed; the Settings detector reported no findings.
+
+The previous 57,472 rejected folders / 84.3% figure used the stricter dance-only
+rule and must not be quoted as the count under this corrected policy. No files
+were reclaimed during either policy change. Extended Sub/Beats files remain in
+the separate 5 GB cache; physical consolidation/reuse and a unified byte budget
+are the next storage increment, not implemented by this admission correction.
+
 ## Selective ordinary stem admission — 31 October 2026
 
 Owner-approved first step toward sharing the existing cache: ordinary library
