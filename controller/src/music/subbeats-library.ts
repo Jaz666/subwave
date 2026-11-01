@@ -33,21 +33,29 @@ async function main() {
   reportProgress({phase:'analyze',label:'Checking shared cache space and migrating prepared bundles',done:0,total:ids.length});
   let remaining = Math.max(0, Math.floor(stemCache.budgetBytes() - (await stemCache.usage()).bytes));
   await stemCache.markPassPending();
+  let changed = false;
+  let uncertain = true;
   try {
     const migrated = await analyzer.migrateSubbeatsCache(config.stateDir, cacheId, {stems_root:stemCache.stemsRoot(),remaining_bytes:remaining});
     remaining = Math.max(0, remaining - migrated.addedBytes);
+    changed = migrated.addedBytes > 0; uncertain = false;
     if (migrated.migrated) console.log(`[info] Moved ${migrated.migrated} verified Sub/Beats bundles into the shared stem cache`);
-    if (ids.length && !await analyzer.subbeatsAvailable()) throw new Error('Update the heavy analyzer to prepare Sub/Beats stems');
     for (const id of ids) {
       const state = readSubbeatsQueue(config.stateDir);
       if (state.paused) break;
       const job = state.jobs.find(j => j.id === id);
       if (job?.status !== 'queued') continue;
       if (!await waitForQuiet(gate, { done, total: ids.length }, () => readSubbeatsQueue(config.stateDir).paused)) break;
-      reportProgress({ phase: 'analyze', label: `Preparing Sub/Beats: ${job.artist} — ${job.title}`, done, total: ids.length });
+      reportProgress({ phase: 'analyze', label: `${job.task === 'assess' ? 'Assessing suitability' : 'Preparing Sub/Beats'}: ${job.artist} — ${job.title}`, done, total: ids.length });
       emit({ id, status: 'running' });
       let localPath: string | null = null;
       try {
+        if (job.task === 'assess' && job.bundleKey) {
+          emit({id,...await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot())});
+          continue;
+        }
+        if (!await analyzer.subbeatsAvailable()) throw new Error('Update the heavy analyzer to prepare Sub/Beats stems');
+        uncertain = true;
         const source = await analyzer.downloadCapped(id, { maxBytes: 256 * 1024 * 1024, timeoutMs: 5 * 60_000 });
         localPath = source.path;
         if (!source.complete) {
@@ -56,6 +64,7 @@ async function main() {
         }
         const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining});
         remaining = Math.max(0, remaining - result.addedBytes);
+        changed ||= result.addedBytes > 0; uncertain = false;
         emit({id, ...result});
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -67,7 +76,10 @@ async function main() {
         done++;
       }
     }
-  } finally { await stemCache.invalidateUsageSnapshot(); }
+  } finally {
+    if (changed || uncertain) await stemCache.invalidateUsageSnapshot();
+    else await stemCache.settlePassWrites([]);
+  }
   reportProgress({ phase: 'done', label: 'Sub/Beats preparation finished', done, total: ids.length });
   analyzer.shutdown();
 }

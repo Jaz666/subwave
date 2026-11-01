@@ -4,7 +4,7 @@
 // lightweight and isolated from the analyzer runtime (no torch / demucs /
 // librosa / audio), with one exception: vocal_gate_test.py's case 6 needs
 // torch, so it skips here and runs only inside the subwave-analyzer-heavy
-// image. Three numerical suites use NumPy; when it is unavailable,
+// image. Several numerical suites use NumPy; when it is unavailable,
 // this shim installs the pinned test-only wheel into a temporary directory, so
 // a clean checkout's `npm test` is reproducible without modifying the user's
 // Python environment. A box without python3 still skips cleanly (exit 0).
@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
+  'subbeats_suitability_test.py', // cached role capability, preview coverage and no-model reassessment
   'subbeats_reference_preview_test.py', // sustained rhythm, source verification and credential-free preview cache
   'subbeats_reference_test.py', // human-timed windows, tempo aliases and read-only coverage audit
   'subbeats_structure_test.py', // full-recording structural candidate evidence and independent cache

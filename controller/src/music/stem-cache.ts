@@ -581,7 +581,7 @@ export async function admissionSignals({ strict = false } = {}): Promise<StemSca
     console.warn('[stems] Could not refresh Navidrome stars; local operator hearts still qualify');
   }
   try {
-    signals.subbeatsIds = readSubbeatsQueue(config.stateDir).jobs.filter(job => job.status === 'prepared').map(job => job.id);
+    signals.subbeatsIds = readSubbeatsQueue(config.stateDir).jobs.filter(job => job.status === 'prepared' || (job.task === 'assess' && !!job.bundleKey)).map(job => job.id);
   } catch (error) {
     if (strict) throw error;
     console.warn('[stems] Could not read Sub/Beats preparation; keeping the saved list unchanged');

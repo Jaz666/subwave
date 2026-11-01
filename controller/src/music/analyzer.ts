@@ -261,6 +261,7 @@ interface WorkerMessage {
   stems_cached?: boolean;
   subbeats_capable?: boolean;
   subbeats_cache_version?: number;
+  subbeats_suitability_version?:number;
   cache_added_bytes?: number;
   migrated?: number;
   subbeats_result?: unknown;
@@ -288,6 +289,7 @@ let _localAudioCapable: boolean | null = null;
 let _localVocalCapable: boolean | null = null;
 let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
+let _localSubbeatsSuitability = false;
 let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
@@ -351,7 +353,8 @@ function startWorker(): Promise<void> {
           if (typeof msg.text_embedding_capable === 'boolean' && _localAudioError === null) _localTextCapable = msg.text_embedding_capable;
           _localFacetsCapable = msg.facets_capable === true;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
-          _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared;
+          _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
+          _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
         }
         // After the ready assignments, so a reported loss always wins.
         noteLocalCapabilityLoss(msg);
@@ -508,6 +511,7 @@ let _sidecarVocalCapable: boolean | null = null;
 let _sidecarTailVocalCapable: boolean | null = null;
 // Facet protocol (version signal; null on old sidecars).
 let _sidecarFacetsCapable: boolean | null = null;
+let _sidecarSubbeatsSuitability = false;
 let _sidecarSubbeatsShared = false;
 let _sidecarSubbeatsCapable: boolean | null = null;
 // The CLAP TEXT tower (embed-text).
@@ -535,6 +539,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_facets_capable?: boolean | null;
       analyze_subbeats_capable?: boolean | null;
       analyze_subbeats_cache_version?: number;
+      analyze_subbeats_suitability_version?:number;
       analyze_audio_error?: string | null;
       analyze_vocal_error?: string | null;
     };
@@ -546,7 +551,8 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarTailVocalCapable = typeof body.analyze_tail_vocal_capable === 'boolean' ? body.analyze_tail_vocal_capable : null;
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
-      _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared;
+      _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
+      _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
       _sidecarTextCapable = typeof body.analyze_text_capable === 'boolean' ? body.analyze_text_capable : null;
       _sidecarAudioError = typeof body.analyze_audio_error === 'string' ? body.analyze_audio_error : null;
       _sidecarVocalError = typeof body.analyze_vocal_error === 'string' ? body.analyze_vocal_error : null;
@@ -1243,6 +1249,21 @@ function cacheGrowth(answer:WorkerMessage):number {
   if (!Number.isSafeInteger(answer.cache_added_bytes) || answer.cache_added_bytes! < 0) throw new Error('Analyzer did not report shared-cache usage; update the analyzer');
   return answer.cache_added_bytes!;
 }
+export async function assessSubbeats(stateDir:string, cacheId:string, trackId:string, bundleKey:string, stemsRoot:string) {
+  const backend = await sharedSubbeatsBackend();
+  if (backend === 'sidecar' ? !_sidecarSubbeatsSuitability : !_localSubbeatsSuitability) throw new Error('Update the analyzer to assess Sub/Beats suitability');
+  const payload = {state_dir:stateDir,cache_id:cacheId,stems_root:stemsRoot,track_id:trackId,bundle_key:bundleKey};
+  let answer:WorkerMessage;
+  if (_backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/assess-subbeats`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:5*60_000});
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'assess_subbeats',...payload},5*60_000);
+  const result = subbeatsEventSchema.omit({id:true}).parse(answer.subbeats_result);
+  if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
+  return {...result,addedBytes:0};
+}
+
 export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache) {
   if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
   const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared };
@@ -1257,7 +1278,9 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   } else {
     answer = await localRequestRaw({ op: 'prepare_subbeats', ...payload }, timeoutMs);
   }
-  return {...subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result), addedBytes:cacheGrowth(answer)};
+  const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
+  if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
+  return {...result, addedBytes:cacheGrowth(answer)};
 }
 
 export function subbeatsCapability(): boolean | null {

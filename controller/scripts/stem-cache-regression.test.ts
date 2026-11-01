@@ -228,6 +228,22 @@ test('ordinary analysis caches played, Navidrome-starred and Sub/Beats-prepared 
   assert.deepEqual(store.read(),before,'ordinary analysis must not rewrite extended Sub/Beats preparation');
 });
 
+test('saved Sub/Beats bundles retain selective-cache protection while assessed or awaiting assessment retry', async () => {
+  const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  updateSubbeatsStemPolicy({enabled:true});
+  const { createSubbeatsStore } = await import('../src/music/subbeats-store.js');
+  const store = createSubbeatsStore(stateDir);
+  store.enqueue([{id:'subbeats-rock',title:'Rock',artist:'Artist',album:''}]);
+  store.event({id:'subbeats-rock',status:'running'}, ['subbeats-rock']);
+  store.event({id:'subbeats-rock',status:'prepared',bundleKey:'a'.repeat(64)}, ['subbeats-rock']);
+  store.assess(['subbeats-rock']);
+  assert.ok((await cache.admissionSignals()).subbeatsIds?.includes('subbeats-rock'));
+  store.event({id:'subbeats-rock',status:'running'}, ['subbeats-rock']);
+  assert.ok((await cache.admissionSignals()).subbeatsIds?.includes('subbeats-rock'));
+  store.event({id:'subbeats-rock',status:'failed',error:'Fixture: analyzer offline'}, ['subbeats-rock']);
+  assert.ok((await cache.admissionSignals()).subbeatsIds?.includes('subbeats-rock'));
+});
+
 test('turning the selective policy off restores regular caching without deleting existing stems', async () => {
   const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
   updateSubbeatsStemPolicy({enabled:true});

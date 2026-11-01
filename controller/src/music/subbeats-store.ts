@@ -39,6 +39,15 @@ export function createSubbeatsStore(stateDir: string) {
       state.jobs = [...jobs.values()];
       save(state);
     },
+    assess(ids:string[]) {
+      const state = readSubbeatsQueue(stateDir);
+      const selected = [...new Set(ids)].map(id => state.jobs.find(job => job.id === id));
+      if (selected.some(job => !job?.bundleKey || ['queued','running'].includes(job.status))) throw new Error('Choose completed entries with saved bundles');
+      for (const job of selected) if (job) {
+        job.status = 'queued'; job.task = 'assess'; delete job.suitability; job.error = null; job.updatedAt = new Date().toISOString();
+      }
+      save(state);
+    },
     remove(id: string) {
       const state = readSubbeatsQueue(stateDir);
       const job = state.jobs.find(job => job.id === id);
@@ -55,7 +64,10 @@ export function createSubbeatsStore(stateDir: string) {
       const job = state.jobs.find(j => j.id === event.id);
       if (!job || (event.status === 'running' ? job.status !== 'queued' : job.status !== 'running')) return;
       if (event.status === 'running') job.attempts++;
-      Object.assign(job, event, { updatedAt: new Date().toISOString() });
+      // Running/error events default to no bundle; a read-only assessment must
+      // retain its saved bundle for cache protection and a source-free retry.
+      const bundleKey = job.task === 'assess' && !event.bundleKey ? job.bundleKey : event.bundleKey;
+      Object.assign(job, event, { bundleKey, updatedAt: new Date().toISOString() });
       save(state);
     },
     failQueued(ids: readonly string[], message: string) {

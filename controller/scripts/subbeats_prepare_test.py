@@ -247,6 +247,7 @@ class CoverageTests(unittest.TestCase):
             req.update(stems_root=str(stems), track_id='track', remaining_bytes=10000)
             result = {'directory': str(root / 'v1' / ('a' * 64)), 'metadata': {'stem_regions': [{'name': 'head'}]}}
             with patch.object(prepare, 'prepare', return_value=result), \
+                    patch('subbeats_suitability.assess_bundle',return_value={}), \
                     patch('subbeats_structure.prepare_structure', return_value={'directory': str(root / 'v1' / ('b' * 64))}) as structure:
                 self.assertEqual(prepare.prepare_request(req)['subbeats_result']['status'], 'prepared')
                 result['cache_hit'] = True

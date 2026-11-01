@@ -1,5 +1,54 @@
 # Sub/Beats development
 
+## Analysis suitability — 1 November 2026
+
+Deep Sub/Beats preparation now records versioned suitability evidence for each
+incoming and outgoing role. Existing entries have no inferred classification:
+they show **Not assessed** until checked. “Prepared” still means cached resources,
+not approval of a mix. Ordinary library analysis and broadcast selection are
+unchanged by this step.
+
+- **Regular transitions only:** no supported 16-bar grid in that prepared role.
+- **Basic beat matching:** supported 16-bar rhythm evidence in the cached region,
+  but the strict stem-preview checks do not pass.
+- **Sub/Beat · stems + beat matching:** the actual preview loader/kick fitter
+  passes a 64-beat run, including outgoing lead or incoming eight-second
+  follow-through at native tempo.
+
+Each role retains its measured BPM/cue/coverage and a reason. Lists and their
+server-side suitability filter use the higher role capability; expanded evidence
+and the corresponding preview selector identify the individual role. Filtering
+happens before pagination and bounded matching selection, and survives bookmarks.
+These flags do not approve vocals, phrasing, harmonic fit or any particular pair.
+The preview still checks pair tempo (±8%), shifted alignment and incoming-prefix/
+outgoing-lead coverage, including coverage after stretching. No mixing envelopes,
+transition methods or live playback policy have changed.
+
+Prepared tracks offers **Assess saved stems**, up to 100 missing assessments per
+batch; Preparation also offers a per-entry assessment/retry. The controller-owned
+queue persists an `assess` task with the original bundle key, uses the managed
+analysis slot/quiet-time/pause rules, and does no source download or separation.
+Cached manifests and audio stay immutable. Technical/integrity failures remain
+failed and unassessed rather than being labelled “Regular transitions only”.
+A saved bundle keeps its selective-cache protection during assessment and retry;
+normal cache quota eviction is unchanged. Successful read-only assessments leave
+the trusted usage baseline intact.
+
+Analyzer workers advertise suitability protocol version 1 alongside shared-cache
+version 2. Old analyzers cannot silently produce newly prepared entries without
+flags; existing previews and migration retain their storage-only compatibility.
+Deploy analyzer, controller and web together using the existing compose overlays.
+No assessment of the owner’s live 103 tracks or listening test was performed as
+part of this source change.
+
+Validation: 53 Sub/Beats and 124 stem-cache tests, registered analyzer Python
+suites, 32 Library web tests, nine admin-query audit tests and the query audit
+passed. Desktop/mobile browser checks covered role differences, unknown entries,
+filter/bookmark persistence and paused cache-only assessment admission. Library
+search and all six query-cache browser checks passed against isolated fixtures.
+Controller and web lint/typecheck passed (existing controller lint warnings).
+The owner rebuilds; no station services or live cache entries were changed.
+
 ## Preview baseline — 31 October 2026
 
 Owner decision: return to the earlier 16-bar stem mix as the development baseline.

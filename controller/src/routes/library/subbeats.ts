@@ -47,6 +47,12 @@ router.post('/library/subbeats/queue', requireAdmin, validateBody(subbeatsEnqueu
     res.status(202).json(view());
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : String(error) }); }
 });
+router.post('/library/subbeats/assess', requireAdmin, validateBody(subbeatsEnqueueSchema), (req,res) => {
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
+  try { subbeatsStore.assess(req.body.ids); kickSubbeats(); res.status(202).json(view()); }
+  catch (error) { res.status(409).json({error:error instanceof Error ? error.message : 'Suitability checks could not be queued'}); }
+});
+
 router.post('/library/subbeats/pause', requireAdmin, validateBody(subbeatsPauseSchema), (req, res) => {
   try {
     subbeatsStore.pause(req.body.paused);

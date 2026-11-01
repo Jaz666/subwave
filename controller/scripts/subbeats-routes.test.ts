@@ -269,3 +269,18 @@ test('entry removal is authenticated, rejects active preparation and returns upd
   assert.equal(response.status,200);
   assert.equal(subbeatsViewSchema.parse(await response.json()).jobs.some(job=>job.id==='remove-route'),false);
 });
+
+test('cache-only assessment requires authentication and saved bundles and preserves queue pause', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/assess',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ids":["beat-grid"]}'})).status,401);
+  assert.equal((await post('/library/subbeats/assess',{ids:[]})).status,400);
+  const before = subbeatsStore.read();
+  assert.equal((await post('/library/subbeats/assess',{ids:['beat-grid','missing']})).status,409);
+  assert.deepEqual(subbeatsStore.read(),before);
+  const response = await post('/library/subbeats/assess',{ids:['beat-grid']});
+  assert.equal(response.status,202);
+  const view = subbeatsViewSchema.parse(await response.json());
+  assert.equal(view.paused,true);
+  const job = view.jobs.find(job=>job.id==='beat-grid')!;
+  assert.equal(job.task,'assess'); assert.equal(job.status,'queued');
+  assert.equal(job.bundleKey,'a'.repeat(64));
+});

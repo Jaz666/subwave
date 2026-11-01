@@ -21,7 +21,7 @@ export function ensureSubbeatsIndex(db: Database.Database): void {
 type BrowseFilters = Omit<z.infer<typeof subbeatsBrowseQuerySchema>, 'q' | 'offset'>;
 
 export function subbeatsCandidates(q: string, offset = 0, filters: Partial<BrowseFilters> = {},
-  jobs: Array<Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status'>> = []) {
+  jobs: Array<Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status' | 'suitability'>> = []) {
   const scope = filters.scope ?? (q ? 'library' : 'dance');
   // Only fixed SQL fragments can select the ordering; never interpolate query text.
   const order = {
@@ -36,15 +36,18 @@ export function subbeatsCandidates(q: string, offset = 0, filters: Partial<Brows
   }[filters.sort ?? 'recommended'];
   const params = { q: `%${q.toLowerCase()}%`, offset,
     // Preserve legacy manual-search calls; the page sends an explicit scope.
-    genre: filters.genre ?? '', status: filters.status ?? 'all',
-    jobs: JSON.stringify(jobs.map(({ id, status }) => ({ id, status }))), pageSize: SUBBEATS_PAGE_SIZE, batch: SUBBEATS_BATCH_LIMIT };
+    genre: filters.genre ?? '', status: filters.status ?? 'all', mixing:filters.mixing ?? 'all',
+    jobs: JSON.stringify(jobs.map(({ id, status, suitability }) => ({ id, status, suitability }))), pageSize: SUBBEATS_PAGE_SIZE, batch: SUBBEATS_BATCH_LIMIT };
   const result = requireDb().prepare(`WITH
-    jobs AS MATERIALIZED (SELECT CAST(json_extract(value, '$.id') AS TEXT) id, json_extract(value, '$.status') status FROM json_each(@jobs)),
+    jobs AS MATERIALIZED (SELECT CAST(json_extract(value, '$.id') AS TEXT) id, json_extract(value, '$.status') status, json_extract(value, '$.suitability') suitability FROM json_each(@jobs)),
     base AS MATERIALIZED (
       SELECT t.id, COALESCE(t.title,'') title, COALESCE(t.artist,'') artist,
         COALESCE(t.album,'') album, t.bpm,
         CASE WHEN json_valid(t.genres) THEN CASE WHEN json_type(t.genres) = 'array' THEN t.genres ELSE '[]' END ELSE '[]' END genres,
         COALESCE(j.status,'not-started') status,
+        CASE WHEN json_extract(j.suitability,'$.incoming.level') = 'subbeat' OR json_extract(j.suitability,'$.outgoing.level') = 'subbeat' THEN 'subbeat'
+          WHEN json_extract(j.suitability,'$.incoming.level') = 'beat' OR json_extract(j.suitability,'$.outgoing.level') = 'beat' THEN 'beat'
+          WHEN j.suitability IS NOT NULL THEN 'regular' ELSE 'unassessed' END mixing,
         ${SUBBEATS_GRID_SQL} hasBeatGrid,
         COALESCE(t.analysis_confidence,0) confidence
       FROM tracks t LEFT JOIN jobs j ON j.id = t.id
@@ -55,7 +58,7 @@ export function subbeatsCandidates(q: string, offset = 0, filters: Partial<Brows
     genre_filtered AS MATERIALIZED (SELECT * FROM base WHERE @genre = '' OR EXISTS (
       SELECT 1 FROM json_each(base.genres)
       WHERE type = 'text' AND value = @genre COLLATE NOCASE)),
-    filtered AS MATERIALIZED (SELECT * FROM genre_filtered WHERE @status = 'all' OR status = @status),
+    filtered AS MATERIALIZED (SELECT * FROM genre_filtered WHERE (@status = 'all' OR status = @status) AND (@mixing = 'all' OR mixing = @mixing)),
     ordered AS MATERIALIZED (SELECT * FROM filtered ORDER BY ${order})
     SELECT
       (SELECT COUNT(*) FROM filtered) total,
@@ -72,8 +75,9 @@ export function subbeatsCandidates(q: string, offset = 0, filters: Partial<Brows
         'bpm',bpm,'genres',genres,'hasBeatGrid',hasBeatGrid,'status',status)) FROM (
         SELECT * FROM ordered WHERE status IN ('not-started','failed','unavailable') LIMIT @batch)) selectableRows
   `).get(params) as { total: number; rows: string; genres: string; statuses: string; selectableCount: number; selectableRows: string };
+  const suitabilityById = new Map(jobs.filter(job => job.suitability).map(job => [job.id,job.suitability]));
   const rows = (value: string) => (JSON.parse(value) as Array<Record<string, unknown>>).map(row => ({
-    ...row, hasBeatGrid: row.hasBeatGrid === 1, genres: safeParseArray(typeof row.genres === 'string' ? row.genres : '[]'),
+    ...row, ...(suitabilityById.has(String(row.id)) ? {suitability:suitabilityById.get(String(row.id))} : {}), hasBeatGrid: row.hasBeatGrid === 1, genres: safeParseArray(typeof row.genres === 'string' ? row.genres : '[]'),
   }));
   return subbeatsCandidatePageSchema.parse({ ...result, rows: rows(result.rows),
     genres: JSON.parse(result.genres), statuses: JSON.parse(result.statuses), selectableRows: rows(result.selectableRows),

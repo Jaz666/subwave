@@ -4,18 +4,24 @@ import test, { after } from 'node:test';
 import { createServer } from 'node:http';
 import { readFileSync, mkdirSync, rmdirSync } from 'node:fs';
 
+const role = {level:'subbeat',bpm:120,cueSeconds:4,leadSeconds:4,postSeconds:8,reason:'Verified test grid'};
+const suitability = {version:1,assessedAt:'2026-11-01T00:00:00Z',incoming:role,outgoing:role};
 let release: (() => void) | null = null;
 let requests = 0;
 let migrations = 0;
+let assessments = 0;
+let streams = 0;
 const fixture = createServer(async (req, res) => {
   if (req.url === '/health') {
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, engines: ['analyze'], analyze_subbeats_capable: true, analyze_subbeats_cache_version:2 })); return;
+    res.end(JSON.stringify({ ok: true, engines: ['analyze'], analyze_subbeats_capable: true, analyze_subbeats_cache_version:2, analyze_subbeats_suitability_version:1 })); return;
   }
   if (req.url?.startsWith('/rest/stream')) {
+    streams++;
     res.setHeader('Content-Type', 'audio/mpeg'); res.end(Buffer.alloc(2048, 1)); return;
   }
   if (req.url === '/migrate-subbeats') { migrations++; res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({ok:true,migrated:0,cache_added_bytes:0})); return; }
+  if (req.url === '/assess-subbeats') { assessments++; res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({ok:true,cache_added_bytes:0,subbeats_result:{status:'prepared',bundleKey:'a'.repeat(64),suitability,error:null}})); return; }
   if (req.url === '/prepare-subbeats') {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -25,7 +31,7 @@ const fixture = createServer(async (req, res) => {
     requests++;
     if (requests === 1 || requests === 4) await new Promise<void>(resolve => { release = resolve; });
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, cache_added_bytes:0, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null } })); return;
+    res.end(JSON.stringify({ ok: true, cache_added_bytes:0, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null, suitability } })); return;
   }
   res.writeHead(404).end();
 });
@@ -102,4 +108,15 @@ test('legacy migration uses the managed slot while preparation is paused', async
   await waitUntil(() => migrations > count && !tagger.running);
   assert.deepEqual(store.read(),before);
   assert.equal(requests,sources,'migration must not download or separate tracks');
+});
+
+test('cache-only assessments use the managed slot without fetching or separating the source', async () => {
+  const sources = streams;
+  const preparations = requests;
+  store.failQueued(['fifth'], 'Test: skip leftover queued work');
+  store.assess(['first']); store.pause(false); kickSubbeats();
+  await waitUntil(() => assessments === 1 && store.read().jobs.find(job => job.id === 'first')?.status === 'prepared' && !tagger.running);
+  assert.equal(streams, sources, 'assessment must not fetch source audio');
+  assert.equal(requests, preparations, 'assessment must not run preparation');
+  assert.deepEqual(store.read().jobs.find(job => job.id === 'first')?.suitability, suitability);
 });
