@@ -96,10 +96,19 @@ export const subbeatsWindowPlanSchema = z.object({
   outCue:z.number().finite().nonnegative(), inCue:z.number().finite().nonnegative(),
   period:z.number().finite().positive(), rate:z.number().finite().positive(),
 });
+export const subbeatsVocalSuggestionSchema = z.object({
+  status:z.enum(['suggested','coverage','conflict','uncertain','unassessed']),reason:z.string(),
+  approved:z.literal(false),barAlignment:z.literal('unverified'),
+  mode:z.enum(['direct','gap']).optional(),gapBars:z.number().int().nonnegative().optional(),
+  plan:subbeatsWindowPlanSchema.optional(),
+  outgoingCueSeconds:z.number().finite().nonnegative().optional(),incomingCueSeconds:z.number().finite().nonnegative().optional(),
+  outgoingEndSeconds:z.number().finite().nonnegative().optional(),incomingStartSeconds:z.number().finite().nonnegative().optional(),
+  outgoingBoundarySeconds:z.number().finite().nonnegative().optional(),incomingBoundarySeconds:z.number().finite().nonnegative().optional(),
+});
 export const subbeatsMatchesSchema = z.object({
   outgoingId:z.string(), barShift:z.number().int(),
   matches:z.array(z.object({id:z.string(),title:z.string(),artist:z.string(),bpm:z.number(),
-    tempoAdjustmentPercent:z.number(),plan:subbeatsWindowPlanSchema})).max(SUBBEATS_QUEUE_LIMIT),
+    tempoAdjustmentPercent:z.number(),plan:subbeatsWindowPlanSchema,vocalSuggestion:subbeatsVocalSuggestionSchema.optional()})).max(SUBBEATS_QUEUE_LIMIT),
   excluded:z.object({tempo:z.number().int().nonnegative(),coverage:z.number().int().nonnegative(),
     unassessed:z.number().int().nonnegative(),unsuitable:z.number().int().nonnegative()}),
 });

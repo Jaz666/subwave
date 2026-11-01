@@ -275,7 +275,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <label htmlFor="subbeats-incoming" className="mb-1 block text-sm font-medium">Incoming track</label>
           <select id="subbeats-incoming" className={SELECT_CLASS} value={incomingMatch ? incoming : ''} disabled={!matchesEnabled || matches.isFetching || !matchRows.length} onChange={event => setIncoming(event.target.value)}>
             <option value="">{matchesEnabled ? 'Choose a matching incoming track' : 'Find matches for the outgoing track first'}</option>
-            {matchRows.map(match => <option key={match.id} value={match.id}>{match.artist} — {match.title} · {match.bpm.toFixed(1)} BPM · {match.tempoAdjustmentPercent >= 0 ? '+' : ''}{match.tempoAdjustmentPercent.toFixed(1)}% tempo</option>)}
+            {matchRows.map(match => <option key={match.id} value={match.id}>{match.artist} — {match.title} · {match.bpm.toFixed(1)} BPM · {match.tempoAdjustmentPercent >= 0 ? '+' : ''}{match.tempoAdjustmentPercent.toFixed(1)}% tempo{match.vocalSuggestion?.status === 'suggested' ? ' · provisional vocal fit' : ''}</option>)}
           </select>
         </div>
         <Button className="min-h-11 self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !incomingMatch || matches.isFetching || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], { barShift, matched:true })}>
@@ -289,7 +289,18 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <p>{matchRows.length} structurally compatible incoming tracks.</p>
         <p className="mt-1 text-xs text-muted">Excluded: {matches.data.excluded.tempo} tempo · {matches.data.excluded.coverage} coverage · {matches.data.excluded.unassessed} not assessed · {matches.data.excluded.unsuitable} unsuitable for incoming Sub/Beat.</p>
       </div>}
-      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Matches use saved measurements. Rendering verifies the selected windows and cached audio. Vocals, phrasing and harmony still need listening. Assess saved stems if a track has no suitability result.</p>
+      {incomingMatch && <div className="mt-4 border border-ink/30 p-3 text-sm" aria-labelledby="subbeats-vocal-suggestion">
+        <h3 id="subbeats-vocal-suggestion" className="font-semibold">Suggested vocal handover · not applied to audio</h3>
+        <p className="mt-2 leading-relaxed">{incomingMatch.vocalSuggestion?.reason ?? 'No vocal suggestion is available from this analyzer.'}</p>
+        {incomingMatch.vocalSuggestion?.status === 'suggested' && <>
+          <p className="mt-2">{incomingMatch.vocalSuggestion.mode === 'direct' ? 'Direct handover' : `${incomingMatch.vocalSuggestion.gapBars} bars apart`} · provisional bar alignment</p>
+          <p className="mt-1 text-xs text-muted">Suggested windows: outgoing {incomingMatch.vocalSuggestion.outgoingCueSeconds?.toFixed(1)}s · incoming {incomingMatch.vocalSuggestion.incomingCueSeconds?.toFixed(1)}s into their tracks.</p>
+          {incomingMatch.vocalSuggestion.plan && <p className="mt-1 text-xs text-muted">Suggested tempo: {(60/incomingMatch.vocalSuggestion.plan.period).toFixed(1)} BPM · incoming adjustment {((incomingMatch.vocalSuggestion.plan.rate-1)*100).toFixed(1)}%.</p>}
+          <p className="mt-1 text-xs text-muted">Preserve outgoing vocals through {incomingMatch.vocalSuggestion.outgoingEndSeconds?.toFixed(1)}s and incoming vocals from {incomingMatch.vocalSuggestion.incomingStartSeconds?.toFixed(1)}s.</p>
+        </>}
+        <p className="mt-2 text-xs text-muted">Preview still plays its existing overlap. Musical bar starts and complete vocal phrases remain unverified.</p>
+      </div>}
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Matches with provisional vocal handovers are listed first. Matches use saved measurements. Rendering verifies the selected windows and cached audio. Vocals, phrasing and harmony still need listening. Assess saved stems if a track has no suitability result.</p>
       {prepared >= 2 && <div className="mt-4 max-w-sm">
         <label htmlFor="subbeats-bar-shift" className="mb-1 block text-sm font-medium">Incoming bar shift · testing</label>
         <select id="subbeats-bar-shift" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={barShift} onChange={event => { setBarShift(Number(event.target.value)); setIncoming(''); setMatchFor(null); }}>
