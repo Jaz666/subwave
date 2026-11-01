@@ -216,7 +216,7 @@ def mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift=0):
     needed = total - incoming_start
     if in_parts['drums'].shape[1] < needed:
         raise ValueError('The incoming head needs more prepared coverage for this preview. Try another pair.')
-    first = round((out_cue - lead) * STEM_SR)
+    first = max(0, round((out_cue - lead) * STEM_SR))
     stop = first + round((lead + overlap) * STEM_SR)
     if stop > out_parts['drums'].shape[1]:
         raise ValueError('The outgoing exit is too short for a 16-bar preview. Try another pair.')
