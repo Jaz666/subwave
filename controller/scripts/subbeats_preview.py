@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 5
+VERSION = 6
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -43,12 +43,14 @@ def trim_previews(previews):
         raise ValueError('The preview cache is full (200 MB); unrecognised files have been kept.')
 
 
-def fit_grid(peaks, bpm, duration, outgoing=False, beats=64):
+def fit_grid(peaks, bpm, duration, outgoing=False, beats=64, all_candidates=False):
     import numpy as np
     if type(beats) is not int or beats not in (16, 32, 64, 128):
         raise ValueError('Kick fit requires 4, 8, 16 or 32 complete bars')
     period = 60 / bpm
     candidates = peaks[(peaks >= (4 if outgoing else 0)) & (peaks + beats * period <= duration)]
+    fits = []
+    last_fit = None
     for start in (candidates[::-1] if outgoing else candidates):
         slots = start + np.arange(beats) * period
         indices = np.abs(peaks[:, None] - slots).argmin(axis=0)
@@ -61,11 +63,22 @@ def fit_grid(peaks, bpm, duration, outgoing=False, beats=64):
             continue
         if origin < 0 or origin + beats * fitted > duration:
             continue
-        return float(origin), float(fitted)
+        fit = (float(origin), float(fitted))
+        last_fit = fit
+        if not all_candidates:
+            return fit
+        # Keep alternatives one nominal bar apart, retaining the preferred edge.
+        if not fits or abs(fit[0] - fits[-1][0]) >= 4 * period - .1:
+            fits.append(fit)
+    if fits:
+        if fits[-1] != last_fit:
+            fits.append(last_fit)
+        indices = np.linspace(0, len(fits) - 1, min(8, len(fits))).round().astype(int)
+        return [fits[index] for index in indices]
     raise ValueError('No sustained four-to-the-floor run fits the prepared region. Try another pair.')
 
 
-def kick_grid(drums, bpm, outgoing=False, beats=64):
+def kick_grid(drums, bpm, outgoing=False, beats=64, all_candidates=False):
     import numpy as np
     from scipy.signal import butter, sosfiltfilt, find_peaks
     mono = drums.mean(axis=0)
@@ -77,7 +90,7 @@ def kick_grid(drums, bpm, outgoing=False, beats=64):
         raise ValueError('No clear kick pattern in the prepared drums. Try another pair.')
     peaks, _ = find_peaks(energy, distance=max(1, round(.65 * 60 / bpm * STEM_SR / hop)),
                           prominence=max(1e-6, float(np.percentile(energy, 95)) * .15))
-    return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing, beats)
+    return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing, beats, all_candidates)
 
 
 def load_region(folder, record, name, limit_seconds=90):
@@ -150,13 +163,53 @@ def preview_timeline(in_cue, period, intro_vocals, duration, bar_shift=0):
     return {'duration': duration, 'events': merged}
 
 
+def pair_coverage(out_cue, in_cue, period, out_seconds, in_seconds, bar_shift=0):
+    shift = validate_bar_shift(bar_shift) * 4 * period
+    lead = max(4., in_cue - shift + 2., -shift)
+    if lead > out_cue + 1 / STEM_SR:
+        return f'Incoming needs {lead:.1f}s outgoing lead; this window has {out_cue:.1f}s. More outgoing stem coverage or another window is needed; looping is not implemented.'
+    if in_seconds + 1 / STEM_SR < in_cue - shift + 64 * period + 8:
+        return 'The incoming window needs more prepared coverage for the 16-bar exchange and eight-second follow-through.'
+    if out_cue + 64 * period > out_seconds + 1 / STEM_SR:
+        return 'The outgoing window needs more prepared coverage for a 16-bar preview.'
+    return None
+
+
+def select_windows(outgoing, incoming, out_seconds, in_seconds, bar_shift=0):
+    selected = None
+    coverage_error = None
+    # Incoming preference first; the outgoing window belongs to this pair.
+    # Stretch only after checking geometry, then verify the actual stretched grid.
+    for in_cue, in_period in incoming:
+        for out_cue, period in outgoing:
+            rate = in_period / period
+            if abs(rate - 1) <= .0001:
+                rate = 1.
+            if abs(rate - 1) > .08:
+                continue
+            error = pair_coverage(out_cue, in_cue / rate, period,
+                                  out_seconds,
+                                  in_seconds / rate, bar_shift)
+            if error:
+                coverage_error = coverage_error or error
+                continue
+            selected = (out_cue, in_cue, period, rate)
+            break
+        if selected:
+            break
+    if selected is None:
+        raise ValueError(coverage_error or 'No candidate windows have compatible tempos (within 8%).')
+    return selected
+
+
 def mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift=0):
     import numpy as np
     overlap = 64 * period
     shift = validate_bar_shift(bar_shift) * 4 * period
     lead = max(4., in_cue - shift + 2., -shift)
-    if lead > out_cue:
-        raise ValueError('This opening needs an outgoing loop beyond the prepared lead. Try another pair.')
+    error = pair_coverage(out_cue, in_cue, period, out_parts['drums'].shape[1] / STEM_SR, in_parts['drums'].shape[1] / STEM_SR, bar_shift)
+    if error:
+        raise ValueError(error)
     tail = 8.
     total = round((lead + overlap + tail) * STEM_SR)
     incoming_start = round((lead - in_cue + shift) * STEM_SR)
@@ -208,20 +261,27 @@ def render_beat_preview(folders, records, gains, bar_shift):
     import librosa
     out_parts, out_bpm = load_region(folders[0], records[0], 'exit')
     in_parts, in_bpm = load_region(folders[1], records[1], 'head')
-    out_cue, period = kick_grid(out_parts['drums'], out_bpm, True)
-    in_cue, in_period = kick_grid(in_parts['drums'], in_bpm)
-    rate = in_period / period
-    if abs(rate - 1) > .08:
-        raise ValueError('These tempos are too far apart for this preview. Try another pair.')
+    outgoing = kick_grid(out_parts['drums'], out_bpm, True, all_candidates=True)
+    incoming = kick_grid(in_parts['drums'], in_bpm, all_candidates=True)
+    out_cue, in_cue, period, rate = select_windows(outgoing, incoming, out_parts['drums'].shape[1] / STEM_SR, in_parts['drums'].shape[1] / STEM_SR, bar_shift)
     if abs(rate - 1) > .0001:
         in_parts = {name: librosa.effects.time_stretch(part, rate=rate) for name, part in in_parts.items()}
-        in_cue, _ = kick_grid(in_parts['drums'], 60 / period)
+        verified = kick_grid(in_parts['drums'], 60 / period, all_candidates=True)
+        usable = [fit for fit in verified if pair_coverage(out_cue, fit[0], period, out_parts['drums'].shape[1] / STEM_SR, in_parts['drums'].shape[1] / STEM_SR, bar_shift) is None]
+        if not usable:
+            raise ValueError('The stretched incoming windows need more prepared coverage for this pair.')
+        in_cue, _ = min(usable, key=lambda fit:abs(fit[0] - in_cue / rate))
+    out_region = next(region for region in records[0]['metadata']['stem_regions'] if region['name'] == 'exit')
+    in_region = next(region for region in records[1]['metadata']['stem_regions'] if region['name'] == 'head')
     out_parts = {name: part * 10**(gains[0] / 20) for name, part in out_parts.items()}
     in_parts = {name: part * 10**(gains[1] / 20) for name, part in in_parts.items()}
     audio = mix_preview(out_parts, in_parts, out_cue, in_cue, period, bar_shift)
     prefix = in_parts['vocals'][:, :round(in_cue * STEM_SR)]
     intro_vocals = bool(prefix.size and np.sqrt(np.mean(prefix**2)) > 1e-3)
     metadata = {'timeline': preview_timeline(in_cue, period, intro_vocals, audio.shape[1] / STEM_SR, bar_shift),
+                'selected_windows': {'outgoing_seconds':out_region['start_sample'] / STEM_SR + out_cue,
+                                     'incoming_seconds':in_region['start_sample'] / STEM_SR + in_cue * rate,
+                                     'outgoing_lead_seconds':out_cue},
                 'bars': 16, 'bar_shift': bar_shift, 'bpm': 60 / period, 'incoming_rate': rate,
                 'experimental': True, 'native_tempo_return': False, 'phrase_verified': False}
     return audio, metadata
