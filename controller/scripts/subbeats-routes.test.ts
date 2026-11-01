@@ -284,3 +284,53 @@ test('cache-only assessment requires authentication and saved bundles and preser
   assert.equal(job.task,'assess'); assert.equal(job.status,'queued');
   assert.equal(job.bundleKey,'a'.repeat(64));
 });
+
+test('match search is authenticated, validates input and returns analyzer measurements', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/matches?outgoingId=beat-grid')).status,401);
+  assert.equal((await fetch(base+'/library/subbeats/matches?outgoingId=beat-grid&barShift=3',{headers})).status,400);
+  const analyzer = await import('../src/music/analyzer.js');
+  analyzer._resetBackendCacheForTests();
+  const realFetch=globalThis.fetch;
+  let seen:Record<string,unknown>|undefined;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      seen=JSON.parse(String(init?.body));
+      return Response.json({ok:true,subbeats_matches:{outgoingId:'beat-grid',barShift:1,matches:[],excluded:{tempo:1,coverage:0,unassessed:0,unsuitable:0}}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const response=await fetch(base+'/library/subbeats/matches?outgoingId=beat-grid&barShift=1',{headers});
+    assert.equal(response.status,200);
+    assert.equal((await response.json() as {excluded:{tempo:number}}).excluded.tempo,1);
+    assert.equal(seen?.outgoing_id,'beat-grid'); assert.equal(seen?.bar_shift,1);
+    assert.ok(Array.isArray(seen?.jobs));
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('matched preview resolves fresh server-owned windows and passes them to rendering', async () => {
+  const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
+  for (const id of ['pin-out','pin-in']) {
+    db.upsertTrackMeta(id,{title:id,artist:'Pin artist',genres:['House']});
+    subbeatsStore.enqueue([{id,title:id,artist:'Pin artist',album:''}]);
+    subbeatsStore.event({id,status:'running'},[id]);
+    subbeatsStore.event({id,status:'prepared',bundleKey:(id==='pin-out'?'a':'b').repeat(64)},[id]);
+  }
+  const realFetch=globalThis.fetch;const plan={outCue:20,inCue:2,period:.5,rate:1};
+  const audio=Buffer.alloc(44);audio.write('RIFF');audio.write('WAVE',8);
+  let rendered:Record<string,unknown>|undefined;
+  globalThis.fetch=(async (url,init)=>{
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      if (String(url).endsWith('/match-subbeats')) return Response.json({ok:true,subbeats_matches:{outgoingId:'pin-out',barShift:0,matches:[{id:'pin-in',artist:'Pin artist',title:'pin-in',bpm:120,tempoAdjustmentPercent:0,plan}],excluded:{tempo:0,coverage:0,unassessed:0,unsuitable:0}}});
+      rendered=JSON.parse(String(init?.body));return new Response(audio,{headers:{'Content-Type':'audio/wav'}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const response=await post('/library/subbeats/join-preview',{trackIds:['pin-out','pin-in'],matched:true,window_plan:{outCue:999}});
+    assert.equal(response.status,200);await response.arrayBuffer();
+    assert.deepEqual(rendered?.window_plan,plan,'client-supplied points cannot override saved matches');
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});

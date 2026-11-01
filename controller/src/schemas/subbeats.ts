@@ -7,7 +7,12 @@ export const SUBBEATS_PAGE_SIZE = 50;
 export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
 export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
 export const subbeatsMixLevelSchema = z.enum(['regular','beat','subbeat']);
+export const subbeatsMeasuredWindowSchema = z.object({
+  cueSeconds:z.number().finite().nonnegative(), bpm:z.number().finite().positive(),
+  leadSeconds:z.number().finite().nonnegative(), postSeconds:z.number().finite().nonnegative(),
+});
 export const subbeatsRoleSuitabilitySchema = z.object({
+  windows:z.array(subbeatsMeasuredWindowSchema).max(8).optional(),
   level:subbeatsMixLevelSchema,bpm:z.number().finite().positive().nullable(),cueSeconds:z.number().finite().nonnegative().nullable(),
   leadSeconds:z.number().finite().nonnegative().nullable(),postSeconds:z.number().finite().nonnegative().nullable(),reason:z.string(),
 });
@@ -75,7 +80,23 @@ export const subbeatsTimelineSchema = z.object({
 }).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
   event.at <= value.duration && (i === 0 || event.at >= value.events[i - 1]!.at)), 'Invalid preview stage timing');
 
+export const subbeatsMatchQuerySchema = z.object({
+  outgoingId:z.string().min(1).max(200), barShift:z.coerce.number().int().min(-2).max(2).default(0),
+});
+export const subbeatsWindowPlanSchema = z.object({
+  outCue:z.number().finite().nonnegative(), inCue:z.number().finite().nonnegative(),
+  period:z.number().finite().positive(), rate:z.number().finite().positive(),
+});
+export const subbeatsMatchesSchema = z.object({
+  outgoingId:z.string(), barShift:z.number().int(),
+  matches:z.array(z.object({id:z.string(),title:z.string(),artist:z.string(),bpm:z.number(),
+    tempoAdjustmentPercent:z.number(),plan:subbeatsWindowPlanSchema})).max(SUBBEATS_QUEUE_LIMIT),
+  excluded:z.object({tempo:z.number().int().nonnegative(),coverage:z.number().int().nonnegative(),
+    unassessed:z.number().int().nonnegative(),unsuitable:z.number().int().nonnegative()}),
+});
+
 export const subbeatsPreviewSchema = z.object({
+  matched:z.boolean().optional(),
   trackIds: z.array(z.string().min(1).max(200)).length(2),
   barShift: z.number().int().min(-2).max(2).default(0),
   referenceBars: z.union([z.literal(4), z.literal(8), z.literal(16), z.literal(32)]).optional(),

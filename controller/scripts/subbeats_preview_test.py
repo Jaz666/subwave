@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 import subbeats_preview as preview
+from subbeats_matching import find_matches
 
 
 class PreviewTests(unittest.TestCase):
@@ -40,6 +41,31 @@ class PreviewTests(unittest.TestCase):
             preview.select_windows([(16.,.5)],[(10.,.5)],70,40)
         with self.assertRaisesRegex(ValueError,'compatible tempos'):
             preview.select_windows([(16.,.5)],[(10.,.7)],70,80)
+
+    def test_saved_match_search_uses_shared_geometry_and_counts_exclusions(self):
+        def job(id,bpm=120,cue=2,lead=2):
+            role = dict(level='subbeat',bpm=bpm,cueSeconds=cue,leadSeconds=lead,postSeconds=12)
+            return dict(id=id,title=id,artist='Artist',status='prepared',suitability=dict(incoming=role,outgoing=role))
+        out=job('out',lead=10)
+        unknown=job('unknown');unknown.pop('suitability')
+        unsuitable=job('basic');unsuitable['suitability']['incoming']['level']='beat'
+        result=find_matches([out,job('yes'),job('slow',bpm=90),job('long',cue=20),unknown,unsuitable],'out')
+        self.assertEqual([match['id'] for match in result['matches']],['yes'])
+        self.assertEqual(result['matches'][0]['plan'],dict(outCue=10,inCue=2,period=.5,rate=1.))
+        self.assertEqual(result['excluded'],dict(tempo=1,coverage=1,unassessed=1,unsuitable=1))
+        out['suitability']['outgoing']['windows']=[dict(cueSeconds=100,bpm=120,leadSeconds=25,postSeconds=2)]
+        self.assertEqual(find_matches([out,job('long',cue=20)],'out')['matches'][0]['plan']['outCue'],25)
+        with self.assertRaisesRegex(ValueError,'outgoing track'):
+            find_matches([unknown],'unknown')
+
+    def test_pinned_preview_does_not_silently_switch_windows_after_stretching(self):
+        parts={stem:np.zeros((2,8000),dtype=np.float32) for stem in preview.STEMS}
+        librosa=types.SimpleNamespace(effects=types.SimpleNamespace(time_stretch=lambda part,rate:part))
+        with patch.dict('sys.modules',{'librosa':librosa}), patch.object(preview,'STEM_SR',100), \
+                patch.object(preview,'load_region',return_value=(parts,120)), \
+                patch.object(preview,'kick_grid',side_effect=[[(10.,.5)],[(2.,.51)],[(7.,.5)]]):
+            with self.assertRaisesRegex(ValueError,'selected incoming window'):
+                preview.render_beat_preview([None,None],[{},{}],[0,0],0,dict(outCue=10,inCue=2,period=.5,rate=1.02))
 
     def test_short_and_half_time_patterns_are_declined(self):
         for peaks in (np.arange(10) * .5, np.arange(50), np.array([])):

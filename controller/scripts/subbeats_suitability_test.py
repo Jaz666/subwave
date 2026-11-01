@@ -23,7 +23,7 @@ class SuitabilityTests(unittest.TestCase):
 
     def assess(self, kick=None):
         with patch('subbeats_prepare.STEM_SR',1000), patch.object(suitability,'load_region',return_value=(self.parts,120)), \
-                patch.object(suitability,'kick_grid',side_effect=kick or (lambda _parts,_bpm,outgoing:(4.,.5))):
+                patch.object(suitability,'kick_grid',side_effect=lambda a,b,outgoing,**kw:[(kick or (lambda *_:(4.,.5)))(a,b,outgoing)]):
             return suitability.assess_bundle(self.folder,self.record)
 
     def test_stems_and_grid_pass_for_both_roles_with_original_track_timestamps(self):

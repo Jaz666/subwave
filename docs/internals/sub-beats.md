@@ -1,5 +1,38 @@
 # Sub/Beats development
 
+## Preview match finder — 1 November 2026
+
+Preview now selects an assessed outgoing Sub/Beat track, then explicitly finds
+structurally compatible incoming tracks. Results show measured BPM and incoming
+speed adjustment, sorted by smallest adjustment. The search reports exclusions
+for tempo, prepared coverage, missing assessment and incoming-role unsuitability.
+Changing the outgoing track, bar shift or saved suitability invalidates the UI
+results. Incoming selection no longer resets the chosen bar shift.
+
+The admin-only match route reads controller-owned queue evidence and excludes
+blocked entries. `subbeats_matching.find_matches` runs as a CPU-only analyzer
+operation and calls the same `select_windows` used by rendering: no cache walk,
+source downloads, audio reads, separation, stretching or rendering per candidate.
+New assessments save up to eight measured windows per role, including relative
+lead, source cue and post coverage. Old assessments remain usable through their
+single verified window; Assess suitability refreshes alternatives without new
+separation. These measurements do not approve vocals, phrasing or harmonic fit.
+
+Matched preview requests resolve the pair again from fresh server-owned evidence,
+then pin the selected cues/tempo in preview v7. The renderer verifies them against
+the cached stems and checks the stretched incoming window; it rejects a failed
+pin rather than silently switching to another source window. Existing preview
+requests without `matched` retain automatic candidate selection. Broadcast and
+Track Picker behavior is unchanged; the shared matcher is available for later use.
+Deploy analyzer, controller and web together; older analyzer match endpoints give
+an update error. The owner performs deployment; no live station operations.
+
+Minimal validation: registered Python suites (including saved matching and pinned
+stretch checks), 15 Sub/Beats route tests, admin-query audit and its nine tests,
+focused desktop/mobile matching/empty/shift checks, required Library search and
+six query-cache browser checks, and scoped lint plus controller/web type checks.
+No full application build, listening test or live-library compatibility scan.
+
 ## Preparation batch actions — 1 November 2026
 
 Preparation now has row checkboxes, Select page, Select matching (up to 100),
