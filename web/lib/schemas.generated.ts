@@ -5110,7 +5110,16 @@ export const subbeatsMeasuredWindowSchema = z.object({
   cueSeconds:z.number().finite().nonnegative(), bpm:z.number().finite().positive(),
   leadSeconds:z.number().finite().nonnegative(), postSeconds:z.number().finite().nonnegative(),
 });
+export const subbeatsVocalActivitySchema = z.object({
+  version:z.literal(1), method:z.literal('stem-energy'), barAlignment:z.literal('unverified'),
+  coverageStartSeconds:z.number().finite().nonnegative(),coverageEndSeconds:z.number().finite().nonnegative(),
+  resolutionSeconds:z.number().finite().positive(),
+  passages:z.array(z.object({startSeconds:z.number().finite().nonnegative(),endSeconds:z.number().finite().nonnegative(),
+    activityStartSeconds:z.number().finite().nonnegative(),activityEndSeconds:z.number().finite().nonnegative(),
+    openStart:z.boolean(),openEnd:z.boolean(),confidence:z.enum(['estimated','uncertain'])})),
+});
 export const subbeatsRoleSuitabilitySchema = z.object({
+  vocalActivity:subbeatsVocalActivitySchema.optional(),
   windows:z.array(subbeatsMeasuredWindowSchema).max(8).optional(),
   level:subbeatsMixLevelSchema,bpm:z.number().finite().positive().nullable(),cueSeconds:z.number().finite().nonnegative().nullable(),
   leadSeconds:z.number().finite().nonnegative().nullable(),postSeconds:z.number().finite().nonnegative().nullable(),reason:z.string(),
