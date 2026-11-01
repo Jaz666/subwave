@@ -70,7 +70,7 @@ test('explicit collection scoping keeps dance search narrow and whole-library se
 
 test('invalid filters are rejected and browsing never changes the saved preparation list', async () => {
   const before = subbeatsStore.read();
-  for (const query of ['sort=invalid','sort=title-asc&sort=title-desc','scope=invalid','status=invalid','offset=-1','offset=1.5','genre=x&genre=y']) {
+  for (const query of ['mixing=invalid','mixing=beat&mixing=subbeat','sort=invalid','sort=title-asc&sort=title-desc','scope=invalid','status=invalid','offset=-1','offset=1.5','genre=x&genre=y']) {
     assert.equal((await fetch(`${base}/library/subbeats/candidates?${query}`, {headers})).status, 400);
   }
   await browse('scope=dance&status=failed');
@@ -123,4 +123,29 @@ test('named sorts have deterministic ties and keep missing BPMs last in both dir
       assert.deepEqual(page.selectableRows.map(row=>row.id), page.rows.map(row=>row.id), sort);
     }
   } finally { for (const [id] of fixtures) db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id); }
+});
+
+test('suitability filters apply before pagination, retain role differences and leave old entries unassessed', async () => {
+  const role = {level:'regular',bpm:null,cueSeconds:null,leadSeconds:null,postSeconds:null,reason:'No supported grid'};
+  const ids = Array.from({length:61}, (_, i) => `mix-${String(i).padStart(3,'0')}`);
+  try {
+    for (const [i,id] of ids.entries()) {
+      db.upsertTrackMeta(id,{title:id,artist:'Mix fixture',genres:['House']});
+      db.getDb()!.prepare('UPDATE tracks SET bpm=120 WHERE id=?').run(id);
+      subbeatsStore.enqueue([{id,title:id,artist:'Mix fixture',album:''}]);
+      subbeatsStore.event({id,status:'running'},[id]);
+      subbeatsStore.event({id,status:'prepared',bundleKey:'b'.repeat(64),suitability:{version:1,assessedAt:'2026-11-01T00:00:00Z',incoming:role,outgoing:{...role,level:i < 55 ? 'subbeat' : i < 60 ? 'beat' : 'regular'}}},[id]);
+    }
+    const first = await browse('scope=prepared&mixing=subbeat&sort=title-asc');
+    const last = await browse('scope=prepared&mixing=subbeat&sort=title-asc&offset=50');
+    assert.equal(first.total,55); assert.equal(first.rows.length,50); assert.equal(last.rows.length,5);
+    assert.equal(last.rows[0].id,'mix-050');
+    assert.equal(first.rows[0].suitability?.incoming.level,'regular');
+    assert.equal(first.rows[0].suitability?.outgoing.level,'subbeat');
+    assert.equal((await browse('scope=prepared&mixing=beat')).total,5);
+    assert.equal((await browse('scope=prepared&mixing=regular')).total,1);
+    assert.deepEqual((await browse('scope=prepared&mixing=unassessed')).rows.map(row=>row.id),['dance-000']);
+  } finally {
+    for (const id of ids) { subbeatsStore.remove(id); db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id); }
+  }
 });

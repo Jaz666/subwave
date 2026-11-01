@@ -55,6 +55,26 @@ test('failed startup terminates queued work without touching existing results', 
   assert.equal(store.read().jobs.find(j => j.id === 'c')?.status, 'failed');
 });
 
+test('cache-only assessment preserves bundles and persists role evidence without admitting new tracks', () => {
+  const before = store.read();
+  assert.throws(() => store.assess(['a', 'missing']));
+  assert.deepEqual(store.read(), before, 'a rejected batch changes nothing');
+  store.pause(true);
+  store.assess(['a', 'a']);
+  const queued = store.read().jobs.find(job => job.id === 'a')!;
+  assert.equal(queued.task, 'assess'); assert.equal(queued.status, 'queued');
+  assert.equal(queued.bundleKey, 'a'.repeat(64)); assert.equal(queued.suitability, undefined);
+  assert.equal(store.read().paused, true);
+  assert.throws(() => store.assess(['a']), /completed/);
+  store.event({id:'a',status:'running'}, ['a']);
+  const role = {level:'beat',bpm:120,cueSeconds:2,leadSeconds:null,postSeconds:null,reason:'Supported grid'};
+  const suitability = {version:1,assessedAt:'2026-11-01T00:00:00Z',incoming:role,outgoing:{...role,level:'regular',bpm:null,cueSeconds:null}};
+  store.event({id:'a',status:'prepared',bundleKey:queued.bundleKey,suitability}, ['a']);
+  assert.deepEqual(readSubbeatsQueue(state).jobs.find(job => job.id === 'a')?.suitability, suitability);
+  store.event({id:'a',status:'prepared',bundleKey:queued.bundleKey}, ['a']);
+  assert.deepEqual(store.read().jobs.find(job => job.id === 'a')?.suitability, suitability, 'late events cannot erase evidence');
+});
+
 test('shared-cache identity is stable and malformed state is preserved', () => {
   const marker = store.cacheId();
   assert.ok(marker.length > 16);

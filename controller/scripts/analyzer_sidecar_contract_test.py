@@ -416,6 +416,34 @@ async def test_subbeats_contract():
         server.analyzer_pool = original
 
 
+async def test_subbeats_assessment_contract():
+    assert not server.StdioWorker._wants_models({'op':'assess_subbeats'})
+    original = server.analyzer_pool
+    seen = []
+    class Pool:
+        failed = False
+        async def request(self, payload):
+            seen.append(payload)
+            return {'ok':False,'error':'Invalid cached stem coverage'} if self.failed else {'ok':True,'subbeats_result':{'status':'prepared','suitability':{'version':1}}}
+    pool = Pool()
+    server.analyzer_pool = pool
+    try:
+        body = {'state_dir':'/state','stems_root':'/stems','cache_id':'shared-cache-identity','track_id':'track','bundle_key':'a'*64}
+        result = await server.assess_subbeats(types.SimpleNamespace(model_dump=lambda:body))
+        assert seen == [{'id':'1','op':'assess_subbeats',**body}]
+        assert result['subbeats_result']['suitability']['version'] == 1
+        assert result['cache_added_bytes'] == 0
+        pool.failed = True
+        try:
+            await server.assess_subbeats(types.SimpleNamespace(model_dump=lambda:body))
+        except server.HTTPException as error:
+            assert error.status_code == 422 and error.detail == 'Invalid cached stem coverage'
+        else:
+            raise AssertionError('Assessment failure was not surfaced')
+    finally:
+        server.analyzer_pool = original
+
+
 async def test_subbeats_preview_contract():
     assert not server.StdioWorker._wants_models({'op': 'preview_subbeats'})
     assert not server.StdioWorker._used_models({'subbeats_preview': '/state/subbeats/previews/a/preview.wav'})
@@ -461,6 +489,7 @@ async def main():
     await test_path_contract()
     await test_facet_contract()
     await test_subbeats_contract()
+    await test_subbeats_assessment_contract()
     await test_subbeats_preview_contract()
 
 

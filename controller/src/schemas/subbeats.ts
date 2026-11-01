@@ -6,8 +6,18 @@ export const SUBBEATS_PAGE_SIZE = 50;
 
 export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
 export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
+export const subbeatsMixLevelSchema = z.enum(['regular','beat','subbeat']);
+export const subbeatsRoleSuitabilitySchema = z.object({
+  level:subbeatsMixLevelSchema,bpm:z.number().finite().positive().nullable(),cueSeconds:z.number().finite().nonnegative().nullable(),
+  leadSeconds:z.number().finite().nonnegative().nullable(),postSeconds:z.number().finite().nonnegative().nullable(),reason:z.string(),
+});
+export const subbeatsSuitabilitySchema = z.object({
+  version:z.literal(1), assessedAt:z.string(),incoming:subbeatsRoleSuitabilitySchema,outgoing:subbeatsRoleSuitabilitySchema,
+});
+export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','beat','subbeat']);
 export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
+  task:z.literal('assess').optional(), suitability:subbeatsSuitabilitySchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });
@@ -19,6 +29,7 @@ export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
 export const subbeatsEventSchema = z.object({
   id: z.string().min(1).max(200),
   status: subbeatsStatusSchema.exclude(['queued']),
+  suitability:subbeatsSuitabilitySchema.optional(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
   error: z.string().max(1000).nullable().default(null),
 });
@@ -27,6 +38,7 @@ export const subbeatsSortSchema = z.enum(['recommended', 'artist-asc', 'artist-d
 export const subbeatsBrowseQuerySchema = z.object({
   q: z.string().trim().max(200).default(''),
   sort: subbeatsSortSchema.default('recommended'),
+  mixing:subbeatsMixFilterSchema.default('all'),
   offset: z.coerce.number().int().min(0).max(1000000).default(0),
   scope: z.enum(['dance', 'library', 'prepared']).optional(),
   genre: z.string().trim().max(200).default(''),
@@ -34,6 +46,7 @@ export const subbeatsBrowseQuerySchema = z.object({
 });
 export const subbeatsCandidateSchema = z.object({
   id: z.string(), title: z.string(), artist: z.string(), album: z.string(),
+  suitability:subbeatsSuitabilitySchema.optional(),
   bpm: z.number().nullable(), hasBeatGrid: z.boolean(),
   genres: z.array(z.string()).default([]), status: subbeatsBrowseStatusSchema.default('not-started'),
 });

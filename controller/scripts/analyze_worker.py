@@ -2703,6 +2703,7 @@ def main():
         "facets_capable": True,
         "subbeats_capable": vocal_capable,
         "subbeats_cache_version": 2,
+        "subbeats_suitability_version": 1,
     })
 
     for line in sys.stdin:
@@ -2715,6 +2716,13 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "assess_subbeats":
+            try:
+                from subbeats_suitability import assess_request
+                emit({"id": rid, **assess_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         if req.get("op") == "migrate_subbeats":
             try:
                 from subbeats_cache import shared_context, migrate_shared
