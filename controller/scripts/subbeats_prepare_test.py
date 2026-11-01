@@ -136,6 +136,16 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(regions[1][2], 130.)
         self.assertLess(regions[1][1], 100.)
 
+    def test_preparation_keeps_bounded_candidates_and_more_outgoing_lead(self):
+        analysis = self.analysis()
+        windows = prepare.mixing_windows(analysis)
+        self.assertEqual(windows['incoming'][0]['start_seconds'],100.)
+        self.assertEqual(windows['outgoing'][0]['start_seconds'],170.)
+        self.assertAlmostEqual(windows['outgoing'][0]['end_seconds']-170.,64*60/138)
+        region = prepare.requested_regions(analysis,68.)[-1]
+        self.assertEqual(region[2]-region[1],90.)
+        self.assertEqual(prepare.mixing_windows(self.analysis(drop=180))['outgoing'][0]['start_seconds'],100.)
+
     def test_exit_never_extrapolates_past_measured_grid(self):
         self.assertEqual(prepare.requested_regions(self.analysis(), 68.)[-1][2], 200.)
 
@@ -289,7 +299,7 @@ class ConversionTests(unittest.TestCase):
             source = state / 'source.mp3'
             source.write_bytes(b'original source fixture')
             identity = {'source_sha256': cache.digest(source), 'analysis_version': prepare.ANALYSIS_VERSION,
-                'librosa': 'test', 'mode': 'analysis_and_stems', 'head_seconds': 68.,
+                'librosa': 'test', 'mode': 'analysis_and_stems', 'head_seconds': 68., 'exit_seconds': 90,
                 'separator': {'model': 'test', 'overlap': .25, 'shifts': 1, 'context_seconds': 4,
                     'sample_rate': prepare.STEM_SR, 'subtype': 'PCM_24-or-FLOAT-v1',
                     'demucs': 'test', 'torch': 'test'}}

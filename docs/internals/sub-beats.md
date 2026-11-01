@@ -1,5 +1,32 @@
 # Sub/Beats development
 
+## Pair-aware beat windows — 1 November 2026
+
+Preparation stores up to eight incoming and eight outgoing beat-supported
+16-bar suggestions in `analysis.json`, with original-track positions, tempo,
+timing/onset evidence and surrounding source coverage. These are beat windows,
+not verified downbeats or musical phrases. New preparations retain up to 90
+seconds in the outgoing region, ending at the existing measured outro boundary.
+The preparation identity includes that coverage, so an explicit Recheck builds
+a new bundle; existing bundles are neither changed nor automatically regenerated.
+The larger outgoing region uses more of the existing shared cache budget.
+
+Standard preview v6 verifies up to eight kick-grid windows per cached role and
+tries combinations in incoming preference order, choosing a compatible outgoing
+window for each. Checks cover the existing ±8% tempo limit, bar shift, outgoing
+lead and incoming eight-second follow-through. Geometry is checked before time
+stretching; the stretched incoming grid is then verified against actual coverage.
+Selected source positions are saved in preview metadata. Existing cached bundles
+can use this selection immediately, within their existing audio boundaries.
+A lead rejection now gives required/available seconds and identifies missing
+prepared coverage instead of suggesting the track itself is unmixable. No loop,
+new vocal detector, waveform controls or changed mix envelopes are introduced.
+
+Validation is deliberately minimal at the owner's request: the registered
+analyzer Python suites, including focused candidate/coverage/selection tests.
+No UI, TypeScript or live playback changes; no browser/build/listening tests or
+station operations. Owner rebuilds analyzer (controller too for local workers).
+
 ## Analysis suitability — 1 November 2026
 
 Deep Sub/Beats preparation now records versioned suitability evidence for each

@@ -55,6 +55,26 @@ def timing_regions(librosa, beats, envelope):
     return regions, supported
 
 
+def mixing_windows(analysis):
+    """Bounded beat-supported suggestions in original-track seconds, not phrases."""
+    windows = []
+    duration = analysis['duration_seconds']
+    bound = analysis.get('late_percussion_drop_seconds')
+    for run in analysis.get('supported_regions', []):
+        period = 60 / run['bpm']
+        start = run['start_seconds']
+        end = start + 64 * period
+        if end > duration or end > run['end_seconds'] + period + .1:
+            continue
+        windows.append({'start_seconds':start, 'end_seconds':end, 'bpm':run['bpm'],
+                        'timing_error_ms':run.get('timing_error_ms'),
+                        'onset_support':run.get('onset_support'),
+                        'lead_seconds':start, 'post_seconds':duration-end})
+    windows.sort(key=lambda window:window['start_seconds'])
+    outgoing = [window for window in windows if bound is None or window['end_seconds'] <= bound]
+    return {'version':1, 'incoming':windows[:8], 'outgoing':outgoing[-8:][::-1]}
+
+
 def analyze(path, stage, librosa):
     import numpy as np
     from scipy import ndimage
@@ -95,6 +115,7 @@ def analyze(path, stage, librosa):
               'coverage': 'full_recording', 'regions': regions, 'supported_regions': supported,
               'late_percussion_drop_seconds': drops[0] if drops else None,
               'pair_ready': False}
+    result['mixing_windows'] = mixing_windows(result)
     (stage / 'analysis.json').write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
     np.savez_compressed(stage / 'rhythm.npz', beat_times=times, onset=env,
                         percussion_seconds=buckets)
@@ -114,7 +135,7 @@ def requested_regions(analysis, head_seconds):
     if eligible:
         last = max(eligible, key=lambda r: r['end_seconds'])
         end = last['end_seconds']
-        regions.append(('exit', max(0., end - 64 * 60 / last['bpm'] - 8), min(duration, end + 2)))
+        regions.append(('exit', max(0., end + 2 - 90), min(duration, end + 2)))
     return regions
 
 
@@ -183,7 +204,7 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
     path = Path(path).resolve(strict=True)
     identity = {'source_sha256': digest(path), 'analysis_version': ANALYSIS_VERSION,
                 'librosa': librosa.__version__, 'mode': 'analysis' if analysis_only else 'analysis_and_stems',
-                'head_seconds': head_seconds}
+                'head_seconds': head_seconds, 'exit_seconds': 90}
     if not analysis_only:
         import analyze_worker as worker
         identity['separator'] = {'model': worker.DEMUCS_MODEL, 'overlap': worker.DEMUCS_OVERLAP,

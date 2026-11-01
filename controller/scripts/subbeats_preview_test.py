@@ -19,6 +19,28 @@ class PreviewTests(unittest.TestCase):
         self.assertGreater(outgoing[0], incoming[0])
         self.assertLessEqual(outgoing[0] + outgoing[1] * 64, 55)
 
+    def test_candidate_grids_are_bounded_and_keep_both_preferred_edges(self):
+        peaks = 4 + np.arange(180) * .5
+        fits = preview.fit_grid(peaks,120,95,True,all_candidates=True)
+        self.assertLessEqual(len(fits),8)
+        self.assertEqual(fits[0],preview.fit_grid(peaks,120,95,True))
+        self.assertAlmostEqual(fits[-1][0],4.)
+
+    def test_pair_selects_an_alternative_outgoing_window_for_the_incoming_tempo(self):
+        selected = preview.select_windows([(24.,.46),(16.,.5)],[(10.,.5)],70,80)
+        self.assertEqual(selected,(16.,10.,.5,1.))
+        selected = preview.select_windows([(16.,.5)],[(2.,.6),(6.,.5)],70,80)
+        self.assertEqual(selected,(16.,6.,.5,1.))
+
+    def test_pair_reports_required_and_available_lead_and_checks_shifted_coverage(self):
+        with self.assertRaisesRegex(ValueError,'needs 14.0s.*has 8.0s'):
+            preview.select_windows([(8.,.5)],[(12.,.5)],50,80)
+        self.assertEqual(preview.select_windows([(10.,.5)],[(12.,.5)],50,80,2),(10.,12.,.5,1.))
+        with self.assertRaisesRegex(ValueError,'incoming window.*coverage'):
+            preview.select_windows([(16.,.5)],[(10.,.5)],70,40)
+        with self.assertRaisesRegex(ValueError,'compatible tempos'):
+            preview.select_windows([(16.,.5)],[(10.,.7)],70,80)
+
     def test_short_and_half_time_patterns_are_declined(self):
         for peaks in (np.arange(10) * .5, np.arange(50), np.array([])):
             with self.assertRaisesRegex(ValueError, 'sustained'):
