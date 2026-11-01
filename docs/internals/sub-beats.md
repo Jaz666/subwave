@@ -1,5 +1,45 @@
 # Sub/Beats development
 
+## Suggested vocal handovers — 1 November 2026
+
+Find matches now compares vocal evidence across every structurally valid
+candidate-window combination. The earliest structural plan remains the renderer's
+plan. A separate `vocalSuggestion` records the best provisional vocal candidate;
+Preview displays its source windows, passage limits and direct/4n-bar spacing,
+explicitly marked **not applied to audio**. Incoming matches with a suggestion
+are listed first; all structurally valid matches remain available for listening.
+No vocal envelopes, audio timelines or live selection behavior have changed.
+
+The planner preserves the first incoming passage rather than skipping an
+incomplete opening. It requires resolved incoming start/end observations and a
+resolved outgoing release; an outgoing beginning before cached coverage does not
+prevent preserving its observed ending. No proposed outgoing boundary may cross
+another passage or ignore a later passage before that boundary. Guarded tails
+must not overlap. Incoming observations are mapped through the proposed tempo
+adjustment and bar shift before spacing is tested.
+
+Outgoing boundaries follow the observed release on the provisional beat-derived
+bar grid; incoming core onsets must be near a boundary without trimming pickups.
+Direct means no silent bar between adjoining vocal bars (gap 0); separated
+entries require 4, 8, 12… bars. Source and measurement coverage are checked.
+Results distinguish coverage problems, timing conflicts, missing measurements
+and uncertain empty detections. Empty detections never establish vocal-free audio.
+All suggestions retain `approved:false` and `barAlignment:unverified`; neither
+musical downbeats nor complete lyrical phrases are established by these gates.
+The next renderer step must use confirmed quiet boundaries and preserve passages;
+this change deliberately stops at inspectable suggestions.
+
+Deploy analyzer/controller/web together. Existing reassessed measurements are
+sufficient; no new separation or assessment is required. Owner deploys; no live
+station operations or listening tests are performed by this source change.
+
+Focused validation: five provisional planner cases plus the registered Python
+suites, controller/web type checks, scoped schema/UI lint and admin-query audit
+with its nine tests. Desktop/mobile checks confirmed the four-bar suggestion,
+unapproved/not-applied labels, source limits, match clearing and empty results.
+Required Library search and all six query-cache browser checks passed on isolated
+fixtures. No full build or live-library compatibility scan.
+
 ## Vocal-passage measurement foundation — 1 November 2026
 
 Preparation and cache-only Assess suitability now record optional `vocalActivity`

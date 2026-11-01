@@ -2,6 +2,7 @@
 No source/cache reads, separation, stretching or rendering.
 """
 from subbeats_preview import select_windows
+from subbeats_vocal_plan import suggest_handover
 
 
 def role_windows(job, role):
@@ -33,6 +34,9 @@ def find_matches(jobs, outgoing_id, bar_shift=0):
             excluded['unassessed' if not job.get('suitability') else 'unsuitable'] += 1
             continue
         plan = None
+        plan_bpm = None
+        vocal = None
+        vocal_key = None
         reason = 'tempo'
         # The same incoming-first ordering and geometry as the renderer.
         for inc in ins:
@@ -42,17 +46,25 @@ def find_matches(jobs, outgoing_id, bar_shift=0):
                         [(out['leadSeconds'],60/out['bpm'])], [(inc['leadSeconds'],60/inc['bpm'])],
                         out['leadSeconds']+64*60/out['bpm']+out['postSeconds'],
                         inc['leadSeconds']+64*60/inc['bpm']+inc['postSeconds'],bar_shift)
-                    plan = dict(outCue=cue_out,inCue=cue_in,period=period,rate=rate)
-                    break
+                    candidate = dict(outCue=cue_out,inCue=cue_in,period=period,rate=rate)
+                    if plan is None:
+                        plan = candidate  # Preserve the current renderer's structural choice.
+                        plan_bpm = inc['bpm']
+                    suggestion = suggest_handover(
+                        (outgoing.get('suitability') or {}).get('outgoing',{}).get('vocalActivity'),
+                        (job.get('suitability') or {}).get('incoming',{}).get('vocalActivity'),
+                        out,inc,candidate,bar_shift)
+                    rank = {'suggested':0,'conflict':1,'coverage':2,'uncertain':3,'unassessed':4}[suggestion['status']]
+                    key = (rank,suggestion.get('gapBars',0),abs(rate-1))
+                    if vocal_key is None or key < vocal_key:
+                        vocal,vocal_key = suggestion,key
                 except ValueError as error:
                     if 'compatible tempos' not in str(error):
                         reason = 'coverage'
-            if plan:
-                break
         if not plan:
             excluded[reason] += 1
             continue
-        matches.append(dict(id=job['id'],title=job['title'],artist=job['artist'],bpm=inc['bpm'],
-                            tempoAdjustmentPercent=(plan['rate']-1)*100,plan=plan))
-    matches.sort(key=lambda match:(abs(match['tempoAdjustmentPercent']),match['artist'].lower(),match['title'].lower(),match['id']))
+        matches.append(dict(id=job['id'],title=job['title'],artist=job['artist'],bpm=plan_bpm,
+                            tempoAdjustmentPercent=(plan['rate']-1)*100,plan=plan,vocalSuggestion=vocal))
+    matches.sort(key=lambda match:(0 if match['vocalSuggestion']['status'] == 'suggested' else 1,abs(match['tempoAdjustmentPercent']),match['artist'].lower(),match['title'].lower(),match['id']))
     return dict(outgoingId=outgoing_id,barShift=bar_shift,matches=matches,excluded=excluded)
