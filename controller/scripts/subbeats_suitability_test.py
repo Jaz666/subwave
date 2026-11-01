@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 import subbeats_suitability as suitability
+from subbeats_vocals import measure_vocals
 
 
 class SuitabilityTests(unittest.TestCase):
@@ -26,6 +27,39 @@ class SuitabilityTests(unittest.TestCase):
                 patch.object(suitability,'kick_grid',side_effect=lambda a,b,outgoing,**kw:[(kick or (lambda *_:(4.,.5)))(a,b,outgoing)]):
             return suitability.assess_bundle(self.folder,self.record)
 
+    def test_vocal_measurement_preserves_breaths_and_quiet_release_estimates(self):
+        parts = {stem:np.zeros((2,10000)) for stem in ['drums','bass','other','vocals']}
+        parts['drums'][:] = .2
+        parts['vocals'][:,2000:3500] = .3
+        parts['vocals'][:,3700:5000] = .3
+        parts['vocals'][:,5000:6000] = .02
+        measured = measure_vocals(parts,1000,100.)
+        self.assertEqual(len(measured['passages']),1)
+        passage = measured['passages'][0]
+        self.assertLess(passage['startSeconds'],102.)
+        self.assertGreaterEqual(passage['endSeconds'],106.)
+        self.assertGreater(passage['endSeconds'],passage['activityEndSeconds'])
+        self.assertFalse(passage['openStart']);self.assertFalse(passage['openEnd'])
+        self.assertEqual(measured['barAlignment'],'unverified')
+
+    def test_vocal_measurement_flags_both_clipped_edges_and_does_not_prove_silence(self):
+        parts = {stem:np.zeros((2,5000)) for stem in ['drums','bass','other','vocals']}
+        parts['drums'][:] = .2
+        parts['vocals'][:] = .3
+        measured = measure_vocals(parts,1000,96.)
+        self.assertEqual(measured['coverageEndSeconds'],101.)
+        self.assertTrue(measured['passages'][0]['openStart'])
+        self.assertTrue(measured['passages'][0]['openEnd'])
+        self.assertEqual(measured['passages'][0]['confidence'],'uncertain')
+        parts['vocals'][:] = .001
+        self.assertEqual(measure_vocals(parts,1000)['passages'],[],'residual bleed is not a vocal passage')
+
+    def test_sparse_vocals_survive_a_mostly_silent_region(self):
+        parts = {stem:np.zeros((2,30000)) for stem in ['drums','bass','other','vocals']}
+        parts['drums'][:] = .2
+        parts['vocals'][:,20000:21000] = .3
+        self.assertEqual(len(measure_vocals(parts,1000)['passages']),1)
+
     def test_stems_and_grid_pass_for_both_roles_with_original_track_timestamps(self):
         result = self.assess()
         self.assertEqual(result['incoming']['level'],'subbeat')
@@ -34,6 +68,8 @@ class SuitabilityTests(unittest.TestCase):
         self.assertEqual(result['outgoing']['leadSeconds'],4.)
         self.assertEqual(result['incoming']['bpm'],120.)
         self.assertEqual(result['version'],1)
+        self.assertEqual(result['outgoing']['vocalActivity']['coverageStartSeconds'],96.)
+        self.assertEqual(result['incoming']['vocalActivity']['passages'],[])
 
     def test_supported_beats_without_four_to_floor_qualify_for_basic_matching(self):
         result = self.assess(lambda *_: (_ for _ in ()).throw(ValueError('No sustained four-to-the-floor run.')))

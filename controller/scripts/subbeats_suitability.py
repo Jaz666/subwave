@@ -54,13 +54,15 @@ def assess_role(folder, record, analysis, outgoing):
         return result
     # Exactly the loader and kick fitting used by the current stem preview.
     parts, bpm = load_region(folder, record, name)
+    from subbeats_prepare import STEM_SR
+    from subbeats_vocals import measure_vocals
+    result['vocalActivity'] = measure_vocals(parts, STEM_SR, region['start_sample'] / region['sample_rate'])
     try:
         fits = kick_grid(parts['drums'], bpm, outgoing, all_candidates=True)
         cue, period = fits[0]
     except ValueError as error:
         result['reason'] += ' Stem preview: ' + str(error).replace(' Try another pair.', '').replace(' Prepare another track.', '')
         return result
-    from subbeats_prepare import STEM_SR
     seconds = min(part.shape[1] for part in parts.values()) / STEM_SR
     windows = [{'cueSeconds':region['start_sample'] / region['sample_rate'] + point,
                 'bpm':60 / beat, 'leadSeconds':point, 'postSeconds':max(0.,seconds-point-64*beat)}

@@ -1,5 +1,38 @@
 # Sub/Beats development
 
+## Vocal-passage measurement foundation — 1 November 2026
+
+Preparation and cache-only Assess suitability now record optional `vocalActivity`
+evidence per cached role. This first stage changes no preview envelopes, match
+ranking, suitability levels or playback behavior. Existing entries remain valid;
+batch assessment adds measurements without downloads or new separation.
+
+The detector reuses Subwave's existing stem-versus-mix RMS gate, breathing-gap
+merge and short-artefact rejection. It measures 50ms stereo-energy frames from
+the reconstructed mix and vocal stem, uses positive vocal energy as the loudness
+reference so sparse passages survive a mostly silent region, then applies a
+lower release gate (one fifth of the configured core thresholds). A 200ms guard
+extends each observed passage; overlapping guards merge. Core activity bounds
+are retained separately from the conservative passage/tail bounds.
+
+All positions are original-track seconds and coverage describes the actual
+loaded preview region (including the existing 90-second read limit). Passages
+reaching either cached boundary are open/uncertain; internal boundaries are
+estimated, never verified lyrical phrase ends. No detections do not establish
+that a region is vocal-free. Bar alignment remains explicitly unverified.
+The standard library analyzer's gate behavior is unchanged: new optional gate
+arguments are used only by this Sub/Beats measurement pass. No models are loaded.
+
+Next: inspect measurements and build suggested handovers using complete-passage
+and bar-spacing constraints. No handover approval or new rendering is enabled by
+this stage. Deploy analyzer/controller/web together for the shared schema; the
+web UI itself is unchanged. Owner rebuilds; no live cache or station operations.
+
+Minimal validation: three focused synthetic passage/edge/sparse-activity cases,
+the registered Python suites including existing vocal-gate checks, controller/web
+type checks, scoped schema lint and diff checks. No browser, build or listening
+checks were needed for this data-only stage.
+
 ## Preview match finder — 1 November 2026
 
 Preview now selects an assessed outgoing Sub/Beat track, then explicitly finds

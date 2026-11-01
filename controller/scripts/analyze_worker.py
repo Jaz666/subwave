@@ -1311,16 +1311,20 @@ def get_embedder(force=False):
 # while real vocals — a genuine fraction of the mix — still cross. Frames that
 # sustain above threshold merge into ranges (gaps <0.4s bridged so a breath
 # doesn't split a phrase); sub-300ms blips are dropped as separation artefacts.
-def vocal_ranges_from_rms(rms, mix_rms, sr, hop):
+def vocal_ranges_from_rms(rms, mix_rms, sr, hop, *, stem_rel=None, mix_floor=None, loud_reference=None):
     import numpy as np
 
     if rms.size == 0:
         return []
-    loud = float(np.percentile(rms, 90))
+    reference = rms if loud_reference is None else loud_reference
+    if reference.size == 0:
+        return []
+    loud = float(np.percentile(reference, 90))
     if loud <= 0:
         return []
     mix_loud = float(np.percentile(mix_rms, 90)) if mix_rms.size else 0.0
-    thr = max(VOCAL_STEM_REL * loud, VOCAL_MIX_FLOOR * mix_loud)
+    thr = max((VOCAL_STEM_REL if stem_rel is None else stem_rel) * loud,
+              (VOCAL_MIX_FLOOR if mix_floor is None else mix_floor) * mix_loud)
     # frames → seconds; librosa.frames_to_time's default is frames * hop / sr.
     times = np.arange(rms.size) * (hop / float(sr))
     active = rms >= thr
