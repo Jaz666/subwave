@@ -21,6 +21,7 @@ Each one records a measured failure.
 
 **Placement**
 - `on_meta` hangs off `music_meta`. Post-cross it would fire twice, and an `on_track` there is swallowed by source switches.
+- Sub/Flow companions are the scoped exception: metadata-only events from a prepared, single-request WAV publish once from `flow_output`, after the cross buffer. The first member keeps ordinary pre-cross reporting; never move ordinary reporting downstream. `subflow.can_air` and the handoff polls use output-clock join windows, including clip lead-in and duck recovery.
 - The rotate stays on the raw pre-cross source. Below `cross` everything is one endless track, so a rotate there plays one jingle and then sticks on music. `jingle_ratio` 0 must keep meaning "rotate not built", because that is how the controller takes the rotate over (#1619).
 - `jingle_now_queue` is the switch's first choice and joins below the `music_meta` capture. Inside the rotate a due jingle would beat a press; inside `dj_queue` the press would wait behind tracks already sent; above `music_meta` an upload's ID3 tags would reach `now-playing.json`.
 - The dead-air guard sits above every `add` (the bed and the ducks) and below `music_meta` and the rotate. `add` is ready if any input is (`smooth_add`'s `blank()` fallthrough, the bed's `mksafe`), so a guard below one never fires. Keep one guard, never a decorative second one at the bottom, and no `blank.skip`, which spins a core when the chain is empty (#660).
