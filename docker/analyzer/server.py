@@ -820,6 +820,20 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
     return {"ok": True, "subbeats_result": msg.get("subbeats_result"), "cache_added_bytes": msg.get("cache_added_bytes")}
 
 
+class SubbeatsMatchRequest(BaseModel):
+    jobs: list[dict[str, Any]] = Field(max_length=500)
+    outgoing_id: str
+    bar_shift: int = Field(default=0, ge=-2, le=2)
+
+
+@app.post("/match-subbeats")
+async def match_subbeats(req: SubbeatsMatchRequest):
+    msg = await analyzer_pool.request({"id":"1","op":"match_subbeats",**req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422,msg.get("error") or "Match search failed")
+    return {"ok":True,"subbeats_matches":msg.get("subbeats_matches")}
+
+
 class SubbeatsAssessRequest(BaseModel):
     state_dir: str
     cache_id: str = Field(min_length=16, max_length=100)
@@ -845,6 +859,7 @@ class SubbeatsReferencePreview(BaseModel):
 
 
 class SubbeatsPreviewRequest(BaseModel):
+    window_plan: dict[str, float] | None = None
     bar_shift: int = Field(default=0, ge=-2, le=2, strict=True)
     out_gain_db: float = Field(default=0, ge=-120, le=40)
     in_gain_db: float = Field(default=0, ge=-120, le=40)

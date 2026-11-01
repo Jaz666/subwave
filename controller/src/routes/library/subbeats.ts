@@ -9,11 +9,11 @@ import { resolveGainDb } from '../../music/loudness.js';
 import * as blocklist from '../../music/blocklist.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
-import { subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
+import { subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
 import * as db from '../../music/library-db.js';
 import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
-import { previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
+import { matchSubbeats, previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
 import { tagger } from '../../broadcast/tagger.js';
 import { subbeatsReferences } from '../../music/subbeats-references.js';
 
@@ -25,6 +25,15 @@ const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
 router.get('/library/subbeats', requireAdmin, (_req, res) => {
   try { res.json(view()); }
   catch { res.status(503).json({ error: 'The Sub/Beats preparation list could not be read' }); }
+});
+router.get('/library/subbeats/matches', requireAdmin, async (req,res) => {
+  const parsed = subbeatsMatchQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({error:'Choose an outgoing track and a valid bar shift'});
+  try {
+    await blocklist.load();
+    const jobs = subbeatsStore.read().jobs.filter(job => !blocklist.hitOf(job));
+    res.set('Cache-Control','no-store').json(await matchSubbeats(jobs,parsed.data.outgoingId,parsed.data.barShift));
+  } catch (error) { res.status(400).json({error:error instanceof Error ? error.message : 'Matches could not be found'}); }
 });
 router.get('/library/subbeats/candidates', requireAdmin, async (req, res) => {
   await library.load();
@@ -98,8 +107,10 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
       reference = { out_seconds: outgoing.outroStart, in_resolve: incoming.introResolve,
         bars: parsed.data.referenceBars, out_id: outgoing.id, in_id: incoming.id };
     }
+    const windowPlan = parsed.data.matched ? (await matchSubbeats(tracks as typeof state.jobs, parsed.data.trackIds[0]!, parsed.data.barShift)).matches.find(match => match.id === parsed.data.trackIds[1])?.plan : undefined;
+    if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
-    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds});
+    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {})});
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 6
+VERSION = 7
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -256,20 +256,25 @@ def validate_bar_shift(value):
     return value
 
 
-def render_beat_preview(folders, records, gains, bar_shift):
+def render_beat_preview(folders, records, gains, bar_shift, window_plan=None):
     import numpy as np
     import librosa
     out_parts, out_bpm = load_region(folders[0], records[0], 'exit')
     in_parts, in_bpm = load_region(folders[1], records[1], 'head')
     outgoing = kick_grid(out_parts['drums'], out_bpm, True, all_candidates=True)
     incoming = kick_grid(in_parts['drums'], in_bpm, all_candidates=True)
+    if window_plan is not None:
+        outgoing = [fit for fit in outgoing if abs(fit[0]-window_plan['outCue']) < .001 and abs(fit[1]-window_plan['period']) < .00001]
+        incoming = [fit for fit in incoming if abs(fit[0]-window_plan['inCue']) < .001 and abs(fit[1]/window_plan['period']-window_plan['rate']) < .0001]
+        if not outgoing or not incoming:
+            raise ValueError('Saved mixing windows no longer match the cached stems. Assess suitability and find matches again.')
     out_cue, in_cue, period, rate = select_windows(outgoing, incoming, out_parts['drums'].shape[1] / STEM_SR, in_parts['drums'].shape[1] / STEM_SR, bar_shift)
     if abs(rate - 1) > .0001:
         in_parts = {name: librosa.effects.time_stretch(part, rate=rate) for name, part in in_parts.items()}
         verified = kick_grid(in_parts['drums'], 60 / period, all_candidates=True)
-        usable = [fit for fit in verified if pair_coverage(out_cue, fit[0], period, out_parts['drums'].shape[1] / STEM_SR, in_parts['drums'].shape[1] / STEM_SR, bar_shift) is None]
+        usable = [fit for fit in verified if pair_coverage(out_cue, fit[0], period, out_parts['drums'].shape[1] / STEM_SR, in_parts['drums'].shape[1] / STEM_SR, bar_shift) is None and (window_plan is None or abs(fit[0]-in_cue/rate) <= .13*period)]
         if not usable:
-            raise ValueError('The stretched incoming windows need more prepared coverage for this pair.')
+            raise ValueError('The selected incoming window does not pass grid/coverage checks after tempo adjustment. Find another match.')
         in_cue, _ = min(usable, key=lambda fit:abs(fit[0] - in_cue / rate))
     out_region = next(region for region in records[0]['metadata']['stem_regions'] if region['name'] == 'exit')
     in_region = next(region for region in records[1]['metadata']['stem_regions'] if region['name'] == 'head')
@@ -326,7 +331,7 @@ def render_preview(req, fetch_source=None):
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
     fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
-                              'reference': reference, 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
+                              'reference': reference, 'window_plan':req.get('window_plan'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
     if previews.is_symlink():
@@ -345,7 +350,7 @@ def render_preview(req, fetch_source=None):
             from subbeats_reference_preview import render_reference
             audio, metadata = render_reference(req, folders, records, gains, fetch_source)
         else:
-            audio, metadata = render_beat_preview(folders, records, gains, bar_shift)
+            audio, metadata = render_beat_preview(folders, records, gains, bar_shift, req.get('window_plan'))
         stage = Path(tempfile.mkdtemp(prefix='.pending-', dir=previews))
         try:
             sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='PCM_16')

@@ -1,4 +1,4 @@
-import { subbeatsEventSchema, subbeatsTimelineSchema } from '../schemas/subbeats.js';
+import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -264,6 +264,7 @@ interface WorkerMessage {
   subbeats_suitability_version?:number;
   cache_added_bytes?: number;
   migrated?: number;
+  subbeats_matches?:unknown;
   subbeats_result?: unknown;
   text_embeddings?: unknown;
   // render_transition op fields
@@ -1249,6 +1250,19 @@ function cacheGrowth(answer:WorkerMessage):number {
   if (!Number.isSafeInteger(answer.cache_added_bytes) || answer.cache_added_bytes! < 0) throw new Error('Analyzer did not report shared-cache usage; update the analyzer');
   return answer.cache_added_bytes!;
 }
+export async function matchSubbeats(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, barShift:number) {
+  const backend = await sharedSubbeatsBackend();
+  const payload = {jobs,outgoing_id:outgoingId,bar_shift:barShift};
+  let answer:WorkerMessage;
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/match-subbeats`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:30_000});
+    if (response.status === 404) throw new Error('Update the analyzer to find Sub/Beats matches');
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'match_subbeats',...payload},30_000);
+  return subbeatsMatchesSchema.parse(answer.subbeats_matches);
+}
+
 export async function assessSubbeats(stateDir:string, cacheId:string, trackId:string, bundleKey:string, stemsRoot:string) {
   const backend = await sharedSubbeatsBackend();
   if (backend === 'sidecar' ? !_sidecarSubbeatsSuitability : !_localSubbeatsSuitability) throw new Error('Update the analyzer to assess Sub/Beats suitability');
@@ -1291,7 +1305,7 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
   const payload = { ...shared, out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,

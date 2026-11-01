@@ -2716,6 +2716,13 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "match_subbeats":
+            try:
+                from subbeats_matching import find_matches
+                emit({"id":rid,"ok":True,"subbeats_matches":find_matches(req['jobs'],req['outgoing_id'],req.get('bar_shift',0))})
+            except Exception as error:
+                emit({"id":rid,"ok":False,"error":str(error)})
+            continue
         if req.get("op") == "assess_subbeats":
             try:
                 from subbeats_suitability import assess_request

@@ -55,12 +55,17 @@ def assess_role(folder, record, analysis, outgoing):
     # Exactly the loader and kick fitting used by the current stem preview.
     parts, bpm = load_region(folder, record, name)
     try:
-        cue, period = kick_grid(parts['drums'], bpm, outgoing)
+        fits = kick_grid(parts['drums'], bpm, outgoing, all_candidates=True)
+        cue, period = fits[0]
     except ValueError as error:
         result['reason'] += ' Stem preview: ' + str(error).replace(' Try another pair.', '').replace(' Prepare another track.', '')
         return result
     from subbeats_prepare import STEM_SR
     seconds = min(part.shape[1] for part in parts.values()) / STEM_SR
+    windows = [{'cueSeconds':region['start_sample'] / region['sample_rate'] + point,
+                'bpm':60 / beat, 'leadSeconds':point, 'postSeconds':max(0.,seconds-point-64*beat)}
+               for point,beat in fits if outgoing or seconds-point-64*beat >= 8 - 1 / STEM_SR]
+    result['windows'] = windows
     after = seconds - cue - 64 * period
     if not outgoing and after < 8 - 1 / STEM_SR:
         result['reason'] += ' The incoming region lacks the preview’s eight-second follow-through.'

@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsMatchesSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -22,6 +22,7 @@ import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, 
 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
+  matches: (outgoing:string, shift:number, version:string) => ['library','subbeats','matches',outgoing,shift,version] as const,
   candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string, mixing: string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, mixing, offset] as const,
 };
 type Status = z.infer<typeof subbeatsStatusSchema>;
@@ -197,6 +198,16 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     if (outgoing && !valid.has(outgoing)) { setOutgoing(''); setBarShift(0); }
     if (incoming && !valid.has(incoming)) { setIncoming(''); setBarShift(0); }
   },[state.data,outgoing,incoming,setOutgoing,setIncoming,setBarShift,setJobSelected]);
+  const [matchFor, setMatchFor] = useState<string | null>(null);
+  const matchContext = JSON.stringify([outgoing,barShift,jobVersion]);
+  const matchesEnabled = page === 'preview' && ready && !!outgoing && matchFor === matchContext;
+  const matches = useAdminQuery({
+    key: subbeatsKeys.matches(outgoing,barShift,jobVersion ?? ''), adminFetch, enabled:matchesEnabled,
+    request: async (fetcher,signal) => subbeatsMatchesSchema.parse(await adminJson(fetcher,
+      `/library/subbeats/matches?${new URLSearchParams({outgoingId:outgoing,barShift:String(barShift)})}`,undefined,signal)),
+  });
+  const matchRows = matchesEnabled && !matches.isError ? matches.data?.matches ?? [] : [];
+  const incomingMatch = matchRows.find(match => match.id === incoming);
   const addRows = (added: SubbeatsCandidate[]) => setSelected(current => selectSubbeatsRows(current, added, jobs));
 
   const pagination = <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-ink p-4" aria-label="Track pagination">
@@ -246,33 +257,49 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose two prepared tracks to audition a 16-bar, beat-matched stem exchange.</p>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose an outgoing Sub/Beat track, then find structurally compatible incoming tracks for a 16-bar stem exchange.</p>
       <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Incoming tempo stays matched until the preview ends. Use the bar shift below to compare alignments.</p>
-      {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find prepared tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
+      {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find outgoing tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
       {prepared < 2 ? <div className="mt-4 text-sm"><p className="text-muted">Prepare at least two tracks to try a transition.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-        {([{ id: 'subbeats-outgoing', label: 'Outgoing track', value: outgoing, change: setOutgoing, other: incoming },
-          { id: 'subbeats-incoming', label: 'Incoming track', value: incoming, change: setIncoming, other: outgoing }]).map(field => <div key={field.id} className="min-w-0">
-          <label htmlFor={field.id} className="mb-1 block text-sm font-medium">{field.label}</label>
-          <select id={field.id} className="h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={field.value} onChange={e => { field.change(e.target.value); setBarShift(0); }}>
-            <option value="">Choose a prepared track</option>
-            {previewJobs.map(j => <option key={j.id} value={j.id} disabled={j.id === field.other}>{j.artist} — {j.title} · {MIX_LABEL[j.suitability?.[field.id === 'subbeats-outgoing' ? 'outgoing' : 'incoming'].level ?? 'unassessed']}</option>)}
+        <div className="min-w-0">
+          <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
+          <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setIncoming(''); setBarShift(0); setMatchFor(null); }}>
+            <option value="">Choose an outgoing Sub/Beat track</option>
+            {previewJobs.filter(job => job.suitability?.outgoing.level === 'subbeat').map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
           </select>
-        </div>)}
-        <Button className="min-h-11 self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], { barShift })}>
+          <Button className="mt-2 min-h-11" disabled={!outgoing || byId.get(outgoing)?.suitability?.outgoing.level !== 'subbeat' || matches.isFetching} onClick={() => { setIncoming(''); if (matchesEnabled) void matches.refetch(); else setMatchFor(matchContext); }}>
+            {matches.isFetching ? 'Finding matches…' : 'Find compatible incoming tracks'}
+          </Button>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="subbeats-incoming" className="mb-1 block text-sm font-medium">Incoming track</label>
+          <select id="subbeats-incoming" className={SELECT_CLASS} value={incomingMatch ? incoming : ''} disabled={!matchesEnabled || matches.isFetching || !matchRows.length} onChange={event => setIncoming(event.target.value)}>
+            <option value="">{matchesEnabled ? 'Choose a matching incoming track' : 'Find matches for the outgoing track first'}</option>
+            {matchRows.map(match => <option key={match.id} value={match.id}>{match.artist} — {match.title} · {match.bpm.toFixed(1)} BPM · {match.tempoAdjustmentPercent >= 0 ? '+' : ''}{match.tempoAdjustmentPercent.toFixed(1)}% tempo</option>)}
+          </select>
+        </div>
+        <Button className="min-h-11 self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !incomingMatch || matches.isFetching || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], { barShift, matched:true })}>
           {preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.playing ? <Square /> : <Play />}
           {preview.loading ? 'Cancel preview' : preview.playing ? 'Stop preview' : 'Play preview'}
         </Button>
       </div>}
+      {matchesEnabled && matches.isFetching && <p role="status" className="mt-3 text-sm">Checking saved tempo and window coverage…</p>}
+      {matchesEnabled && matches.isError && <p role="alert" className="mt-3 text-sm">{matches.error.message} Try Find compatible incoming tracks again.</p>}
+      {matchesEnabled && matches.data && !matches.isFetching && !matches.isError && <div role="status" className="mt-3 text-sm">
+        <p>{matchRows.length} structurally compatible incoming tracks.</p>
+        <p className="mt-1 text-xs text-muted">Excluded: {matches.data.excluded.tempo} tempo · {matches.data.excluded.coverage} coverage · {matches.data.excluded.unassessed} not assessed · {matches.data.excluded.unsuitable} unsuitable for incoming Sub/Beat.</p>
+      </div>}
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Matches use saved measurements. Rendering verifies the selected windows and cached audio. Vocals, phrasing and harmony still need listening. Assess saved stems if a track has no suitability result.</p>
       {prepared >= 2 && <div className="mt-4 max-w-sm">
         <label htmlFor="subbeats-bar-shift" className="mb-1 block text-sm font-medium">Incoming bar shift · testing</label>
-        <select id="subbeats-bar-shift" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={barShift} onChange={event => setBarShift(Number(event.target.value))}>
+        <select id="subbeats-bar-shift" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={barShift} onChange={event => { setBarShift(Number(event.target.value)); setIncoming(''); setMatchFor(null); }}>
           <option value={-2}>−2 bars · earlier</option>
           <option value={-1}>−1 bar · earlier</option>
           <option value={0}>0 · original alignment</option>
           <option value={1}>+1 bar · later</option>
           <option value={2}>+2 bars · later</option>
         </select>
-        <p className="mt-2 text-xs leading-relaxed text-muted">Moves the incoming audio by whole bars, keeping the tempo matched. Press Play preview to compare. Resets when you change tracks.</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted">Moves the incoming audio by whole bars, keeping the tempo matched. Press Play preview to compare. Find matches again after changing the shift. Resets when you change the outgoing track.</p>
       </div>}
       {preview.loading && <p role="status" className="mt-3 text-sm text-muted">Preparing preview… press again to cancel.</p>}
       {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
