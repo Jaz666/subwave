@@ -833,6 +833,11 @@ the owner's installed images until they rebuild `controller` and `web`. Next,
 use the new genre/status filters to select a small batch within the existing
 cache limit, then check the preparation results before admitting more.
 
+## Deferred search enhancement — owner decision, 1 November 2026
+
+Add playlist search alongside artist, track and album in the Sub/Beats search
+functions. Recorded for later implementation; current search behaviour is unchanged.
+
 ## Deferred preview controls — owner decisions, 31 October 2026
 
 Pause mixing work while improving which tracks qualify for Sub/Beats analysis.
