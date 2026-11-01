@@ -24,6 +24,7 @@ function useWorkspaceState() {
   const browsePage = pathname === '/admin/library/subbeats' ? 'explore' : pathname === '/admin/library/subbeats/prepared' ? 'prepared' : null;
   const [selected, setSelected] = useState<SubbeatsCandidate[]>([]);
   const [browse, setBrowse] = useState({ explore: subbeatsInitialBrowse('dance'), prepared: subbeatsInitialBrowse('prepared') });
+  const [jobSelected, setJobSelected] = useState<string[]>([]);
   const [jobQuery, setJobQuery] = useState('');
   const [jobSort, setJobSort] = useState('priority');
   const [jobStatus, setJobStatus] = useState('all');
@@ -70,7 +71,7 @@ function useWorkspaceState() {
     const query = params.toString();
     window.history.replaceState(window.history.state, '', `${pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }, [browse, browsePage, pathname, restoredPath]);
-  return { browseRestored: restoredPath === pathname, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+  return { browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift };
 }
 

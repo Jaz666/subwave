@@ -16,7 +16,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
-import { selectSubbeatsRows, subbeatsCanSelect, type SubbeatsCandidate } from './library/subbeats-selection';
+import { selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, type SubbeatsCandidate } from './library/subbeats-selection';
 import { MIX_LABEL, SuitabilityDetails } from './library/subbeats-suitability';
 import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, type SubbeatsPage } from './subbeats/SubbeatsWorkspace';
 
@@ -45,7 +45,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const ready = hydrated && !needsAuth;
   const cache = useSubbeatsCache();
   const regularIds = new Set(cache.query.data?.policy.regularIds ?? []);
-  const { browseRestored, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+  const { browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
   const { query, offset, scope, genre, status, sort, mixing } = browse[browsePage];
@@ -76,7 +76,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     request: async (ids: string[], fetcher) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats/queue', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }),
     })),
-    onDone: async (view, ids, client) => { await client.cancelQueries({ queryKey: subbeatsKeys.state, exact: true }); client.setQueryData(subbeatsKeys.state, view); setSelected(current => current.filter(row => !ids.includes(row.id))); },
+    onDone: async (view, ids, client) => { await client.cancelQueries({ queryKey: subbeatsKeys.state, exact: true }); client.setQueryData(subbeatsKeys.state, view); setSelected(current => current.filter(row => !ids.includes(row.id))); setJobSelected(current => current.filter(id => !ids.includes(id))); },
   });
   const assess = useAdminMutation({
     adminFetch,
@@ -86,6 +86,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     onDone: async (view, _ids, client) => {
       await client.cancelQueries({ queryKey: subbeatsKeys.state, exact: true });
       client.setQueryData(subbeatsKeys.state, view);
+      setJobSelected(current => current.filter(id => !_ids.includes(id)));
       await client.invalidateQueries({ queryKey: ['library', 'subbeats', 'candidates'] });
     },
   });
@@ -110,6 +111,37 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       ]);
     },
   });
+  const [bulkRemoving, setBulkRemoving] = useState<string[] | null>(null);
+  const [removeProgress, setRemoveProgress] = useState('');
+  const batchRemove = useAdminMutation({
+    adminFetch,
+    request: async (ids: string[], fetcher) => {
+      const removed: string[] = [];
+      let view: z.infer<typeof subbeatsViewSchema> | null = null;
+      let error = '';
+      for (const id of ids) {
+        setRemoveProgress(`Removing ${removed.length + 1} of ${ids.length} entries…`);
+        try {
+          view = subbeatsViewSchema.parse(await adminJson(fetcher, `/library/subbeats/entries/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+          removed.push(id);
+        } catch (failure) { error = failure instanceof Error ? failure.message : 'Removal failed'; break; }
+      }
+      return { removed, view, error, total: ids.length };
+    },
+    onDone: async (result, _ids, client) => {
+      await client.cancelQueries({ queryKey: subbeatsKeys.state, exact: true });
+      if (result.view) client.setQueryData(subbeatsKeys.state, result.view);
+      setJobSelected(current => current.filter(id => !result.removed.includes(id)));
+      setSelected(current => current.filter(row => !result.removed.includes(row.id)));
+      await Promise.all([
+        client.invalidateQueries({ queryKey: subbeatsKeys.state, exact: true }),
+        client.invalidateQueries({ queryKey: ['library', 'subbeats', 'candidates'] }),
+        client.invalidateQueries({ queryKey: ['library', 'subbeats', 'cache'] }),
+        client.invalidateQueries({ queryKey: ['library', 'subbeats', 'cleanup'] }),
+      ]);
+    },
+  });
+  const actionBusy = enqueue.isPending || assess.isPending || remove.isPending || batchRemove.isPending;
   const jobs = state.data?.jobs ?? [];
   const byId = new Map(jobs.map(j => [j.id, j]));
   const rows = candidates.data?.rows ?? [];
@@ -136,6 +168,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     return priority(a.status) - priority(b.status) || b.updatedAt.localeCompare(a.updatedAt) || names;
   });
   const activeJobPage = Math.min(jobPage, Math.max(0, Math.ceil(ranked.length / 20) - 1));
+  const selectedJobs = selectPreparationIds(jobSelected, [], jobs);
+  const selectedJobSet = new Set(selectedJobs);
+  const assessJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey);
+  const pageJobs = ranked.slice(activeJobPage * 20, (activeJobPage + 1) * 20);
+  const selectableJobs = pageJobs.filter(job => !['queued', 'running'].includes(job.status));
+  const selectJobs = (ids: string[]) => setJobSelected(current => selectPreparationIds(current, ids, jobs));
   const previewJobs = jobs.filter(job => job.status === 'prepared' && (job.id === outgoing || job.id === incoming
     || `${job.artist} ${job.title} ${job.album}`.toLowerCase().includes(previewSearch.trim().toLowerCase())));
   const currentStage = preview.timeline?.events.reduce((label, event) => event.at <= preview.position ? event.label : label, '');
@@ -150,10 +188,15 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   }, [client, jobVersion]);
   useEffect(() => {
     if (!state.data) return;
+    const currentJobs = state.data.jobs;
+    setJobSelected(current => {
+      const valid = selectPreparationIds(current, [], currentJobs);
+      return valid.length === current.length ? current : valid;
+    });
     const valid = new Set(state.data.jobs.filter(job => job.status === 'prepared').map(job => job.id));
     if (outgoing && !valid.has(outgoing)) { setOutgoing(''); setBarShift(0); }
     if (incoming && !valid.has(incoming)) { setIncoming(''); setBarShift(0); }
-  },[state.data,outgoing,incoming,setOutgoing,setIncoming,setBarShift]);
+  },[state.data,outgoing,incoming,setOutgoing,setIncoming,setBarShift,setJobSelected]);
   const addRows = (added: SubbeatsCandidate[]) => setSelected(current => selectSubbeatsRows(current, added, jobs));
 
   const pagination = <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-ink p-4" aria-label="Track pagination">
@@ -168,7 +211,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       <h1 className="font-display text-3xl font-bold text-ink">Sub/Beats</h1>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">{
         page === 'explore' ? 'Find dance-music candidates and choose tracks for deeper analysis.'
-          : page === 'preparation' ? 'Monitor preparation, pause queued work and retry individual tracks. Work continues when you leave this page.'
+          : page === 'preparation' ? 'Monitor preparation, pause queued work and manage tracks in batches. Work continues when you leave this page.'
             : page === 'prepared' ? 'Find prepared recordings and choose an outgoing and incoming track to audition.'
               : page === 'cache' ? 'Manage regular stem caching and check the space available.'
               : 'Audition a prepared pair. Station playback continues using your existing transitions.'
@@ -195,6 +238,10 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       title="Remove Sub/Beats entry?" confirmLabel="Remove entry and files" danger
       description={removing ? `Remove “${removing.title}” by ${removing.artist} and delete its extended Sub/Beats files? Files needed by another entry are kept. The library track, regular stems and manual regular-cache inclusion stay unchanged. You will need to prepare it again to preview it.` : ''}
       onConfirm={() => { if (removing) remove.mutate(removing.id); }} />
+    <V3AlertDialog open={!!bulkRemoving} onOpenChange={open => { if (!open) setBulkRemoving(null); }}
+      title={`Remove ${bulkRemoving?.length ?? 0} Sub/Beats entries?`} confirmLabel="Remove selected entries and files" danger
+      description={bulkRemoving ? `Delete the extended Sub/Beats files for ${bulkRemoving.length} selected tracks? Library tracks and regular stems stay unchanged. Files needed by another entry are kept. The batch stops if an entry cannot be removed; remaining entries stay selected.` : ''}
+      onConfirm={() => { if (bulkRemoving) batchRemove.mutate(bulkRemoving); }} />
     {page === 'cache' && <SubbeatsCache cache={cache} />}
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
@@ -372,7 +419,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 {page === 'prepared' && <div className="mt-3 flex flex-wrap gap-2 lg:col-span-3">
                   <Button className="min-h-11" aria-pressed={outgoing === row.id} disabled={incoming === row.id} onClick={() => { setOutgoing(row.id); setBarShift(0); }}>{outgoing === row.id ? 'Outgoing selected' : 'Use as outgoing'}</Button>
                   <Button className="min-h-11" aria-pressed={incoming === row.id} disabled={outgoing === row.id} onClick={() => { setIncoming(row.id); setBarShift(0); }}>{incoming === row.id ? 'Incoming selected' : 'Use as incoming'}</Button>
-                  <Button className="min-h-11" disabled={remove.isPending || enqueue.isPending || !!state.data?.maintenanceRunning} aria-label={`Remove Sub/Beats entry for ${row.title} by ${row.artist}`} onClick={() => { remove.reset(); setRemoving(row); }}>Remove</Button>
+                  <Button className="min-h-11" disabled={actionBusy || !!state.data?.maintenanceRunning} aria-label={`Remove Sub/Beats entry for ${row.title} by ${row.artist}`} onClick={() => { remove.reset(); setRemoving(row); }}>Remove</Button>
                 </div>}
               </div>
               <span className="shrink-0 text-right text-sm text-ink tabular-nums">{row.bpm ? row.bpm.toFixed(1) : '—'}<span className="block text-xs text-muted">BPM</span></span>
@@ -405,15 +452,39 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
             </select>
           </div>
         </div>
+        <div className="border-b border-ink p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><Checkbox aria-label="Select preparation page"
+              checked={selectableJobs.length > 0 && selectableJobs.every(job => selectedJobSet.has(job.id)) ? true : selectableJobs.some(job => selectedJobSet.has(job.id)) ? 'indeterminate' : false}
+              disabled={!selectableJobs.length || actionBusy || !state.data || (selectedJobs.length >= SUBBEATS_BATCH_LIMIT && !selectableJobs.some(job => selectedJobSet.has(job.id)))}
+              onCheckedChange={checked => checked === true ? selectJobs(selectableJobs.map(job => job.id)) : setJobSelected(current => current.filter(id => !selectableJobs.some(job => job.id === id)))} />Select page</label>
+            <Button className="min-h-11" disabled={actionBusy || !ranked.length || !state.data || selectPreparationIds(selectedJobs, ranked.map(job => job.id), jobs).length === selectedJobs.length}
+              onClick={() => selectJobs(ranked.map(job => job.id))}>Select matching · up to {SUBBEATS_BATCH_LIMIT}</Button>
+            <Button className="min-h-11" disabled={actionBusy || !jobSelected.length} onClick={() => setJobSelected([])}>Clear selection</Button>
+          </div>
+          <p className="mt-2 text-sm tabular-nums" role="status">{selectedJobs.length} selected{selectedJobs.some(id => !pageJobs.some(job => job.id === id)) ? ' · includes entries on other pages or filters' : ''}</p>
+          <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Select up to {SUBBEATS_BATCH_LIMIT} completed or failed entries across pages. Queued and running entries cannot be selected. Recheck/retry prepares resources; suitability assessment uses saved stems only.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button className="min-h-11" disabled={actionBusy || !selectedJobs.length || !state.data} onClick={() => enqueue.mutate(selectedJobs)}>Recheck/retry selected ({selectedJobs.length})</Button>
+            <Button className="min-h-11" disabled={actionBusy || !assessJobs.length || !!state.data?.maintenanceRunning} onClick={() => assess.mutate(assessJobs)}>Assess suitability ({assessJobs.length})</Button>
+            <Button className="min-h-11" disabled={actionBusy || !selectedJobs.length || !!state.data?.maintenanceRunning} onClick={() => { batchRemove.reset(); setBulkRemoving([...selectedJobs]); }}>Remove selected ({selectedJobs.length})</Button>
+          </div>
+          {enqueue.isError && <p role="alert" className="mt-2 text-sm">Could not queue the selected entries. {enqueue.error.message}</p>}
+          {batchRemove.isPending && <p role="status" className="mt-2 text-sm">{removeProgress}</p>}
+          {batchRemove.data && <p role={batchRemove.data.error ? 'alert' : 'status'} className="mt-2 text-sm">Removed {batchRemove.data.removed.length} of {batchRemove.data.total} entries.{batchRemove.data.error && ` ${batchRemove.data.error} Remaining entries stay selected; retry when the problem is resolved.`}</p>}
+        </div>
         {jobs.length > 0 && !ranked.length && <p className="p-4 text-sm text-muted">No preparation entries match. Clear the search or choose another status.</p>}
         {!jobs.length && <div className="p-6 text-sm"><p className="text-muted">Your preparation list is empty. Choose tracks on Explore, then select Queue analysis.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div>}
         <ul className="divide-y divide-ink/20">
-          {ranked.slice(activeJobPage * 20, (activeJobPage + 1) * 20).map(job => <li key={job.id} className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0"><p className="text-sm font-semibold break-words">{job.title}</p><p className="text-sm break-words text-muted">{job.artist}</p></div>
-              {(job.status !== 'queued' && job.status !== 'running') && <div className="flex shrink-0 flex-wrap justify-end gap-2"><Button className="min-h-11" size="sm" disabled={enqueue.isPending} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>
-                {job.bundleKey && <Button className="min-h-11" size="sm" disabled={assess.isPending || !!state.data?.maintenanceRunning} onClick={() => assess.mutate([job.id])}>Assess suitability</Button>}
-                <Button className="min-h-11" size="sm" aria-label={`Remove Sub/Beats entry for ${job.title} by ${job.artist}`} disabled={remove.isPending || enqueue.isPending || !!state.data?.maintenanceRunning} onClick={() => { remove.reset(); setRemoving(job); }}>Remove</Button></div>}
+          {pageJobs.map(job => <li key={job.id} className="p-4">
+            <div className="flex flex-wrap items-start gap-3">
+              <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center"><Checkbox aria-label={`Select preparation entry ${job.title} by ${job.artist}`}
+                checked={selectedJobSet.has(job.id)} disabled={actionBusy || ['queued', 'running'].includes(job.status) || (!selectedJobSet.has(job.id) && selectedJobs.length >= SUBBEATS_BATCH_LIMIT)}
+                onCheckedChange={checked => checked === true ? selectJobs([job.id]) : setJobSelected(current => current.filter(id => id !== job.id))} /></label>
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold break-words">{job.title}</p><p className="text-sm break-words text-muted">{job.artist}</p></div>
+              {(job.status !== 'queued' && job.status !== 'running') && <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto"><Button className="min-h-11" size="sm" disabled={actionBusy} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>
+                {job.bundleKey && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => assess.mutate([job.id])}>Assess suitability</Button>}
+                <Button className="min-h-11" size="sm" aria-label={`Remove Sub/Beats entry for ${job.title} by ${job.artist}`} disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => { remove.reset(); setRemoving(job); }}>Remove</Button></div>}
             </div>
             <p className="mt-2 text-xs font-medium" role={job.status === 'running' ? 'status' : undefined}>{LABEL[job.status]}</p>
             <SuitabilityDetails value={job.suitability} />

@@ -1,5 +1,26 @@
 # Sub/Beats development
 
+## Preparation batch actions — 1 November 2026
+
+Preparation now has row checkboxes, Select page, Select matching (up to 100),
+Clear selection and a selected count including entries on other pages/filters.
+Selection lives in the Library workspace and is separate from Explore's queue
+selection. Fresh queue state excludes running/queued/deleted entries from actions.
+Recheck/retry uses the existing bounded queue endpoint; Assess suitability uses
+the existing cache-only endpoint and only selected entries with a saved bundle.
+Successful admissions clear those IDs from selection; other selected entries stay.
+
+Remove selected uses one count-based confirmation and the existing guarded
+single-entry deletion endpoint, sequentially. It stops at the first failure,
+reports confirmed removals and retains the remaining selection for retry. Library
+tracks and regular stems remain untouched. State/list/cache projections refresh
+once after the batch, including a partial failure. No new API or queue semantics.
+Validation: 34 Library web tests, nine admin-query audit tests and the query
+read audit passed. Focused desktop/mobile browser checks covered batch admission,
+selection across pages/tabs, confirmation cancellation and partial-removal retry.
+Library search and all six query-cache browser checks passed on isolated fixtures.
+Web lint/typecheck passed. Only web needs rebuilding; no live station operations.
+
 ## Pair-aware beat windows — 1 November 2026
 
 Preparation stores up to eight incoming and eight outgoing beat-supported

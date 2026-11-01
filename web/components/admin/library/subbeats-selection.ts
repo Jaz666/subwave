@@ -20,3 +20,9 @@ export function selectSubbeatsRows(current: SubbeatsCandidate[], added: Subbeats
   }
   return [...chosen.values()];
 }
+
+// Preparation actions work on existing terminal entries, independently of Explore.
+export function selectPreparationIds(current: string[], added: string[], jobs: Job[]): string[] {
+  const available = new Set(jobs.filter(job => !['queued', 'running'].includes(job.status)).map(job => job.id));
+  return [...new Set([...current, ...added])].filter(id => available.has(id)).slice(0, SUBBEATS_BATCH_LIMIT);
+}
