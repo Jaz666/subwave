@@ -55,6 +55,7 @@ class PreviewTests(unittest.TestCase):
             self.assertLessEqual(float(np.abs(audio).max()), .981)
             self.assertEqual(float(np.abs(audio[:, 9000:15000]).max()), 0)
             self.assertGreater(float(audio[:, 22000:24000].mean()), .9)
+            self.assertGreater(preview.mix_preview(out, inc, 4 - .5 / 1000, 0, .5).shape[1], 0)
             with self.assertRaisesRegex(ValueError, 'loop'):
                 preview.mix_preview(out, inc, 4, 5, .5)
             short = {s: a[:, :2000] for s, a in inc.items()}
