@@ -19,14 +19,20 @@ No analysis, matching, preview or playback behaviour changed in this investigati
 
 Owner listening anchors (approximate head/source seconds): Rozalla vocals ~6s,
 phrase change ~22s (interpreting `0.22s` as `0:22`); Urban Cookie Collective vocals
-~7s, phrase change ~22s; Gusto no vocals reported in its intro, no clear phrase
-change, but a natural four-bar point ~22s. These are not exact downbeat labels.
+~7s, phrase change ~22s. Gusto clarification: a repeating background vocal groove
+fades in from ~7s; ~22s ends its fourth bar and is a natural release point, not
+a new-section onset. The fade-in time is not an exact groove-bar anchor. At the
+measured ~126 BPM, four 4/4 bars span ~7.62s: do not infer a 15-second four-bar
+grid from the two approximate observations. These are not exact downbeat labels.
 The full existing landmark list has its nearest candidates at 25.565s, 22.396s
 and 26.749s respectively. Only the Urban Cookie Collective landmark closely
-matches the owner's approximate change. Gusto is a useful no-change counting
-example: valid musical boundaries need not produce arrangement novelty. Separate
-phrase/counting position from arrangement changes, and keep vocal onset accuracy
-as a separate check. Listening anchors are saved with the evaluation artifacts.
+matches the owner's approximate change. Gusto is a repeating-vocal release
+example: distinguish completed-cycle endpoints from section entrances. Its vocal
+gate first reports activity at 41.95s, missing the earlier soft vocal groove.
+Absence of detected activity cannot prove instrumental audio; continued repeated
+vocals need not prohibit a release at a confirmed completed cycle. Separate
+phrase/counting position from arrangement changes and vocal-gate accuracy.
+Listening anchors are saved with the evaluation artifacts.
 
 ## Station deployment preparation — 2 November 2026
 
