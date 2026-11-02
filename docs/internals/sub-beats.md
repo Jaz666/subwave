@@ -1,5 +1,23 @@
 # Sub/Beats development
 
+## Three reference grids listening-confirmed — 2 November 2026
+
+The owner confirmed the Urban Cookie Collective and Gusto counting auditions as
+**spot on**, including Gusto's proposed natural release near 22.96s. Together
+with Rozalla, all three exact reference openings now have human-confirmed
+beat/bar alignment. Urban Cookie Collective: ~129.885 BPM, four-bar boundaries
+~0.238, 7.630, 15.021, 22.412s. Gusto: ~126.072 BPM, boundaries ~0.120, 7.735,
+15.349, 22.964s; the final boundary is an owner-confirmed release point.
+Keep the earlier approximate groove-count wording separate from this confirmed
+quarter-note grid; do not rescale its tempo to force that wording to fit.
+
+These are three positive references, not calibrated automatic confidence or
+approval of complete mixed pairs. Next compare negative/ambiguous examples,
+competing phases and tempo drift before assigning machine confidence. Vocal
+cuts and other phrase boundaries still need their own evidence. Runtime flags
+and live preview behaviour remain unchanged. Updated annotations, auditions and
+findings are retained in the existing evaluation directory outside Git.
+
 ## Rozalla projected-grid listening confirmation — 2 November 2026
 
 The owner confirmed the counting audition as **spot on**: projected beats align
