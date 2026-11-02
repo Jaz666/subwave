@@ -1,5 +1,16 @@
 # Sub/Beats development
 
+## Rozalla projected-grid listening confirmation — 2 November 2026
+
+The owner confirmed the counting audition as **spot on**: projected beats align
+with the intro tambourine and the accented ticks land on beat one. For this
+exact recording, the ~130 BPM backwards timing and bar alignment are now
+human-validated. Four-bar boundaries: ~0.654, 8.039, 15.423 and 22.808 seconds.
+This is one positive timing reference, not calibrated automatic confidence or
+verification of every musical phrase, vocal cut point or mixed pair. Runtime
+projection flags remain unverified; no automatic approval or playback changed.
+Owner annotations and the evaluation report record this listening confirmation.
+
 ## Intro timing projection prototype — 2 November 2026
 
 Structure cache version 3 now records `grid_entries` separately from arrangement
