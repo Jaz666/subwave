@@ -17,6 +17,17 @@ Diagnostics, six clean audition clips and the blank listening-anchor sheet live
 outside Git at `/home/jaz666/codex/subbeats-phrase-evaluation-20261102/`.
 No analysis, matching, preview or playback behaviour changed in this investigation.
 
+Owner listening anchors (approximate head/source seconds): Rozalla vocals ~6s,
+phrase change ~22s (interpreting `0.22s` as `0:22`); Urban Cookie Collective vocals
+~7s, phrase change ~22s; Gusto no vocals reported in its intro, no clear phrase
+change, but a natural four-bar point ~22s. These are not exact downbeat labels.
+The full existing landmark list has its nearest candidates at 25.565s, 22.396s
+and 26.749s respectively. Only the Urban Cookie Collective landmark closely
+matches the owner's approximate change. Gusto is a useful no-change counting
+example: valid musical boundaries need not produce arrangement novelty. Separate
+phrase/counting position from arrangement changes, and keep vocal onset accuracy
+as a separate check. Listening anchors are saved with the evaluation artifacts.
+
 ## Station deployment preparation — 2 November 2026
 
 The tested upstream integration delta from `81264cca` is applied on top of
