@@ -4,14 +4,76 @@ These are candidate changes, not verified downbeats, musical resolutions or safe
 loop seams. Retain multiple positions across the complete recording for audition.
 """
 import argparse
+from bisect import bisect_left
 import json
+import math
 from pathlib import Path
 
 from subbeats_cache import DEFAULT_BUDGET, cached_entry, digest, prepare_cached
 
-VERSION = 2
+VERSION = 3
 SR = 11025
 HOP = 256
+
+
+def project_intro_grid(anchor_seconds, bpm, start_seconds=0.):
+    """Project a later beat backwards; bar starts assume the anchor is beat one.
+
+    This is a hypothesis to compare against quiet intro percussion, never proof
+    of its timing, downbeat, phrase origin or constant tempo.
+    """
+    if (not all(math.isfinite(v) for v in (anchor_seconds, bpm, start_seconds))
+            or bpm <= 0 or not 0 <= start_seconds <= anchor_seconds <= 1200):
+        raise ValueError('Invalid intro grid projection')
+    period = 60 / bpm
+    span = anchor_seconds - start_seconds
+    beats = math.floor(span / period + 1e-9)
+    if beats > 10000:
+        raise ValueError('Intro grid projection is too large')
+    bars = math.floor(span / (4 * period) + 1e-9)
+    beat_times = [max(start_seconds, anchor_seconds - i * period) for i in range(beats, -1, -1)]
+    bar_starts = [max(start_seconds, anchor_seconds - i * 4 * period) for i in range(bars, -1, -1)]
+    return {'anchor_seconds': anchor_seconds, 'bpm': bpm,
+            'beat_times': beat_times, 'bar_start_candidates': bar_starts,
+            'complete_bar_candidates': bars,
+            'leading_partial_bar_seconds': bar_starts[0] - start_seconds,
+            'timing_source': 'back_projection', 'timing_verified': False,
+            'bar_alignment': 'unverified', 'phrase_verified': False}
+
+
+def grid_entries(times, supported):
+    """Report where measured grid coverage begins, separately from novelty.
+
+    Sliding overlapping fits form one coverage run. A run's first measured beat
+    can be worth auditioning even when no earlier beats exist for comparison.
+    It does not prove that music starts there, or establish a bar/phrase origin.
+    """
+    times = [float(t) for t in times]
+    if any(not math.isfinite(t) or t < 0 for t in times) or any(b <= a for a, b in zip(times, times[1:])):
+        raise ValueError('Invalid measured beat times')
+    runs = []
+    for run in supported:
+        start, end = (float(run[k]) for k in ('start_seconds', 'end_seconds'))
+        if not all(math.isfinite(v) for v in (start, end)) or start < 0 or end < start:
+            raise ValueError('Invalid supported grid coverage')
+        runs.append((start, end))
+    merged = []
+    for start, end in sorted(runs):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    result = []
+    for start, end in merged:
+        i = bisect_left(times, start)
+        if i == len(times) or times[i] > end:
+            continue
+        result.append({'beat_index': i, 'at_seconds': times[i],
+                       'supported_until_seconds': end,
+                       'evidence': ['supported_grid_start'],
+                       'confidence': 'unverified', 'bar_alignment': 'unverified',
+                       'phrase_verified': False, 'mix_ready': False})
+    return result
 
 
 def landmarks(times, energy, spectrum, chroma, supported):
@@ -155,15 +217,24 @@ def prepare_structure(path, state_dir, bundle_dir, *, budget=DEFAULT_BUDGET, exp
                                 chroma=chroma.astype('float32'))
         else:
             candidates = []
+        entries = grid_entries(times, analysis['supported_regions'])
+        projection = None
+        if entries and entries[0]['at_seconds'] > 0:
+            first_run = min(analysis['supported_regions'], key=lambda run: run['start_seconds'])
+            if first_run.get('bpm'):
+                projection = project_intro_grid(entries[0]['at_seconds'], first_run['bpm'])
         result = {'version': VERSION, 'coverage': 'full_recording', 'duration_seconds': duration,
                   'status': 'candidates' if candidates else 'no_clear_landmarks',
-                  'candidates': candidates, 'phrase_verified': False, 'pair_ready': False}
+                  'candidates': candidates, 'grid_entries': entries,
+                  'intro_grid_projection': projection,
+                  'phrase_verified': False, 'pair_ready': False}
         (stage / 'structure.json').write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
         if digest(path) != identity['source_sha256']:
             raise ValueError('Structure source changed during analysis')
         if expected_cache_id is not None:
             require_shared_cache(state_dir, expected_cache_id)
         return {'structure_status': result['status'], 'candidate_count': len(candidates),
+                'grid_entry_count': len(entries),
                 'coverage': 'full_recording', 'pair_ready': False}
     return prepare_cached(state_dir, structure_identity, build, budget, cache_root=cache_root, allowance=allowance)
 
