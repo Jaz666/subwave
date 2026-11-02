@@ -35,7 +35,7 @@ const plan: GeneratedShowPlan = {
   name: 'A musical connection', topic: 'A musical brief. Talking point: texture and melody.',
   genres: ['Psychedelic Rock'], moods: [], energies: [], eras: [], filtersStrict: false, rationale: '',
 };
-const diagnostic = (effective: number) => ({ strict: true,
+const diagnostic = (effective: number) => ({ strict: true, artists: 100,
   library: { indexed: 1000, matchingFilters: effective, afterExclusions: effective, effective }, playlist: null, warnings: [] });
 
 test('Common Ground defaults to exactly one random guest; saves reject zero or multiple selected guests', () => {

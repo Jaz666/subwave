@@ -47,7 +47,10 @@ export async function open(opts: {
   // bulk write pass and every later query walks it (#786).
   db.pragma('journal_size_limit = 67108864'); // 64 MiB
   sqliteVec.load(db);
-  db.function('is_instrumental', { deterministic: true }, instrumentalFromJson);
+  // Two arguments, always: a one-argument caller would quietly lose the tail.
+  db.function('is_instrumental', { deterministic: true },
+    (head: string | null, tail: string | null) => instrumentalFromJson(head, tail));
+
   db.function('stem_cache_eligible', { deterministic: true }, stemCacheEligible);
   db.function('subbeats_dance_genres', { deterministic: true }, subbeatsDanceGenresFromJson);
 

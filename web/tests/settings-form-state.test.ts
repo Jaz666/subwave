@@ -125,11 +125,11 @@ test('Broadcast & mixer and Stems split transitions at the leaf: each page sees 
   const broadcast = sectionById('broadcast')!.formKeys;
   const stems = sectionById('stems')!.formKeys;
   const baseline = settingsForm({});
-  // Crossfade duration lives on Broadcast & mixer: its save bar comes up,
+  // The crossfade curve lives on Broadcast & mixer: its save bar comes up,
   // with the restart warning, and the Stems page stays clean.
   const curve = structuredClone(baseline);
-  curve.crossfadeDuration = String(Number(baseline.crossfadeDuration) + 1);
-  assert.deepEqual(dirtyPaths(curve, baseline, broadcast), ['crossfadeDuration']);
+  curve.transitions.equalPowerCrossfade = !baseline.transitions.equalPowerCrossfade;
+  assert.deepEqual(dirtyPaths(curve, baseline, broadcast), ['transitions.equalPowerCrossfade']);
   assert.deepEqual(dirtyPaths(curve, baseline, stems), []);
   const restartWarn = (keys: readonly string[]) => RESTART_PATHS.some(path =>
     keys.some(key => path === key || path.startsWith(`${key}.`)) && !samePath(curve, baseline, path));
@@ -155,7 +155,21 @@ test('the Stems save and the Broadcast save post disjoint fields, so neither com
   const danger = dangerSavePayload(form).patch;
   assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'stemBlends']);
   assert.deepEqual(Object.keys(stems.audio).sort(), ['stemCache', 'stemCacheGb']);
-  assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects']);
+  assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects', 'equalPowerCrossfade']);
   assert.equal('audio' in danger, false);
   assert.deepEqual(Object.keys(stems).sort(), ['audio', 'transitions']);
+});
+
+test('the Stems save bar owns its fields through one list, alias paths included', async () => {
+  const { ownedFieldErrors } = await import('../components/admin/settings/shared');
+  const { STEM_FORM_KEYS } = await import('../components/admin/settings/registry');
+  // The cache fields report under audio.*, the form keeps them under transitions.
+  const errors = {
+    'audio.stemCacheGb': 'must be a number',
+    'transitions.pairDrain': 'bad',
+    'transitions.equalPowerCrossfade': 'not this page',
+    'audio.vocalActivity': 'not this page',
+  };
+  assert.deepEqual(ownedFieldErrors(errors, STEM_FORM_KEYS).map(([path]) => path).sort(),
+    ['audio.stemCacheGb', 'transitions.pairDrain']);
 });

@@ -50,6 +50,7 @@ export function dangerSavePayload(form: FormState) {
     // them here would commit an unsaved Stems edit under this button and mark
     // it clean.
     transitions: {
+      equalPowerCrossfade: form.transitions.equalPowerCrossfade,
       effects: form.transitions.effects,
     },
     loudness: {

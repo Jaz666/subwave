@@ -38,7 +38,7 @@ const snapshot: GeneratedShowSnapshot = {
 };
 const plan: GeneratedShowPlan = { name: 'A musical connection', topic: 'Talking point: a connection.', genres: ['Folk'], moods: [], energies: [], eras: [], filtersStrict: true, rationale: '' };
 function diagnostic(count: number, warnings: string[] = []): ShowCandidateDiagnostic {
-  return { strict: true, library: { indexed: 1000, matchingFilters: count, afterExclusions: count, effective: count }, playlist: null, warnings };
+  return { strict: true, artists: 100, library: { indexed: 1000, matchingFilters: count, afterExclusions: count, effective: count }, playlist: null, warnings };
 }
 test('one hour requires 30 tracks after exclusions and permits only one correction', async () => {
   let calls = 0;

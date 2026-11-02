@@ -17,7 +17,7 @@ const snapshot: GeneratedShowSnapshot = {
   cast: { hostPersonaId: 'a', guestPersonaIds: [] }, show: { id: 'show' },
 };
 const plan: GeneratedShowPlan = { name: 'Connected rarities', topic: 'Talking point: a musical connection.', genres: ['Rare A', 'Rare B'], moods: [], energies: [], eras: [], filtersStrict: true, rationale: '' };
-const diagnostic = (effective: number) => ({ strict: true, library: { indexed: 20000, matchingFilters: effective, afterExclusions: effective, effective }, playlist: null, warnings: [] });
+const diagnostic = (effective: number) => ({ strict: true, artists: 100, library: { indexed: 20000, matchingFilters: effective, afterExclusions: effective, effective }, playlist: null, warnings: [] });
 test('rarity is relative; modest neighbours are separate from the core', () => {
   const palette = discoveryPalette(counts, 15);
   assert.equal(palette.ceiling, 40);

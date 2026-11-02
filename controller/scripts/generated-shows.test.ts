@@ -70,7 +70,7 @@ function fixture(name: string) {
     file, snapshot: () => null, generatedSnapshot: () => snap, scheduledGeneratedSnapshot: () => snap,
     execute: async () => null, source: async () => null, now: () => clock,
     discoveryCounts: async () => ({ 'Math Rock': 100, Rock: 10000 }),
-    diagnose: async () => ({ strict: true, library: { indexed: 100, matchingFilters: 100, afterExclusions: 100, effective: 100 }, playlist: null, warnings: [] }),
+    diagnose: async () => ({ strict: true, artists: 100, library: { indexed: 100, matchingFilters: 100, afterExclusions: 100, effective: 100 }, playlist: null, warnings: [] }),
     generate: async () => {
       calls++;
       await waiting;

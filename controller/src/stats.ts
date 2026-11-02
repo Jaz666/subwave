@@ -87,12 +87,26 @@ const PRICING = [
   { provider: 'google',    match: 'pro',         in: 1.25,  out: 5 },
 ];
 
+// A gateway serves someone else's model, so it is priced as the family its
+// model id names. Only the model part is read: "openai-compatible" itself
+// names no family.
+const GATEWAYS = new Set(['openai-compatible', 'openrouter', 'requesty', 'gateway']);
+
+function gatewayFamily(model: string): string | null {
+  if (model.includes('claude')) return 'anthropic';
+  if (model.includes('gemini')) return 'google';
+  if (/gpt-|(^|[/:])o[13]($|-)/.test(model)) return 'openai';
+  return null;
+}
+
 // modelLabel is "<provider>:<model>[:…]" as built by llm/provider.js.
 export function estimateCost(modelLabel, usage) {
   const label = (modelLabel || '').toLowerCase();
-  const provider = label.split(':')[0];
+  const [provider, ...rest] = label.split(':');
+  const model = rest.join(':');
   if (provider === 'ollama') return { usd: 0, priced: true };
-  const row = PRICING.find(p => p.provider === provider && label.includes(p.match));
+  const family = GATEWAYS.has(provider) ? gatewayFamily(model) : provider;
+  const row = family && PRICING.find(p => p.provider === family && model.includes(p.match));
   if (!row) return { usd: 0, priced: false };
   const usd = (usage.input / 1e6) * row.in + (usage.output / 1e6) * row.out;
   return { usd, priced: true };
@@ -272,6 +286,11 @@ export function summarizeTts(calls) {
     const row: {engine:string;persona:string|null;calls:TtsRateSample[]}=voices.get(key)??{engine,persona,calls:[]};
     row.calls.push(call);voices.set(key,row);
   }
+  // The one slowest render and what it was, so the page can name it.
+  let slowest: { ms: number; kind: string | null } | null = null;
+  for (const c of calls) {
+    if (typeof c.ms === 'number' && (!slowest || c.ms > slowest.ms)) slowest = { ms: c.ms, kind: c.kind || null };
+  }
   return {
     window: 120,
     count: calls.length,
@@ -284,6 +303,7 @@ export function summarizeTts(calls) {
     recentPace:summarizeTtsRates(calls),
     paceByVoice:[...voices.values()].map(({engine,persona,calls:voiceCalls})=>({engine,persona,...summarizeTtsRates(voiceCalls)}))
       .filter(row=>row.samples>0).sort((a,b)=>b.samples-a.samples),
+    slowest,
     byEngine: groupCalls(calls, c => c.engine, 'engine'),
     byKind: groupCalls(calls, c => c.kind, 'kind'),
   };
