@@ -1,5 +1,19 @@
 # Sub/Beats development
 
+## Afro-Left sparse-intro challenge — 2 November 2026
+
+Owner reference: Leftfield, **Afro-Left**, **Leftism**, 454s, library ID
+`05ul3rSoyemxeaWWNIMdyo`; sporadic opening beats, main beat at approximately 59s.
+It remains outside the preparation queue. The existing library BPM is 172.3.
+Offline full-mix probes found no supported 64-beat fit for tested opening
+hypotheses (0–40s), but two post-entry fits (59–110s) at ~130 BPM with ~7ms RMS
+timing residuals. The first stable fit projects to a candidate downbeat at
+59.091s and first bar at 0.018s, giving 32 complete intro bar candidates.
+The main-entry beat-one assignment and backwards intro timing await listening;
+do not overwrite library BPM or automatically approve a mix from this probe.
+A 75-second counting audition and reproducible diagnostics are in the existing
+phrase-evaluation directory. No separation, queue or library/cache writes occurred.
+
 ## Three reference grids listening-confirmed — 2 November 2026
 
 The owner confirmed the Urban Cookie Collective and Gusto counting auditions as
