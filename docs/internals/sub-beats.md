@@ -1,5 +1,33 @@
 # Sub/Beats development
 
+## Intro timing projection prototype — 2 November 2026
+
+Structure cache version 3 now records `grid_entries` separately from arrangement
+novelty. Overlapping sliding fits form one measured coverage run, not multiple
+section starts. This retains Rozalla's first supported beat around 22.8s even
+when no preceding beat context exists for the novelty detector. A supported-grid
+start does not establish the first audible percussion, a downbeat or a phrase.
+
+`intro_grid_projection` extends that later grid backwards, preserving possible
+four-beat bars and a partial opening bar. All inferred timing, bar alignment and
+phrasing remain explicitly unverified. A bounded cached-stem high-frequency
+onset probe found pre-drop activity in Rozalla but insufficient discrimination
+between phase shifts to approve it automatically. The owner hears a subtle
+tambourine there. No model, new separation or song-specific threshold was added.
+
+Owner direction: introduce Rozalla from source zero over outgoing drums/bass,
+then hand over rhythm at its beat drop near 22s. Do not skip its opening vocals
+by selecting only the late kick-grid cue. For Gusto, the owner confirms four
+instrumental bars before four bars of the repeating vocal groove, with the
+natural release ~22s. Preserve that listening reference; reconcile exact timing
+anchors and the detector's bar interpretation before labelling inferred bars.
+
+The existing registered Python suite passes, including three new projection and
+coverage checks. A 32-second counting audition and projection JSON are in
+`/home/jaz666/codex/subbeats-phrase-evaluation-20261102/`. No live preview, matching
+or renderer behaviour has changed. Current preparations need no recheck for this
+listening experiment; the new fields apply to newly generated structural audits.
+
 ## Phrase-confidence reference investigation — 2 November 2026
 
 Owner reference set: Rozalla, **Everybody’s Free (To Feel Good)**; Urban Cookie
