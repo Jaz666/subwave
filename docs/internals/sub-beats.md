@@ -833,6 +833,33 @@ the owner's installed images until they rebuild `controller` and `web`. Next,
 use the new genre/status filters to select a small batch within the existing
 cache limit, then check the preparation results before admitting more.
 
+## TODO: phrase confidence and vocal-led stem transitions — 2 November 2026
+
+Deferred work, in this order; these are proposed rules, not current preview behaviour:
+
+1. **Investigate confidence in musical phrase boundaries first.** Distinguish
+   beat timing, bar/downbeat alignment and musical phrase starts. Existing beat
+   fits and vocal activity measurements do not establish complete phrases or
+   reliable phrase boundaries. Validate against listening examples before using
+   these positions to approve automatic handovers or loops.
+2. Explore keeping only one track's vocals audible during the 16-bar overlap.
+   Prefer preserving the outgoing vocal at its natural level through its complete
+   phrase ending and audible tail while introducing incoming drums. Exchange bass
+   at a suitable musical boundary and handle accompaniment separately, avoiding
+   competing basslines at full level. Also consider incoming-vocal and instrumental
+   alternatives according to the pair's arrangement.
+3. Preserve complete vocals on both sides: never cut the outgoing ending or
+   unmute an incoming verse partway through. Choose the incoming source window so
+   its first retained vocal starts as a complete phrase after the outgoing vocal
+   finishes. Reposition the overlap or use another transition if this cannot fit;
+   do not force a vocal swap inside every 16-bar window or a fixed vocal gap.
+4. If an instrumental loop is needed before the incoming vocal, find a vocal-free
+   section with no pickup or vocal tail crossing its boundaries. Add time only in
+   multiples of four bars (4, 8, 12, 16...), with loop entry, exit and the eventual
+   vocal entrance respecting musical phrasing. Track loop length and total added
+   bars separately. Bar counts alone do not prove phrase alignment. If a safe loop
+   cannot be identified, choose another overlap or transition method.
+
 ## Deferred search enhancement — owner decision, 1 November 2026
 
 Add playlist search alongside artist, track and album in the Sub/Beats search
