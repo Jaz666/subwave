@@ -1,5 +1,22 @@
 # Sub/Beats development
 
+## Phrase-confidence reference investigation — 2 November 2026
+
+Owner reference set: Rozalla, **Everybody’s Free (To Feel Good)**; Urban Cookie
+Collective, **The Key, the Secret**; Gusto, **Disco’s Revenge (Mole Hole radio
+edit)**. Keep these exact versions; the other Gusto mixes are separate recordings.
+Existing structural detection was evaluated on their six cached head/exit
+regions, without new separation or cache writes. Bar-phase votes remain
+ambiguous; no musical phrases have been verified. All 103 prepared tracks have
+assessments, but none has verified bar alignment. The normal library's bar grid
+is every fourth tracked beat from its first beat, not a detected musical downbeat.
+First obtain listening anchors for downbeats and phrase starts, then assess bar
+alignment and 4/8/16-bar phrase evidence separately, allowing unknown outcomes.
+Do not interpret existing structural low/medium labels as calibrated confidence.
+Diagnostics, six clean audition clips and the blank listening-anchor sheet live
+outside Git at `/home/jaz666/codex/subbeats-phrase-evaluation-20261102/`.
+No analysis, matching, preview or playback behaviour changed in this investigation.
+
 ## Station deployment preparation — 2 November 2026
 
 The tested upstream integration delta from `81264cca` is applied on top of
