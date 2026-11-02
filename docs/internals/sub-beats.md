@@ -1,5 +1,46 @@
 # Sub/Beats development
 
+## Upstream integration review — 2 November 2026
+
+Integration branch `integrate/subbeats-upstream-20261102` merges upstream
+`develop` through `2d81afff` into the Sub/Beats development history. This is
+source integration only: the station checkout and running containers are not
+updated by this work.
+
+The final upstream orphan-cleanup implementation replaces the earlier imported
+PR version, retaining its foreign-folder checks, ID-rotation protection, release
+stamps, actual freed-byte reporting, fresh-copy collision handling and stored
+usage marked stale after cleanup. The shared engine also retains our separate
+selective-cleanup consent, retention predicate, pre-mutation refresh, policy
+change/deletion checks, collision preservation and snapshot invalidation after
+an interrupted pass. Regular stem folders may include the managed `subbeats`
+subdirectory; unrelated subdirectories still disqualify a cleanup candidate.
+Analyzer temporary files with unique suffixes are recognised too. Extended-only
+folders with no ordinary stem files remain conservatively outside orphan cleanup.
+
+Upstream replaced-file handling clears audio measurements and removes the old
+track cache. It now also invalidates that track's prepared Sub/Beats bundle,
+even when the shared cache is offline or deletion fails. Per-track/bundle
+invalidation markers avoid a library child overwriting the controller-owned
+preparation queue. Invalidated entries read as failed with a Recheck explanation,
+no bundle or suitability evidence, and cannot be used for cache-only assessment
+or matching. Successful fresh preparation clears its marker; another track with
+the same bundle key is unaffected.
+
+Upstream tail-aware instrumental classification and shared regular-stem output
+permissions are retained. Settings uses upstream's unified Stems page and
+independent save scope. Duplicate maintenance registration introduced by the
+merge is removed; selective cleanup and ordinary orphan cleanup run in sequence
+in the existing daily slot. Vocal-led mixing, phrase confidence and playlist
+search remain deferred below; preview audio is unchanged by our resolutions.
+
+Validation: focused Sub/Beats, orphan-cleanup, stem-cache, replaced-file,
+selective-admission, tail-vocal classification and analyzer Python suites pass.
+Web settings, orphan panel and admin-query audit tests pass; the admin query
+static audit and controller/web lint/type checks pass. Schema mirror regenerated.
+No full application suites, production builds, live library scans, real-audio
+listening or station operations were performed.
+
 ## Suggested vocal handovers — 1 November 2026
 
 Find matches now compares vocal evidence across every structurally valid

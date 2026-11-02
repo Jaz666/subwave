@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createTempDir, removeTempDir } from './test-utils/temp-dir.js';
-import { createSubbeatsStore, readSubbeatsQueue } from '../src/music/subbeats-store.js';
+import { createSubbeatsStore, readSubbeatsQueue, invalidateSubbeatsBundles } from '../src/music/subbeats-store.js';
 import { subbeatsEnqueueSchema } from '../src/schemas/subbeats.js';
 
 const state = createTempDir(join(tmpdir(), 'subwave-subbeats-'));
@@ -86,4 +86,31 @@ test('shared-cache identity is stable and malformed state is preserved', () => {
   assert.equal(readFileSync(file, 'utf8'), 'broken');
   assert.equal(subbeatsEnqueueSchema.safeParse({ ids: [] }).success, false);
   assert.equal(subbeatsEnqueueSchema.safeParse({ ids: Array(101).fill('a') }).success, false);
+});
+
+
+test('replaced audio invalidates prepared evidence without rewriting the controller queue', async () => {
+  const dir = createTempDir(join(tmpdir(), 'subbeats-replaced-'));
+  try {
+    const target = createSubbeatsStore(dir);
+    target.enqueue([a, b]);
+    target.event({id:'a',status:'running'}, ['a']);
+    target.event({id:'a',status:'prepared',bundleKey:'e'.repeat(64)}, ['a']);
+    target.event({id:'b',status:'running'}, ['b']);
+    target.event({id:'b',status:'prepared',bundleKey:'e'.repeat(64)}, ['b']);
+    const before = readFileSync(join(dir,'subbeats','queue.json'),'utf8');
+    invalidateSubbeatsBundles(dir, ['a']);
+    assert.equal(readFileSync(join(dir,'subbeats','queue.json'),'utf8'),before);
+    const invalid = target.read().jobs[0];
+    assert.equal(invalid.status,'failed');
+    assert.equal(invalid.bundleKey,null);
+    assert.equal(invalid.suitability,undefined);
+    assert.match(invalid.error!,/source audio was replaced/);
+    assert.equal(target.read().jobs[1].status,'prepared','another track sharing the bundle key stays prepared');
+    assert.throws(() => target.assess(['a']),/completed/);
+    target.enqueue([a]);
+    target.event({id:'a',status:'running'}, ['a']);
+    target.event({id:'a',status:'prepared',bundleKey:'e'.repeat(64)}, ['a']);
+    assert.equal(target.read().jobs[0].status,'prepared');
+  } finally { await removeTempDir(dir); }
 });

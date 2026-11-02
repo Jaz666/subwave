@@ -8,6 +8,7 @@ import {
   Layers,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { EMBEDDING_PROVIDER_IDS, LLM_PROVIDER_IDS } from '../../../lib/schemas.generated';
 
 /**
  * The four rail clusters, in rail order.
@@ -43,18 +44,18 @@ export const LLM_PROVIDER_FORM_KEYS = [
   'llm.exemptRequests', 'llm.maxOutputTokens', 'llm.geminiSafety', 'llm.fallback',
 ] as const;
 
+// The Stems page's fields: the stem half of `transitions` (the form keeps the
+// stem cache under transitions; it saves to `audio.*`). One list, read by the
+// section's dirty check and its SaveBar's error scope.
+export const STEM_FORM_KEYS = [
+  'transitions.pairDrain', 'transitions.stemBlends', 'transitions.stemCache', 'transitions.stemCacheGb',
+] as const;
+
 // `satisfies`, never a `readonly SectionSpec[]` annotation: the annotation
 // widens every `id` back to `string` and takes `SectionId` — and with it every
 // typo guard on SETTINGS_INDEX, ADVANCED_CARDS and `activeSection` — down with
 // it. A bad id then compiles clean and dies quietly at runtime (`sectionById`
 // → undefined → no formKeys → no dirty tracking, no save bar).
-// The Stems page's fields: the stem half of `transitions` (the form keeps the
-// stem cache under transitions; it saves to `audio.*`). One list, read by the
-// section's dirty check and its save payload's error scope.
-export const STEM_FORM_KEYS = [
-  'transitions.pairDrain', 'transitions.stemBlends', 'transitions.stemCache', 'transitions.stemCacheGb',
-] as const;
-
 export const SECTIONS = [
   {
     id: 'station', group: 'the station', label: 'Station',
@@ -133,8 +134,8 @@ export const SECTIONS = [
     // The whole stem story on one page: the cache/blends settings (moved off
     // Broadcast & mixer) above the orphan-dir cleanup. The old
     // ?section=orphans link redirects here (SettingsPanel RENAMED).
-    // `transitions` is split at the leaf: DJ transition effects stay on
-    // Broadcast & mixer, where their card is.
+    // `transitions` is split at the leaf: the crossfade curve and the DJ
+    // transition effects stay on Broadcast & mixer, where their cards are.
     id: 'stems', group: 'operations', label: 'Stems',
     hint: 'cache · blends · cleanup', icon: Layers,
     formKeys: STEM_FORM_KEYS,
@@ -150,8 +151,8 @@ export const SECTIONS = [
     // shows at all. Without it, toggling "Fade out at a show change" alone
     // never registers as a change and the save prompt never appears.
     // The stem fields of 'transitions' moved to the Stems section with their
-    // card; the effects stay here with theirs.
-    formKeys: ['crossfadeDuration', 'ducking', 'maxTrackSeconds', 'maxTrackLengthMode', 'fadeAtShowEnd', 'silenceTrim', 'transitions.effects', 'stream', 'loudness'],
+    // card; the crossfade curve and the effects stay here with theirs.
+    formKeys: ['crossfadeDuration', 'ducking', 'maxTrackSeconds', 'maxTrackLengthMode', 'fadeAtShowEnd', 'silenceTrim', 'transitions.equalPowerCrossfade', 'transitions.effects', 'stream', 'loudness'],
   },
 ] as const satisfies readonly SectionSpec[];
 
@@ -172,6 +173,7 @@ export const RESTART_PATHS: readonly string[] = [
   'station',
   'privacy.listenerAuth',
   'crossfadeDuration',
+  'transitions.equalPowerCrossfade',
   'ducking.voice',
   'ducking.intro',
   'archive.enabled',
@@ -257,7 +259,7 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Show the Booth Sprite', section: 'theme', card: 'Booth Buddy', keywords: 'mascot sprite request box' },
 
   // ── llm provider ───────────────────────────────────────────────────────────
-  { label: 'Provider', section: 'llm', card: 'Provider', keywords: 'ollama anthropic openai google deepseek openrouter requesty gateway compatible' },
+  { label: 'Provider', section: 'llm', card: 'Provider', keywords: LLM_PROVIDER_IDS.join(' ') },
   { label: 'Ollama server URL', section: 'llm', card: 'Provider', keywords: 'host docker internal 11434 local' },
   { label: 'API key', section: 'llm', card: 'Provider', keywords: 'token secret credential sk-' },
   { label: 'Model', section: 'llm', card: 'Provider', keywords: 'llama claude gpt gemini model id' },
@@ -310,7 +312,7 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   // ── library tagger ─────────────────────────────────────────────────────────
   { label: 'Tagger', section: 'library', card: 'Tagger', keywords: 'enabled tagging runs moods genres' },
   { label: 'LLM batch size', section: 'library', card: 'Tagger', keywords: 'batch tracks per call seed' },
-  { label: 'Provider', section: 'library', card: 'Embedding server', keywords: 'embedding ollama openai google inherit' },
+  { label: 'Provider', section: 'library', card: 'Embedding server', keywords: `embedding ${EMBEDDING_PROVIDER_IDS.join(' ')} inherit` },
   { label: 'Model', section: 'library', card: 'Embedding server', keywords: 'nomic-embed-text embedding model reindex' },
   { label: 'Embedding server URL', section: 'library', card: 'Embedding server', keywords: 'base url host' },
   { label: 'Bearer token', section: 'library', card: 'Embedding server', keywords: 'embedding api key auth' },
@@ -324,8 +326,8 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Lyrics', section: 'library', card: 'Enrichment', keywords: 'lyrics embed text' },
 
   // ── web search ─────────────────────────────────────────────────────────────
-  { label: 'Provider', section: 'search', card: 'Provider', keywords: 'duckduckgo tavily brave searxng live facts' },
-  { label: 'API key', section: 'search', card: 'Provider', keywords: 'tavily brave token search_api_key' },
+  { label: 'Provider', section: 'search', card: 'Provider', keywords: 'duckduckgo tavily brave searxng keenable firecrawl live facts' },
+  { label: 'API key', section: 'search', card: 'Provider', keywords: 'tavily brave keenable firecrawl token search_api_key' },
   { label: 'SearXNG URL', section: 'search', card: 'Provider', keywords: 'self hosted meta search json' },
   { label: 'Engines', section: 'search', card: 'Provider', keywords: 'searxng engines pin restrict google duckduckgo wikipedia' },
 
@@ -367,6 +369,8 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Stem cache', section: 'stems', card: 'Stem transitions', keywords: 'demucs drums bass vocals disk' },
   { label: 'Stem cache budget', section: 'stems', card: 'Stem transitions', keywords: 'gb evict oldest' },
   { label: 'Stem-blend seams', section: 'stems', card: 'Stem transitions', keywords: 'drums carry under intro blend' },
+  { label: 'Orphan stems cleanup', section: 'stems', card: 'Orphan stems cleanup', keywords: 'quarantine purge deleted tracks left library reclaim disk daily pass' },
+  { label: 'Crossfade curve', section: 'broadcast', card: 'Crossfade', keywords: 'equal power linear dip fade shape' },
   { label: 'Sweep', section: 'broadcast', card: 'DJ transition effects', keywords: 'transition effect filter gear change clash dj mode' },
   { label: 'Washout', section: 'broadcast', card: 'DJ transition effects', keywords: 'transition effect echo tail dub exit length cap dj mode' },
   { label: 'Blend', section: 'broadcast', card: 'DJ transition effects', keywords: 'transition effect spectral handover locked pair dj mode' },

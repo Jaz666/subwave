@@ -86,7 +86,7 @@ test('a pass interrupted after deletion still invalidates the usage snapshot', a
     beforeMutations:async () => { if (++phases === 2) throw new Error('choices changed'); },
   }),/choices changed/);
   assert.equal(existsSync(dir),false);
-  assert.equal(existsSync(snapshot),false);
+  assert.equal(JSON.parse(readFileSync(snapshot,'utf8')).stale,true);
 });
 
 test('corrupt operator-heart data blocks the real strict signal loader', async () => {

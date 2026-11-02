@@ -1,8 +1,8 @@
 // The controller alone writes queue.json. Managed children read it and report
 // outcomes over stdio, so an enqueue/pause cannot race a child overwriting it.
-import { mkdirSync, readFileSync, existsSync, lstatSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, lstatSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { writeFileAtomicSync } from '../util/atomic-file.js';
 import { SUBBEATS_QUEUE_LIMIT, subbeatsQueueSchema, subbeatsEventSchema, type subbeatsJobSchema } from '../schemas/subbeats.js';
@@ -10,10 +10,34 @@ import { SUBBEATS_QUEUE_LIMIT, subbeatsQueueSchema, subbeatsEventSchema, type su
 export type SubbeatsJob = z.infer<typeof subbeatsJobSchema>;
 export type SubbeatsQueue = z.infer<typeof subbeatsQueueSchema>;
 
+const invalidBundlePath = (stateDir: string, id: string, key: string) =>
+  join(stateDir, 'subbeats', 'invalid-bundles', createHash('sha256').update(id).digest('hex') + '-' + key);
+
 export function readSubbeatsQueue(stateDir: string): SubbeatsQueue {
   const file = join(stateDir, 'subbeats', 'queue.json');
   if (!existsSync(file)) return { version: 1, paused: false, jobs: [] };
-  return subbeatsQueueSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
+  const state = subbeatsQueueSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
+  for (const job of state.jobs) {
+    if (job.bundleKey && existsSync(invalidBundlePath(stateDir, job.id, job.bundleKey))) {
+      job.status = 'failed';
+      job.error = 'The source audio was replaced. Recheck this track to prepare new stems.';
+      job.bundleKey = null;
+      delete job.suitability;
+      delete job.task;
+    }
+  }
+  return state;
+}
+
+// The library walker runs in another process: invalidate bundles without writing
+// the controller-owned queue. A new preparation has a source-keyed bundle identity.
+export function invalidateSubbeatsBundles(stateDir: string, ids: readonly string[]): void {
+  const selected = new Set(ids);
+  const jobs = readSubbeatsQueue(stateDir).jobs.filter(job => selected.has(job.id) && job.bundleKey);
+  if (!jobs.length) return;
+  const dir = join(stateDir, 'subbeats', 'invalid-bundles');
+  mkdirSync(dir, { recursive: true });
+  for (const job of jobs) writeFileAtomicSync(invalidBundlePath(stateDir, job.id, job.bundleKey!), 'Source audio replaced', { durable: true });
 }
 
 export function createSubbeatsStore(stateDir: string) {
@@ -64,6 +88,10 @@ export function createSubbeatsStore(stateDir: string) {
       const job = state.jobs.find(j => j.id === event.id);
       if (!job || (event.status === 'running' ? job.status !== 'queued' : job.status !== 'running')) return;
       if (event.status === 'running') job.attempts++;
+      if (event.bundleKey && job.task !== 'assess' && ['prepared', 'unmeasurable'].includes(event.status)) {
+        const invalid = invalidBundlePath(stateDir, job.id, event.bundleKey);
+        if (existsSync(invalid)) unlinkSync(invalid);
+      }
       // Running/error events default to no bundle; a read-only assessment must
       // retain its saved bundle for cache protection and a source-free retry.
       const bundleKey = job.task === 'assess' && !event.bundleKey ? job.bundleKey : event.bundleKey;
