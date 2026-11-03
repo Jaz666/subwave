@@ -63,6 +63,9 @@ class ReferencePreviewTests(unittest.TestCase):
                     patch.object(reference, 'load_region', return_value=({'other': audio}, 120)):
                 np.testing.assert_equal(reference.source_audio('http://source', root, record, fetch), audio)
                 self.assertFalse(source.exists())
+                with self.assertRaisesRegex(ValueError,'recording changed'):
+                    reference.source_audio('http://source',root,record,fetch,require_hash=True)
+                self.assertFalse(source.exists())
                 with patch.object(reference, 'load_region', return_value=({'other': -audio}, 120)):
                     with self.assertRaisesRegex(ValueError, 'differs'):
                         reference.source_audio('http://source', root, record, fetch)

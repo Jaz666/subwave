@@ -162,10 +162,10 @@ def write_flac_region(stage, name, parts):
     return storage_gain, reconstructed
 
 
-def separate_regions(path, stage, regions, detector):
+def separate_regions(path, stage, regions, detector, *, audio=None):
     import numpy as np
-    import soundfile as sf
-    audio = decode(path, STEM_SR, 2)
+    if audio is None:
+        audio = decode(path, STEM_SR, 2)
     coverage = []
     for name, start, end in regions:
         first, stop = round(start * STEM_SR), round(end * STEM_SR)

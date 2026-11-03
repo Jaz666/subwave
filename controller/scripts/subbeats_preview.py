@@ -1,4 +1,4 @@
-"""Isolated beat-only and owner-annotated browser auditions. CPU only."""
+"""Isolated browser auditions; cue previews can prepare missing Demucs coverage."""
 import fcntl
 import hashlib
 import json
@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 7
+VERSION = 8
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -93,7 +93,7 @@ def kick_grid(drums, bpm, outgoing=False, beats=64, all_candidates=False):
     return fit_grid(peaks * hop / STEM_SR, bpm, len(mono) / STEM_SR, outgoing, beats, all_candidates)
 
 
-def load_region(folder, record, name, limit_seconds=90):
+def load_region(folder, record, name, limit_seconds=90, *, start_seconds=None, end_seconds=None, require_tempo=True):
     import numpy as np
     import soundfile as sf
     region = next((r for r in record['metadata']['stem_regions'] if r['name'] == name), None)
@@ -113,11 +113,18 @@ def load_region(folder, record, name, limit_seconds=90):
         if (info.samplerate, info.channels, info.frames) != (STEM_SR, 2, expected):
             raise ValueError('Invalid cached stem coverage. Recheck the track.')
         # Keep audition memory bounded even for explicitly prepared long heads.
-        frames = min(expected, limit_seconds * STEM_SR)
-        data, sr = sf.read(path, frames=frames, dtype='float32', always_2d=True)
+        first = 0 if start_seconds is None else round(start_seconds*STEM_SR)-region['start_sample']
+        stop = expected if end_seconds is None else round(end_seconds*STEM_SR)-region['start_sample']
+        if first < 0 or stop > expected+2 or stop <= first:
+            raise ValueError('Saved stems do not cover the selected passage')
+        frames = min(expected-first, stop-first, round(limit_seconds*STEM_SR))
+        data, sr = sf.read(path, start=first, frames=frames, dtype='float32', always_2d=True)
         if sr != STEM_SR or data.shape != (frames, 2) or not np.isfinite(data).all():
             raise ValueError('Invalid cached stem coverage. Recheck the track.')
         parts[stem] = data.T / gain
+    # Cue previews carry their own learned tempo; late tails need no legacy beat fit.
+    if not require_tempo:
+        return parts, None
     analysis = json.loads((folder / 'analysis.json').read_text())
     bpms = [r['bpm'] for r in analysis['supported_regions']
             if r['end_seconds'] > region['start_sample'] / STEM_SR and r['start_seconds'] < region['end_sample'] / STEM_SR]
@@ -348,10 +355,10 @@ def render_preview(req, fetch_source=None):
             if record is None:
                 raise ValueError('The saved preview failed integrity checks.')
             return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
-            'subbeats_timeline': record['metadata']['timeline']}
+            'subbeats_timeline': record['metadata']['timeline'], 'subbeats_used_models':False}
         if method == 'cue-points':
             from subbeats_cue_preview import render_cue_preview
-            audio,metadata = render_cue_preview(req,folders,records,gains)
+            audio,metadata = render_cue_preview(req,folders,records,gains,fetch_source=fetch_source)
         elif reference is not None:
             from subbeats_reference_preview import render_reference
             audio, metadata = render_reference(req, folders, records, gains, fetch_source)
@@ -371,4 +378,4 @@ def render_preview(req, fetch_source=None):
             if stage.exists():
                 shutil.rmtree(stage)
     return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
-            'subbeats_timeline': record['metadata']['timeline']}
+            'subbeats_timeline': record['metadata']['timeline'], 'subbeats_used_models':metadata.get('used_models',False)}

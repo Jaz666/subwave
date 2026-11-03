@@ -8,6 +8,48 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+Latest event: sidecar 422 reported that a selected closing cue is outside saved
+outgoing stems. The owner had already agreed the next step was cue-derived
+coverage plus matching incoming arrival to the outgoing later closing change.
+Preview version 8 implements that selected-pair path. Saved cue points, base
+stems and normal Stem Blend are unchanged. Existing covered windows are sliced;
+otherwise bounded, source-hash-verified windows are separated temporarily with
+normal Demucs/context checks. The preview retains incoming source zero and
+outgoing vocal/other tail to EOF, and aligns the selected incoming arrival with
+the outgoing candidate's later change. Unlabelled outgoing points retain their
+handover meaning. Existing preview cache reuses the same completed selection;
+changed selections can need another separation. No persistent per-track stem
+extension or new preparation queue is introduced.
+
+The isolated real-track test extended original Rozalla audio with missing
+outgoing coverage and reused previously verified Gusto head stems. Its selected
+16-bar Gusto arrival is 30.560s; do not infer bar count from dropdown position
+(the owner reported their 16-bar option seventh). The 54.636s result meets
+Rozalla source 192.560s at preview 33.596s and preserves its tail to source
+213.600s. A cached repeat fetched/separated nothing. This uses isolated parents,
+not direct copies of private live-station bundles, and is not owner listening
+approval. See [coverage/placement evidence](subbeats-research-20261103/passage-preview-evaluation.md)
+and the method guide's preview-version-8 section. Audio and probe remain outside
+Git in `/home/jaz666/codex/subbeats-beat-this-20261103/passage-preview/`.
+
+Rebuild analyzer/controller/web together, then retry the saved pair. No Beat
+This! recheck is required solely for this renderer fix. The first preview can
+prepare missing coverage; its cue-mode deadline is 30 minutes. Library bulk
+preparation blocks new cue previews, and normal analyzer model scheduling/idle
+tracking apply. The owner runs Docker builds/restarts; no live analysis or
+station cache writes were performed by the agent. Verification: 11 cue Python cases via the analyzer-Python wrapper (including
+source integrity, temporary coverage/reuse, settings mismatch, missing models,
+full-prefix/full-tail mixing, and 8/16-bar placement); controller Sub/Beats 60
+and focused route 17 cases; controller/web typechecks and targeted lint; seven
+web selection cases. Desktop/mobile preview controls, source auditions, Library
+search and all six query-cache browser checks passed on temporary fixture state.
+The UI detector reports no findings. Real Demucs/source test details and its
+scope limits are recorded in the linked evidence. No Docker builds or restarts
+were run by the agent.
+Source handoff follows after integration.
+
+### Previous incoming-selection handoff
+
 
 Latest owner update: outgoing choices seem satisfactory on the tracks previewed;
 apply the same treatment to incoming tracks. Algorithm 4 adds 8/16-bar incoming

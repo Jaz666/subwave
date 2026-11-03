@@ -76,21 +76,35 @@ reference fixtures, bar shifts or Find matches plans into the same request.
 The existing authentication, availability/blocklist, serial rendering, cache
 integrity and loudness-gain paths remain in force.
 
-`subbeats_cue_preview.py` auditions existing head/exit stems only. It adjusts
-the incoming tempo within 8%, keeps source-zero opening content, exchanges
-drums/bass over one bar before the selected arrival, and carries outgoing
-`vocals` **and `other`** beyond that event. The outgoing continuation is at
-least two bars; observed vocal passages can extend it. A half-second final fade
-follows the measured passage padding. No loop is created. Incomplete coverage
-or a preview longer than 120s is refused with a cue/pair recovery message.
+`subbeats_cue_preview.py` now plans the selected closing/opening passages in
+original source seconds. For a closing candidate, the incoming arrival meets
+its later `phraseEndSeconds`; an unlabelled outgoing point retains its rhythm-
+handover meaning. Incoming source zero is retained. Its start follows from the
+chosen arrival after tempo adjustment, so 8/16-bar alternatives need not enter
+at the same time. Drums/bass exchange over the last bar before that meeting point; outgoing
+`vocals` and `other` continue to EOF. The preview includes
+at least two incoming bars beyond the handover. Voices/background grooves still
+need listening, including Gusto's groove in `other`. There is no loop or automatic
+broadcast/pair approval.
 
-This is a practical listening method, not a guarantee of complete sung phrases,
-sample decay or compatible simultaneous voices. Energy gating can miss samples
-in `other`; the two-bar continuation is a bounded audition default, not a
-certified tail length. Both incoming voices/background groove and outgoing
-voices are retained, so vocal overlaps require listening. Incoming tempo stays
-matched through the end of the preview. Stretching can alter transient timing;
-this first version does not run another neural tracking pass after stretching.
+Saved stems are sliced and reused when they fully cover the required window.
+Otherwise the preview fetches the complete original (256 MiB limit), requires
+its source SHA-256 to match the prepared bundle, and separates a contiguous
+required window with the existing four-second context and normal Demucs model.
+The extension must reconstruct the source within the existing tolerance. A
+changed source or separation model/overlap requires an explicit track recheck.
+Late tails use saved cue tempo rather than requiring the old percussion fit.
+
+Extensions are temporary preview work, not a replacement for prepared bundles
+or a write into the shared per-track stem cache. One changed selection can need
+another separation. Repeating the exact pair/cue/gain/manifests uses the verified
+cached WAV and performs no fetch or separation. Temporary stems are deleted on
+success/failure. The existing 200 MiB preview-cache cap still covers published
+WAVs; staging/decoded/model memory is separate. Source URLs never enter saved
+fingerprints/manifests. Output remains bounded to 120 seconds and 8% incoming
+tempo adjustment. Oversized or unsupported pairs are refused without trimming
+away their original opening or natural ending. Incoming tempo remains matched
+through the preview. Classic/reference previews keep their existing behavior.
 
 Ideas from djcues (separate musical cue roles) and automatic-cuepoints (barwise
 structural comparison) inform this method. Their applications/code are not
@@ -352,3 +366,46 @@ closest-length selection, original pair indices and desktop/mobile layout. The
 Library search and six query-cache checks pass. The source-download exception
 is now registered narrowly with the admin-query audit; the audit and its nine
 self-tests pass. The mechanical UI detector reports no findings.
+
+
+## Selected-passage coverage and placement: preview version 8
+
+The owner hit the old `closing cue is outside the saved outgoing stems` refusal.
+Cue selection itself is retained; only pair rendering/coverage changes. The
+controller supplies server-owned original source URLs for both selected tracks,
+ignoring client-supplied URLs. The sidecar forwards those URLs only to its worker;
+changed-source checks, download caps and sample-clock checks precede separation.
+An older sidecar/controller pair needs rebuilding together. No cue recheck is
+required solely for this renderer change.
+
+The first cue preview may use Demucs. Its deadline is 30 minutes rather than the
+CPU-only three-minute default, and existing managed/standalone bulk preparation
+blocks a new cue preview. The normal analyzer pool and model lock schedule
+separation. Model-use reporting updates worker idle handling only when coverage
+was actually extended; WAV cache hits report no model use. Cancelling closes the
+browser request; native separation may finish internally and leave a reusable
+cached preview. No library queue, track admission or broadcast control changes.
+
+The first source-verification test used original Rozalla audio with deliberately
+missing outgoing coverage, previously verified Gusto head stems and isolated
+parent/cue manifests. It selected Rozalla 163.040s → 192.560s and a saved Gusto
+16-bar arrival at 30.560s, without assuming a dropdown ordinal. The CPU render
+completed in about 91 seconds, extending outgoing coverage only. Its 54.636s
+preview retains incoming source zero, aligns the arrival at preview 33.596s with
+Rozalla source 192.560s, and carries Rozalla through source EOF 213.600s. Repeating
+it used the cached WAV with no source fetch or model use. This is a numerical /
+coverage check, not owner listening approval. The host's private station cache
+could not be read directly, so the test used isolated parents and prior verified
+incoming copies rather than claiming to replay the live station's full bundles.
+See [test evidence](../investigations/subbeats-research-20261103/passage-preview-evaluation.md).
+
+
+Verification: 11 cue Python cases via the analyzer-Python wrapper (including
+source integrity, temporary coverage/reuse, settings mismatch, missing models,
+full-prefix/full-tail mixing, and 8/16-bar placement); controller Sub/Beats 60
+and focused route 17 cases; controller/web typechecks and targeted lint; seven
+web selection cases. Desktop/mobile preview controls, source auditions, Library
+search and all six query-cache browser checks passed on temporary fixture state.
+The UI detector reports no findings. Real Demucs/source test details and its
+scope limits are recorded in the linked evidence. No Docker builds or restarts
+were run by the agent.

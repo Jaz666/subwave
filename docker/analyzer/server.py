@@ -353,6 +353,8 @@ class StdioWorker:
         flags opt every request in."""
         if payload.get("texts") is not None:
             return True
+        if payload.get("op") == "preview_subbeats" and payload.get("method") == "cue-points":
+            return True
         if payload.get("op") == "prepare_subbeats":
             return True
         if payload.get("op"):
@@ -860,6 +862,7 @@ class SubbeatsReferencePreview(BaseModel):
 
 
 class SubbeatsPreviewRequest(BaseModel):
+    source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)
     method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')
     cue_keys: list[str] | None = Field(default=None,min_length=2,max_length=2)
     cue_indices: list[int] | None = Field(default=None,min_length=2,max_length=2)
