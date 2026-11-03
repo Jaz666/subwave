@@ -22,6 +22,7 @@ import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, 
 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
+  duration: (id: string) => ['library', 'subbeats', 'duration', id] as const,
   matches: (outgoing:string, shift:number, version:string) => ['library','subbeats','matches',outgoing,shift,version] as const,
   candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string, mixing: string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, mixing, offset] as const,
 };
@@ -201,6 +202,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const [matchFor, setMatchFor] = useState<string | null>(null);
   const matchContext = JSON.stringify([outgoing,barShift,jobVersion]);
   const cueMode = previewMethod === 'cue-points';
+  const outgoingTrack = useAdminQuery({
+    key: subbeatsKeys.duration(outgoing), adminFetch, enabled: ready && page === 'preview' && cueMode && !!outgoing,
+    request: async (fetcher, signal) => z.object({ track: z.object({ durationSec: z.number().finite().positive().nullish() }) }).parse(
+      await adminJson(fetcher, `/library/observatory/track/${encodeURIComponent(outgoing)}`, undefined, signal)),
+  });
+  const outgoingDuration = outgoingTrack.data?.track.durationSec;
   const matchesEnabled = !cueMode && page === 'preview' && ready && !!outgoing && matchFor === matchContext;
   const matches = useAdminQuery({
     key: subbeatsKeys.matches(outgoing,barShift,jobVersion ?? ''), adminFetch, enabled:matchesEnabled,
@@ -326,8 +333,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <p className="mt-2 text-xs leading-relaxed text-muted">Moves the incoming audio by whole bars, keeping the tempo matched. Press Play preview to compare. Find matches again after changing the shift. Resets when you change the outgoing track.</p>
       </div>}
       {cueMode && <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div><label htmlFor="subbeats-out-cue" className="mb-1 block text-sm font-medium">Outgoing rhythm handover</label><select id="subbeats-out-cue" className={SELECT_CLASS} value={outCueIndex} disabled={!byId.get(outgoing)?.cuePoints?.outgoing.length} onChange={event => setOutCueIndex(Number(event.target.value))}>
-          {(byId.get(outgoing)?.cuePoints?.outgoing ?? []).map((cue,index) => <option key={index} value={index}>{cue.sourceSeconds.toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
+        <div><label htmlFor="subbeats-out-cue" className="mb-1 block text-sm font-medium">Outgoing rhythm handover · time to track end</label><select id="subbeats-out-cue" className={SELECT_CLASS} value={outCueIndex} disabled={!byId.get(outgoing)?.cuePoints?.outgoing.length} onChange={event => setOutCueIndex(Number(event.target.value))}>
+          {(byId.get(outgoing)?.cuePoints?.outgoing ?? []).map((cue,index) => <option key={index} value={index}>{outgoingDuration != null ? `${Math.min(0, cue.sourceSeconds - outgoingDuration).toFixed(2)}s` : outgoingTrack.isPending ? 'Loading track end…' : 'Track end unavailable'} · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
         </select></div>
         <div><label htmlFor="subbeats-in-cue" className="mb-1 block text-sm font-medium">Incoming musical arrival</label><select id="subbeats-in-cue" className={SELECT_CLASS} value={inCueIndex} disabled={!byId.get(incoming)?.cuePoints?.incoming.length} onChange={event => setInCueIndex(Number(event.target.value))}>
           {(byId.get(incoming)?.cuePoints?.incoming ?? []).map((cue,index) => <option key={index} value={index}>{cue.sourceSeconds.toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}

@@ -165,3 +165,5 @@ curl --fail http://localhost:7700/api/health
 Broadcast is included for the release's sweep-level fix; rebuilding it briefly
 interrupts the stream. Source rollback is `e4e22d34`; restoring running
 behaviour also requires rebuilding the affected services from that source.
+
+Outgoing cue choices display seconds relative to the library track duration: negative before the end, zero at the end. Incoming cues retain source-start timing; rendering still uses the original saved cue positions. This display-only follow-up was made without tests or checks at the owner’s request.
