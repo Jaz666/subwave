@@ -8,6 +8,57 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+### Current direction and upstream gate (3 November)
+
+The owner has ended further boundary-perfection experiments and requested
+practical optional preparation/preview methods on the test station. A cue-point
+implementation is now in progress in this development worktree, with source
+changes and its method guide still uncommitted.
+The historical listening tasks below are no longer the next action.
+
+Before station integration, the owner explicitly requested a fresh upstream
+check because a new release appeared. The check fetched upstream `main` and
+`develop` and inspected the release API, commit changes and merge simulations:
+
+- `v1.30.0` points to main `03a48c21a60c176140ffa24169687f14616b3e19`.
+  GitHub published it at 10:34:24 UTC on 3 November, marked **prerelease** at
+  inspection. `/releases/latest` still reports 1.29.0; query the specific tag.
+  The release's Publish images workflow was queued, so publication of a tag
+  does not establish availability of its images.
+- The most relevant addition is `c246de5b` / #2250: optional separation of
+  missing stems while the next track waits. It defaults off, adds a separate
+  300-second analyzer deadline, changes eviction priority/budget accounting,
+  and defers normal Stem Blend rendering while separation occupies the only
+  worker. This is not Beat This! cue detection.
+- `97212119` / #2228 requires recording-identity evidence when restoring
+  quarantined stems. #2247 verifies mapped local audio before playback;
+  #2251 moves migration column creation under the write lock. Preserve these
+  fixes when reconciling the candidate.
+- Beat This! PR #2244 remains **open, draft, unmerged**, at
+  `dc4bbbc4443eeb6e1f811315d0fae3e6c5f27a8a`; #2248 still tracks its review.
+  The new release does not supply that integration. The fetched changes do
+  not change the analyzer Dockerfiles/server or our Sub/Beats-specific files;
+  `controller/src/music/analyzer.ts` does gain the upstream timeout changes.
+- A non-mutating `git merge-tree` simulation against the committed development
+  branch reports two conflicted paths: `controller/src/music/orphan-purge.ts`
+  and `controller/src/music/stem-cache.ts`. Resolution must retain selective
+  Sub/Beats cleanup controls, queued-bundle protection/invalidation, upstream
+  same-recording quarantine restoration, and upstream queued-track eviction
+  priority. This simulation excludes the uncommitted cue implementation.
+- The same simulation against station HEAD `e4e22d34` reports 104 conflicted
+  paths. A direct upstream pull/merge into that long-diverged station checkout
+  is unsuitable as a quick deployment step. No merge, dependency update,
+  source copy, build or restart was performed there.
+
+Next: reconcile upstream in a development candidate, validate it together with
+the optional cue methods, then prepare a scoped station integration preserving
+the station's other features. Do not treat the release check or automatic
+merge output as a compatibility pass. This check ran no new application tests.
+The owner still performs station builds/restarts. No findings were posted to
+Perminder during the check.
+
+### Research evidence (historical next actions superseded above)
+
 The independent official Beat This! comparison is now complete: five full-mix
 references, `small0` and `final0`, one inference each. Read the
 [evaluation and owner listening result](subbeats-research-20261103/beat-this-evaluation.md)
