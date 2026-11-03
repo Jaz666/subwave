@@ -46,7 +46,7 @@ async function main() {
       const job = state.jobs.find(j => j.id === id);
       if (job?.status !== 'queued') continue;
       if (!await waitForQuiet(gate, { done, total: ids.length }, () => readSubbeatsQueue(config.stateDir).paused)) break;
-      reportProgress({ phase: 'analyze', label: `${job.task === 'assess' ? 'Assessing suitability' : 'Preparing Sub/Beats'}: ${job.artist} — ${job.title}`, done, total: ids.length });
+      reportProgress({ phase: 'analyze', label: `${job.task === 'assess' ? 'Assessing suitability' : job.task === 'coverage' ? 'Upgrading cue coverage' : 'Preparing Sub/Beats'}: ${job.artist} — ${job.title}`, done, total: ids.length });
       emit({ id, status: 'running' });
       let localPath: string | null = null;
       try {
@@ -62,7 +62,7 @@ async function main() {
           emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
           continue;
         }
-        const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},job.preparationMethod);
+        const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},job.preparationMethod,job.task === 'coverage' && job.bundleKey && job.cuePoints ? {bundle_key:job.bundleKey,cue_key:job.cuePoints.artifactKey} : undefined);
         remaining = Math.max(0, remaining - result.addedBytes);
         changed ||= result.addedBytes > 0; uncertain = false;
         emit({id, ...result});

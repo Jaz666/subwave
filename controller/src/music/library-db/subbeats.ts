@@ -21,7 +21,7 @@ export function ensureSubbeatsIndex(db: Database.Database): void {
 type BrowseFilters = Omit<z.infer<typeof subbeatsBrowseQuerySchema>, 'q' | 'offset'>;
 
 export function subbeatsCandidates(q: string, offset = 0, filters: Partial<BrowseFilters> = {},
-  jobs: Array<Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status' | 'suitability'>> = []) {
+  jobs: Array<Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status' | 'suitability'>> = [], playlistIds?:readonly string[]) {
   const scope = filters.scope ?? (q ? 'library' : 'dance');
   // Only fixed SQL fragments can select the ordering; never interpolate query text.
   const order = {
@@ -34,7 +34,7 @@ export function subbeatsCandidates(q: string, offset = 0, filters: Partial<Brows
     'bpm-asc': 'bpm IS NULL, bpm, LOWER(artist), LOWER(title), id',
     'bpm-desc': 'bpm IS NULL, bpm DESC, LOWER(artist), LOWER(title), id',
   }[filters.sort ?? 'recommended'];
-  const params = { q: `%${q.toLowerCase()}%`, offset,
+  const params = { q: `%${q.toLowerCase()}%`, offset, playlistIds:playlistIds === undefined ? null : JSON.stringify([...new Set(playlistIds)]),
     // Preserve legacy manual-search calls; the page sends an explicit scope.
     genre: filters.genre ?? '', status: filters.status ?? 'all', mixing:filters.mixing ?? 'all',
     jobs: JSON.stringify(jobs.map(({ id, status, suitability }) => ({ id, status, suitability }))), pageSize: SUBBEATS_PAGE_SIZE, batch: SUBBEATS_BATCH_LIMIT };
@@ -53,6 +53,7 @@ export function subbeatsCandidates(q: string, offset = 0, filters: Partial<Brows
       FROM tracks t LEFT JOIN jobs j ON j.id = t.id
       WHERE ${scope === 'dance' ? 't.bpm BETWEEN 90 AND 180 AND subbeats_dance_genres(t.genres) = 1'
         : scope === 'prepared' ? "t.id IN (SELECT id FROM jobs WHERE status = 'prepared')" : '1 = 1'}
+        AND (@playlistIds IS NULL OR t.id IN (SELECT value FROM json_each(@playlistIds)))
         AND (LOWER(COALESCE(t.title,'')) LIKE @q OR LOWER(COALESCE(t.artist,'')) LIKE @q OR LOWER(COALESCE(t.album,'')) LIKE @q)
     ),
     genre_filtered AS MATERIALIZED (SELECT * FROM base WHERE @genre = '' OR EXISTS (

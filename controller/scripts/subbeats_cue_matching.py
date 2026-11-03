@@ -61,8 +61,8 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
                     reason = 'coverage'
                 continue
             vocal = assess_vocal_pair(
-                ((outgoing.get('suitability') or {}).get('outgoing') or {}).get('vocalActivity'),
-                ((job.get('suitability') or {}).get('incoming') or {}).get('vocalActivity'),plan)
+                (outgoing.get('cueCoverage') or {}).get('outgoing') or ((outgoing.get('suitability') or {}).get('outgoing') or {}).get('vocalActivity'),
+                (job.get('cueCoverage') or {}).get('incoming') or ((job.get('suitability') or {}).get('incoming') or {}).get('vocalActivity'),plan)
             if vocal['status']=='conflict':
                 reason = 'vocals'
                 continue

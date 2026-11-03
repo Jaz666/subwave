@@ -24,6 +24,7 @@ export function readSubbeatsQueue(stateDir: string): SubbeatsQueue {
       job.bundleKey = null;
       delete job.suitability;
       delete job.cuePoints;
+      delete job.cueCoverage;
       delete job.task;
     }
   }
@@ -74,6 +75,16 @@ export function createSubbeatsStore(stateDir: string) {
       }
       save(state);
     },
+    upgradeCoverage(ids:string[]) {
+      const state = readSubbeatsQueue(stateDir);
+      const selected = [...new Set(ids)].map(id => state.jobs.find(job => job.id === id));
+      if (selected.some(job => !job?.bundleKey || !job.cuePoints || ['queued','running'].includes(job.status))) throw new Error('Choose completed tracks with saved cue points');
+      for (const job of selected) if (job) {
+        job.status='queued';job.task='coverage';job.error=null;job.updatedAt=new Date().toISOString();
+        job.preparationMethod=job.cuePoints!.model;
+      }
+      save(state);
+    },
     remove(id: string) {
       const state = readSubbeatsQueue(stateDir);
       const job = state.jobs.find(job => job.id === id);
@@ -90,13 +101,13 @@ export function createSubbeatsStore(stateDir: string) {
       const job = state.jobs.find(j => j.id === event.id);
       if (!job || (event.status === 'running' ? job.status !== 'queued' : job.status !== 'running')) return;
       if (event.status === 'running') job.attempts++;
-      if (event.bundleKey && job.task !== 'assess' && ['prepared', 'unmeasurable'].includes(event.status)) {
+      if (event.bundleKey && !job.task && ['prepared', 'unmeasurable'].includes(event.status)) {
         const invalid = invalidBundlePath(stateDir, job.id, event.bundleKey);
         if (existsSync(invalid)) unlinkSync(invalid);
       }
       // Running/error events default to no bundle; a read-only assessment must
       // retain its saved bundle for cache protection and a source-free retry.
-      const bundleKey = job.task === 'assess' && !event.bundleKey ? job.bundleKey : event.bundleKey;
+      const bundleKey = !!job.task && !event.bundleKey ? job.bundleKey : event.bundleKey;
       Object.assign(job, event, { bundleKey, updatedAt: new Date().toISOString() });
       save(state);
     },

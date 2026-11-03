@@ -97,6 +97,68 @@ candidates. They are not hard-coded IDs or timestamps in the algorithm. Longer
 saved regions also produce additional candidates. Gusto's low background-vocal
 groove is in `other`; its later vocal passage around 54s is a separate event.
 
+## Cue coverage preparation and upgrades — preview version 10
+
+Before a larger batch, rebuild analyzer/controller/web together. **Beat This!
+small · cue points** is the default preparation choice; full remains available,
+and classic preparation remains an explicit option. Cue preparation now saves
+reusable coverage and vocal measurements after detecting cues. These are not
+claims that a track or every pairing is approved.
+
+For existing cue-prepared tracks, use **Upgrade cue coverage** on Prepared tracks
+(up to 100 missing entries) or select entries on Preparation and use its upgrade
+action. The queued upgrade retains the original stem bundle and cue artifact,
+uses their saved model choice, and skips Librosa/structure/Beat This! preparation.
+It fetches the original to verify source identity, reuses sufficient cached stem
+regions, separates missing regions, and saves incoming/outgoing vocal passages
+with breath/release padding. A source change requires a normal recheck. Read-only
+**Assess suitability** still checks the older classic windows; it is not this
+coverage upgrade. Tracks without saved cues need a cue-point recheck first.
+
+`subbeats_coverage.py` publishes an immutable `cue-coverage` artifact alongside
+existing per-track bundles, under the shared cache budget and writer lock. Its
+identity binds the source, base manifest, cue manifest and separator settings.
+Publication is atomic; a failed/budget-limited build preserves existing bundles.
+The controller-owned queue stores the coverage key and role measurements. Source
+invalidation removes that evidence, and queued/interrupted coverage upgrades
+retain the base bundle for retries and cache protection.
+
+Coverage is bounded by the currently supported pair geometry: incoming source
+zero through at most 130 seconds, and outgoing through the natural recording end
+from at most 120 seconds before it. Only roles with detected cues are prepared.
+For a preview at most 120 seconds long and an incoming rate at most 1.08, incoming
+source use is at most 129.6 seconds; the outgoing start cannot precede EOF minus
+120 seconds. These bounds cover all accepted cue combinations, without assuming
+that every detected cue can satisfy the 120-second preview limit. Longer future
+transition policies must revise this coverage contract. Continuous regions are
+separated with normal context/reconstruction checks; partial old/new estimates
+are not spliced. Legacy base regions remain available for classic previews.
+
+Candidate search prefers these saved vocal measurements. Cue previews verify
+and reload the coverage artifact, then slice it for the selected combination,
+so different cue choices reuse the prepared stems. Version 10 includes coverage
+keys/manifests in preview identity. Actual audio is still checked for vocal
+clashes before playback. Legacy tracks without this artifact can still use the
+temporary, on-demand extension path; that temporary work does not upgrade their
+saved discovery evidence. Use the explicit upgrade to persist reusable coverage.
+No automatic bulk recheck, cache cleanup, broadcast or picking is enabled.
+
+## Playlist preparation and preview ordering
+
+In Explore, choose **Collection → Playlist**, then a playlist. Only that playlist's
+tracks already present in the local library are shown. Existing search, genre,
+status, suitability and sort filters combine with playlist membership before
+pagination, counts and bounded bulk selection. Duplicate entries appear once;
+unknown library IDs are omitted. An empty or unselected playlist yields no rows;
+an unavailable playlist fails the read rather than falling back to the library.
+Playlist scope and ID survive URL refresh/bookmark navigation. The shared
+playlist query reuses the existing Library cache. Playlist contents are not
+modified, and cue-preview discovery remains across all prepared tracks.
+
+Both preview track dropdowns are ordered by artist, then title, with stable ID
+ties. Cue options and candidate suggestions retain their existing relevance
+order. The owner's pair-specific 8-bar preference is not a global default.
+
 ## Preparation and persistence
 
 `subbeatsPreparationMethodSchema` accepts `classic`, `small0`, `final0`; missing
@@ -221,9 +283,9 @@ The extension must reconstruct the source within the existing tolerance. A
 changed source or separation model/overlap requires an explicit track recheck.
 Late tails use saved cue tempo rather than requiring the old percussion fit.
 
-Extensions are temporary preview work, not a replacement for prepared bundles
-or a write into the shared per-track stem cache. One changed selection can need
-another separation. Repeating the exact pair/cue/gain/manifests uses the verified
+New and upgraded cue preparations save reusable coverage in the shared per-track
+cache (above). For legacy entries without saved cue coverage, on-demand extensions
+remain temporary preview work; another selection can need another separation. Repeating the exact pair/cue/gain/manifests uses the verified
 cached WAV and performs no fetch or separation. Temporary stems are deleted on
 success/failure. The existing 200 MiB preview-cache cap still covers published
 WAVs; staging/decoded/model memory is separate. Source URLs never enter saved

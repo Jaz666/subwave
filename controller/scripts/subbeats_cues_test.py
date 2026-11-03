@@ -287,6 +287,16 @@ class CueTests(unittest.TestCase):
                 audio,result=preview.render_cue_preview(req,folders,[{},{}],[0,0])
                 self.assertGreater(float(audio[0,6500]),.3)
                 self.assertEqual(result['incoming_rate'],1)
+            # A prepared coverage artifact bypasses temporary extension/source work.
+            req['_cue_coverage']=[(folders[0],{}),(folders[1],{})]
+            with (patch.dict('sys.modules',librosa=SimpleNamespace()),
+                  patch.object(cues,'load_cues',return_value=dict(outgoing=[out_cue],incoming=[inc_cue])),
+                  patch.object(preview,'STEM_SR',1000),
+                  patch.object(preview,'load_region',side_effect=[(outgoing,None),(incoming,None)]) as load,
+                  patch.object(preview,'cue_region') as temporary):
+                preview.render_cue_preview(req,folders,[{},{}],[0,0])
+                temporary.assert_not_called();self.assertEqual(load.call_count,2)
+
 
     def test_invalid_method_or_cue_cannot_be_used(self):
         with self.assertRaises(ValueError):

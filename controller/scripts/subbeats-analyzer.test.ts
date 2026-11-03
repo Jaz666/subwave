@@ -14,10 +14,11 @@ let suitabilityVersion:number | undefined = 1;
 let version:number | undefined;
 let payload: Record<string, unknown> | null = null;
 let cueResponse: object | undefined;
+let coverageResponse:object|undefined;
 globalThis.fetch = (async (url, options) => {
   if (String(url).endsWith('/health')) return Response.json({ ok: true, engines: ['analyze'], analyze_subbeats_capable: supported, analyze_subbeats_cache_version:version, analyze_subbeats_suitability_version:suitabilityVersion });
   payload = JSON.parse(String(options?.body));
-  return Response.json({ ok: true, cache_added_bytes:12, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null, suitability, ...(cueResponse ? {cuePoints:cueResponse} : {}) } });
+  return Response.json({ ok: true, cache_added_bytes:12, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null, suitability, ...(cueResponse ? {cuePoints:cueResponse} : {}),...(coverageResponse ? {cueCoverage:coverageResponse} : {}) } });
 }) as typeof fetch;
 
 test('older and lean analyzers refuse Sub/Beats without issuing work', async () => {
@@ -64,10 +65,14 @@ test('cue methods are forwarded and an older analyzer cannot silently return cla
   cueResponse={...cueResponse,algorithmVersion:3};
   await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for opening and closing/);
   cueResponse={...cueResponse,algorithmVersion:4};
+  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/save cue coverage/);
+  coverageResponse={version:1,artifactKey:'d'.repeat(64),incoming:null,outgoing:null};
   const result=await analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0');
   assert.equal(result.cuePoints?.model,'final0');
   assert.equal(payload?.method,'final0');
-  cueResponse=undefined;
+  await analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0',{bundle_key:'a'.repeat(64),cue_key:'f'.repeat(64)});
+  assert.equal(payload?.bundle_key,'a'.repeat(64));assert.equal(payload?.cue_key,'f'.repeat(64));
+  cueResponse=undefined;coverageResponse=undefined;
 });
 
 test('migration receives the same root and byte headroom without a source download', async () => {
