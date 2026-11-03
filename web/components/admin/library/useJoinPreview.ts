@@ -79,5 +79,8 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoin
     audio.current.currentTime = Math.max(0, Math.min(duration, seconds));
     setPosition(audio.current.currentTime);
   };
-  return { active, loading, playing, message, toggle, position, duration, timeline, seek };
+  const stop = () => {
+    clear(); setActive(null); setLoading(false); setPlaying(false); setMessage(null); setPosition(0); setDuration(0); setTimeline(null);
+  };
+  return { active, loading, playing, message, toggle, position, duration, timeline, seek, stop };
 }

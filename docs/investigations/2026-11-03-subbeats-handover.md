@@ -8,6 +8,17 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+Latest owner direction: handle outgoing selection first, then incoming fitting.
+An outgoing-only audition is now implemented in the cue-point Preview section:
+select a prepared track and cue, then listen through the original recording's
+real end without stretching or fading. One prepared track is sufficient. The
+outgoing countdown labels remain relative to track end. Incoming selection is
+unchanged. See the method guide's outgoing-first section for details. No tests
+or checks were run for these follow-ups, per the owner's instruction. The owner
+rebuilds controller and web; no analyzer rebuild/repreparation is needed for
+this audition alone. Next: compare outgoing cues by listening and identify which
+begins a complete closing passage, before developing incoming fitting.
+
 ### Current implementation and station source (3 November)
 
 The owner has ended further boundary-perfection experiments and requested

@@ -1,6 +1,7 @@
 'use client';
 
 import { SubbeatsCache, useSubbeatsCache } from './subbeats/SubbeatsCache';
+import { OutgoingCueAudition } from './subbeats/OutgoingCueAudition';
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -202,6 +203,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const [matchFor, setMatchFor] = useState<string | null>(null);
   const matchContext = JSON.stringify([outgoing,barShift,jobVersion]);
   const cueMode = previewMethod === 'cue-points';
+  const outgoingCue = byId.get(outgoing)?.cuePoints?.outgoing[outCueIndex];
   const outgoingTrack = useAdminQuery({
     key: subbeatsKeys.duration(outgoing), adminFetch, enabled: ready && page === 'preview' && cueMode && !!outgoing,
     request: async (fetcher, signal) => z.object({ track: z.object({ durationSec: z.number().finite().positive().nullish() }) }).parse(
@@ -222,6 +224,17 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     <select id="subbeats-preparation-method" className={SELECT_CLASS} value={preparationMethod} disabled={enqueue.isPending} onChange={event => setPreparationMethod(event.target.value as typeof preparationMethod)}>
       <option value="classic">Current stem analysis</option><option value="small0">Beat This! small · cue points</option><option value="final0">Beat This! full · cue points</option>
     </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation adds musical change and repetition candidates. Saved stems are reused. The full model takes longer and may choose different points.</p></div>;
+  const outgoingControl = <div className="min-w-0">
+          <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
+          <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setIncoming(''); setBarShift(0); setMatchFor(null); setOutCueIndex(0); setInCueIndex(0); }}>
+            <option value="">Choose an outgoing Sub/Beat track</option>
+            {previewJobs.filter(job => cueMode ? job.cuePoints?.outgoing.length : job.suitability?.outgoing.level === 'subbeat').map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
+          </select>
+          {!cueMode && <Button className="mt-2 min-h-11" disabled={!outgoing || byId.get(outgoing)?.suitability?.outgoing.level !== 'subbeat' || matches.isFetching} onClick={() => { setIncoming(''); if (matchesEnabled) void matches.refetch(); else setMatchFor(matchContext); }}>
+            {matches.isFetching ? 'Finding matches…' : 'Find compatible incoming tracks'}
+          </Button>}
+        </div>;
+
   const addRows = (added: SubbeatsCandidate[]) => setSelected(current => selectSubbeatsRows(current, added, jobs));
 
   const pagination = <nav className="flex flex-wrap items-center justify-between gap-3 border-t border-ink p-4" aria-label="Track pagination">
@@ -279,17 +292,19 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         </select>{cueMode && <p className="mt-2 text-xs leading-relaxed text-muted">Recheck tracks with either Beat This! preparation method first. Choose saved musical cue points; overlap follows the incoming opening. No loop is added.</p>}
       </div>
       {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find outgoing tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
-      {prepared < 2 ? <div className="mt-4 text-sm"><p className="text-muted">Prepare at least two tracks to try a transition.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <div className="min-w-0">
-          <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
-          <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setIncoming(''); setBarShift(0); setMatchFor(null); setOutCueIndex(0); setInCueIndex(0); }}>
-            <option value="">Choose an outgoing Sub/Beat track</option>
-            {previewJobs.filter(job => cueMode ? job.cuePoints?.outgoing.length : job.suitability?.outgoing.level === 'subbeat').map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
-          </select>
-          {!cueMode && <Button className="mt-2 min-h-11" disabled={!outgoing || byId.get(outgoing)?.suitability?.outgoing.level !== 'subbeat' || matches.isFetching} onClick={() => { setIncoming(''); if (matchesEnabled) void matches.refetch(); else setMatchFor(matchContext); }}>
-            {matches.isFetching ? 'Finding matches…' : 'Find compatible incoming tracks'}
-          </Button>}
+      {cueMode && prepared > 0 && <section className="mt-5 border-t border-ink/20 pt-4" aria-labelledby="subbeats-outgoing-finish">
+        <h3 id="subbeats-outgoing-finish" className="font-display text-lg font-bold">Choose the outgoing finish</h3>
+        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose where the closing passage starts, then listen through to the recording’s end. Zero is the end of the track. You can do this before choosing an incoming track.</p>
+        <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+          {outgoingControl}
+          <div><label htmlFor="subbeats-out-cue" className="mb-1 block text-sm font-medium">Outgoing rhythm handover · time to track end</label><select id="subbeats-out-cue" className={SELECT_CLASS} value={outCueIndex} disabled={!byId.get(outgoing)?.cuePoints?.outgoing.length} onChange={event => setOutCueIndex(Number(event.target.value))}>
+          {(byId.get(outgoing)?.cuePoints?.outgoing ?? []).map((cue,index) => <option key={index} value={index}>{outgoingDuration != null ? `${Math.min(0, cue.sourceSeconds - outgoingDuration).toFixed(2)}s` : outgoingTrack.isPending ? 'Loading track end…' : 'Track end unavailable'} · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
+        </select></div>
         </div>
+        {outgoingCue && <OutgoingCueAudition key={`${outgoing}:${byId.get(outgoing)?.cuePoints?.artifactKey}`} trackId={outgoing} cueSeconds={outgoingCue.sourceSeconds} adminFetch={adminFetch} onPlay={preview.stop} pause={preview.loading || preview.playing} />}
+      </section>}
+      {(cueMode ? prepared < 1 : prepared < 2) ? <div className="mt-4 text-sm"><p className="text-muted">{cueMode ? 'Prepare a track with cue points to listen to its ending.' : 'Prepare at least two tracks to try a transition.'}</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        {!cueMode && outgoingControl}
         <div className="min-w-0">
           <label htmlFor="subbeats-incoming" className="mb-1 block text-sm font-medium">Incoming track</label>
           <select id="subbeats-incoming" className={SELECT_CLASS} value={cueMode ? incoming : incomingMatch ? incoming : ''} disabled={cueMode ? !outgoing || !cueIncoming.length : !matchesEnabled || matches.isFetching || !matchRows.length} onChange={event => {setIncoming(event.target.value);setInCueIndex(0);}}>
@@ -333,9 +348,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <p className="mt-2 text-xs leading-relaxed text-muted">Moves the incoming audio by whole bars, keeping the tempo matched. Press Play preview to compare. Find matches again after changing the shift. Resets when you change the outgoing track.</p>
       </div>}
       {cueMode && <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div><label htmlFor="subbeats-out-cue" className="mb-1 block text-sm font-medium">Outgoing rhythm handover · time to track end</label><select id="subbeats-out-cue" className={SELECT_CLASS} value={outCueIndex} disabled={!byId.get(outgoing)?.cuePoints?.outgoing.length} onChange={event => setOutCueIndex(Number(event.target.value))}>
-          {(byId.get(outgoing)?.cuePoints?.outgoing ?? []).map((cue,index) => <option key={index} value={index}>{outgoingDuration != null ? `${Math.min(0, cue.sourceSeconds - outgoingDuration).toFixed(2)}s` : outgoingTrack.isPending ? 'Loading track end…' : 'Track end unavailable'} · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
-        </select></div>
+
         <div><label htmlFor="subbeats-in-cue" className="mb-1 block text-sm font-medium">Incoming musical arrival</label><select id="subbeats-in-cue" className={SELECT_CLASS} value={inCueIndex} disabled={!byId.get(incoming)?.cuePoints?.incoming.length} onChange={event => setInCueIndex(Number(event.target.value))}>
           {(byId.get(incoming)?.cuePoints?.incoming ?? []).map((cue,index) => <option key={index} value={index}>{cue.sourceSeconds.toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
         </select></div>
