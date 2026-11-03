@@ -8,12 +8,16 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-The owner explicitly requested documentation for a fresh chat. No new phrase
-planner or Beat This! model evaluation has been implemented. Next: independently
-compare official Beat This! `small0` and `final0` on the exact listening references,
-then attempt phrase detection on the grids that survive listening and continuity
-checks. Read the reference caveats before interpreting any result, especially
-Cübik. Keep this bounded; the owner requested minimal testing/usage.
+The independent official Beat This! comparison is now complete: five full-mix
+references, `small0` and `final0`, one inference each. Read the
+[evaluation and next listening gate](subbeats-research-20261103/beat-this-evaluation.md)
+and [portable results](subbeats-research-20261103/beat-this-comparison.json).
+Neither model preserves every accepted opening. Next: owner listening to
+`urban-cookie-collective-final0.mp3` and `gusto-small0.mp3` in
+`/home/jaz666/codex/subbeats-beat-this-20261103/audio/`, then phrase candidates
+only within accepted windows. No phrase planner or station integration was
+implemented. Read the reference caveats before interpreting any result,
+especially Cübik. Keep this bounded; the owner requested minimal testing/usage.
 
 Use **cue points** for track entry/exit positions. A fixed 16-bar approach is no
 longer required: the owner accepts other lengths if they simplify development.
@@ -180,6 +184,19 @@ URLs; the saved local audio avoids another download.
 
 ## Research completed
 
+### Follow-up: official model runs — 3 November 2026
+
+The [offline comparison](subbeats-research-20261103/beat-this-evaluation.md)
+supersedes the earlier not-yet-run status below. A separate CPU-only environment
+was installed outside the station. `final0` gives the cleanest Urban Cookie
+Collective grid, but shifts a Gusto bar near 31.52s; `small0` preserves that
+opening better. Both start early on Rozalla and leave Afro-Left's sparse intro
+incomplete. Cübik remains unresolved, with model pulse estimates around the
+owner's reported 124.3 BPM in much of the track. All ten raw-click auditions,
+logits and original outputs are saved locally; complete timestamp/metric JSON
+and reproduction scripts are committed alongside this record. No new owner
+listening confirmation or phrase approval has yet been obtained.
+
 ### Beat This! independently of Subwave PR #2244
 
 Read the [official implementation](https://github.com/CPJKU/beat_this),
@@ -283,6 +300,10 @@ or resource choice without rebuilding the station. Record model/version, source
 identity, timing coverage, local BPM, continuous grid fit, bar-origin behaviour
 and observed failures. Prefer full mixes as the initial input, matching the
 model's intended use; stems are a later comparison if justified.
+
+That comparison has now been run; use the follow-up report and next listening
+gate above instead of repeating inference. The paragraphs in this section
+describe the original experiment scope.
 
 Use audible clicks the owner can hear. A successful result must preserve the
 accepted intro grid references, investigate Cübik without assuming tempo drift,

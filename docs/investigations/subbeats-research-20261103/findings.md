@@ -113,4 +113,18 @@ Primary sources reviewed: [official repository](https://github.com/CPJKU/beat_th
 
 Proposed Sub/Beats role: independently compare upstream small0 and final0 on the exact reference recordings, retaining current Librosa feature extraction and local timing-fit validation. Use the learned downbeats as bar-origin evidence, derive local tempo from accepted beat timestamps, and evaluate arrangement changes/repeating cycles on those bars. Keep tempo, beat timing, bar alignment, phrase origin, and vocal-cut safety as separate verdicts. Validate complete candidate mixing windows; the paper reports lower continuity metrics despite high beat/downbeat F1. The paper also explicitly describes intentionally overconfident network outputs, so raw activation strength must not be presented as calibrated mix safety. Start with full mixes rather than existing isolated stems, to match the intended input. Project through quiet sections only as a labelled hypothesis checked against audible evidence; chunked inference cannot automatically transfer a 59-second drop's bar anchor all the way back through Afro-Left's opening.
 
-Evaluation correction: the earlier Cübik auditions used 124.478 and 123.122 BPM, rather than the owner's MixMeister reading of 124.3. Some drift against those grids is expected even if the recording is steady. Preserve the owner's preference for regular transitions only, but do not treat those auditions as proof of intrinsic tempo drift or as a machine-certified negative reference. Reassess its timing with correctly anchored reference beats and any model output before drawing that conclusion. No Beat This model has been installed or run as part of this research.
+Evaluation correction: the earlier Cübik auditions used 124.478 and 123.122 BPM, rather than the owner's MixMeister reading of 124.3. Some drift against those grids is expected even if the recording is steady. Preserve the owner's preference for regular transitions only, but do not treat those auditions as proof of intrinsic tempo drift or as a machine-certified negative reference. Reassess its timing with correctly anchored reference beats and any model output before drawing that conclusion. No Beat This model had been installed or run at this assessment stage.
+
+### Follow-up: official small0/final0 comparison completed
+
+See the [full evaluation](beat-this-evaluation.md) and
+[portable timing evidence](beat-this-comparison.json). Ten isolated full-mix
+inference calls completed in a separate CPU-only environment. `final0` has clean
+whole-track beat/bar continuity on Urban Cookie Collective, but gives a half-bar
+discrepancy on Gusto near 31.52s; `small0` preserves Gusto's opening better.
+Neither recovers the confirmed quiet Rozalla opening or all of Afro-Left's
+sparse intro. Both place Afro-Left's strong entry at 59.32s. Cübik's model
+estimates favor a pulse near the owner's reported 124.3 BPM in much of the
+recording, without resolving intrinsic tempo behavior. No library preference
+or suitability flag changed. New owner listening and phrase approval remain
+pending; next auditions are Urban `final0` and Gusto `small0`, each 32 seconds.

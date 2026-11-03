@@ -1745,6 +1745,16 @@ Next research step remains independent Beat This! evaluation, followed by
 phrase-boundary evidence on accepted grids. No dataset download, model run,
 dependency installation or station deployment was needed for this reading.
 
+Follow-up on 3 November: the
+[official small0/final0 evaluation](../investigations/subbeats-research-20261103/beat-this-evaluation.md)
+has now run once per model on all five full-mix references in a separate
+CPU-only environment. `final0` provides clean Urban Cookie Collective beat/bar
+continuity; `small0` better preserves Gusto's opening bar phase. Neither model
+replaces the accepted quiet Rozalla or sparse Afro-Left opening grids. New
+owner listening and phrase evidence remain pending. This confirms the need to
+check continuous local beat/bar evidence independently of model size, before
+using it for cue-point or phrase selection. Station behavior is unchanged.
+
 ## Owner direction: cue points and flexible overlap — 3 November 2026
 
 Use **cue points** as the product and development term for suggested or manually
