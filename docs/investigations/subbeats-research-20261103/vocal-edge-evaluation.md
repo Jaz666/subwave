@@ -88,8 +88,12 @@ Dropping the energy gate alone does not solve source allocation or semantics.
 
 Gusto's `other` stem was copied and checked as the next place to inspect the
 owner-known background sample. A marked `other`-stem audition is provided;
-whether it carries the sample remains a **listening question**, not a confirmed
-machine allocation. It is not an isolated vocal. No absence claim is made
+the owner subsequently confirmed the background-vocal groove is down at the
+bass end in this `other` stem, with the first beat sounding like a "whomp".
+This is owner listening evidence of allocation and audible beat character,
+not a machine vocal classification. The owner did not supply an exact source
+timestamp for the whomp, so none is inferred. It is not an isolated vocal.
+No absence claim is made
 about the drums/bass stems or reconstruction residual, which were not copied.
 
 For early Gusto, retain the accepted completed-groove event at 22.940s. A future
@@ -113,10 +117,12 @@ The original stem signal is preserved continuously; there is no simulated cut,
 gate, noise removal, looping or stretching. A 100ms lower chord marks each
 source event. Level normalisation is for listening, not evidence about the
 original stem balance. The chime/normalisation can obscure very faint details;
-unmarked source copies remain available if needed. No listening outcome for
-these new stem auditions has yet been supplied.
+unmarked source copies remain available if needed. The owner has confirmed
+Gusto's low background groove is in `other`. Urban's exact word-ending/tail
+relationship and Gusto's decay across the later marker remain unconfirmed.
 
-Next: owner listening to these focused stem excerpts. Keep the structural
+Next: establish Urban's word-ending/tail relationship and Gusto's groove decay
+across the later marker. Keep the structural
 events separate from vocal-stem cut/fade endpoints and background-groove loop
 boundaries. No cue planner or renderer change is justified until these roles
 and edge requirements are clear. Pair suitability also remains untested.

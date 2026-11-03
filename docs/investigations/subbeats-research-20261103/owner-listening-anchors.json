@@ -112,6 +112,15 @@
         "ownerFeedback": "With Gusto, it's more of a background vocal repeating groove, the closest the track has to actual vocals don't start until around 54 seconds.",
         "openingTreatment": "Preserve complete repeating groove cycles and tails; do not equate the groove with a foreground sung phrase.",
         "laterVocalTreatment": "Around 54s is an approximate listening reference, not an exact safe entry or first-phoneme annotation."
+      },
+      "backgroundGrooveStemConfirmation": {
+        "feedbackDate": "2026-11-03",
+        "stem": "other",
+        "ownerFeedback": "The vocal groove is down at the bass end, in that other stem, the first beat comes through as a \"whomp\"",
+        "frequencyDescription": "bass end",
+        "firstBeatDescription": "whomp",
+        "exactWhompSourceSeconds": null,
+        "scope": "Owner confirms groove allocation and audible first-beat character in the presented other-stem audition; no new exact timestamp, loop seam or tail-clearance approval."
       }
     },
     {

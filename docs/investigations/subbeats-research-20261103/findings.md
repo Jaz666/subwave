@@ -200,3 +200,11 @@ groove cycles and decay, even if no foreground vocal is present. New 24-second
 stem excerpts cover source 4–28s; owner feedback on these remains pending.
 Numerical envelope/intersection checks, source/stem provenance, finite JSON and
 all three diagnostic audio durations pass. Station state remains unchanged.
+
+Owner follow-up: Gusto's background-vocal groove is at the bass end in the
+presented `other` stem, and its first beat sounds like a "whomp". This confirms
+stem allocation and audible beat character; it does not identify an additional
+exact source timestamp or establish decay/loop-seam clearance. Preserve that
+groove as musical content when considering `other`-stem cuts or loops, even
+with no nominal vocal-gate detections. Urban's exact word-ending/tail timing
+and Gusto's decay at the later marker remain pending listening evidence.

@@ -27,7 +27,9 @@ vocal groove; the distinct later vocal passage begins around 54s.
 Next: owner listening to `urban-vocal-boundaries.mp3` and
 `gusto-other-boundaries.mp3` in
 `/home/jaz666/codex/subbeats-beat-this-20261103/vocal-edges/` (each source 4–28s),
-to distinguish word endings/tails and identify the groove's stem allocation.
+to distinguish word endings/tails and groove decay across the later markers.
+The owner has confirmed Gusto's low background-vocal groove is in `other`,
+with a "whomp" on the first beat; no exact source timestamp was specified.
 Do not hard-cut Urban's vocals at the structural marker or certify Gusto's loop
 from absent vocal-gate detections. The earlier marked 32-second auditions remain in
 `/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`.
