@@ -949,6 +949,25 @@ deeper analysis and preparation progress belong on this page. Keep protected
 Sub/Flow management separate. This records the navigation requirement; the page
 is not implemented by the initial cache increment.
 
+## Intended playback and picking destination — 3 November 2026
+
+The owner clarified the destination beyond the current preparation/preview work.
+At minimum, assess already queued adjacent tracks and substitute a prepared
+Sub/Beats transition when the pair is compatible; otherwise preserve the normal
+transition path and queue order. Ideally, add shared Sub/Beats follow-up discovery
+to both Agentic Tools and Track Shortlist. Match the currently playing prepared
+track when it is the intended predecessor; when appending behind queued tracks,
+match the actual predecessor instead. Discovery suggests candidates; the queue
+revalidates the final pair before committing a transition. Both use the same
+pair compatibility rules, with vocal separation first and harmonic key checking
+later. These are planned capabilities, not current broadcast behavior.
+
+The maintained integration boundaries, preparation/deadline constraints and
+implementation order are in [Intended destination in Subwave](subbeats-cue-methods.md#intended-destination-in-subwave).
+This owner direction supersedes older descriptions of browser audition as the
+sole scope; it does not enable playback integration or change protected Sub/Flow
+joins.
+
 ## Agreed audio direction
 
 Development listening favoured a 16-bar stem exchange, four extra bars of vocal

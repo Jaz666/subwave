@@ -8,6 +8,20 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+Owner clarified the eventual product destination: minimum, assess already queued
+adjacent tracks and upgrade suitable joins to Sub/Beats, preserving normal
+transitions otherwise; ideal, a shared follow-up discovery tool/source in both
+Agentic Tools and Track Shortlist. Match the on-air prepared track when it is the
+actual predecessor, or the queue tail when appending behind queued tracks. One
+pair compatibility assessment should serve preview, discovery and final queue
+admission. Discovery remains subject to picker constraints; playback revalidates
+before publication and must not wait for heavy preview-style preparation. See
+[Intended destination in Subwave](../internals/subbeats-cue-methods.md#intended-destination-in-subwave)
+for the durable boundary and stages. No playback/picker implementation is added
+by this documentation update. Next implementation: vocal-aware pair assessment
+in preview, followed by queued-pair integration, then shared discovery.
+
+
 Latest owner direction after the version-8 preview: keep vocal passages apart;
 key clashes/Camelot compatibility can follow later. The cue renderer currently
 allows vocal overlap, so this remains pending implementation. Reuse existing

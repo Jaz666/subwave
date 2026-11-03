@@ -5,6 +5,71 @@ experiments into the existing preparation queue and browser preview. Normal
 Stem Blend analysis and broadcast selection are unchanged. The current
 16-bar Sub/Beats preview remains available for comparison.
 
+## Intended destination in Subwave
+
+Owner decision, 3 November 2026: preparation and browser preview are the development
+surface for an eventual unattended Sub/Beats transition capability. They are not
+the final product boundary. The two intended integration stages are below;
+neither is connected to broadcast or picking today.
+
+### Minimum: assess already queued pairs and upgrade suitable transitions
+
+Assess adjacent queued tracks for Sub/Beats compatibility, regardless of which
+picking path selected them. When a suitable, prepared pair plan is available,
+Sub/Beats takes over that join from the default transition methods. Otherwise
+retain the existing transition plan, including any eligible normal Stem Blend.
+Do not reorder or replace already queued tracks merely to obtain a Sub/Beats mix.
+Protected Sub/Flow internal joins remain outside this capability.
+
+The integration belongs at the existing pair-aware queue handoff, alongside the
+current Stem Blend opportunity (`broadcast/stem-blend.ts` and the queue's pair
+drain). The controller remains responsible for queue order, eligibility, deadlines,
+cue publication and fallback. A rendered Sub/Beats clip and its seam/cue changes
+must be validated together before publication; a failed or late attempt leaves
+normal playback intact. This records the integration boundary, not a decision to
+reuse the browser endpoint or to impose every current Stem Blend setting on
+Sub/Beats. Activation/settings and exact clip-seam integration remain to be designed.
+
+### Ideal: shared follow-up discovery in both picking paths
+
+Add a Sub/Beats follow-up discovery source/tool to both **Agentic Tools** and
+**Track Shortlist**, through their shared discovery machinery. With a prepared
+Sub/Beats track currently playing, it should find suitable prepared follow-ups
+and offer them to the picker with pair-specific compatibility evidence. Existing
+show, availability, blocklist, request, repetition and other picker constraints
+still apply; compatibility does not itself enqueue a track or override editorial
+selection. No suitable results means normal discovery continues.
+
+Use the intended predecessor as the comparison anchor. With no intervening queue
+entries, that is the currently playing track. If the new pick will be appended
+behind queued tracks, it must fit the track it will actually follow, rather than
+claiming a usable join against the on-air track. Recheck the actual adjacent pair
+before playback if the queue or prepared evidence changes.
+
+### Consequences for development now
+
+- Build one pair compatibility assessment for preview, queued-pair admission and
+  discovery. Its useful result is a specific outgoing/incoming cue plan with
+  evidence and reasons for decline or uncertainty, not two independent “suitable
+  track” flags. Discovery can rank candidates with that assessment; queue admission
+  must also confirm the audio and deadline requirements for the chosen plan.
+- Keep competing vocal passages apart while preserving complete vocal endings
+  and entries. Tempo/grid fit, musical passage fit, valid source identity and
+  sufficient stem coverage also constrain a plan. Duration matching and 8/16-bar
+  labels guide candidates; they do not establish compatibility. Harmonic/Camelot
+  key compatibility is a later addition.
+- Preserve automatic cue selection as the eventual normal path. Manual auditions
+  and the owner's pair-specific preferences are evaluation evidence, not a
+  requirement for an operator to approve every future join.
+- Prepare/cache sufficient audio ahead of playback. Preview may currently extend
+  stems on demand, but discovery must not launch heavy separation and a live
+  handoff must not wait for the preview's potentially 30-minute preparation path.
+  Missing, uncertain, stale or late evidence means no Sub/Beats upgrade.
+
+The immediate next step remains vocal-aware assessment of the selected cue pair,
+using the existing measured-passage work and listening checks. Validate that in
+preview before enabling queued-pair upgrades, then add shared follow-up discovery.
+
 ## Operator workflow
 
 1. In **Sub/Beats → Preparation**, select completed tracks, choose
