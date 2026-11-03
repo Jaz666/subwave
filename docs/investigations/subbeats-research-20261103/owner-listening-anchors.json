@@ -1,0 +1,157 @@
+{
+  "source": "Owner listening feedback, 2 November 2026",
+  "timeReference": "head clip seconds = original source seconds",
+  "anchors": [
+    {
+      "artist": "Rozalla",
+      "title": "Everybody’s Free (To Feel Good)",
+      "vocalStartSeconds": 6,
+      "phraseStartSeconds": 22,
+      "approximate": true,
+      "downbeatVerified": true,
+      "notes": "Owner wrote phrase change 0.22s; interpreted as 0:22, not 0.22 seconds.",
+      "introTimingEvidence": "Owner hears subtle tambourine until the beat drops near 22s",
+      "preferredTransition": "Introduce from source start over outgoing drums and bass; hand over rhythm at the incoming drop, preserving incoming vocals.",
+      "nextTimingCheck": "Fit the post-drop beat and project backwards, then verify against the tambourine; do not treat extrapolation as measurement.",
+      "verificationSource": "Owner confirmed the projected-grid audition: ticks align with tambourine and louder ticks land on beat one.",
+      "verificationScope": "This recording and audition only; not automatic confidence calibration.",
+      "verifiedBpm": 130.00303214069132,
+      "verifiedFourBarBoundariesSeconds": [
+        0.654,
+        8.039,
+        15.423,
+        22.808
+      ],
+      "phraseBoundaryVerification": "Owner approximate phrase change ~22s; precise additional phrase boundaries are not independently labelled."
+    },
+    {
+      "artist": "Urban Cookie Collective",
+      "title": "The Key, the Secret",
+      "vocalStartSeconds": 7,
+      "phraseStartSeconds": 22,
+      "approximate": true,
+      "downbeatVerified": true,
+      "verificationSource": "Owner confirmed counting audition: projected beats and accented beat-one ticks are spot on.",
+      "verificationScope": "Exact reference recording and opening audition only; not calibrated automatic confidence.",
+      "verifiedBpm": 129.88491328911257,
+      "verifiedFourBarBoundariesSeconds": [
+        0.238,
+        7.63,
+        15.021,
+        22.412
+      ]
+    },
+    {
+      "artist": "Gusto",
+      "title": "Disco’s Revenge (Mole Hole radio edit)",
+      "phraseStartSeconds": null,
+      "approximate": true,
+      "downbeatVerified": true,
+      "notes": "Owner confirms four full instrumental bars precede the vocal groove, followed by four groove bars ending at the ~22s release. Keep this listening count separate from the detector BPM/phase until exact anchors are reconciled; do not derive bar duration from the approximate fade-in time.",
+      "vocalStartSeconds": 7,
+      "vocalDescription": "Background repeating vocal groove fading in",
+      "naturalReleaseSeconds": 22.96396023024595,
+      "completedGrooveBars": 4,
+      "instrumentalIntroBars": 4,
+      "ownerConfirmsGrooveAlignment": true,
+      "verificationSource": "Owner confirmed counting audition: projected beats and accented beat-one ticks are spot on.",
+      "verificationScope": "Exact reference recording and opening audition only; not calibrated automatic confidence.",
+      "verifiedBpm": 126.07216438420423,
+      "verifiedFourBarBoundariesSeconds": [
+        0.12,
+        7.735,
+        15.349,
+        22.964
+      ],
+      "releasePointVerified": true,
+      "releaseVerificationSource": "Owner explicitly confirmed the proposed natural release near 22.96s.",
+      "barCountInterpretation": "Retain owner groove-count description separately from the four-quarter-note grid. The validated grid has four-bar boundaries near 0.12, 7.735, 15.349 and 22.964 seconds; do not use the earlier approximate groove-count wording to rescale its tempo."
+    },
+    {
+      "artist": "Leftfield",
+      "title": "Afro-Left",
+      "album": "Leftism",
+      "trackId": "05ul3rSoyemxeaWWNIMdyo",
+      "durationSeconds": 454,
+      "prepared": false,
+      "ownerMainBeatEntryApproxSeconds": 59.3,
+      "ownerIntroDescription": "Sporadic beats before main beat",
+      "downbeatVerified": true,
+      "notes": "Owner identified the first strong beat at 59.3s, 208.6ms after the prior projected tick, and confirmed the corrected grid audition as perfect. The 59.3s anchored projection aligns through the sparse opening for this recording.",
+      "verificationSource": "Owner confirmed the corrected 75-second projected-grid audition as perfect, using the first strong beat at 59.3s as the anchor.",
+      "verificationScope": "Exact Leftism recording and audition only; intro beat/bar projection confirmed by owner listening, not an automatic confidence calibration.",
+      "verifiedBpm": 130.0081983357983,
+      "verifiedFourBarBoundariesSeconds": [
+        0.227,
+        7.611,
+        14.995,
+        22.379,
+        29.763,
+        37.148,
+        44.532,
+        51.916,
+        59.3
+      ],
+      "previousProjectedAnchorSeconds": 59.09135122473898,
+      "previousAnchorErrorMs": 208.6,
+      "introTimingVerified": true,
+      "phraseVerified": false,
+      "mixReady": false,
+      "ownerConfirmsTempoThroughEndBpm": 130,
+      "tempoContinuityVerificationSource": "Owner confirms Afro-Left is a steady 130 BPM through to the end.",
+      "tempoContinuityScope": "Owner listening report for this recording; no whole-track machine-certified confidence.",
+      "sampledLocalTempoFits": [
+        {
+          "regionSeconds": [
+            59,
+            110
+          ],
+          "bpm": 130.0015,
+          "timingErrorMs": 7.24
+        },
+        {
+          "regionSeconds": [
+            220,
+            270
+          ],
+          "bpm": 130.0288,
+          "timingErrorMs": 4.86
+        },
+        {
+          "regionSeconds": [
+            390,
+            454
+          ],
+          "bpm": 129.9995,
+          "timingErrorMs": 4.48
+        }
+      ],
+      "gridPhaseCaveat": "Librosa beat tracking in independent sections selects different within-beat phases relative to the owner grid; treat its beat phase as ambiguous. Owner-confirmed steady tempo and the listening-confirmed 59.3s grid remain separate evidence."
+    },
+    {
+      "artist": "808 State",
+      "title": "Cübik",
+      "album": "808:88:98",
+      "trackId": "0sejsWk6gftg89Oci3gbG3",
+      "durationSeconds": 213,
+      "prepared": false,
+      "candidateListeningAuditions": [
+        "audio/cubik-124-grid-80s.mp3",
+        "audio/cubik-123-grid-120s.mp3",
+        "audio/cubik-166-grid-128s.mp3"
+      ],
+      "downbeatVerified": false,
+      "phraseVerified": false,
+      "mixReady": false,
+      "notes": "Library BPM 161.5 is based on a saved beat sequence covering the opening 40s. Later Librosa timing fits support approximately 123–124 BPM in two regions and also 165.686 BPM in part of one region. Listening needed to distinguish competing pulse layers; clicks accent tentative bar starts only.",
+      "mixMeisterReportedBpm": 124.3,
+      "ownerBeatmatchAssessment": "regular_transitions_only",
+      "beatmatchedMixSuitable": false,
+      "ownerListeningResult": "The near-124 BPM previews start close but drift. Owner would not attempt a beatmatched mix of this track.",
+      "beatGridVerdict": "unresolved_requires_reference_tempo_check",
+      "verificationSource": "Owner listened to the balanced metronome previews and reports MixMeister at 124.3 BPM.",
+      "verificationScope": "The tested 808:88:98 recording and these preview excerpts; no database suitability flag or production analysis was changed.",
+      "driftInterpretationCaveat": "The audition grids used 124.478 and 123.122 BPM, not the owner-reported MixMeister 124.3. Drift against those fixed clicks alone cannot establish actual tempo instability. Keep regular_transitions_only as the owner preference for this recording, not a calibrated negative ground-truth label for any beat tracker."
+    }
+  ]
+}

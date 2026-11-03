@@ -1,0 +1,131 @@
+{
+  "track": "808 State - Cübik",
+  "libraryEntries": [
+    {
+      "id": "0sejsWk6gftg89Oci3gbG3",
+      "title": "Cübik",
+      "album": "808:88:98",
+      "durationSeconds": 213,
+      "libraryBpm": 161.5,
+      "analysisConfidence": 0.642,
+      "analysisVersion": 7,
+      "savedBeatCount": 106,
+      "savedBeatCoverageMs": [
+        163,
+        39962
+      ]
+    },
+    {
+      "id": "7sNKyCpWgeIWZ4T28fxPb7",
+      "title": "Cubik",
+      "album": "Back to the Old Skool",
+      "durationSeconds": 213,
+      "libraryBpm": 161.5,
+      "analysisConfidence": 0.644,
+      "analysisVersion": 7,
+      "savedBeatCount": 106,
+      "savedBeatCoverageMs": [
+        70,
+        39869
+      ]
+    }
+  ],
+  "analyzedEntryId": "0sejsWk6gftg89Oci3gbG3",
+  "method": "Existing Librosa HPSS percussive-onset and beat timing fit on five 40-53 second excerpts; 64-beat local fits require RMS timing error below 35ms and onset support. Fits establish regular pulse candidates only, not downbeat or phrase confidence.",
+  "sections": [
+    {
+      "startSeconds": 0,
+      "endSeconds": 40,
+      "tempoSeedBpm": 161.499,
+      "supportedFits": []
+    },
+    {
+      "startSeconds": 40,
+      "endSeconds": 80,
+      "tempoSeedBpm": 123.047,
+      "supportedFits": []
+    },
+    {
+      "startSeconds": 80,
+      "endSeconds": 120,
+      "tempoSeedBpm": 123.047,
+      "supportedFits": [
+        {
+          "bpm": 124.478,
+          "startSeconds": 82.067,
+          "endSeconds": 112.543,
+          "rmsErrorMs": 27.23
+        },
+        {
+          "bpm": 124.56,
+          "startSeconds": 82.287,
+          "endSeconds": 112.554,
+          "rmsErrorMs": 24.1
+        }
+      ]
+    },
+    {
+      "startSeconds": 120,
+      "endSeconds": 160,
+      "tempoSeedBpm": 123.047,
+      "supportedFits": [
+        {
+          "bpm": 123.122,
+          "startSeconds": 120.151,
+          "endSeconds": 150.906,
+          "rmsErrorMs": 33.62
+        },
+        {
+          "bpm": 165.686,
+          "startSeconds": 132.69,
+          "endSeconds": 155.48,
+          "rmsErrorMs": 10.86
+        }
+      ]
+    },
+    {
+      "startSeconds": 160,
+      "endSeconds": 213,
+      "tempoSeedBpm": 123.047,
+      "supportedFits": []
+    }
+  ],
+  "listeningAuditions": [
+    {
+      "file": "audio/cubik-124-grid-80s.mp3",
+      "sourceSeconds": [
+        80,
+        114
+      ],
+      "bpm": 124.478,
+      "anchorSeconds": 82.067
+    },
+    {
+      "file": "audio/cubik-123-grid-120s.mp3",
+      "sourceSeconds": [
+        120,
+        154
+      ],
+      "bpm": 123.122,
+      "anchorSeconds": 120.151
+    },
+    {
+      "file": "audio/cubik-166-grid-128s.mp3",
+      "sourceSeconds": [
+        128,
+        158
+      ],
+      "bpm": 165.686,
+      "anchorSeconds": 132.69
+    }
+  ],
+  "caveat": "Each audition accents every fourth click from the local fit start as a provisional bar origin. Accent position is unverified. The two library copies and outside BPM references may represent different edits/masterings. No library track, cache, or Sub/Beats entry was changed.",
+  "ownerListeningResult": {
+    "mixMeisterReportedBpm": 124.3,
+    "near124Clicks": "Initially close, then drift",
+    "beatmatchedMixSuitable": false,
+    "evaluationSuitability": "regular_transitions_only",
+    "note": "Human negative reference for track-wide beatmatch suitability; not a production/library flag.",
+    "driftInterpretationCaveat": "The audition grids used 124.478 and 123.122 BPM, not the owner-reported MixMeister 124.3. Drift against those fixed clicks alone cannot establish actual tempo instability. Keep regular_transitions_only as the owner preference for this recording, not a calibrated negative ground-truth label for any beat tracker."
+  }
+}

@@ -1,5 +1,7 @@
 # Sub/Beats session handover — 2026-10-30
 
+For current work, start with the [3 November handover](2026-11-03-subbeats-handover.md). This older record preserves listening/implementation history and is superseded where the newer handover says so.
+
 Superseded direction, 31 October: the owner chose to return to the earlier
 16-bar stem preview. See `docs/internals/sub-beats.md` for current browser behavior.
 The annotated results below remain listening evidence.

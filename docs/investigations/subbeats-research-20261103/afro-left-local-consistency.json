@@ -1,0 +1,12 @@
+{
+  "track": "Leftfield - Afro-Left (Leftism)",
+  "ownerConfirmedTempoThroughEndBpm": 130,
+  "ownerGridAnchorSeconds": 59.3,
+  "ownerGridBpm": 130.0081983357983,
+  "method": "Librosa percussive onset and beat tracking in three bounded sections. Local tempo fits measure beat regularity; tracker phase offsets show its selected beat positions relative to the owner-verified grid and do not overturn owner listening.",
+  "regions": [
+    {"startSeconds": 59, "endSeconds": 110, "trackedBeatCount": 105, "supported64BeatFitCount": 2, "supportedLocalBpmMedian": 130.00149768112135, "timingErrorMsMedian": 7.240683615300236, "supportedRangesSeconds": [[60.474, 89.557], [67.858, 96.941]], "trackerPhaseOffsetFromOwnerGridMsMedian": -207.22224714061025, "trackerPhaseOffsetP10P90Ms": [-213.57328748348422, -199.23687922055467]},
+    {"startSeconds": 220, "endSeconds": 270, "trackedBeatCount": 107, "supported64BeatFitCount": 2, "supportedLocalBpmMedian": 130.0288337735562, "timingErrorMsMedian": 4.857311114073108, "supportedRangesSeconds": [[228.022, 257.105], [235.418, 264.489]], "trackerPhaseOffsetFromOwnerGridMsMedian": -183.9977075078916, "trackerPhaseOffsetP10P90Ms": [-189.971104632566, -175.92048042656688]},
+    {"startSeconds": 390, "endSeconds": 454, "trackedBeatCount": 131, "supported64BeatFitCount": 3, "supportedLocalBpmMedian": 129.99951337330774, "timingErrorMsMedian": 4.4754850559028725, "supportedRangesSeconds": [[390.72, 419.803], [398.115, 427.175], [420.267, 449.339]], "trackerPhaseOffsetFromOwnerGridMsMedian": 61.52261344092477, "trackerPhaseOffsetP10P90Ms": [54.87558246741283, 67.65931574093162]}
+  ]
+}

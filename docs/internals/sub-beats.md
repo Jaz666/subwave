@@ -1,5 +1,7 @@
 # Sub/Beats development
 
+Fresh-chat starting point: [3 November 2026 handover](../investigations/2026-11-03-subbeats-handover.md). It records current cue-point terminology, flexible transition lengths, research and reference corrections; older implementation sections below remain historical where superseded.
+
 ## Upstream integration review — 2 November 2026
 
 Integration branch `integrate/subbeats-upstream-20261102` merges upstream
