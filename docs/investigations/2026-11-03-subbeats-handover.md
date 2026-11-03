@@ -21,6 +21,12 @@ No phrase planner or station integration was
 implemented. Read the reference caveats before interpreting any result,
 especially Cübik. Keep this bounded; the owner requested minimal testing/usage.
 
+The owner intends to share relevant findings with Perminder through
+[upstream #2248](https://github.com/perminder-klair/subwave/issues/2248), which
+tracks the normal Stem Blend Beat This! integration. See the evaluation's
+upstream coordination section: our official-model full-mix research does not
+validate the PR's ONNX head/tail pipeline. No upstream comment has been posted.
+
 Use **cue points** for track entry/exit positions. A fixed 16-bar approach is no
 longer required: the owner accepts other lengths if they simplify development.
 Choose musically supported cue-point combinations; overlap length follows the

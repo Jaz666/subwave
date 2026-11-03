@@ -146,3 +146,38 @@ were generated and their decoded durations checked; JSON/whitespace checks
 passed. No production tests were needed for these isolated research scripts
 and documentation. No station builds/restarts, preparation jobs, metadata
 updates, library reanalysis, new stems or cache cleanup were performed.
+
+## Upstream coordination: normal Stem Blend pipeline
+
+The owner identified [upstream issue #2248](https://github.com/perminder-klair/subwave/issues/2248)
+as the coordination point for sharing findings with Perminder. On inspection
+on 3 November, the issue was open with no comments, and
+[#2244](https://github.com/perminder-klair/subwave/pull/2244) remained an open
+draft, head `dc4bbbc4443eeb6e1f811315d0fae3e6c5f27a8a`, unchanged from the
+earlier review. It proposes opt-in heavy-image ONNX `small0` beat/downbeat grids
+for normal head/tail analysis and Stem Blend cue bars, retaining Librosa BPM.
+The issue explicitly requests real-library checks, including long intros.
+Its GTZAN accuracy, ONNX parity and cost figures are upstream reports, not
+measurements reproduced by this investigation.
+
+Our useful contribution is exact-recording evidence: quiet/sparse intro
+failures, good bar continuity on some recordings, the difference between beat
+continuity and bar-position continuity, and model-size tradeoffs. Keep these
+distinct from phrase completion and vocal-safe cue selection, which are the
+additional Sub/Beats research goal. Deriving tempo from accepted beat timestamps
+also aligns with an explicit upstream follow-up, without requiring us to change
+the current pipeline.
+
+Important comparison limit: our tests used official PyTorch models on complete
+mixes with upstream chunking; #2244 uses an ONNX export on normal analysis
+windows. Our results are not an end-to-end validation or failure reproduction
+of that PR. Window context and edges can alter predictions. Any targeted PR
+comparison should reuse exact sources and match its head/tail window/decode
+settings before attributing differences to the export or integration. There
+is no need to repeat the broad benchmark or reanalyse the station library.
+
+Shareable evidence is committed on the fork, including timestamps, model/source
+hashes, reproduction scripts and bounded owner listening confirmations. No
+comment or message was posted to Perminder as part of this review; the owner's
+statement records the intent to share findings, rather than an instruction to
+send a specific message now.
