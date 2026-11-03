@@ -23,6 +23,7 @@ export function readSubbeatsQueue(stateDir: string): SubbeatsQueue {
       job.error = 'The source audio was replaced. Recheck this track to prepare new stems.';
       job.bundleKey = null;
       delete job.suitability;
+      delete job.cuePoints;
       delete job.task;
     }
   }
@@ -50,13 +51,14 @@ export function createSubbeatsStore(stateDir: string) {
   };
   return {
     read: () => readSubbeatsQueue(stateDir),
-    enqueue(tracks: Array<Pick<SubbeatsJob, 'id' | 'title' | 'artist' | 'album'>>) {
+    enqueue(tracks: Array<Pick<SubbeatsJob, 'id' | 'title' | 'artist' | 'album'>>, method: 'classic'|'small0'|'final0' = 'classic') {
       const state = readSubbeatsQueue(stateDir);
       const jobs = new Map(state.jobs.map(j => [j.id, j]));
       for (const track of tracks) {
         const previous = jobs.get(track.id);
         if (previous && ['queued', 'running'].includes(previous.status)) continue;
         jobs.set(track.id, { ...track, status: 'queued', attempts: previous?.attempts ?? 0,
+          ...(method === 'classic' ? {} : {preparationMethod:method}),
           bundleKey: null, error: null, updatedAt: new Date().toISOString() });
       }
       if (jobs.size > SUBBEATS_QUEUE_LIMIT) throw new Error(`The preparation list is full (${SUBBEATS_QUEUE_LIMIT} tracks)`);

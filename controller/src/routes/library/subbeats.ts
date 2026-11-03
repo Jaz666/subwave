@@ -51,7 +51,7 @@ router.post('/library/subbeats/queue', requireAdmin, validateBody(subbeatsEnqueu
   const tracks = [...new Set<string>(req.body.ids)].map(id => db.getTrack(id));
   if (tracks.some(t => !t)) return res.status(400).json({ error: 'Some tracks are no longer in the library' });
   try {
-    subbeatsStore.enqueue(tracks.map(t => ({ id: t!.id, title: t!.title ?? '', artist: t!.artist ?? '', album: t!.album ?? '' })));
+    subbeatsStore.enqueue(tracks.map(t => ({ id: t!.id, title: t!.title ?? '', artist: t!.artist ?? '', album: t!.album ?? '' })),req.body.method);
     kickSubbeats();
     res.status(202).json(view());
   } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : String(error) }); }
@@ -93,6 +93,10 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const state = subbeatsStore.read();
     const tracks = parsed.data.trackIds.map(id => state.jobs.find(j => j.id === id));
     if (tracks[0]?.id === tracks[1]?.id || tracks.some(j => j?.status !== 'prepared' || !j.bundleKey)) throw new Error('Choose two different prepared tracks.');
+    const cueMode = parsed.data.method === 'cue-points';
+    if (cueMode && (parsed.data.matched || parsed.data.referenceBars !== undefined || parsed.data.barShift !== 0)) throw new Error('Cue-point previews use saved cue choices. Reset the bar shift and match selection.');
+    const cueIndices = parsed.data.cueIndices ?? [0,0];
+    if (cueMode && (!tracks[0]?.cuePoints?.outgoing[cueIndices[0]!] || !tracks[1]?.cuePoints?.incoming[cueIndices[1]!])) throw new Error('Recheck both tracks with a Beat This! preparation method and choose saved cue points.');
     await library.load();
     await blocklist.load();
     const songs = parsed.data.trackIds.map(id => db.getTrack(id));
@@ -110,7 +114,8 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const windowPlan = parsed.data.matched ? (await matchSubbeats(tracks as typeof state.jobs, parsed.data.trackIds[0]!, parsed.data.barShift)).matches.find(match => match.id === parsed.data.trackIds[1])?.plan : undefined;
     if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
-    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {})});
+    const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
+      ...(cueMode ? {method:'cue-points' as const,cue_keys:tracks.map(track => track!.cuePoints!.artifactKey),cue_indices:cueIndices} : {})});
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

@@ -87,6 +87,7 @@ test('default suggestions require dance-family genres even with strong beat evid
 
 test('invalid and missing IDs cannot enqueue work; valid admission is durable and idempotent', async () => {
   assert.equal((await post('/library/subbeats/queue', { ids: [] })).status, 400);
+  assert.equal((await post('/library/subbeats/queue', { ids: ['beat-grid'], method:'untrusted-model' })).status, 400);
   assert.equal((await post('/library/subbeats/queue', { ids: ['missing'] })).status, 400);
   const accepted = await post('/library/subbeats/queue', { ids: ['beat-grid', 'beat-grid'] });
   assert.equal(accepted.status, 202);
@@ -107,6 +108,11 @@ test('pause accepts only a boolean and remains visible after reloading', async (
 
 test('preview refuses invalid, duplicate and unprepared pairs without changing preparation', async () => {
   const before = subbeatsStore.read();
+  for (const body of [
+    {trackIds:['beat-grid','tempo-only'],method:'unknown'},
+    {trackIds:['beat-grid','tempo-only'],method:'cue-points',cueIndices:[0,99]},
+    {trackIds:['beat-grid','tempo-only'],method:'cue-points',cueIndices:[0.5,0]},
+  ]) assert.equal((await post('/library/subbeats/join-preview',body)).status,400);
   for (const trackIds of [[], ['beat-grid'], ['beat-grid', 'beat-grid'], ['beat-grid', 'tempo-only']]) {
     assert.equal((await post('/library/subbeats/join-preview', { trackIds })).status, 400);
   }
@@ -332,5 +338,36 @@ test('matched preview resolves fresh server-owned windows and passes them to ren
     const response=await post('/library/subbeats/join-preview',{trackIds:['pin-out','pin-in'],matched:true,window_plan:{outCue:999}});
     assert.equal(response.status,200);await response.arrayBuffer();
     assert.deepEqual(rendered?.window_plan,plan,'client-supplied points cannot override saved matches');
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('cue preview forwards only server-owned artifacts and rejects conflicting options', async () => {
+  const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
+  const ids=['cue-route-out','cue-route-in'];
+  const point={sourceSeconds:40,bpm:120,strength:1,reason:'repetition'};
+  for (const [i,id] of ids.entries()) {
+    db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House']});
+    subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
+    subbeatsStore.event({id,status:'running'},[id]);
+    subbeatsStore.event({id,status:'prepared',bundleKey:(i?'b':'a').repeat(64),cuePoints:{version:1,model:'small0',artifactKey:(i?'d':'c').repeat(64),incoming:[point],outgoing:[point]}},[id]);
+  }
+  const realFetch=globalThis.fetch;let rendered:Record<string,unknown>|undefined;
+  const audio=new Uint8Array(44);audio.set(Buffer.from('RIFF'),0);audio.set(Buffer.from('WAVE'),8);
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      rendered=JSON.parse(String(init?.body));return new Response(audio,{headers:{'Content-Type':'audio/wav'}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    for (const extra of [{matched:true},{barShift:1},{referenceBars:4},{cueIndices:[1,0]}]) {
+      assert.equal((await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',...extra})).status,400);
+    }
+    assert.equal(Boolean(rendered),false);
+    const response=await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',cueIndices:[0,0],cue_keys:['forged','forged']});
+    assert.equal(response.status,200);await response.arrayBuffer();
+    assert.deepEqual(rendered?.cue_keys,['c'.repeat(64),'d'.repeat(64)]);
+    assert.deepEqual(rendered?.cue_indices,[0,0]);assert.equal(rendered?.method,'cue-points');
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });

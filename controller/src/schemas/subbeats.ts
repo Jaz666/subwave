@@ -29,18 +29,29 @@ export const subbeatsSuitabilitySchema = z.object({
   version:z.literal(1), assessedAt:z.string(),incoming:subbeatsRoleSuitabilitySchema,outgoing:subbeatsRoleSuitabilitySchema,
 });
 export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','beat','subbeat']);
+export const subbeatsPreparationMethodSchema = z.enum(['classic','small0','final0']);
+export const subbeatsCuePointSchema = z.object({
+  sourceSeconds:z.number().finite().nonnegative().max(1200), bpm:z.number().finite().min(60).max(190),
+  strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement']),
+});
+export const subbeatsCuePointsSchema = z.object({
+  version:z.literal(1),model:z.enum(['small0','final0']),artifactKey:z.string().regex(/^[a-f0-9]{64}$/),
+  incoming:z.array(subbeatsCuePointSchema).max(8),outgoing:z.array(subbeatsCuePointSchema).max(8),
+});
 export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
   task:z.literal('assess').optional(), suitability:subbeatsSuitabilitySchema.optional(),
+  preparationMethod:subbeatsPreparationMethodSchema.optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });
 export const subbeatsQueueSchema = z.object({
   version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(SUBBEATS_QUEUE_LIMIT),
 });
-export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT) });
+export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT), method:subbeatsPreparationMethodSchema.default('classic') });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
 export const subbeatsEventSchema = z.object({
+  cuePoints:subbeatsCuePointsSchema.optional(),
   id: z.string().min(1).max(200),
   status: subbeatsStatusSchema.exclude(['queued']),
   suitability:subbeatsSuitabilitySchema.optional(),
@@ -114,6 +125,8 @@ export const subbeatsMatchesSchema = z.object({
 });
 
 export const subbeatsPreviewSchema = z.object({
+  method:z.enum(['stems','cue-points']).default('stems'),
+  cueIndices:z.array(z.number().int().min(0).max(7)).length(2).optional(),
   matched:z.boolean().optional(),
   trackIds: z.array(z.string().min(1).max(200)).length(2),
   barShift: z.number().int().min(-2).max(2).default(0),

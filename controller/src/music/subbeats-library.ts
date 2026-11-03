@@ -62,7 +62,7 @@ async function main() {
           emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
           continue;
         }
-        const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining});
+        const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},job.preparationMethod);
         remaining = Math.max(0, remaining - result.addedBytes);
         changed ||= result.addedBytes > 0; uncertain = false;
         emit({id, ...result});

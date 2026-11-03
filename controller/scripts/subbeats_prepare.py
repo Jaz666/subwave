@@ -264,14 +264,22 @@ def prepare_request(req):
     from subbeats_cache import shared_context, track_cache_root
     allowance = shared_context(req)
     cache_root = track_cache_root(req['stems_root'], req['track_id'])
+    method = req.get('method','classic')
+    if method not in ('classic','small0','final0'):
+        raise ValueError('Unknown preparation method')
     result = prepare(req['path'], state_dir, expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_structure import prepare_structure
     structure = prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_suitability import assess_bundle
     suitability = assess_bundle(Path(result['directory']),result)
-    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': not result.get('cache_hit', False) and bool(result['metadata']['stem_regions']), 'subbeats_result': {
+    cues = {}
+    if method != 'classic':
+        from subbeats_cues import prepare_cues
+        cues['cuePoints'] = prepare_cues(req['path'],state_dir,result['directory'],result,method,
+            cache_root=cache_root,allowance=allowance,expected_cache_id=expected)
+    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': method != 'classic' or (not result.get('cache_hit', False) and bool(result['metadata']['stem_regions'])), 'subbeats_result': {
         'status': ('prepared' if result['metadata']['stem_regions'] else 'unmeasurable'),
-        'bundleKey': Path(result['directory']).name, 'suitability':suitability,
+        'bundleKey': Path(result['directory']).name, 'suitability':suitability, **cues,
         'error': None,
     }, 'subbeats_structure_key': Path(structure['directory']).name}
 

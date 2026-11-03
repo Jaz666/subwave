@@ -776,7 +776,7 @@ function localEmbedTexts(texts: string[], timeoutMs: number, signal?: AbortSigna
 
 // A deadline that expired mid-request, as opposed to a refused connection or a
 // capability 404/500.
-function isTimeoutError(err: unknown): boolean {
+export function isTimeoutError(err: unknown): boolean {
   const name = (err as { name?: unknown } | null)?.name;
   const message = (err as { message?: unknown } | null)?.message;
   return name === 'AbortError' || (typeof message === 'string' && message.includes('timed out'));
@@ -1108,6 +1108,9 @@ export interface FacetRequestOpts {
   tailVocals?: boolean;
   stems_dir?: string;
   complete?: boolean;
+  // The request's deadline. Omitted, the pass's ANALYZE_REQUEST_TIMEOUT_MS. A
+  // pick-time separation passes its own longer one (pick-stems-policy.ts).
+  timeoutMs?: number;
 }
 
 // null = unknown (not probed / old backend). Callers use the facet protocol
@@ -1151,7 +1154,10 @@ export function parseFacetAnswer(msg: WorkerMessage): FacetAnalysis {
   };
 }
 
-async function facetRequest(body: Record<string, unknown>): Promise<FacetAnalysis> {
+async function facetRequest(
+  body: Record<string, unknown>,
+  timeoutMs = config.analyzer.requestTimeoutMs,
+): Promise<FacetAnalysis> {
   const backend = await resolveBackend();
   if (!backend) throw new Error('no analysis backend available');
   let msg: WorkerMessage;
@@ -1160,14 +1166,14 @@ async function facetRequest(body: Record<string, unknown>): Promise<FacetAnalysi
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      timeoutMs: config.analyzer.requestTimeoutMs,
+      timeoutMs,
       bodyDeadline: true,
     });
     if (!res.ok) return sidecarFailure(res);
     msg = (await res.json()) as WorkerMessage;
   } else {
     if (!ready) await startWorker();
-    msg = await localRequestRaw(body);
+    msg = await localRequestRaw(body, timeoutMs);
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
   return parseFacetAnswer(msg);
@@ -1187,19 +1193,20 @@ export async function analyzeFacets(
   if (opts.tailVocals) body.tail_vocals = true;
   const stems = opts.stems_dir ? { stems_dir: opts.stems_dir, stems_require_marker: true } : {};
   const url = subsonic.getRawStreamUrl(songId);
-  if (!localPath) return facetRequest({ url, ...body, ...stems });
+  const timeoutMs = opts.timeoutMs; // undefined: facetRequest's default
+  if (!localPath) return facetRequest({ url, ...body, ...stems }, timeoutMs);
   try {
     return await facetRequest({
       path: localPath,
       ...body,
       ...(opts.complete !== undefined ? { complete: opts.complete } : {}),
       ...stems,
-    });
+    }, timeoutMs);
   } catch (err) {
     if (!(err instanceof AnalyzerPathUnavailableError)) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
-    return facets.length ? facetRequest({ url, ...body, facets })
+    return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)
       : { facets: {}, source: { kind: 'unknown', durationS: null, complete: null } };
   }
 }
@@ -1278,9 +1285,9 @@ export async function assessSubbeats(stateDir:string, cacheId:string, trackId:st
   return {...result,addedBytes:0};
 }
 
-export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache) {
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0'|'final0' = 'classic') {
   if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
-  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared };
+  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared,...(method === 'classic' ? {} : {method}) };
   const timeoutMs = 30 * 60_000;
   let answer: WorkerMessage;
   if (_backend === 'sidecar' && _sidecarBase) {
@@ -1294,6 +1301,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   }
   const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
   if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
+  if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
   return {...result, addedBytes:cacheGrowth(answer)};
 }
 
@@ -1305,7 +1313,7 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';cue_keys?:string[];cue_indices?:number[]}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
   const payload = { ...shared, out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,

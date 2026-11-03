@@ -62,10 +62,12 @@ test('a refused deletion does not report its bytes as freed', async () => {
   seed('delete-denied');
   await runOrphanPurge({ knownIds: ['sentinel'], confirm: true, now });
   const dir = join(root, '.orphan-quarantine', 'delete-denied');
+  writeFileSync(join(root, '.orphan-quarantine', 'timestamp-denied', 'tail-meta.json'), JSON.stringify({ duration_sec: 200 }));
   chmodSync(dir, 0o555);
   try {
     // Keep the other test's repaired orphan out of this pass's deletion totals.
-    const report = await runOrphanPurge({ knownIds: ['sentinel', 'timestamp-denied'], confirm: true, now: now + 8 * day });
+    const report = await runOrphanPurge({ knownIds: ['sentinel', 'timestamp-denied'], confirm: true, now: now + 8 * day,
+      rowDurationSec: id => id === 'timestamp-denied' ? 200 : null });
     assert.equal(report.failed, 1);
     assert.equal(report.deletedCount, 0);
     assert.equal(report.freedBytes, 0);

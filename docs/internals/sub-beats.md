@@ -1,5 +1,11 @@
 # Sub/Beats development
 
+## Cue preparation and 1.30.0 source candidate — 3 November 2026
+
+See the [cue-point preparation and preview guide](subbeats-cue-methods.md) for the new optional methods. This candidate incorporates upstream release `v1.30.0` through `03a48c21` and preserves station-specific Sub/Flow, Sub/Shows and Sleeve Notes behaviour. Beat This! for normal Stem Blend remains an unmerged upstream draft; these methods are separate auditions.
+
+The source rollback point is `e4e22d34`. The owner performs builds/restarts; source integration alone does not update running services. The new upstream pick-time stem preparation setting remains off by default. Quarantine restoration now requires matching recording evidence, including for selective cleanup.
+
 ## Afro-Left sparse-intro challenge — 2 November 2026
 
 Owner reference: Leftfield, **Afro-Left**, **Leftism**, 454s, library ID

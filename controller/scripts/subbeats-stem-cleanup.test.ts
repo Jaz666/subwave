@@ -55,6 +55,13 @@ test('explicit cleanup consent quarantines the excluded track and honours the fu
 });
 test('new protection is refreshed before deletion, and disabling cleanup restores quarantined stems', async () => {
   const protectRock = async () => ({...(await signals()),starredIds:['starred','rock']});
+  const held = await cleanup.runSubbeatsCleanup({signals:protectRock,now:now+8*day});
+  assert.equal(held?.deletedCount,0);assert.equal(held?.mismatchedCount,1);
+  assert.ok(existsSync(qu('rock')),'head-only stems lack recording identity and must stay quarantined');
+  writeFileSync(join(qu('rock'),'tail-meta.json'),JSON.stringify({duration_sec:300}));
+  const wrongRecording = await cleanup.runSubbeatsCleanup({signals:protectRock,now:now+8*day});
+  assert.equal(wrongRecording?.mismatchedCount,1);assert.ok(existsSync(qu('rock')));
+  writeFileSync(join(qu('rock'),'tail-meta.json'),JSON.stringify({duration_sec:200}));
   const restored = await cleanup.runSubbeatsCleanup({signals:protectRock,now:now+8*day});
   assert.equal(restored?.deletedCount,0);assert.ok(existsSync(join(root,'rock')));
   await cleanup.runSubbeatsCleanup({signals,now:now+9*day});
