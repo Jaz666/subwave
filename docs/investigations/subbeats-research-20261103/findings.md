@@ -172,3 +172,31 @@ The separate phrase environment uses Librosa 0.11.0; the original model runtime
 was preserved. Small synthetic descriptor checks, exact source hashes, complete
 four-beat bar coverage, finite JSON and both 32-second marked audio durations
 passed. No station files, metadata, stems or production behavior changed.
+
+### Follow-up: cached vocal/groove edges and Gusto clarification
+
+See the [vocal/groove edge inspection](vocal-edge-evaluation.md) and
+[measurements](vocal-edge-results.json). The two cached head-vocal stems and
+Gusto's head-other stem were copied read-only for isolated inspection; source
+hashes match the exact original recordings and stem hashes/sample counts pass.
+No separation or station analysis was run.
+
+Urban's nominal vocal gate reaches 22.40s across the 22.380s structural event;
+lower diagnostic thresholds retain low-level sound through 23.05–23.20s.
+This is a level drop with a subsequent stem tail, not automatic approval to
+cut the vocal at the rhythm/arrangement change. The 7.600s event precedes the
+measured onset at 7.75–7.80s but does not establish the first sung sound.
+
+Gusto has no opening vocal-stem detections even at .05 of nominal thresholds,
+with approximately -73dBFS stem RMS near both markers. The owner clarified that
+the opening is a repeating **background-vocal groove**, whereas the closest
+thing to actual vocals begins around **54s**. Retain the earlier ~7s background
+groove observation separately from this later approximate vocal reference. The
+gate's first nominal range at 41.95s is not verified as the first actual vocal.
+
+An `other`-stem audition is provided to check the background sample's allocation;
+that allocation has not yet been confirmed. The opening still requires complete
+groove cycles and decay, even if no foreground vocal is present. New 24-second
+stem excerpts cover source 4–28s; owner feedback on these remains pending.
+Numerical envelope/intersection checks, source/stem provenance, finite JSON and
+all three diagnostic audio durations pass. Station state remains unchanged.

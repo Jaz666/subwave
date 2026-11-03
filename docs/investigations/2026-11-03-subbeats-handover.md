@@ -18,9 +18,18 @@ Neither model preserves every accepted opening. The owner confirms the Urban
 finds structural candidates at 7.600/22.380s for Urban and 7.720/22.940s for
 Gusto. Repetition break recovers the latter release candidate despite weak
 novelty. The owner has now confirmed both marked auditions land on the expected
-musical boundaries, including Gusto's completed groove release. Next: establish
-separate vocal beginning/ending and tail-clearance evidence before applying
-cues. The marked 32-second auditions remain in
+musical boundaries, including Gusto's completed groove release. The follow-up
+[vocal/groove edge inspection](subbeats-research-20261103/vocal-edge-evaluation.md)
+reuses source/hash-verified cached stems: Urban has a low-level vocal-stem tail
+after 22.380s, while Gusto's known opening groove is nearly absent from its
+vocal stem. The owner clarifies Gusto's early material is a repeating background
+vocal groove; the distinct later vocal passage begins around 54s.
+Next: owner listening to `urban-vocal-boundaries.mp3` and
+`gusto-other-boundaries.mp3` in
+`/home/jaz666/codex/subbeats-beat-this-20261103/vocal-edges/` (each source 4–28s),
+to distinguish word endings/tails and identify the groove's stem allocation.
+Do not hard-cut Urban's vocals at the structural marker or certify Gusto's loop
+from absent vocal-gate detections. The earlier marked 32-second auditions remain in
 `/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`.
 No automatic phrase planner or
 station integration was implemented. Read the reference caveats before interpreting any result,

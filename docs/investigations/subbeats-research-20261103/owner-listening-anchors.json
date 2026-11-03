@@ -69,7 +69,7 @@
       "downbeatVerified": true,
       "notes": "Owner confirms four full instrumental bars precede the vocal groove, followed by four groove bars ending at the ~22s release. Keep this listening count separate from the detector BPM/phase until exact anchors are reconciled; do not derive bar duration from the approximate fade-in time.",
       "vocalStartSeconds": 7,
-      "vocalDescription": "Background repeating vocal groove fading in",
+      "vocalDescription": "Repeating background-vocal groove fades in near 7s; distinct later vocal passage around 54s.",
       "naturalReleaseSeconds": 22.96396023024595,
       "completedGrooveBars": 4,
       "instrumentalIntroBars": 4,
@@ -105,6 +105,13 @@
         "musicalBoundariesAccepted": true,
         "completedGrooveReleaseConfirmedSeconds": 22.94,
         "scope": "Presented marked opening only; no exact vocal onset/end, tail clearance, automatic entry/exit cue, loop seam or pair approval."
+      },
+      "foregroundVocalStartApproxSeconds": 54,
+      "vocalRoleClarification": {
+        "feedbackDate": "2026-11-03",
+        "ownerFeedback": "With Gusto, it's more of a background vocal repeating groove, the closest the track has to actual vocals don't start until around 54 seconds.",
+        "openingTreatment": "Preserve complete repeating groove cycles and tails; do not equate the groove with a foreground sung phrase.",
+        "laterVocalTreatment": "Around 54s is an approximate listening reference, not an exact safe entry or first-phoneme annotation."
       }
     },
     {

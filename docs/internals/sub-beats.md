@@ -1761,8 +1761,15 @@ compares arrangement and ordered repetition evidence on those accepted openings.
 It retains candidates near Urban 22.380s and Gusto 22.940s, without moving
 boundaries to conventional phrase lengths. Repetition break adds evidence for
 Gusto where novelty alone misses its accepted release, but does not establish
-a completed vocal phrase or safe cut. Marked auditions and separate vocal-edge
-checks are the next gate before applying cues. This confirms the need to
+a completed vocal phrase or safe cut. The owner accepted the marked structural
+events; the [cached-stem edge inspection](../investigations/subbeats-research-20261103/vocal-edge-evaluation.md)
+then found a low-level Urban vocal-stem tail beyond the musical change and
+negligible Gusto opening vocal-stem energy despite its known background groove.
+The owner distinguishes that repeating groove from the later vocal passage
+around 54s. Keep groove-cycle completion, vocal phrase completion and stem
+allocation separate; absence of a vocal-gate range cannot approve an
+instrumental loop or safe cut. Focused stem auditions are the next gate before
+applying cues. This confirms the need to
 check continuous local beat/bar evidence independently of model size, before
 using it for cue-point or phrase selection. Station behavior is unchanged.
 
