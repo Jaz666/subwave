@@ -1,10 +1,16 @@
 import type { z } from 'zod';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_QUEUE_LIMIT, type subbeatsCandidateSchema, type subbeatsJobSchema } from '../../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_QUEUE_LIMIT, type subbeatsCandidateSchema, type subbeatsJobSchema, type subbeatsCuePointSchema } from '../../../lib/schemas.generated';
 
 export type SubbeatsCandidate = z.infer<typeof subbeatsCandidateSchema>;
 type Job = Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status'>;
 
 export const subbeatsCanSelect = (status: string) => ['not-started', 'failed', 'unavailable'].includes(status);
+
+export function subbeatsOutgoingCues(cues: readonly z.infer<typeof subbeatsCuePointSchema>[], duration: number | null | undefined) {
+  if (duration == null || !Number.isFinite(duration) || duration <= 0) return [];
+  return cues.map((cue,index) => ({cue,index}))
+    .filter(({cue}) => cue.sourceSeconds >= duration*.75 && cue.sourceSeconds < duration);
+}
 
 // One capacity rule for row, page and matching selection. Retrying an existing
 // entry consumes a batch place, but never another saved-list place.

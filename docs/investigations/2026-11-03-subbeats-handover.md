@@ -8,6 +8,19 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+Latest correction: outgoing candidates must be in the final quarter. The owner
+reported Rozalla’s expected outro around 2:41 versus older candidates at
+0:44–1:51. Algorithm 2 now searches the actual ending independently of old
+exit-stem coverage and adds sustained fade candidates. The web/API reject earlier
+outgoing choices. Source-verified cached inference on Rozalla gives a structural
+candidate at 2:43.040 and a fade candidate at 3:08.900; the recording is 3:33.600
+and the final quarter begins at 2:40.200. Focused tests/type checks passed. The
+owner explicitly allowed a few tests for this fix. Rebuild controller, web and
+analyzer, then Beat This! recheck selected tracks; old stems are reused. Pair
+mixing may still need later ending-stem coverage, which belongs to the incoming
+stage. See the method guide’s final-quarter section for evidence and limits.
+
+
 Latest owner direction: handle outgoing selection first, then incoming fitting.
 Station source includes this outgoing audition at `536e7daa`; development
 implementation commits `6a049973` and `d1595f76` are pushed. Source rollback

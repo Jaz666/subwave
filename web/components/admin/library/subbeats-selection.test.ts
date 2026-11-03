@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectPreparationIds, selectSubbeatsRows, type SubbeatsCandidate } from './subbeats-selection';
+import { selectPreparationIds, selectSubbeatsRows, subbeatsOutgoingCues, type SubbeatsCandidate } from './subbeats-selection';
 const row = (id: string): SubbeatsCandidate => ({ id, title:id, artist:'Artist', album:'', bpm:138, hasBeatGrid:true, genres:['House'], status:'not-started' });
+
+test('outgoing choices keep their original indices and only cover the final quarter', () => {
+  const cues = [44,111,161,160,213.6].map(sourceSeconds => ({sourceSeconds,bpm:130,strength:1,reason:'arrangement' as const}));
+  assert.deepEqual(subbeatsOutgoingCues(cues,213.6).map(({index}) => index),[2]);
+  assert.deepEqual(subbeatsOutgoingCues(cues,undefined),[]);
+  assert.deepEqual(subbeatsOutgoingCues(cues,0),[]);
+  assert.equal(subbeatsOutgoingCues([{...cues[0]!,sourceSeconds:160.2}],213.6).length,1);
+});
 
 test('selection accumulates across pages/filters, deduplicates and stops at the batch limit', () => {
   const first = Array.from({length:50}, (_,i) => row(`first-${i}`));

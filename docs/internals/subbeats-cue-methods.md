@@ -49,8 +49,9 @@ and a local linear beat fit; gaps and changing bar counts are not projected
 through. Tempo comes from the local accepted beat sequence. Small/full choices
 can produce different positions and tempos.
 
-Within the prepared head/exit coverage, the existing energy, mel and chroma
-features describe arrangement change. Ordered 1/2/4-bar block comparisons
+Within the prepared incoming head and the original recording’s final quarter
+for outgoing cues, the existing energy, mel and chroma features describe
+arrangement change. Earlier outgoing context is used for comparison only. Ordered 1/2/4-bar block comparisons
 describe breaks in repetition. Absolute heuristic evidence floors permit no
 candidates in flat/unsupported material. Nearby alternatives are suppressed,
 then the eight strongest are retained. Scores are descriptive, not calibrated
@@ -194,3 +195,45 @@ audition uses the original mix; the existing pair preview still uses stems.
 No tests or checks were performed for this follow-up, as requested. Rebuild
 controller and web together; no new cue preparation or analyzer rebuild is
 needed solely for the outgoing audition.
+
+## Final-quarter outgoing selection and fades
+
+Owner correction: an outgoing cue must lie in the final quarter of the actual
+recording. Algorithm version 2 searches that part of the original full mix,
+with up to 32 seconds of preceding context. It no longer restricts detection
+to the old exit-stem window, which may stop at an earlier loss of percussion.
+The 75% cutoff is applied before ranking and limiting to eight candidates, so
+strong earlier changes cannot crowd out legitimate ending candidates.
+
+A supported downbeat may also be a fade candidate when bar-level energy begins
+a gradual decline, the ending is at least 6 dB lower, and the level does not
+recover. The first supported onset gets a separate label and is retained ahead
+of ordinary changes. This is an energy-based suggestion, not proof of a phrase
+boundary or a complete vocal ending. Flat or unsupported endings may have no
+candidates; there is no fallback to an earlier section or an invented beat grid.
+
+New results include decoded recording duration for the countdown labels. The
+web filters older choices to the final quarter without changing their saved
+indices, and the pair API enforces the same bounds. If older results have no
+eligible cue, the menu asks for a recheck. Versioned cache identity ensures a
+Beat This! recheck computes fresh cue evidence while reusing verified stems.
+Both selected tracks need refreshed cue artifacts for the stem pair preview.
+
+The original-recording audition can play these later cues independently of stem
+coverage. Existing exit stems can still end too early for a newly detected cue;
+the pair renderer reports that coverage limitation. Extending stem coverage and
+fitting the incoming opening belong to the next stage, not this outgoing fix.
+
+Focused verification passed: seven cue Python cases through the analyzer-Python
+wrapper, sixteen route cases, six web selection cases, controller/web type
+checks and targeted lint. On the source/hash-verified Rozalla research recording
+(213.600s), the final quarter starts at 160.200s. Reusing its previously saved
+small0/final0 inference, both models yield a structural candidate at 163.040s
+and a fade candidate at 188.900s, with all candidates inside the final quarter.
+The owner's approximate outro reference is 161s; no track timestamp is hard-coded.
+This is not a fresh model run or owner approval of either new candidate. Local
+probe evidence is retained in the November research workspace as
+`final-quarter-rozalla.json` and `probe-final-quarter.py`.
+
+Rebuild controller, web and analyzer together, then recheck the selected tracks
+with a Beat This! preparation method. No library-wide reanalysis is required.

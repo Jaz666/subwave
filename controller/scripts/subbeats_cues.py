@@ -10,9 +10,10 @@ from pathlib import Path
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
+ALGORITHM_VERSION = 2
 
 
-def bar_candidates(beats, downbeats, energy, spectrum, chroma):
+def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False):
     import numpy as np
     beats, downbeats = np.asarray(beats), np.asarray(downbeats)
     if (not np.isfinite(beats).all() or not np.isfinite(downbeats).all()
@@ -30,8 +31,12 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma):
             bars.append(None)
             continue
         bars.append(ix)
+    levels = np.array([float(np.median(energy[0, bar])) if bar is not None else np.nan for bar in bars])
     candidates = []
+    fade_found = False
     for i in range(2, len(bars)-2):
+        if downbeats[i] < earliest_seconds:
+            continue
         # Never bridge a missed beat or changed bar origin with an ordinal count.
         if any(bar is None for bar in bars[i-2:i+2]):
             continue
@@ -53,14 +58,30 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma):
             ca, cb = chroma[:,before].mean(axis=(1,2)), chroma[:,after].mean(axis=(1,2))
             harmonic = float(np.linalg.norm(ca/max(1e-12,np.linalg.norm(ca))-cb/max(1e-12,np.linalg.norm(cb))))
             novelty = max(novelty, float(np.max(np.abs(delta)))/6, timbre/.35, harmonic/.5)
+        fade = 0.
+        if outgoing and not fade_found:
+            before_level = float(np.median(levels[i-2:i]))
+            future = levels[i:]
+            future = future[np.isfinite(future)]
+            if len(future) >= 6:
+                initial_drop = before_level-float(np.median(future[:2]))
+                final_drop = before_level-float(np.median(future[-2:]))
+                # A gradual, sustained decline with no later return to full level.
+                # The first supported onset is useful; do not fill the menu with
+                # successive points inside the same fade.
+                if (1 <= initial_drop <= 4 and final_drop >= 6
+                        and np.max(future[2:]) <= before_level-initial_drop+.75
+                        and np.mean(np.diff(future) <= .75) >= .75):
+                    fade = final_drop/6
+                    fade_found = True
         # Absolute evidence floors allow an empty result in unchanging material.
-        if repeat < .04 and novelty < 1:
+        if repeat < .04 and novelty < 1 and not fade:
             continue
         candidates.append(dict(sourceSeconds=float(downbeats[i]), bpm=float(60/slope),
-                               strength=max(repeat*10,novelty),
-                               reason='repetition' if repeat*10 >= novelty else 'arrangement'))
+                               strength=max(repeat*10,novelty,fade),
+                               reason='fade' if fade else 'repetition' if repeat*10 >= novelty else 'arrangement'))
     selected = []
-    for item in sorted(candidates,key=lambda c:c['strength'],reverse=True):
+    for item in sorted(candidates,key=lambda c:(c['reason']=='fade',c['strength']),reverse=True):
         if all(abs(item['sourceSeconds']-c['sourceSeconds']) >= 6*60/item['bpm'] for c in selected):
             selected.append(item)
         if len(selected)==8:
@@ -93,7 +114,7 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
     from subbeats_structure import SR as FEATURE_SR, extract
     if model not in MODELS:
         raise ValueError('Unknown cue preparation method')
-    identity = dict(mode='cue-points',version=VERSION,model=model,model_sha256=MODELS[model],
+    identity = dict(mode='cue-points',version=ALGORITHM_VERSION,model=model,model_sha256=MODELS[model],
                     beat_this='1.1.0',librosa=librosa.__version__,
                     source_sha256=record['identity']['source_sha256'],bundle_sha256=digest(Path(folder)/'manifest.json'))
     def build(stage):
@@ -105,13 +126,22 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
         beats, downbeats = predict(y,SR,model)
         if (not np.isfinite(beats).all() or np.any(beats < 0) or np.any(beats >= len(y)/SR)):
             raise ValueError('Learned grid is outside the decoded recording')
+        duration = len(y)/SR
         roles = {}
         for role, name in [('incoming','head'),('outgoing','exit')]:
-            region = next((r for r in record['metadata']['stem_regions'] if r['name']==name),None)
-            if region is None:
-                roles[role] = []
-                continue
-            start,end = region['start_sample']/region['sample_rate'],region['end_sample']/region['sample_rate']
+            if role == 'outgoing':
+                # The old exit stems can end at an early loss of percussion.
+                # Detect endings from the actual recording, with earlier context
+                # only for comparison; never offer that context as outgoing cues.
+                earliest = duration*.75
+                start,end = max(0.,earliest-32),duration
+            else:
+                region = next((r for r in record['metadata']['stem_regions'] if r['name']==name),None)
+                if region is None:
+                    roles[role] = []
+                    continue
+                earliest = 0.
+                start,end = region['start_sample']/region['sample_rate'],region['end_sample']/region['sample_rate']
             b = beats[(beats>=start)&(beats<end)]
             d = downbeats[(downbeats>=start)&(downbeats<end)]
             audio = librosa.resample(y[round(start*SR):round(end*SR)],orig_sr=SR,target_sr=FEATURE_SR)
@@ -119,14 +149,14 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                 roles[role] = []
                 continue
             features = extract(audio,b-start,librosa)
-            roles[role] = bar_candidates(b,d,*features)
+            roles[role] = bar_candidates(b,d,*features,earliest_seconds=earliest,outgoing=role=='outgoing')
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
-        (stage/'cues.json').write_text(json.dumps(dict(version=VERSION,model=model,**roles),allow_nan=False)+'\n')
-        return dict(bundle_key=Path(folder).name,model=model,**roles)
+        (stage/'cues.json').write_text(json.dumps(dict(version=VERSION,model=model,durationSeconds=duration,**roles),allow_nan=False)+'\n')
+        return dict(bundle_key=Path(folder).name,model=model,durationSeconds=duration,**roles)
     result = prepare_cached(state_dir,identity,build,cache_root=cache_root,allowance=allowance)
-    return dict(version=VERSION,model=model,artifactKey=Path(result['directory']).name,
+    return dict(version=VERSION,model=model,artifactKey=Path(result['directory']).name,durationSeconds=result['metadata']['durationSeconds'],
                 incoming=result['metadata']['incoming'],outgoing=result['metadata']['outgoing'])
 
 
@@ -138,7 +168,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version')!=VERSION
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version')!=ALGORITHM_VERSION
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')
