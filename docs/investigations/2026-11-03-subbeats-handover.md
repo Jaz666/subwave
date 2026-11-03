@@ -10,12 +10,14 @@ contain historical prototypes; they do not override the current decisions.
 
 The independent official Beat This! comparison is now complete: five full-mix
 references, `small0` and `final0`, one inference each. Read the
-[evaluation and next listening gate](subbeats-research-20261103/beat-this-evaluation.md)
+[evaluation and owner listening result](subbeats-research-20261103/beat-this-evaluation.md)
 and [portable results](subbeats-research-20261103/beat-this-comparison.json).
-Neither model preserves every accepted opening. Next: owner listening to
-`urban-cookie-collective-final0.mp3` and `gusto-small0.mp3` in
-`/home/jaz666/codex/subbeats-beat-this-20261103/audio/`, then phrase candidates
-only within accepted windows. No phrase planner or station integration was
+Neither model preserves every accepted opening. The owner confirms the Urban
+`final0` and Gusto `small0` 32-second auditions sound fine. Next: compare
+arrangement features and barwise similarity/repetition for phrase candidates
+only within those accepted openings, following the updated
+[five-project review](subbeats-research-20261103/project-review.md).
+No phrase planner or station integration was
 implemented. Read the reference caveats before interpreting any result,
 especially Cübik. Keep this bounded; the owner requested minimal testing/usage.
 
@@ -194,8 +196,11 @@ opening better. Both start early on Rozalla and leave Afro-Left's sparse intro
 incomplete. Cübik remains unresolved, with model pulse estimates around the
 owner's reported 124.3 BPM in much of the track. All ten raw-click auditions,
 logits and original outputs are saved locally; complete timestamp/metric JSON
-and reproduction scripts are committed alongside this record. No new owner
-listening confirmation or phrase approval has yet been obtained.
+and reproduction scripts are committed alongside this record. The owner has
+since accepted the presented Urban `final0` and Gusto `small0` openings; phrase
+approval remains pending. Follow-up source review of djcues and
+automatic-cuepoints identifies barwise structural similarity as a useful next
+baseline; neither supplies verified vocal-safe cue points.
 
 ### Beat This! independently of Subwave PR #2244
 
@@ -301,8 +306,9 @@ identity, timing coverage, local BPM, continuous grid fit, bar-origin behaviour
 and observed failures. Prefer full mixes as the initial input, matching the
 model's intended use; stems are a later comparison if justified.
 
-That comparison has now been run; use the follow-up report and next listening
-gate above instead of repeating inference. The paragraphs in this section
+That comparison has now been run and two opening auditions accepted; use the
+follow-up report and next phrase experiment above instead of repeating
+inference. The paragraphs in this section
 describe the original experiment scope.
 
 Use audible clicks the owner can hear. A successful result must preserve the

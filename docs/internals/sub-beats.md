@@ -1750,8 +1750,14 @@ Follow-up on 3 November: the
 has now run once per model on all five full-mix references in a separate
 CPU-only environment. `final0` provides clean Urban Cookie Collective beat/bar
 continuity; `small0` better preserves Gusto's opening bar phase. Neither model
-replaces the accepted quiet Rozalla or sparse Afro-Left opening grids. New
-owner listening and phrase evidence remain pending. This confirms the need to
+replaces the accepted quiet Rozalla or sparse Afro-Left opening grids. The owner
+subsequently accepted the presented Urban `final0` and Gusto `small0` 32-second
+opening auditions; phrase evidence remains pending. The updated
+[project review](../investigations/subbeats-research-20261103/project-review.md)
+adds djcues (cue roles over existing Rekordbox analysis) and automatic-cuepoints
+(barwise structural similarity, with heuristic boundary adjustments).
+The next experiment compares arrangement and repetition evidence on those
+accepted openings before assigning cue points. This confirms the need to
 check continuous local beat/bar evidence independently of model size, before
 using it for cue-point or phrase selection. Station behavior is unchanged.
 

@@ -126,12 +126,14 @@ Ten MP3 auditions are in the research directory's `audio/`, named
 louder/high click for the model downbeat. No missing beats were filled and no
 phase was corrected. Music gain is .35, beat click .72, downbeat click .92,
 followed by common peak limiting to .95. The first three excerpts are 32s,
-Afro-Left 75s, Cübik 128s. These are generated diagnostics, not owner-approved
-listening results; no auditory judgement by the assistant is claimed.
+Afro-Left 75s, Cübik 128s. These are generated diagnostics; owner feedback is
+recorded below. No auditory judgement by the assistant is claimed.
 
-Minimal next listening: `urban-cookie-collective-final0.mp3` and
-`gusto-small0.mp3`. If their beat/bar positions pass, attempt arrangement and
-repetition-based phrase candidates **within those accepted opening windows**,
+Owner follow-up on 3 November: the two presented 32-second auditions,
+`urban-cookie-collective-final0.mp3` and `gusto-small0.mp3`, "sound fine".
+Their tested opening beat/bar alignment is accepted; this does not approve
+later regions, phrase boundaries, vocal cuts or track pairs. Next: attempt
+arrangement and repetition-based phrase candidates **within those accepted opening windows**,
 using the owner's 22.412s change and 22.964s release as references. Counted bars
 alone cannot establish phrases; preserve vocal pickups/tails. Rozalla/Afro-Left
 still need a separately justified projection mechanism rather than raw model

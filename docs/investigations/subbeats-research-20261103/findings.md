@@ -126,5 +126,18 @@ Neither recovers the confirmed quiet Rozalla opening or all of Afro-Left's
 sparse intro. Both place Afro-Left's strong entry at 59.32s. Cübik's model
 estimates favor a pulse near the owner's reported 124.3 BPM in much of the
 recording, without resolving intrinsic tempo behavior. No library preference
-or suitability flag changed. New owner listening and phrase approval remain
-pending; next auditions are Urban `final0` and Gusto `small0`, each 32 seconds.
+or suitability flag changed. The owner subsequently confirmed that the presented
+Urban `final0` and Gusto `small0` 32-second auditions sound fine. This accepts
+tested opening beat/bar alignment only; phrase approval remains pending.
+
+### Follow-up: two cue-point repositories inspected
+
+The updated [project review](project-review.md) records the exact revisions and
+source links for djcues and automatic-cuepoints. djcues uses existing Rekordbox
+phrase/vocal analysis and maps it to cue roles; it is not an audio phrase model.
+automatic-cuepoints provides a more relevant local barwise similarity/CBM
+baseline, but later heuristics can shift boundaries by up to two bars, and a
+novelty filter may erase a same-texture cycle release. Next: investigate raw
+barwise similarity/repetition alongside existing arrangement features on the
+two accepted openings. No packages installed, third-party code executed,
+remote audio uploaded, tests run or station changes made for this review.

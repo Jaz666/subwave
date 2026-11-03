@@ -39,7 +39,15 @@
         7.63,
         15.021,
         22.412
-      ]
+      ],
+      "beatThisOpeningAudition": {
+        "model": "final0",
+        "durationSeconds": 32,
+        "ownerFeedback": "they sound fine",
+        "feedbackDate": "2026-11-03",
+        "beatBarAlignmentAccepted": true,
+        "scope": "Presented exact-source opening audition only; no later grid, phrase, vocal-cut or pair approval."
+      }
     },
     {
       "artist": "Gusto",
@@ -65,7 +73,15 @@
       ],
       "releasePointVerified": true,
       "releaseVerificationSource": "Owner explicitly confirmed the proposed natural release near 22.96s.",
-      "barCountInterpretation": "Retain owner groove-count description separately from the four-quarter-note grid. The validated grid has four-bar boundaries near 0.12, 7.735, 15.349 and 22.964 seconds; do not use the earlier approximate groove-count wording to rescale its tempo."
+      "barCountInterpretation": "Retain owner groove-count description separately from the four-quarter-note grid. The validated grid has four-bar boundaries near 0.12, 7.735, 15.349 and 22.964 seconds; do not use the earlier approximate groove-count wording to rescale its tempo.",
+      "beatThisOpeningAudition": {
+        "model": "small0",
+        "durationSeconds": 32,
+        "ownerFeedback": "they sound fine",
+        "feedbackDate": "2026-11-03",
+        "beatBarAlignmentAccepted": true,
+        "scope": "Presented exact-source opening audition only; no later grid, phrase, vocal-cut or pair approval."
+      }
     },
     {
       "artist": "Leftfield",
