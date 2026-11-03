@@ -5747,11 +5747,12 @@ export const subbeatsCuePointSchema = z.object({
   sourceSeconds:z.number().finite().nonnegative().max(1200), bpm:z.number().finite().min(60).max(190),
   strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement','fade']),
   phraseBars:z.union([z.literal(8),z.literal(16)]).optional(),
+  phraseStartSeconds:z.number().finite().nonnegative().max(1200).optional(),
   phraseEndSeconds:z.number().finite().nonnegative().max(1200).optional(),
 });
 export const subbeatsCuePointsSchema = z.object({
   version:z.literal(1),model:z.enum(['small0','final0']),artifactKey:z.string().regex(/^[a-f0-9]{64}$/),
-  durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.literal(3).optional(),
+  durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.union([z.literal(3),z.literal(4)]).optional(),
   incoming:z.array(subbeatsCuePointSchema).max(8),outgoing:z.array(subbeatsCuePointSchema).max(8),
 });
 export const subbeatsJobSchema = z.object({

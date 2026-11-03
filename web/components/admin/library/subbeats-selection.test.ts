@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectPreparationIds, selectSubbeatsRows, subbeatsOutgoingCues, type SubbeatsCandidate } from './subbeats-selection';
+import { selectPreparationIds, selectSubbeatsRows, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './subbeats-selection';
 const row = (id: string): SubbeatsCandidate => ({ id, title:id, artist:'Artist', album:'', bpm:138, hasBeatGrid:true, genres:['House'], status:'not-started' });
 
 test('outgoing choices keep their original indices and allow the second-half search window', () => {
@@ -43,4 +43,21 @@ test('preparation batches stop at 100 entries without dropping prior selections'
   const jobs = Array.from({length:120},(_,i)=>({id:String(i),status:'prepared' as const}));
   const selected = selectPreparationIds(['119'],jobs.map(job=>job.id),jobs);
   assert.equal(selected.length,100); assert.equal(selected[0],'119'); assert.equal(new Set(selected).size,100);
+});
+
+
+test('incoming length order uses the complete source opening and matched tempo without renumbering', () => {
+  const outgoing={sourceSeconds:160,bpm:130,strength:1,reason:'arrangement' as const,phraseBars:16 as const,phraseEndSeconds:190};
+  const cues=[
+    {sourceSeconds:22,bpm:125,strength:1,reason:'repetition' as const},
+    {sourceSeconds:31.2,bpm:125,strength:1,reason:'repetition' as const,phraseBars:8 as const,phraseStartSeconds:16},
+    {sourceSeconds:30,bpm:100,strength:1,reason:'arrangement' as const},
+  ];
+  const ranked=subbeatsIncomingCues(cues,outgoing);
+  assert.deepEqual(ranked.map(c=>c.index),[1,0,2]);
+  assert.equal(ranked[0]!.matchedSeconds,30);
+  assert.equal(ranked[0]!.differenceSeconds,0,'leading source audio is included in the length');
+  assert.equal(ranked[2]!.tempoFits,false);
+  assert.deepEqual(subbeatsIncomingCues(cues).map(c=>c.index),[0,1,2]);
+  assert.equal(subbeatsIncomingCues(cues,{...outgoing,phraseEndSeconds:undefined})[0]!.differenceSeconds,null);
 });

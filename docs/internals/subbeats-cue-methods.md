@@ -293,3 +293,62 @@ reported no findings. The admin-query audit still reports the pre-existing
 imperative original-audio download in `OutgoingCueAudition.tsx`; that action is
 unchanged and intentionally loads audio only on Listen. No services, shared
 library state or live preparations were changed by these checks.
+
+
+## Incoming opening passages: algorithm 4
+
+After previewing outgoing tracks, the owner authorized the equivalent incoming
+selection/audition stage. Within the existing saved incoming head, arrivals can
+now carry `phraseBars` (8/16) and `phraseStartSeconds`: the measured passage starts
+at the first complete learned bar or an existing structural boundary, and ends
+at an independently supported arrival change. All intervening four-beat bars
+must be continuous; an energy reduction over 1 dB is not promoted as an arrival.
+Phrase ranking considers structural strength, energy growth and earlier entry.
+Three strongest spaced original changes retain menu places so phrase hypotheses
+do not remove useful unconstrained cues. No phrase boundary or vocal safety is
+claimed. Outgoing algorithm-3 ranking is unchanged.
+
+Incoming labels count forwards from original source zero. **Listen to this opening** auditions the full original recording from zero until
+two bars after the selected arrival, at its original speed, without an added
+fade. It preserves quiet prefixes and Gusto's `other`-stem groove. Changing cues
+pauses/resets playback and reuses the downloaded audio. Outgoing, incoming and
+pair auditions stop one another; changing tracks/unmounting cancels loading and
+releases resources. Incoming-only audition needs one prepared track and no
+outgoing selection. The shared `CueAudition` component replaces the outgoing-only
+component. The authenticated bounded `/source-audio/:id` proxy supports either
+cue role, retaining `/outgoing-audio/:id` as a compatibility alias. No source
+credentials, shared audio-state writes or live broadcast changes are added.
+
+When the selected outgoing cue has a later closing change, incoming choices are
+ordered by the difference between its closing-passage duration and the complete
+incoming opening duration after tempo adjustment (`arrival / (outBpm/inBpm)`).
+Out-of-range tempos sort last; original server indices remain intact. The first
+choice is selected when choosing an incoming track. A different choice remains
+manual, with **Use closest opening length** available. This is a duration
+comparison, not automatic compatibility approval. The UI explicitly states that
+the existing pair preview still aligns rhythm handovers. It does not claim that
+matching the displayed lengths has changed pair placement or solved late exit-
+stem coverage. Incoming listening acceptance comes before that rendering step.
+
+Cache identity/preparation responses advance to algorithm 4; public version is
+still 1. The controller refuses old analyzers for new cue preparations. Saved
+algorithm-3 outgoing choices remain readable and usable in pair requests when
+their source/stem integrity checks pass, so accepted outgoing choices need no
+mandatory recheck. Rebuild analyzer/controller/web and recheck incoming tracks
+with either Beat This! method; existing stems are reused. No automatic or
+library-wide preparation is triggered.
+
+See [incoming track evidence](../investigations/subbeats-research-20261103/incoming-phrase-evaluation.md).
+Five tracks/two models were compared using saved inference; accepted Urban/Gusto
+arrivals remain present, and all ten outgoing result lists remain identical.
+
+
+Verification for algorithm 4: 10 cue Python cases via the analyzer-Python wrapper,
+60 controller Sub/Beats cases (including incoming-only source authentication and
+old-alias handling), seven web selection cases, controller/web typechecks and
+targeted lint. Browser checks cover full opening playback without an outgoing
+selection, cue reset/audio reuse, two-bar stop, all three players' exclusion,
+closest-length selection, original pair indices and desktop/mobile layout. The
+Library search and six query-cache checks pass. The source-download exception
+is now registered narrowly with the admin-query audit; the audit and its nine
+self-tests pass. The mechanical UI detector reports no findings.
