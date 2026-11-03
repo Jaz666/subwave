@@ -64,7 +64,11 @@ the event preceding the measured onset, but does not locate a first phoneme.
 At the later event, source 21.88–22.38s has vocal-stem RMS -13.17dBFS;
 22.38–22.88s is -43.11dBFS, 22.88–23.38s -49.91dBFS and 23.38–24.38s -66.48dBFS.
 This supports a strong vocal-stem level drop with a subsequent low-level tail.
-Only listening can distinguish the word ending, reverb and separation bleed.
+The owner subsequently confirmed the second chime is "precisely at the end of
+the last word in the vocal". Thus 22.380s is a listening-confirmed last-word
+ending as well as the accepted structural event, for this exact audition.
+The measured low-level sound after it remains separate tail/bleed evidence;
+the feedback does not approve truncating that sound or establish its exact end.
 
 Keep 22.380s as the accepted musical change/rhythm-handover candidate. **Do not
 hard-cut the vocal stem at that point based on the structural label.** Preserve
@@ -118,11 +122,12 @@ gate, noise removal, looping or stretching. A 100ms lower chord marks each
 source event. Level normalisation is for listening, not evidence about the
 original stem balance. The chime/normalisation can obscure very faint details;
 unmarked source copies remain available if needed. The owner has confirmed
-Gusto's low background groove is in `other`. Urban's exact word-ending/tail
-relationship and Gusto's decay across the later marker remain unconfirmed.
+Gusto's low background groove is in `other`, and Urban's second chime coincides
+with its last sung word ending. Gusto's decay across the later marker and the
+exact end of Urban's tail remain unconfirmed.
 
-Next: establish Urban's word-ending/tail relationship and Gusto's groove decay
-across the later marker. Keep the structural
+Next: preserve Urban's post-word tail separately from its confirmed 22.380s
+word ending, and establish Gusto's groove decay across the later marker. Keep the structural
 events separate from vocal-stem cut/fade endpoints and background-groove loop
 boundaries. No cue planner or renderer change is justified until these roles
 and edge requirements are clear. Pair suitability also remains untested.

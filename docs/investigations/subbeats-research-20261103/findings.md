@@ -208,3 +208,9 @@ exact source timestamp or establish decay/loop-seam clearance. Preserve that
 groove as musical content when considering `other`-stem cuts or loops, even
 with no nominal vocal-gate detections. Urban's exact word-ending/tail timing
 and Gusto's decay at the later marker remain pending listening evidence.
+
+Further owner listening confirms Urban's second chime, source 22.380s, is
+precisely at the end of its last sung word. This supersedes the pending
+word-ending question above. Retain the subsequent low-level tail separately;
+the confirmation does not approve truncating reverb, an exact tail-end time,
+a loop seam or a track pair.

@@ -59,6 +59,14 @@
         "musicalBoundariesAccepted": true,
         "completedGrooveReleaseConfirmedSeconds": null,
         "scope": "Presented marked opening only; no exact vocal onset/end, tail clearance, automatic entry/exit cue, loop seam or pair approval."
+      },
+      "vocalWordEndConfirmation": {
+        "feedbackDate": "2026-11-03",
+        "sourceSeconds": 22.38,
+        "markerClipSeconds": 18.38,
+        "ownerFeedback": "It's precisely at the end of the last word in the vocal",
+        "interpretation": "Second chime in the presented vocal-stem audition coincides with the last sung word ending.",
+        "scope": "Listening-confirmed word ending for this exact source and audition; not a sample-accurate phoneme annotation or approval to truncate the subsequent tail, loop or pair."
       }
     },
     {

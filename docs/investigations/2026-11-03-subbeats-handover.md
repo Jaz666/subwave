@@ -30,6 +30,9 @@ Next: owner listening to `urban-vocal-boundaries.mp3` and
 to distinguish word endings/tails and groove decay across the later markers.
 The owner has confirmed Gusto's low background-vocal groove is in `other`,
 with a "whomp" on the first beat; no exact source timestamp was specified.
+The owner also confirms Urban's second chime at source 22.380s is precisely at
+the end of the last sung word. Keep its subsequent tail separate; exact tail
+clearance and Gusto's groove decay/loop seam are not yet approved.
 Do not hard-cut Urban's vocals at the structural marker or certify Gusto's loop
 from absent vocal-gate detections. The earlier marked 32-second auditions remain in
 `/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`.
