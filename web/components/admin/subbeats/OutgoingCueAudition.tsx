@@ -13,10 +13,13 @@ export function OutgoingCueAudition({ trackId, cueSeconds, adminFetch, onPlay, p
   const [src, setSrc] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => () => {
-    request.current?.abort();
-    audio.current?.pause();
-    if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+  useEffect(() => {
+    const player = audio.current;
+    return () => {
+      request.current?.abort();
+      player?.pause(); player?.removeAttribute('src'); player?.load();
+      if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+    };
   }, []);
   useEffect(() => {
     audio.current?.pause();
