@@ -12,6 +12,19 @@ export function subbeatsOutgoingCues(cues: readonly z.infer<typeof subbeatsCuePo
     .filter(({cue}) => cue.sourceSeconds >= duration*.5 && cue.sourceSeconds < duration);
 }
 
+// Compare the complete retained opening after the preview's tempo adjustment.
+// This orders audition choices, not harmony/vocal compatibility or pair approval.
+export function subbeatsIncomingCues(cues: readonly z.infer<typeof subbeatsCuePointSchema>[], outgoing?: z.infer<typeof subbeatsCuePointSchema>) {
+  const length = outgoing?.phraseEndSeconds == null ? null : outgoing.phraseEndSeconds-outgoing.sourceSeconds;
+  return cues.map((cue,index) => {
+    const rate = outgoing ? outgoing.bpm/cue.bpm : 1;
+    const matchedSeconds = cue.sourceSeconds/rate;
+    return {cue,index,tempoFits: Math.abs(rate-1) <= .08,matchedSeconds,
+      differenceSeconds: length != null && length > 0 ? matchedSeconds-length : null};
+  }).sort((a,b) => Number(b.tempoFits)-Number(a.tempoFits)
+    || (a.differenceSeconds == null || b.differenceSeconds == null ? 0 : Math.abs(a.differenceSeconds)-Math.abs(b.differenceSeconds)) || a.index-b.index);
+}
+
 // One capacity rule for row, page and matching selection. Retrying an existing
 // entry consumes a batch place, but never another saved-list place.
 export function selectSubbeatsRows(current: SubbeatsCandidate[], added: SubbeatsCandidate[], jobs: Job[]): SubbeatsCandidate[] {

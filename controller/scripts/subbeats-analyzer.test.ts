@@ -58,10 +58,12 @@ test('cue methods are forwarded and an older analyzer cannot silently return cla
   await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'small0'),/Update the heavy analyzer/);
   assert.equal(payload?.method,'small0');
   cueResponse={version:1,model:'final0',artifactKey:'f'.repeat(64),incoming:[],outgoing:[]};
-  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for outgoing/);
+  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for opening and closing/);
   cueResponse={...cueResponse,durationSeconds:200};
-  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for outgoing/);
+  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for opening and closing/);
   cueResponse={...cueResponse,algorithmVersion:3};
+  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for opening and closing/);
+  cueResponse={...cueResponse,algorithmVersion:4};
   const result=await analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0');
   assert.equal(result.cuePoints?.model,'final0');
   assert.equal(payload?.method,'final0');

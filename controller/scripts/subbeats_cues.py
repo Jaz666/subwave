@@ -10,10 +10,10 @@ from pathlib import Path
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 3
+ALGORITHM_VERSION = 4
 
 
-def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False):
+def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False, incoming=False):
     import numpy as np
     beats, downbeats = np.asarray(beats), np.asarray(downbeats)
     if (not np.isfinite(beats).all() or not np.isfinite(downbeats).all()
@@ -80,7 +80,7 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_secon
         candidates.append(dict(sourceSeconds=float(downbeats[i]), bpm=float(60/slope),
                                strength=max(repeat*10,novelty,fade),
                                reason='fade' if fade else 'repetition' if repeat*10 >= novelty else 'arrangement'))
-    closing = {}
+    phrases = {}
     if outgoing:
         by_bar = {int(np.searchsorted(downbeats,c['sourceSeconds'])): c for c in candidates}
         fade_start = next((c['sourceSeconds'] for c in candidates if c['reason']=='fade'), float('inf'))
@@ -109,13 +109,43 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_secon
                         or np.max((future[:-1]+future[1:])/2) > body):
                     continue
                 score = min(item['strength'],4)+min(end['strength'],4)+(0.5 if width==16 else 0)
-                if score > closing.get(i,0):
-                    closing[i] = score
+                if score > phrases.get(i,0):
+                    phrases[i] = score
                     item.update(phraseBars=width,phraseEndSeconds=end['sourceSeconds'])
+    if incoming:
+        by_bar = {int(np.searchsorted(downbeats,c['sourceSeconds'])): c for c in candidates}
+        first = next((i for i,bar in enumerate(bars) if bar is not None), None)
+        for i,item in by_bar.items():
+            for width in (8,16):
+                j = i-width
+                if j < 0 or (j != first and j not in by_bar) or any(bar is None for bar in bars[j:i+2]):
+                    continue
+                local = np.concatenate(bars[j:i+2])
+                periods = np.diff(beats[local])
+                if np.max(np.abs(periods/np.median(periods)-1)) > .2:
+                    continue
+                body = float(np.median(levels[j:i]))
+                arrival = float(np.median(levels[i:i+2]))
+                # ponytail: structural arrivals and continuous bars suggest an
+                # opening phrase; they do not establish vocal-free material.
+                if arrival < body-1:
+                    continue
+                start = float(downbeats[j])
+                score = min(item['strength'],4)+min(max(0,arrival-body)/3,2)+2/(1+start)
+                if score > phrases.get(i,0):
+                    phrases[i] = score
+                    item.update(phraseBars=width,phraseStartSeconds=start)
     selected = []
+    if incoming:
+        # Keep strong unconstrained arrivals alongside phrase hypotheses.
+        for item in sorted(candidates,key=lambda c:c['strength'],reverse=True):
+            if all(abs(item['sourceSeconds']-c['sourceSeconds']) >= 6*60/item['bpm'] for c in selected):
+                selected.append(item)
+            if len(selected)==3:
+                break
     def rank(c):
         i = int(np.searchsorted(downbeats,c['sourceSeconds']))
-        return (i in closing, closing.get(i,0), c['reason']!='fade', c['strength'])
+        return (i in phrases, phrases.get(i,0), c['reason']!='fade', c['strength'])
     # Reserve one alternative for the recorded fade, without promoting it above
     # a supported closing passage or filling the menu with fade-internal changes.
     fade = next((c for c in candidates if c['reason']=='fade'), None)
@@ -126,7 +156,7 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_secon
             break
     if fade is not None and fade not in selected:
         selected.append(fade)
-    return selected
+    return sorted(selected,key=rank,reverse=True) if incoming else selected
 
 
 def predict(y, sr, model):
@@ -189,7 +219,7 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                 roles[role] = []
                 continue
             features = extract(audio,b-start,librosa)
-            roles[role] = bar_candidates(b,d,*features,earliest_seconds=earliest,outgoing=role=='outgoing')
+            roles[role] = bar_candidates(b,d,*features,earliest_seconds=earliest,outgoing=role=='outgoing',incoming=role=='incoming')
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
@@ -208,7 +238,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version')!=ALGORITHM_VERSION
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')

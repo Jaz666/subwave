@@ -8,6 +8,40 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+
+Latest owner update: outgoing choices seem satisfactory on the tracks previewed;
+apply the same treatment to incoming tracks. Algorithm 4 adds 8/16-bar incoming
+passage hypotheses within the saved head, preserves three strongest original
+arrivals, and retains accepted Urban final0 22.380s / Gusto small0 22.940s.
+All ten outgoing track/model candidate lists are identical to algorithm 3.
+The incoming audition plays source zero through the selected arrival and two
+bars beyond, retaining quiet prefixes/background groove. It works without an
+outgoing selection, reuses audio when changing cues and stops the other players.
+Incoming choices are ordered by complete opening duration at the outgoing tempo
+against the selected closing passage; source indices are retained. This is a
+length guide only: the pair renderer still aligns rhythm handovers. Actual
+placement against the full outgoing closing passage and later stem coverage
+remain the next rendering step after incoming listening acceptance.
+
+Fresh preparation requires an algorithm-4 analyzer. Existing algorithm-3 outgoing
+artifacts remain valid with their source/stem checks, so only incoming tracks
+need rechecking to obtain new incoming labels. Rebuild analyzer/controller/web
+before that recheck. The owner runs Docker; no bulk preparation or live-state
+writes are authorized for these comparisons. See [incoming evidence](subbeats-research-20261103/incoming-phrase-evaluation.md)
+and the [method guide](../internals/subbeats-cue-methods.md#incoming-opening-passages-algorithm-4).
+
+Verification: 10 cue Python cases through the analyzer-Python wrapper; 60
+controller Sub/Beats cases; seven web selection cases; controller/web typechecks.
+Browser checks cover source-zero playback without outgoing selection, cue reset,
+source reuse, two-bar stop, closest-length selection, mutually exclusive audio,
+original pair indices and desktop/mobile. Library search and all six query-cache
+checks pass. The source download now has an explicit, narrowly registered
+imperative classification; the admin-query audit passes. No dataset/model run,
+new stem separation, Docker build or restart was performed. Source handoff
+follows after integration.
+
+### Previous outgoing-stage handoff
+
 Latest owner direction: final quarter was approximate; favour 8/16-bar closing
 passages and establish outgoing selection before incoming fitting. Algorithm 3
 now searches the second half of the original recording, ranks existing structural

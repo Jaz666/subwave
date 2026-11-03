@@ -39,7 +39,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(lengths,[680,1640]) # Second-half search plus 64s context reaches source end.
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],3)
+            self.assertEqual(result['algorithmVersion'],4)
             self.assertTrue(result['outgoing'])
             self.assertTrue(all(100<=c['sourceSeconds']<200 for c in result['outgoing']))
 
@@ -117,11 +117,29 @@ class CueTests(unittest.TestCase):
         result=cues.bar_candidates(beats[keep],bars,energy[:,keep],spectrum[:,keep],chroma[:,keep])
         self.assertFalse(any(22<=c['sourceSeconds']<=26 for c in result))
 
+    def test_incoming_arrivals_use_observed_opening_bars_and_reject_gaps(self):
+        beats=np.arange(.3,80,.5); bars=beats[::4]
+        energy=np.zeros((4,len(beats))); spectrum=np.ones((2,len(beats)))/2
+        chroma=np.ones((12,len(beats)))
+        energy[:,beats>=16.3]=6; energy[:,beats>=32.3]=12
+        result=cues.bar_candidates(beats,bars,energy,spectrum,chroma,incoming=True)
+        for seconds,width in [(16.3,8),(32.3,16)]:
+            point=next(c for c in result if abs(c['sourceSeconds']-seconds)<.01)
+            self.assertEqual(point['phraseBars'],width)
+            self.assertAlmostEqual(point['phraseStartSeconds'],.3)
+        keep=np.abs(beats-10.8)>.01
+        result=cues.bar_candidates(beats[keep],bars,energy[:,keep],spectrum[:,keep],chroma[:,keep],incoming=True)
+        self.assertFalse(any(c.get('phraseStartSeconds')==.3 for c in result))
+        self.assertEqual(cues.bar_candidates(beats,bars,np.zeros_like(energy),spectrum,chroma,incoming=True),[])
+        falling=-energy
+        result=cues.bar_candidates(beats,bars,falling,spectrum,chroma,incoming=True)
+        self.assertFalse(any(c.get('phraseStartSeconds')==.3 for c in result))
+
     def test_cue_artifact_is_bound_to_the_verified_stem_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             state=Path(tmp); bundle=state/'stems'; bundle.mkdir()
             (bundle/'manifest.json').write_text('source-one')
-            identity=dict(mode='cue-points',version=cues.ALGORITHM_VERSION,bundle_sha256=cache.digest(bundle/'manifest.json'))
+            identity=dict(mode='cue-points',version=3,bundle_sha256=cache.digest(bundle/'manifest.json'))
             def build(stage):
                 (stage/'cues.json').write_text(json.dumps({'incoming':[],'outgoing':[]}))
                 return dict(bundle_key=bundle.name)

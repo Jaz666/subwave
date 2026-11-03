@@ -1,7 +1,7 @@
 'use client';
 
 import { SubbeatsCache, useSubbeatsCache } from './subbeats/SubbeatsCache';
-import { OutgoingCueAudition } from './subbeats/OutgoingCueAudition';
+import { CueAudition } from './subbeats/CueAudition';
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +17,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
-import { selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, type SubbeatsCandidate } from './library/subbeats-selection';
+import { selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './library/subbeats-selection';
 import { MIX_LABEL, SuitabilityDetails } from './library/subbeats-suitability';
 import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, type SubbeatsPage } from './subbeats/SubbeatsWorkspace';
 
@@ -200,6 +200,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     if (outgoing && !valid.has(outgoing)) { setOutgoing(''); setBarShift(0); }
     if (incoming && !valid.has(incoming)) { setIncoming(''); setBarShift(0); }
   },[state.data,outgoing,incoming,setOutgoing,setIncoming,setBarShift,setJobSelected]);
+  const [soloRole,setSoloRole] = useState<'incoming'|'outgoing'|null>(null);
   const [matchFor, setMatchFor] = useState<string | null>(null);
   const matchContext = JSON.stringify([outgoing,barShift,jobVersion]);
   const cueMode = previewMethod === 'cue-points';
@@ -224,6 +225,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const matchRows = matchesEnabled && !matches.isError ? matches.data?.matches ?? [] : [];
   const incomingMatch = matchRows.find(match => match.id === incoming);
   const cueIncoming = previewJobs.filter(job => job.id !== outgoing && job.cuePoints?.incoming.length);
+  const incomingCues = subbeatsIncomingCues(byId.get(incoming)?.cuePoints?.incoming ?? [],outgoingCue);
+  const incomingChoice = incomingCues.find(item => item.index === inCueIndex);
+  const incomingCue = incomingChoice?.cue;
+  useEffect(() => {
+    if (cueMode && incomingCues.length && !incomingChoice) setInCueIndex(incomingCues[0]!.index);
+  }, [cueMode,incomingCues,incomingChoice,setInCueIndex]);
   const incomingReady = cueMode ? !!byId.get(incoming)?.cuePoints?.incoming[inCueIndex] && !!outgoingCue : !!incomingMatch;
   const preparationControl = <div className="max-w-md"><label htmlFor="subbeats-preparation-method" className="mb-1 block text-sm font-medium">Preparation method</label>
     <select id="subbeats-preparation-method" className={SELECT_CLASS} value={preparationMethod} disabled={enqueue.isPending} onChange={event => setPreparationMethod(event.target.value as typeof preparationMethod)}>
@@ -309,13 +316,13 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         </div>
         {outgoing && outgoingDuration != null && !outgoingCues.length && <p role="status" className="mt-3 text-sm">No saved cue lies in the second half. Recheck this track with a Beat This! preparation method to analyse its actual ending. If no supported cue is found, it stays empty.</p>}
         {outgoingCue?.phraseBars && outgoingCue.phraseEndSeconds != null && outgoingDuration != null && <p className="mt-3 text-sm text-muted">{outgoingCue.phraseBars} measured bars to a closing change at {(outgoingCue.phraseEndSeconds-outgoingDuration).toFixed(2)}s. The recording continues after that point. Phrase and vocal completion still need listening.</p>}
-        {outgoingCue && <OutgoingCueAudition key={`${outgoing}:${byId.get(outgoing)?.cuePoints?.artifactKey}`} trackId={outgoing} cueSeconds={outgoingCue.sourceSeconds} adminFetch={adminFetch} onPlay={preview.stop} pause={preview.loading || preview.playing} />}
+        {outgoingCue && <CueAudition role="outgoing" key={`${outgoing}:${byId.get(outgoing)?.cuePoints?.artifactKey}`} trackId={outgoing} cueSeconds={outgoingCue.sourceSeconds} adminFetch={adminFetch} onPlay={() => { setSoloRole('outgoing'); preview.stop(); }} pause={preview.loading || preview.playing || soloRole === 'incoming'} />}
       </section>}
       {(cueMode ? prepared < 1 : prepared < 2) ? <div className="mt-4 text-sm"><p className="text-muted">{cueMode ? 'Prepare a track with cue points to listen to its ending.' : 'Prepare at least two tracks to try a transition.'}</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         {!cueMode && outgoingControl}
         <div className="min-w-0">
           <label htmlFor="subbeats-incoming" className="mb-1 block text-sm font-medium">Incoming track</label>
-          <select id="subbeats-incoming" className={SELECT_CLASS} value={cueMode ? incoming : incomingMatch ? incoming : ''} disabled={cueMode ? !outgoing || !cueIncoming.length : !matchesEnabled || matches.isFetching || !matchRows.length} onChange={event => {setIncoming(event.target.value);setInCueIndex(0);}}>
+          <select id="subbeats-incoming" className={SELECT_CLASS} value={cueMode ? incoming : incomingMatch ? incoming : ''} disabled={cueMode ? !cueIncoming.length : !matchesEnabled || matches.isFetching || !matchRows.length} onChange={event => {setIncoming(event.target.value);setInCueIndex(subbeatsIncomingCues(byId.get(event.target.value)?.cuePoints?.incoming ?? [],outgoingCue)[0]?.index ?? 0);}}>
             <option value="">{cueMode ? 'Choose a cue-prepared incoming track' : matchesEnabled ? 'Choose a matching incoming track' : 'Find matches for the outgoing track first'}</option>
             {cueMode && cueIncoming.map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
             {!cueMode && matchRows.map(match => <option key={match.id} value={match.id}>{match.artist} — {match.title} · {match.bpm.toFixed(1)} BPM · {match.tempoAdjustmentPercent >= 0 ? '+' : ''}{match.tempoAdjustmentPercent.toFixed(1)}% tempo{match.vocalSuggestion?.status === 'suggested' ? ' · provisional vocal fit' : ''}</option>)}
@@ -355,12 +362,19 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         </select>
         <p className="mt-2 text-xs leading-relaxed text-muted">Moves the incoming audio by whole bars, keeping the tempo matched. Press Play preview to compare. Find matches again after changing the shift. Resets when you change the outgoing track.</p>
       </div>}
-      {cueMode && <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      {cueMode && <section className="mt-5 border-t border-ink/20 pt-4" aria-labelledby="subbeats-incoming-opening">
+        <h3 id="subbeats-incoming-opening" className="font-display text-lg font-bold">Choose the incoming opening</h3>
+        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Arrival times count forwards from the recording’s start. Opening candidates suggest a measured 8- or 16-bar passage leading into that change. Listen to confirm the phrase.</p>
 
-        <div><label htmlFor="subbeats-in-cue" className="mb-1 block text-sm font-medium">Incoming musical arrival</label><select id="subbeats-in-cue" className={SELECT_CLASS} value={inCueIndex} disabled={!byId.get(incoming)?.cuePoints?.incoming.length} onChange={event => setInCueIndex(Number(event.target.value))}>
-          {(byId.get(incoming)?.cuePoints?.incoming ?? []).map((cue,index) => <option key={index} value={index}>{cue.sourceSeconds.toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
+        <div className="mt-4 max-w-xl"><label htmlFor="subbeats-in-cue" className="mb-1 block text-sm font-medium">Incoming musical arrival</label><select id="subbeats-in-cue" className={SELECT_CLASS} value={inCueIndex} disabled={!byId.get(incoming)?.cuePoints?.incoming.length} onChange={event => setInCueIndex(Number(event.target.value))}>
+          {!incomingCues.length && <option value="">Choose a cue-prepared incoming track</option>}
+          {incomingCues.map(({cue,index}) => <option key={index} value={index}>{cue.sourceSeconds.toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.phraseBars && cue.phraseStartSeconds != null ? `${cue.phraseBars}-bar opening candidate` : cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
         </select></div>
-      </div>}
+        {incomingCue?.phraseBars && incomingCue.phraseStartSeconds != null && <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted">{incomingCue.phraseBars} measured bars from {incomingCue.phraseStartSeconds.toFixed(2)}s to the arrival at {incomingCue.sourceSeconds.toFixed(2)}s. The opening before that passage is retained; vocals and background grooves need listening.</p>}
+        {incomingChoice?.differenceSeconds != null && <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted">At the outgoing tempo, this complete opening lasts {incomingChoice.matchedSeconds.toFixed(2)}s: {Math.abs(incomingChoice.differenceSeconds).toFixed(2)}s {incomingChoice.differenceSeconds >= 0 ? 'longer' : 'shorter'} than the selected outgoing closing passage. {incomingChoice.tempoFits ? 'This compares lengths only; the pair preview still aligns rhythm handovers.' : 'The tempo difference exceeds the pair preview’s 8% limit.'}</p>}
+        {incomingChoice && incomingCues[0]?.index !== inCueIndex && incomingCues[0]?.tempoFits && outgoingCue?.phraseEndSeconds != null && <Button className="mt-3" onClick={() => setInCueIndex(incomingCues[0]!.index)}>Use closest opening length</Button>}
+        {incomingCue && <CueAudition role="incoming" key={`incoming:${incoming}:${byId.get(incoming)?.cuePoints?.artifactKey}`} trackId={incoming} cueSeconds={incomingCue.sourceSeconds} tailSeconds={8*60/incomingCue.bpm} adminFetch={adminFetch} onPlay={() => { setSoloRole('incoming'); preview.stop(); }} pause={preview.loading || preview.playing || soloRole === 'outgoing'} />}
+      </section>}
       {preview.loading && <p role="status" className="mt-3 text-sm text-muted">Preparing preview… press again to cancel.</p>}
       {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
       {preview.duration > 0 && <div className="mt-5 border-t border-ink/20 pt-4">

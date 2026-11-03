@@ -371,3 +371,33 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
     assert.deepEqual(rendered?.cue_indices,[0,0]);assert.equal(rendered?.method,'cue-points');
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
+
+
+test('source auditions support incoming-only cues, preserve authentication and keep the outgoing alias', async () => {
+  const id='incoming-source-audition';
+  db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:80});
+  subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
+  subbeatsStore.event({id,status:'running'},[id]);
+  subbeatsStore.event({id,status:'prepared',bundleKey:'a'.repeat(64),cuePoints:{version:1,algorithmVersion:4,model:'small0',artifactKey:'c'.repeat(64),durationSeconds:80,
+    incoming:[{sourceSeconds:30,bpm:120,strength:1,reason:'arrangement',phraseBars:16,phraseStartSeconds:0}],outgoing:[]}},[id]);
+  const before=JSON.stringify(subbeatsStore.read());
+  const realFetch=globalThis.fetch;let loads=0;let badType=false;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith(base)) return realFetch(url,init);
+    loads++;
+    return new Response(new Uint8Array([1,2,3,4]),{headers:{'Content-Type':badType?'application/json':'audio/mpeg'}});
+  }) as typeof fetch;
+  try {
+    assert.equal((await realFetch(base+'/library/subbeats/source-audio/'+id)).status,401);
+    assert.equal((await realFetch(base+'/library/subbeats/source-audio/missing',{headers})).status,400);
+    assert.equal(loads,0);
+    for (const route of ['source-audio','outgoing-audio']) {
+      const response=await realFetch(base+'/library/subbeats/'+route+'/'+id,{headers});
+      assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+      assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[1,2,3,4]);
+    }
+    badType=true;
+    assert.equal((await realFetch(base+'/library/subbeats/source-audio/'+id,{headers})).status,400);
+    assert.equal(JSON.stringify(subbeatsStore.read()),before);
+  } finally {globalThis.fetch=realFetch;}
+});

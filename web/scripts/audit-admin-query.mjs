@@ -210,6 +210,10 @@ const allowed = new Map([
   ['settings/shared.tsx', new Map([
     ['protected-audio-preview', { callee: 'adminResponse', method: 'GET', path: /^path$/ }],
   ])],
+  // One-shot original audio, fetched only when Listen is pressed.
+  ['subbeats/CueAudition.tsx', new Map([
+    ['subbeats-source-audition', { callee: 'adminResponse', method: 'GET', path: /^\/library\/subbeats\/source-audio\/\$\{\}$/ }],
+  ])],
   ['skills/SkillEditModal.tsx', new Map([
     ['skill-export', { callee: 'adminResponse', method: 'GET', path: /^\/dj\/skills\/\$\{\}\/export$/ }],
   ])],
