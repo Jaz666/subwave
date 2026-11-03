@@ -8,6 +8,18 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+Latest owner direction after the version-8 preview: keep vocal passages apart;
+key clashes/Camelot compatibility can follow later. The cue renderer currently
+allows vocal overlap, so this remains pending implementation. Reuse existing
+vocal-passage estimates to assess the actual tempo-adjusted overlap, preserving
+complete outgoing endings and incoming entries; account for the limitation that
+background vocals may appear in `other`. See the method guide's “Next selection
+constraints: vocals, then key” section. Do not silently suppress words or claim
+energy detection proves vocal safety. The owner preferred an 8-bar incoming for
+the Rozalla → Gusto pair auditioned; edition/timestamp are not established by
+that feedback and this is not a global ranking change.
+
+
 Latest event: sidecar 422 reported that a selected closing cue is outside saved
 outgoing stems. The owner had already agreed the next step was cue-derived
 coverage plus matching incoming arrival to the outgoing later closing change.

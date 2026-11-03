@@ -67,6 +67,27 @@ not another stem separation. Preview loads the saved artifact and checks that
 it still belongs to the selected stem manifest. A replaced source invalidates
 queue cue evidence along with its stem bundle.
 
+## Next selection constraints: vocals, then key
+
+Owner direction after auditioning the passage preview: keep competing vocal
+passages apart. Prefer cue combinations whose outgoing vocal ending and incoming
+vocal entry do not overlap, preserving complete passages rather than muting words
+to force a fit. The existing `subbeats_vocals.py` passage estimates are reusable
+for checking the actual tempo-adjusted pair timeline; they are not currently
+applied by the cue renderer. Detection is an estimate, not proof of vocal safety:
+Gusto's low background-vocal groove can live in `other`. Listening remains needed.
+How to handle pairs with no suitable placement remains an implementation decision;
+no automatic vocal suppression or rejection has been introduced by this note.
+
+The owner preferred the 8-bar incoming in the Rozalla → Gusto pair they auditioned.
+This is a pair-specific listening reference, not a global 8-bar preference or an
+identified cue timestamp/edition. Duration fit remains a suggestion, subordinate
+to musical fit and vocal separation.
+
+Later, consider harmonic compatibility using the library analyser's Camelot key
+evidence. Verify the existing key data and its reliability before wiring it into
+selection. Key compatibility is deferred; it does not replace the vocal constraint.
+
 ## Preview scope and limits
 
 The API accepts a method and two bounded candidate indices. It takes artifact
