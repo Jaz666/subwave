@@ -8,6 +8,16 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+### Packaging correction after version-9 station rebuild
+
+Owner reported sidecar 422 `No module named subbeats_cue_matching`. The explicit
+worker COPY list in `docker/Dockerfile.analyzer` omitted the new module. Add it
+there; controller/AIO already copy the scripts directory. A focused static check
+of every packaged worker's Sub/Beats imports confirms all modules are included.
+This corrects packaging only; no cue recheck or controller/web rebuild is needed.
+Owner rebuilds the analyzer with existing overlays, checks health and retries
+Find suitable candidates. No Docker build/restart is run by the agent.
+
 ### Current: cue candidate discovery and vocal overlap guard (preview version 9)
 
 Owner approved implementing vocal-aware pair assessment plus **Find suitable
