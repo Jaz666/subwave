@@ -9,6 +9,9 @@ contain historical prototypes; they do not override the current decisions.
 ## Where to resume
 
 Latest owner direction: handle outgoing selection first, then incoming fitting.
+Station source includes this outgoing audition at `536e7daa`; development
+implementation commits `6a049973` and `d1595f76` are pushed. Source rollback
+for this audition alone is `84ec940f`. Controller/web rebuild is pending.
 An outgoing-only audition is now implemented in the cue-point Preview section:
 select a prepared track and cue, then listen through the original recording's
 real end without stretching or fading. One prepared track is sufficient. The
@@ -45,7 +48,8 @@ rendered successfully (53.148s), retained at
 `/home/jaz666/codex/subbeats-beat-this-20261103/station-cue-check/urban-to-gusto-cue-preview.mp3`.
 This pair has not received owner listening approval.
 
-**Operational state:** station source is `b5eda6e4`, clean; source rollback is
+**Operational state:** the release/cue integration was `b5eda6e4`; current
+station source includes outgoing auditions at `536e7daa`. Whole-integration source rollback is
 `e4e22d34`. No station build, restart, live analysis or metadata change was
 performed. The owner must rebuild analyzer, controller, web and broadcast
 using the existing GPU and Discord overlays. CUDA/AIO images were not built.
@@ -151,7 +155,7 @@ the renderer or selected an exhaustive set of candidate durations.
 | --- | --- |
 | `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; implementation and research committed here |
 | `/home/jaz666/codex/subwave-cues-station-20261103` | Validated integration candidate, branch `integrate/subbeats-cues-1300-20261103`, HEAD `b5eda6e4` |
-| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `b5eda6e4`; source updated, owner rebuild pending |
+| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `536e7daa`; source includes outgoing audition, owner rebuild pending |
 | `origin` | `https://github.com/perminder-klair/subwave.git`, upstream |
 | `jaz666` | `https://github.com/Jaz666/subwave.git`, fork |
 
