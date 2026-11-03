@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
+  'subbeats_cues_test.py', // cue evidence, integrity, source-prefix and vocal-tail preservation
   'subbeats_vocal_plan_test.py', // provisional complete-passage handovers; rendering unchanged
   'subbeats_suitability_test.py', // cached role capability, preview coverage and no-model reassessment
   'subbeats_reference_preview_test.py', // sustained rhythm, source verification and credential-free preview cache

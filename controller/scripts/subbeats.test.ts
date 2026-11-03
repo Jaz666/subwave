@@ -13,6 +13,19 @@ const a = { id: 'a', title: 'Driving track', artist: 'Artist', album: 'Album' };
 const b = { ...a, id: 'b' };
 after(() => removeTempDir(state));
 
+test('cue preparation choice and bounded cue results persist without changing classic admissions', () => {
+  const track = {...a,id:'cue-method'};
+  store.enqueue([track],'small0');
+  assert.equal(readSubbeatsQueue(state).jobs.find(job => job.id===track.id)?.preparationMethod,'small0');
+  store.event({id:track.id,status:'running'},[track.id]);
+  const point={sourceSeconds:22.94,bpm:126,strength:1,reason:'repetition'};
+  store.event({id:track.id,status:'prepared',bundleKey:'f'.repeat(64),cuePoints:{version:1,model:'small0',artifactKey:'e'.repeat(64),incoming:[point],outgoing:[]}},[track.id]);
+  assert.equal(readSubbeatsQueue(state).jobs.find(job => job.id===track.id)?.cuePoints?.incoming[0]?.sourceSeconds,22.94);
+  invalidateSubbeatsBundles(state,[track.id]);
+  assert.equal(readSubbeatsQueue(state).jobs.find(job => job.id===track.id)?.cuePoints,undefined);
+  store.remove(track.id);
+});
+
 test('admission persists, deduplicates and leaves a pause intact', () => {
   store.pause(true); store.enqueue([a, a, b]);
   const reloaded = readSubbeatsQueue(state);

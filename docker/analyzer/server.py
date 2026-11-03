@@ -806,6 +806,7 @@ async def migrate_subbeats(req: SubbeatsCacheRequest):
 
 
 class SubbeatsPrepareRequest(SubbeatsCacheRequest):
+    method: str = Field(default='classic',pattern=r'^(classic|small0|final0)$')
     path: str
     track_id: str
     complete: bool
@@ -859,6 +860,9 @@ class SubbeatsReferencePreview(BaseModel):
 
 
 class SubbeatsPreviewRequest(BaseModel):
+    method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')
+    cue_keys: list[str] | None = Field(default=None,min_length=2,max_length=2)
+    cue_indices: list[int] | None = Field(default=None,min_length=2,max_length=2)
     window_plan: dict[str, float] | None = None
     bar_shift: int = Field(default=0, ge=-2, le=2, strict=True)
     out_gain_db: float = Field(default=0, ge=-120, le=40)

@@ -297,6 +297,9 @@ def render_preview(req, fetch_source=None):
     import librosa
     import soundfile as sf
     from re import fullmatch
+    method = req.get('method','stems')
+    if method not in ('stems','cue-points'):
+        raise ValueError('Unknown preview method')
     bar_shift = validate_bar_shift(req.get('bar_shift', 0))
     reference = None
     if req.get('reference') is not None:
@@ -331,7 +334,7 @@ def render_preview(req, fetch_source=None):
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
     fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
-                              'reference': reference, 'window_plan':req.get('window_plan'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
+                              'reference': reference, 'window_plan':req.get('window_plan'), 'method':method,'cue_keys':req.get('cue_keys'),'cue_indices':req.get('cue_indices'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
     if previews.is_symlink():
@@ -346,7 +349,10 @@ def render_preview(req, fetch_source=None):
                 raise ValueError('The saved preview failed integrity checks.')
             return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
             'subbeats_timeline': record['metadata']['timeline']}
-        if reference is not None:
+        if method == 'cue-points':
+            from subbeats_cue_preview import render_cue_preview
+            audio,metadata = render_cue_preview(req,folders,records,gains)
+        elif reference is not None:
             from subbeats_reference_preview import render_reference
             audio, metadata = render_reference(req, folders, records, gains, fetch_source)
         else:

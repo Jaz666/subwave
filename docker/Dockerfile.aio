@@ -176,6 +176,7 @@ ENV KOKORO_MODEL=/opt/kokoro/models/kokoro-v1.0.onnx \
 ARG WITH_CLAP=0
 ARG WITH_DEMUCS=0
 ARG WITH_CUDA=0
+COPY controller/scripts/subbeats_models.py /tmp/subbeats_models.py
 RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
     if [ "$WITH_CUDA" = "1" ]; then TORCH_INDEX="https://download.pytorch.org/whl/cu128"; fi && \
     python3 -m venv /opt/analyzer/venv && \
@@ -200,6 +201,8 @@ RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
         --extra-index-url https://pypi.org/simple \
         torch==2.7.1 torchaudio==2.7.1 demucs==4.0.1 diffq==0.2.4 && \
       /opt/analyzer/venv/bin/python -c "import torch, torchaudio, demucs, diffq" && \
+      /opt/analyzer/venv/bin/pip install --no-cache-dir beat-this==1.1.0 && \
+      /opt/analyzer/venv/bin/python /tmp/subbeats_models.py /opt/analyzer/beat-this && \
       apt-get purge -y gcc libc6-dev python3-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* ; \
     fi && \
     find /opt/analyzer/venv -depth -type d -name __pycache__ -exec rm -rf {} +
