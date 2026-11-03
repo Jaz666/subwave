@@ -28,7 +28,17 @@ Desktop/mobile cue checks, Library search and all six query-cache browser checks
 passed on temporary fixture state. The UI detector is clear; the query audit
 retains its pre-existing imperative audio-download notice. No Docker commands,
 new model inference, library-wide rechecks or incoming changes were performed.
-Source integration status follows below.
+Development implementation `aa80d6e4` is pushed. Station source is now
+`77e3b277`, pushed on `test-station/sleeve-notes-clean-20261014`; its full
+28-module schema mirror was regenerated. The development-only handover remains
+absent from the station checkout. Source rollback for this change is `57db2e97`.
+No services were rebuilt or restarted. Upstream refs were refreshed before
+integration; main remains release `03a48c21`, develop `1c4a9ff2`.
+Next: owner rebuilds analyzer/controller/web using the existing GPU/Discord
+overlays, checks `/api/health`, and rechecks Rozalla with Beat This! before
+listening from the suggested 2:43 cue through the original ending. Both tracks
+need refreshed artifacts before a cue-pair audition. Do not start incoming
+matching until the outgoing listening choices have been accepted.
 
 Historical correction before that clarification: outgoing candidates were
 restricted to the final quarter.
@@ -195,7 +205,7 @@ the renderer or selected an exhaustive set of candidate durations.
 | --- | --- |
 | `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; implementation and research committed here |
 | `/home/jaz666/codex/subwave-cues-station-20261103` | Validated integration candidate, branch `integrate/subbeats-cues-1300-20261103`, HEAD `b5eda6e4` |
-| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `57db2e97`; source includes final-quarter/fade fix, owner rebuild pending |
+| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `77e3b277`; source includes closing-passage ranking, owner rebuild pending |
 | `origin` | `https://github.com/perminder-klair/subwave.git`, upstream |
 | `jaz666` | `https://github.com/Jaz666/subwave.git`, fork |
 
