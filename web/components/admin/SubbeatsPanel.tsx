@@ -313,7 +313,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         </>}
         <p className="mt-2 text-xs text-muted">Preview still plays its existing overlap. Musical bar starts and complete vocal phrases remain unverified.</p>
       </div>}
-      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Matches with provisional vocal handovers are listed first. Matches use saved measurements. Rendering verifies the selected windows and cached audio. Vocals, phrasing and harmony still need listening. Assess saved stems if a track has no suitability result.</p>
+      {!cueMode && <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Matches with provisional vocal handovers are listed first. Matches use saved measurements. Rendering verifies the selected windows and cached audio. Vocals, phrasing and harmony still need listening. Assess saved stems if a track has no suitability result.</p>}
       {!cueMode && prepared >= 2 && <div className="mt-4 max-w-sm">
         <label htmlFor="subbeats-bar-shift" className="mb-1 block text-sm font-medium">Incoming bar shift · testing</label>
         <select id="subbeats-bar-shift" className="h-11 w-full rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink" value={barShift} onChange={event => { setBarShift(Number(event.target.value)); setIncoming(''); setMatchFor(null); }}>

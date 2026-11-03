@@ -1,5 +1,7 @@
 # Sub/Beats development
 
+Optional preparation and preview methods: [cue-point method guide](subbeats-cue-methods.md). The November candidate adds official Beat This! small/full cue preparation and an opening/tail preview alongside the existing methods.
+
 Fresh-chat starting point: [3 November 2026 handover](../investigations/2026-11-03-subbeats-handover.md). It records current cue-point terminology, flexible transition lengths, research and reference corrections; older implementation sections below remain historical where superseded.
 
 ## Upstream integration review — 2 November 2026

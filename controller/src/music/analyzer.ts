@@ -776,7 +776,7 @@ function localEmbedTexts(texts: string[], timeoutMs: number, signal?: AbortSigna
 
 // A deadline that expired mid-request, as opposed to a refused connection or a
 // capability 404/500.
-function isTimeoutError(err: unknown): boolean {
+export function isTimeoutError(err: unknown): boolean {
   const name = (err as { name?: unknown } | null)?.name;
   const message = (err as { message?: unknown } | null)?.message;
   return name === 'AbortError' || (typeof message === 'string' && message.includes('timed out'));
@@ -1108,6 +1108,9 @@ export interface FacetRequestOpts {
   tailVocals?: boolean;
   stems_dir?: string;
   complete?: boolean;
+  // The request's deadline. Omitted, the pass's ANALYZE_REQUEST_TIMEOUT_MS. A
+  // pick-time separation passes its own longer one (pick-stems-policy.ts).
+  timeoutMs?: number;
 }
 
 // null = unknown (not probed / old backend). Callers use the facet protocol
@@ -1151,7 +1154,10 @@ export function parseFacetAnswer(msg: WorkerMessage): FacetAnalysis {
   };
 }
 
-async function facetRequest(body: Record<string, unknown>): Promise<FacetAnalysis> {
+async function facetRequest(
+  body: Record<string, unknown>,
+  timeoutMs = config.analyzer.requestTimeoutMs,
+): Promise<FacetAnalysis> {
   const backend = await resolveBackend();
   if (!backend) throw new Error('no analysis backend available');
   let msg: WorkerMessage;
@@ -1160,14 +1166,14 @@ async function facetRequest(body: Record<string, unknown>): Promise<FacetAnalysi
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      timeoutMs: config.analyzer.requestTimeoutMs,
+      timeoutMs,
       bodyDeadline: true,
     });
     if (!res.ok) return sidecarFailure(res);
     msg = (await res.json()) as WorkerMessage;
   } else {
     if (!ready) await startWorker();
-    msg = await localRequestRaw(body);
+    msg = await localRequestRaw(body, timeoutMs);
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
   return parseFacetAnswer(msg);
@@ -1187,19 +1193,20 @@ export async function analyzeFacets(
   if (opts.tailVocals) body.tail_vocals = true;
   const stems = opts.stems_dir ? { stems_dir: opts.stems_dir, stems_require_marker: true } : {};
   const url = subsonic.getRawStreamUrl(songId);
-  if (!localPath) return facetRequest({ url, ...body, ...stems });
+  const timeoutMs = opts.timeoutMs; // undefined: facetRequest's default
+  if (!localPath) return facetRequest({ url, ...body, ...stems }, timeoutMs);
   try {
     return await facetRequest({
       path: localPath,
       ...body,
       ...(opts.complete !== undefined ? { complete: opts.complete } : {}),
       ...stems,
-    });
+    }, timeoutMs);
   } catch (err) {
     if (!(err instanceof AnalyzerPathUnavailableError)) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
-    return facets.length ? facetRequest({ url, ...body, facets })
+    return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)
       : { facets: {}, source: { kind: 'unknown', durationS: null, complete: null } };
   }
 }
