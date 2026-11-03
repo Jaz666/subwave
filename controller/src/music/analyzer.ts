@@ -1302,6 +1302,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
   if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
   if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
+  if (method !== 'classic' && result.cuePoints?.durationSeconds == null) throw new Error('Update the heavy analyzer for final-quarter outgoing cue preparation');
   return {...result, addedBytes:cacheGrowth(answer)};
 }
 

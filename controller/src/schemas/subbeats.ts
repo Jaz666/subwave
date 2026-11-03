@@ -32,10 +32,11 @@ export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','bea
 export const subbeatsPreparationMethodSchema = z.enum(['classic','small0','final0']);
 export const subbeatsCuePointSchema = z.object({
   sourceSeconds:z.number().finite().nonnegative().max(1200), bpm:z.number().finite().min(60).max(190),
-  strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement']),
+  strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement','fade']),
 });
 export const subbeatsCuePointsSchema = z.object({
   version:z.literal(1),model:z.enum(['small0','final0']),artifactKey:z.string().regex(/^[a-f0-9]{64}$/),
+  durationSeconds:z.number().finite().positive().optional(),
   incoming:z.array(subbeatsCuePointSchema).max(8),outgoing:z.array(subbeatsCuePointSchema).max(8),
 });
 export const subbeatsJobSchema = z.object({

@@ -95,6 +95,8 @@ def render_cue_preview(req,folders,records,gains):
     if in_region['start_sample']!=0:
         raise ValueError('Cue-point preview needs the complete saved incoming opening')
     out_cue=outgoing['sourceSeconds']-out_region['start_sample']/STEM_SR
+    if not 0 <= out_cue < out_parts['drums'].shape[1]/STEM_SR:
+        raise ValueError('This closing cue is outside the saved outgoing stems. Audition the original ending on its own; pair mixing needs extended ending coverage.')
     period=60/outgoing['bpm']
     rate=outgoing['bpm']/incoming['bpm']
     if abs(rate-1)>.08:

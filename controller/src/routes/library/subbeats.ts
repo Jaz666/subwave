@@ -147,6 +147,13 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     for (const track of songs) {
       if (!track || blocklist.hitOf(track)) throw new Error('A selected track is unavailable or blocked. Choose another pair.');
     }
+    if (cueMode) {
+      const duration = tracks[0]!.cuePoints!.durationSeconds ?? songs[0]?.durationSec;
+      const seconds = tracks[0]!.cuePoints!.outgoing[cueIndices[0]!]!.sourceSeconds;
+      if (!duration || seconds < duration*.75 || seconds >= duration) {
+        throw new Error('Choose an outgoing cue in the final quarter. Recheck preparation if the saved cues are older.');
+      }
+    }
     let reference;
     if (parsed.data.referenceBars !== undefined) {
       const [outgoing, incoming] = parsed.data.trackIds.map(id => subbeatsReferences.find(ref => ref.id === id));
