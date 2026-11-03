@@ -47,6 +47,18 @@
         "feedbackDate": "2026-11-03",
         "beatBarAlignmentAccepted": true,
         "scope": "Presented exact-source opening audition only; no later grid, phrase, vocal-cut or pair approval."
+      },
+      "structuralCandidateAudition": {
+        "durationSeconds": 32,
+        "markerSeconds": [
+          7.6,
+          22.38
+        ],
+        "ownerFeedback": "yes, well done",
+        "feedbackDate": "2026-11-03",
+        "musicalBoundariesAccepted": true,
+        "completedGrooveReleaseConfirmedSeconds": null,
+        "scope": "Presented marked opening only; no exact vocal onset/end, tail clearance, automatic entry/exit cue, loop seam or pair approval."
       }
     },
     {
@@ -81,6 +93,18 @@
         "feedbackDate": "2026-11-03",
         "beatBarAlignmentAccepted": true,
         "scope": "Presented exact-source opening audition only; no later grid, phrase, vocal-cut or pair approval."
+      },
+      "structuralCandidateAudition": {
+        "durationSeconds": 32,
+        "markerSeconds": [
+          7.72,
+          22.94
+        ],
+        "ownerFeedback": "yes, well done",
+        "feedbackDate": "2026-11-03",
+        "musicalBoundariesAccepted": true,
+        "completedGrooveReleaseConfirmedSeconds": 22.94,
+        "scope": "Presented marked opening only; no exact vocal onset/end, tail clearance, automatic entry/exit cue, loop seam or pair approval."
       }
     },
     {

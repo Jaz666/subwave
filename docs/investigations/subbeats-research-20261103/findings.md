@@ -156,7 +156,10 @@ release 22.964s) ranks second by repetition break, despite no landmarks from
 the existing beat-level novelty detector and all bar novelty strengths below
 1. The two leading positive local repetition-break peaks are 7.600/22.380s for
 Urban and 7.720/22.940s for Gusto. Chord-marked auditions are saved locally;
-owner feedback on these new markers remains pending.
+the owner subsequently confirmed the markers land on the expected musical
+boundaries, including Gusto's completed groove release. This accepts the tested
+structural events only; exact vocal edges, tail clearance and safe automatic
+cue/loop use remain unverified.
 
 Gusto's two-bar harmonic/spectral repetition near its release is stronger than
 the tested four-bar repetition. This does not contradict the owner's completed

@@ -99,11 +99,14 @@ model beats/downbeats; the chord means **structural candidate**, not verified
 phrase or safe cut. Chords are 100ms Hann-windowed 600/900/1200Hz tones, .18
 amplitude each, followed by common peak limiting to .95. The source audition's
 quiet music/loud-click balance is retained. No looping, stretching, trimming
-or timestamp repair was applied. The new marked auditions have not yet received
-owner feedback.
+or timestamp repair was applied. The owner subsequently answered "yes, well
+done" when asked whether those chimes land on the expected musical boundaries,
+particularly Gusto's completed groove. This confirms the presented structural
+events at Urban 7.600/22.380s and Gusto 7.720/22.940s, including Gusto's completed
+groove release. It does not establish exact sung beginnings/endings or safe cuts.
 
-Next: use owner feedback on the marked candidates to retain or reject their
-musical roles. Before applying a cue or loop automatically, establish complete
+Next: retain these listening-confirmed structural events as reference evidence.
+Before applying a cue or loop automatically, establish complete
 vocal pickups/endings and tail clearance separately. If a full-mix repeating
 texture cannot establish those edges, leave them unknown and use normal
 transitions. No new renderer, picker, station reanalysis or stem preparation

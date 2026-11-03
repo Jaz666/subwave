@@ -17,10 +17,12 @@ Neither model preserves every accepted opening. The owner confirms the Urban
 [phrase/bar experiment](subbeats-research-20261103/phrase-bar-evaluation.md) now
 finds structural candidates at 7.600/22.380s for Urban and 7.720/22.940s for
 Gusto. Repetition break recovers the latter release candidate despite weak
-novelty, but does not establish a complete vocal phrase. Next: owner listening
-to the two chord-marked 32-second auditions in
-`/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`, then separate
-vocal-edge evidence before applying cues. No automatic phrase planner or
+novelty. The owner has now confirmed both marked auditions land on the expected
+musical boundaries, including Gusto's completed groove release. Next: establish
+separate vocal beginning/ending and tail-clearance evidence before applying
+cues. The marked 32-second auditions remain in
+`/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`.
+No automatic phrase planner or
 station integration was implemented. Read the reference caveats before interpreting any result,
 especially Cübik. Keep this bounded; the owner requested minimal testing/usage.
 
