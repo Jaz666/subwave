@@ -167,3 +167,30 @@ interrupts the stream. Source rollback is `e4e22d34`; restoring running
 behaviour also requires rebuilding the affected services from that source.
 
 Outgoing cue choices display seconds relative to the library track duration: negative before the end, zero at the end. Incoming cues retain source-start timing; rendering still uses the original saved cue positions. This display-only follow-up was made without tests or checks at the owner’s request.
+
+## Outgoing-first listening step
+
+The owner requested two stages: establish the outgoing closing passage first,
+then choose the incoming opening to fit it. In cue-point Preview, **Choose the
+outgoing finish** works with one prepared track. Select the outgoing track and
+cue, then **Listen from this cue to the end**. The browser auditions the complete
+original recording from that position at its original speed, without an added
+fade or an incoming track. This lets the operator hear whether the candidate
+begins a complete ending or whether another major section still follows.
+
+The authenticated controller proxies the original audio with a 256 MiB cap and
+five-minute download deadline, keeping source credentials server-side. It does
+not run the analyzer, write shared audio state, or change broadcast playback.
+The first Listen loads the original recording; comparing another cue reuses it
+in the browser. Native audio controls allow pause/seek. Cue changes pause the
+audition; changing the track or leaving the page cancels loading and releases it.
+Outgoing and pair auditions stop one another. An unavailable source or an
+unsupported browser codec reports an audition error.
+
+The chosen outgoing cue stays in the existing Sub/Beats workspace selection
+while navigating its pages; it is not a durable approval or automatic natural-
+finish classification. Incoming selection/ranking remains a later step. This
+audition uses the original mix; the existing pair preview still uses stems.
+No tests or checks were performed for this follow-up, as requested. Rebuild
+controller and web together; no new cue preparation or analyzer rebuild is
+needed solely for the outgoing audition.

@@ -16,6 +16,9 @@ import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
 import { matchSubbeats, previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
 import { tagger } from '../../broadcast/tagger.js';
 import { subbeatsReferences } from '../../music/subbeats-references.js';
+import { pipeline } from 'node:stream/promises';
+import * as subsonic from '../../music/subsonic.js';
+import { fetchWithTimeout } from '../../util/fetch-timeout.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
@@ -25,6 +28,47 @@ const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
 router.get('/library/subbeats', requireAdmin, (_req, res) => {
   try { res.json(view()); }
   catch { res.status(503).json({ error: 'The Sub/Beats preparation list could not be read' }); }
+});
+// Audition the original ending without stretching, fading or an incoming track.
+// Keep Navidrome credentials server-side and stream without writing shared state.
+router.get('/library/subbeats/outgoing-audio/:id', requireAdmin, async (req, res) => {
+  const abort = new AbortController();
+  const cancel = () => abort.abort();
+  res.on('close', cancel);
+  try {
+    await library.load();
+    await blocklist.load();
+    const job = subbeatsStore.read().jobs.find(item => item.id === req.params.id);
+    const track = db.getTrack(req.params.id);
+    if (!track || blocklist.hitOf(track) || job?.status !== 'prepared' || !job.cuePoints?.outgoing.length) {
+      return res.status(400).json({ error: 'Choose an available outgoing track prepared with cue points.' });
+    }
+    const source = await fetchWithTimeout(subsonic.getRawStreamUrl(track.id), {
+      timeoutMs: 5 * 60_000, bodyDeadline: true, signal: abort.signal,
+    });
+    const type = source.headers.get('content-type')?.toLowerCase() ?? '';
+    if (!source.ok || !source.body || type.includes('json') || type.includes('xml') || type.startsWith('text/')) {
+      throw new Error('The original recording could not be loaded. Try again.');
+    }
+    const body = source.body;
+    const maxBytes = 256 * 1024 * 1024;
+    if (Number(source.headers.get('content-length')) > maxBytes) throw new Error('This recording is too large for an outgoing audition.');
+    res.set('Cache-Control', 'no-store').type(type || 'application/octet-stream');
+    await pipeline((async function* () {
+      let bytes = 0;
+      for await (const chunk of body as AsyncIterable<Uint8Array>) {
+        bytes += chunk.length;
+        if (bytes > maxBytes) throw new Error('This recording is too large for an outgoing audition.');
+        yield chunk;
+      }
+    })(), res);
+  } catch {
+    if (!abort.signal.aborted && !res.headersSent) res.status(400).json({ error: 'Could not load the complete recording for this audition. Try again or choose another track.' });
+    else if (!res.destroyed) res.destroy();
+  } finally {
+    abort.abort();
+    res.off('close', cancel);
+  }
 });
 router.get('/library/subbeats/matches', requireAdmin, async (req,res) => {
   const parsed = subbeatsMatchQuerySchema.safeParse(req.query);
