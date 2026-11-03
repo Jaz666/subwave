@@ -2799,7 +2799,12 @@ def main():
         if req.get("op") == "match_subbeats":
             try:
                 from subbeats_matching import find_matches
-                emit({"id":rid,"ok":True,"subbeats_matches":find_matches(req['jobs'],req['outgoing_id'],req.get('bar_shift',0))})
+                if req.get('method') == 'cue-points':
+                    from subbeats_cue_matching import find_cue_matches
+                    matches = find_cue_matches(req['jobs'],req['outgoing_id'],req.get('outgoing_cue_index',0))
+                else:
+                    matches = find_matches(req['jobs'],req['outgoing_id'],req.get('bar_shift',0))
+                emit({"id":rid,"ok":True,"subbeats_matches":matches})
             except Exception as error:
                 emit({"id":rid,"ok":False,"error":str(error)})
             continue

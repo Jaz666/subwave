@@ -1,4 +1,4 @@
-import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema } from '../schemas/subbeats.js';
+import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -1257,9 +1257,9 @@ function cacheGrowth(answer:WorkerMessage):number {
   if (!Number.isSafeInteger(answer.cache_added_bytes) || answer.cache_added_bytes! < 0) throw new Error('Analyzer did not report shared-cache usage; update the analyzer');
   return answer.cache_added_bytes!;
 }
-export async function matchSubbeats(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, barShift:number) {
+async function requestSubbeatsMatches(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, barShift:number, outgoingCueIndex?:number) {
   const backend = await sharedSubbeatsBackend();
-  const payload = {jobs,outgoing_id:outgoingId,bar_shift:barShift};
+  const payload = {jobs,outgoing_id:outgoingId,bar_shift:barShift, ...(outgoingCueIndex === undefined ? {} : {method:'cue-points',outgoing_cue_index:outgoingCueIndex})};
   let answer:WorkerMessage;
   if (backend === 'sidecar' && _sidecarBase) {
     const response = await fetchWithTimeout(`${_sidecarBase}/match-subbeats`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:30_000});
@@ -1267,7 +1267,15 @@ export async function matchSubbeats(jobs: Array<ReturnType<typeof subbeatsJobSch
     if (!response.ok) await sidecarFailure(response);
     answer = await response.json() as WorkerMessage;
   } else answer = await localRequestRaw({op:'match_subbeats',...payload},30_000);
-  return subbeatsMatchesSchema.parse(answer.subbeats_matches);
+  return answer.subbeats_matches;
+}
+export async function matchSubbeats(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, barShift:number) {
+  return subbeatsMatchesSchema.parse(await requestSubbeatsMatches(jobs,outgoingId,barShift));
+}
+export async function matchSubbeatsCues(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, outgoingCueIndex:number) {
+  const result = subbeatsCueMatchesSchema.safeParse(await requestSubbeatsMatches(jobs,outgoingId,0,outgoingCueIndex));
+  if (!result.success) throw new Error('Update the analyzer to find cue-point candidates.');
+  return result.data;
 }
 
 export async function assessSubbeats(stateDir:string, cacheId:string, trackId:string, bundleKey:string, stemsRoot:string) {

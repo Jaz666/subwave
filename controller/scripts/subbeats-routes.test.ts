@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
 import express from 'express';
-import { subbeatsCandidatePageSchema, subbeatsViewSchema } from '../src/schemas/subbeats.js';
+import { subbeatsCandidatePageSchema, subbeatsCueMatchesSchema, subbeatsViewSchema } from '../src/schemas/subbeats.js';
 
 process.env.ANALYZE_URL = 'http://127.0.0.1:9';
 process.env.ANALYZE_PYTHON = '';
@@ -312,6 +312,31 @@ test('match search is authenticated, validates input and returns analyzer measur
     assert.equal((await response.json() as {excluded:{tempo:number}}).excluded.tempo,1);
     assert.equal(seen?.outgoing_id,'beat-grid'); assert.equal(seen?.bar_shift,1);
     assert.ok(Array.isArray(seen?.jobs));
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('cue candidate search pins the saved cue and refuses old analyzer results', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/cue-matches?outgoingId=beat-grid')).status,401);
+  assert.equal((await fetch(base+'/library/subbeats/cue-matches?outgoingId=beat-grid&outgoingCueIndex=8',{headers})).status,400);
+  const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
+  const realFetch=globalThis.fetch;let seen:Record<string,unknown>|undefined;let old=false;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      seen=JSON.parse(String(init?.body));
+      return Response.json({ok:true,subbeats_matches:old ? {} : {method:'cue-points',outgoingId:'beat-grid',outgoingCueIndex:3,
+        matches:[],excluded:{tempo:0,coverage:0,unassessed:0,vocals:1}}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const url=base+'/library/subbeats/cue-matches?outgoingId=beat-grid&outgoingCueIndex=3';
+    const response=await fetch(url,{headers});assert.equal(response.status,200);
+    assert.equal(seen?.method,'cue-points');assert.equal(seen?.outgoing_cue_index,3);
+    assert.equal(subbeatsCueMatchesSchema.parse(await response.json()).excluded.vocals,1);
+    assert.ok((seen?.jobs as Array<{id:string}>).every(job=>db.getTrack(job.id)));
+    old=true;const stale=await fetch(url,{headers});assert.equal(stale.status,400);
+    assert.match((await stale.json() as {error:string}).error,/Update the analyzer/);
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
 

@@ -22,7 +22,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable
+from typing import Any, Literal, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -824,6 +824,8 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
 
 
 class SubbeatsMatchRequest(BaseModel):
+    method: Literal['stems', 'cue-points'] = 'stems'
+    outgoing_cue_index: int = Field(default=0, ge=0, le=7)
     jobs: list[dict[str, Any]] = Field(max_length=500)
     outgoing_id: str
     bar_shift: int = Field(default=0, ge=-2, le=2)
