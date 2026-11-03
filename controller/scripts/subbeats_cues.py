@@ -10,7 +10,7 @@ from pathlib import Path
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 2
+ALGORITHM_VERSION = 3
 
 
 def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False):
@@ -80,12 +80,52 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_secon
         candidates.append(dict(sourceSeconds=float(downbeats[i]), bpm=float(60/slope),
                                strength=max(repeat*10,novelty,fade),
                                reason='fade' if fade else 'repetition' if repeat*10 >= novelty else 'arrangement'))
+    closing = {}
+    if outgoing:
+        by_bar = {int(np.searchsorted(downbeats,c['sourceSeconds'])): c for c in candidates}
+        fade_start = next((c['sourceSeconds'] for c in candidates if c['reason']=='fade'), float('inf'))
+        for i, item in by_bar.items():
+            if item['sourceSeconds'] >= fade_start:
+                continue
+            for width in (8, 16):
+                j = i+width
+                end = by_bar.get(j)
+                if end is None or any(bar is None for bar in bars[i:j+2]):
+                    continue
+                # Count observed complete bars, never project from file end or
+                # across a gap. Check timing throughout the proposed passage.
+                local = np.concatenate(bars[i:j+2])
+                periods = np.diff(beats[local])
+                if np.max(np.abs(periods/np.median(periods)-1)) > .2:
+                    continue
+                body = float(np.median(levels[i:j]))
+                ending = float(np.median(levels[j:j+2]))
+                future = levels[j:]
+                future = future[np.isfinite(future)]
+                # ponytail: energy decline plus two structural boundaries is a
+                # phrase hypothesis; vocal/section recognition needs listening.
+                if (not 1 <= body-ending <= 6 or len(future) < 4
+                        or np.mean(future <= body-1) < .75
+                        or np.max((future[:-1]+future[1:])/2) > body):
+                    continue
+                score = min(item['strength'],4)+min(end['strength'],4)+(0.5 if width==16 else 0)
+                if score > closing.get(i,0):
+                    closing[i] = score
+                    item.update(phraseBars=width,phraseEndSeconds=end['sourceSeconds'])
     selected = []
-    for item in sorted(candidates,key=lambda c:(c['reason']=='fade',c['strength']),reverse=True):
+    def rank(c):
+        i = int(np.searchsorted(downbeats,c['sourceSeconds']))
+        return (i in closing, closing.get(i,0), c['reason']!='fade', c['strength'])
+    # Reserve one alternative for the recorded fade, without promoting it above
+    # a supported closing passage or filling the menu with fade-internal changes.
+    fade = next((c for c in candidates if c['reason']=='fade'), None)
+    for item in sorted(candidates,key=rank,reverse=True):
         if all(abs(item['sourceSeconds']-c['sourceSeconds']) >= 6*60/item['bpm'] for c in selected):
             selected.append(item)
-        if len(selected)==8:
+        if len(selected)==(7 if fade is not None else 8):
             break
+    if fade is not None and fade not in selected:
+        selected.append(fade)
     return selected
 
 
@@ -133,8 +173,8 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                 # The old exit stems can end at an early loss of percussion.
                 # Detect endings from the actual recording, with earlier context
                 # only for comparison; never offer that context as outgoing cues.
-                earliest = duration*.75
-                start,end = max(0.,earliest-32),duration
+                earliest = duration*.5
+                start,end = max(0.,earliest-64),duration
             else:
                 region = next((r for r in record['metadata']['stem_regions'] if r['name']==name),None)
                 if region is None:
@@ -153,10 +193,10 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
-        (stage/'cues.json').write_text(json.dumps(dict(version=VERSION,model=model,durationSeconds=duration,**roles),allow_nan=False)+'\n')
+        (stage/'cues.json').write_text(json.dumps(dict(version=VERSION,algorithmVersion=ALGORITHM_VERSION,model=model,durationSeconds=duration,**roles),allow_nan=False)+'\n')
         return dict(bundle_key=Path(folder).name,model=model,durationSeconds=duration,**roles)
     result = prepare_cached(state_dir,identity,build,cache_root=cache_root,allowance=allowance)
-    return dict(version=VERSION,model=model,artifactKey=Path(result['directory']).name,durationSeconds=result['metadata']['durationSeconds'],
+    return dict(version=VERSION,algorithmVersion=ALGORITHM_VERSION,model=model,artifactKey=Path(result['directory']).name,durationSeconds=result['metadata']['durationSeconds'],
                 incoming=result['metadata']['incoming'],outgoing=result['metadata']['outgoing'])
 
 

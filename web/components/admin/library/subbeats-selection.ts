@@ -9,7 +9,7 @@ export const subbeatsCanSelect = (status: string) => ['not-started', 'failed', '
 export function subbeatsOutgoingCues(cues: readonly z.infer<typeof subbeatsCuePointSchema>[], duration: number | null | undefined) {
   if (duration == null || !Number.isFinite(duration) || duration <= 0) return [];
   return cues.map((cue,index) => ({cue,index}))
-    .filter(({cue}) => cue.sourceSeconds >= duration*.75 && cue.sourceSeconds < duration);
+    .filter(({cue}) => cue.sourceSeconds >= duration*.5 && cue.sourceSeconds < duration);
 }
 
 // One capacity rule for row, page and matching selection. Retrying an existing

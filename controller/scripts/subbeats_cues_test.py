@@ -37,10 +37,11 @@ class CueTests(unittest.TestCase):
                   patch.object(cues,'predict',return_value=(beats,beats[::4])),
                   patch('importlib.metadata.version',return_value='1.1.0')):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
-            self.assertEqual(lengths,[680,820]) # Final-quarter search plus 32s context reaches source end.
+            self.assertEqual(lengths,[680,1640]) # Second-half search plus 64s context reaches source end.
             self.assertEqual(result['durationSeconds'],200)
+            self.assertEqual(result['algorithmVersion'],3)
             self.assertTrue(result['outgoing'])
-            self.assertTrue(all(150<=c['sourceSeconds']<200 for c in result['outgoing']))
+            self.assertTrue(all(100<=c['sourceSeconds']<200 for c in result['outgoing']))
 
     def test_outgoing_search_rejects_early_changes_before_ranking(self):
         beats=np.arange(0,200,.5); bars=beats[::4]
@@ -62,12 +63,44 @@ class CueTests(unittest.TestCase):
         fades=[c for c in result if c['reason']=='fade']
         self.assertEqual(len(fades),1)
         self.assertTrue(80<=fades[0]['sourceSeconds']<=86)
-        self.assertEqual(result[0]['reason'],'fade')
+        self.assertEqual(fades[0].get('phraseBars'),None)
         self.assertFalse(any(c['reason']=='fade' for c in cues.bar_candidates(beats,bars,energy,spectrum,chroma)))
         # A temporary decline that returns to full level is not an ending fade.
         energy[:,(beats>=94)&(beats<112)] = 0
         result=cues.bar_candidates(beats,bars,energy,spectrum,chroma,earliest_seconds=75,outgoing=True)
         self.assertFalse(any(c['reason']=='fade' and c['sourceSeconds']<94 for c in result))
+
+    def test_closing_passages_count_observed_bars_between_changes(self):
+        beats=np.arange(0,220,.5); bars=beats[::4]
+        energy=np.zeros((4,len(beats))); spectrum=np.ones((2,len(beats)))/2
+        chroma=np.ones((12,len(beats)))
+        energy[:,(beats>=96)&(beats<128)]=6
+        energy[:,beats>=160]=-8
+        result=cues.bar_candidates(beats,bars,energy,spectrum,chroma,earliest_seconds=80,outgoing=True)
+        self.assertEqual(result[0]['sourceSeconds'],96)
+        self.assertEqual(result[0]['phraseBars'],16)
+        self.assertEqual(result[0]['phraseEndSeconds'],128)
+        self.assertFalse(any(c['sourceSeconds']==112 and c.get('phraseBars')==8 for c in result),
+                        'no invented cue eight bars before a change')
+        self.assertTrue(all(c.get('phraseEndSeconds',0)!=220 for c in result), 'file end is not a phrase anchor')
+        # Moving the observed later boundary changes the supported bar count.
+        shorter=energy.copy(); shorter[:,(beats>=112)&(beats<128)]=0
+        short_result=cues.bar_candidates(beats,bars,shorter,spectrum,chroma,earliest_seconds=80,outgoing=True)
+        self.assertTrue(any(c['sourceSeconds']==96 and c.get('phraseBars')==8
+                            and c['phraseEndSeconds']==112 for c in short_result))
+        # A later loud section disqualifies the apparent closing passage.
+        energy[:,(beats>=176)&(beats<208)]=10
+        result=cues.bar_candidates(beats,bars,energy,spectrum,chroma,earliest_seconds=80,outgoing=True)
+        self.assertFalse(any(c['sourceSeconds']==96 and c.get('phraseBars') for c in result))
+
+    def test_closing_passages_do_not_count_across_a_missed_beat(self):
+        beats=np.arange(0,220,.5); bars=beats[::4]
+        energy=np.zeros((4,len(beats))); spectrum=np.ones((2,len(beats)))/2
+        chroma=np.ones((12,len(beats)))
+        energy[:,(beats>=96)&(beats<128)]=6; energy[:,beats>=160]=-8
+        keep=beats!=110.5
+        result=cues.bar_candidates(beats[keep],bars,energy[:,keep],spectrum[:,keep],chroma[:,keep],earliest_seconds=80,outgoing=True)
+        self.assertFalse(any(c['sourceSeconds']==96 and c.get('phraseBars') for c in result))
 
     def test_repetition_retains_a_weak_change_without_inventing_constant_phrases(self):
         beats=np.arange(0,64,.5); bars=beats[::4]
