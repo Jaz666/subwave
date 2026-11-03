@@ -1742,3 +1742,23 @@ station. [Source](https://github.com/mir-aidj/djmix-analysis)
 Next research step remains independent Beat This! evaluation, followed by
 phrase-boundary evidence on accepted grids. No dataset download, model run,
 dependency installation or station deployment was needed for this reading.
+
+## Owner direction: cue points and flexible overlap — 3 November 2026
+
+Use **cue points** as the product and development term for suggested or manually
+chosen track entry/exit positions. State the role explicitly (incoming entry cue,
+outgoing exit cue); keep source timestamps distinct from positions on the mixed
+preview timeline. A vocal release or rhythm handover is a separate event when
+it does not coincide with an entry/exit cue.
+
+A fixed 16-bar overlap is no longer a requirement. The owner accepts moving to
+other lengths where this simplifies development. Select a manageable set of
+musically supported cue-point combinations and let the overlap length follow
+the pair and phrasing; 16 bars remains an available option, not an obligatory
+window. Exact candidate lengths and ranking remain to be evaluated rather than
+fixed by this decision.
+
+This does not relax the existing requirements to preserve complete vocals,
+respect musical phrase alignment, and count any added loop duration in multiples
+of four bars. The optional manual cue-point adjustment UI remains deferred.
+This records the agreed direction; it does not change the current renderer.
