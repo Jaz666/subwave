@@ -37,8 +37,20 @@ source reuse, two-bar stop, closest-length selection, mutually exclusive audio,
 original pair indices and desktop/mobile. Library search and all six query-cache
 checks pass. The source download now has an explicit, narrowly registered
 imperative classification; the admin-query audit passes. No dataset/model run,
-new stem separation, Docker build or restart was performed. Source handoff
-follows after integration.
+new stem separation, Docker build or restart was performed. Development implementation `63398e0f` is pushed. Station source is now
+`894880b2`, pushed on `test-station/sleeve-notes-clean-20261014`; its full
+28-module schema mirror was regenerated. Code hashes match the tested dev
+implementation; the development-only handover stays out of the station checkout.
+Source rollback for incoming changes is `77e3b277`. Both worktrees are clean.
+The station admin-query audit also passes after integration. No services were
+rebuilt or restarted. Named upstream/fork refs were refreshed; upstream main
+remains `03a48c21` and develop `1c4a9ff2`.
+
+Next: owner rebuilds analyzer/controller/web with the existing GPU/Discord
+overlays, checks `/api/health`, then Beat This! rechecks incoming tracks and
+uses **Listen to this opening**. Preserve accepted outgoing algorithm-3 choices.
+Confirm complete incoming passages/background groove before changing blend
+placement or extending ending stems. Normal Stem Blend/broadcast is unchanged.
 
 ### Previous outgoing-stage handoff
 
@@ -239,7 +251,7 @@ the renderer or selected an exhaustive set of candidate durations.
 | --- | --- |
 | `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; implementation and research committed here |
 | `/home/jaz666/codex/subwave-cues-station-20261103` | Validated integration candidate, branch `integrate/subbeats-cues-1300-20261103`, HEAD `b5eda6e4` |
-| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `77e3b277`; source includes closing-passage ranking, owner rebuild pending |
+| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `894880b2`; source includes incoming phrase selection/audition, owner rebuild pending |
 | `origin` | `https://github.com/perminder-klair/subwave.git`, upstream |
 | `jaz666` | `https://github.com/Jaz666/subwave.git`, fork |
 
