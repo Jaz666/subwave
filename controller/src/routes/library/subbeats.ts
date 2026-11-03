@@ -99,7 +99,9 @@ router.get('/library/subbeats/candidates', requireAdmin, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'Choose valid Sub/Beats filters.' });
   try {
     const { q, offset, ...filters } = parsed.data;
-    res.json(db.subbeatsCandidates(q, offset, filters, subbeatsStore.read().jobs));
+    const members = filters.scope === 'playlist' ? (filters.playlistId
+      ? (await subsonic.getPlaylist(filters.playlistId)).map(track => String(track.id)) : []) : undefined;
+    res.json(db.subbeatsCandidates(q, offset, filters, subbeatsStore.read().jobs,members));
   } catch { res.status(503).json({ error: 'Tracks could not be loaded. Retry shortly.' }); }
 });
 router.post('/library/subbeats/queue', requireAdmin, validateBody(subbeatsEnqueueSchema), async (req, res) => {
@@ -118,6 +120,12 @@ router.post('/library/subbeats/assess', requireAdmin, validateBody(subbeatsEnque
   if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
   try { subbeatsStore.assess(req.body.ids); kickSubbeats(); res.status(202).json(view()); }
   catch (error) { res.status(409).json({error:error instanceof Error ? error.message : 'Suitability checks could not be queued'}); }
+});
+
+router.post('/library/subbeats/coverage', requireAdmin, validateBody(subbeatsEnqueueSchema), (_req,res) => {
+  if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish'});
+  try { subbeatsStore.upgradeCoverage(_req.body.ids); kickSubbeats(); res.status(202).json(view()); }
+  catch (error) { res.status(409).json({error:error instanceof Error ? error.message : 'Coverage upgrades could not be queued.'}); }
 });
 
 router.post('/library/subbeats/pause', requireAdmin, validateBody(subbeatsPauseSchema), (req, res) => {
@@ -181,7 +189,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
     const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
-      ...(cueMode ? {method:'cue-points' as const,cue_keys:tracks.map(track => track!.cuePoints!.artifactKey),cue_indices:cueIndices} : {})});
+      ...(cueMode ? {method:'cue-points' as const,cue_keys:tracks.map(track => track!.cuePoints!.artifactKey),cue_indices:cueIndices,coverage_keys:tracks.map(track => track!.cueCoverage?.artifactKey ?? null)} : {})});
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

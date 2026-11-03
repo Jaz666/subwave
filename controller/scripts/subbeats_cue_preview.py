@@ -138,8 +138,14 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     incoming=choose_cue(cues[1],'incoming',indices[1])
     durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
     plan=passage_plan(outgoing,incoming,*durations)
-    out_parts,out_extended=cue_region(req,0,folders[0],records[0],'exit',plan['first'],plan['out_end'],fetch_source)
-    in_parts,in_extended=cue_region(req,1,folders[1],records[1],'head',0.,plan['incoming_end'],fetch_source)
+    def parts(index,name,start,end):
+        entry = (req.get('_cue_coverage') or [None,None])[index]
+        if entry:
+            audio,_ = load_region(entry[0],entry[1],name,limit_seconds=130,start_seconds=start,end_seconds=end,require_tempo=False)
+            return audio,False
+        return cue_region(req,index,folders[index],records[index],name,start,end,fetch_source)
+    out_parts,out_extended=parts(0,'exit',plan['first'],plan['out_end'])
+    in_parts,in_extended=parts(1,'head',0.,plan['incoming_end'])
     from subbeats_vocals import measure_vocals
     from subbeats_cue_matching import assess_vocal_pair
     vocal = assess_vocal_pair(measure_vocals(out_parts,STEM_SR,plan['first']),

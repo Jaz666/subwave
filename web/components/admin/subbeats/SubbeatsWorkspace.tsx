@@ -10,12 +10,12 @@ export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview' | 
 export type SubbeatsBrowseState = {
   mixing: z.infer<typeof subbeatsMixFilterSchema>;
   sort: z.infer<typeof subbeatsSortSchema>;
-  query: string; offset: number; genre: string;
-  scope: 'dance' | 'library' | 'prepared';
+  query: string; offset: number; genre: string; playlistId:string;
+  scope: 'dance' | 'library' | 'prepared' | 'playlist';
   status: 'all' | z.infer<typeof subbeatsBrowseStatusSchema>;
 };
 export const subbeatsInitialBrowse = (scope: SubbeatsBrowseState['scope']): SubbeatsBrowseState => ({
-  mixing: 'all', sort: 'recommended', query: '', offset: 0, genre: '', scope, status: 'all',
+  mixing: 'all', sort: 'recommended', query: '', offset: 0, genre: '', playlistId:'', scope, status: 'all',
 });
 
 function useWorkspaceState() {
@@ -33,7 +33,7 @@ function useWorkspaceState() {
   const [outgoing, setOutgoing] = useState('');
   const [incoming, setIncoming] = useState('');
   const [barShift, setBarShift] = useState(0);
-  const [preparationMethod, setPreparationMethod] = useState<'classic'|'small0'|'final0'>('classic');
+  const [preparationMethod, setPreparationMethod] = useState<'classic'|'small0'|'final0'>('small0');
   const [previewMethod, setPreviewMethod] = useState<'stems'|'cue-points'>('stems');
   const [outCueIndex, setOutCueIndex] = useState(0);
   const [inCueIndex, setInCueIndex] = useState(0);
@@ -42,7 +42,7 @@ function useWorkspaceState() {
   useEffect(() => {
     if (browsePage) {
       const params = new URLSearchParams(window.location.search);
-      if (['q', 'genre', 'scope', 'status', 'offset', 'sort', 'mixing'].some(key => params.has(key))) {
+      if (['q', 'genre', 'scope', 'status', 'offset', 'sort', 'mixing', 'playlistId'].some(key => params.has(key))) {
         const sort = subbeatsSortSchema.safeParse(params.get('sort') ?? 'recommended');
         const status = subbeatsBrowseStatusSchema.safeParse(params.get('status') ?? 'all');
         const mixing = subbeatsMixFilterSchema.safeParse(params.get('mixing') ?? 'all');
@@ -52,7 +52,8 @@ function useWorkspaceState() {
           sort: sort.success ? sort.data : 'recommended',
           query: (params.get('q') ?? '').slice(0, 200),
           genre: (params.get('genre') ?? '').slice(0, 200),
-          scope: browsePage === 'prepared' ? 'prepared' : params.get('scope') === 'library' ? 'library' : 'dance',
+          playlistId:browsePage === 'explore' ? (params.get('playlistId') ?? '').slice(0,200) : '',
+          scope: browsePage === 'prepared' ? 'prepared' : params.get('scope') === 'library' ? 'library' : params.get('scope') === 'playlist' ? 'playlist' : 'dance',
           status: browsePage === 'prepared' ? 'all' : status.success ? status.data : 'all',
           offset: Number.isSafeInteger(offset) && offset >= 0 && offset <= 1_000_000 ? offset : 0,
         } }));
@@ -64,12 +65,13 @@ function useWorkspaceState() {
     if (!browsePage || restoredPath !== pathname) return;
     const current = browse[browsePage];
     const params = new URLSearchParams(window.location.search);
-    for (const key of ['q', 'genre', 'scope', 'status', 'offset', 'sort', 'mixing']) params.delete(key);
+    for (const key of ['q', 'genre', 'scope', 'status', 'offset', 'sort', 'mixing', 'playlistId']) params.delete(key);
     if (current.query.trim()) params.set('q', current.query.trim());
     if (current.sort !== 'recommended') params.set('sort', current.sort);
     if (current.mixing !== 'all') params.set('mixing', current.mixing);
     if (current.genre) params.set('genre', current.genre);
-    if (current.scope === 'library') params.set('scope', 'library');
+    if (current.scope === 'library' || current.scope === 'playlist') params.set('scope', current.scope);
+    if (current.scope === 'playlist' && current.playlistId) params.set('playlistId',current.playlistId);
     if (current.status !== 'all') params.set('status', current.status);
     if (current.offset) params.set('offset', String(current.offset));
     const query = params.toString();

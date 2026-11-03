@@ -267,21 +267,44 @@ def prepare_request(req):
     method = req.get('method','classic')
     if method not in ('classic','small0','final0'):
         raise ValueError('Unknown preparation method')
-    result = prepare(req['path'], state_dir, expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
+    upgrading = req.get('bundle_key') is not None
+    if upgrading:
+        if method == 'classic':
+            raise ValueError('Coverage upgrades require a saved cue-point method')
+        from subbeats_cache import bundle_folder, cached_entry
+        from subbeats_cues import load_cues, ALGORITHM_VERSION
+        import re
+        if not isinstance(req['bundle_key'],str) or not re.fullmatch('[a-f0-9]{64}',req['bundle_key']):
+            raise ValueError('Invalid saved bundle key')
+        folder = bundle_folder(state_dir,req['bundle_key'],req['stems_root'],req['track_id'])
+        identity = json.loads((folder/'manifest.json').read_text())['identity']
+        record = cached_entry(folder,identity)
+        if record is None:
+            raise ValueError('Saved stems failed integrity checks. Recheck this track.')
+        saved = load_cues(state_dir,req['stems_root'],req['track_id'],req['cue_key'],folder)
+        result = dict(directory=str(folder),cache_hit=True,**record)
+        cue_points = dict(version=saved['version'],algorithmVersion=saved.get('algorithmVersion',ALGORITHM_VERSION),
+            model=saved['model'],artifactKey=req['cue_key'],durationSeconds=saved['durationSeconds'],incoming=saved['incoming'],outgoing=saved['outgoing'])
+    else:
+        result = prepare(req['path'], state_dir, expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_structure import prepare_structure
-    structure = prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
+    structure = None if upgrading else prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_suitability import assess_bundle
     suitability = assess_bundle(Path(result['directory']),result)
     cues = {}
+    coverage_used_models = False
     if method != 'classic':
         from subbeats_cues import prepare_cues
-        cues['cuePoints'] = prepare_cues(req['path'],state_dir,result['directory'],result,method,
+        cues['cuePoints'] = cue_points if upgrading else prepare_cues(req['path'],state_dir,result['directory'],result,method,
             cache_root=cache_root,allowance=allowance,expected_cache_id=expected)
-    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': method != 'classic' or (not result.get('cache_hit', False) and bool(result['metadata']['stem_regions'])), 'subbeats_result': {
+        from subbeats_coverage import prepare_coverage
+        cues['cueCoverage'],coverage_used_models = prepare_coverage(req['path'],state_dir,result['directory'],result,cues['cuePoints'],
+            cache_root=cache_root,allowance=allowance,expected_cache_id=expected)
+    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': coverage_used_models or (method != 'classic' and not upgrading) or (not result.get('cache_hit', False) and bool(result['metadata']['stem_regions'])), 'subbeats_result': {
         'status': ('prepared' if result['metadata']['stem_regions'] else 'unmeasurable'),
         'bundleKey': Path(result['directory']).name, 'suitability':suitability, **cues,
         'error': None,
-    }, 'subbeats_structure_key': Path(structure['directory']).name}
+    }, 'subbeats_structure_key': Path(structure['directory']).name if structure else None}
 
 
 def main():

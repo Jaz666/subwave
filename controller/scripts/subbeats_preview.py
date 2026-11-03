@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 9
+VERSION = 10
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -337,11 +337,21 @@ def render_preview(req, fetch_source=None):
         if record is None:
             raise ValueError('A prepared bundle failed integrity checks. Recheck the track.')
         records.append(record); folders.append(folder)
+    coverage_keys = req.get('coverage_keys')
+    coverage_manifests = []
+    if method=='cue-points' and coverage_keys is not None:
+        if not isinstance(coverage_keys,list) or len(coverage_keys)!=2 or track_ids is None:
+            raise ValueError('Choose two saved cue coverage entries')
+        from subbeats_coverage import load_coverage
+        saved_coverage = [load_coverage(state,req.get('stems_root'),track_ids[i],key,folders[i],req['cue_keys'][i])
+                          if key else None for i,key in enumerate(coverage_keys)]
+        coverage_manifests = [digest(entry[0]/'manifest.json') if entry else None for entry in saved_coverage]
+        req = {**req,'_cue_coverage':saved_coverage}
     gains = [float(req.get(name, 0)) for name in ('out_gain_db', 'in_gain_db')]
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
     fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
-                              'reference': reference, 'window_plan':req.get('window_plan'), 'method':method,'cue_keys':req.get('cue_keys'),'cue_indices':req.get('cue_indices'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
+                              'coverage_manifests':coverage_manifests,'coverage_keys':coverage_keys,'reference': reference, 'window_plan':req.get('window_plan'), 'method':method,'cue_keys':req.get('cue_keys'),'cue_indices':req.get('cue_indices'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
     if previews.is_symlink():

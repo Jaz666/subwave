@@ -808,6 +808,8 @@ async def migrate_subbeats(req: SubbeatsCacheRequest):
 
 
 class SubbeatsPrepareRequest(SubbeatsCacheRequest):
+    bundle_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
+    cue_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
     method: str = Field(default='classic',pattern=r'^(classic|small0|final0)$')
     path: str
     track_id: str
@@ -864,6 +866,7 @@ class SubbeatsReferencePreview(BaseModel):
 
 
 class SubbeatsPreviewRequest(BaseModel):
+    coverage_keys: list[str | None] | None = Field(default=None, min_length=2, max_length=2)
     source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)
     method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')
     cue_keys: list[str] | None = Field(default=None,min_length=2,max_length=2)

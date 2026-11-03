@@ -15,6 +15,8 @@ import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeat
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { libraryKeys } from './library/queries';
+import type { PlaylistSummary } from './library/types';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
 import { selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './library/subbeats-selection';
@@ -26,7 +28,7 @@ const subbeatsKeys = {
   duration: (id: string) => ['library', 'subbeats', 'duration', id] as const,
   cueMatches: (outgoing:string, cue:number, version:string) => ['library','subbeats','cue-matches',outgoing,cue,version] as const,
   matches: (outgoing:string, shift:number, version:string) => ['library','subbeats','matches',outgoing,shift,version] as const,
-  candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string, mixing: string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, mixing, offset] as const,
+  candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string, mixing: string, playlistId:string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, mixing, playlistId, offset] as const,
 };
 type Status = z.infer<typeof subbeatsStatusSchema>;
 const LABEL: Record<Status, string> = {
@@ -52,7 +54,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const { preparationMethod, setPreparationMethod, previewMethod, setPreviewMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
-  const { query, offset, scope, genre, status, sort, mixing } = browse[browsePage];
+  const { query, offset, scope, genre, status, sort, mixing, playlistId } = browse[browsePage];
   const updateBrowse = (patch: Partial<SubbeatsBrowseState>) => setBrowse(current => ({
     ...current, [browsePage]: { ...current[browsePage], ...patch },
   }));
@@ -69,11 +71,15 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     key: subbeatsKeys.state, adminFetch, enabled: ready, refetchInterval: 3000,
     request: async (fetcher, signal) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats', undefined, signal)),
   });
-  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, barShift, previewMethod, outCueIndex, inCueIndex, state.data?.jobs.filter(job => job.id === outgoing || job.id === incoming).map(job => job.cuePoints?.artifactKey)]), adminFetch, '/library/subbeats/join-preview');
+  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, barShift, previewMethod, outCueIndex, inCueIndex, state.data?.jobs.filter(job => job.id === outgoing || job.id === incoming).map(job => [job.cuePoints?.artifactKey,job.cueCoverage?.artifactKey])]), adminFetch, '/library/subbeats/join-preview');
   const candidates = useAdminQuery({
-    key: subbeatsKeys.candidates(q, offset, scope, genre, status, sort, mixing), adminFetch, enabled: ready && browsing && browseRestored,
+    key: subbeatsKeys.candidates(q, offset, scope, genre, status, sort, mixing,playlistId), adminFetch, enabled: ready && browsing && browseRestored,
     request: async (fetcher, signal) => subbeatsCandidatePageSchema.parse(await adminJson(fetcher,
-      `/library/subbeats/candidates?${new URLSearchParams({ q, offset: String(offset), scope, genre, status, sort, mixing })}`, undefined, signal)),
+      `/library/subbeats/candidates?${new URLSearchParams({ q, offset: String(offset), scope, genre, status, sort, mixing, playlistId })}`, undefined, signal)),
+  });
+  const playlists = useAdminQuery({
+    key:libraryKeys.playlists(),adminFetch,enabled:ready && page === 'explore' && scope === 'playlist',
+    request:async (fetcher,signal) => (await adminJson<{playlists?:PlaylistSummary[]}>(fetcher,'/playlists',undefined,signal)).playlists ?? [],
   });
   const enqueue = useAdminMutation({
     adminFetch,
@@ -92,6 +98,17 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       client.setQueryData(subbeatsKeys.state, view);
       setJobSelected(current => current.filter(id => !_ids.includes(id)));
       await client.invalidateQueries({ queryKey: ['library', 'subbeats', 'candidates'] });
+    },
+  });
+  const upgradeCoverage = useAdminMutation({
+    adminFetch,
+    request:async (ids:string[],fetcher) => subbeatsViewSchema.parse(await adminJson(fetcher,'/library/subbeats/coverage',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids}),
+    })),
+    onDone:async (view,ids,client) => {
+      await client.cancelQueries({queryKey:subbeatsKeys.state,exact:true});client.setQueryData(subbeatsKeys.state,view);
+      setJobSelected(current => current.filter(id => !ids.includes(id)));
+      await client.invalidateQueries({queryKey:['library','subbeats','candidates']});
     },
   });
   const pause = useAdminMutation({
@@ -145,7 +162,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       ]);
     },
   });
-  const actionBusy = enqueue.isPending || assess.isPending || remove.isPending || batchRemove.isPending;
+  const actionBusy = upgradeCoverage.isPending || enqueue.isPending || assess.isPending || remove.isPending || batchRemove.isPending;
   const jobs = state.data?.jobs ?? [];
   const byId = new Map(jobs.map(j => [j.id, j]));
   const rows = candidates.data?.rows ?? [];
@@ -175,14 +192,16 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const selectedJobs = selectPreparationIds(jobSelected, [], jobs);
   const selectedJobSet = new Set(selectedJobs);
   const assessJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey);
+  const coverageJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey && byId.get(id)?.cuePoints);
+  const needsCoverage = jobs.filter(job => job.bundleKey && job.cuePoints && !job.cueCoverage && !['queued','running'].includes(job.status));
   const pageJobs = ranked.slice(activeJobPage * 20, (activeJobPage + 1) * 20);
   const selectableJobs = pageJobs.filter(job => !['queued', 'running'].includes(job.status));
   const selectJobs = (ids: string[]) => setJobSelected(current => selectPreparationIds(current, ids, jobs));
   const previewJobs = jobs.filter(job => job.status === 'prepared' && (job.id === outgoing || job.id === incoming
-    || `${job.artist} ${job.title} ${job.album}`.toLowerCase().includes(previewSearch.trim().toLowerCase())));
+    || `${job.artist} ${job.title} ${job.album}`.toLowerCase().includes(previewSearch.trim().toLowerCase()))).sort((a,b) => a.artist.localeCompare(b.artist,undefined,{sensitivity:'base'}) || a.title.localeCompare(b.title,undefined,{sensitivity:'base'}) || a.id.localeCompare(b.id));
   const currentStage = preview.timeline?.events.reduce((label, event) => event.at <= preview.position ? event.label : label, '');
   const changePage = (next: number) => { setOffset(next); };
-  const jobVersion = state.data ? jobs.map(job => `${job.id}:${job.status}:${job.bundleKey ?? ''}:${job.suitability?.assessedAt ?? ''}:${job.cuePoints?.artifactKey ?? ''}`).join('|') : null;
+  const jobVersion = state.data ? jobs.map(job => `${job.id}:${job.status}:${job.bundleKey ?? ''}:${job.suitability?.assessedAt ?? ''}:${job.cuePoints?.artifactKey ?? ''}:${job.cueCoverage?.artifactKey ?? ''}`).join('|') : null;
   useEffect(() => {
     if (jobVersion === null) { previousJobs.current = null; return; }
     if (previousJobs.current !== null && previousJobs.current !== jobVersion) {
@@ -247,7 +266,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const preparationControl = <div className="max-w-md"><label htmlFor="subbeats-preparation-method" className="mb-1 block text-sm font-medium">Preparation method</label>
     <select id="subbeats-preparation-method" className={SELECT_CLASS} value={preparationMethod} disabled={enqueue.isPending} onChange={event => setPreparationMethod(event.target.value as typeof preparationMethod)}>
       <option value="classic">Current stem analysis</option><option value="small0">Beat This! small · cue points</option><option value="final0">Beat This! full · cue points</option>
-    </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation adds musical change and repetition candidates. Saved stems are reused. The full model takes longer and may choose different points.</p></div>;
+    </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation saves musical cues, reusable opening/ending coverage and vocal measurements. Sufficient saved stems are reused. The full model takes longer and may choose different points.</p></div>;
   const outgoingControl = <div className="min-w-0">
           <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
           <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setIncoming(''); setBarShift(0); setMatchFor(null); setOutCueIndex(0); setInCueIndex(0); }}>
@@ -446,6 +465,11 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared means the files are saved. Suitability describes each track’s incoming and outgoing capability. Choose a pair, then open Preview to listen. Remove an entry to delete its extended files.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
           <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Regular stem inclusion is separate from deeper Sub/Beats preparation. It bypasses selective cache criteria, with the normal priority and space budget.</p>
           <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Suitability uses the best of the two roles; expand a result for each role’s evidence. Pair selection still checks tempo and coverage. Vocal and musical fit need listening.</p>
+          {page === 'prepared' && needsCoverage.length > 0 && <div className="mt-3">
+            <Button className="min-h-11" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate(needsCoverage.slice(0,SUBBEATS_BATCH_LIMIT).map(job => job.id))}>Upgrade cue coverage ({Math.min(needsCoverage.length,SUBBEATS_BATCH_LIMIT)})</Button>
+            <p className="mt-1 text-xs text-muted">Reuses saved cues and sufficient stems, prepares missing coverage and saves vocal measurements for matching.</p>
+          </div>}
+          {upgradeCoverage.isError && <p role="alert" className="mt-2 text-sm">{upgradeCoverage.error.message}</p>}
           {page === 'prepared' && unassessed.length > 0 && <div className="mt-3">
             <Button className="min-h-11" disabled={assess.isPending || !!state.data?.maintenanceRunning} onClick={() => assess.mutate(unassessed.slice(0, SUBBEATS_BATCH_LIMIT).map(job => job.id))}>
               {assess.isPending ? 'Queueing assessment…' : `Assess saved stems (${Math.min(unassessed.length, SUBBEATS_BATCH_LIMIT)})`}
@@ -461,7 +485,16 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
             {page === 'explore' && <div><label htmlFor="subbeats-scope" className="mb-1 block text-sm font-medium">Collection</label>
               <select id="subbeats-scope" className={SELECT_CLASS} value={scope} onChange={event => {
                 setScope(event.target.value as typeof scope); setGenre(''); setStatus('all'); setOffset(0);
-              }}><option value="dance">Dance candidates</option><option value="library">Entire library</option></select>
+              }}><option value="dance">Dance candidates</option><option value="library">Entire library</option><option value="playlist">Playlist</option></select>
+            </div>}
+            {page === 'explore' && scope === 'playlist' && <div><label htmlFor="subbeats-playlist" className="mb-1 block text-sm font-medium">Playlist</label>
+              <select id="subbeats-playlist" className={SELECT_CLASS} value={playlistId} disabled={playlists.isLoading || playlists.isError} onChange={event => updateBrowse({playlistId:event.target.value,offset:0})}>
+                <option value="">{playlists.isLoading ? 'Loading playlists…' : 'Choose a playlist'}</option>
+                {playlistId && !playlists.data?.some(item => item.id === playlistId) && <option value={playlistId}>Selected playlist unavailable</option>}
+                {[...(playlists.data ?? [])].sort((a,b) => a.name.localeCompare(b.name)).map(item => <option key={item.id} value={item.id}>{item.name} ({item.songCount})</option>)}
+              </select>
+              <p className="mt-2 text-xs text-muted">Shows playlist tracks already in the library.</p>
+              {playlists.isError && <div role="alert" className="mt-2 text-sm">Playlists could not be loaded. <Button onClick={() => void playlists.refetch()}>Retry playlists</Button></div>}
             </div>}
             <div><label htmlFor="subbeats-genre" className="mb-1 block text-sm font-medium">Genre</label>
               <select id="subbeats-genre" className={SELECT_CLASS} value={genre} onChange={event => { setGenre(event.target.value); setOffset(0); }}>
@@ -532,7 +565,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         </div>
         {candidates.isLoading && <p role="status" className="p-4 text-sm text-muted">Finding tracks…</p>}
         {candidates.isError && <div role="alert" className="flex flex-wrap items-center gap-3 p-4 text-sm">Could not load tracks.<Button className="min-h-11" onClick={() => void candidates.refetch()}>Retry</Button></div>}
-        {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{page === 'prepared' ? 'No prepared tracks match. Clear the search or choose another genre.' : 'No tracks match these filters. Try another genre or status, clear the search, or choose Entire library.'}{page === 'prepared' && <Link href="/admin/library/subbeats" className="mt-2 flex min-h-11 items-center underline underline-offset-4">Explore tracks to prepare more</Link>}</p>}
+        {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{page === 'explore' && scope === 'playlist' && !playlistId ? 'Choose a playlist to see its tracks.' : page === 'prepared' ? 'No prepared tracks match. Clear the search or choose another genre.' : 'No tracks match these filters. Try another genre or status, clear the search, or choose Entire library.'}{page === 'prepared' && <Link href="/admin/library/subbeats" className="mt-2 flex min-h-11 items-center underline underline-offset-4">Explore tracks to prepare more</Link>}</p>}
         {cache.update.isError && <p role="alert" className="p-4 text-sm">Could not save regular stem inclusion. Your previous choice is still shown. Try again.</p>}
         {cache.query.isError && <p role="alert" className="p-4 text-sm">Regular stem choices are unavailable. <button className="min-h-11 underline underline-offset-4" onClick={() => void cache.query.refetch()}>Retry</button></p>}
         {pagination}
@@ -549,6 +582,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 <p className="mt-1 text-xs break-words text-muted lg:mt-0">{row.album}</p></div>
                 <p className="mt-1 text-xs break-words text-muted lg:mt-0">{row.genres.join(' · ')}</p>
                 <p className="mt-2 text-xs text-muted lg:mt-0">{BROWSE_LABEL[job?.status ?? row.status]} · {row.hasBeatGrid ? 'Beat data available' : row.bpm ? 'Tempo estimate only' : 'No tempo data'}</p>
+                {job?.cuePoints && <p className="mt-1 text-xs text-muted lg:col-span-3">{job.cueCoverage ? 'Matching coverage and vocal measurements saved · check each pair for compatibility.' : 'Cues detected · upgrade cue coverage for saved vocal matching.'}</p>}
                 <SuitabilityDetails value={job ? job.suitability : row.suitability} />
                 <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs lg:col-span-3">
                   <Checkbox aria-label={`Include ${row.title} by ${row.artist} in regular stem caching`} checked={regularIds.has(row.id)}
@@ -607,9 +641,11 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Select up to {SUBBEATS_BATCH_LIMIT} completed or failed entries across pages. Queued and running entries cannot be selected. Recheck/retry prepares resources; suitability assessment uses saved stems only.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button className="min-h-11" disabled={actionBusy || !selectedJobs.length || !state.data} onClick={() => enqueue.mutate(selectedJobs)}>Recheck/retry selected ({selectedJobs.length})</Button>
+            <Button className="min-h-11" disabled={actionBusy || !coverageJobs.length || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate(coverageJobs)}>Upgrade cue coverage ({coverageJobs.length})</Button>
             <Button className="min-h-11" disabled={actionBusy || !assessJobs.length || !!state.data?.maintenanceRunning} onClick={() => assess.mutate(assessJobs)}>Assess suitability ({assessJobs.length})</Button>
             <Button className="min-h-11" disabled={actionBusy || !selectedJobs.length || !!state.data?.maintenanceRunning} onClick={() => { batchRemove.reset(); setBulkRemoving([...selectedJobs]); }}>Remove selected ({selectedJobs.length})</Button>
           </div>
+          {upgradeCoverage.isError && <p role="alert" className="mt-2 text-sm">{upgradeCoverage.error.message}</p>}
           {enqueue.isError && <p role="alert" className="mt-2 text-sm">Could not queue the selected entries. {enqueue.error.message}</p>}
           {batchRemove.isPending && <p role="status" className="mt-2 text-sm">{removeProgress}</p>}
           {batchRemove.data && <p role={batchRemove.data.error ? 'alert' : 'status'} className="mt-2 text-sm">Removed {batchRemove.data.removed.length} of {batchRemove.data.total} entries.{batchRemove.data.error && ` ${batchRemove.data.error} Remaining entries stay selected; retry when the problem is resolved.`}</p>}
@@ -624,10 +660,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 onCheckedChange={checked => checked === true ? selectJobs([job.id]) : setJobSelected(current => current.filter(id => id !== job.id))} /></label>
               <div className="min-w-0 flex-1"><p className="text-sm font-semibold break-words">{job.title}</p><p className="text-sm break-words text-muted">{job.artist}</p></div>
               {(job.status !== 'queued' && job.status !== 'running') && <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto"><Button className="min-h-11" size="sm" disabled={actionBusy} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>
+                {job.bundleKey && job.cuePoints && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate([job.id])}>Upgrade cue coverage</Button>}
                 {job.bundleKey && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => assess.mutate([job.id])}>Assess suitability</Button>}
                 <Button className="min-h-11" size="sm" aria-label={`Remove Sub/Beats entry for ${job.title} by ${job.artist}`} disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => { remove.reset(); setRemoving(job); }}>Remove</Button></div>}
             </div>
             <p className="mt-2 text-xs font-medium" role={job.status === 'running' ? 'status' : undefined}>{LABEL[job.status]}{job.cuePoints ? ` · ${job.cuePoints.model} cues: ${job.cuePoints.incoming.length} incoming / ${job.cuePoints.outgoing.length} outgoing` : job.preparationMethod ? ` · ${job.preparationMethod}` : ''}</p>
+            {job.cuePoints && <p className="mt-1 text-xs text-muted">{job.cueCoverage ? `Matching coverage saved: ${[job.cueCoverage.incoming ? 'incoming' : '',job.cueCoverage.outgoing ? 'outgoing' : ''].filter(Boolean).join(' and ') || 'no cue roles detected'}. Pair compatibility still needs checking.` : 'Cues detected · upgrade coverage for saved vocal matching.'}</p>}
             <SuitabilityDetails value={job.suitability} />
             {job.error && <p className="mt-1 text-xs leading-relaxed break-words text-muted">{job.error}</p>}
           </li>)}

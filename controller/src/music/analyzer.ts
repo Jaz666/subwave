@@ -1293,9 +1293,9 @@ export async function assessSubbeats(stateDir:string, cacheId:string, trackId:st
   return {...result,addedBytes:0};
 }
 
-export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0'|'final0' = 'classic') {
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0'|'final0' = 'classic', upgrade?:{bundle_key:string;cue_key:string}) {
   if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
-  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared,...(method === 'classic' ? {} : {method}) };
+  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared,...(method === 'classic' ? {} : {method}), ...upgrade };
   const timeoutMs = 30 * 60_000;
   let answer: WorkerMessage;
   if (_backend === 'sidecar' && _sidecarBase) {
@@ -1310,7 +1310,8 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
   if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
   if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
-  if (method !== 'classic' && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 4)) throw new Error('Update the heavy analyzer for opening and closing cue preparation');
+  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 4)) throw new Error('Update the heavy analyzer for opening and closing cue preparation');
+  if (method !== 'classic' && !result.cueCoverage) throw new Error('Update the heavy analyzer to save cue coverage and vocal measurements');
   return {...result, addedBytes:cacheGrowth(answer)};
 }
 
@@ -1322,7 +1323,7 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';cue_keys?:string[];cue_indices?:number[]}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';cue_keys?:string[];cue_indices?:number[];coverage_keys?:Array<string|null>}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
   const timeoutMs = shared?.method === 'cue-points' ? 30*60_000 : 180_000;

@@ -8,6 +8,57 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+### Current: persisted cue coverage, playlist preparation and artist ordering
+
+Owner accepted improving preparation before adding more tracks, requested
+playlist support for **preparation only**, and artist ordering in both preview
+track dropdowns. Cue preparation now saves a source/base/cue-bound coverage
+artifact and full overlap vocal measurements. Existing cue-prepared tracks have
+an explicit **Upgrade cue coverage** action that preserves their cue choices,
+reuses sufficient stems and skips beat/structure inference. Matching prefers
+saved coverage evidence; previews reload/slice these reusable stems, recheck
+vocals and refuse detected clashes. Legacy on-demand preview extensions remain
+temporary until upgraded. Preview version 10 fingerprints coverage artifacts.
+
+The supported 120-second preview / 8% tempo bounds imply at most 129.6 incoming
+source seconds and outgoing EOF-minus-120 through EOF; prepare at most 130-second
+heads and 120-second endings for roles with cues. Normal shared budget, source
+integrity, atomic publication and writer locking apply. Initial cue preparation
+still retains the classic base bundle; the additional matching coverage costs
+extra preparation/storage once, then is reused across cue combinations. The
+fresh UI preparation default is Beat This! small; classic remains available.
+
+Explore's Collection → Playlist filters local library rows, counts, pagination
+and bounded bulk selection by live playlist membership. Empty/unselected lists
+show no rows, failed reads do not fall back to the library. Playlist filters
+persist in the URL and do not constrain cue-preview suggestions. Preview track
+selectors sort artist/title; relevance ordering for cues/suggestions is retained.
+No key checking, playback or picker integration is enabled. See the method guide
+for the maintained coverage contract and operator workflow.
+
+Verification: focused controller Sub/Beats suite 63 cases; registered Python
+checks including persistent coverage/reuse, source/parent/budget binding, an
+upgrade with no beat/structure inference, saved-artifact preview reuse and
+analyzer packaging import closure; controller/web typechecks and targeted lint;
+admin-query detector and nine audit cases. One isolated browser pass covered
+playlist membership/counts/bulk admission, default cue method, empty selection,
+URL restoration, upgrade admission, both artist-ordered preview selectors and
+preparation-only playlist scope at desktop/mobile sizes. No browser errors.
+Broader suites/browser reruns and real-track model inference were intentionally
+not run, following the owner's minimal-test request. Temporary servers stopped;
+generated Next config edits restored. No live state changes, scans, Docker builds
+or restarts. Existing tracks need the explicit coverage upgrade to replace the
+old incomplete matching evidence. The first upgrade/preparation uses more time
+and storage; later cue choices reuse those saved regions.
+
+Station source target is `test-station/sleeve-notes-clean-20261014`; source rollback
+for this increment is `c40b9e1e`. Rebuild analyzer/controller/web together using
+the existing GPU/Discord overlays and check `/api/health`. Then upgrade existing
+cue-prepared tracks on Prepared tracks or Preparation, wait for completion and
+retry candidate discovery. New playlist preparation is Explore → Collection →
+Playlist, choose the list, select tracks and queue Beat This! preparation. The
+owner runs those operational actions; this work only updates source.
+
 ### Packaging correction after version-9 station rebuild
 
 Owner reported sidecar 422 `No module named subbeats_cue_matching`. The explicit
@@ -18,7 +69,7 @@ This corrects packaging only; no cue recheck or controller/web rebuild is needed
 Owner rebuilds the analyzer with existing overlays, checks health and retries
 Find suitable candidates. No Docker build/restart is run by the agent.
 
-### Current: cue candidate discovery and vocal overlap guard (preview version 9)
+### Previous: cue candidate discovery and vocal overlap guard (preview version 9)
 
 Owner approved implementing vocal-aware pair assessment plus **Find suitable
 candidates**, with minimal tests. The cue preview now searches saved prepared

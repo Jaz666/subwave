@@ -42,6 +42,21 @@ pydantic.Field = lambda **_kwargs: None
 sys.modules["fastapi"] = fastapi
 sys.modules["pydantic"] = pydantic
 
+# Catch missing worker modules before a rebuilt sidecar reaches a real station.
+import ast
+import shlex
+repo = Path(__file__).parents[2]
+packaged = set()
+for line in (repo / 'docker/Dockerfile.analyzer').read_text().splitlines():
+    if line.startswith('COPY ') and '/app/workers/' in line:
+        packaged.update(Path(src).stem for src in shlex.split(line)[1:-1])
+for name in packaged:
+    for node in ast.walk(ast.parse((repo/'controller/scripts'/f'{name}.py').read_text())):
+        imports = [node.module] if isinstance(node,ast.ImportFrom) else [alias.name for alias in node.names] if isinstance(node,ast.Import) else []
+        for module in imports:
+            if module and module.startswith('subbeats_'):
+                assert module in packaged, f'{name} imports unpackaged {module}'
+
 server_path = Path(__file__).parents[2] / "docker" / "analyzer" / "server.py"
 spec = importlib.util.spec_from_file_location("subwave_analyzer_server", server_path)
 assert spec and spec.loader

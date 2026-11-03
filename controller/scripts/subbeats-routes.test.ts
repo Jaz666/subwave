@@ -428,3 +428,32 @@ test('source auditions support incoming-only cues, preserve authentication and k
     assert.equal(JSON.stringify(subbeatsStore.read()),before);
   } finally {globalThis.fetch=realFetch;}
 });
+
+
+test('playlist preparation filters rows, counts and bulk selection before pagination', async () => {
+  const realFetch=globalThis.fetch;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).includes('/rest/getPlaylist')) {
+      const id=new URL(String(url)).searchParams.get('id');
+      return Response.json({'subsonic-response':id==='broken' ? {status:'failed',error:{code:70,message:'Playlist unavailable'}} : {status:'ok',playlist:{entry:id==='empty'?[]:[{id:'quiet-intro'},{id:'quiet-intro'},{id:'missing-library-track'}]}}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const read=async (id:string) => subbeatsCandidatePageSchema.parse(await (await fetch(base+'/library/subbeats/candidates?scope=playlist&playlistId='+id,{headers})).json());
+    const page=await read('chosen');assert.equal(page.total,1);assert.deepEqual(page.rows.map(row=>row.id),['quiet-intro']);
+    assert.deepEqual(page.selectableRows.map(row=>row.id),['quiet-intro']);
+    assert.equal((await read('empty')).total,0);assert.equal((await read('')).total,0);
+    assert.equal((await fetch(base+'/library/subbeats/candidates?scope=playlist&playlistId=broken',{headers})).status,503);
+  } finally {globalThis.fetch=realFetch;}
+});
+
+test('coverage upgrades require admin and preserve saved cue identity', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/coverage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ids":["incoming-source-audition"]}'})).status,401);
+  assert.equal((await post('/library/subbeats/coverage',{ids:['quiet-intro']})).status,409);
+  const id='incoming-source-audition';const before=subbeatsStore.read().jobs.find(job=>job.id===id)!;
+  const response=await post('/library/subbeats/coverage',{ids:[id]});assert.equal(response.status,202);
+  const job=subbeatsViewSchema.parse(await response.json()).jobs.find(job=>job.id===id)!;
+  assert.equal(job.task,'coverage');assert.equal(job.bundleKey,before.bundleKey);
+  assert.deepEqual(job.cuePoints,before.cuePoints);assert.equal(job.preparationMethod,'small0');
+});

@@ -21,8 +21,18 @@ test('cue preparation choice and bounded cue results persist without changing cl
   const point={sourceSeconds:22.94,bpm:126,strength:1,reason:'repetition'};
   store.event({id:track.id,status:'prepared',bundleKey:'f'.repeat(64),cuePoints:{version:1,model:'small0',artifactKey:'e'.repeat(64),incoming:[point],outgoing:[]}},[track.id]);
   assert.equal(readSubbeatsQueue(state).jobs.find(job => job.id===track.id)?.cuePoints?.incoming[0]?.sourceSeconds,22.94);
+  const saved=store.read().jobs.find(job=>job.id===track.id)!;
+  store.upgradeCoverage([track.id]);
+  assert.equal(store.read().jobs.find(job=>job.id===track.id)?.task,'coverage');
+  store.event({id:track.id,status:'running'},[track.id]);
+  assert.equal(store.read().jobs.find(job=>job.id===track.id)?.bundleKey,saved.bundleKey);
+  store.event({id:track.id,status:'failed',error:'Retry later'},[track.id]);
+  assert.equal(store.read().jobs.find(job=>job.id===track.id)?.cuePoints?.artifactKey,saved.cuePoints?.artifactKey);
+  store.upgradeCoverage([track.id]);store.event({id:track.id,status:'running'},[track.id]);
+  store.event({id:track.id,status:'prepared',bundleKey:saved.bundleKey,cueCoverage:{version:1,artifactKey:'d'.repeat(64),incoming:null,outgoing:null}},[track.id]);
   invalidateSubbeatsBundles(state,[track.id]);
   assert.equal(readSubbeatsQueue(state).jobs.find(job => job.id===track.id)?.cuePoints,undefined);
+  assert.equal(readSubbeatsQueue(state).jobs.find(job => job.id===track.id)?.cueCoverage,undefined);
   store.remove(track.id);
 });
 

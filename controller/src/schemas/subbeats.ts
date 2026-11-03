@@ -42,9 +42,13 @@ export const subbeatsCuePointsSchema = z.object({
   durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.union([z.literal(3),z.literal(4)]).optional(),
   incoming:z.array(subbeatsCuePointSchema).max(8),outgoing:z.array(subbeatsCuePointSchema).max(8),
 });
+export const subbeatsCueCoverageSchema = z.object({
+  version:z.literal(1),artifactKey:z.string().regex(/^[a-f0-9]{64}$/),
+  incoming:subbeatsVocalActivitySchema.nullable(),outgoing:subbeatsVocalActivitySchema.nullable(),
+});
 export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
-  task:z.literal('assess').optional(), suitability:subbeatsSuitabilitySchema.optional(),
+  task:z.enum(['assess','coverage']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
   preparationMethod:subbeatsPreparationMethodSchema.optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
@@ -55,6 +59,7 @@ export const subbeatsQueueSchema = z.object({
 export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT), method:subbeatsPreparationMethodSchema.default('classic') });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
 export const subbeatsEventSchema = z.object({
+  cueCoverage:subbeatsCueCoverageSchema.optional(),
   cuePoints:subbeatsCuePointsSchema.optional(),
   id: z.string().min(1).max(200),
   status: subbeatsStatusSchema.exclude(['queued']),
@@ -69,7 +74,8 @@ export const subbeatsBrowseQuerySchema = z.object({
   sort: subbeatsSortSchema.default('recommended'),
   mixing:subbeatsMixFilterSchema.default('all'),
   offset: z.coerce.number().int().min(0).max(1000000).default(0),
-  scope: z.enum(['dance', 'library', 'prepared']).optional(),
+  scope: z.enum(['dance', 'library', 'prepared', 'playlist']).optional(),
+  playlistId:z.string().trim().max(200).default(''),
   genre: z.string().trim().max(200).default(''),
   status: z.union([z.literal('all'), subbeatsBrowseStatusSchema]).default('all'),
 });
