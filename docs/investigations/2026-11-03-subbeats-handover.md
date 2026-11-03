@@ -8,7 +8,11 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-Latest correction: outgoing candidates must be in the final quarter. The owner
+Latest correction: outgoing candidates must be in the final quarter.
+Development commits `cf8d770f` and `718dce4c` are pushed; station source is
+`57db2e97`, with the full station schema mirror regenerated. Source rollback
+for this fix is `536e7daa`. No services were rebuilt or restarted. The six
+analyzer-adapter cases also pass, including refusing older cue responses. The owner
 reported Rozalla’s expected outro around 2:41 versus older candidates at
 0:44–1:51. Algorithm 2 now searches the actual ending independently of old
 exit-stem coverage and adds sustained fade candidates. The web/API reject earlier
@@ -168,7 +172,7 @@ the renderer or selected an exhaustive set of candidate durations.
 | --- | --- |
 | `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; implementation and research committed here |
 | `/home/jaz666/codex/subwave-cues-station-20261103` | Validated integration candidate, branch `integrate/subbeats-cues-1300-20261103`, HEAD `b5eda6e4` |
-| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `536e7daa`; source includes outgoing audition, owner rebuild pending |
+| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `57db2e97`; source includes final-quarter/fade fix, owner rebuild pending |
 | `origin` | `https://github.com/perminder-klair/subwave.git`, upstream |
 | `jaz666` | `https://github.com/Jaz666/subwave.git`, fork |
 
