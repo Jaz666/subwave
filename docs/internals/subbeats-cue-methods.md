@@ -49,7 +49,7 @@ and a local linear beat fit; gaps and changing bar counts are not projected
 through. Tempo comes from the local accepted beat sequence. Small/full choices
 can produce different positions and tempos.
 
-Within the prepared incoming head and the original recording’s final quarter
+Within the prepared incoming head and the original recording’s second half
 for outgoing cues, the existing energy, mel and chroma features describe
 arrangement change. Earlier outgoing context is used for comparison only. Ordered 1/2/4-bar block comparisons
 describe breaks in repetition. Absolute heuristic evidence floors permit no
@@ -196,7 +196,7 @@ No tests or checks were performed for this follow-up, as requested. Rebuild
 controller and web together; no new cue preparation or analyzer rebuild is
 needed solely for the outgoing audition.
 
-## Final-quarter outgoing selection and fades
+## Historical algorithm 2: final-quarter outgoing selection and fades
 
 Owner correction: an outgoing cue must lie in the final quarter of the actual
 recording. Algorithm version 2 searches that part of the original full mix,
@@ -239,3 +239,57 @@ Rebuild controller, web and analyzer together, then recheck the selected tracks
 with a Beat This! preparation method. Older analyzers that omit decoded
 duration are explicitly refused with an update message. No library-wide
 reanalysis is required.
+
+
+## Closing-passage guidance: algorithm 3
+
+The owner clarified that the final quarter was a rough estimate. Outgoing search
+now covers the second half, with up to 64 seconds of earlier comparison context.
+This is a bounded search window, not a universal DJ convention. Both browser
+filtering and pair-request validation use the same second-half bounds and retain
+original saved indices. Incoming selection and rendering are unchanged.
+
+Outgoing ranking first considers pairs of existing structural candidates exactly
+8 or 16 observed four-beat bars apart. Every intervening bar must be complete,
+with continuous timing. The later change must lead to a sustained quieter ending:
+its initial level is 1–6 dB below the passage median, at least 75% of subsequent
+measured bars remain at least 1 dB below that median, and no two-bar average rises
+above it. A candidate beginning inside the detected fade gets no closing-phrase
+promotion. Boundary strengths rank qualifying alternatives, with a small 16-bar
+tie preference. No timestamps are manufactured by subtracting bars from EOF.
+
+These are **closing-phrase hypotheses**, not section/vocal recognition. The later
+change may be a reduction within the outro or fade, rather than the musical end.
+The menu labels `8-bar closing candidate` / `16-bar closing candidate`, and the
+selected cue explains its later change separately from file-end zero. Ordinary
+structural alternatives remain available; the first recorded fade onset has one
+reserved alternative slot and no automatic first-place preference. Unsupported
+tracks retain ordinary candidates or an empty result, without forced phrase labels.
+
+Optional `phraseBars` and `phraseEndSeconds` accompany promoted cues. Public
+payload version stays 1; `algorithmVersion: 3` and immutable cache identity 3
+identify refreshed analysis. The controller rejects older analyzers during a
+Beat This! recheck. Existing saved choices remain readable; cue-pair rendering
+requires refreshed artifacts. Recheck the selected tracks after rebuilding
+analyzer/controller/web together; verified stems are reused. Existing exit-stem
+coverage limitations still apply to pairs, independently of original-mix audition.
+
+Offline comparison reused hash-verified original audio and previously saved
+small0/final0 inference for five tracks (ten model/track combinations). Both models
+rank Rozalla 163.040s first, with 16 measured bars to 192.560s, followed by an
+8-bar alternative at 177.820s; its fade at 188.900s remains separate. Urban Cookie
+Collective and Afro-Left also receive closing candidates. Gusto and Cubik receive
+no phrase labels. This checks counting/ranking, not listening acceptance or
+proof of phrase origin. See [track evidence](../investigations/subbeats-research-20261103/outgoing-phrase-evaluation.md).
+
+
+Verification for algorithm 3: nine cue Python cases through the analyzer-Python
+wrapper; 59 controller Sub/Beats cases (including six adapter cases); six web
+selection cases; controller/web typechecks and targeted lint. An isolated
+fixture checked desktop/mobile closing labels, countdowns, later-change text,
+8-bar/fade selection and original pair indices without browser errors. Library
+search and all six query-cache browser checks passed. The mechanical UI detector
+reported no findings. The admin-query audit still reports the pre-existing
+imperative original-audio download in `OutgoingCueAudition.tsx`; that action is
+unchanged and intentionally loads audio only on Listen. No services, shared
+library state or live preparations were changed by these checks.

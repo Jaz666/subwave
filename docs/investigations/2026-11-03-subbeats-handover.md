@@ -8,7 +8,30 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-Latest correction: outgoing candidates must be in the final quarter.
+Latest owner direction: final quarter was approximate; favour 8/16-bar closing
+passages and establish outgoing selection before incoming fitting. Algorithm 3
+now searches the second half of the original recording, ranks existing structural
+boundaries with 8/16 complete bars to a sustained quieter closing change, and
+keeps fade onset as a separate alternative. No bars are subtracted from EOF and
+no phrase label is forced on unsupported material. A closing change is not
+necessarily the musical endpoint. See [method and limits](../internals/subbeats-cue-methods.md#closing-passage-guidance-algorithm-3)
+and [ten track/model comparisons](subbeats-research-20261103/outgoing-phrase-evaluation.md).
+Both models rank Rozalla 163.040s first (16 bars to 192.560s), with an 8-bar
+alternative at 177.820s; its 188.900s fade remains separate. Urban Cookie
+Collective and Afro-Left have closing candidates; Gusto and Cubik have ordinary
+candidates only. These are offline checks using saved inference, not listening
+approval. Rebuild analyzer/controller/web, then Beat This! recheck selected
+tracks. The owner runs Docker; incoming fitting and later stem coverage remain
+pending. Verification: nine cue Python cases via the analyzer-Python wrapper, controller
+Sub/Beats 59, web selection 6, controller/web typechecks and targeted lint.
+Desktop/mobile cue checks, Library search and all six query-cache browser checks
+passed on temporary fixture state. The UI detector is clear; the query audit
+retains its pre-existing imperative audio-download notice. No Docker commands,
+new model inference, library-wide rechecks or incoming changes were performed.
+Source integration status follows below.
+
+Historical correction before that clarification: outgoing candidates were
+restricted to the final quarter.
 Development commits `cf8d770f` and `718dce4c` are pushed; station source is
 `57db2e97`, with the full station schema mirror regenerated. Source rollback
 for this fix is `536e7daa`. No services were rebuilt or restarted. The six

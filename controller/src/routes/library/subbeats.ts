@@ -150,8 +150,8 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     if (cueMode) {
       const duration = tracks[0]!.cuePoints!.durationSeconds ?? songs[0]?.durationSec;
       const seconds = tracks[0]!.cuePoints!.outgoing[cueIndices[0]!]!.sourceSeconds;
-      if (!duration || seconds < duration*.75 || seconds >= duration) {
-        throw new Error('Choose an outgoing cue in the final quarter. Recheck preparation if the saved cues are older.');
+      if (!duration || seconds < duration*.5 || seconds >= duration) {
+        throw new Error('Choose an outgoing cue in the second half. Recheck preparation if the saved cues are older.');
       }
     }
     let reference;

@@ -344,7 +344,7 @@ test('matched preview resolves fresh server-owned windows and passes them to ren
 test('cue preview forwards only server-owned artifacts and rejects conflicting options', async () => {
   const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
   const ids=['cue-route-out','cue-route-in'];
-  const point={sourceSeconds:40,bpm:120,strength:1,reason:'repetition'};
+  const point={sourceSeconds:30,bpm:120,strength:1,phraseBars:8,phraseEndSeconds:46,reason:'repetition'};
   for (const [i,id] of ids.entries()) {
     db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:50});
     subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
