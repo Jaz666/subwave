@@ -45,6 +45,18 @@ Upstream/fork refs were fetched before integration (upstream develop `1c4a9ff2`,
 main `03a48c21`). The station uses cherry-picked upstream/fork changes; this
 increment does not merge an upstream branch or claim ancestry parity.
 
+Implementation `4ececadf` is pushed on the development branch. Station source
+`eaf8ebcd` is pushed on `test-station/sleeve-notes-clean-20261014`, with its complete
+28-module schema mirror regenerated. Implementation files and the maintained
+method guide match the tested development source. The station intentionally
+omits this development handover. Source rollback is `f5cad29d`. No services were
+rebuilt or restarted. Owner rebuilds analyzer/controller/web with the existing
+GPU and Discord overlays, checks `/api/health`, then opens Cue points preview,
+chooses an outgoing finish and presses **Find suitable candidates**. Select a
+suggestion and Play preview. No cue recheck is required solely for version 9;
+missing saved vocal evidence is labelled and checked on audition. Background
+vocals still require listening. No upstream comments or messages were sent.
+
 ### Previous product direction and version-8 handoff
 
 Owner clarified the eventual product destination: minimum, assess already queued
