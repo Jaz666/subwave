@@ -15,6 +15,7 @@ import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
 import { matchSubbeats, previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
 import { tagger } from '../../broadcast/tagger.js';
+import { bulkPassRunning } from '../../music/tagger-lock.js';
 import { subbeatsReferences } from '../../music/subbeats-references.js';
 import { pipeline } from 'node:stream/promises';
 import * as subsonic from '../../music/subsonic.js';
@@ -128,6 +129,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
   const parsed = subbeatsPreviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose two prepared tracks.' });
   if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish before preparing a preview'});
+  if (parsed.data.method === 'cue-points' && (tagger.running || bulkPassRunning())) return res.status(409).json({error:'Wait for library preparation to finish before preparing this cue preview.'});
   if (previewBusy) return res.status(409).json({ error: 'Another transition preview is being prepared. Try again shortly.' });
   const abort = new AbortController();
   const cancel = () => abort.abort();

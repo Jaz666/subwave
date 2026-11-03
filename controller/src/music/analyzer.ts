@@ -1317,13 +1317,15 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
   reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';cue_keys?:string[];cue_indices?:number[]}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
+  const timeoutMs = shared?.method === 'cue-points' ? 30*60_000 : 180_000;
   const payload = { ...shared, out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,
+    ...(shared?.method === 'cue-points' ? {source_urls:shared.track_ids.map(id => subsonic.getRawStreamUrl(id))} : {}),
     ...(reference ? { reference: { out_seconds: reference.out_seconds, in_resolve: reference.in_resolve, bars: reference.bars,
       out_url: subsonic.getRawStreamUrl(reference.out_id), in_url: subsonic.getRawStreamUrl(reference.in_id) } } : {}) };
   if (backend === 'sidecar' && _sidecarBase) {
     const response = await fetchWithTimeout(`${_sidecarBase}/subbeats-preview`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      timeoutMs: 180_000, bodyDeadline: true, signal,
+      timeoutMs, bodyDeadline: true, signal,
     });
     if (response.status === 404) throw new Error('Update the analyzer to enable Sub/Beats previews.');
     if (!response.ok) await sidecarFailure(response);
@@ -1335,7 +1337,7 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
     if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
     return { audio, timeline };
   }
-  const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, 180_000);
+  const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, timeoutMs);
   signal.throwIfAborted();
   const path = answer.subbeats_preview;
   if (typeof path !== 'string' || !path.startsWith(`${stateDir}/subbeats/previews/`) || path.includes('..')) throw new Error('The analyzer returned an invalid preview.');

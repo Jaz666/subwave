@@ -1,8 +1,12 @@
-"""Cue-point audition: source opening retained, rhythm handover and voice tails separate.
+"""Selected closing/opening passage auditions, with bounded missing stem coverage.
 
-No looping or automated pair approval. The current 16-bar renderer stays separate.
+Keep original source zero and the outgoing recording's natural end. Temporary
+extensions belong to this preview; normal prepared bundles are never rewritten.
 """
+import json
 import math
+from pathlib import Path
+import tempfile
 
 from subbeats_preview import STEM_SR, STEMS, load_region
 
@@ -16,51 +20,90 @@ def choose_cue(cues, role, index):
     return cue
 
 
-def tail_endpoint(cue, period, passages, coverage):
-    end = cue+8*period
-    for _ in range(len(passages)+1):
-        extended = max([end]+[p['endSeconds']+.5 for p in passages if p['startSeconds']<end and p['endSeconds']>cue])
-        if extended==end:
-            break
-        end=extended
-    if end>coverage or end<=cue:
-        raise ValueError('The outgoing vocal tail needs more saved coverage. Choose another cue or the current preview method.')
-    return end
+def passage_plan(outgoing, incoming, out_duration, in_duration):
+    if not all(math.isfinite(v) and v>0 for v in (out_duration,in_duration)):
+        raise ValueError('Invalid prepared recording duration. Recheck the tracks.')
+    period = 60/outgoing['bpm']
+    rate = outgoing['bpm']/incoming['bpm']
+    if abs(rate-1)>.08:
+        raise ValueError('The cue tempos differ by more than 8%. Choose another pair.')
+    if abs(rate-1)<.0001:
+        rate=1.
+    handover = outgoing.get('phraseEndSeconds',outgoing['sourceSeconds'])
+    if (not math.isfinite(handover) or not 0<=outgoing['sourceSeconds']<=handover<out_duration
+            or not 4*period<=incoming['sourceSeconds']/rate<in_duration/rate):
+        raise ValueError('These saved cue passages are invalid. Recheck the selected tracks.')
+    entry = handover-incoming['sourceSeconds']/rate
+    first = max(0.,min(outgoing['sourceSeconds'],entry)-4.)
+    end = max(out_duration,handover+8*period)
+    incoming_end = (end-entry)*rate
+    if entry<0 or end-first>120 or incoming_end>in_duration:
+        raise ValueError('These passages need a preview longer than the available recording or 120 seconds. Choose a later closing cue or shorter opening.')
+    return dict(first=first,end=end,out_end=out_duration,entry=entry,handover=handover,
+                out_cue=outgoing['sourceSeconds'],incoming_end=incoming_end,rate=rate,period=period)
 
 
-def mix_cues(out_parts,in_parts,out_cue,in_arrival,period,passages):
+def cue_region(req, index, folder, record, name, start, end, fetch_source):
+    region = next((r for r in record['metadata']['stem_regions'] if r['name']==name),None)
+    if region and region['start_sample']/STEM_SR<=start and region['end_sample']/STEM_SR+2/STEM_SR>=end:
+        parts,_=load_region(folder,record,name,limit_seconds=130,start_seconds=start,end_seconds=end,require_tempo=False)
+        return parts,False
+    urls = req.get('source_urls')
+    if fetch_source is None or not isinstance(urls,list) or len(urls)!=2:
+        raise ValueError('Update controller and analyzer together to prepare missing cue-preview coverage.')
+    from urllib.parse import urlsplit
+    if not isinstance(urls[index],str) or urlsplit(urls[index]).scheme not in ('http','https'):
+        raise ValueError('The original recording is unavailable for extended coverage.')
+    from subbeats_reference_preview import source_audio
+    from subbeats_prepare import separate_regions
+    from subbeats_cache import digest
+    import analyze_worker as worker
+    audio = source_audio(urls[index],folder,record,fetch_source,require_hash=True)
+    parent = Path(req['state_dir'])/'subbeats'/'previews'
+    parent.mkdir(parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.cue-region-',dir=parent) as temporary:
+        stage=Path(temporary)
+        with worker._model_lock:
+            expected=record.get('identity',{}).get('separator',{})
+            if expected and (expected.get('model')!=worker.DEMUCS_MODEL or expected.get('overlap')!=worker.DEMUCS_OVERLAP):
+                raise ValueError('Separation settings differ from the saved stems. Recheck this track before extending its coverage.')
+            detector=worker.get_vocal_detector(force=True)
+            if detector is None:
+                raise ValueError('Missing cue coverage needs the heavy analyzer with Demucs. Rebuild it, then retry the preview.')
+            try:
+                coverage=separate_regions(None,stage,[(name,start,end)],detector,audio=audio)
+            finally:
+                worker._touch_heavy()
+        extended=dict(metadata=dict(stem_regions=coverage),files={p.name:dict(bytes=p.stat().st_size,sha256=digest(p)) for p in stage.iterdir()})
+        parts,_=load_region(stage,extended,name,limit_seconds=130,require_tempo=False)
+    return parts,True
+
+
+def mix_passages(out_parts,in_parts,plan):
     import numpy as np
-    lead=4.
-    out_length=out_parts['drums'].shape[1]/STEM_SR
-    in_length=in_parts['drums'].shape[1]/STEM_SR
-    end=tail_endpoint(out_cue,period,passages,out_length)
-    overlap=in_arrival
-    first=out_cue-overlap-lead
-    duration=lead+overlap+end-out_cue
-    if first<0 or in_arrival<4*period or duration>120 or in_length<duration-lead:
-        raise ValueError('These cue points need more saved intro/outro coverage. Choose another cue pair or the current preview method.')
+    duration=plan['end']-plan['first']
     total=round(duration*STEM_SR)
-    begin=round(lead*STEM_SR)
-    first_sample=round(first*STEM_SR)
+    begin=round((plan['entry']-plan['first'])*STEM_SR)
+    arrival=plan['handover']-plan['first']
     t=np.arange(total)/STEM_SR
-    arrival=lead+overlap
-    rhythm=np.clip((t-arrival+4*period)/(4*period),0,1)
+    cross_start=max(plan['entry']-plan['first'],arrival-4*plan['period'])
+    rhythm=np.clip((t-cross_start)/(arrival-cross_start),0,1)
     audio=np.zeros((2,total),dtype=np.float32)
     for name in STEMS:
-        outgoing=out_parts[name][:,first_sample:first_sample+total]
-        incoming=in_parts[name][:,:total-begin]
-        if outgoing.shape[1]!=total or incoming.shape[1]!=total-begin:
-            raise ValueError('Saved stem samples do not cover this cue-point preview')
-        if name in ('drums','bass'):
-            out_env=1-rhythm
-            in_env=rhythm[begin:]
-        else:
-            # Include both other stems: sampled background vocals need not be in vocals.
-            # Do not infer a vocal-free intro or suppress the outgoing lead voice.
-            out_env=np.clip((duration-t)/.5,0,1)
-            in_env=np.ones(total-begin)
-        audio+=outgoing*out_env
-        audio[:,begin:]+=incoming*in_env
+        outgoing=out_parts[name]
+        incoming=in_parts[name]
+        if outgoing.shape[1]<round((plan['out_end']-plan['first'])*STEM_SR)-2:
+            raise ValueError('The outgoing stems do not cover the recording end.')
+        if incoming.shape[1]<total-begin-2:
+            raise ValueError('The incoming stems do not cover the selected passage after tempo adjustment.')
+        out_frames=min(total,outgoing.shape[1])
+        in_frames=min(total-begin,incoming.shape[1])
+        out_env=1-rhythm[:out_frames] if name in ('drums','bass') else np.ones(out_frames)
+        if name in ('other','vocals'):
+            out_env*=np.clip((out_frames-np.arange(out_frames))/(.03*STEM_SR),0,1)
+        in_env=rhythm[begin:begin+in_frames] if name in ('drums','bass') else np.ones(in_frames)
+        audio[:,:out_frames]+=outgoing[:,:out_frames]*out_env
+        audio[:,begin:begin+in_frames]+=incoming[:,:in_frames]*in_env
     edge=min(round(.03*STEM_SR),total//2)
     audio[:,:edge]*=np.linspace(0,1,edge)
     audio[:,-edge:]*=np.linspace(1,0,edge)
@@ -68,47 +111,43 @@ def mix_cues(out_parts,in_parts,out_cue,in_arrival,period,passages):
     if not np.isfinite(audio).all() or peak<1e-8:
         raise ValueError('This cue-point preview contains no usable audio')
     audio*=min(1.,.98/peak)
-    return audio,dict(duration=audio.shape[1]/STEM_SR,events=[
-        dict(at=0.,label='Outgoing track'),dict(at=lead,label='Incoming opening · vocals and background groove retained'),
-        dict(at=max(lead,arrival-4*period),label='Rhythm handover begins'),
-        dict(at=arrival,label='Selected cue points align · outgoing vocal tail continues'),
-        dict(at=audio.shape[1]/STEM_SR,label='Outgoing tail fade complete')])
+    events=[dict(at=0.,label='Outgoing track'),
+            dict(at=plan['out_cue']-plan['first'],label='Selected outgoing closing cue'),
+            dict(at=plan['entry']-plan['first'],label='Incoming opening · complete source prefix retained'),
+            dict(at=cross_start,label='Rhythm handover begins'),
+            dict(at=arrival,label='Incoming arrival meets outgoing closing change'),
+            dict(at=plan['out_end']-plan['first'],label='Outgoing recording finishes naturally'),
+            dict(at=duration,label='Preview complete')]
+    duration=audio.shape[1]/STEM_SR
+    for event in events:
+        event['at']=min(duration,max(0.,event['at']))
+    return audio,dict(duration=duration,events=sorted(events,key=lambda e:e['at']))
 
 
-def render_cue_preview(req,folders,records,gains):
+def render_cue_preview(req,folders,records,gains,fetch_source=None):
     import librosa
     from subbeats_cues import load_cues
-    from subbeats_vocals import measure_vocals
     if req.get('bar_shift',0) or req.get('reference') is not None or req.get('window_plan') is not None:
         raise ValueError('Cue-point previews use saved cue choices. Reset the bar shift and find-match selection.')
     keys=req.get('cue_keys',[])
     indices=req.get('cue_indices',[0,0])
     if not isinstance(keys,list) or len(keys)!=2 or not isinstance(indices,list) or len(indices)!=2:
         raise ValueError('Choose two cue-prepared tracks')
-    cues=[load_cues(req['state_dir'],req['stems_root'],req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
+    cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
     outgoing=choose_cue(cues[0],'outgoing',indices[0])
     incoming=choose_cue(cues[1],'incoming',indices[1])
-    out_parts,_=load_region(folders[0],records[0],'exit')
-    in_parts,_=load_region(folders[1],records[1],'head')
-    out_region=next(r for r in records[0]['metadata']['stem_regions'] if r['name']=='exit')
-    in_region=next(r for r in records[1]['metadata']['stem_regions'] if r['name']=='head')
-    if in_region['start_sample']!=0:
-        raise ValueError('Cue-point preview needs the complete saved incoming opening')
-    out_cue=outgoing['sourceSeconds']-out_region['start_sample']/STEM_SR
-    if not 0 <= out_cue < out_parts['drums'].shape[1]/STEM_SR:
-        raise ValueError('This closing cue is outside the saved outgoing stems. Audition the original ending on its own; pair mixing needs extended ending coverage.')
-    period=60/outgoing['bpm']
-    rate=outgoing['bpm']/incoming['bpm']
-    if abs(rate-1)>.08:
-        raise ValueError('The cue tempos differ by more than 8%. Choose another pair.')
-    if abs(rate-1)>.0001:
-        in_parts={name:librosa.effects.time_stretch(part,rate=rate) for name,part in in_parts.items()}
-    else:
-        rate=1.
-    activity=measure_vocals(out_parts,STEM_SR)
+    durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
+    plan=passage_plan(outgoing,incoming,*durations)
+    out_parts,out_extended=cue_region(req,0,folders[0],records[0],'exit',plan['first'],plan['out_end'],fetch_source)
+    in_parts,in_extended=cue_region(req,1,folders[1],records[1],'head',0.,plan['incoming_end'],fetch_source)
+    if plan['rate']!=1.:
+        in_parts={name:librosa.effects.time_stretch(part,rate=plan['rate']) for name,part in in_parts.items()}
     out_parts={name:part*10**(gains[0]/20) for name,part in out_parts.items()}
     in_parts={name:part*10**(gains[1]/20) for name,part in in_parts.items()}
-    audio,timeline=mix_cues(out_parts,in_parts,out_cue,incoming['sourceSeconds']/rate,period,activity['passages'])
+    audio,timeline=mix_passages(out_parts,in_parts,plan)
     return audio,dict(timeline=timeline,experimental=True,phrase_verified=False,
-                      method='cue-points',incoming_rate=rate,bpm=outgoing['bpm'],
-                      selected_windows=dict(outgoing_seconds=outgoing['sourceSeconds'],incoming_seconds=incoming['sourceSeconds']))
+        method='cue-points',incoming_rate=plan['rate'],bpm=outgoing['bpm'],used_models=out_extended or in_extended,
+        extended_regions=dict(outgoing=out_extended,incoming=in_extended),
+        selected_windows=dict(outgoing_seconds=outgoing['sourceSeconds'],outgoing_handover_seconds=plan['handover'],
+            incoming_seconds=incoming['sourceSeconds'],outgoing_end_seconds=plan['out_end'],incoming_start_seconds=0.,
+            outgoing_preview_start_seconds=plan['first']))

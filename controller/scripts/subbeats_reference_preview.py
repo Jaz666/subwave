@@ -43,8 +43,8 @@ def repeat_rhythm(audio, cue, period, length, phase_seconds):
     return result.astype(np.float32)
 
 
-def source_audio(url, folder, record, fetch_source):
-    """Verify the full source clock; containers/tags may differ from preparation."""
+def source_audio(url, folder, record, fetch_source, *, require_hash=False):
+    """Verify source timing; cue extensions additionally require identical bytes."""
     import numpy as np
     path = None
     try:
@@ -59,6 +59,8 @@ def source_audio(url, folder, record, fetch_source):
         if abs(audio.shape[1] / STEM_SR - duration) > .05:
             raise ValueError('Original recording timing differs from the prepared audio. Recheck the track.')
         if digest(path) != record['identity']['source_sha256']:
+            if require_hash:
+                raise ValueError('The original recording changed. Recheck this track before extending cue coverage.')
             head, _ = load_region(folder, record, 'head', limit_seconds=8)
             reconstructed = sum(head.values())
             frames = min(audio.shape[1], reconstructed.shape[1], 8 * STEM_SR)

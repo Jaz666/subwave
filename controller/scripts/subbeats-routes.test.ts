@@ -365,9 +365,11 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
       assert.equal((await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',...extra})).status,400);
     }
     assert.equal(Boolean(rendered),false);
-    const response=await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',cueIndices:[0,0],cue_keys:['forged','forged']});
+    const response=await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',cueIndices:[0,0],cue_keys:['forged','forged'],source_urls:['http://forged/out','http://forged/in']});
     assert.equal(response.status,200);await response.arrayBuffer();
     assert.deepEqual(rendered?.cue_keys,['c'.repeat(64),'d'.repeat(64)]);
+    assert.equal((rendered?.source_urls as string[]).length,2);
+    assert.ok((rendered?.source_urls as string[]).every(url=>!url.includes('forged')));
     assert.deepEqual(rendered?.cue_indices,[0,0]);assert.equal(rendered?.method,'cue-points');
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });

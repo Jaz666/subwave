@@ -446,6 +446,8 @@ async def test_subbeats_assessment_contract():
 
 async def test_subbeats_preview_contract():
     assert not server.StdioWorker._wants_models({'op': 'preview_subbeats'})
+    assert server.StdioWorker._wants_models({'op':'preview_subbeats','method':'cue-points'})
+    assert server.StdioWorker._used_models({'subbeats_used_models':True})
     assert not server.StdioWorker._used_models({'subbeats_preview': '/state/subbeats/previews/a/preview.wav'})
     responses = types.ModuleType('fastapi.responses')
     responses.FileResponse = lambda path, **kwargs: types.SimpleNamespace(path=path, **kwargs)

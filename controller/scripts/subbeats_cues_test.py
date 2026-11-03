@@ -150,23 +150,82 @@ class CueTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'no longer match'):
                 cues.load_cues(state,None,'track',key,bundle)
 
-    def test_tail_and_complete_opening_survive_rhythm_handover(self):
-        self.assertEqual(preview.tail_endpoint(40,.5,[dict(startSeconds=39,endSeconds=45)],90),45.5)
-        with self.assertRaisesRegex(ValueError,'tail needs'):
-            preview.tail_endpoint(40,.5,[dict(startSeconds=39,endSeconds=90)],90)
+    def test_selected_passages_align_arrivals_and_keep_complete_prefix_and_ending(self):
+        out=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
+        for arrival in (16,32):
+            plan=preview.passage_plan(out,dict(sourceSeconds=arrival,bpm=120),210,180)
+            self.assertEqual(plan['handover'],190)
+            self.assertEqual(plan['entry']+arrival,190)
+            self.assertEqual(plan['out_end'],210)
+        plan=preview.passage_plan(out,dict(sourceSeconds=32,bpm=120),210,180)
         sr=1000
         with patch.object(preview,'STEM_SR',sr):
-            outgoing={s:np.zeros((2,90*sr),dtype=np.float32) for s in preview.STEMS}
-            incoming={s:np.zeros((2,68*sr),dtype=np.float32) for s in preview.STEMS}
+            outgoing={s:np.zeros((2,56000),dtype=np.float32) for s in preview.STEMS}
+            incoming={s:np.zeros((2,52000),dtype=np.float32) for s in preview.STEMS}
             outgoing['vocals'][:]=.2; incoming['vocals'][:]=.3
             incoming['other'][:,1000:1200]=.1
-            audio,timeline=preview.mix_cues(outgoing,incoming,40,20,.5,[])
+            audio,timeline=preview.mix_passages(outgoing,incoming,plan)
             self.assertAlmostEqual(float(audio[0,2000]),.2,places=5)
-            self.assertAlmostEqual(float(audio[0,5100]),.6,places=5,msg='incoming source-prefix other/groove is retained')
-            self.assertAlmostEqual(float(audio[0,24500]),.5,places=5,msg='outgoing voice is not cut at rhythm handover')
-            self.assertEqual(timeline['events'][3]['at'],24)
-            with self.assertRaisesRegex(ValueError,'coverage'):
-                preview.mix_cues(outgoing,incoming,10,20,.5,[])
+            self.assertAlmostEqual(float(audio[0,5100]),.6,places=5,msg='source-prefix groove is retained')
+            self.assertAlmostEqual(float(audio[0,55000]),.5,places=5,msg='outgoing voice survives to the natural ending')
+            self.assertEqual(next(e['at'] for e in timeline['events'] if 'arrival meets' in e['label']),36)
+            self.assertEqual(timeline['duration'],56)
+            self.assertEqual(timeline['events'],sorted(timeline['events'],key=lambda e:e['at']))
+        with self.assertRaisesRegex(ValueError,'120 seconds'):
+            preview.passage_plan(out,dict(sourceSeconds=32,bpm=120),400,180)
+        with self.assertRaisesRegex(ValueError,'8%'):
+            preview.passage_plan(out,dict(sourceSeconds=32,bpm=90),210,180)
+
+    def test_missing_coverage_is_separated_temporarily_and_existing_coverage_is_reused(self):
+        import threading
+        from unittest.mock import Mock
+        import subbeats_preview as base
+        import subbeats_prepare as prepare
+        class Detector:
+            def separate(self,audio):
+                return {s:audio/4 for s in preview.STEMS}
+        detector=Mock(wraps=Detector())
+        worker=SimpleNamespace(DEMUCS_MODEL='htdemucs',DEMUCS_OVERLAP=.25,_model_lock=threading.Lock(),get_vocal_detector=Mock(return_value=detector),_touch_heavy=Mock())
+        audio=np.full((2,40000),.1,dtype=np.float32)
+        saved={}
+        def write(stage,name,parts):
+            saved[name]=parts
+            for stem in preview.STEMS:
+                (stage/f'{name}-{stem}.flac').write_bytes(b'codec tested separately')
+            return 1.,sum(parts.values())
+        def load(_folder,record,name,**opts):
+            region=record['metadata']['stem_regions'][0]
+            start=0 if opts.get('start_seconds') is None else round(opts['start_seconds']*1000)-region['start_sample']
+            stop=region['end_sample']-region['start_sample'] if opts.get('end_seconds') is None else round(opts['end_seconds']*1000)-region['start_sample']
+            return {s:part[:,start:stop] for s,part in saved[name].items()},None
+        with tempfile.TemporaryDirectory() as tmp, patch.dict('sys.modules',analyze_worker=worker), \
+                patch.object(preview,'STEM_SR',1000),patch.object(base,'STEM_SR',1000),patch.object(prepare,'STEM_SR',1000), \
+                patch('subbeats_reference_preview.source_audio',return_value=audio) as source, \
+                patch.object(prepare,'write_flac_region',side_effect=write),patch.object(preview,'load_region',side_effect=load):
+            root=Path(tmp)
+            record=dict(metadata=dict(stem_regions=[]),files={})
+            req=dict(state_dir=tmp,source_urls=['https://source/out','https://source/in'])
+            parts,extended=preview.cue_region(req,0,root,record,'exit',10,32,object())
+            self.assertTrue(extended); self.assertEqual(parts['other'].shape,(2,22000))
+            self.assertTrue(np.allclose(sum(parts.values()),.1,atol=1e-6))
+            self.assertEqual(detector.separate.call_count,1)
+            self.assertFalse(list(root.rglob('.cue-region-*')))
+            coverage=prepare.separate_regions(None,root,[('head',0,30)],Detector(),audio=audio)
+            covered=dict(metadata=dict(stem_regions=coverage),files={p.name:{} for p in root.glob('*.flac')})
+            source.reset_mock();detector.reset_mock()
+            reused,extended=preview.cue_region(req,1,root,covered,'head',0,20,object())
+            self.assertFalse(extended);self.assertEqual(reused['vocals'].shape,(2,20000))
+            source.assert_not_called();detector.separate.assert_not_called()
+            incoming_parts,extended=preview.cue_region(req,1,root,record,'head',0,32,object())
+            self.assertTrue(extended);self.assertEqual(incoming_parts['vocals'].shape,(2,32000))
+            self.assertEqual(source.call_args.args[0],'https://source/in')
+            wrong={**record,'identity':dict(separator=dict(model='other',overlap=.25))}
+            with self.assertRaisesRegex(ValueError,'Separation settings differ'):
+                preview.cue_region(req,0,root,wrong,'exit',10,32,object())
+            worker.get_vocal_detector.return_value=None
+            with self.assertRaisesRegex(ValueError,'heavy analyzer'):
+                preview.cue_region(req,0,root,record,'exit',10,32,object())
+            self.assertFalse(list(root.rglob('.cue-region-*')))
 
     def test_invalid_method_or_cue_cannot_be_used(self):
         with self.assertRaises(ValueError):
