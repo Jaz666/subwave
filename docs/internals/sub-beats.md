@@ -1669,3 +1669,76 @@ cancellation on length changes, the four-bar pair, unchanged legacy bar shifts
 and horizontal overflow. Both accepted real-source pairs reproduce their offline
 WAVs within one PCM16 sample step; repeated requests use saved audio without
 fetching originals. No image rebuild or service restart was run.
+
+## Research: observed DJ transition practice — 3 November 2026
+
+Read: Taejun Kim, Minsuk Choi, Evan Sacks, Yi-Hsuan Yang and Juhan Nam,
+*A Computational Analysis of Real-World DJ Mixes using Mix-To-Track Subsequence
+Alignment*, ISMIR 2020. Sources: [companion page](https://mir-aidj.github.io/djmix-analysis/),
+[paper](https://program.ismir2020.net/static/final_papers/352.pdf),
+[research code](https://github.com/mir-aidj/djmix-analysis). Research notes only;
+no new detection, rendering or selection behaviour is implemented here.
+
+### Findings from the companion page
+
+The matched dataset contains 1,557 mixes, 13,728 unique tracks and 20,765
+transitions, predominantly House and Trance. Transition-duration histograms peak
+at multiples of 32 beats. In 4/4, 32 beats are eight bars; our 16-bar window is
+64 beats. This supports phrase-related durations, not one mandatory length or
+proof of any particular recording's phrase origin.
+
+86.1% of measured tempo adjustments were below 5%, and 94.5% below 10%.
+Detected key transpositions occurred in 2.5% of track appearances; 94.3% of those
+were one semitone. These describe observed practice, not quality thresholds or
+proof that the chosen tracks were harmonically compatible.
+
+Cue choices vary: 23.6% of compared cue pairs coincide, while 40.4% differ by at
+most four beats. Multiple plausible cues should therefore remain possible.
+Crowd recordings can disrupt alignment. These conclusions concern the matched
+sample, not every dance genre or modern stem-mixing technique. [Source](https://mir-aidj.github.io/djmix-analysis/)
+
+### Method and limitations from the paper
+
+The method retrospectively aligns a known original recording to its occurrence
+in an existing mix using beat-synchronous CENS chroma/MFCC features and subsequence
+DTW. Circular chroma shifts accommodate transposition. This is same-recording
+alignment, not a compatibility measure for two different songs.
+
+The paper's cue-out marks overlap start; cue-in marks the succeeding track
+playing alone; cue-mid is their midpoint. These names must not be confused with
+the incoming recording's first audible sample. The extraction heuristic uses
+32 consecutive diagonal alignment steps before/after the transition; that is
+not phrase detection.
+
+User-labelled boundaries are approximate: combined-feature cue-in median error
+is about 11.4 seconds. Chroma alignment is weaker on drum/ambient-heavy Techno.
+These results cannot supply sample-accurate vocal cuts or prove audible mixing
+quality. [Source: sections 3–5](https://program.ismir2020.net/static/final_papers/352.pdf)
+
+The published code demonstrates alignment/segmentation and tempo analysis;
+its documented environment is Python 3.8.5 with madmom 0.16.1. Any future use
+needs a separate compatibility evaluation, not direct installation into the
+station. [Source](https://github.com/mir-aidj/djmix-analysis)
+
+### Proposed applications to Sub/Beats (our interpretation)
+
+- Keep several phrase-supported overlap candidates, with 16 bars a candidate
+  rather than a compulsory answer. Count from verified local bar/phrase anchors;
+  source zero and a modulo beat count do not establish musical structure.
+- Prefer smaller tempo adjustments when candidates are otherwise comparable;
+  retain listening-based acceptance rather than adopting the dataset's
+  percentages as hard limits. Check pitch preservation separately.
+- Name timeline events explicitly: original source entry, overlap start/end,
+  incoming release, rhythm/bass handovers and vocal phrase endpoints. A single
+  transition marker cannot communicate all of them.
+- Consider offline mix-to-source alignment later for studying owner-approved
+  mixes or diagnosing rendered previews. Exact edits and reliable beat grids
+  are prerequisites. Match quality would verify source correspondence, not
+  vocal safety or musical suitability.
+- Evaluate acceptable ranges and alternative cues with listening references.
+  Add per-window beat continuity, phrase completion, loop seams and vocal tails
+  to that evaluation; the study does not resolve those requirements.
+
+Next research step remains independent Beat This! evaluation, followed by
+phrase-boundary evidence on accepted grids. No dataset download, model run,
+dependency installation or station deployment was needed for this reading.
