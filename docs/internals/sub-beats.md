@@ -1756,8 +1756,13 @@ opening auditions; phrase evidence remains pending. The updated
 [project review](../investigations/subbeats-research-20261103/project-review.md)
 adds djcues (cue roles over existing Rekordbox analysis) and automatic-cuepoints
 (barwise structural similarity, with heuristic boundary adjustments).
-The next experiment compares arrangement and repetition evidence on those
-accepted openings before assigning cue points. This confirms the need to
+The subsequent [bounded phrase/bar experiment](../investigations/subbeats-research-20261103/phrase-bar-evaluation.md)
+compares arrangement and ordered repetition evidence on those accepted openings.
+It retains candidates near Urban 22.380s and Gusto 22.940s, without moving
+boundaries to conventional phrase lengths. Repetition break adds evidence for
+Gusto where novelty alone misses its accepted release, but does not establish
+a completed vocal phrase or safe cut. Marked auditions and separate vocal-edge
+checks are the next gate before applying cues. This confirms the need to
 check continuous local beat/bar evidence independently of model size, before
 using it for cue-point or phrase selection. Station behavior is unchanged.
 

@@ -13,12 +13,15 @@ references, `small0` and `final0`, one inference each. Read the
 [evaluation and owner listening result](subbeats-research-20261103/beat-this-evaluation.md)
 and [portable results](subbeats-research-20261103/beat-this-comparison.json).
 Neither model preserves every accepted opening. The owner confirms the Urban
-`final0` and Gusto `small0` 32-second auditions sound fine. Next: compare
-arrangement features and barwise similarity/repetition for phrase candidates
-only within those accepted openings, following the updated
-[five-project review](subbeats-research-20261103/project-review.md).
-No phrase planner or station integration was
-implemented. Read the reference caveats before interpreting any result,
+`final0` and Gusto `small0` 32-second auditions sound fine. The bounded
+[phrase/bar experiment](subbeats-research-20261103/phrase-bar-evaluation.md) now
+finds structural candidates at 7.600/22.380s for Urban and 7.720/22.940s for
+Gusto. Repetition break recovers the latter release candidate despite weak
+novelty, but does not establish a complete vocal phrase. Next: owner listening
+to the two chord-marked 32-second auditions in
+`/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`, then separate
+vocal-edge evidence before applying cues. No automatic phrase planner or
+station integration was implemented. Read the reference caveats before interpreting any result,
 especially Cübik. Keep this bounded; the owner requested minimal testing/usage.
 
 The owner intends to share relevant findings with Perminder through

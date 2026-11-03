@@ -1,0 +1,1884 @@
+{
+  "scope": "Only owner-accepted source 0\u201332s windows; final partial bar excluded",
+  "versions": {
+    "librosa": "0.11.0",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1"
+  },
+  "method": "Existing beat-synchronous extraction; all complete four-beat bars; local context changes and ordered spectral block distances",
+  "phraseVerified": false,
+  "vocalSafety": "not assessed",
+  "records": [
+    {
+      "name": "urban-cookie-collective",
+      "model": "final0",
+      "sourceSha256": "3d68dd0dbbd466efa54caff332d5f716cc56684d8cd5159f21a1f9be19d9eb7c",
+      "sourcePath": "/media/satadrive/Compilations/90s Dance Anthems/90s Dance Anthems Disk 2/02 Urban Cookie Collective - The Key, The Secret.mp3",
+      "firstCompleteBarSeconds": 0.2,
+      "lastCompleteBarEndSeconds": 31.62,
+      "completeBars": 17,
+      "barTimesSeconds": [
+        0.2,
+        2.06,
+        3.92,
+        5.76,
+        7.6,
+        9.46,
+        11.3,
+        13.14,
+        15.0,
+        16.84,
+        18.68,
+        20.54,
+        22.38,
+        24.24,
+        26.08,
+        27.92,
+        29.78,
+        31.62
+      ],
+      "candidates": [
+        {
+          "barBoundaryIndex": 1,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.6933707531240749,
+              "bassChangeDb": 31.1751431867334,
+              "textureDistance": 0.9759051668725102,
+              "harmonicDistance": 0.9266746670221535,
+              "strength": 5.1958571977889
+            }
+          ],
+          "repetition": [],
+          "repeatBreak": 0,
+          "strength": 5.1958571977889,
+          "sourceSeconds": 2.06
+        },
+        {
+          "barBoundaryIndex": 2,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.6265538886672388,
+              "bassChangeDb": -18.347071124435338,
+              "textureDistance": 0.6383518959813199,
+              "harmonicDistance": 1.0207838085893737,
+              "strength": 3.05784518740589
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.7917685718272054,
+              "bassChangeDb": 9.240525279964231,
+              "textureDistance": 0.4830673202447554,
+              "harmonicDistance": 1.0599271752598685,
+              "strength": 2.119854350519737
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.9759051668725102,
+              "precedingHarmonicDistance": 0.9628693771935142,
+              "precedingEnergyDifferenceDb": 8.406875905868825,
+              "followingRepeatDistance": 0.6383518959813199,
+              "spectralRepeatBreakDistance": -0.33755327089119025,
+              "followingHarmonicDistance": 1.0651281640179886
+            }
+          ],
+          "repeatBreak": -0.33755327089119025,
+          "strength": 3.05784518740589,
+          "sourceSeconds": 3.92
+        },
+        {
+          "barBoundaryIndex": 3,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.3629413868041489,
+              "bassChangeDb": 24.000049622065752,
+              "textureDistance": 0.6869821248178326,
+              "harmonicDistance": 0.9027769745038023,
+              "strength": 4.000008270344292
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 4.386725554129232,
+              "bassChangeDb": 16.818158620300714,
+              "textureDistance": 0.6178136969167494,
+              "harmonicDistance": 0.8430861431812567,
+              "strength": 2.803026436716786
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.6383518959813199,
+              "precedingHarmonicDistance": 1.0651281640179886,
+              "precedingEnergyDifferenceDb": 5.0080604590293465,
+              "followingRepeatDistance": 0.6869821248178326,
+              "spectralRepeatBreakDistance": 0.04863022883651269,
+              "followingHarmonicDistance": 0.9535811223906372
+            }
+          ],
+          "repeatBreak": 0.04863022883651269,
+          "strength": 4.000008270344292,
+          "sourceSeconds": 5.76
+        },
+        {
+          "barBoundaryIndex": 4,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 8.674122223317402,
+              "bassChangeDb": 3.9832891209052512,
+              "textureDistance": 1.0950434379884502,
+              "harmonicDistance": 1.0054926037606977,
+              "strength": 3.128695537109858
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 9.22129894842105,
+              "bassChangeDb": 16.20082158528639,
+              "textureDistance": 0.9658947122096448,
+              "harmonicDistance": 1.0132699983100102,
+              "strength": 2.7596991777418425
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 8.71791826854242,
+              "bassChangeDb": 21.330469068525332,
+              "textureDistance": 0.7370922889799313,
+              "harmonicDistance": 0.41719275389698723,
+              "strength": 3.5550781780875553
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.6869821248178326,
+              "precedingHarmonicDistance": 0.9535811223906372,
+              "precedingEnergyDifferenceDb": 6.262500774848433,
+              "followingRepeatDistance": 1.0950434379884502,
+              "spectralRepeatBreakDistance": 0.40806131317061756,
+              "followingHarmonicDistance": 1.0716268403285838
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.6865820431614922,
+              "precedingHarmonicDistance": 1.2140027805269131,
+              "precedingEnergyDifferenceDb": 3.030174100761893,
+              "followingRepeatDistance": 1.08494409506848,
+              "spectralRepeatBreakDistance": 0.3983620519069879,
+              "followingHarmonicDistance": 1.1593605897541632
+            }
+          ],
+          "repeatBreak": 0.40806131317061756,
+          "strength": 3.5550781780875553,
+          "sourceSeconds": 7.6
+        },
+        {
+          "barBoundaryIndex": 5,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.7314120634031411,
+              "bassChangeDb": 0.4350153066965241,
+              "textureDistance": 0.8685766573396718,
+              "harmonicDistance": 0.43887824543524756,
+              "strength": 2.4816475923990624
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 4.614120151828892,
+              "bassChangeDb": 1.7060833142057135,
+              "textureDistance": 0.7800298600237964,
+              "harmonicDistance": 0.5851631042959008,
+              "strength": 2.2286567429251325
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 6.621629807009606,
+              "bassChangeDb": 11.214224044874353,
+              "textureDistance": 0.5811295336868905,
+              "harmonicDistance": 0.37717862362438265,
+              "strength": 1.8690373408123921
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 1.0950434379884502,
+              "precedingHarmonicDistance": 1.0716268403285838,
+              "precedingEnergyDifferenceDb": 8.195190082395092,
+              "followingRepeatDistance": 0.8685766573396718,
+              "spectralRepeatBreakDistance": -0.22646678064877834,
+              "followingHarmonicDistance": 0.558704895498402
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.8354478455694818,
+              "precedingHarmonicDistance": 1.1558063037509543,
+              "precedingEnergyDifferenceDb": 8.014869895119823,
+              "followingRepeatDistance": 0.9637776895966159,
+              "spectralRepeatBreakDistance": 0.1283298440271341,
+              "followingHarmonicDistance": 0.990912834218308
+            }
+          ],
+          "repeatBreak": 0.1283298440271341,
+          "strength": 2.4816475923990624,
+          "sourceSeconds": 9.46
+        },
+        {
+          "barBoundaryIndex": 6,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.9087060464659,
+              "bassChangeDb": -1.4411531058868654,
+              "textureDistance": 0.8280672179971198,
+              "harmonicDistance": 0.5616177071070243,
+              "strength": 2.365906337134628
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.21499278793005594,
+              "bassChangeDb": 1.0187696865136644,
+              "textureDistance": 0.6762908130275929,
+              "harmonicDistance": 0.49968932561057655,
+              "strength": 1.9322594657931227
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 4.375796830478137,
+              "bassChangeDb": 8.527264643546275,
+              "textureDistance": 0.44445284060552914,
+              "harmonicDistance": 0.3074317233039925,
+              "strength": 1.4212107739243791
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.8685766573396718,
+              "precedingHarmonicDistance": 0.558704895498402,
+              "precedingEnergyDifferenceDb": 0.7332033297615257,
+              "followingRepeatDistance": 0.8280672179971198,
+              "spectralRepeatBreakDistance": -0.04050943934255202,
+              "followingHarmonicDistance": 0.71197308801352
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 1.08494409506848,
+              "precedingHarmonicDistance": 1.1593605897541632,
+              "precedingEnergyDifferenceDb": 11.341931244876456,
+              "followingRepeatDistance": 0.8577806432205399,
+              "spectralRepeatBreakDistance": -0.22716345184794018,
+              "followingHarmonicDistance": 0.760748543256345
+            }
+          ],
+          "repeatBreak": -0.04050943934255202,
+          "strength": 2.365906337134628,
+          "sourceSeconds": 11.3
+        },
+        {
+          "barBoundaryIndex": 7,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.656014453668547,
+              "bassChangeDb": 4.484830278104528,
+              "textureDistance": 0.8236721700773868,
+              "harmonicDistance": 0.512386528785463,
+              "strength": 2.3533490573639626
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.37170624376780736,
+              "bassChangeDb": 2.198122841036575,
+              "textureDistance": 0.7607619229458518,
+              "harmonicDistance": 0.3923956886547591,
+              "strength": 2.1736054941310052
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 2.218795504332993,
+              "bassChangeDb": 1.818358249608309,
+              "textureDistance": 0.3145535926498906,
+              "harmonicDistance": 0.16714116912705734,
+              "strength": 0.8987245504282588
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.8280672179971198,
+              "precedingHarmonicDistance": 0.71197308801352,
+              "precedingEnergyDifferenceDb": 0.8509940725112934,
+              "followingRepeatDistance": 0.8236721700773868,
+              "spectralRepeatBreakDistance": -0.004395047919732997,
+              "followingHarmonicDistance": 0.7192076056926467
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.9637776895966159,
+              "precedingHarmonicDistance": 0.990912834218308,
+              "precedingEnergyDifferenceDb": 4.502767140599005,
+              "followingRepeatDistance": 0.9231363153962571,
+              "spectralRepeatBreakDistance": -0.04064137420035885,
+              "followingHarmonicDistance": 0.7086839280615671
+            }
+          ],
+          "repeatBreak": -0.004395047919732997,
+          "strength": 2.3533490573639626,
+          "sourceSeconds": 13.14
+        },
+        {
+          "barBoundaryIndex": 8,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -1.1467353484068052,
+              "bassChangeDb": -3.1322617682490446,
+              "textureDistance": 0.8312985198468792,
+              "harmonicDistance": 0.5218384660214952,
+              "strength": 2.3751386281339406
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.039719711604661256,
+              "bassChangeDb": -1.1838316712211707,
+              "textureDistance": 0.684036230708443,
+              "harmonicDistance": 0.506546892296947,
+              "strength": 1.9543892305955515
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.22990911314883888,
+              "bassChangeDb": -0.005454435475304109,
+              "textureDistance": 0.24508017316306563,
+              "harmonicDistance": 0.09303027083352775,
+              "strength": 0.7002290661801875
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.8236721700773868,
+              "precedingHarmonicDistance": 0.7192076056926467,
+              "precedingEnergyDifferenceDb": 1.4757753864469865,
+              "followingRepeatDistance": 0.8312985198468792,
+              "spectralRepeatBreakDistance": 0.007626349769492391,
+              "followingHarmonicDistance": 0.7820561421363901
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.8577806432205399,
+              "precedingHarmonicDistance": 0.760748543256345,
+              "precedingEnergyDifferenceDb": 0.7773657753580716,
+              "followingRepeatDistance": 0.8920683745668425,
+              "spectralRepeatBreakDistance": 0.034287731346302586,
+              "followingHarmonicDistance": 0.6986324980696021
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.9863430449406689,
+              "precedingHarmonicDistance": 0.6441858021369143,
+              "precedingEnergyDifferenceDb": 12.170217265687219,
+              "followingRepeatDistance": 0.3614119477453715,
+              "spectralRepeatBreakDistance": -0.6249310971952975,
+              "followingHarmonicDistance": 0.3005978875300304
+            }
+          ],
+          "repeatBreak": 0.034287731346302586,
+          "strength": 2.3751386281339406,
+          "sourceSeconds": 15.0
+        },
+        {
+          "barBoundaryIndex": 9,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 1.558016819935741,
+              "bassChangeDb": -0.5879700840487736,
+              "textureDistance": 0.9540791269438296,
+              "harmonicDistance": 0.33558307349145605,
+              "strength": 2.7259403626966563
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.566883344372707,
+              "bassChangeDb": -2.4656124970622457,
+              "textureDistance": 0.7524075556025216,
+              "harmonicDistance": 0.3431191752760531,
+              "strength": 2.1497358731500618
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.7881874550248487,
+              "bassChangeDb": 3.9574022040794254,
+              "textureDistance": 0.4466037305853308,
+              "harmonicDistance": 0.11081990125536059,
+              "strength": 1.276010658815231
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.8312985198468792,
+              "precedingHarmonicDistance": 0.7820561421363901,
+              "precedingEnergyDifferenceDb": 1.5611679353626853,
+              "followingRepeatDistance": 0.9540791269438296,
+              "spectralRepeatBreakDistance": 0.12278060709695038,
+              "followingHarmonicDistance": 0.591822070523196
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.9231363153962571,
+              "precedingHarmonicDistance": 0.7086839280615671,
+              "precedingEnergyDifferenceDb": 0.9545771337098332,
+              "followingRepeatDistance": 0.8574838853982099,
+              "spectralRepeatBreakDistance": -0.06565242999804721,
+              "followingHarmonicDistance": 0.6853239177735516
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.9545505367535665,
+              "precedingHarmonicDistance": 0.659292819705447,
+              "precedingEnergyDifferenceDb": 8.199762546395892,
+              "followingRepeatDistance": 0.5752661725389072,
+              "spectralRepeatBreakDistance": -0.3792843642146593,
+              "followingHarmonicDistance": 0.27741511821749604
+            }
+          ],
+          "repeatBreak": 0.12278060709695038,
+          "strength": 2.7259403626966563,
+          "sourceSeconds": 16.84
+        },
+        {
+          "barBoundaryIndex": 10,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.8355316027192643,
+              "bassChangeDb": -0.6230230577778997,
+              "textureDistance": 0.7142615682877632,
+              "harmonicDistance": 0.5435478316673819,
+              "strength": 2.040747337965038
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.754250437437058,
+              "bassChangeDb": 1.3379847849780724,
+              "textureDistance": 0.6646830485701949,
+              "harmonicDistance": 0.43966227319081547,
+              "strength": 1.8990944244862713
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.7427600199531241,
+              "bassChangeDb": 8.233548754168108,
+              "textureDistance": 0.7327802197701861,
+              "harmonicDistance": 0.21090614213152967,
+              "strength": 2.0936577707719604
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.9540791269438296,
+              "precedingHarmonicDistance": 0.591822070523196,
+              "precedingEnergyDifferenceDb": 1.2073731098072513,
+              "followingRepeatDistance": 0.7142615682877632,
+              "spectralRepeatBreakDistance": -0.23981755865606635,
+              "followingHarmonicDistance": 0.6177651890735069
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.8920683745668425,
+              "precedingHarmonicDistance": 0.6986324980696021,
+              "precedingEnergyDifferenceDb": 1.0496114790570363,
+              "followingRepeatDistance": 0.7827957228798426,
+              "spectralRepeatBreakDistance": -0.10927265168699996,
+              "followingHarmonicDistance": 0.6070022958159933
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.7123811239098892,
+              "precedingHarmonicDistance": 0.5484059518441122,
+              "precedingEnergyDifferenceDb": 5.90615516472921,
+              "followingRepeatDistance": 0.88613313039744,
+              "spectralRepeatBreakDistance": 0.17375200648755085,
+              "followingHarmonicDistance": 0.40794829644229436
+            }
+          ],
+          "repeatBreak": 0.17375200648755085,
+          "strength": 2.0936577707719604,
+          "sourceSeconds": 18.68
+        },
+        {
+          "barBoundaryIndex": 11,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 1.6215472603769037,
+              "bassChangeDb": 4.509985769560714,
+              "textureDistance": 0.8239362496483178,
+              "harmonicDistance": 0.396482907986571,
+              "strength": 2.3541035704237654
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.8143144650720924,
+              "bassChangeDb": 10.64790656124676,
+              "textureDistance": 0.9523574230541826,
+              "harmonicDistance": 0.36152410045504907,
+              "strength": 2.721021208726236
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.764311391538044,
+              "bassChangeDb": 12.420570808171409,
+              "textureDistance": 1.0998807817862348,
+              "harmonicDistance": 0.2580106385970526,
+              "strength": 3.1425165193892424
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.7142615682877632,
+              "precedingHarmonicDistance": 0.6177651890735069,
+              "precedingEnergyDifferenceDb": 0.6333800270356358,
+              "followingRepeatDistance": 0.8239362496483178,
+              "spectralRepeatBreakDistance": 0.10967468136055458,
+              "followingHarmonicDistance": 0.5833568929423443
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.8574838853982099,
+              "precedingHarmonicDistance": 0.6853239177735516,
+              "precedingEnergyDifferenceDb": 1.0489203351148269,
+              "followingRepeatDistance": 1.1418014254266622,
+              "spectralRepeatBreakDistance": 0.28431754002845233,
+              "followingHarmonicDistance": 0.5508399186539534
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.5119214204334046,
+              "precedingHarmonicDistance": 0.41487222249438294,
+              "precedingEnergyDifferenceDb": 2.5443080710600428,
+              "followingRepeatDistance": 1.2210243483195742,
+              "spectralRepeatBreakDistance": 0.7091029278861696,
+              "followingHarmonicDistance": 0.5031669934838078
+            }
+          ],
+          "repeatBreak": 0.7091029278861696,
+          "strength": 3.1425165193892424,
+          "sourceSeconds": 20.54
+        },
+        {
+          "barBoundaryIndex": 12,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.7789339878903601,
+              "bassChangeDb": 12.898864641149993,
+              "textureDistance": 1.5393432455671732,
+              "harmonicDistance": 0.3144558696390764,
+              "strength": 4.398123558763352
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.01673887663679352,
+              "bassChangeDb": 14.974959609601243,
+              "textureDistance": 1.4765811049043447,
+              "harmonicDistance": 0.3158923001480159,
+              "strength": 4.218803156869557
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.21139564487732088,
+              "bassChangeDb": 15.46706567027755,
+              "textureDistance": 1.4508240269183752,
+              "harmonicDistance": 0.28986104727825385,
+              "strength": 4.145211505481072
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.8239362496483178,
+              "precedingHarmonicDistance": 0.5833568929423443,
+              "precedingEnergyDifferenceDb": 2.682540429168317,
+              "followingRepeatDistance": 1.5393432455671732,
+              "spectralRepeatBreakDistance": 0.7154069959188554,
+              "followingHarmonicDistance": 0.4766010435328406
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.7827957228798426,
+              "precedingHarmonicDistance": 0.6070022958159933,
+              "precedingEnergyDifferenceDb": 1.5103677971412655,
+              "followingRepeatDistance": 1.4898493147215128,
+              "spectralRepeatBreakDistance": 0.7070535918416703,
+              "followingHarmonicDistance": 0.5453843729036025
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.3614119477453715,
+              "precedingHarmonicDistance": 0.3005978875300304,
+              "precedingEnergyDifferenceDb": 0.6191089687097786,
+              "followingRepeatDistance": 1.4814540425895302,
+              "spectralRepeatBreakDistance": 1.1200420948441587,
+              "followingHarmonicDistance": 0.5498681227815096
+            }
+          ],
+          "repeatBreak": 1.1200420948441587,
+          "strength": 4.398123558763352,
+          "sourceSeconds": 22.38
+        },
+        {
+          "barBoundaryIndex": 13,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.030201531322594732,
+              "bassChangeDb": -0.3577958326582138,
+              "textureDistance": 0.2481927790813685,
+              "harmonicDistance": 0.26310972788879733,
+              "strength": 0.7091222259467672
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.6668894914408039,
+              "bassChangeDb": 6.010940990911543,
+              "textureDistance": 0.7116097184794011,
+              "harmonicDistance": 0.11197500295318057,
+              "strength": 2.0331706242268606
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": -0.2554446697216193,
+              "bassChangeDb": 11.266704866737317,
+              "textureDistance": 1.07073271029824,
+              "harmonicDistance": 0.24169453816937073,
+              "strength": 3.059236315137829
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 1.5393432455671732,
+              "precedingHarmonicDistance": 0.4766010435328406,
+              "precedingEnergyDifferenceDb": 6.698715902085716,
+              "followingRepeatDistance": 0.2481927790813685,
+              "spectralRepeatBreakDistance": -1.2911504664858047,
+              "followingHarmonicDistance": 0.33053843148690465
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 1.1418014254266622,
+              "precedingHarmonicDistance": 0.5508399186539534,
+              "precedingEnergyDifferenceDb": 4.413852988281497,
+              "followingRepeatDistance": 0.7203573940468884,
+              "spectralRepeatBreakDistance": -0.4214440313797738,
+              "followingHarmonicDistance": 0.243523554431012
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.5752661725389072,
+              "precedingHarmonicDistance": 0.27741511821749604,
+              "precedingEnergyDifferenceDb": 2.1255203171335633,
+              "followingRepeatDistance": 1.1480838063122776,
+              "spectralRepeatBreakDistance": 0.5728176337733704,
+              "followingHarmonicDistance": 0.4673561722235625
+            }
+          ],
+          "repeatBreak": 0.5728176337733704,
+          "strength": 3.059236315137829,
+          "sourceSeconds": 24.24
+        },
+        {
+          "barBoundaryIndex": 14,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.4944419323460565,
+              "bassChangeDb": -0.16139099401048185,
+              "textureDistance": 0.2549473902695415,
+              "harmonicDistance": 0.2638016266196008,
+              "strength": 0.7284211150558328
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.3649369009560033,
+              "bassChangeDb": -0.3537726636254632,
+              "textureDistance": 0.02411505386566154,
+              "harmonicDistance": 0.008869684177758585,
+              "strength": 0.06979559029181104
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.2481927790813685,
+              "precedingHarmonicDistance": 0.33053843148690465,
+              "precedingEnergyDifferenceDb": 0.4481242242461203,
+              "followingRepeatDistance": 0.2549473902695415,
+              "spectralRepeatBreakDistance": 0.006754611188172999,
+              "followingHarmonicDistance": 0.3327057535231075
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 1.4898493147215128,
+              "precedingHarmonicDistance": 0.5453843729036025,
+              "precedingEnergyDifferenceDb": 6.479083718720961,
+              "followingRepeatDistance": 0.03267624473778659,
+              "spectralRepeatBreakDistance": -1.4571730699837262,
+              "followingHarmonicDistance": 0.019934504088448716
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.88613313039744,
+              "precedingHarmonicDistance": 0.40794829644229436,
+              "precedingEnergyDifferenceDb": 3.5674604159107117
+            }
+          ],
+          "repeatBreak": 0.006754611188172999,
+          "strength": 0.7284211150558328,
+          "sourceSeconds": 26.08
+        },
+        {
+          "barBoundaryIndex": 15,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.2892115941026976,
+              "bassChangeDb": -0.026967506571748956,
+              "textureDistance": 0.24634238041893197,
+              "harmonicDistance": 0.24972961119390055,
+              "strength": 0.70383537262552
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.008575178366273306,
+              "bassChangeDb": -0.13637880959520743,
+              "textureDistance": 0.07960476462293872,
+              "harmonicDistance": 0.05848297457053454,
+              "strength": 0.2274421846369678
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.2549473902695415,
+              "precedingHarmonicDistance": 0.3327057535231075,
+              "precedingEnergyDifferenceDb": 0.7841406243534417,
+              "followingRepeatDistance": 0.24634238041893197,
+              "spectralRepeatBreakDistance": -0.008605009850609524,
+              "followingHarmonicDistance": 0.31714638113428895
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.7203573940468884,
+              "precedingHarmonicDistance": 0.243523554431012,
+              "precedingEnergyDifferenceDb": 3.3978537627993095,
+              "followingRepeatDistance": 0.10254008160668761,
+              "spectralRepeatBreakDistance": -0.6178173124402008,
+              "followingHarmonicDistance": 0.08021089200428319
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 1.2210243483195742,
+              "precedingHarmonicDistance": 0.5031669934838078,
+              "precedingEnergyDifferenceDb": 5.184869190158674
+            }
+          ],
+          "repeatBreak": -0.008605009850609524,
+          "strength": 0.70383537262552,
+          "sourceSeconds": 27.92
+        },
+        {
+          "barBoundaryIndex": 16,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.06683089912679208,
+              "bassChangeDb": -0.05743161203643332,
+              "textureDistance": 0.28023496909048584,
+              "harmonicDistance": 0.2879008745785486,
+              "strength": 0.800671340258531
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.24634238041893197,
+              "precedingHarmonicDistance": 0.31714638113428895,
+              "precedingEnergyDifferenceDb": 0.5940571669813259,
+              "followingRepeatDistance": 0.28023496909048584,
+              "spectralRepeatBreakDistance": 0.03389258867155387,
+              "followingHarmonicDistance": 0.35579067623522237
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.03267624473778659,
+              "precedingHarmonicDistance": 0.019934504088448716,
+              "precedingEnergyDifferenceDb": 0.3667911463778579
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 1.4814540425895302,
+              "precedingHarmonicDistance": 0.5498681227815096,
+              "precedingEnergyDifferenceDb": 6.419213071975726
+            },
+            {
+              "blockBars": 8,
+              "precedingRepeatDistance": 1.2438635111172598,
+              "precedingHarmonicDistance": 0.6471854875266899,
+              "precedingEnergyDifferenceDb": 9.285985980811631
+            }
+          ],
+          "repeatBreak": 0.03389258867155387,
+          "strength": 0.800671340258531,
+          "sourceSeconds": 29.78
+        }
+      ],
+      "existingArrangementLandmarks": [
+        {
+          "beat_index": 4,
+          "at_seconds": 2.06,
+          "strength": 5.1958571977889,
+          "context_beats": 4,
+          "evidence": [
+            "bass_arrival",
+            "texture_change",
+            "harmonic_change"
+          ],
+          "energy_change_db": -0.6933707531240749,
+          "bass_change_db": 31.1751431867334,
+          "texture_change": 0.93700429692115,
+          "harmonic_change": 0.9266746670221535,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.7112907814322392,
+          "confidence": "medium",
+          "beats_before": 4,
+          "beats_after": 64,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 8,
+          "at_seconds": 3.92,
+          "strength": 3.05784518740589,
+          "context_beats": 4,
+          "evidence": [
+            "bass_release",
+            "texture_change",
+            "harmonic_change"
+          ],
+          "energy_change_db": -0.6265538886672388,
+          "bass_change_db": -18.347071124435338,
+          "texture_change": 0.5644719962925633,
+          "harmonic_change": 1.0207838085893737,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.7112907814322392,
+          "confidence": "medium",
+          "beats_before": 8,
+          "beats_after": 60,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 12,
+          "at_seconds": 5.76,
+          "strength": 4.000008270344292,
+          "context_beats": 4,
+          "evidence": [
+            "bass_arrival",
+            "texture_change",
+            "harmonic_change"
+          ],
+          "energy_change_db": 0.3629413868041489,
+          "bass_change_db": 24.000049622065752,
+          "texture_change": 0.6803469208377627,
+          "harmonic_change": 0.9027769745038023,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.7112907814322392,
+          "confidence": "medium",
+          "beats_before": 12,
+          "beats_after": 56,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 16,
+          "at_seconds": 7.6,
+          "strength": 3.5550781780875553,
+          "context_beats": 16,
+          "evidence": [
+            "energy_arrival",
+            "bass_arrival",
+            "texture_change"
+          ],
+          "energy_change_db": 8.71791826854242,
+          "bass_change_db": 21.330469068525332,
+          "texture_change": 0.603866899558891,
+          "harmonic_change": 0.41719275389698723,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.7112907814322392,
+          "confidence": "medium",
+          "beats_before": 16,
+          "beats_after": 52,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 21,
+          "at_seconds": 9.92,
+          "strength": 2.383512086702048,
+          "context_beats": 4,
+          "evidence": [
+            "texture_change"
+          ],
+          "energy_change_db": 0.7004115014887251,
+          "bass_change_db": 1.2110656349549451,
+          "texture_change": 0.8342292303457167,
+          "harmonic_change": 0.4067005200500446,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.28870921856776083,
+          "confidence": "low",
+          "beats_before": 21,
+          "beats_after": 47,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 25,
+          "at_seconds": 11.76,
+          "strength": 1.9178405486648011,
+          "context_beats": 4,
+          "evidence": [
+            "texture_change",
+            "harmonic_change"
+          ],
+          "energy_change_db": -0.9526696818000904,
+          "bass_change_db": -1.6972632112520074,
+          "texture_change": 0.6712441920326804,
+          "harmonic_change": 0.5375001416683107,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.28870921856776083,
+          "confidence": "low",
+          "beats_before": 25,
+          "beats_after": 43,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 29,
+          "at_seconds": 13.6,
+          "strength": 1.8373145748661714,
+          "context_beats": 4,
+          "evidence": [
+            "texture_change"
+          ],
+          "energy_change_db": 1.2263128857312644,
+          "bass_change_db": 3.592966939029008,
+          "texture_change": 0.6430601012031599,
+          "harmonic_change": 0.3937233061463438,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.28870921856776083,
+          "confidence": "low",
+          "beats_before": 29,
+          "beats_after": 39,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 32,
+          "at_seconds": 15.0,
+          "strength": 3.065552155654357,
+          "context_beats": 32,
+          "evidence": [
+            "energy_arrival",
+            "bass_arrival",
+            "texture_change"
+          ],
+          "energy_change_db": 4.694566069858713,
+          "bass_change_db": 18.39331293392614,
+          "texture_change": 0.74427547898606,
+          "harmonic_change": 0.22052380709499284,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.7112907814322392,
+          "confidence": "medium",
+          "beats_before": 32,
+          "beats_after": 36,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 37,
+          "at_seconds": 17.3,
+          "strength": 2.660512943414386,
+          "context_beats": 32,
+          "evidence": [
+            "energy_arrival",
+            "bass_arrival",
+            "texture_change"
+          ],
+          "energy_change_db": 3.7434516424512125,
+          "bass_change_db": 15.161156687564496,
+          "texture_change": 0.931179530195035,
+          "harmonic_change": 0.2609896818913896,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.28870921856776083,
+          "confidence": "low",
+          "beats_before": 37,
+          "beats_after": 31,
+          "phrase_verified": false,
+          "mix_ready": false
+        },
+        {
+          "beat_index": 48,
+          "at_seconds": 22.38,
+          "strength": 4.2962464256994215,
+          "context_beats": 4,
+          "evidence": [
+            "bass_arrival",
+            "texture_change"
+          ],
+          "energy_change_db": -0.7789339878903601,
+          "bass_change_db": 12.898864641149993,
+          "texture_change": 1.5036862489947975,
+          "harmonic_change": 0.3144558696390764,
+          "beat_supported": true,
+          "local_bar_phase": 0,
+          "bar_phase_support": 0.7112907814322392,
+          "confidence": "medium",
+          "beats_before": 48,
+          "beats_after": 20,
+          "phrase_verified": false,
+          "mix_ready": false
+        }
+      ],
+      "ownerReferenceSeconds": 22.41195548252519,
+      "nearestReferenceBoundarySeconds": 22.38,
+      "nearestReferenceNoveltyRank": 2,
+      "nearestReferenceRepeatBreakRank": 1,
+      "strongestRepeatBreakSeconds": [
+        22.38,
+        20.54,
+        24.24
+      ],
+      "strongestBoundarySeconds": [
+        2.06,
+        22.38,
+        5.76
+      ],
+      "auditionMarkersSeconds": [
+        7.6,
+        22.38
+      ],
+      "candidateSelection": "Up to two largest positive repetition-break local maxima, without shifting boundaries; inspection only, no calibrated phrase selection"
+    },
+    {
+      "name": "gusto",
+      "model": "small0",
+      "sourceSha256": "2a1b142700d54bd9bf70b35939baf32361b5f62a5b4579b4fdea949a1677203c",
+      "sourcePath": "/media/satadrive/Compilations/30 Years - Three Decades of Dance (2021)/CD 01/16 - Disco\u2019s Revenge (Mole Hole radio edit).mp3",
+      "firstCompleteBarSeconds": 0.06,
+      "lastCompleteBarEndSeconds": 30.56,
+      "completeBars": 16,
+      "barTimesSeconds": [
+        0.06,
+        1.98,
+        3.9,
+        5.82,
+        7.72,
+        9.62,
+        11.52,
+        13.42,
+        15.34,
+        17.24,
+        19.14,
+        21.04,
+        22.94,
+        24.86,
+        26.76,
+        28.66,
+        30.56
+      ],
+      "candidates": [
+        {
+          "barBoundaryIndex": 1,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.05570363896397268,
+              "bassChangeDb": 0.054623194581788326,
+              "textureDistance": 0.07700790681019137,
+              "harmonicDistance": 0.005292722169808384,
+              "strength": 0.22002259088626108
+            }
+          ],
+          "repetition": [],
+          "repeatBreak": 0,
+          "strength": 0.22002259088626108,
+          "sourceSeconds": 1.98
+        },
+        {
+          "barBoundaryIndex": 2,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.021834892860693955,
+              "bassChangeDb": -0.2123661196429243,
+              "textureDistance": 0.07442970213041758,
+              "harmonicDistance": 0.018923095477022187,
+              "strength": 0.5243198742026678
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.13061190226420827,
+              "bassChangeDb": -0.11114343286783779,
+              "textureDistance": 0.07679695512187207,
+              "harmonicDistance": 0.019983704666237008,
+              "strength": 0.5400750718450276
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.07700790681019137,
+              "precedingHarmonicDistance": 0.015073399211803425,
+              "precedingEnergyDifferenceDb": 0.1103329120558727,
+              "followingRepeatDistance": 0.07442970213041758,
+              "spectralRepeatBreakDistance": -0.0025782046797737934,
+              "followingHarmonicDistance": 0.07908454609438965
+            }
+          ],
+          "repeatBreak": -0.0025782046797737934,
+          "strength": 0.5400750718450276,
+          "sourceSeconds": 3.9
+        },
+        {
+          "barBoundaryIndex": 3,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.16185037984305417,
+              "bassChangeDb": 0.14782217896838823,
+              "textureDistance": 0.05443589351476158,
+              "harmonicDistance": 0.007989249052578251,
+              "strength": 0.15553112432789024
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.05463739852352134,
+              "bassChangeDb": -0.17691240047801493,
+              "textureDistance": 0.15768539400292236,
+              "harmonicDistance": 0.07148710761037154,
+              "strength": 0.4714993833040613
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.07442970213041758,
+              "precedingHarmonicDistance": 0.07908454609438965,
+              "precedingEnergyDifferenceDb": 1.2870387129365488,
+              "followingRepeatDistance": 0.05443589351476158,
+              "spectralRepeatBreakDistance": -0.019993808615656,
+              "followingHarmonicDistance": 0.016781949913378506
+            }
+          ],
+          "repeatBreak": -0.019993808615656,
+          "strength": 0.4714993833040613,
+          "sourceSeconds": 5.82
+        },
+        {
+          "barBoundaryIndex": 4,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.23626085549975961,
+              "bassChangeDb": -0.43710303924988025,
+              "textureDistance": 0.30541783422949115,
+              "harmonicDistance": 0.14192168638675715,
+              "strength": 0.872622383512832
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.2939070201614875,
+              "bassChangeDb": -0.4642326928313416,
+              "textureDistance": 0.30346934763758254,
+              "harmonicDistance": 0.08179807151839671,
+              "strength": 0.8670552789645216
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": -0.2987614194995274,
+              "bassChangeDb": -0.5892977086939819,
+              "textureDistance": 0.3481567939344705,
+              "harmonicDistance": 0.07962720734256563,
+              "strength": 0.9947336969556301
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.05443589351476158,
+              "precedingHarmonicDistance": 0.016781949913378506,
+              "precedingEnergyDifferenceDb": 0.14731356613078717,
+              "followingRepeatDistance": 0.30541783422949115,
+              "spectralRepeatBreakDistance": 0.25098194071472957,
+              "followingHarmonicDistance": 0.250399353762781
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.10198142343620767,
+              "precedingHarmonicDistance": 0.0794943168516118,
+              "precedingEnergyDifferenceDb": 1.3652506086423346,
+              "followingRepeatDistance": 0.30499086176735457,
+              "spectralRepeatBreakDistance": 0.2030094383311469,
+              "followingHarmonicDistance": 0.2163950229382567
+            }
+          ],
+          "repeatBreak": 0.25098194071472957,
+          "strength": 0.9947336969556301,
+          "sourceSeconds": 7.72
+        },
+        {
+          "barBoundaryIndex": 5,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.2771427091665064,
+              "bassChangeDb": -0.2020814861313145,
+              "textureDistance": 0.11339022640364863,
+              "harmonicDistance": 0.21868336636641997,
+              "strength": 0.43736673273283994
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.39042294918896303,
+              "bassChangeDb": -0.45397456347658505,
+              "textureDistance": 0.1675794341803984,
+              "harmonicDistance": 0.06546685881250423,
+              "strength": 0.47879838337256686
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": -0.24490589376212135,
+              "bassChangeDb": -0.3763784739804965,
+              "textureDistance": 0.28685780258501425,
+              "harmonicDistance": 0.08348309284226721,
+              "strength": 0.8195937216714694
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.30541783422949115,
+              "precedingHarmonicDistance": 0.250399353762781,
+              "precedingEnergyDifferenceDb": 1.2785176846391901,
+              "followingRepeatDistance": 0.11339022640364863,
+              "spectralRepeatBreakDistance": -0.19202760782584252,
+              "followingHarmonicDistance": 0.3585069530117039
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.18613401339431393,
+              "precedingHarmonicDistance": 0.16262044117146462,
+              "precedingEnergyDifferenceDb": 1.315718080473699,
+              "followingRepeatDistance": 0.1689221648520714,
+              "spectralRepeatBreakDistance": -0.01721184854224253,
+              "followingHarmonicDistance": 0.09599479168237196
+            }
+          ],
+          "repeatBreak": -0.01721184854224253,
+          "strength": 0.8195937216714694,
+          "sourceSeconds": 9.62
+        },
+        {
+          "barBoundaryIndex": 6,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.009700375454848142,
+              "bassChangeDb": -0.06668311544066086,
+              "textureDistance": 0.11209746267752696,
+              "harmonicDistance": 0.22021690550951584,
+              "strength": 0.4404338110190317
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": -0.14032070094028626,
+              "bassChangeDb": -0.13898659885744102,
+              "textureDistance": 0.06252468164812441,
+              "harmonicDistance": 0.0038541306199701385,
+              "strength": 0.17864194756606977
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": -0.0863644588915502,
+              "bassChangeDb": -0.1293612615745925,
+              "textureDistance": 0.1962773404359784,
+              "harmonicDistance": 0.07442214360046756,
+              "strength": 0.5607924012456525
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.11339022640364863,
+              "precedingHarmonicDistance": 0.3585069530117039,
+              "precedingEnergyDifferenceDb": 0.47770788338927606,
+              "followingRepeatDistance": 0.11209746267752696,
+              "spectralRepeatBreakDistance": -0.0012927637261216651,
+              "followingHarmonicDistance": 0.36107535501230253
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.30499086176735457,
+              "precedingHarmonicDistance": 0.2163950229382567,
+              "precedingEnergyDifferenceDb": 1.1557084351315403,
+              "followingRepeatDistance": 0.06374896330995644,
+              "spectralRepeatBreakDistance": -0.24124189845739813,
+              "followingHarmonicDistance": 0.011287135541080046
+            }
+          ],
+          "repeatBreak": -0.0012927637261216651,
+          "strength": 0.5607924012456525,
+          "sourceSeconds": 11.52
+        },
+        {
+          "barBoundaryIndex": 7,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.022899443623765947,
+              "bassChangeDb": 0.05747451929775593,
+              "textureDistance": 0.07843137338849171,
+              "harmonicDistance": 0.22277496244976552,
+              "strength": 0.44554992489953105
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.23639671233016202,
+              "bassChangeDb": 0.33210457947019556,
+              "textureDistance": 0.10353520777326171,
+              "harmonicDistance": 0.07358843037231697,
+              "strength": 0.2958148793521763
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.13555938505190035,
+              "bassChangeDb": 0.1947249414040133,
+              "textureDistance": 0.1716621526032435,
+              "harmonicDistance": 0.07935682939768565,
+              "strength": 0.4904632931521243
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.11209746267752696,
+              "precedingHarmonicDistance": 0.36107535501230253,
+              "precedingEnergyDifferenceDb": 0.25744422551189494,
+              "followingRepeatDistance": 0.07843137338849171,
+              "spectralRepeatBreakDistance": -0.03366608928903525,
+              "followingHarmonicDistance": 0.35352366502520005
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.1689221648520714,
+              "precedingHarmonicDistance": 0.09599479168237196,
+              "precedingEnergyDifferenceDb": 0.647013557248268,
+              "followingRepeatDistance": 0.14396302743006087,
+              "spectralRepeatBreakDistance": -0.02495913742201053,
+              "followingHarmonicDistance": 0.10507347677499254
+            }
+          ],
+          "repeatBreak": -0.02495913742201053,
+          "strength": 0.4904632931521243,
+          "sourceSeconds": 13.42
+        },
+        {
+          "barBoundaryIndex": 8,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.508891936453006,
+              "bassChangeDb": 0.6159432357855383,
+              "textureDistance": 0.11590584891509739,
+              "harmonicDistance": 0.3289231959212742,
+              "strength": 0.6578463918425485
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.4018195042589614,
+              "bassChangeDb": 0.4834833673970387,
+              "textureDistance": 0.08425781629466841,
+              "harmonicDistance": 0.08340455224083124,
+              "strength": 0.24073661798476692
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.3521876988978896,
+              "bassChangeDb": 0.43334999308618016,
+              "textureDistance": 0.08205171541657694,
+              "harmonicDistance": 0.07858011088571862,
+              "strength": 0.23443347261879127
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.07843137338849171,
+              "precedingHarmonicDistance": 0.35352366502520005,
+              "precedingEnergyDifferenceDb": 0.21916032061331014,
+              "followingRepeatDistance": 0.11590584891509739,
+              "spectralRepeatBreakDistance": 0.03747447552660568,
+              "followingHarmonicDistance": 0.5007739321593558
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.06374896330995644,
+              "precedingHarmonicDistance": 0.011287135541080046,
+              "precedingEnergyDifferenceDb": 0.16345614386446639,
+              "followingRepeatDistance": 0.15528681982488185,
+              "spectralRepeatBreakDistance": 0.09153785651492541,
+              "followingHarmonicDistance": 0.14615620644987712
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.3485588690324244,
+              "precedingHarmonicDistance": 0.21608535561811373,
+              "precedingEnergyDifferenceDb": 1.8209171936644382,
+              "followingRepeatDistance": 0.12484293627983137,
+              "spectralRepeatBreakDistance": -0.22371593275259302,
+              "followingHarmonicDistance": 0.14369354409824306
+            }
+          ],
+          "repeatBreak": 0.09153785651492541,
+          "strength": 0.6578463918425485,
+          "sourceSeconds": 15.34
+        },
+        {
+          "barBoundaryIndex": 9,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.1912454207643215,
+              "bassChangeDb": -0.32239425607475525,
+              "textureDistance": 0.15069770623798182,
+              "harmonicDistance": 0.34489925063751037,
+              "strength": 0.6897985012750207
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.18874829463243614,
+              "bassChangeDb": 0.17921528734422054,
+              "textureDistance": 0.08429250634049758,
+              "harmonicDistance": 0.04134428159748943,
+              "strength": 0.24083573240142167
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.43864197873034527,
+              "bassChangeDb": 0.4626051810229548,
+              "textureDistance": 0.0676849609381429,
+              "harmonicDistance": 0.03743305290540658,
+              "strength": 0.1933856026804083
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.11590584891509739,
+              "precedingHarmonicDistance": 0.5007739321593558,
+              "precedingEnergyDifferenceDb": 0.48947861701606055,
+              "followingRepeatDistance": 0.15069770623798182,
+              "spectralRepeatBreakDistance": 0.03479185732288442,
+              "followingHarmonicDistance": 0.5364123556153662
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.14396302743006087,
+              "precedingHarmonicDistance": 0.10507347677499254,
+              "precedingEnergyDifferenceDb": 0.34822227003288075,
+              "followingRepeatDistance": 0.10162446522483981,
+              "spectralRepeatBreakDistance": -0.04233856220522106,
+              "followingHarmonicDistance": 0.06662479525518267
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.296423859739811,
+              "precedingHarmonicDistance": 0.20232942011310842,
+              "precedingEnergyDifferenceDb": 1.3221145573276893,
+              "followingRepeatDistance": 0.13297947549609157,
+              "spectralRepeatBreakDistance": -0.16344438424371943,
+              "followingHarmonicDistance": 0.11451911446166416
+            }
+          ],
+          "repeatBreak": 0.03479185732288442,
+          "strength": 0.6897985012750207,
+          "sourceSeconds": 17.24
+        },
+        {
+          "barBoundaryIndex": 10,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.2510954943405128,
+              "bassChangeDb": 0.387275851052415,
+              "textureDistance": 0.14657082210622888,
+              "harmonicDistance": 0.33153895351161705,
+              "strength": 0.6630779070232341
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.04105709021814441,
+              "bassChangeDb": 0.03871985023572577,
+              "textureDistance": 0.02473291761081374,
+              "harmonicDistance": 0.009352389744250277,
+              "strength": 0.07066547888803926
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.45920717234696085,
+              "bassChangeDb": 0.4726894621959552,
+              "textureDistance": 0.07902965717852176,
+              "harmonicDistance": 0.0340826446271689,
+              "strength": 0.22692921439399663
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.15069770623798182,
+              "precedingHarmonicDistance": 0.5364123556153662,
+              "precedingEnergyDifferenceDb": 0.4984156078110624,
+              "followingRepeatDistance": 0.14657082210622888,
+              "spectralRepeatBreakDistance": -0.004126884131752939,
+              "followingHarmonicDistance": 0.5273767768928714
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.15528681982488185,
+              "precedingHarmonicDistance": 0.14615620644987712,
+              "precedingEnergyDifferenceDb": 0.5058619771561117,
+              "followingRepeatDistance": 0.06486659120871557,
+              "spectralRepeatBreakDistance": -0.09042022861616628,
+              "followingHarmonicDistance": 0.027694302868316395
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.21912012710328438,
+              "precedingHarmonicDistance": 0.18087040461005754,
+              "precedingEnergyDifferenceDb": 0.85042596759637,
+              "followingRepeatDistance": 0.14838636849563447,
+              "spectralRepeatBreakDistance": -0.07073375860764991,
+              "followingHarmonicDistance": 0.11242834726864047
+            }
+          ],
+          "repeatBreak": -0.004126884131752939,
+          "strength": 0.6630779070232341,
+          "sourceSeconds": 19.14
+        },
+        {
+          "barBoundaryIndex": 11,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.2288313874804171,
+              "bassChangeDb": -0.37471774555862325,
+              "textureDistance": 0.14427911326855078,
+              "harmonicDistance": 0.3275544905679651,
+              "strength": 0.6551089811359302
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.26339065586565624,
+              "bassChangeDb": 0.23467520788727114,
+              "textureDistance": 0.1374372746524648,
+              "harmonicDistance": 0.023690624860337003,
+              "strength": 0.39267792757847086
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.4677161855308061,
+              "bassChangeDb": 0.37939988782435563,
+              "textureDistance": 0.1341493118862671,
+              "harmonicDistance": 0.031778171402242594,
+              "strength": 0.4620310810816945
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.14657082210622888,
+              "precedingHarmonicDistance": 0.5273767768928714,
+              "precedingEnergyDifferenceDb": 0.510993959908379,
+              "followingRepeatDistance": 0.14427911326855078,
+              "spectralRepeatBreakDistance": -0.002291708837678097,
+              "followingHarmonicDistance": 0.5238967791446643
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.10162446522483981,
+              "precedingHarmonicDistance": 0.06662479525518267,
+              "precedingEnergyDifferenceDb": 0.22369745146000608,
+              "followingRepeatDistance": 0.1420352579106528,
+              "spectralRepeatBreakDistance": 0.04041079268581299,
+              "followingHarmonicDistance": 0.04576478284709306
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.1949201954500118,
+              "precedingHarmonicDistance": 0.16480731156078166,
+              "precedingEnergyDifferenceDb": 0.688015744000382,
+              "followingRepeatDistance": 0.1744294394533083,
+              "spectralRepeatBreakDistance": -0.020490755996703497,
+              "followingHarmonicDistance": 0.09732798244409128
+            }
+          ],
+          "repeatBreak": 0.04041079268581299,
+          "strength": 0.6551089811359302,
+          "sourceSeconds": 21.04
+        },
+        {
+          "barBoundaryIndex": 12,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.7333485923516339,
+              "bassChangeDb": 0.8315100558393738,
+              "textureDistance": 0.2426886763993521,
+              "harmonicDistance": 0.30554743817368907,
+              "strength": 0.6933962182838632
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.4344806599986697,
+              "bassChangeDb": 0.38445585652342196,
+              "textureDistance": 0.1348113291461443,
+              "harmonicDistance": 0.027297552020041735,
+              "strength": 0.38517522613184085
+            },
+            {
+              "contextBars": 4,
+              "energyChangeDb": 0.5498520603178783,
+              "bassChangeDb": 0.41951330718439017,
+              "textureDistance": 0.1808460216773041,
+              "harmonicDistance": 0.03760630904010503,
+              "strength": 0.6362511596398553
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.14427911326855078,
+              "precedingHarmonicDistance": 0.5238967791446643,
+              "precedingEnergyDifferenceDb": 0.5602781960609158,
+              "followingRepeatDistance": 0.2426886763993521,
+              "spectralRepeatBreakDistance": 0.09840956313080132,
+              "followingHarmonicDistance": 0.49907202269813444
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.06486659120871557,
+              "precedingHarmonicDistance": 0.027694302868316395,
+              "precedingEnergyDifferenceDb": 0.06275187943590477,
+              "followingRepeatDistance": 0.14323872374031626,
+              "spectralRepeatBreakDistance": 0.07837213253160069,
+              "followingHarmonicDistance": 0.07498835367927761
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.12484293627983137,
+              "precedingHarmonicDistance": 0.14369354409824306,
+              "precedingEnergyDifferenceDb": 0.5305098667067059,
+              "followingRepeatDistance": 0.20362712021318274,
+              "spectralRepeatBreakDistance": 0.07878418393335138,
+              "followingHarmonicDistance": 0.10019178050760032
+            }
+          ],
+          "repeatBreak": 0.09840956313080132,
+          "strength": 0.6933962182838632,
+          "sourceSeconds": 22.94
+        },
+        {
+          "barBoundaryIndex": 13,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.3689044772255077,
+              "bassChangeDb": -0.5193906530732786,
+              "textureDistance": 0.23265328288938447,
+              "harmonicDistance": 0.3198868312737798,
+              "strength": 0.6647236653982413
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.21990276469786707,
+              "bassChangeDb": 0.11023407252995199,
+              "textureDistance": 0.10727593548389588,
+              "harmonicDistance": 0.027400665096891718,
+              "strength": 0.4333147322009297
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.2426886763993521,
+              "precedingHarmonicDistance": 0.49907202269813444,
+              "precedingEnergyDifferenceDb": 0.9392779643789706,
+              "followingRepeatDistance": 0.23265328288938447,
+              "spectralRepeatBreakDistance": -0.010035393509967627,
+              "followingHarmonicDistance": 0.48769416892082784
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.1420352579106528,
+              "precedingHarmonicDistance": 0.04576478284709306,
+              "precedingEnergyDifferenceDb": 0.5432540876070413,
+              "followingRepeatDistance": 0.11145364312444009,
+              "spectralRepeatBreakDistance": -0.030581614786212713,
+              "followingHarmonicDistance": 0.07693529027132132
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.13297947549609157,
+              "precedingHarmonicDistance": 0.11451911446166416,
+              "precedingEnergyDifferenceDb": 0.6457501415001499
+            }
+          ],
+          "repeatBreak": -0.010035393509967627,
+          "strength": 0.6647236653982413,
+          "sourceSeconds": 24.86
+        },
+        {
+          "barBoundaryIndex": 14,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": 0.4442658914951121,
+              "bassChangeDb": 0.4277393953670856,
+              "textureDistance": 0.2809939049923845,
+              "harmonicDistance": 0.33662822785475083,
+              "strength": 0.8028397285496701
+            },
+            {
+              "contextBars": 2,
+              "energyChangeDb": 0.18968571042026916,
+              "bassChangeDb": 0.03139505108621066,
+              "textureDistance": 0.13760813159900842,
+              "harmonicDistance": 0.02542598334789283,
+              "strength": 0.5228158781691808
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.23265328288938447,
+              "precedingHarmonicDistance": 0.48769416892082784,
+              "precedingEnergyDifferenceDb": 0.44697628988445537,
+              "followingRepeatDistance": 0.2809939049923845,
+              "spectralRepeatBreakDistance": 0.04834062210300005,
+              "followingHarmonicDistance": 0.4940417032125691
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.14323872374031626,
+              "precedingHarmonicDistance": 0.07498835367927761,
+              "precedingEnergyDifferenceDb": 0.8919753804814354,
+              "followingRepeatDistance": 0.15249824636532822,
+              "spectralRepeatBreakDistance": 0.009259522625011951,
+              "followingHarmonicDistance": 0.06014286336661229
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.14838636849563447,
+              "precedingHarmonicDistance": 0.11242834726864047,
+              "precedingEnergyDifferenceDb": 0.7478919358008833
+            }
+          ],
+          "repeatBreak": 0.04834062210300005,
+          "strength": 0.8028397285496701,
+          "sourceSeconds": 26.76
+        },
+        {
+          "barBoundaryIndex": 15,
+          "changes": [
+            {
+              "contextBars": 1,
+              "energyChangeDb": -0.14025588492417995,
+              "bassChangeDb": -0.27329803548847487,
+              "textureDistance": 0.1912295841284229,
+              "harmonicDistance": 0.3564981356867806,
+              "strength": 0.7129962713735613
+            }
+          ],
+          "repetition": [
+            {
+              "blockBars": 1,
+              "precedingRepeatDistance": 0.2809939049923845,
+              "precedingHarmonicDistance": 0.4940417032125691,
+              "precedingEnergyDifferenceDb": 1.23650007724226,
+              "followingRepeatDistance": 0.1912295841284229,
+              "spectralRepeatBreakDistance": -0.08976432086396163,
+              "followingHarmonicDistance": 0.4932613515794032
+            },
+            {
+              "blockBars": 2,
+              "precedingRepeatDistance": 0.11145364312444009,
+              "precedingHarmonicDistance": 0.07693529027132132,
+              "precedingEnergyDifferenceDb": 0.8292790261457805
+            },
+            {
+              "blockBars": 4,
+              "precedingRepeatDistance": 0.1744294394533083,
+              "precedingHarmonicDistance": 0.09732798244409128,
+              "precedingEnergyDifferenceDb": 1.0353621678904374
+            }
+          ],
+          "repeatBreak": -0.08976432086396163,
+          "strength": 0.7129962713735613,
+          "sourceSeconds": 28.66
+        }
+      ],
+      "existingArrangementLandmarks": [],
+      "ownerReferenceSeconds": 22.96396023024595,
+      "nearestReferenceBoundarySeconds": 22.94,
+      "nearestReferenceNoveltyRank": 5,
+      "nearestReferenceRepeatBreakRank": 2,
+      "strongestRepeatBreakSeconds": [
+        7.72,
+        22.94,
+        15.34
+      ],
+      "strongestBoundarySeconds": [
+        7.72,
+        9.62,
+        26.76
+      ],
+      "auditionMarkersSeconds": [
+        7.72,
+        22.94
+      ],
+      "candidateSelection": "Up to two largest positive repetition-break local maxima, without shifting boundaries; inspection only, no calibrated phrase selection"
+    }
+  ]
+}

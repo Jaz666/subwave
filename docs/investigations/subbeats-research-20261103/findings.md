@@ -141,3 +141,31 @@ novelty filter may erase a same-texture cycle release. Next: investigate raw
 barwise similarity/repetition alongside existing arrangement features on the
 two accepted openings. No packages installed, third-party code executed,
 remote audio uploaded, tests run or station changes made for this review.
+
+### Follow-up: bounded phrase/bar experiment on accepted openings
+
+The [phrase/bar evaluation](phrase-bar-evaluation.md) and
+[complete descriptors](phrase-bar-results.json) preserve the next experiment.
+It reuses existing Sub/Beats energy/mel/chroma extraction, comparing ordered
+1/2/4/8-bar blocks without forced segment lengths or boundary shifts. No new
+Beat This! inference or third-party CBM execution was needed.
+
+Urban's 22.380s boundary (owner reference 22.412s) ranks first by repetition
+break and second by local novelty. Gusto's 22.940s boundary (owner-confirmed
+release 22.964s) ranks second by repetition break, despite no landmarks from
+the existing beat-level novelty detector and all bar novelty strengths below
+1. The two leading positive local repetition-break peaks are 7.600/22.380s for
+Urban and 7.720/22.940s for Gusto. Chord-marked auditions are saved locally;
+owner feedback on these new markers remains pending.
+
+Gusto's two-bar harmonic/spectral repetition near its release is stronger than
+the tested four-bar repetition. This does not contradict the owner's completed
+groove description: feature period, bar count and complete vocal phrase remain
+separate. The method suggests structural events but does not establish first
+phonemes, sung endings, tail clearance or loop safety. No source-zero phrase
+assumption, calibrated confidence or pair approval was added.
+
+The separate phrase environment uses Librosa 0.11.0; the original model runtime
+was preserved. Small synthetic descriptor checks, exact source hashes, complete
+four-beat bar coverage, finite JSON and both 32-second marked audio durations
+passed. No station files, metadata, stems or production behavior changed.
