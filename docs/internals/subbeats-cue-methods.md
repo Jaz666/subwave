@@ -236,4 +236,6 @@ probe evidence is retained in the November research workspace as
 `final-quarter-rozalla.json` and `probe-final-quarter.py`.
 
 Rebuild controller, web and analyzer together, then recheck the selected tracks
-with a Beat This! preparation method. No library-wide reanalysis is required.
+with a Beat This! preparation method. Older analyzers that omit decoded
+duration are explicitly refused with an update message. No library-wide
+reanalysis is required.
