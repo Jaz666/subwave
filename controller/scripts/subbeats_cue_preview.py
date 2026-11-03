@@ -140,6 +140,12 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     plan=passage_plan(outgoing,incoming,*durations)
     out_parts,out_extended=cue_region(req,0,folders[0],records[0],'exit',plan['first'],plan['out_end'],fetch_source)
     in_parts,in_extended=cue_region(req,1,folders[1],records[1],'head',0.,plan['incoming_end'],fetch_source)
+    from subbeats_vocals import measure_vocals
+    from subbeats_cue_matching import assess_vocal_pair
+    vocal = assess_vocal_pair(measure_vocals(out_parts,STEM_SR,plan['first']),
+                              measure_vocals(in_parts,STEM_SR),plan)
+    if vocal['status']=='conflict':
+        raise ValueError(vocal['reason'])
     if plan['rate']!=1.:
         in_parts={name:librosa.effects.time_stretch(part,rate=plan['rate']) for name,part in in_parts.items()}
     out_parts={name:part*10**(gains[0]/20) for name,part in out_parts.items()}

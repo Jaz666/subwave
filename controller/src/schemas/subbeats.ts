@@ -107,6 +107,23 @@ export const subbeatsTimelineSchema = z.object({
 export const subbeatsMatchQuerySchema = z.object({
   outgoingId:z.string().min(1).max(200), barShift:z.coerce.number().int().min(-2).max(2).default(0),
 });
+export const subbeatsCueMatchQuerySchema = z.object({
+  outgoingId:z.string().min(1).max(200), outgoingCueIndex:z.coerce.number().int().min(0).max(7).default(0),
+});
+export const subbeatsCueVocalFitSchema = z.object({
+  status:z.enum(['estimated','conflict','coverage','uncertain','unassessed']),reason:z.string(),
+});
+export const subbeatsCueMatchesSchema = z.object({
+  method:z.literal('cue-points'),outgoingId:z.string(),outgoingCueIndex:z.number().int().min(0).max(7),
+  matches:z.array(z.object({id:z.string(),title:z.string(),artist:z.string(),
+    outgoingCueIndex:z.number().int().min(0).max(7),incomingCueIndex:z.number().int().min(0).max(7),
+    incomingSeconds:z.number().finite().nonnegative(),phraseBars:z.union([z.literal(8),z.literal(16)]).nullable(),
+    bpm:z.number().finite().positive(),tempoAdjustmentPercent:z.number().finite(),
+    openingDifferenceSeconds:z.number().finite().nonnegative(),vocal:subbeatsCueVocalFitSchema,
+  })).max(SUBBEATS_QUEUE_LIMIT),
+  excluded:z.object({tempo:z.number().int().nonnegative(),coverage:z.number().int().nonnegative(),
+    unassessed:z.number().int().nonnegative(),vocals:z.number().int().nonnegative()}),
+});
 export const subbeatsWindowPlanSchema = z.object({
   outCue:z.number().finite().nonnegative(), inCue:z.number().finite().nonnegative(),
   period:z.number().finite().positive(), rate:z.number().finite().positive(),

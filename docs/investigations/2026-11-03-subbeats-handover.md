@@ -8,6 +8,45 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+### Current: cue candidate discovery and vocal overlap guard (preview version 9)
+
+Owner approved implementing vocal-aware pair assessment plus **Find suitable
+candidates**, with minimal tests. The cue preview now searches saved prepared
+tracks for the selected outgoing finish, evaluates all incoming cue alternatives,
+excludes detected vocal clashes and returns one ranked suggestion per track.
+The UI displays up to ten, preserving original server cue indices when choosing
+a suggestion. Coverage/uncertainty labels are explicit; suggestions are not pair
+approval. Use the existing Play preview button to audition the chosen suggestion.
+
+`subbeats_cue_matching.py` shares geometry and vocal timeline assessment with the
+renderer. Rendering measures actual full/extended overlap stems and refuses a
+detected vocal clash without cutting either passage. Saved source/cue evidence
+is revalidated as before. Renderer version 9 prevents reuse of old overlapping
+version-8 previews. No recheck solely for this change, heavy search preparation,
+key matching, broadcast or picker integration. Next: owner auditions suggestions
+and refusal behavior before queued-pair integration is designed. See the method
+guide's version-9 section for behavior, ranking and limitations.
+
+Verification kept focused at owner request: 13 cue cases in the existing
+analyzer-Python wrapper (including tempo-mapped overlap, preserved cue indices,
+missing coverage, and actual-render refusal/preservation), all registered Python
+checks after fixing a missing sidecar import; 18 route cases; controller/web
+typechecks; targeted lint; admin-query detector and nine audit cases. One isolated
+browser pass verified suggestion selection, unchanged outgoing cue, original
+indices in the audition request, stale-result hiding, error/empty states and
+mobile/desktop layout, with no browser errors. Temporary servers stopped and
+Next-generated config changes restored. No full application suites, broader
+Library browser reruns, real-track inference, Docker builds/restarts or live state
+writes. Existing real-track listening remains owner work after rebuild.
+
+Station integration target is `test-station/sleeve-notes-clean-20261014` in
+`/home/jaz666/Docker/subwave`; rollback for this increment is `f5cad29d`.
+Upstream/fork refs were fetched before integration (upstream develop `1c4a9ff2`,
+main `03a48c21`). The station uses cherry-picked upstream/fork changes; this
+increment does not merge an upstream branch or claim ancestry parity.
+
+### Previous product direction and version-8 handoff
+
 Owner clarified the eventual product destination: minimum, assess already queued
 adjacent tracks and upgrade suitable joins to Sub/Beats, preserving normal
 transitions otherwise; ideal, a shared follow-up discovery tool/source in both

@@ -9,11 +9,11 @@ import { resolveGainDb } from '../../music/loudness.js';
 import * as blocklist from '../../music/blocklist.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
-import { subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
+import { subbeatsCueMatchQuerySchema, subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
 import * as db from '../../music/library-db.js';
 import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
-import { matchSubbeats, previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
+import { matchSubbeatsCues, matchSubbeats, previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
 import { tagger } from '../../broadcast/tagger.js';
 import { bulkPassRunning } from '../../music/tagger-lock.js';
 import { subbeatsReferences } from '../../music/subbeats-references.js';
@@ -79,6 +79,19 @@ router.get('/library/subbeats/matches', requireAdmin, async (req,res) => {
     const jobs = subbeatsStore.read().jobs.filter(job => !blocklist.hitOf(job));
     res.set('Cache-Control','no-store').json(await matchSubbeats(jobs,parsed.data.outgoingId,parsed.data.barShift));
   } catch (error) { res.status(400).json({error:error instanceof Error ? error.message : 'Matches could not be found'}); }
+});
+router.get('/library/subbeats/cue-matches', requireAdmin, async (req,res) => {
+  const parsed = subbeatsCueMatchQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({error:'Choose an outgoing track and a saved cue.'});
+  try {
+    await library.load();
+    await blocklist.load();
+    const jobs = subbeatsStore.read().jobs.filter(job => {
+      const track = db.getTrack(job.id);
+      return track && !blocklist.hitOf(track);
+    });
+    res.set('Cache-Control','no-store').json(await matchSubbeatsCues(jobs,parsed.data.outgoingId,parsed.data.outgoingCueIndex));
+  } catch (error) { res.status(400).json({error:error instanceof Error ? error.message : 'Candidates could not be found.'}); }
 });
 router.get('/library/subbeats/candidates', requireAdmin, async (req, res) => {
   await library.load();

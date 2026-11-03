@@ -66,9 +66,9 @@ before playback if the queue or prepared evidence changes.
   handoff must not wait for the preview's potentially 30-minute preparation path.
   Missing, uncertain, stale or late evidence means no Sub/Beats upgrade.
 
-The immediate next step remains vocal-aware assessment of the selected cue pair,
-using the existing measured-passage work and listening checks. Validate that in
-preview before enabling queued-pair upgrades, then add shared follow-up discovery.
+Vocal-aware assessment and saved-evidence discovery now run in the cue preview
+(see below). Validate the suggestions by listening before enabling queued-pair
+upgrades, then expose follow-up discovery to both picking paths.
 
 ## Operator workflow
 
@@ -138,11 +138,13 @@ Owner direction after auditioning the passage preview: keep competing vocal
 passages apart. Prefer cue combinations whose outgoing vocal ending and incoming
 vocal entry do not overlap, preserving complete passages rather than muting words
 to force a fit. The existing `subbeats_vocals.py` passage estimates are reusable
-for checking the actual tempo-adjusted pair timeline; they are not currently
-applied by the cue renderer. Detection is an estimate, not proof of vocal safety:
+for checking the actual tempo-adjusted pair timeline; they are not
+used as an automatic pair approval. The version-9 renderer now refuses detected
+overlaps using the same timeline assessment as discovery. Detection is an
+estimate, not proof of vocal safety:
 Gusto's low background-vocal groove can live in `other`. Listening remains needed.
-How to handle pairs with no suitable placement remains an implementation decision;
-no automatic vocal suppression or rejection has been introduced by this note.
+If measured passages overlap, the cue preview refuses that combination and asks
+for another incoming cue or outgoing finish. It does not suppress or trim words.
 
 The owner preferred the 8-bar incoming in the Rozalla → Gusto pair they auditioned.
 This is a pair-specific listening reference, not a global 8-bar preference or an
@@ -152,6 +154,43 @@ to musical fit and vocal separation.
 Later, consider harmonic compatibility using the library analyser's Camelot key
 evidence. Verify the existing key data and its reliability before wiring it into
 selection. Key compatibility is deferred; it does not replace the vocal constraint.
+
+## Find suitable candidates in the cue preview — version 9
+
+Choose an outgoing track and closing cue, then **Find suitable candidates**.
+The search compares all saved incoming cues of each other prepared, available,
+unblocked track against that selected finish. It returns one suggested cue per
+track and displays the first ten ranked tracks. **Use this suggestion** selects
+the track and its original server cue index; **Play preview** auditions it.
+Manual incoming choices remain available. Changing the outgoing cue, track or
+saved evidence hides the old results until another search is requested.
+
+`subbeats_cue_matching.py` shares `passage_plan` with the renderer and applies
+`assess_vocal_pair` to the actual incoming placement/tempo ratio. Observed vocal
+passages, including existing breath/release padding, must not intersect on the
+shared timeline. Known clashes are excluded even when coverage elsewhere is
+incomplete. Complete measurements with no detected clash rank first, followed
+by uncertain/incomplete/missing measurements, then smaller tempo adjustment and
+closer complete-opening/closing lengths. Empty detections do not establish a
+vocal-free passage; missing coverage is explicitly labelled. No harmonic key
+ranking or automatic word removal is applied.
+
+Search reads only the saved queue measurements: no source fetch, separation,
+stem-cache scan, model work or preparation queue mutation. The authenticated
+`GET /library/subbeats/cue-matches` validates outgoing ID/index, filters library
+availability and blocklist, and passes only server-owned jobs to the existing
+analyzer match operation. Old analyzers cannot silently return classic matches.
+Suggestions are not playback admission or source-integrity approval.
+
+Before a cue preview renders, it measures the actual covered/extended stems,
+reuses the same vocal timeline assessment, and rejects detected overlaps before
+time stretching or mixing. Both complete vocal passages remain intact when a
+pair passes. Version 9 invalidates old cached previews that allowed clashes; cue
+reanalysis is not required just for this renderer change. Saved measurements may
+be incomplete, so a suggested audition can still be refused after its full
+coverage is prepared. Background vocals in `other`, detector misses, phrase fit
+and harmony still require listening. Classic/reference preview behavior is
+unchanged. No broadcast or picker integration is enabled.
 
 ## Preview scope and limits
 
@@ -169,7 +208,8 @@ handover meaning. Incoming source zero is retained. Its start follows from the
 chosen arrival after tempo adjustment, so 8/16-bar alternatives need not enter
 at the same time. Drums/bass exchange over the last bar before that meeting point; outgoing
 `vocals` and `other` continue to EOF. The preview includes
-at least two incoming bars beyond the handover. Voices/background grooves still
+at least two incoming bars beyond the handover. Version 9 refuses detected vocal
+clashes before mixing (above). Voices/background grooves still
 need listening, including Gusto's groove in `other`. There is no loop or automatic
 broadcast/pair approval.
 
