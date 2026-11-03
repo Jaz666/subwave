@@ -46,7 +46,15 @@ search and all six query-cache browser checks passed on temporary fixture state.
 The UI detector reports no findings. Real Demucs/source test details and its
 scope limits are recorded in the linked evidence. No Docker builds or restarts
 were run by the agent.
-Source handoff follows after integration.
+Development implementation `3d73e68d` is pushed. Station source is now
+`f5cad29d`, pushed on `test-station/sleeve-notes-clean-20261014`; implementation
+files match the tested development source. Both worktrees are clean. The
+source rollback for this renderer change is `894880b2`. The development-only
+handover remains absent from the station checkout. No services were rebuilt or
+restarted. Next: owner rebuilds analyzer/controller/web with the existing GPU
+and Discord overlays, checks `/api/health`, then retries the same saved cue pair.
+No cue reanalysis is required. The first preview can take longer while missing
+coverage is prepared; repeats of that exact selection use its cached WAV.
 
 ### Previous incoming-selection handoff
 
@@ -293,7 +301,7 @@ the renderer or selected an exhaustive set of candidate durations.
 | --- | --- |
 | `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; implementation and research committed here |
 | `/home/jaz666/codex/subwave-cues-station-20261103` | Validated integration candidate, branch `integrate/subbeats-cues-1300-20261103`, HEAD `b5eda6e4` |
-| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `894880b2`; source includes incoming phrase selection/audition, owner rebuild pending |
+| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `f5cad29d`; source includes selected-passage placement and missing coverage, owner rebuild pending |
 | `origin` | `https://github.com/perminder-klair/subwave.git`, upstream |
 | `jaz666` | `https://github.com/Jaz666/subwave.git`, fork |
 
