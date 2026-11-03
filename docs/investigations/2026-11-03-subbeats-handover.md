@@ -8,13 +8,40 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-### Current direction and upstream gate (3 November)
+### Current implementation and station source (3 November)
 
 The owner has ended further boundary-perfection experiments and requested
 practical optional preparation/preview methods on the test station. A cue-point
-implementation is now in progress in this development worktree, with source
-changes and its method guide still uncommitted.
+implementation is committed as `d8e1ca02`, with upstream `v1.30.0` reconciled
+in merge `d9cc1f59`. The tested station candidate `b5eda6e4` is published on
+fork branch `integrate/subbeats-cues-1300-20261103` and has been fast-forwarded
+into `/home/jaz666/Docker/subwave` on its existing station branch.
 The historical listening tasks below are no longer the next action.
+
+The [method guide](../internals/subbeats-cue-methods.md) records the controls,
+limitations, checks and exact rebuild/health commands. Preparation offers the
+current method and official Beat This! small/full cue analysis. Preview offers
+the current 16-bar exchange and a saved-cue opening/tail blend. No external cue
+repository code was copied. Normal Stem Blend's Beat This! PR remains unmerged.
+
+Controller/web lint and typechecking passed on the full station candidate.
+Controller checks passed: Sub/Beats 59, Sub/Flow 49, explicit-track rules 101,
+pick-time stems 51, orphan purge 84, stem cache 61, and the Python wrapper.
+Web library 37 and admin-query 9 tests passed, as did the query audit. An
+isolated browser fixture passed the cue controls, mobile layout, library search
+and all six query-cache checks. An offline real-stem Urban → Gusto cue preview
+rendered successfully (53.148s), retained at
+`/home/jaz666/codex/subbeats-beat-this-20261103/station-cue-check/urban-to-gusto-cue-preview.mp3`.
+This pair has not received owner listening approval.
+
+**Operational state:** station source is `b5eda6e4`, clean; source rollback is
+`e4e22d34`. No station build, restart, live analysis or metadata change was
+performed. The owner must rebuild analyzer, controller, web and broadcast
+using the existing GPU and Discord overlays. CUDA/AIO images were not built.
+Next: owner rebuild and health check, then recheck two tracks with a cue method
+and compare the two preview methods. Do not restart perfection experiments.
+
+### Upstream check and resolution evidence
 
 Before station integration, the owner explicitly requested a fresh upstream
 check because a new release appeared. The check fetched upstream `main` and
@@ -39,7 +66,7 @@ check because a new release appeared. The check fetched upstream `main` and
   The new release does not supply that integration. The fetched changes do
   not change the analyzer Dockerfiles/server or our Sub/Beats-specific files;
   `controller/src/music/analyzer.ts` does gain the upstream timeout changes.
-- A non-mutating `git merge-tree` simulation against the committed development
+- The initial non-mutating `git merge-tree` simulation against the committed development
   branch reports two conflicted paths: `controller/src/music/orphan-purge.ts`
   and `controller/src/music/stem-cache.ts`. Resolution must retain selective
   Sub/Beats cleanup controls, queued-bundle protection/invalidation, upstream
@@ -47,15 +74,19 @@ check because a new release appeared. The check fetched upstream `main` and
   priority. This simulation excludes the uncommitted cue implementation.
 - The same simulation against station HEAD `e4e22d34` reports 104 conflicted
   paths. A direct upstream pull/merge into that long-diverged station checkout
-  is unsuitable as a quick deployment step. No merge, dependency update,
-  source copy, build or restart was performed there.
+  is unsuitable as a quick deployment step. Instead, the tested delta from
+  development baseline `81264cca` was applied in a separate station-candidate
+  worktree; five conflicts were resolved preserving local Flow selection,
+  duration rules and documentation alongside upstream explicit-track policy.
+  The station's full schema mirror was regenerated. The tested candidate was
+  committed/pushed before the station checkout was fast-forwarded to it.
 
-Next: reconcile upstream in a development candidate, validate it together with
-the optional cue methods, then prepare a scoped station integration preserving
-the station's other features. Do not treat the release check or automatic
-merge output as a compatibility pass. This check ran no new application tests.
-The owner still performs station builds/restarts. No findings were posted to
-Perminder during the check.
+Both development cache conflicts are resolved, retaining selective cleanup
+controls and upstream recording-identity checks. Missing/mismatched evidence
+stays quarantined; focused tests cover restoration once matching evidence is
+available. Upstream queued-track eviction priority and analyzer deadlines are
+retained. The release check itself ran no application tests; the later candidate
+checks are recorded above. No findings have been posted to Perminder.
 
 ### Research evidence (historical next actions superseded above)
 
@@ -87,8 +118,8 @@ clearance and Gusto's groove decay/loop seam are not yet approved.
 Do not hard-cut Urban's vocals at the structural marker or certify Gusto's loop
 from absent vocal-gate detections. The earlier marked 32-second auditions remain in
 `/home/jaz666/codex/subbeats-beat-this-20261103/phrase-bars/`.
-No automatic phrase planner or
-station integration was implemented. Read the reference caveats before interpreting any result,
+The research phase did not implement an automatic phrase planner or
+station integration; the practical candidate above supersedes that status. Read the reference caveats before interpreting any result,
 especially Cübik. Keep this bounded; the owner requested minimal testing/usage.
 
 The owner intends to share relevant findings with Perminder through
@@ -107,8 +138,9 @@ the renderer or selected an exhaustive set of candidate durations.
 
 | Location | State at handover |
 | --- | --- |
-| `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; research documentation and evidence committed here |
-| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `e4e22d34`; no changes by this documentation session |
+| `/home/jaz666/codex/subwave-sub-beats` | Development worktree, branch `feat/subbeats-phrase-evidence-20261102`; implementation and research committed here |
+| `/home/jaz666/codex/subwave-cues-station-20261103` | Validated integration candidate, branch `integrate/subbeats-cues-1300-20261103`, HEAD `b5eda6e4` |
+| `/home/jaz666/Docker/subwave` | Station integration checkout, branch `test-station/sleeve-notes-clean-20261014`, HEAD `b5eda6e4`; source updated, owner rebuild pending |
 | `origin` | `https://github.com/perminder-klair/subwave.git`, upstream |
 | `jaz666` | `https://github.com/Jaz666/subwave.git`, fork |
 

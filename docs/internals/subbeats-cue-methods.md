@@ -125,3 +125,43 @@ station, retaining both accepted later boundaries among the candidates.
 The implementation session records exact checks and station source status in
 its final handoff. Docker images and station audio require the owner's rebuild
 and listening; successful source checks do not establish a running deployment.
+
+### November 3 source checks
+
+The development candidate incorporates upstream `v1.30.0` (`03a48c21`). Its
+cache integration retains selective cleanup protections and the release's
+same-recording quarantine checks. Head-only or mismatched quarantines are
+held rather than restored without evidence. The new upstream pick-time stem
+setting remains off by default; it does not enable these cue methods.
+
+An isolated browser fixture verified preparation-method forwarding, saved cue
+selection, cue-preview requests, method switching and a 390px mobile layout.
+Library search and all six query-cache browser checks passed. The UI detector
+reported no deterministic findings. The fixture used temporary state and mock
+preview audio, not the station's queue or library.
+
+Separately, the actual cue renderer produced a 53.148s Urban → Gusto audition
+from hash-verified copies of the existing stems, using Urban 116.620s outgoing
+and Gusto 22.940s incoming cues. Incoming tempo adjustment was +2.9524%; the
+outgoing voice continuation extended the result beyond the minimum two bars.
+This verifies rendering, not an owner listening approval of the pair. The
+artifact remains outside Git in the November research workspace.
+
+The station-source candidate passed controller and web lint/typechecking, the
+controller `subbeats` (59), `sub-flow` (49), `explicit` (101), `pick-stems`
+(51), `orphan-purge` (84), `stem-cache` (61) and `analyzer-python` wrapper
+checks, plus web `library` (37) and `audit-admin-query` (9) tests and the
+admin-query audit. Controller lint retains existing warnings. Schemas were
+regenerated from the station's full schema set. Heavy commands ran serially.
+Docker builds, CUDA/AIO builds and running-station listening were not performed.
+
+Station rebuild, from `/home/jaz666/Docker/subwave`:
+
+```sh
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --build analyzer controller web broadcast
+curl --fail http://localhost:7700/api/health
+```
+
+Broadcast is included for the release's sweep-level fix; rebuilding it briefly
+interrupts the stream. Source rollback is `e4e22d34`; restoring running
+behaviour also requires rebuilding the affected services from that source.
