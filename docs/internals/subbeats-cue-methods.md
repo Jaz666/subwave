@@ -95,9 +95,13 @@ The existing 130/120-second coverage is conservative current behavior; replace
 it only alongside compatible selection, rendering and vocal checks. No automatic
 cache deletion or bulk recheck follows from this plan.
 
-Before implementation, evaluate the long beatless intro. Preserve its complete
-opening and distinguish source zero from the first established beat; do not
-assume sixteen bars starts at file zero or discard unmetered audio to fit a cache.
+The next example, [Robert Miles — Children](../investigations/subbeats-research-20261103/children-grid-evaluation.md),
+separates audio start (0:00), projected bar zero (~14.59s) and driving-beat entry
+at bar 16 (42.60s). Preserve the entire opening and count that complete lead in
+matching/cache coverage. Later model downbeat labels disagree by half a bar;
+maintaining musical phase requires separate confidence from beat timing.
+Projected bar-112 outro (~210.67s) still needs audition. Do not discard early
+music to fit a strict 16-bar-duration cache. Runtime behavior remains unchanged.
 
 ## Operator workflow
 

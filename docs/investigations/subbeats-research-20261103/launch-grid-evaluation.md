@@ -109,4 +109,5 @@ these changes. Establish where its musical timing can be trusted and how its
 complete opening is retained. Do not assume file start equals first beat, infer
 that a beatless section contains confidently observed beats, or trim it to fit a
 16-bar cache. The next example must inform the incoming coverage/entry policy;
-no track identity or timings have been supplied yet.
+the subsequent [Children investigation](children-grid-evaluation.md) now records
+the owner's next reference and the implications for complete opening coverage.

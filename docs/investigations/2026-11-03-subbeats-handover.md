@@ -8,7 +8,24 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-### Current research handoff — 4 November: accepted Launch reference; beatless intro next
+### Current research handoff — 4 November: Children preserves the full opening
+
+The next example is Robert Miles — Children. The owner specifies driving-beat
+entry around 42s at bar 16, a backwards-projected bar zero around 14s, and bar 112
+as the 16-bar outro start. The prepared *30 Years* copy already has saved markers
+at 14.64s/42.60s. An offline beat fit anchored at 42.60s gives projected bar zero
+14.587766s and bar 112 at 210.673405s. Later model downbeats disagree by half a
+bar despite consistent beat timing. Projected closing markers remain unauditioned.
+
+[Children evidence and implementation implications](subbeats-research-20261103/children-grid-evaluation.md)
+record the distinction between audio start, musical grid zero and driving-beat
+entry. Preserve the complete opening from 0:00; incoming matching must account
+for all 42.6 seconds, and narrowed stem coverage must include it plus required
+follow-through. Do not force a strict 16-bar duration or silently trust shifting
+model downbeat phase. No runtime/station changes. Next: head/tail marker audition
+and discussion before implementation.
+
+### Previous research handoff — 4 November: accepted Launch reference
 
 The owner supplied an annotated MixMeister waveform for DJ Jean — The Launch.
 The earlier 96th-bar reference was corrected to bar 92. Offline original-mix
@@ -33,8 +50,7 @@ were performed for this research.
 include why the existing detector missed the points and exact audition metadata.
 Audio, original waveform backup and probes remain in
 `/home/jaz666/codex/subbeats-beat-this-20261103/launch/`. Next: examine the owner's
-**long beatless intro** before implementation. Its identity/timings are not yet
-provided. Preserve the full opening and distinguish audio origin from beat-grid
+**long beatless intro** before implementation (now identified above as Children). Preserve the full opening and distinguish audio origin from beat-grid
 origin; do not force it into a sixteen-bar-from-source-zero assumption.
 
 Station source remains `a383ea66`, rollback `c40b9e1e`. This is documentation
