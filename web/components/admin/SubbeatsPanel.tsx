@@ -236,6 +236,13 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const incomingCues = subbeatsIncomingCues(byId.get(incoming)?.cuePoints?.algorithmVersion === 5 ? byId.get(incoming)!.cuePoints!.incoming : [],outgoingCue);
   const incomingChoice = incomingCues.find(item => item.index === inCueIndex);
   const incomingCue = incomingChoice?.cue;
+  const timelineTransitionType = preview.timeline
+    ? preview.timeline.kind === 'regular-fallback'
+      ? 'Regular Subwave crossfade'
+      : preview.timeline.events.some(event => event.label.startsWith('Incoming drums loop ·'))
+        ? 'Sub/Beat stem mix · incoming drums looped'
+        : 'Sub/Beat stem mix'
+    : null;
   useEffect(() => {
     if (incomingCues.length && !incomingChoice) setInCueIndex(incomingCues[0]!.index);
   }, [incomingCues,incomingChoice,setInCueIndex]);
@@ -356,7 +363,10 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       {preview.timeline?.kind === 'subbeats-transition' && <p role="status" className="mt-3 max-w-prose text-sm">Selected plan: {preview.timeline.events[0]?.label.replace('Outgoing track · ', '')}. Listen for vocal bleed and musical fit.</p>}
       {preview.duration > 0 && <div className="mt-5 border-t border-ink/20 pt-4">
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor="subbeats-preview-position" className="text-sm font-medium">Preview timeline</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="subbeats-preview-position" className="text-sm font-medium">Preview timeline</label>
+            {timelineTransitionType && <span className="border border-ink/30 bg-ink-soft px-2 py-1 text-xs font-medium text-ink">{timelineTransitionType}</span>}
+          </div>
           <span className="shrink-0 font-mono text-xs text-muted tabular-nums">{clock(preview.position)} / {clock(preview.duration)}</span>
         </div>
         <input id="subbeats-preview-position" type="range" min={0} max={preview.duration} step={0.1} value={Math.min(preview.position, preview.duration)}
