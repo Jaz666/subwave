@@ -41,6 +41,21 @@ registered cue/Python suites, controller/web typechecks, scoped lint and
 admin-query audit pass on development. No services were rebuilt or restarted
 and no tracks were rescanned.
 
+The follow-up `Run to You` → `My My My` preview exposed a controller header
+failure: transition labels contain Unicode arrows, which Node cannot send
+directly in an HTTP header. The controller now writes non-ASCII timeline JSON
+as `\u` escapes; the browser's JSON parser restores the original label. Fix
+`543b704d` is on the development branch and station commit `b1816f28` is pushed
+to `test-station/sleeve-notes-clean-20261014`; rollback is `f65f53ff`. The
+focused route suite (20 cases) and controller typecheck pass on both checkouts.
+Upstream was fetched first; no newer relevant upstream change was found. To
+apply this fix on the station, rebuild only the controller:
+
+```sh
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --build controller
+curl --fail http://localhost:7700/api/health
+```
+
 Upstream was fetched before the station push. `main` remains release 1.30.0
 (`03a48c21`); `develop` is `1c4a9ff2` and is not an ancestor of the isolated
 station branch. The only newer commit touching the selected Sub/Beat paths is
