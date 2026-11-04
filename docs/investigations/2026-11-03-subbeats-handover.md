@@ -65,7 +65,12 @@ new separated pair previews still need the owner's listening after rescan.
 
 Upstream checked again: latest main release remains 1.30.0 at `03a48c21`, already
 integrated into the station's `b5eda6e4` base. No additional release update is
-needed. Station rollback before this increment is `a383ea66`. Owner rebuilds
+needed. Development implementation is `a640f3bc`; station source is `b0a6e6d5` on
+`test-station/sleeve-notes-clean-20261014`. Changed implementation files match the
+verified development source, and the station's 28-module schema mirror regenerates
+without a diff. Its intentional deletion of this handover is preserved; the
+method guide and accepted-reference documents are included. Station rollback
+before this increment is `a383ea66`. Owner rebuilds
 analyzer/controller/web together, checks health, then rescans selected existing
 tracks with Beat This! small/full through Recheck/retry selected (max 100/batch).
 Do not use an older coverage-only upgrade as the migration. No Docker build,
