@@ -135,6 +135,16 @@ serial builds. Pre-deploy containers were running; controller and broadcast were
 healthy. Source rollback point: `2951284a` (images must also be rebuilt to roll
 back running behaviour).
 
+## Phrase preparation rebuild — 4 November 2026
+
+Owner-approved rescans replace older cue evidence with algorithm 5 and preview 11.
+The accepted Launch/Children grids now drive fitted opening/closing passage
+selection, source-zero intro preservation and natural outro tails. Preparation
+saves narrow passage stems plus necessary follow-through, with no legacy broad
+base separation. Preview has one cue method; the old 16-bar exchange controls
+are removed. Conservative vocal checks remain; normal Stem Blend, broadcast and
+pickers are unchanged. See [the current method and rescan workflow](subbeats-cue-methods.md#phrase-preparation-and-preview--algorithm-5--preview-11).
+
 ## Upstream integration review — 2 November 2026
 
 Integration branch `integrate/subbeats-upstream-20261102` merges upstream

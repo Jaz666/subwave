@@ -847,6 +847,8 @@ class SubbeatsAssessRequest(BaseModel):
     stems_root: str
     track_id: str
     bundle_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    cue_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    coverage_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 @app.post("/assess-subbeats")

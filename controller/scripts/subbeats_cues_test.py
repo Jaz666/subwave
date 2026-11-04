@@ -14,34 +14,62 @@ from subbeats_models import model_path
 
 
 class CueTests(unittest.TestCase):
-    def test_outgoing_analysis_uses_the_recording_end_not_early_exit_stems(self):
+    def test_new_analysis_reads_the_full_source_without_legacy_stem_limits(self):
         with tempfile.TemporaryDirectory() as tmp:
-            state=Path(tmp); source=state/'source'; source.write_bytes(b'complete recording')
-            bundle=state/'bundle'; bundle.mkdir()
-            record=dict(identity=dict(source_sha256=cache.digest(source)),metadata=dict(stem_regions=[
-                dict(name='head',start_sample=0,end_sample=680,sample_rate=10),
-                dict(name='exit',start_sample=440,end_sample=1110,sample_rate=10)]))
+            state=Path(tmp);source=state/'source';source.write_bytes(b'complete recording')
+            bundle=state/'bundle';bundle.mkdir()
+            record=dict(identity=dict(source_sha256=cache.digest(source)),metadata=dict(stem_regions=[]))
             (bundle/'manifest.json').write_text(json.dumps(record))
-            lengths=[]
-            def features(audio,times,_librosa):
-                lengths.append(len(audio))
-                return (np.tile(-.4*np.maximum(0,np.asarray(times)-50),(4,1)),
-                        np.ones((2,len(times)))/2,np.ones((12,len(times))))
-            librosa=SimpleNamespace(__version__='test',resample=lambda y,**_opts:y)
             beats=np.arange(0,200,.5)
-            with (patch.dict('sys.modules',librosa=librosa),
-                  patch('subbeats_prepare.SR',10),patch('subbeats_structure.SR',10),
-                  patch('subbeats_prepare.decode',return_value=np.zeros((1,2000))),
+            roles=dict(incoming=[dict(sourceSeconds=42.6,bpm=137)],
+                       outgoing=[dict(sourceSeconds=160,bpm=137)],grid=None,ending=None)
+            with (patch.dict('sys.modules',librosa=SimpleNamespace(__version__='test')),
+                  patch('subbeats_prepare.SR',10),patch('subbeats_prepare.decode',return_value=np.zeros((1,2000))),
                   patch('subbeats_prepare.require_shared_cache'),
-                  patch('subbeats_structure.extract',side_effect=features),
                   patch.object(cues,'predict',return_value=(beats,beats[::4])),
+                  patch.object(cues,'fitted_passages',return_value=roles) as detect,
                   patch('importlib.metadata.version',return_value='1.1.0')):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
-            self.assertEqual(lengths,[680,1640]) # Second-half search plus 64s context reaches source end.
+            self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],4)
-            self.assertTrue(result['outgoing'])
-            self.assertTrue(all(100<=c['sourceSeconds']<200 for c in result['outgoing']))
+            self.assertEqual(result['algorithmVersion'],5)
+            self.assertEqual(result['incoming'],roles['incoming'])
+            self.assertEqual(result['outgoing'],roles['outgoing'])
+
+    def test_projected_grid_preserves_long_intro_phase_and_echo_beyond_the_outro(self):
+        # Synthetic pulses exercise timing/selection. Real-track checks cover the
+        # actual band filter; the stdlib/NumPy test runner needs no SciPy install.
+        signal=SimpleNamespace(butter=lambda *a,**k:None,sosfiltfilt=lambda _,y:y)
+        sr=1000;origin=16.3;entry=48.3;endpoint=272.3;duration=276.3
+        y=np.zeros(round(duration*sr),dtype=np.float32)
+        beats=np.arange(.3,duration-2,.5)
+        for at in beats:
+            if entry-1e-6<=at<=endpoint+.01:
+                y[round(at*sr):round((at+.12)*sr)]=.2
+        t=np.arange(1600)/sr
+        y[round(endpoint*sr):round(endpoint*sr)+len(t)]+=.1*np.exp(-t*3)
+        bars=beats[::4]
+        # Simulate late model downbeats shifting by two beats; fixed bar phase
+        # should survive rather than being renumbered by each model label.
+        shifted=np.r_[bars[bars<190],beats[2::4][beats[2::4]>=190]]
+        with patch.dict('sys.modules',{'scipy':SimpleNamespace(),'scipy.signal':signal}):
+            result=cues.fitted_passages(y,sr,beats,shifted)
+            self.assertAlmostEqual(result['grid']['originSeconds'],origin,places=5)
+            self.assertAlmostEqual(result['grid']['drivingBeatSeconds'],entry,places=5)
+            self.assertAlmostEqual(result['incoming'][0]['sourceSeconds'],entry,places=5)
+            self.assertEqual(len(result['incoming']),1,'do not promote the earlier beatless eight-bar point')
+            self.assertEqual([p['barNumber'] for p in result['outgoing']],[112,120])
+            self.assertAlmostEqual(result['ending']['phraseEndSeconds'],endpoint,places=5)
+            self.assertGreater(result['ending']['audibleEndSeconds'],endpoint+1)
+            self.assertEqual(result['ending']['confidence'],'estimated')
+            self.assertGreater(result['grid']['phaseDisagreements'],0)
+            self.assertTrue(all(p['timingSource']=='fitted-grid' for p in result['outgoing']))
+            # A recording still loud at EOF supplies no natural ending evidence.
+            self.assertEqual(cues.fitted_passages(np.full_like(y,.2),sr,beats,shifted)['incoming'],[])
+            y[-200:]=.2
+            self.assertEqual(cues.fitted_passages(y,sr,beats,shifted)['outgoing'],[])
+            with self.assertRaisesRegex(ValueError,'Invalid learned'):
+                cues.fitted_passages(y,sr,beats[::-1],shifted)
 
     def test_outgoing_search_rejects_early_changes_before_ranking(self):
         beats=np.arange(0,200,.5); bars=beats[::4]
@@ -163,6 +191,7 @@ class CueTests(unittest.TestCase):
             outgoing={s:np.zeros((2,56000),dtype=np.float32) for s in preview.STEMS}
             incoming={s:np.zeros((2,52000),dtype=np.float32) for s in preview.STEMS}
             outgoing['vocals'][:]=.2; incoming['vocals'][:]=.3
+            outgoing['drums'][:,37000:38000]=.1
             incoming['other'][:,1000:1200]=.1
             audio,timeline=preview.mix_passages(outgoing,incoming,plan)
             self.assertAlmostEqual(float(audio[0,2000]),.2,places=5)
@@ -170,6 +199,7 @@ class CueTests(unittest.TestCase):
             self.assertAlmostEqual(float(audio[0,55000]),.5,places=5,msg='outgoing voice survives to the natural ending')
             self.assertEqual(next(e['at'] for e in timeline['events'] if 'arrival meets' in e['label']),36)
             self.assertEqual(timeline['duration'],56)
+            self.assertAlmostEqual(float(audio[0,37500]),.6,places=5,msg='outro rhythm echo survives beyond the phrase marker')
             self.assertEqual(timeline['events'],sorted(timeline['events'],key=lambda e:e['at']))
         with self.assertRaisesRegex(ValueError,'120 seconds'):
             preview.passage_plan(out,dict(sourceSeconds=32,bpm=120),400,180)
@@ -235,10 +265,10 @@ class CueTests(unittest.TestCase):
         out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
         # Arrival at 16s enters at source174; arrival32 enters at158.
         out=dict(id='out',title='out',artist='A',status='prepared',cuePoints=dict(
-            outgoing=[out_cue],durationSeconds=210),suitability=dict(outgoing=dict(
+            algorithmVersion=5,outgoing=[out_cue],durationSeconds=210),suitability=dict(outgoing=dict(
             vocalActivity=activity(150,210,[(170,178)]))))
         inc=dict(id='in',title='in',artist='B',status='prepared',cuePoints=dict(
-            incoming=[dict(sourceSeconds=16,bpm=120),dict(sourceSeconds=32,bpm=120,phraseBars=16)],
+            algorithmVersion=5,incoming=[dict(sourceSeconds=16,bpm=120),dict(sourceSeconds=32,bpm=120,phraseBars=16)],
             durationSeconds=180),suitability=dict(incoming=dict(vocalActivity=activity(0,100,[(0,3)]))))
         result=find_cue_matches([out,inc],'out')
         self.assertEqual(result['matches'][0]['incomingCueIndex'],1,'exclude conflicting first cue, retain original second index')
@@ -248,6 +278,7 @@ class CueTests(unittest.TestCase):
         self.assertEqual(assess_vocal_pair(activity(150,210,[(170,178)]),activity(0,120,[(26,30)]),plan)['status'],'conflict')
         self.assertEqual(assess_vocal_pair(activity(150,180,[]),activity(0,120,[]),plan)['status'],'coverage')
         self.assertEqual(assess_vocal_pair(activity(150,210,[]),activity(0,120,[]),plan)['status'],'uncertain')
+        self.assertEqual(assess_vocal_pair(activity(160,210,[]),activity(0,100,[(0,1)]),preview.passage_plan(out_cue,dict(sourceSeconds=32,bpm=120),210,180))['status'],'conflict')
         inc['cuePoints']['incoming']=inc['cuePoints']['incoming'][:1]
         self.assertEqual(find_cue_matches([out,inc],'out')['excluded']['vocals'],1)
         inc['cuePoints']['incoming'][0]['bpm']=90
@@ -272,7 +303,7 @@ class CueTests(unittest.TestCase):
                 folder.mkdir();(folder/'analysis.json').write_text(json.dumps(dict(duration_seconds=duration)))
             req=dict(state_dir=tmp,track_ids=['out','in'],cue_keys=['a','b'])
             with (patch.dict('sys.modules',librosa=SimpleNamespace()),
-                  patch.object(cues,'load_cues',return_value=dict(outgoing=[out_cue],incoming=[inc_cue])),
+                  patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
                   patch.object(preview,'STEM_SR',1000),
                   patch.object(preview,'cue_region',side_effect=[(outgoing,False),(incoming,False)])):
                 with self.assertRaisesRegex(ValueError,'vocal passages overlap'):
@@ -281,21 +312,43 @@ class CueTests(unittest.TestCase):
             # A complete earlier incoming line fits, without moving or muting it.
             incoming['vocals'][:]=0;incoming['vocals'][:,1000:4000]=.3
             with (patch.dict('sys.modules',librosa=SimpleNamespace()),
-                  patch.object(cues,'load_cues',return_value=dict(outgoing=[out_cue],incoming=[inc_cue])),
+                  patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
                   patch.object(preview,'STEM_SR',1000),
                   patch.object(preview,'cue_region',side_effect=[(outgoing,False),(incoming,False)])):
                 audio,result=preview.render_cue_preview(req,folders,[{},{}],[0,0])
                 self.assertGreater(float(audio[0,6500]),.3)
                 self.assertEqual(result['incoming_rate'],1)
             # A prepared coverage artifact bypasses temporary extension/source work.
-            req['_cue_coverage']=[(folders[0],{}),(folders[1],{})]
+            req['_cue_coverage']=[(folders[0],dict(metadata=dict(stem_regions=[dict(name='exit',start_sample=154000)]))),(folders[1],dict(metadata=dict(stem_regions=[dict(name='head',start_sample=0)])))]
             with (patch.dict('sys.modules',librosa=SimpleNamespace()),
-                  patch.object(cues,'load_cues',return_value=dict(outgoing=[out_cue],incoming=[inc_cue])),
+                  patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
                   patch.object(preview,'STEM_SR',1000),
                   patch.object(preview,'load_region',side_effect=[(outgoing,None),(incoming,None)]) as load,
                   patch.object(preview,'cue_region') as temporary):
                 preview.render_cue_preview(req,folders,[{},{}],[0,0])
                 temporary.assert_not_called();self.assertEqual(load.call_count,2)
+            # Only closing stems are saved. An earlier original-mix prefix
+            # preserves a long incoming intro without separating extra stems.
+            req['source_urls']=['https://example.invalid/out','https://example.invalid/in']
+            req['_cue_coverage'][0][1]['metadata']['stem_regions'][0]['start_sample']=160000
+            source=np.full((2,210000),.1,dtype=np.float32)
+            with (patch.dict('sys.modules',librosa=SimpleNamespace()),
+                  patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
+                  patch.object(preview,'STEM_SR',1000),
+                  patch.object(preview,'load_region',side_effect=[(dict((s,a[:,6000:]) for s,a in outgoing.items()),None),(incoming,None)]),
+                  patch('subbeats_reference_preview.source_audio',return_value=source)):
+                with self.assertRaisesRegex(ValueError,'vocal passages overlap'):
+                    preview.render_cue_preview(req,folders,[{},{}],[0,0],fetch_source=object())
+            incoming['vocals'][:]=0;incoming['vocals'][:,5000:7000]=.3
+            with (patch.dict('sys.modules',librosa=SimpleNamespace()),
+                  patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
+                  patch.object(preview,'STEM_SR',1000),
+                  patch.object(preview,'load_region',side_effect=[(dict((s,a[:,6000:]) for s,a in outgoing.items()),None),(incoming,None)]),
+                  patch('subbeats_reference_preview.source_audio',return_value=source)):
+                audio,result=preview.render_cue_preview(req,folders,[{},{}],[0,0],fetch_source=object())
+                self.assertAlmostEqual(float(audio[0,1000]),.1,places=5)
+                self.assertFalse(result['used_models'])
+
 
 
     def test_invalid_method_or_cue_cannot_be_used(self):

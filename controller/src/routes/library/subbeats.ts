@@ -163,6 +163,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const cueMode = parsed.data.method === 'cue-points';
     if (cueMode && (parsed.data.matched || parsed.data.referenceBars !== undefined || parsed.data.barShift !== 0)) throw new Error('Cue-point previews use saved cue choices. Reset the bar shift and match selection.');
     const cueIndices = parsed.data.cueIndices ?? [0,0];
+    if (cueMode && tracks.some(track => track?.cuePoints?.algorithmVersion !== 5)) throw new Error('Rescan both tracks with Beat This! for the new phrase preview.');
     if (cueMode && (!tracks[0]?.cuePoints?.outgoing[cueIndices[0]!] || !tracks[1]?.cuePoints?.incoming[cueIndices[1]!])) throw new Error('Recheck both tracks with a Beat This! preparation method and choose saved cue points.');
     await library.load();
     await blocklist.load();

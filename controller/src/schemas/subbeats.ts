@@ -32,14 +32,21 @@ export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','bea
 export const subbeatsPreparationMethodSchema = z.enum(['classic','small0','final0']);
 export const subbeatsCuePointSchema = z.object({
   sourceSeconds:z.number().finite().nonnegative().max(1200), bpm:z.number().finite().min(60).max(190),
-  strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement','fade']),
+  strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement','fade','opening','ending']),
+  barNumber:z.number().int().nonnegative().optional(),timingSource:z.literal('fitted-grid').optional(),
   phraseBars:z.union([z.literal(8),z.literal(16)]).optional(),
   phraseStartSeconds:z.number().finite().nonnegative().max(1200).optional(),
   phraseEndSeconds:z.number().finite().nonnegative().max(1200).optional(),
 });
 export const subbeatsCuePointsSchema = z.object({
   version:z.literal(1),model:z.enum(['small0','final0']),artifactKey:z.string().regex(/^[a-f0-9]{64}$/),
-  durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.union([z.literal(3),z.literal(4)]).optional(),
+  durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.union([z.literal(3),z.literal(4),z.literal(5)]).optional(),
+  grid:z.object({originSeconds:z.number().finite().nonnegative(),anchorSeconds:z.number().finite().nonnegative(),
+    drivingBeatSeconds:z.number().finite().nonnegative(),bpm:z.number().finite().min(60).max(190),
+    fitFraction:z.number().min(0).max(1),p95ErrorSeconds:z.number().finite().nonnegative(),
+    phaseDisagreements:z.number().int().nonnegative(),confidence:z.literal('estimated')}).nullable().optional(),
+  ending:z.object({phraseEndSeconds:z.number().finite().nonnegative(),audibleEndSeconds:z.number().finite().nonnegative(),
+    tailSeconds:z.number().finite().positive(),bodyEndSeconds:z.number().finite().nonnegative().optional(),confidence:z.literal('estimated')}).nullable().optional(),
   incoming:z.array(subbeatsCuePointSchema).max(8),outgoing:z.array(subbeatsCuePointSchema).max(8),
 });
 export const subbeatsCueCoverageSchema = z.object({

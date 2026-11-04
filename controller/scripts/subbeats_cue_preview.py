@@ -1,13 +1,14 @@
-"""Selected closing/opening passage auditions, with bounded missing stem coverage.
+"""Closing/opening auditions from saved passage stems and original lead-in.
 
-Keep original source zero and the outgoing recording's natural end. Temporary
-extensions belong to this preview; normal prepared bundles are never rewritten.
+Keep source zero, the final outgoing beat and the complete recording end.
+Original lead-in vocal content is treated conservatively before pair rendering.
 """
 import json
 import math
 from pathlib import Path
 import tempfile
 
+from subbeats_cues import TAIL_SECONDS
 from subbeats_preview import STEM_SR, STEMS, load_region
 
 
@@ -37,6 +38,8 @@ def passage_plan(outgoing, incoming, out_duration, in_duration):
     first = max(0.,min(outgoing['sourceSeconds'],entry)-4.)
     end = max(out_duration,handover+8*period)
     incoming_end = (end-entry)*rate
+    if outgoing.get('timingSource')=='fitted-grid' and out_duration-handover>TAIL_SECONDS:
+        raise ValueError('This ending exceeds the prepared natural-tail limit. Rescan the track.')
     if entry<0 or end-first>120 or incoming_end>in_duration:
         raise ValueError('These passages need a preview longer than the available recording or 120 seconds. Choose a later closing cue or shorter opening.')
     return dict(first=first,end=end,out_end=out_duration,entry=entry,handover=handover,
@@ -98,7 +101,9 @@ def mix_passages(out_parts,in_parts,plan):
             raise ValueError('The incoming stems do not cover the selected passage after tempo adjustment.')
         out_frames=min(total,outgoing.shape[1])
         in_frames=min(total-begin,incoming.shape[1])
-        out_env=1-rhythm[:out_frames] if name in ('drums','bass') else np.ones(out_frames)
+        # Keep the final outgoing beat and its decay, including rhythm stems.
+        # A phrase marker is not a hard audio cutoff.
+        out_env=np.ones(out_frames)
         if name in ('other','vocals'):
             out_env*=np.clip((out_frames-np.arange(out_frames))/(.03*STEM_SR),0,1)
         in_env=rhythm[begin:begin+in_frames] if name in ('drums','bass') else np.ones(in_frames)
@@ -134,6 +139,8 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     if not isinstance(keys,list) or len(keys)!=2 or not isinstance(indices,list) or len(indices)!=2:
         raise ValueError('Choose two cue-prepared tracks')
     cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
+    if any(c.get('algorithmVersion')!=5 for c in cues):
+        raise ValueError('Rescan both tracks with Beat This! for the new phrase preview.')
     outgoing=choose_cue(cues[0],'outgoing',indices[0])
     incoming=choose_cue(cues[1],'incoming',indices[1])
     durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
@@ -141,8 +148,36 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     def parts(index,name,start,end):
         entry = (req.get('_cue_coverage') or [None,None])[index]
         if entry:
-            audio,_ = load_region(entry[0],entry[1],name,limit_seconds=130,start_seconds=start,end_seconds=end,require_tempo=False)
+            import numpy as np
+            region=next((r for r in entry[1]['metadata']['stem_regions'] if r['name']==name),None)
+            if region is None:
+                raise ValueError('The selected cue has no saved stem coverage. Rescan the track.')
+            available=region['start_sample']/STEM_SR
+            audio,_=load_region(entry[0],entry[1],name,limit_seconds=130,
+                start_seconds=max(start,available),end_seconds=end,require_tempo=False)
+            if start<available:
+                if index!=0 or fetch_source is None:
+                    raise ValueError('The original outgoing lead-in is unavailable. Choose another pair.')
+                from urllib.parse import urlsplit
+                from subbeats_reference_preview import source_audio
+                urls=req.get('source_urls')
+                if not isinstance(urls,list) or len(urls)!=2 or not isinstance(urls[0],str) or urlsplit(urls[0]).scheme not in ('http','https'):
+                    raise ValueError('The original outgoing lead-in is unavailable. Choose another pair.')
+                source=source_audio(urls[0],folders[0],records[0],fetch_source,require_hash=True)
+                prefix=source[:,round(start*STEM_SR):round(available*STEM_SR)]
+                # The original mix needs no separated stems before the closing
+                # passage. Treat its unknown vocal content conservatively as
+                # vocal energy, so an incoming vocal cannot slip through here.
+                seam=min(round(.03*STEM_SR),audio['vocals'].shape[1])
+                ramp=np.linspace(0,1,seam)
+                for stem in audio:
+                    audio[stem][:,:seam]*=ramp
+                audio['vocals'][:,:seam]+=source[:,round(available*STEM_SR):round(available*STEM_SR)+seam]*(1-ramp)
+                audio={stem:np.concatenate([prefix if stem=='vocals' else np.zeros_like(prefix),part],axis=1)
+                       for stem,part in audio.items()}
             return audio,False
+        if records[index].get('identity',{}).get('mode')=='cue-source':
+            raise ValueError('Saved phrase coverage is missing. Rescan this track with Beat This!.')
         return cue_region(req,index,folders[index],records[index],name,start,end,fetch_source)
     out_parts,out_extended=parts(0,'exit',plan['first'],plan['out_end'])
     in_parts,in_extended=parts(1,'head',0.,plan['incoming_end'])

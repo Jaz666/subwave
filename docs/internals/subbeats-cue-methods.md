@@ -3,7 +3,8 @@
 This optional test-station method brings the November listening/repetition
 experiments into the existing preparation queue and browser preview. Normal
 Stem Blend analysis and broadcast selection are unchanged. The current
-16-bar Sub/Beats preview remains available for comparison.
+cue-point preview is the single browser method; the old 16-bar exchange controls
+have been removed.
 
 ## Intended destination in Subwave
 
@@ -70,26 +71,92 @@ Vocal-aware assessment and saved-evidence discovery now run in the cue preview
 (see below). Validate the suggestions by listening before enabling queued-pair
 upgrades, then expose follow-up discovery to both picking paths.
 
+## Accepted listening references
+
+The owner accepted original-mix head/tail metronome previews for
+[DJ Jean — The Launch](../investigations/subbeats-research-20261103/launch-grid-evaluation.md)
+and [Robert Miles — Children](../investigations/subbeats-research-20261103/children-grid-evaluation.md).
+The Launch's 16-bar closing cue is bar 92, not a multiple of eight. Children
+retains its complete beatless opening from source zero, with projected bar zero
+around 14.59s and driving-beat entry/bar 16 at 42.60s. Its final outro beat has
+approximately one second of echo beyond the closing phrase. These references
+inform the implementation below; audio boundaries and grid markers stay separate.
+
+## Phrase preparation and preview — algorithm 5 / preview 11
+
+Rebuild analyzer, controller and web together, then **rescan existing tracks**:
+select them on Preparation, choose Beat This! small (or full), and use
+Recheck/retry selected. Batches remain bounded to 100. An older cue/coverage upgrade
+does not replace cue analysis; older results are excluded from this preview and
+the page explains the rescan. Existing immutable artifacts are not bulk deleted.
+The ordinary shared cache budget and eviction policy still apply.
+
+New cue preparation creates a small source/decoder/separator identity artifact,
+runs Beat This! and detects fitted passages, then separates the selected regions.
+It skips the legacy full Librosa rhythm/structure analysis and its broad base
+stems. Classic preparation/backend APIs remain for compatibility; their preview
+controls, old match query, bar-shift controls and workspace state are removed
+from the browser. Normal Stem Blend and live picking/broadcast are unchanged.
+
+The fitted grid uses sustained low-frequency pulses to establish an entry,
+then robustly fits a constant tempo to the learned beats. It requires at least
+85% timing support; observed model downbeats do not reset the established phase
+later. A long opening can project backwards while retaining earlier bar-phase
+information. Audio start remains source zero. Supported entries that are not 8
+or 16 bars remain musical-entry choices without a forced phrase label. An
+8-bar point inside a quiet beatless opening is not offered as an arrival; an
+earlier point needs low-frequency audio support.
+Full beat/downbeat predictions are retained in the cue artifact's `grid.json`.
+Grid fit, projected origin, entry and phase disagreements remain estimated data.
+
+For the ending, 50ms full-mix RMS frames distinguish the main body from quieter
+fade/echo and the audible endpoint from EOF. The relative main-body threshold is
+0.4 of the recording's 75th-percentile frame RMS; audible-tail threshold is 0.01,
+both with an absolute -60dB floor. The closest four-bar continuation on the
+established phase supplies an **estimated** musical ending, with 16/8-bar starts
+before it. This is a phrase hypothesis, not section recognition or proof of
+musical resolution. Material still active at EOF, unsupported grids, endpoints
+outside the later half or a remaining tail longer than 16 seconds produce no
+outgoing choice. Do not promise the accepted two-track precision for every fade.
+
+Cache only the incoming source-zero prefix through the latest arrival plus
+`max(17.28 seconds, eight incoming beats)` and a 50ms rounding handle. This covers
+two bars and any supported 16-second outgoing tail at the allowed 8% adjustment.
+Save outgoing stems from the earliest closing start through original EOF; 8-bar
+choices reuse the same region. Demucs still receives four seconds of surrounding
+context, which is discarded outside the retained bounds. For The Launch this is
+about 46.14s head / 30.84s ending; for Children 59.93s / 36.04s. Broad 130/120-second
+stem regions are no longer prepared for new phrase scans. Artifact identities
+bind source, parent/cue manifests, separator settings and coverage policy.
+
+Pair geometry retains the complete incoming prefix and aligns its chosen arrival
+with the estimated outgoing phrase end. If that prefix begins before the saved
+closing stems, preview uses the hash-verified original outgoing mix for the
+lead-in, with a 30ms reconstruction seam into the stems. It does not separate or
+cache extra lead-in stems. That prefix has unknown vocal content: discovery
+refuses an incoming vocal there, and rendering conservatively treats the original
+lead-in as vocal energy when rechecking the overlap. Empty vocal detections are
+still uncertainty, not proof of silence; background vocals in `other` remain a
+listening limitation. Saved coverage/vocal measurements are reused and cache-only
+Assess suitability understands the new source/coverage artifacts.
+
+The incoming drums/bass rise over the final four beats before arrival. All
+outgoing stems retain their natural finish through EOF, including the last
+rhythm beat and echo beyond the phrase marker. No phrase-boundary cutoff or
+fixed one-second tail fade is applied. Incoming vocals/other and the original
+prefix are retained; detected vocal conflicts are refused without trimming words.
+The preview remains bounded to 120 seconds and 8% tempo adjustment.
+
 ## Operator workflow
 
-1. In **Sub/Beats → Preparation**, select completed tracks, choose
-   **Beat This! small · cue points** or **Beat This! full · cue points**, then
-   **Recheck/retry selected**. The same method control is beside Prepare in
-   Explore. Existing verified stems are reused; the selected source is fetched
-   for cue analysis. Neither method implies that the full model is better.
-2. In **Preview**, choose **Cue points · opening and tail blend**. Choose an
-   outgoing and incoming track that have saved candidates, then select their
-   outgoing rhythm-handover and incoming musical-arrival points. Defaults are
-   ranked suggestions; another saved point can be selected without reanalysis.
-3. Play and compare. The incoming source starts at its opening, with its
-   vocals/other content retained. Its drums/bass take over around the selected
-   arrival; overlap length follows that arrival rather than always being
-   sixteen bars. Outgoing vocals/other continue through a separate tail fade.
-4. If the pair's tempo, grid, vocal arrangement or available stem coverage does
-   not suit the preview, select another cue/pair or return to **Current ·
-   16-bar stem exchange**. A failed cue preview does not silently render a
-   different method. There is no automatic library-wide recheck or broadcast
-   admission.
+1. Prepare/rescan tracks with Beat This! small or full; wait for completion.
+2. In Preview, choose the outgoing track and its 16- or 8-bar closing cue.
+   Outgoing times still count negatively to original EOF. Listen to the ending.
+3. Find suitable candidates or choose an incoming track directly. Arrival times
+   count from source zero, including long beatless introductions. Length fit
+   ranks choices but is not vocal, phrase or key approval.
+4. Listen to the opening or play the pair preview. A failed/uncertain pair stays
+   explicit; existing station transitions continue unchanged.
 
 For the exact research references, Urban's accepted musical/last-word boundary
 22.38s and Gusto's accepted groove release 22.94s are retained among runtime
@@ -97,9 +164,10 @@ candidates. They are not hard-coded IDs or timestamps in the algorithm. Longer
 saved regions also produce additional candidates. Gusto's low background-vocal
 groove is in `other`; its later vocal passage around 54s is a separate event.
 
-## Cue coverage preparation and upgrades — preview version 10
+## Previous cue coverage preparation — preview version 10 (superseded)
 
-Before a larger batch, rebuild analyzer/controller/web together. **Beat This!
+Historical contract for older artifacts; new preparation follows algorithm 5 above.
+Before that earlier larger batch, rebuild analyzer/controller/web together. **Beat This!
 small · cue points** is the default preparation choice; full remains available,
 and classic preparation remains an explicit option. Cue preparation now saves
 reusable coverage and vocal measurements after detecting cues. These are not
