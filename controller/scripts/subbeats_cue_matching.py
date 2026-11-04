@@ -1,8 +1,10 @@
 """Pair-specific cue suggestions from saved evidence; no audio/model/cache work.
 
-The renderer uses the same vocal timeline assessment with freshly measured stems.
-Energy estimates cannot identify words or vocals separated into `other`.
+Loop suggestions use the fitted incoming grid and measured vocal passages. The
+preview renderer checks the actual drum stem and remains the final audition.
 """
+import math
+
 from subbeats_cue_preview import passage_plan
 
 
@@ -40,9 +42,97 @@ def assess_vocal_pair(outgoing, incoming, plan):
     return result('estimated', 'No detected vocal passages overlap. Background vocals and musical fit still need listening.')
 
 
+def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2):
+    """Suggest up to two vocal-free, fitted-grid, two-bar incoming drum loops."""
+    if assess_vocal_pair(outgoing, incoming, plan)['status'] != 'conflict':
+        return None
+    if cue.get('timingSource') != 'fitted-grid' or cue.get('phraseBars') not in (8, 16):
+        return None
+    try:
+        start, bpm = cue['sourceSeconds'], cue['bpm']
+        if not math.isfinite(start) or not math.isfinite(bpm) or start < 0 or bpm <= 0:
+            return None
+        loop_seconds = 8 * 60 / bpm
+    except (KeyError, TypeError, ZeroDivisionError):
+        return None
+
+    timeline_start = max(plan['first'], plan['entry'])
+    timeline_end = min(plan['out_end'], plan['end'])
+    source_end = (timeline_end - plan['entry']) * plan['rate']
+    tolerance = max(outgoing.get('resolutionSeconds', 0), incoming.get('resolutionSeconds', 0) / plan['rate'])
+    if (outgoing.get('coverageEndSeconds', 0) < timeline_end - tolerance
+            or incoming.get('coverageStartSeconds', float('inf')) > tolerance
+            or incoming.get('coverageEndSeconds', 0) < source_end - tolerance
+            or incoming.get('coverageStartSeconds', float('inf')) > start + tolerance
+            or incoming.get('coverageEndSeconds', 0) < start + loop_seconds + tolerance):
+        return None
+
+    loop_end = start + loop_seconds
+    # Measurements include vocal release padding, so any intersection makes
+    # this phrase unsafe to repeat.
+    if any(p['startSeconds'] < loop_end and p['endSeconds'] > start
+           for p in incoming.get('passages', [])):
+        return None
+
+    conflicts = []
+    for out_passage in outgoing.get('passages', []):
+        out_start = max(timeline_start, out_passage['startSeconds'])
+        out_end = min(timeline_end, out_passage['endSeconds'])
+        if out_start >= out_end:
+            continue
+        for in_passage in incoming.get('passages', []):
+            in_start = plan['entry'] + in_passage['startSeconds'] / plan['rate']
+            in_end = plan['entry'] + in_passage['endSeconds'] / plan['rate']
+            if max(out_start, in_start) < min(out_end, in_end):
+                # A loop at this cue cannot move a vocal passage that starts
+                # before the repeated section has finished.
+                if in_passage['startSeconds'] < loop_end:
+                    return None
+                conflicts.append((out_start, out_end, in_passage))
+    if not conflicts:
+        return None
+
+    for repeats in range(1, max_repeats + 1):
+        source_shift = repeats * loop_seconds
+        shifted = dict(incoming)
+        shifted['coverageEndSeconds'] = incoming['coverageEndSeconds'] + source_shift
+        shifted['passages'] = []
+        for passage in incoming.get('passages', []):
+            if passage['startSeconds'] >= loop_end:
+                shifted['passages'].append({
+                    **passage,
+                    'startSeconds': passage['startSeconds'] + source_shift,
+                    'endSeconds': passage['endSeconds'] + source_shift,
+                    'activityStartSeconds': passage.get('activityStartSeconds', passage['startSeconds']) + source_shift,
+                    'activityEndSeconds': passage.get('activityEndSeconds', passage['endSeconds']) + source_shift,
+                })
+            else:
+                shifted['passages'].append(passage)
+        fit = assess_vocal_pair(outgoing, shifted, plan)
+        if fit['status'] in ('conflict', 'coverage'):
+            continue
+
+        safe = True
+        for out_start, out_end, passage in conflicts:
+            in_start = plan['entry'] + (passage['startSeconds'] + source_shift) / plan['rate']
+            in_end = plan['entry'] + (passage['endSeconds'] + source_shift) / plan['rate']
+            if max(out_start, in_start) < min(out_end, in_end):
+                safe = False
+                break
+            gap = in_start - out_end if in_start >= out_end else out_start - in_end
+            if gap < plan['period']:
+                safe = False
+                break
+        if safe:
+            loop = dict(method='drum-loop', startSeconds=start, bars=2, repeats=repeats,
+                        loopSeconds=loop_seconds, addedSeconds=source_shift / plan['rate'])
+            return loop, shifted, fit
+    return None
+
+
 def find_cue_matches(jobs, outgoing_id, out_index=0):
-    outgoing = next((j for j in jobs if j['id']==outgoing_id and j['status']=='prepared'),None)
-    points = (outgoing or {}).get('cuePoints') or {}
+    outgoing_job = next((j for j in jobs if j['id']==outgoing_id and j['status']=='prepared'),None)
+    points = (outgoing_job or {}).get('cuePoints') or {}
     if points.get('algorithmVersion') != 5:
         raise ValueError('Rescan the outgoing track with Beat This! for the new phrase preview.')
     outs = points.get('outgoing',[])
@@ -51,41 +141,61 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
             or not duration*.5<=outs[out_index]['sourceSeconds']<duration):
         raise ValueError('Choose a saved outgoing cue in the second half. Recheck cue preparation if needed.')
     out = outs[out_index]
+    outgoing_vocals = ((outgoing_job.get('cueCoverage') or {}).get('outgoing')
+                       or ((outgoing_job.get('suitability') or {}).get('outgoing') or {}).get('vocalActivity'))
     matches = []
     excluded = dict(tempo=0,coverage=0,unassessed=0,vocals=0)
     for job in jobs:
         if job['id']==outgoing_id or job['status']!='prepared':
             continue
-        incoming = job.get('cuePoints') or {}
-        if incoming.get('algorithmVersion')!=5 or not incoming.get('incoming') or not incoming.get('durationSeconds'):
+        incoming_points = job.get('cuePoints') or {}
+        if incoming_points.get('algorithmVersion')!=5 or not incoming_points.get('incoming') or not incoming_points.get('durationSeconds'):
             excluded['unassessed'] += 1
             continue
         choices = []
         reason = 'tempo'
-        for index, cue in enumerate(incoming['incoming']):
+        incoming_vocals = ((job.get('cueCoverage') or {}).get('incoming')
+                           or ((job.get('suitability') or {}).get('incoming') or {}).get('vocalActivity'))
+        for index, cue in enumerate(incoming_points['incoming']):
             if abs(out['bpm']/cue['bpm']-1)>.08:
                 continue
             try:
-                plan = passage_plan(out,cue,duration,incoming['durationSeconds'])
+                plan = passage_plan(out,cue,duration,incoming_points['durationSeconds'])
             except ValueError:
                 if reason != 'vocals':
                     reason = 'coverage'
                 continue
-            vocal = assess_vocal_pair(
-                (outgoing.get('cueCoverage') or {}).get('outgoing') or ((outgoing.get('suitability') or {}).get('outgoing') or {}).get('vocalActivity'),
-                (job.get('cueCoverage') or {}).get('incoming') or ((job.get('suitability') or {}).get('incoming') or {}).get('vocalActivity'),plan)
+            vocal = assess_vocal_pair(outgoing_vocals, incoming_vocals, plan)
+            transition = dict(method='standard')
             if vocal['status']=='conflict':
-                reason = 'vocals'
-                continue
+                loop_plan = plan_incoming_drum_loop(outgoing_vocals, incoming_vocals, cue, plan)
+                if loop_plan is None:
+                    reason = 'vocals'
+                    continue
+                loop, _, fit = loop_plan
+                lead_in_note = (' The original-mix lead-in remains uncertain; the preview checks it before playback.'
+                                if fit['status'] == 'uncertain' else '')
+                vocal = dict(status=fit['status'], reason=(
+                    f"A {loop['repeats']}× two-bar incoming drum loop is estimated to clear the detected vocal overlap. "
+                    f"{lead_in_note} Audition the groove, loop seam and background-vocal leakage."
+                ))
+                transition = dict(method=loop['method'],loopStartSeconds=loop['startSeconds'],
+                                  loopBars=loop['bars'],repeatCount=loop['repeats'],
+                                  addedSeconds=loop['addedSeconds'])
             closing = plan['handover']-out['sourceSeconds']
             difference = abs(cue['sourceSeconds']/plan['rate']-closing)
-            rank = (dict(estimated=0,uncertain=1,coverage=2,unassessed=3)[vocal['status']],
+            vocal_rank = dict(estimated=0,uncertain=1,coverage=2,unassessed=3)[vocal['status']]
+            if transition['method']=='drum-loop' and vocal['status']=='uncertain':
+                # This uncertainty is only the short original-mix lead-in; the
+                # loop clears every measured vocal passage and the preview rechecks it.
+                vocal_rank = 0
+            rank = (vocal_rank,
                     abs(plan['rate']-1),difference,index)
             choices.append((rank,dict(id=job['id'],title=job['title'],artist=job['artist'],
                 outgoingCueIndex=out_index,incomingCueIndex=index,incomingSeconds=cue['sourceSeconds'],
                 phraseBars=cue.get('phraseBars'),bpm=cue['bpm'],
                 tempoAdjustmentPercent=(plan['rate']-1)*100,
-                openingDifferenceSeconds=difference,vocal=vocal)))
+                openingDifferenceSeconds=difference,vocal=vocal,transition=transition)))
         if choices:
             matches.append(min(choices,key=lambda choice:choice[0]))
         else:

@@ -335,8 +335,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       </section>}
       {cueMatchesEnabled && <section className="mt-5 border-t border-ink/20 pt-4" aria-labelledby="subbeats-cue-candidates">
         <h3 id="subbeats-cue-candidates" className="font-display text-lg font-bold">Suggested incoming tracks</h3>
-        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Uses your selected outgoing finish and saved analysis from prepared tracks. Select a suggestion, then press Play preview to audition it. Detected vocal clashes are excluded; incomplete evidence is checked against the audio before playback.</p>
-        {cueMatches.isFetching && <p role="status" className="mt-3 text-sm">Comparing saved cues, tempo and vocal passages…</p>}
+        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Uses your selected outgoing finish and saved analysis from prepared tracks. Select a suggestion, then press Play preview to audition it. When a fitted two-bar drum loop can clear a detected vocal clash, the preview includes that loop. Listen for musical fit and vocal bleed.</p>
+        {cueMatches.isFetching && <p role="status" className="mt-3 text-sm">Comparing saved cues, tempo, vocal passages and possible drum loops…</p>}
         {cueMatches.isError && <p role="alert" className="mt-3 text-sm">{cueMatches.error.message} Try Find suitable candidates again.</p>}
         {!cueMatches.isFetching && !cueMatches.isError && cueMatches.data && <>
           <p role="status" className="mt-3 text-sm">{cueMatchRows.length ? `Showing ${Math.min(10,cueMatchRows.length)} of ${cueMatchRows.length} suggested tracks.` : 'No candidates found for this finish. Try another outgoing cue or prepare more tracks.'}</p>
@@ -345,6 +345,9 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
               <div className="min-w-0 text-sm">
                 <p className="font-medium break-words">{match.artist} — {match.title}</p>
                 <p className="mt-1">{match.incomingSeconds.toFixed(2)}s arrival{match.phraseBars ? ` · ${match.phraseBars}-bar opening` : ''} · {match.tempoAdjustmentPercent >= 0 ? '+' : ''}{match.tempoAdjustmentPercent.toFixed(1)}% tempo</p>
+                <p className="mt-1">Transition: {match.transition?.method === 'drum-loop'
+                  ? `repeat incoming drums for ${match.transition.loopBars} bars × ${match.transition.repeatCount}`
+                  : 'no loop suggested'}</p>
                 <p className="mt-1 max-w-prose leading-relaxed text-muted">{match.vocal.reason}</p>
               </div>
               <Button className="min-h-11 shrink-0" aria-pressed={incoming === match.id && inCueIndex === match.incomingCueIndex} onClick={() => {
@@ -352,7 +355,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
               }}>{incoming === match.id && inCueIndex === match.incomingCueIndex ? 'Selected for preview' : 'Use this suggestion'}</Button>
             </li>)}
           </ul>
-          <p className="mt-2 text-xs leading-relaxed text-muted">Excluded: {cueMatches.data.excluded.vocals} vocal clashes · {cueMatches.data.excluded.tempo} tempo · {cueMatches.data.excluded.coverage} passage coverage · {cueMatches.data.excluded.unassessed} missing cue preparation. Key compatibility is not checked yet.</p>
+          <p className="mt-2 text-xs leading-relaxed text-muted">Excluded: {cueMatches.data.excluded.vocals} unresolved vocal clashes · {cueMatches.data.excluded.tempo} tempo · {cueMatches.data.excluded.coverage} passage coverage · {cueMatches.data.excluded.unassessed} missing cue preparation. Key compatibility is not checked yet.</p>
         </>}
       </section>}
       {prepared < 1 ? <div className="mt-4 text-sm"><p className="text-muted">Prepare a track with cue points to listen to its ending.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">

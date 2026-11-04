@@ -133,6 +133,8 @@ export const subbeatsCueMatchesSchema = z.object({
     incomingSeconds:z.number().finite().nonnegative(),phraseBars:z.union([z.literal(8),z.literal(16)]).nullable(),
     bpm:z.number().finite().positive(),tempoAdjustmentPercent:z.number().finite(),
     openingDifferenceSeconds:z.number().finite().nonnegative(),vocal:subbeatsCueVocalFitSchema,
+    transition:z.object({method:z.enum(['standard','drum-loop']),loopStartSeconds:z.number().finite().nonnegative().optional(),
+      loopBars:z.literal(2).optional(),repeatCount:z.number().int().min(1).max(2).optional(),addedSeconds:z.number().finite().nonnegative().optional()}).optional(),
   })).max(SUBBEATS_QUEUE_LIMIT),
   excluded:z.object({tempo:z.number().int().nonnegative(),coverage:z.number().int().nonnegative(),
     unassessed:z.number().int().nonnegative(),vocals:z.number().int().nonnegative()}),

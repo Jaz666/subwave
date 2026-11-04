@@ -343,6 +343,25 @@ clashes before mixing (above). Voices/background grooves still
 need listening, including Gusto's groove in `other`. There is no loop or automatic
 broadcast/pair approval.
 
+## Loop-aware cue suggestions — version 10
+
+When the saved vocal measurements show a clash, cue matching can suggest an
+incoming drum loop instead of discarding the pair. It only considers a fitted
+8- or 16-bar incoming cue with complete saved vocal coverage of a vocal-free,
+two-bar passage beginning at that cue. It estimates one or two repeats, and
+requires the measured incoming vocal passages to clear the outgoing vocals by at
+least one beat. The match reports the loop start, length and repeat count.
+
+The cue preview recomputes the same plan from the selected pair's actual covered
+stems, repeats only the drum stem and holds bass, other and vocal stems for the
+inserted bars. It then measures the resulting vocal timeline again and refuses
+the preview if a clash or incomplete coverage remains. A drum passage must have
+usable energy; loop seam quality, background-vocal bleed and musical fit still
+need listening. Search remains a read of saved evidence and adds no model,
+separation, cache scan or preparation work. These suggestions are preview plans,
+not broadcast or picker admission. Preview cache version 12 invalidates older
+renders after the loop behavior change.
+
 Saved stems are sliced and reused when they fully cover the required window.
 Otherwise the preview fetches the complete original (256 MiB limit), requires
 its source SHA-256 to match the prepared bundle, and separates a contiguous
