@@ -130,6 +130,39 @@ def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2):
     return None
 
 
+def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing_vocals=None, incoming_vocals=None):
+    """Rank feasible cue combinations for one selected pair."""
+    choices=[]
+    vocal_rank=dict(estimated=0,uncertain=1,coverage=2,unassessed=3)
+    for out_index,out in enumerate(out_cues):
+        if out.get('sourceSeconds',0)<out_duration*.5:
+            continue
+        for in_index,cue in enumerate(in_cues):
+            try:
+                plan=passage_plan(out,cue,out_duration,in_duration)
+            except (KeyError,TypeError,ValueError):
+                continue
+            vocal=assess_vocal_pair(outgoing_vocals,incoming_vocals,plan)
+            transition=dict(method='standard')
+            if vocal['status']=='conflict':
+                loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,cue,plan)
+                if loop_plan is None:
+                    continue
+                loop,_,fit=loop_plan
+                vocal=fit
+                transition=loop
+            out_bars=out.get('phraseBars') if out.get('phraseBars') in (8,16) else None
+            in_bars=cue.get('phraseBars') if cue.get('phraseBars') in (8,16) else None
+            difference=abs((plan['handover']-out['sourceSeconds'])-cue['sourceSeconds']/plan['rate'])
+            rank=(vocal_rank[vocal['status']],difference,abs(plan['rate']-1),
+                  -(out_bars or 0)-(in_bars or 0),transition.get('repeats',0),out_index,in_index)
+            choices.append((rank,dict(outgoingCueIndex=out_index,incomingCueIndex=in_index,
+                outgoingBars=out_bars,incomingBars=in_bars,
+                outgoingTimeToEndSeconds=out['sourceSeconds']-out_duration,
+                incomingSeconds=cue['sourceSeconds'],transition=transition,vocal=vocal)))
+    return [choice for _,choice in sorted(choices,key=lambda item:item[0])]
+
+
 def find_cue_matches(jobs, outgoing_id, out_index=0):
     outgoing_job = next((j for j in jobs if j['id']==outgoing_id and j['status']=='prepared'),None)
     points = (outgoing_job or {}).get('cuePoints') or {}

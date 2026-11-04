@@ -82,7 +82,7 @@ around 14.59s and driving-beat entry/bar 16 at 42.60s. Its final outro beat has
 approximately one second of echo beyond the closing phrase. These references
 inform the implementation below; audio boundaries and grid markers stay separate.
 
-## Phrase preparation and preview — algorithm 5 / preview 11
+## Phrase preparation and preview — algorithm 5 / preview 13
 
 Rebuild analyzer, controller and web together, then **rescan existing tracks**:
 select them on Preparation, choose Beat This! small (or full), and use
@@ -144,20 +144,28 @@ The incoming drums/bass rise over the final four beats before arrival. All
 outgoing stems retain their natural finish through EOF, including the last
 rhythm beat and echo beyond the phrase marker. No phrase-boundary cutoff or
 fixed one-second tail fade is applied. Incoming vocals/other and the original
-prefix are retained; detected vocal conflicts are refused without trimming words.
-The preview remains bounded to 120 seconds and 8% tempo adjustment.
+prefix are retained; a fitted vocal-free two-bar drum loop may keep measured
+overlapping vocals apart without trimming words. If no rendered Sub/Beat plan
+clears the measured overlap, automatic pair planning falls back to the regular
+Subwave crossfade preview. Cue previews remain bounded to 120 seconds and 8%
+tempo adjustment.
 
 ## Operator workflow
 
 1. Prepare/rescan tracks with Beat This! small or full; wait for completion.
-2. In Preview, choose the outgoing track and its 16- or 8-bar closing cue.
-   Outgoing times still count negatively to original EOF. Listen to the ending.
-3. Choose **Find Suitable Transition** to rank incoming cue plans, or select a
-   track directly. Arrival times count from source zero, including long
-   beatless introductions. Length fit ranks choices but is not vocal, phrase or
-   key approval.
-4. Listen to the opening or play the pair preview. A failed/uncertain pair stays
-   explicit; existing station transitions continue unchanged.
+2. In Preview, choose any prepared outgoing and incoming tracks. Track search
+   filters both lists; a track with no usable cues can still use regular Subwave.
+3. Choose **Find Suitable Transition**. It compares the selected pair's saved
+   cue combinations, including supported 8- and 16-bar spans, checks tempo,
+   coverage and vocal evidence, and tries the measured two-bar incoming drum
+   loop when it can separate a detected clash. It renders the first passing
+   plan among the highest-ranked combinations. When no cue plan passes, it
+   prepares a preview using the station's configured regular crossfade length
+   and curve. This is a preview decision, not queue or broadcast admission.
+4. Review the selected plan in the timeline and listen for vocal bleed, phrase
+   fit and musical/key clashes. Cue dropdowns and **Play selected cues** remain
+   available for manual auditions. Arrival times count from source zero,
+   including long beatless introductions; key compatibility is not assessed.
 
 For the exact research references, Urban's accepted musical/last-word boundary
 22.38s and Gusto's accepted groove release 22.94s are retained among runtime
@@ -344,27 +352,30 @@ clashes before mixing (above). Voices/background grooves still
 need listening, including Gusto's groove in `other`. There is no loop or automatic
 broadcast/pair approval.
 
-## Loop-aware cue suggestions — version 10
+## Pair transition planning — preview 13
 
-The Preview action is labelled **Find Suitable Transition** because each result
-selects both an incoming cue and its transition plan.
+**Find Suitable Transition** evaluates the outgoing and incoming tracks already
+selected on the Preview page. It compares the prepared cue combinations and
+ranks them by vocal fit, difference between the outgoing phrase and incoming
+opening lengths, tempo adjustment and supported phrase span. The button renders
+the first valid result among the twelve highest-ranked combinations; it does
+not search for a different incoming track.
 
-When the saved vocal measurements show a clash, cue matching can suggest an
-incoming drum loop instead of discarding the pair. It only considers a fitted
-8- or 16-bar incoming cue with complete saved vocal coverage of a vocal-free,
-two-bar passage beginning at that cue. It estimates one or two repeats, and
-requires the measured incoming vocal passages to clear the outgoing vocals by at
-least one beat. The match reports the loop start, length and repeat count.
+When saved vocal measurements show a clash, planning can keep the cue pair if a
+fitted 8- or 16-bar incoming cue starts with a completely covered, vocal-free
+two-bar drum passage. It estimates one or two repeats and requires the measured
+incoming vocal passages to clear the outgoing vocals by at least one beat. The
+renderer repeats only drums and leaves bass, other and vocals silent during the
+inserted bars, then measures the rendered vocal timeline again. Usable drum
+energy is required. Loop seam quality, background-vocal bleed and musical fit
+still need listening.
 
-The cue preview recomputes the same plan from the selected pair's actual covered
-stems, repeats only the drum stem and holds bass, other and vocal stems for the
-inserted bars. It then measures the resulting vocal timeline again and refuses
-the preview if a clash or incomplete coverage remains. A drum passage must have
-usable energy; loop seam quality, background-vocal bleed and musical fit still
-need listening. Search remains a read of saved evidence and adds no model,
-separation, cache scan or preparation work. These suggestions are preview plans,
-not broadcast or picker admission. Preview cache version 12 invalidates older
-renders after the loop behavior change.
+If no cue combination exists or each rendered candidate fails its final audio
+check, the automatic action prepares a regular Subwave crossfade preview using
+the station's current crossfade duration and curve. This also covers prepared
+tracks with missing/empty cue artifacts. The fallback is for audition only;
+the regular transition path remains responsible for normal station playback.
+Preview cache version 13 invalidates renders made with earlier planning rules.
 
 Saved stems are sliced and reused when they fully cover the required window.
 Otherwise the preview fetches the complete original (256 MiB limit), requires

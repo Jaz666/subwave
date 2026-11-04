@@ -396,6 +396,17 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
     assert.equal((rendered?.source_urls as string[]).length,2);
     assert.ok((rendered?.source_urls as string[]).every(url=>!url.includes('forged')));
     assert.deepEqual(rendered?.cue_indices,[0,0]);assert.equal(rendered?.method,'cue-points');
+    const fallbackId='cue-route-no-cues';
+    db.upsertTrackMeta(fallbackId,{title:fallbackId,artist:'Cue artist',genres:['House'],duration:50});
+    subbeatsStore.enqueue([{id:fallbackId,title:fallbackId,artist:'Cue artist',album:''}],'small0');
+    subbeatsStore.event({id:fallbackId,status:'running'},[fallbackId]);
+    subbeatsStore.event({id:fallbackId,status:'prepared',bundleKey:'e'.repeat(64)},[fallbackId]);
+    const automatic=await post('/library/subbeats/join-preview',{trackIds:[fallbackId,ids[1]],method:'cue-points',autoPlan:true});
+    assert.equal(automatic.status,200);await automatic.arrayBuffer();
+    assert.equal(rendered?.auto_plan,true);
+    assert.deepEqual(rendered?.cue_keys,[null,'d'.repeat(64)]);
+    assert.equal(rendered?.crossfade_seconds,10);
+    assert.ok((rendered?.source_urls as string[]).every(url=>url.includes(fallbackId) || url.includes(ids[1])));
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
 

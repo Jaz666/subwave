@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsCueMatchesSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -26,7 +26,6 @@ import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
   duration: (id: string) => ['library', 'subbeats', 'duration', id] as const,
-  cueMatches: (outgoing:string, cue:number, version:string) => ['library','subbeats','cue-matches',outgoing,cue,version] as const,
   candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string, mixing: string, playlistId:string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, mixing, playlistId, offset] as const,
 };
 type Status = z.infer<typeof subbeatsStatusSchema>;
@@ -229,21 +228,11 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const outgoingDuration = outgoingPoints?.durationSeconds ?? outgoingTrack.data?.track.durationSec;
   const outgoingCues = subbeatsOutgoingCues(outgoingPoints?.outgoing ?? [],outgoingDuration);
   const outgoingCue = outgoingCues.find(item => item.index === outCueIndex)?.cue;
-  const [cueMatchFor,setCueMatchFor] = useState<string | null>(null);
-  const cueMatchContext = JSON.stringify([outgoing,outCueIndex,jobVersion]);
-  const cueMatchesEnabled = page === 'preview' && ready && !!outgoingCue && cueMatchFor === cueMatchContext;
-  const cueMatches = useAdminQuery({
-    key:subbeatsKeys.cueMatches(outgoing,outCueIndex,jobVersion ?? ''),adminFetch,enabled:cueMatchesEnabled,
-    request:async (fetcher,signal) => subbeatsCueMatchesSchema.parse(await adminJson(fetcher,
-      `/library/subbeats/cue-matches?${new URLSearchParams({outgoingId:outgoing,outgoingCueIndex:String(outCueIndex)})}`,undefined,signal)),
-  });
-  const cueMatchRows = cueMatchesEnabled && !cueMatches.isError && !cueMatches.isFetching ? cueMatches.data?.matches ?? [] : [];
-  const selectedCueMatch = cueMatchRows.find(match => match.id === incoming && match.incomingCueIndex === inCueIndex);
 
   useEffect(() => {
     if (outgoingCues.length && !outgoingCues.some(item => item.index === outCueIndex)) setOutCueIndex(outgoingCues[0]!.index);
   }, [outgoingCues,outCueIndex,setOutCueIndex]);
-  const cueIncoming = previewJobs.filter(job => job.id !== outgoing && job.cuePoints?.algorithmVersion === 5 && job.cuePoints.incoming.length);
+  const cueIncoming = previewJobs.filter(job => job.id !== outgoing && job.bundleKey);
   const incomingCues = subbeatsIncomingCues(byId.get(incoming)?.cuePoints?.algorithmVersion === 5 ? byId.get(incoming)!.cuePoints!.incoming : [],outgoingCue);
   const incomingChoice = incomingCues.find(item => item.index === inCueIndex);
   const incomingCue = incomingChoice?.cue;
@@ -259,11 +248,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
           <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setIncoming(''); setOutCueIndex(0); setInCueIndex(0); }}>
             <option value="">Choose an outgoing Sub/Beat track</option>
-            {previewJobs.filter(job => job.cuePoints?.algorithmVersion === 5 && job.cuePoints.outgoing.length).map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
+            {previewJobs.filter(job => !!job.bundleKey && job.id !== incoming).map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
           </select>
-          <Button className="mt-2 min-h-11" disabled={!ready || !outgoingCue || cueMatches.isFetching} onClick={() => {
-            if (cueMatchesEnabled) void cueMatches.refetch(); else setCueMatchFor(cueMatchContext);
-          }}>{cueMatches.isFetching ? 'Finding a suitable transition…' : 'Find Suitable Transition'}</Button>
         </div>;
 
   const addRows = (added: SubbeatsCandidate[]) => setSelected(current => selectSubbeatsRows(current, added, jobs));
@@ -315,13 +301,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose prepared opening and closing passages. Listen before using a suggested pair.</p>
-      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Incoming tempo stays matched until the preview ends. Cue-point previews retain the incoming opening and natural outgoing finish. Detected vocal clashes are refused; background vocals still need listening.</p>
-      {jobs.some(job => job.status === 'prepared' && job.cuePoints?.algorithmVersion !== 5) && <p role="status" className="mt-3 max-w-prose text-sm">Older preparations need a Beat This! rescan before they appear here. Select them on Preparation and choose Recheck/retry selected.</p>}
-      {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find outgoing tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose any two prepared tracks. Find Suitable Transition compares their saved cue plans and prepares the best Sub/Beat preview; if none fits, it previews the regular Subwave crossfade.</p>
+      <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">A Sub/Beat plan may use an 8- or 16-bar mix and can loop incoming drums when that clears a detected vocal clash. Cue markers remain available below for manual listening.</p>
+      {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find prepared tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
       {prepared > 0 && <section className="mt-5 border-t border-ink/20 pt-4" aria-labelledby="subbeats-outgoing-finish">
-        <h3 id="subbeats-outgoing-finish" className="font-display text-lg font-bold">Choose the outgoing finish</h3>
-        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose an estimated 8- or 16-bar closing passage on the fitted grid. The original ending and its echo continue beyond the phrase marker. Zero is the end of the recording.</p>
+        <h3 id="subbeats-outgoing-finish" className="font-display text-lg font-bold">Outgoing cue points · manual preview</h3>
+        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Find Suitable Transition considers the saved cue combinations automatically. These controls let you audition an outgoing marker on its own; zero is the end of the recording.</p>
         <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
           {outgoingControl}
           <div><label htmlFor="subbeats-out-cue" className="mb-1 block text-sm font-medium">Outgoing rhythm handover · time to track end</label><select id="subbeats-out-cue" className={SELECT_CLASS} value={outCueIndex} disabled={!outgoingCues.length} onChange={event => setOutCueIndex(Number(event.target.value))}>
@@ -329,55 +314,35 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {outgoingCues.map(({cue,index}) => <option key={index} value={index}>{(cue.sourceSeconds - outgoingDuration!).toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.phraseBars ? `${cue.phraseBars}-bar closing candidate` : cue.reason === 'fade' ? 'Fade candidate' : cue.reason === 'opening' ? 'Rhythmic entry' : cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
         </select></div>
         </div>
-        {outgoing && outgoingDuration != null && !outgoingCues.length && <p role="status" className="mt-3 text-sm">No reliable closing passage is saved. Rescan this track with Beat This! to analyse its ending. Uncertain results stay empty.</p>}
+        {outgoing && outgoingDuration != null && !outgoingCues.length && <p role="status" className="mt-3 text-sm">No outgoing cue is saved for this track. Find Suitable Transition will use the regular Subwave crossfade.</p>}
         {outgoingCue?.phraseBars && outgoingCue.phraseEndSeconds != null && outgoingDuration != null && <p className="mt-3 text-sm text-muted">{outgoingCue.phraseBars} estimated bars to the musical ending at {(outgoingCue.phraseEndSeconds-outgoingDuration).toFixed(2)}s. The recording continues after that point. Phrase and vocal completion still need listening.</p>}
         {outgoingCue && <CueAudition role="outgoing" key={`${outgoing}:${byId.get(outgoing)?.cuePoints?.artifactKey}`} trackId={outgoing} cueSeconds={outgoingCue.sourceSeconds} adminFetch={adminFetch} onPlay={() => { setSoloRole('outgoing'); preview.stop(); }} pause={preview.loading || preview.playing || soloRole === 'incoming'} />}
       </section>}
-      {cueMatchesEnabled && <section className="mt-5 border-t border-ink/20 pt-4" aria-labelledby="subbeats-cue-candidates">
-        <h3 id="subbeats-cue-candidates" className="font-display text-lg font-bold">Suggested incoming tracks</h3>
-        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Uses your selected outgoing finish and saved analysis from prepared tracks. Select a suggestion, then press Play preview to audition it. When a fitted two-bar drum loop can clear a detected vocal clash, the preview includes that loop. Listen for musical fit and vocal bleed.</p>
-        {cueMatches.isFetching && <p role="status" className="mt-3 text-sm">Comparing saved cues, tempo, vocal passages and possible drum loops…</p>}
-        {cueMatches.isError && <p role="alert" className="mt-3 text-sm">{cueMatches.error.message} Try Find Suitable Transition again.</p>}
-        {!cueMatches.isFetching && !cueMatches.isError && cueMatches.data && <>
-          <p role="status" className="mt-3 text-sm">{cueMatchRows.length ? `Showing ${Math.min(10,cueMatchRows.length)} of ${cueMatchRows.length} suggested tracks.` : 'No candidates found for this finish. Try another outgoing cue or prepare more tracks.'}</p>
-          <ul className="mt-3 divide-y divide-ink/20">
-            {cueMatchRows.slice(0,10).map(match => <li key={match.id} className="flex min-w-0 flex-col gap-3 py-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 text-sm">
-                <p className="font-medium break-words">{match.artist} — {match.title}</p>
-                <p className="mt-1">{match.incomingSeconds.toFixed(2)}s arrival{match.phraseBars ? ` · ${match.phraseBars}-bar opening` : ''} · {match.tempoAdjustmentPercent >= 0 ? '+' : ''}{match.tempoAdjustmentPercent.toFixed(1)}% tempo</p>
-                <p className="mt-1">Transition: {match.transition?.method === 'drum-loop'
-                  ? `repeat incoming drums for ${match.transition.loopBars} bars × ${match.transition.repeatCount}`
-                  : 'no loop suggested'}</p>
-                <p className="mt-1 max-w-prose leading-relaxed text-muted">{match.vocal.reason}</p>
-              </div>
-              <Button className="min-h-11 shrink-0" aria-pressed={incoming === match.id && inCueIndex === match.incomingCueIndex} onClick={() => {
-                preview.stop(); setIncoming(match.id); setInCueIndex(match.incomingCueIndex);
-              }}>{incoming === match.id && inCueIndex === match.incomingCueIndex ? 'Selected for preview' : 'Use this suggestion'}</Button>
-            </li>)}
-          </ul>
-          <p className="mt-2 text-xs leading-relaxed text-muted">Excluded: {cueMatches.data.excluded.vocals} unresolved vocal clashes · {cueMatches.data.excluded.tempo} tempo · {cueMatches.data.excluded.coverage} passage coverage · {cueMatches.data.excluded.unassessed} missing cue preparation. Key compatibility is not checked yet.</p>
-        </>}
-      </section>}
-      {prepared < 1 ? <div className="mt-4 text-sm"><p className="text-muted">Prepare a track with cue points to listen to its ending.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+      {prepared < 1 ? <div className="mt-4 text-sm"><p className="text-muted">Prepare two Sub/Beat tracks to find a transition.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div> : <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
         <div className="min-w-0">
           <label htmlFor="subbeats-incoming" className="mb-1 block text-sm font-medium">Incoming track</label>
           <select id="subbeats-incoming" className={SELECT_CLASS} value={incoming} disabled={!cueIncoming.length} onChange={event => {setIncoming(event.target.value);setInCueIndex(subbeatsIncomingCues(byId.get(event.target.value)?.cuePoints?.incoming ?? [],outgoingCue)[0]?.index ?? 0);}}>
-            <option value="">Choose a cue-prepared incoming track</option>
+            <option value="">Choose a prepared incoming track</option>
             {cueIncoming.map(job => <option key={job.id} value={job.id}>{job.artist} — {job.title}</option>)}
           </select>
         </div>
-        <Button className="min-h-11 self-end" variant="solid" disabled={!preview.loading && !preview.playing && (!ready || !incomingReady || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], {method:'cue-points',cueIndices:[outCueIndex,inCueIndex]})}>
-          {preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.playing ? <Square /> : <Play />}
-          {preview.loading ? 'Cancel preview' : preview.playing ? 'Stop preview' : 'Play preview'}
+      </div>}
+      {prepared > 0 && <div className="mt-4 flex flex-wrap gap-3">
+        <Button className="min-h-11" variant="solid" disabled={preview.active !== 0 && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], {method:'cue-points',autoPlan:true})}>
+          {preview.active === 0 && preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.active === 0 && preview.playing ? <Square /> : <Play />}
+          {preview.active === 0 && preview.loading ? 'Cancel preview' : preview.active === 0 && preview.playing ? 'Stop preview' : preview.active === 0 && preview.duration > 0 ? 'Play transition' : 'Find Suitable Transition'}
+        </Button>
+        <Button className="min-h-11" disabled={preview.active !== 1 && (!ready || !incomingReady || !outgoing || !incoming || outgoing === incoming)} onClick={() => void preview.toggle(1, [outgoing, incoming], {method:'cue-points',cueIndices:[outCueIndex,inCueIndex]})}>
+          {preview.active === 1 && preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.active === 1 && preview.playing ? <Square /> : <Play />}
+          {preview.active === 1 && preview.loading ? 'Cancel manual preview' : preview.active === 1 && preview.playing ? 'Stop manual preview' : 'Play selected cues'}
         </Button>
       </div>}
-      {selectedCueMatch && <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted">{selectedCueMatch.vocal.reason}</p>}
       <section className="mt-5 border-t border-ink/20 pt-4" aria-labelledby="subbeats-incoming-opening">
         <h3 id="subbeats-incoming-opening" className="font-display text-lg font-bold">Choose the incoming opening</h3>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Arrival times count from the original recording’s start. The complete opening plays, including any music before grid zero. Choose a musical entry or an estimated 8- or 16-bar passage on the fitted grid.</p>
 
         <div className="mt-4 max-w-xl"><label htmlFor="subbeats-in-cue" className="mb-1 block text-sm font-medium">Incoming musical arrival</label><select id="subbeats-in-cue" className={SELECT_CLASS} value={inCueIndex} disabled={!byId.get(incoming)?.cuePoints?.incoming.length} onChange={event => setInCueIndex(Number(event.target.value))}>
-          {!incomingCues.length && <option value="">Choose a cue-prepared incoming track</option>}
+          {!incomingCues.length && <option value="">{incoming ? 'No incoming cues · automatic transition can use regular Subwave' : 'Choose a prepared incoming track'}</option>}
           {incomingCues.map(({cue,index}) => <option key={index} value={index}>{cue.sourceSeconds.toFixed(2)}s · {cue.bpm.toFixed(1)} BPM · {cue.phraseBars && cue.phraseStartSeconds != null ? `${cue.phraseBars}-bar opening candidate` : cue.reason === 'opening' ? 'Rhythmic entry' : cue.reason === 'repetition' ? 'Pattern change' : 'Arrangement change'}</option>)}
         </select></div>
         {incomingCue?.phraseBars && incomingCue.phraseStartSeconds != null && <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted">{incomingCue.phraseBars} estimated bars from {incomingCue.phraseStartSeconds.toFixed(2)}s to the arrival at {incomingCue.sourceSeconds.toFixed(2)}s. The opening before that passage is retained; vocals and background grooves need listening.</p>}
@@ -385,18 +350,20 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         {incomingChoice && incomingCues[0]?.index !== inCueIndex && incomingCues[0]?.tempoFits && outgoingCue?.phraseEndSeconds != null && <Button className="mt-3" onClick={() => setInCueIndex(incomingCues[0]!.index)}>Use closest opening length</Button>}
         {incomingCue && <CueAudition role="incoming" key={`incoming:${incoming}:${byId.get(incoming)?.cuePoints?.artifactKey}`} trackId={incoming} cueSeconds={incomingCue.sourceSeconds} tailSeconds={8*60/incomingCue.bpm} adminFetch={adminFetch} onPlay={() => { setSoloRole('incoming'); preview.stop(); }} pause={preview.loading || preview.playing || soloRole === 'outgoing'} />}
       </section>
-      {preview.loading && <p role="status" className="mt-3 text-sm text-muted">Preparing preview from saved passages and the original lead-in… press again to cancel.</p>}
+      {preview.loading && <p role="status" className="mt-3 text-sm text-muted">{preview.active === 0 ? 'Comparing this pair’s cue plans and preparing the best preview… press again to cancel.' : 'Preparing the selected cue preview from saved passages… press again to cancel.'}</p>}
       {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
+      {preview.timeline?.kind === 'regular-fallback' && <p role="status" className="mt-3 max-w-prose text-sm">No Sub/Beat transition fit this pair. The preview uses the regular Subwave crossfade.</p>}
+      {preview.timeline?.kind === 'subbeats-transition' && <p role="status" className="mt-3 max-w-prose text-sm">Selected plan: {preview.timeline.events[0]?.label.replace('Outgoing track · ', '')}. Listen for vocal bleed and musical fit.</p>}
       {preview.duration > 0 && <div className="mt-5 border-t border-ink/20 pt-4">
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor="subbeats-preview-position" className="text-sm font-medium">Preview timeline · testing</label>
+          <label htmlFor="subbeats-preview-position" className="text-sm font-medium">Preview timeline</label>
           <span className="shrink-0 font-mono text-xs text-muted tabular-nums">{clock(preview.position)} / {clock(preview.duration)}</span>
         </div>
         <input id="subbeats-preview-position" type="range" min={0} max={preview.duration} step={0.1} value={Math.min(preview.position, preview.duration)}
           className="mt-2 h-11 w-full cursor-pointer accent-ink" aria-valuetext={`${clock(preview.position)} of ${clock(preview.duration)}`}
           onChange={event => preview.seek(Number(event.target.value))} />
         {currentStage && <p role="status" className="mt-1 text-sm font-medium text-ink">{currentStage}</p>}
-        <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Stages show the rendered stem fades and vocal handover, not automatically detected phrases. Select a time to jump there.</p>
+        <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Stages show the rendered transition and cue handover. Select a time to jump there.</p>
         {preview.timeline ? <ol className="mt-3 grid gap-1">
           {preview.timeline.events.map((event, index) => {
             const current = preview.position >= event.at && (index === preview.timeline!.events.length - 1 || preview.position < preview.timeline!.events[index + 1]!.at);

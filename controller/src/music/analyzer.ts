@@ -1323,7 +1323,7 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';cue_keys?:string[];cue_indices?:number[];coverage_keys?:Array<string|null>}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';auto_plan?:boolean;cue_keys?:Array<string|null>;cue_indices?:number[];coverage_keys?:Array<string|null>;crossfade_seconds?:number;equal_power_crossfade?:boolean}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
   const timeoutMs = shared?.method === 'cue-points' ? 30*60_000 : 180_000;

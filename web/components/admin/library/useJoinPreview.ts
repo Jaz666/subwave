@@ -26,7 +26,7 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoin
     return clear;
   }, [trackKey, clear]);
 
-  const toggle = async (index: number, trackIds: string[], options?: { barShift?: number; referenceBars?: number; matched?: boolean; method?:'cue-points'; cueIndices?:number[] }) => {
+  const toggle = async (index: number, trackIds: string[], options?: { barShift?: number; referenceBars?: number; matched?: boolean; method?:'cue-points'; autoPlan?:boolean; cueIndices?:number[] }) => {
     // A second click cancels preparation or stops playback. Only one join plays.
     if (active === index && (loading || !audio.current?.paused)) {
       clear(); setActive(null); setLoading(false); setPlaying(false); setMessage(null); setPosition(0); setDuration(0); setTimeline(null); return;

@@ -111,7 +111,7 @@ export const subbeatsViewSchema = subbeatsQueueSchema.extend({
 });
 
 export const subbeatsTimelineSchema = z.object({
-  kind: z.literal('reference').optional(),
+  kind:z.enum(['reference','subbeats-transition','regular-fallback']).optional(),
   duration: z.number().finite().positive().max(120),
   events: z.array(z.object({ at: z.number().finite().nonnegative().max(120), label: z.string().min(1).max(180) })).min(1).max(12),
 }).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
@@ -162,6 +162,7 @@ export const subbeatsMatchesSchema = z.object({
 
 export const subbeatsPreviewSchema = z.object({
   method:z.enum(['stems','cue-points']).default('stems'),
+  autoPlan:z.boolean().optional(),
   cueIndices:z.array(z.number().int().min(0).max(7)).length(2).optional(),
   matched:z.boolean().optional(),
   trackIds: z.array(z.string().min(1).max(200)).length(2),
