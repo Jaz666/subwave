@@ -199,7 +199,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
         ...(autoPlan ? {crossfade_seconds:settings.get().crossfadeDuration,
           equal_power_crossfade:settings.get().transitions?.equalPowerCrossfade === true} : {})} : {})});
     if (!abort.signal.aborted) {
-      if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
+      if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline).replace(/[^\x00-\x7F]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);
     }
   } catch (error) {
