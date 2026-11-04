@@ -15,12 +15,15 @@ incoming Sub/Beat tracks, then **Find Suitable Transition** evaluates that pair
 and prepares the best preview. It must not search for other incoming tracks.
 The planner compares saved outgoing/incoming cue combinations, including
 supported 8-8, 16-8, 8-16 and 16-16 spans; it can use an incoming drum loop when
-that clears measured vocal overlap. If no cue plan renders safely, it prepares
-the station's regular configured crossfade preview. Prepared tracks without
-usable cue artifacts remain selectable and take that fallback. Manual cue
-dropdowns and **Play selected cues** stay available for comparison. The Preview
-Timeline identifies a regular Subwave crossfade, a Sub/Beat stem mix, or a
-Sub/Beat mix with incoming drums looped.
+that clears measured vocal overlap. If no cue plan renders safely, the current
+preview renders a configured crossfade from the original tracks. This is only a
+preview approximation: it does not call Subwave's regular transition selector.
+When pair compatibility is integrated into the Picker, the fallback must
+delegate to the existing regular transition selection logic rather than force a
+crossfade. Prepared tracks without usable cue artifacts remain selectable and
+take that fallback. Manual cue dropdowns and **Play selected cues** stay
+available for comparison. The Preview Timeline identifies a regular Subwave
+crossfade, a Sub/Beat stem mix, or a Sub/Beat mix with incoming drums looped.
 
 This is preview planning only. It does not yet wire pair admission into the
 Picker or change live transitions. Key compatibility is still not measured.
