@@ -464,6 +464,10 @@ async def test_subbeats_preview_contract():
     assert server.StdioWorker._wants_models({'op':'preview_subbeats','method':'cue-points'})
     assert server.StdioWorker._used_models({'subbeats_used_models':True})
     assert not server.StdioWorker._used_models({'subbeats_preview': '/state/subbeats/previews/a/preview.wav'})
+    from typing import get_type_hints
+    request_fields = get_type_hints(server.SubbeatsPreviewRequest)
+    assert {'auto_plan', 'crossfade_seconds', 'equal_power_crossfade'} <= set(request_fields)
+    assert 'str | None' in str(server.SubbeatsPreviewRequest.__annotations__['cue_keys'])
     responses = types.ModuleType('fastapi.responses')
     responses.FileResponse = lambda path, **kwargs: types.SimpleNamespace(path=path, **kwargs)
     sys.modules['fastapi.responses'] = responses
@@ -475,13 +479,16 @@ async def test_subbeats_preview_contract():
             return {'ok': True, 'subbeats_preview': '/state/subbeats/previews/a/preview.wav', 'subbeats_timeline': {'duration': 44, 'events': [{'at': 0, 'label': 'Outgoing lead'}]}}
     server.analyzer_pool = Pool()
     try:
-        body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64}
+        body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64,
+                'method':'cue-points','auto_plan':True,'cue_keys':[None,'b'*64],
+                'crossfade_seconds':8.5,'equal_power_crossfade':True}
         result = await server.subbeats_preview(types.SimpleNamespace(model_dump=lambda: body))
         assert seen == [{'id': '1', 'op': 'preview_subbeats', **body}]
         assert result.media_type == 'audio/wav'
         assert result.headers['Cache-Control'] == 'no-store'
         import json
         assert json.loads(result.headers['X-Subbeats-Timeline'])['duration'] == 44
+        body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64}
         body['reference'] = {'out_seconds':219, 'in_resolve':68, 'bars':32,
                              'out_url':'http://source/out', 'in_url':'http://source/in'}
         await server.subbeats_preview(types.SimpleNamespace(model_dump=lambda: body))
