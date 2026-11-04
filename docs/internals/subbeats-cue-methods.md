@@ -70,6 +70,35 @@ Vocal-aware assessment and saved-evidence discovery now run in the cue preview
 (see below). Validate the suggestions by listening before enabling queued-pair
 upgrades, then expose follow-up discovery to both picking paths.
 
+## Planned refinement after The Launch auditions — 4 November 2026
+
+**Recorded for implementation; current detector, renderer and cache policy are
+unchanged.** The owner accepted the offline head/tail metronome auditions for
+DJ Jean — The Launch, then requested a long-beatless-intro investigation next.
+See [the reference and requirements](../investigations/subbeats-research-20261103/launch-grid-evaluation.md)
+for exact timings, diagnostic evidence and audio locations.
+
+The planned direction is a first-downbeat-anchored musical grid plus a natural
+musical ending reference, with phrase-aligned 16/8-bar closing choices. File end
+and the final detected beat are separate from that musical endpoint. The outro
+section can support the decision without being a mandatory detection. Phrase
+alignment need not be a bar number divisible by eight: the accepted closing
+markers for The Launch are bars 92/100 within the 84 → 92 → 100 → 108 sequence.
+These are listening references, not track-specific constants for the algorithm.
+
+Narrow cached mixing stems and selectable cues towards the opening and closing
+16-bar passages, reusing them for 8-bar choices. Preserve source-zero pickups,
+natural ending decay, necessary seam handles and incoming continuation while
+the outgoing finishes. Separation context need not all be retained. Lightweight
+full-track grid/structural evidence may remain without becoming selectable cues.
+The existing 130/120-second coverage is conservative current behavior; replace
+it only alongside compatible selection, rendering and vocal checks. No automatic
+cache deletion or bulk recheck follows from this plan.
+
+Before implementation, evaluate the long beatless intro. Preserve its complete
+opening and distinguish source zero from the first established beat; do not
+assume sixteen bars starts at file zero or discard unmetered audio to fit a cache.
+
 ## Operator workflow
 
 1. In **Sub/Beats → Preparation**, select completed tracks, choose

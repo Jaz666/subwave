@@ -8,7 +8,41 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-### Current: persisted cue coverage, playlist preparation and artist ordering
+### Current research handoff — 4 November: accepted Launch reference; beatless intro next
+
+The owner supplied an annotated MixMeister waveform for DJ Jean — The Launch.
+The earlier 96th-bar reference was corrected to bar 92. Offline original-mix
+head/tail click auditions at 136.507619 BPM, anchored at source 0.680s, were
+accepted with “spot on”: intro end bar16/28.810298s, outro entry bar84/148.364065s,
+16-bar start bar92/162.429214s, 8-bar start bar100/176.494363s, and proposed phrase
+end bar108/190.559512s. EOF is 193.266667s; the last learned prediction is 188.380s.
+The final grid continuation is inferred, not observed complete-bar evidence.
+
+Record for implementation: use an established musical grid, natural musical
+ending and phrase alignment for 16/8-bar closing choices; avoid a universal
+multiple-of-eight bar-number rule. Outro-section detection is supporting
+rather than mandatory evidence. Narrow mixing stem/cue regions to opening and
+closing 16-bar passages, including complete pickup, natural ending tail and
+necessary seam/incoming follow-through coverage. Retain lightweight grid data
+without exposing unrelated earlier changes as outgoing mixing cues. Replace
+130/120-second coverage only when selection/rendering/vocal checks support the
+new bounds. No detector/renderer source edits, runtime marker writes, cache reduction or deletion
+were performed for this research.
+
+[Complete reference and implementation requirements](subbeats-research-20261103/launch-grid-evaluation.md)
+include why the existing detector missed the points and exact audition metadata.
+Audio, original waveform backup and probes remain in
+`/home/jaz666/codex/subbeats-beat-this-20261103/launch/`. Next: examine the owner's
+**long beatless intro** before implementation. Its identity/timings are not yet
+provided. Preserve the full opening and distinguish audio origin from beat-grid
+origin; do not force it into a sixteen-bar-from-source-zero assumption.
+
+Station source remains `a383ea66`, rollback `c40b9e1e`. This is documentation
+and evidence only, pushed on the development branch; no station source update,
+service operation or live analysis. No tests needed for this record; documentation
+whitespace/link targets checked locally.
+
+### Latest implemented: persisted cue coverage, playlist preparation and artist ordering
 
 Owner accepted improving preparation before adding more tracks, requested
 playlist support for **preparation only**, and artist ordering in both preview
