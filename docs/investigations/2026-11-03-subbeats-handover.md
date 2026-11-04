@@ -72,40 +72,45 @@ later measured vocal passages to clear the outgoing passages by at least one
 beat. The preview repeats only drums, leaves bass/other/vocals silent during the
 inserted bars, checks usable drum energy, then remeasures the rendered vocal
 timeline. Loop seam quality, vocal bleed and musical fit still need listening.
+Many other combinations are expected to refuse: the cue must be fitted, the
+two-bar loop must be vocal-free and fully covered, no more than two repeats may
+be needed, and the rendered vocal check must pass.
 This remains a cue-preview suggestion, not picker or broadcast admission. The
-button label stays **Find suitable candidates** until the owner auditions the
-new behavior; changing it to **Find Suitable Transition** is the eventual UI
-goal.
+owner reports that the station now produces the same mix as the development
+preview for the previously tested pair. The action is now labelled **Find
+Suitable Transition** to describe the selected incoming cue and transition plan.
 
 The active Rage — *Run to You* → Armand van Helden — *My My My* queue pair now
 suggests the 16-bar incoming cue with one repeated two-bar drum passage. The
-owner has not yet auditioned this updated preview. Existing algorithm-5
-preparation and saved vocal coverage are reused; no track rescan or stem
-regeneration is required for this code change. Preview cache version 12
-invalidates earlier renders.
+owner's comparison confirms parity for this pair, not general musical fit.
+Existing algorithm-5 preparation and saved vocal coverage are reused; no track
+rescan or stem regeneration is required for this code change. Preview cache
+version 12 invalidates earlier renders.
 
 Verification for this follow-up: 17 focused analyzer Python cases, 20 controller
-route cases, controller and web typechecks, and `git diff --check` passed. No
-station build, live audio audition, rescan or runtime state change was performed.
+route cases, controller and web typechecks, and `git diff --check` passed. The
+owner rebuilt the station and compared the pair; the agent did not rebuild,
+rescan tracks or change runtime state.
 
 Upstream was fetched before station integration. The latest release remains
 1.30.0 at `03a48c21`, already represented in the station integration base
 `b5eda6e4`; upstream `develop` has a newer unreleased commit, which was not
-pulled into this test candidate. Loop-aware implementation `878a06c5` is pushed
-on `feat/subbeats-phrase-evidence-20261102`. Station source `ce53d1a4` is pushed
-on `test-station/sleeve-notes-clean-20261014`; rollback is `b0a6e6d5`. The
-station branch intentionally omits this development handover. Owner rebuilds
-analyzer/controller/web using the existing GPU and Discord Compose overlays,
-then checks `/api/health`:
+pulled into this test candidate. Loop-aware implementation `878a06c5` and the
+button rename `e0c8eca8` are pushed on `feat/subbeats-phrase-evidence-20261102`.
+Station source `1ce943bb` is pushed on
+`test-station/sleeve-notes-clean-20261014`; rollback is `b0a6e6d5`. The station
+branch intentionally omits this development handover. The owner already
+rebuilt analyzer/controller/web at `ce53d1a4` and confirmed preview parity. The
+button rename is web-only; rebuild from the station checkout and check health:
 
 ```sh
-COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --build analyzer controller web
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.discord.yml up -d --build web
 curl --fail http://localhost:7700/api/health
 ```
 
-After rebuild, audition the loop-bearing suggestion before renaming the button.
 No Docker build, restart, live rescan, cache deletion, picker/broadcast
-enablement or external issue message was performed by the agent.
+enablement or external issue message was performed by the agent. The copy-only
+button rename did not need a test rerun; `git diff --check` passed.
 
 ### Accepted research handoff — 4 November: Children head/tail previews accepted
 
