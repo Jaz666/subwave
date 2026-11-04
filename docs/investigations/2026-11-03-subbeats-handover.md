@@ -8,6 +8,43 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
+### Selected-pair transition planning — 4 November
+
+The owner clarified the Preview milestone: choose any prepared outgoing and
+incoming Sub/Beat tracks, then **Find Suitable Transition** evaluates that pair
+and prepares the best preview. It must not search for other incoming tracks.
+The planner compares saved outgoing/incoming cue combinations, including
+supported 8-8, 16-8, 8-16 and 16-16 spans; it can use an incoming drum loop when
+that clears measured vocal overlap. If no cue plan renders safely, it prepares
+the station's regular configured crossfade preview. Prepared tracks without
+usable cue artifacts remain selectable and take that fallback. Manual cue
+dropdowns and **Play selected cues** stay available for comparison.
+
+This is preview planning only. It does not yet wire pair admission into the
+Picker or change live transitions. Key compatibility is still not measured.
+Development implementation uses preview cache version 13. Implementation
+`3aea81ad` is pushed on `feat/subbeats-phrase-evidence-20261102`. Station source
+`0855d3b4` is pushed on `test-station/sleeve-notes-clean-20261014`; rollback is
+`1ce943bb`. Controller and web typechecks and the 20-case Sub/Beats route suite
+pass on the station checkout. The registered cue/Python suites (including 20
+cue cases), controller typecheck, web typecheck, scoped lint and admin-query
+audit pass on development. No services were rebuilt or restarted and no tracks
+were rescanned.
+
+Upstream was fetched before the station push. `main` remains release 1.30.0
+(`03a48c21`); `develop` is `1c4a9ff2` and is not an ancestor of the isolated
+station branch. The only newer commit touching the selected Sub/Beat paths is
+`c246de5b`, for held-pick stem separation; its analyzer changes add request
+timeouts for that pick flow and do not alter cue previews. No upstream changes
+were merged into this test candidate.
+
+To rebuild the changed services from `/home/jaz666/Docker/subwave`:
+
+```sh
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --build analyzer controller web
+curl --fail http://localhost:7700/api/health
+```
+
 ### Latest implementation — 4 November: phrase preparation and a single preview method
 
 Owner approved rebuilding the preparation/preview path and is happy to rescan
@@ -38,7 +75,7 @@ Supported non-8/16 entries retain an unforced musical-entry option; Children has
 only the supported 42.60s arrival, not an earlier point in its quiet introduction.
 Cache-only Assess suitability understands the new source/coverage bundle.
 
-[Maintained workflow and limits](../internals/subbeats-cue-methods.md#phrase-preparation-and-preview--algorithm-5--preview-11)
+[Maintained workflow and limits](../internals/subbeats-cue-methods.md#phrase-preparation-and-preview--algorithm-5--preview-13)
 and [five-track offline results](subbeats-research-20261103/phrase-preparation-v5-track-results.json)
 record the implementation. Original source hashes and saved official small0
 predictions were reused for The Launch, Children, Gusto, Urban Cookie Collective
@@ -63,34 +100,18 @@ Temporary servers stopped and generated Next files restored. No live audio or
 station state was touched. Five-track numerical checks reuse saved predictions;
 new separated pair previews still need the owner's listening after rescan.
 
-### Loop-aware transition suggestions — 4 November
+### Previous cue-to-track candidate search — superseded
 
-When saved vocal measurements predict a clash, candidate search can retain the
-pair if a fitted 8- or 16-bar incoming cue starts with a fully covered,
-vocal-free two-bar drum passage. It estimates one or two repeats and requires
-later measured vocal passages to clear the outgoing passages by at least one
-beat. The preview repeats only drums, leaves bass/other/vocals silent during the
-inserted bars, checks usable drum energy, then remeasures the rendered vocal
-timeline. Loop seam quality, vocal bleed and musical fit still need listening.
-Many other combinations are expected to refuse: the cue must be fitted, the
-two-bar loop must be vocal-free and fully covered, no more than two repeats may
-be needed, and the rendered vocal check must pass.
-This remains a cue-preview suggestion, not picker or broadcast admission. The
-owner reports that the station now produces the same mix as the development
-preview for the previously tested pair. The action is now labelled **Find
-Suitable Transition** to describe the selected incoming cue and transition plan.
+The earlier version searched other incoming tracks and displayed vocal-aware
+loop suggestions. Its loop safety conditions still apply to pair planning: a
+fitted cue, a fully covered vocal-free two-bar passage, at most two repeats,
+usable drums and a passing rendered-vocal check. Loop seam quality, vocal bleed
+and musical fit still need listening. This behavior was replaced by the
+selected-pair action above; it is retained here as implementation history.
 
-The active Rage — *Run to You* → Armand van Helden — *My My My* queue pair now
-suggests the 16-bar incoming cue with one repeated two-bar drum passage. The
-owner's comparison confirms parity for this pair, not general musical fit.
-Existing algorithm-5 preparation and saved vocal coverage are reused; no track
-rescan or stem regeneration is required for this code change. Preview cache
-version 12 invalidates earlier renders.
-
-Verification for this follow-up: 17 focused analyzer Python cases, 20 controller
-route cases, controller and web typechecks, and `git diff --check` passed. The
-owner rebuilt the station and compared the pair; the agent did not rebuild,
-rescan tracks or change runtime state.
+The active Rage — *Run to You* → Armand van Helden — *My My My* pair was tested
+against that earlier version and produced the same mix on station and
+development. That confirms parity for this pair, not general musical fit.
 
 Upstream was fetched before station integration. The latest release remains
 1.30.0 at `03a48c21`, already represented in the station integration base
