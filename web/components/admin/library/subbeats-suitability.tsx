@@ -2,8 +2,13 @@ import type { z } from 'zod';
 import type { subbeatsSuitabilitySchema } from '../../../lib/schemas.generated';
 
 type Suitability = z.infer<typeof subbeatsSuitabilitySchema>;
-export const MIX_LABEL = { unassessed: 'Not assessed', regular: 'Regular transition fallback', beat: 'Beat-grid support', subbeat: 'Sub/Beat support' };
-const CUE_LABEL = { regular: 'No usable phrase cue for this role', beat: 'Beat grid available', subbeat: 'Phrase cue + vocal coverage available' };
+export const MIX_LABEL = {
+  unassessed: 'Not assessed',
+  regular: 'Regular-only role support',
+  beat: 'Beat-grid support in at least one role',
+  subbeat: 'Sub/Beat support in at least one role',
+};
+const CUE_LABEL = { regular: 'No phrase cue', beat: 'Beat grid available', subbeat: 'Phrase cue + vocal coverage' };
 const LEGACY_LABEL = { regular: 'No 16-bar beat window', beat: '16-bar beat window', subbeat: 'Legacy 16-bar stem window' };
 export function mixingLevel(value?: Suitability): keyof typeof MIX_LABEL {
   if (!value) return 'unassessed';
@@ -11,12 +16,12 @@ export function mixingLevel(value?: Suitability): keyof typeof MIX_LABEL {
   return levels.includes('subbeat') ? 'subbeat' : levels.includes('beat') ? 'beat' : 'regular';
 }
 export function SuitabilityDetails({ value, cueBased = false }: { value?: Suitability; cueBased?: boolean }) {
-  if (!value) return <p className="mt-2 text-xs text-muted">Mixing suitability: Not assessed</p>;
-  const level = mixingLevel(value);
-  const detailLevel = level === 'unassessed' ? 'regular' : level;
+  if (!value) return <p className="mt-2 text-xs text-muted">Track readiness: Not assessed</p>;
   const labels = cueBased ? CUE_LABEL : LEGACY_LABEL;
   return <details className="mt-2 text-xs lg:col-span-3">
-    <summary className="min-h-11 cursor-pointer py-3">{cueBased ? labels[detailLevel] : `Legacy 16-bar check · ${labels[detailLevel]}`} · show incoming/outgoing evidence</summary>
+    <summary className="min-h-11 cursor-pointer py-3">{!cueBased && 'Legacy 16-bar check · '}
+      Incoming: {labels[value.incoming.level]} · Outgoing: {labels[value.outgoing.level]} · show evidence
+    </summary>
     {(['incoming', 'outgoing'] as const).map(role => <p key={role} className="mb-2 max-w-prose leading-relaxed break-words">
       <strong>{role === 'incoming' ? 'Incoming' : 'Outgoing'}: {labels[value[role].level]}</strong>
       {value[role].bpm !== null && ` · ${value[role].bpm.toFixed(1)} BPM`}. {value[role].reason}

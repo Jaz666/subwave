@@ -395,9 +395,9 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared means the files are saved. Choose an outgoing and incoming track, then open Preview to find and listen to the best transition. Remove an entry to delete its extended files.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
           <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Regular stem inclusion is separate from deeper Sub/Beats preparation. It bypasses selective cache criteria, with the normal priority and space budget.</p>
           {page === 'prepared' ? <>
-            <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Suitability describes each track’s incoming and outgoing cue support, not pair approval. Find Suitable Transition checks the selected pair’s cue fit and vocal overlap, with a safe drum-loop option.</p>
+            <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Readiness is counted per track using its strongest role. A track with Sub/Beat support may be ready only as an incoming or outgoing track; this does not guarantee a compatible pairing. The row shows both roles, and Find Suitable Transition checks the selected pair’s cue fit and vocal overlap, with a safe drum-loop option.</p>
             <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">If no Sub/Beat plan fits, this preview uses the configured crossfade; Picker integration will delegate that case to Subwave’s regular transition selector. Listen for musical fit.</p>
-          </> : <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Suitability reports per-track role evidence. The selected pair is evaluated in Preview after both tracks are prepared.</p>}
+          </> : <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Readiness is per track, based on its strongest incoming or outgoing role. It does not guarantee a compatible pairing; both role results are shown on each row.</p>}
           {page === 'prepared' && needsCoverage.length > 0 && <div className="mt-3">
             <Button className="min-h-11" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate(needsCoverage.slice(0,SUBBEATS_BATCH_LIMIT).map(job => job.id))}>Upgrade cue coverage ({Math.min(needsCoverage.length,SUBBEATS_BATCH_LIMIT)})</Button>
             <p className="mt-1 text-xs text-muted">Reuses saved cues and sufficient stems, prepares missing coverage and saves vocal measurements for matching.</p>
@@ -442,9 +442,9 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 {Object.entries(BROWSE_LABEL).map(([value, label]) => <option key={value} value={value}>{label} ({candidates.data?.statuses.find(item => item.value === value)?.count ?? 0})</option>)}
               </select>
             </div>}
-            <div><label htmlFor="subbeats-mixing" className="mb-1 block text-sm font-medium">Mixing suitability</label>
+            <div><label htmlFor="subbeats-mixing" className="mb-1 block text-sm font-medium">Per-track readiness</label>
               <select id="subbeats-mixing" className={SELECT_CLASS} value={mixing} onChange={event => updateBrowse({ mixing: event.target.value as SubbeatsBrowseState['mixing'], offset: 0 })}>
-                <option value="all">All suitability levels</option>
+                <option value="all">All readiness levels</option>
                 {Object.entries(MIX_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
