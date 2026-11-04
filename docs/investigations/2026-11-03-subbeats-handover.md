@@ -27,6 +27,12 @@ crossfade, a Sub/Beat stem mix, or a Sub/Beat mix with incoming drums looped.
 
 This is preview planning only. It does not yet wire pair admission into the
 Picker or change live transitions. Key compatibility is still not measured.
+Prepared Tracks now labels algorithm-5 role readiness as phrase-cue and vocal
+coverage, and marks the old 16-bar assessment as legacy. Its copy distinguishes
+per-track evidence from pair approval and documents the preview crossfade versus
+the required regular-selector fallback in the Picker. UI commit `a2764d2a` is on
+development and station commit `eff10d9c` is pushed; the web typecheck passes on
+both checkouts.
 The first station implementation still refused some pairs with “An incoming
 vocal would overlap the unmeasured outgoing lead-in.” The controller sent the
 automatic-plan flag, but the analyzer sidecar request schema omitted it, so
