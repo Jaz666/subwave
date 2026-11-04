@@ -62,20 +62,23 @@ model disagreement; a real musical phase change has not been established.
 fit and phase examples. Full grid and repeat probe remain outside Git in
 `/home/jaz666/codex/subbeats-beat-this-20261103/children/`.
 
-## Owner clarification: intro decay beyond the phrase boundary
+## Owner clarification: outro decay beyond the phrase boundary
 
-The owner reports approximately one second of fading echo from the final intro
-beat extending beyond the 16-bar opening. This is listening evidence supplied
-by the owner, not a newly measured tail endpoint. The bar-16 arrival remains the
-musical timing reference; it must not become a hard cut of the intro audio.
+The owner clarified that the approximately one second of fading echo is on the
+very last beat of the **outro**, not the intro. This is owner listening evidence,
+not a newly measured tail endpoint. Preserve the decay after the closing phrase;
+the musical timing marker must not become a hard cut of the ending audio.
+The projected bar-128 endpoint still needs audition and is not independently
+confirmed by this clarification.
 
-Preserve that decay into the driving-beat section. The retained stem coverage
-and rendered gain envelopes must both allow the tail to finish naturally;
-retaining samples alone is insufficient if the mix mutes them at the marker.
-Required continuation is track-dependent: do not hardcode a universal one-second
-extension, move the beat-grid marker to the end of the echo, or apply one cutoff
-to every stem. Account for the audible retained tails in pair/vocal-overlap
-assessment. Audition the boundary and decay when validating this example.
+The retained stem coverage and rendered gain envelopes must both let that tail
+finish naturally. Retaining samples alone is insufficient if the mix mutes them
+at the marker. Tail duration is track-dependent: do not hardcode a universal
+one-second extension, move the grid marker to the end of the echo, or apply one
+cutoff to every stem. Include audible tails in pair/vocal-overlap assessment.
+The existing tail audition already retains the complete original ending through
+EOF, so this correction requires no change to its audio. The head's extra bars
+provide listening context, not evidence of an intro echo.
 
 ## Implications for the proposed implementation
 
@@ -104,8 +107,8 @@ assessment. Audition the boundary and decay when validating this example.
 
 At the owner's request, generated original-mix metronome previews from the saved
 fit, without repeating inference or separating stems. The head runs from source
-zero to 49.603061s, retaining approximately seven seconds after bar 16 so the
-intro echo is not cut at the marker. Bells mark bar zero (14.587766s) and bar 16
+zero to 49.603061s, retaining approximately seven seconds after bar 16 as
+listening context. Bells mark bar zero (14.587766s) and bar 16
 (42.600000s); metronome clicks begin at the projected grid origin, not file zero.
 
 The tail runs from source 203.670340s through EOF. Bells mark bar 112, bar 120

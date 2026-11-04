@@ -96,8 +96,8 @@ it only alongside compatible selection, rendering and vocal checks. No automatic
 cache deletion or bulk recheck follows from this plan.
 
 A phrase/arrival marker is a timing reference, not an obligatory audio cutoff.
-The owner reports roughly one second of intro echo extending beyond Children’s
-16-bar boundary. Preserve such tails in both retained stem coverage and rendered
+The owner clarified that roughly one second of echo extends beyond Children’s
+closing outro phrase, not its intro. Preserve such tails in both retained stem coverage and rendered
 gain envelopes, with duration determined by the audio rather than a universal
 one-second allowance. Keep the grid marker in place and assess the actual
 continued audio for pair/vocal overlap. This applies to intro boundaries as well

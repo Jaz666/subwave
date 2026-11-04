@@ -21,13 +21,13 @@ bar despite consistent beat timing. Projected closing markers remain unauditione
 record the distinction between audio start, musical grid zero and driving-beat
 entry. Preserve the complete opening from 0:00; incoming matching must account
 for all 42.6 seconds, and narrowed stem coverage must include it plus required
-follow-through. The owner also hears about one second of final-intro-beat echo
-beyond bar 16: preserve it in both cached coverage and the rendered fade, without
+follow-through. The owner clarified that about one second of echo follows the final
+**outro** beat, not the intro: preserve it in both cached coverage and the rendered fade, without
 moving the timing marker or hardcoding a one-second tail for all tracks. Include
 retained tails in vocal-overlap assessment. Do not force a strict 16-bar duration
 or silently trust shifting model downbeat phase. No runtime/station changes. New original-mix head/tail click auditions are generated and linked from the
-Children evidence: head 0–49.60s retains the echo beyond bar 16; tail 203.67s–EOF
-marks bars 112/120/128. Audio checks passed; owner acceptance is pending.
+Children evidence: head 0–49.60s includes context after bar 16; tail 203.67s–EOF
+marks bars 112/120/128 and preserves the original ending including its echo. Audio checks passed; owner acceptance is pending.
 Next: owner audition and discussion before implementation.
 
 ### Previous research handoff — 4 November: accepted Launch reference

@@ -23,7 +23,7 @@
           "bar": 16,
           "sourceSeconds": 42.6,
           "clipSeconds": 42.6,
-          "label": "Driving beat enters; intro echo continues"
+          "label": "Driving beat enters"
         }
       ]
     },
@@ -49,7 +49,7 @@
           "bar": 128,
           "sourceSeconds": 238.68563862310612,
           "clipSeconds": 35.015298487051695,
-          "label": "Proposed phrase end; original ending retained"
+          "label": "Proposed phrase end; original ending and outro echo retained"
         }
       ]
     }
