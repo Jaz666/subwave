@@ -18,18 +18,20 @@ supported 8-8, 16-8, 8-16 and 16-16 spans; it can use an incoming drum loop when
 that clears measured vocal overlap. If no cue plan renders safely, it prepares
 the station's regular configured crossfade preview. Prepared tracks without
 usable cue artifacts remain selectable and take that fallback. Manual cue
-dropdowns and **Play selected cues** stay available for comparison.
+dropdowns and **Play selected cues** stay available for comparison. The Preview
+Timeline identifies a regular Subwave crossfade, a Sub/Beat stem mix, or a
+Sub/Beat mix with incoming drums looped.
 
 This is preview planning only. It does not yet wire pair admission into the
 Picker or change live transitions. Key compatibility is still not measured.
-Development implementation uses preview cache version 13. Implementation
-`3aea81ad` is pushed on `feat/subbeats-phrase-evidence-20261102`. Station source
-`0855d3b4` is pushed on `test-station/sleeve-notes-clean-20261014`; rollback is
-`1ce943bb`. Controller and web typechecks and the 20-case Sub/Beats route suite
-pass on the station checkout. The registered cue/Python suites (including 20
-cue cases), controller typecheck, web typecheck, scoped lint and admin-query
-audit pass on development. No services were rebuilt or restarted and no tracks
-were rescanned.
+Development implementation `3aea81ad` and UI follow-up `659286ad` are pushed
+on `feat/subbeats-phrase-evidence-20261102`. Station source `1fdee2fa` is pushed
+on `test-station/sleeve-notes-clean-20261014`; rollback is `0855d3b4`. Controller
+and web typechecks and the 20-case Sub/Beats route suite pass on the station
+checkout; its timeline UI also passes scoped lint. The registered cue/Python
+suites (including 20 cue cases), controller typecheck, web typecheck, scoped
+lint and admin-query audit pass on development. No services were rebuilt or
+restarted and no tracks were rescanned.
 
 Upstream was fetched before the station push. `main` remains release 1.30.0
 (`03a48c21`); `develop` is `1c4a9ff2` and is not an ancestor of the isolated
