@@ -63,19 +63,49 @@ Temporary servers stopped and generated Next files restored. No live audio or
 station state was touched. Five-track numerical checks reuse saved predictions;
 new separated pair previews still need the owner's listening after rescan.
 
-Upstream checked again: latest main release remains 1.30.0 at `03a48c21`, already
-integrated into the station's `b5eda6e4` base. No additional release update is
-needed. Development implementation is `a640f3bc`; station source is `b0a6e6d5` on
-`test-station/sleeve-notes-clean-20261014`. Changed implementation files match the
-verified development source, and the station's 28-module schema mirror regenerates
-without a diff. Its intentional deletion of this handover is preserved; the
-method guide and accepted-reference documents are included. Station rollback
-before this increment is `a383ea66`. Owner rebuilds
-analyzer/controller/web together, checks health, then rescans selected existing
-tracks with Beat This! small/full through Recheck/retry selected (max 100/batch).
-Do not use an older coverage-only upgrade as the migration. No Docker build,
-restart, live rescan, cache deletion, picker/broadcast enablement or external
-issue message is performed by the agent.
+### Loop-aware transition suggestions — 4 November
+
+When saved vocal measurements predict a clash, candidate search can retain the
+pair if a fitted 8- or 16-bar incoming cue starts with a fully covered,
+vocal-free two-bar drum passage. It estimates one or two repeats and requires
+later measured vocal passages to clear the outgoing passages by at least one
+beat. The preview repeats only drums, leaves bass/other/vocals silent during the
+inserted bars, checks usable drum energy, then remeasures the rendered vocal
+timeline. Loop seam quality, vocal bleed and musical fit still need listening.
+This remains a cue-preview suggestion, not picker or broadcast admission. The
+button label stays **Find suitable candidates** until the owner auditions the
+new behavior; changing it to **Find Suitable Transition** is the eventual UI
+goal.
+
+The active Rage — *Run to You* → Armand van Helden — *My My My* queue pair now
+suggests the 16-bar incoming cue with one repeated two-bar drum passage. The
+owner has not yet auditioned this updated preview. Existing algorithm-5
+preparation and saved vocal coverage are reused; no track rescan or stem
+regeneration is required for this code change. Preview cache version 12
+invalidates earlier renders.
+
+Verification for this follow-up: 17 focused analyzer Python cases, 20 controller
+route cases, controller and web typechecks, and `git diff --check` passed. No
+station build, live audio audition, rescan or runtime state change was performed.
+
+Upstream was fetched before station integration. The latest release remains
+1.30.0 at `03a48c21`, already represented in the station integration base
+`b5eda6e4`; upstream `develop` has a newer unreleased commit, which was not
+pulled into this test candidate. Loop-aware implementation `878a06c5` is pushed
+on `feat/subbeats-phrase-evidence-20261102`. Station source `ce53d1a4` is pushed
+on `test-station/sleeve-notes-clean-20261014`; rollback is `b0a6e6d5`. The
+station branch intentionally omits this development handover. Owner rebuilds
+analyzer/controller/web using the existing GPU and Discord Compose overlays,
+then checks `/api/health`:
+
+```sh
+COMPOSE_PARALLEL_LIMIT=1 docker compose -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --build analyzer controller web
+curl --fail http://localhost:7700/api/health
+```
+
+After rebuild, audition the loop-bearing suggestion before renaming the button.
+No Docker build, restart, live rescan, cache deletion, picker/broadcast
+enablement or external issue message was performed by the agent.
 
 ### Accepted research handoff — 4 November: Children head/tail previews accepted
 
