@@ -871,8 +871,11 @@ class SubbeatsPreviewRequest(BaseModel):
     coverage_keys: list[str | None] | None = Field(default=None, min_length=2, max_length=2)
     source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)
     method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')
-    cue_keys: list[str] | None = Field(default=None,min_length=2,max_length=2)
+    auto_plan: bool = False
+    cue_keys: list[str | None] | None = Field(default=None,min_length=2,max_length=2)
     cue_indices: list[int] | None = Field(default=None,min_length=2,max_length=2)
+    crossfade_seconds: float = Field(default=10, ge=0, le=30, allow_inf_nan=False)
+    equal_power_crossfade: bool = False
     window_plan: dict[str, float] | None = None
     bar_shift: int = Field(default=0, ge=-2, le=2, strict=True)
     out_gain_db: float = Field(default=0, ge=-120, le=40)
