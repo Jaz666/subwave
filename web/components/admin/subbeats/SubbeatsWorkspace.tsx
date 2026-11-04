@@ -7,6 +7,7 @@ import { subbeatsBrowseStatusSchema, subbeatsMixFilterSchema, subbeatsSortSchema
 import type { SubbeatsCandidate } from '../library/subbeats-selection';
 
 export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview' | 'cache';
+export type SubbeatsCueFilter = 'all' | 'missing-incoming' | 'missing-outgoing' | 'no-cues' | 'unmeasurable';
 export type SubbeatsBrowseState = {
   mixing: z.infer<typeof subbeatsMixFilterSchema>;
   sort: z.infer<typeof subbeatsSortSchema>;
@@ -28,6 +29,7 @@ function useWorkspaceState() {
   const [jobQuery, setJobQuery] = useState('');
   const [jobSort, setJobSort] = useState('priority');
   const [jobStatus, setJobStatus] = useState('all');
+  const [jobCueFilter, setJobCueFilter] = useState<SubbeatsCueFilter>('all');
   const [jobPage, setJobPage] = useState(0);
   const [previewSearch, setPreviewSearch] = useState('');
   const [outgoing, setOutgoing] = useState('');
@@ -75,7 +77,7 @@ function useWorkspaceState() {
     const query = params.toString();
     window.history.replaceState(window.history.state, '', `${pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }, [browse, browsePage, pathname, restoredPath]);
-  return { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+  return { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus, jobCueFilter, setJobCueFilter,
     jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming };
 }
 

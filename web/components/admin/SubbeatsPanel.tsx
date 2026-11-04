@@ -50,7 +50,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const cache = useSubbeatsCache();
   const regularIds = new Set(cache.query.data?.policy.regularIds ?? []);
   const { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
-    jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming } = useSubbeatsWorkspace();
+    jobCueFilter, setJobCueFilter, jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
   const { query, offset, scope, genre, status, sort, mixing, playlistId } = browse[browsePage];
   const updateBrowse = (patch: Partial<SubbeatsBrowseState>) => setBrowse(current => ({
@@ -176,7 +176,23 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const pending = jobs.filter(j => j.status === 'queued' || j.status === 'running').length;
   const unassessed = jobs.filter(job => job.bundleKey && !job.suitability && (job.status === 'prepared' || job.status === 'unmeasurable' || job.status === 'failed'));
   const prepared = jobs.filter(j => j.status === 'prepared').length;
+  const cueFilterMatch = (filter: typeof jobCueFilter, job: typeof jobs[number]) => {
+    const missingIncoming = !job.cuePoints?.incoming.length;
+    const missingOutgoing = !job.cuePoints?.outgoing.length;
+    return filter === 'all' || (filter === 'missing-incoming' && missingIncoming)
+      || (filter === 'missing-outgoing' && missingOutgoing)
+      || (filter === 'no-cues' && missingIncoming && missingOutgoing)
+      || (filter === 'unmeasurable' && job.status === 'unmeasurable');
+  };
+  const cueFilterCounts = {
+    all: jobs.length,
+    'missing-incoming': jobs.filter(job => cueFilterMatch('missing-incoming', job)).length,
+    'missing-outgoing': jobs.filter(job => cueFilterMatch('missing-outgoing', job)).length,
+    'no-cues': jobs.filter(job => cueFilterMatch('no-cues', job)).length,
+    unmeasurable: jobs.filter(job => cueFilterMatch('unmeasurable', job)).length,
+  };
   const ranked = jobs.filter(job => (jobStatus === 'all' || job.status === jobStatus)
+    && cueFilterMatch(jobCueFilter, job)
     && `${job.artist} ${job.title} ${job.album}`.toLowerCase().includes(jobQuery.trim().toLowerCase())).sort((a, b) => {
     const priority = (s: Status) => s === 'running' ? 0 : s === 'queued' ? 1 : s === 'failed' || s === 'unavailable' ? 2 : 3;
     const names = a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' }) || a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id);
@@ -555,6 +571,16 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <div className="grid gap-3 border-b border-ink p-4">
           <div><label htmlFor="subbeats-job-search" className="mb-1 block text-sm font-medium">Find preparation entries</label><Input className="min-h-11" id="subbeats-job-search" type="search" value={jobQuery} placeholder="Artist, track or album" onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /></div>
           <div><label htmlFor="subbeats-job-status" className="mb-1 block text-sm font-medium">Preparation status</label><select id="subbeats-job-status" className={SELECT_CLASS} value={jobStatus} onChange={event => { setJobStatus(event.target.value); setJobPage(0); }}><option value="all">All entries ({jobs.length})</option>{Object.entries(LABEL).map(([value, label]) => <option key={value} value={value}>{label} ({jobs.filter(job => job.status === value).length})</option>)}</select></div>
+          <div><label htmlFor="subbeats-job-cues" className="mb-1 block text-sm font-medium">Cue availability</label>
+            <select id="subbeats-job-cues" className={SELECT_CLASS} value={jobCueFilter} onChange={event => { setJobCueFilter(event.target.value as typeof jobCueFilter); setJobPage(0); }}>
+              <option value="all">All cue results ({cueFilterCounts.all})</option>
+              <option value="missing-incoming">Missing incoming cue ({cueFilterCounts['missing-incoming']})</option>
+              <option value="missing-outgoing">Missing outgoing cue ({cueFilterCounts['missing-outgoing']})</option>
+              <option value="no-cues">No cues detected ({cueFilterCounts['no-cues']})</option>
+              <option value="unmeasurable">Unmeasurable ({cueFilterCounts.unmeasurable})</option>
+            </select>
+            <p className="mt-2 text-xs leading-relaxed text-muted">Missing cues mean no marker was detected for that role; this filter does not indicate missing stem coverage.</p>
+          </div>
           <div><label htmlFor="subbeats-job-sort" className="mb-1 block text-sm font-medium">Sort by</label>
             <select id="subbeats-job-sort" className={SELECT_CLASS} value={jobSort} onChange={event => { setJobSort(event.target.value); setJobPage(0); }}>
               <option value="priority">Active &amp; needs attention first</option><option value="newest">Recently updated</option>
@@ -586,7 +612,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {batchRemove.isPending && <p role="status" className="mt-2 text-sm">{removeProgress}</p>}
           {batchRemove.data && <p role={batchRemove.data.error ? 'alert' : 'status'} className="mt-2 text-sm">Removed {batchRemove.data.removed.length} of {batchRemove.data.total} entries.{batchRemove.data.error && ` ${batchRemove.data.error} Remaining entries stay selected; retry when the problem is resolved.`}</p>}
         </div>
-        {jobs.length > 0 && !ranked.length && <p className="p-4 text-sm text-muted">No preparation entries match. Clear the search or choose another status.</p>}
+        {jobs.length > 0 && !ranked.length && <p className="p-4 text-sm text-muted">No preparation entries match. Clear the search or change the filters.</p>}
         {!jobs.length && <div className="p-6 text-sm"><p className="text-muted">Your preparation list is empty. Choose tracks on Explore, then select Queue analysis.</p><Link href="/admin/library/subbeats" className="inline-flex min-h-11 items-center underline underline-offset-4">Explore tracks</Link></div>}
         <ul className="divide-y divide-ink/20">
           {pageJobs.map(job => <li key={job.id} className="p-4">
