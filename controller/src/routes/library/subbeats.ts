@@ -20,6 +20,7 @@ import { subbeatsReferences } from '../../music/subbeats-references.js';
 import { pipeline } from 'node:stream/promises';
 import * as subsonic from '../../music/subsonic.js';
 import { fetchWithTimeout } from '../../util/fetch-timeout.js';
+import * as settings from '../../settings.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
@@ -161,17 +162,19 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const tracks = parsed.data.trackIds.map(id => state.jobs.find(j => j.id === id));
     if (tracks[0]?.id === tracks[1]?.id || tracks.some(j => j?.status !== 'prepared' || !j.bundleKey)) throw new Error('Choose two different prepared tracks.');
     const cueMode = parsed.data.method === 'cue-points';
+    const autoPlan = parsed.data.autoPlan === true;
+    if (autoPlan && !cueMode) throw new Error('Automatic transition planning requires cue-point preview mode.');
     if (cueMode && (parsed.data.matched || parsed.data.referenceBars !== undefined || parsed.data.barShift !== 0)) throw new Error('Cue-point previews use saved cue choices. Reset the bar shift and match selection.');
     const cueIndices = parsed.data.cueIndices ?? [0,0];
-    if (cueMode && tracks.some(track => track?.cuePoints?.algorithmVersion !== 5)) throw new Error('Rescan both tracks with Beat This! for the new phrase preview.');
-    if (cueMode && (!tracks[0]?.cuePoints?.outgoing[cueIndices[0]!] || !tracks[1]?.cuePoints?.incoming[cueIndices[1]!])) throw new Error('Recheck both tracks with a Beat This! preparation method and choose saved cue points.');
+    if (cueMode && !autoPlan && tracks.some(track => track?.cuePoints?.algorithmVersion !== 5)) throw new Error('Rescan both tracks with Beat This! for the new phrase preview.');
+    if (cueMode && !autoPlan && (!tracks[0]?.cuePoints?.outgoing[cueIndices[0]!] || !tracks[1]?.cuePoints?.incoming[cueIndices[1]!])) throw new Error('Recheck both tracks with a Beat This! preparation method and choose saved cue points.');
     await library.load();
     await blocklist.load();
     const songs = parsed.data.trackIds.map(id => db.getTrack(id));
     for (const track of songs) {
       if (!track || blocklist.hitOf(track)) throw new Error('A selected track is unavailable or blocked. Choose another pair.');
     }
-    if (cueMode) {
+    if (cueMode && !autoPlan) {
       const duration = tracks[0]!.cuePoints!.durationSeconds ?? songs[0]?.durationSec;
       const seconds = tracks[0]!.cuePoints!.outgoing[cueIndices[0]!]!.sourceSeconds;
       if (!duration || seconds < duration*.5 || seconds >= duration) {
@@ -190,7 +193,11 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
     const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
-      ...(cueMode ? {method:'cue-points' as const,cue_keys:tracks.map(track => track!.cuePoints!.artifactKey),cue_indices:cueIndices,coverage_keys:tracks.map(track => track!.cueCoverage?.artifactKey ?? null)} : {})});
+      ...(cueMode ? {method:'cue-points' as const,auto_plan:autoPlan,
+        cue_keys:tracks.map(track => track?.cuePoints?.algorithmVersion === 5 ? track.cuePoints.artifactKey : null),
+        cue_indices:cueIndices,coverage_keys:tracks.map(track => track?.cueCoverage?.artifactKey ?? null),
+        ...(autoPlan ? {crossfade_seconds:settings.get().crossfadeDuration,
+          equal_power_crossfade:settings.get().transitions?.equalPowerCrossfade === true} : {})} : {})});
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

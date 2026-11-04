@@ -9,11 +9,44 @@ from unittest.mock import patch
 import numpy as np
 import subbeats_cache as cache
 import subbeats_cues as cues
+import subbeats_cue_matching as matching
 import subbeats_cue_preview as preview
 from subbeats_models import model_path
 
 
 class CueTests(unittest.TestCase):
+    def test_pair_planner_ranks_prepared_bar_combinations_by_fit(self):
+        outgoing=[dict(sourceSeconds=160,phraseEndSeconds=192,phraseBars=16,bpm=120),
+                  dict(sourceSeconds=168,phraseEndSeconds=184,phraseBars=8,bpm=120)]
+        incoming=[dict(sourceSeconds=32,phraseBars=16,bpm=120),
+                  dict(sourceSeconds=16,phraseBars=8,bpm=120),
+                  dict(sourceSeconds=32,phraseBars=16,bpm=108)]
+        plans=matching.plan_pair_transitions(outgoing,incoming,210,180)
+        self.assertEqual((plans[0]['outgoingCueIndex'],plans[0]['incomingCueIndex']),(0,0))
+        self.assertEqual((plans[0]['outgoingBars'],plans[0]['incomingBars']),(16,16))
+        self.assertEqual(plans[0]['outgoingTimeToEndSeconds'],-50)
+        self.assertEqual(plans[0]['incomingSeconds'],32)
+        self.assertFalse(any(plan['incomingCueIndex']==2 for plan in plans),'incompatible tempo is excluded')
+
+    def test_regular_fallback_preview_uses_station_crossfade_and_reports_its_mode(self):
+        out=np.full((2,1000),.5,dtype=np.float32)
+        inc=np.full((2,800),.7,dtype=np.float32)
+        req=dict(source_urls=['out','in'],crossfade_seconds=2,equal_power_crossfade=False)
+        with patch.object(preview,'STEM_SR',100),patch('subbeats_reference_preview.source_audio',side_effect=[out,inc]):
+            audio,result=preview.render_regular_fallback(req,[None,None],[{},{}],[0,0],object())
+        self.assertEqual(result['timeline']['kind'],'regular-fallback')
+        self.assertEqual(audio.shape,(2,1000))
+        self.assertAlmostEqual(float(audio[0,399]),.5,places=3)
+        self.assertAlmostEqual(float(audio[0,500]),.6,places=2)
+        self.assertAlmostEqual(float(audio[0,700]),.7,places=2)
+
+    def test_auto_pair_without_saved_cues_uses_regular_fallback(self):
+        req=dict(auto_plan=True,cue_keys=[None,None])
+        result=(np.zeros((2,1),dtype=np.float32),{'timeline':{'kind':'regular-fallback'}})
+        with patch.object(preview,'render_regular_fallback',return_value=result) as fallback:
+            self.assertIs(preview.render_automatic_transition(req,[],[],[],object())[1],result[1])
+        fallback.assert_called_once()
+
     def test_new_analysis_reads_the_full_source_without_legacy_stem_limits(self):
         with tempfile.TemporaryDirectory() as tmp:
             state=Path(tmp);source=state/'source';source.write_bytes(b'complete recording')

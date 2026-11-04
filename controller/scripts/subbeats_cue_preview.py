@@ -151,9 +151,111 @@ def insert_incoming_drum_loop(parts, loop):
             for name,audio in parts.items()}
 
 
+def render_regular_fallback(req,folders,records,gains,fetch_source):
+    """Audition the configured ordinary Subwave crossfade when no cue plan fits."""
+    import numpy as np
+    from subbeats_reference_preview import source_audio
+    urls=req.get('source_urls')
+    if fetch_source is None or not isinstance(urls,list) or len(urls)!=2:
+        raise ValueError('No Sub/Beat transition fits, and the original tracks are unavailable for a regular preview.')
+    sources=[source_audio(urls[i],folders[i],records[i],fetch_source,require_hash=True) for i in range(2)]
+    out_duration,in_duration=(source.shape[1]/STEM_SR for source in sources)
+    fade=float(req.get('crossfade_seconds',10.))
+    if not math.isfinite(fade) or not 0<=fade<=30:
+        raise ValueError('Invalid regular crossfade duration.')
+    fade=min(fade,out_duration,in_duration)
+    lead=min(4.,out_duration-fade)
+    follow=min(4.,in_duration-fade)
+    total=round((lead+fade+follow)*STEM_SR)
+    start=round((out_duration-lead-fade)*STEM_SR)
+    overlap=round(fade*STEM_SR)
+    before=round(lead*STEM_SR)
+    audio=np.zeros((2,total),dtype=np.float32)
+    outgoing=sources[0][:,start:start+before+overlap]*10**(gains[0]/20)
+    incoming=sources[1][:,:overlap+round(follow*STEM_SR)]*10**(gains[1]/20)
+    if overlap:
+        progress=np.linspace(0,1,overlap,endpoint=True)
+        if req.get('equal_power_crossfade') is True:
+            out_gain=np.cos(progress*np.pi/2)
+            in_gain=np.sin(progress*np.pi/2)**1.5
+        else:
+            out_gain=1-progress
+            in_gain=progress
+        outgoing[:,before:before+overlap]*=out_gain
+        incoming[:,:overlap]*=in_gain
+    audio[:,:outgoing.shape[1]]+=outgoing
+    if overlap:
+        audio[:,before:before+overlap]+=incoming[:,:overlap]
+    after_start=before+overlap
+    if incoming.shape[1]>overlap:
+        audio[:,after_start:after_start+incoming.shape[1]-overlap]+=incoming[:,overlap:]
+    edge=min(round(.03*STEM_SR),total//2)
+    if edge:
+        audio[:,:edge]*=np.linspace(0,1,edge)
+        audio[:,-edge:]*=np.linspace(1,0,edge)
+    peak=float(np.max(np.abs(audio)))
+    if not np.isfinite(audio).all() or peak<1e-8:
+        raise ValueError('The regular transition preview contains no usable audio.')
+    audio*=min(1.,.98/peak)
+    duration=audio.shape[1]/STEM_SR
+    timeline=dict(kind='regular-fallback',duration=duration,events=[
+        dict(at=0.,label='Outgoing original audio · regular Subwave transition'),
+        dict(at=lead,label=f'Regular Subwave {fade:.1f}s crossfade begins'),
+        dict(at=lead+fade,label='Outgoing recording ends; incoming continues'),
+        dict(at=duration,label='Preview complete')])
+    return audio,dict(timeline=timeline,method='regular-crossfade',experimental=False,
+        transition=dict(method='regular-crossfade',durationSeconds=fade))
+
+
+def render_automatic_transition(req,folders,records,gains,fetch_source):
+    from subbeats_cues import load_cues
+    from subbeats_cue_matching import plan_pair_transitions
+    keys=req.get('cue_keys')
+    candidates=[]
+    if isinstance(keys,list) and len(keys)==2 and all(isinstance(key,str) for key in keys):
+        try:
+            cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
+            if all(cue.get('algorithmVersion')==5 for cue in cues):
+                durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
+                coverage=req.get('_cue_coverage') or [None,None]
+                outgoing_vocals=(coverage[0][1].get('metadata',{}).get('outgoing') if coverage[0] else None)
+                incoming_vocals=(coverage[1][1].get('metadata',{}).get('incoming') if coverage[1] else None)
+                candidates=plan_pair_transitions(cues[0].get('outgoing',[]),cues[1].get('incoming',[]),
+                    *durations,outgoing_vocals,incoming_vocals)
+        except (OSError,KeyError,TypeError,ValueError):
+            candidates=[]
+    for candidate in candidates[:12]:
+        try:
+            audio,result=render_cue_preview({**req,'auto_plan':False,
+                'cue_indices':[candidate['outgoingCueIndex'],candidate['incomingCueIndex']]},
+                folders,records,gains,fetch_source)
+            out_bars,in_bars=candidate['outgoingBars'],candidate['incomingBars']
+            label=(f'{out_bars} bars out → {in_bars} bars in' if out_bars and in_bars
+                   else 'Cue-point Sub/Beat mix')
+            label+= (f" · out cue {candidate['outgoingTimeToEndSeconds']:.2f}s to end"
+                     f" · in arrival {candidate['incomingSeconds']:.2f}s from start")
+            loop=result['transition']
+            if loop.get('method')=='drum-loop':
+                label+=f" · incoming drums looped for {loop['bars']} bars × {loop['repeats']}"
+            result['timeline']['kind']='subbeats-transition'
+            result['timeline']['events'][0]['label']='Outgoing track · '+label
+            for event in result['timeline']['events']:
+                if event['label']=='Selected outgoing closing cue':
+                    event['label']=f"Selected outgoing cue · {candidate['outgoingTimeToEndSeconds']:.2f}s to track end"
+                elif event['label'].startswith('Incoming opening ·'):
+                    event['label']=f"Incoming arrival · {candidate['incomingSeconds']:.2f}s from source start"
+            result['transition_summary']=label
+            return audio,result
+        except ValueError:
+            continue
+    return render_regular_fallback(req,folders,records,gains,fetch_source)
+
+
 def render_cue_preview(req,folders,records,gains,fetch_source=None):
     import librosa
     from subbeats_cues import load_cues
+    if req.get('auto_plan'):
+        return render_automatic_transition(req,folders,records,gains,fetch_source)
     if req.get('bar_shift',0) or req.get('reference') is not None or req.get('window_plan') is not None:
         raise ValueError('Cue-point previews use saved cue choices. Reset the bar shift and find-match selection.')
     keys=req.get('cue_keys',[])
