@@ -392,9 +392,12 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       {browsing && <section className="min-w-0 border border-ink" aria-labelledby="subbeats-candidates" aria-busy={candidates.isFetching}>
         <div className="border-b border-ink p-4">
           <h2 id="subbeats-candidates" className="font-display text-xl font-bold">{page === 'prepared' ? 'Prepared tracks' : 'Tracks to explore'}</h2>
-          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared means the files are saved. Suitability describes each track’s incoming and outgoing capability. Choose a pair, then open Preview to listen. Remove an entry to delete its extended files.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
+          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared means the files are saved. Choose an outgoing and incoming track, then open Preview to find and listen to the best transition. Remove an entry to delete its extended files.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
           <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Regular stem inclusion is separate from deeper Sub/Beats preparation. It bypasses selective cache criteria, with the normal priority and space budget.</p>
-          <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Suitability uses the best of the two roles; expand a result for each role’s evidence. Pair selection still checks tempo and coverage. Vocal and musical fit need listening.</p>
+          {page === 'prepared' ? <>
+            <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Suitability describes each track’s incoming and outgoing cue support, not pair approval. Find Suitable Transition checks the selected pair’s cue fit and vocal overlap, with a safe drum-loop option.</p>
+            <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">If no Sub/Beat plan fits, this preview uses the configured crossfade; Picker integration will delegate that case to Subwave’s regular transition selector. Listen for musical fit.</p>
+          </> : <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Suitability reports per-track role evidence. The selected pair is evaluated in Preview after both tracks are prepared.</p>}
           {page === 'prepared' && needsCoverage.length > 0 && <div className="mt-3">
             <Button className="min-h-11" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate(needsCoverage.slice(0,SUBBEATS_BATCH_LIMIT).map(job => job.id))}>Upgrade cue coverage ({Math.min(needsCoverage.length,SUBBEATS_BATCH_LIMIT)})</Button>
             <p className="mt-1 text-xs text-muted">Reuses saved cues and sufficient stems, prepares missing coverage and saves vocal measurements for matching.</p>
@@ -513,7 +516,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 <p className="mt-1 text-xs break-words text-muted lg:mt-0">{row.genres.join(' · ')}</p>
                 <p className="mt-2 text-xs text-muted lg:mt-0">{BROWSE_LABEL[job?.status ?? row.status]} · {row.hasBeatGrid ? 'Beat data available' : row.bpm ? 'Tempo estimate only' : 'No tempo data'}</p>
                 {job?.cuePoints && <p className="mt-1 text-xs text-muted lg:col-span-3">{job.cueCoverage ? 'Matching coverage and vocal measurements saved · check each pair for compatibility.' : 'Cues detected · upgrade cue coverage for saved vocal matching.'}</p>}
-                <SuitabilityDetails value={job ? job.suitability : row.suitability} />
+                <SuitabilityDetails value={job ? job.suitability : row.suitability} cueBased={job?.cuePoints?.algorithmVersion === 5} />
                 <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs lg:col-span-3">
                   <Checkbox aria-label={`Include ${row.title} by ${row.artist} in regular stem caching`} checked={regularIds.has(row.id)}
                     disabled={!cache.query.data || cache.query.isError || cache.update.isPending}
@@ -596,7 +599,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
             </div>
             <p className="mt-2 text-xs font-medium" role={job.status === 'running' ? 'status' : undefined}>{LABEL[job.status]}{job.cuePoints ? ` · ${job.cuePoints.model} cues: ${job.cuePoints.incoming.length} incoming / ${job.cuePoints.outgoing.length} outgoing` : job.preparationMethod ? ` · ${job.preparationMethod}` : ''}</p>
             {job.cuePoints && <p className="mt-1 text-xs text-muted">{job.cueCoverage ? `Matching coverage saved: ${[job.cueCoverage.incoming ? 'incoming' : '',job.cueCoverage.outgoing ? 'outgoing' : ''].filter(Boolean).join(' and ') || 'no cue roles detected'}. Pair compatibility still needs checking.` : 'Cues detected · upgrade coverage for saved vocal matching.'}</p>}
-            <SuitabilityDetails value={job.suitability} />
+            <SuitabilityDetails value={job.suitability} cueBased={job.cuePoints?.algorithmVersion === 5} />
             {job.error && <p className="mt-1 text-xs leading-relaxed break-words text-muted">{job.error}</p>}
           </li>)}
         </ul>
