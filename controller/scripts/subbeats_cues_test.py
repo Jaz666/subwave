@@ -288,6 +288,40 @@ class CueTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             find_cue_matches([out,inc],'out',7)
 
+    def test_cue_matching_suggests_a_two_bar_drum_loop_for_a_clearable_vocal_clash(self):
+        from subbeats_cue_matching import find_cue_matches
+        def activity(start,end,passages):
+            return dict(coverageStartSeconds=start,coverageEndSeconds=end,resolutionSeconds=.05,
+                        passages=[dict(startSeconds=a,endSeconds=b) for a,b in passages])
+        outgoing=dict(id='out',title='out',artist='A',status='prepared',cuePoints=dict(
+            algorithmVersion=5,outgoing=[dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)],durationSeconds=210),
+            cueCoverage=dict(outgoing=activity(150,210,[(170,200)])))
+        incoming=dict(id='in',title='in',artist='B',status='prepared',cuePoints=dict(
+            algorithmVersion=5,incoming=[dict(sourceSeconds=16,bpm=120,phraseBars=8,timingSource='fitted-grid')],durationSeconds=180),
+            cueCoverage=dict(incoming=activity(0,100,[(25,35)])))
+        match=find_cue_matches([outgoing,incoming],'out')['matches'][0]
+        self.assertEqual(match['transition']['method'],'drum-loop')
+        self.assertEqual(match['transition']['repeatCount'],1)
+        self.assertEqual(match['vocal']['status'],'estimated')
+
+        incoming['cueCoverage']['incoming']=activity(0,100,[(17,19)])
+        self.assertEqual(find_cue_matches([outgoing,incoming],'out')['excluded']['vocals'],1)
+
+    def test_drum_loop_repeats_drums_and_holds_the_other_incoming_stems(self):
+        from subbeats_cue_preview import insert_incoming_drum_loop
+        frames=round(.1*preview.STEM_SR)
+        parts={name:np.full((2,frames),.1,dtype=np.float32) for name in preview.STEMS}
+        loop=dict(startSeconds=.02,loopSeconds=.02,repeats=1)
+        looped=insert_incoming_drum_loop(parts,loop)
+        start=round(loop['startSeconds']*preview.STEM_SR)
+        length=round(loop['loopSeconds']*preview.STEM_SR)
+        stop=start+length
+        self.assertEqual(looped['drums'].shape[1],frames+length)
+        np.testing.assert_array_equal(looped['drums'][:,stop:stop+length],parts['drums'][:,start:stop])
+        self.assertFalse(np.any(looped['bass'][:,stop:stop+length]))
+        self.assertFalse(np.any(looped['other'][:,stop:stop+length]))
+        self.assertFalse(np.any(looped['vocals'][:,stop:stop+length]))
+
     def test_cue_renderer_refuses_detected_overlap_without_cutting_either_vocal(self):
         out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
         inc_cue=dict(sourceSeconds=32,bpm=120)
@@ -348,6 +382,30 @@ class CueTests(unittest.TestCase):
                 audio,result=preview.render_cue_preview(req,folders,[{},{}],[0,0],fetch_source=object())
                 self.assertAlmostEqual(float(audio[0,1000]),.1,places=5)
                 self.assertFalse(result['used_models'])
+
+    def test_cue_renderer_applies_the_suggested_drum_loop_and_rechecks_vocals(self):
+        out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
+        in_cue=dict(sourceSeconds=16,bpm=120,phraseBars=8,timingSource='fitted-grid')
+        outgoing={s:np.zeros((2,56000),dtype=np.float32) for s in preview.STEMS}
+        incoming={s:np.zeros((2,52000),dtype=np.float32) for s in preview.STEMS}
+        outgoing['drums'][:]=.1;incoming['drums'][:]=.1
+        outgoing['vocals'][:,44000:50000]=.3 # source200–206
+        incoming['vocals'][:,25000:35000]=.3 # source25–35 after placement
+        with tempfile.TemporaryDirectory() as tmp:
+            folders=[Path(tmp)/name for name in ['out','in']]
+            for folder,duration in zip(folders,[210,180]):
+                folder.mkdir();(folder/'analysis.json').write_text(json.dumps(dict(duration_seconds=duration)))
+            req=dict(state_dir=tmp,track_ids=['out','in'],cue_keys=['a','b'])
+            with (patch.dict('sys.modules',librosa=SimpleNamespace()),
+                  patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[in_cue])),
+                  patch.object(preview,'STEM_SR',1000),
+                  patch.object(preview,'cue_region',side_effect=[(outgoing,False),(incoming,False)])):
+                audio,result=preview.render_cue_preview(req,folders,[{},{}],[0,0])
+        self.assertEqual(result['transition']['method'],'drum-loop')
+        self.assertEqual(result['transition']['repeats'],2)
+        self.assertEqual(audio.shape[1],54000)
+        loop_events=[event for event in result['timeline']['events'] if 'drums loop' in event['label']]
+        self.assertEqual(len(loop_events),1)
 
 
 

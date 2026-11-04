@@ -123,10 +123,32 @@ def mix_passages(out_parts,in_parts,plan):
             dict(at=arrival,label='Incoming arrival meets outgoing closing change'),
             dict(at=plan['out_end']-plan['first'],label='Outgoing recording finishes naturally'),
             dict(at=duration,label='Preview complete')]
+    if plan.get('incoming_loop'):
+        loop=plan['incoming_loop']
+        events.append(dict(at=plan['entry']-plan['first']+loop['startSeconds']/plan['rate'],
+                           label=f"Incoming drums loop · 2 bars × {loop['repeats']}"))
     duration=audio.shape[1]/STEM_SR
     for event in events:
         event['at']=min(duration,max(0.,event['at']))
     return audio,dict(duration=duration,events=sorted(events,key=lambda e:e['at']))
+
+
+def insert_incoming_drum_loop(parts, loop):
+    """Repeat only a measured, vocal-free incoming drum passage."""
+    import numpy as np
+    start=round(loop['startSeconds']*STEM_SR)
+    length=round(loop['loopSeconds']*STEM_SR)
+    stop=start+length
+    repeats=loop['repeats']
+    if start<0 or length<=0 or repeats not in (1,2) or any(audio.shape[1]<stop for audio in parts.values()):
+        raise ValueError('The incoming drum loop is outside saved stem coverage. Choose another transition.')
+    drums=parts['drums'][:,start:stop]
+    if not np.isfinite(drums).all() or float(np.sqrt(np.mean(drums**2)))<1e-5:
+        raise ValueError('The selected two-bar passage has no usable incoming drums. Choose another transition.')
+    inserted=np.tile(drums,(1,repeats))
+    silence=np.zeros((2,length*repeats),dtype=np.float32)
+    return {name:np.concatenate((audio[:,:stop],inserted if name=='drums' else silence,audio[:,stop:]),axis=1)
+            for name,audio in parts.items()}
 
 
 def render_cue_preview(req,folders,records,gains,fetch_source=None):
@@ -182,11 +204,26 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     out_parts,out_extended=parts(0,'exit',plan['first'],plan['out_end'])
     in_parts,in_extended=parts(1,'head',0.,plan['incoming_end'])
     from subbeats_vocals import measure_vocals
-    from subbeats_cue_matching import assess_vocal_pair
-    vocal = assess_vocal_pair(measure_vocals(out_parts,STEM_SR,plan['first']),
-                              measure_vocals(in_parts,STEM_SR),plan)
+    from subbeats_cue_matching import assess_vocal_pair, plan_incoming_drum_loop
+    actual_outgoing_vocals=measure_vocals(out_parts,STEM_SR,plan['first'])
+    actual_incoming_vocals=measure_vocals(in_parts,STEM_SR)
+    coverage=req.get('_cue_coverage') or [None,None]
+    outgoing_vocals=(coverage[0][1].get('metadata',{}).get('outgoing') if coverage[0] else None) or actual_outgoing_vocals
+    incoming_vocals=(coverage[1][1].get('metadata',{}).get('incoming') if coverage[1] else None) or actual_incoming_vocals
+    vocal = assess_vocal_pair(outgoing_vocals,incoming_vocals,plan)
+    transition=dict(method='standard')
     if vocal['status']=='conflict':
-        raise ValueError(vocal['reason'])
+        loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,incoming,plan)
+        if loop_plan is None:
+            raise ValueError(vocal['reason'])
+        loop,_,_=loop_plan
+        in_parts=insert_incoming_drum_loop(in_parts,loop)
+        actual_incoming_vocals=measure_vocals(in_parts,STEM_SR)
+        vocal=assess_vocal_pair(actual_outgoing_vocals,actual_incoming_vocals,plan)
+        if vocal['status']=='conflict' or vocal['status']=='coverage':
+            raise ValueError('The two-bar incoming drum loop did not clear the measured vocal overlap. Choose another transition.')
+        transition=loop
+        plan={**plan,'incoming_loop':loop}
     if plan['rate']!=1.:
         in_parts={name:librosa.effects.time_stretch(part,rate=plan['rate']) for name,part in in_parts.items()}
     out_parts={name:part*10**(gains[0]/20) for name,part in out_parts.items()}
@@ -194,6 +231,7 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     audio,timeline=mix_passages(out_parts,in_parts,plan)
     return audio,dict(timeline=timeline,experimental=True,phrase_verified=False,
         method='cue-points',incoming_rate=plan['rate'],bpm=outgoing['bpm'],used_models=out_extended or in_extended,
+        transition=transition,
         extended_regions=dict(outgoing=out_extended,incoming=in_extended),
         selected_windows=dict(outgoing_seconds=outgoing['sourceSeconds'],outgoing_handover_seconds=plan['handover'],
             incoming_seconds=incoming['sourceSeconds'],outgoing_end_seconds=plan['out_end'],incoming_start_seconds=0.,
