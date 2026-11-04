@@ -263,7 +263,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           </select>
           <Button className="mt-2 min-h-11" disabled={!ready || !outgoingCue || cueMatches.isFetching} onClick={() => {
             if (cueMatchesEnabled) void cueMatches.refetch(); else setCueMatchFor(cueMatchContext);
-          }}>{cueMatches.isFetching ? 'Finding candidates…' : 'Find suitable candidates'}</Button>
+          }}>{cueMatches.isFetching ? 'Finding a suitable transition…' : 'Find Suitable Transition'}</Button>
         </div>;
 
   const addRows = (added: SubbeatsCandidate[]) => setSelected(current => selectSubbeatsRows(current, added, jobs));
@@ -337,7 +337,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <h3 id="subbeats-cue-candidates" className="font-display text-lg font-bold">Suggested incoming tracks</h3>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Uses your selected outgoing finish and saved analysis from prepared tracks. Select a suggestion, then press Play preview to audition it. When a fitted two-bar drum loop can clear a detected vocal clash, the preview includes that loop. Listen for musical fit and vocal bleed.</p>
         {cueMatches.isFetching && <p role="status" className="mt-3 text-sm">Comparing saved cues, tempo, vocal passages and possible drum loops…</p>}
-        {cueMatches.isError && <p role="alert" className="mt-3 text-sm">{cueMatches.error.message} Try Find suitable candidates again.</p>}
+        {cueMatches.isError && <p role="alert" className="mt-3 text-sm">{cueMatches.error.message} Try Find Suitable Transition again.</p>}
         {!cueMatches.isFetching && !cueMatches.isError && cueMatches.data && <>
           <p role="status" className="mt-3 text-sm">{cueMatchRows.length ? `Showing ${Math.min(10,cueMatchRows.length)} of ${cueMatchRows.length} suggested tracks.` : 'No candidates found for this finish. Try another outgoing cue or prepare more tracks.'}</p>
           <ul className="mt-3 divide-y divide-ink/20">

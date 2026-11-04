@@ -152,9 +152,10 @@ The preview remains bounded to 120 seconds and 8% tempo adjustment.
 1. Prepare/rescan tracks with Beat This! small or full; wait for completion.
 2. In Preview, choose the outgoing track and its 16- or 8-bar closing cue.
    Outgoing times still count negatively to original EOF. Listen to the ending.
-3. Find suitable candidates or choose an incoming track directly. Arrival times
-   count from source zero, including long beatless introductions. Length fit
-   ranks choices but is not vocal, phrase or key approval.
+3. Choose **Find Suitable Transition** to rank incoming cue plans, or select a
+   track directly. Arrival times count from source zero, including long
+   beatless introductions. Length fit ranks choices but is not vocal, phrase or
+   key approval.
 4. Listen to the opening or play the pair preview. A failed/uncertain pair stays
    explicit; existing station transitions continue unchanged.
 
@@ -344,6 +345,9 @@ need listening, including Gusto's groove in `other`. There is no loop or automat
 broadcast/pair approval.
 
 ## Loop-aware cue suggestions — version 10
+
+The Preview action is labelled **Find Suitable Transition** because each result
+selects both an incoming cue and its transition plan.
 
 When the saved vocal measurements show a clash, cue matching can suggest an
 incoming drum loop instead of discarding the pair. It only considers a fitted
