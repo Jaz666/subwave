@@ -24,14 +24,22 @@ Sub/Beat mix with incoming drums looped.
 
 This is preview planning only. It does not yet wire pair admission into the
 Picker or change live transitions. Key compatibility is still not measured.
-Development implementation `3aea81ad` and UI follow-up `659286ad` are pushed
-on `feat/subbeats-phrase-evidence-20261102`. Station source `1fdee2fa` is pushed
-on `test-station/sleeve-notes-clean-20261014`; rollback is `0855d3b4`. Controller
-and web typechecks and the 20-case Sub/Beats route suite pass on the station
-checkout; its timeline UI also passes scoped lint. The registered cue/Python
-suites (including 20 cue cases), controller typecheck, web typecheck, scoped
-lint and admin-query audit pass on development. No services were rebuilt or
-restarted and no tracks were rescanned.
+The first station implementation still refused some pairs with “An incoming
+vocal would overlap the unmeasured outgoing lead-in.” The controller sent the
+automatic-plan flag, but the analyzer sidecar request schema omitted it, so
+Pydantic dropped it and the worker ran the manual cue path. The sidecar schema
+now forwards `auto_plan`, nullable cue keys, crossfade duration and crossfade
+curve; the automatic planner can then fall back to the configured regular
+crossfade for this conflict. Development commits `3aea81ad` and `659286ad`
+cover pair planning and the timeline label; fix `1ca77dd6` is pushed on
+`feat/subbeats-phrase-evidence-20261102`. Station source `f65f53ff` is pushed on
+`test-station/sleeve-notes-clean-20261014`; rollback for the fix is `1fdee2fa`.
+The analyzer-Python suite passes on the station checkout, including the new
+sidecar contract check. Controller and web typechecks, the 20-case Sub/Beats
+route suite and scoped lint passed earlier on the station checkout; the
+registered cue/Python suites, controller/web typechecks, scoped lint and
+admin-query audit pass on development. No services were rebuilt or restarted
+and no tracks were rescanned.
 
 Upstream was fetched before the station push. `main` remains release 1.30.0
 (`03a48c21`); `develop` is `1c4a9ff2` and is not an ancestor of the isolated
