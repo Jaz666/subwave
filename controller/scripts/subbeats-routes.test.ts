@@ -413,13 +413,22 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
 });
 
 
-test('source auditions support incoming-only cues, preserve authentication and keep the outgoing alias', async () => {
+test('source auditions support cue gaps, preserve authentication and keep the outgoing alias', async () => {
   const id='incoming-source-audition';
   db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:80});
   subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
   subbeatsStore.event({id,status:'running'},[id]);
   subbeatsStore.event({id,status:'prepared',bundleKey:'a'.repeat(64),cuePoints:{version:1,algorithmVersion:5,model:'small0',artifactKey:'c'.repeat(64),durationSeconds:80,
     incoming:[{sourceSeconds:30,bpm:120,strength:1,reason:'arrangement',phraseBars:16,phraseStartSeconds:0}],outgoing:[]}},[id]);
+  const noCuesId='source-audition-no-cues';
+  db.upsertTrackMeta(noCuesId,{title:noCuesId,artist:'Cue artist',genres:['House'],duration:80});
+  subbeatsStore.enqueue([{id:noCuesId,title:noCuesId,artist:'Cue artist',album:''}],'small0');
+  subbeatsStore.event({id:noCuesId,status:'running'},[noCuesId]);
+  subbeatsStore.event({id:noCuesId,status:'prepared',bundleKey:'b'.repeat(64)},[noCuesId]);
+  const unmeasurableId='source-audition-unmeasurable';
+  db.upsertTrackMeta(unmeasurableId,{title:unmeasurableId,artist:'Cue artist',genres:['House'],duration:80});
+  subbeatsStore.enqueue([{id:unmeasurableId,title:unmeasurableId,artist:'Cue artist',album:''}],'small0');
+  subbeatsStore.event({id:unmeasurableId,status:'unmeasurable',bundleKey:'d'.repeat(64),error:'No reliable beat data'},[unmeasurableId]);
   const before=JSON.stringify(subbeatsStore.read());
   const realFetch=globalThis.fetch;let loads=0;let badType=false;
   globalThis.fetch=(async (url,init) => {
@@ -434,6 +443,11 @@ test('source auditions support incoming-only cues, preserve authentication and k
     for (const route of ['source-audio','outgoing-audio']) {
       const response=await realFetch(base+'/library/subbeats/'+route+'/'+id,{headers});
       assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+      assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[1,2,3,4]);
+    }
+    for (const cueGapId of [noCuesId,unmeasurableId]) {
+      const response=await realFetch(base+'/library/subbeats/source-audio/'+cueGapId,{headers});
+      assert.equal(response.status,200,cueGapId);
       assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[1,2,3,4]);
     }
     badType=true;
