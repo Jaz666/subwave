@@ -31,7 +31,7 @@ router.get('/library/subbeats', requireAdmin, (_req, res) => {
   try { res.json(view()); }
   catch { res.status(503).json({ error: 'The Sub/Beats preparation list could not be read' }); }
 });
-// Audition original openings/endings without stretching or fading.
+// Audition original recordings without modifying Subwave playback state.
 // Keep Navidrome credentials server-side and stream without writing shared state.
 router.get<{id:string}>(['/library/subbeats/outgoing-audio/:id','/library/subbeats/source-audio/:id'], requireAdmin, async (req, res) => {
   const abort = new AbortController();
@@ -42,8 +42,8 @@ router.get<{id:string}>(['/library/subbeats/outgoing-audio/:id','/library/subbea
     await blocklist.load();
     const job = subbeatsStore.read().jobs.find(item => item.id === req.params.id);
     const track = db.getTrack(req.params.id);
-    if (!track || blocklist.hitOf(track) || job?.status !== 'prepared' || !(job.cuePoints?.outgoing.length || job.cuePoints?.incoming.length)) {
-      return res.status(400).json({ error: 'Choose an available track prepared with cue points.' });
+    if (!track || blocklist.hitOf(track) || !job) {
+      return res.status(400).json({ error: 'Choose an available track in the Sub/Beats preparation list.' });
     }
     const source = await fetchWithTimeout(subsonic.getRawStreamUrl(track.id), {
       timeoutMs: 5 * 60_000, bodyDeadline: true, signal: abort.signal,

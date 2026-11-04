@@ -2,6 +2,7 @@
 
 import { SubbeatsCache, useSubbeatsCache } from './subbeats/SubbeatsCache';
 import { CueAudition } from './subbeats/CueAudition';
+import { SourceAudioDialog } from './subbeats/SourceAudioDialog';
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -117,6 +118,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     onDone: async (view, _paused, client) => { await client.cancelQueries({ queryKey: subbeatsKeys.state, exact: true }); client.setQueryData(subbeatsKeys.state, view); },
   });
   const [removing, setRemoving] = useState<{id:string; title:string; artist:string} | null>(null);
+  const [auditionId, setAuditionId] = useState<string | null>(null);
   const remove = useAdminMutation({adminFetch,
     request:async (id:string, fetcher) => subbeatsViewSchema.parse(await adminJson(fetcher, `/library/subbeats/entries/${encodeURIComponent(id)}`, {method:'DELETE'})),
     onDone:async (view, id, client) => {
@@ -209,6 +211,14 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const coverageJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey && byId.get(id)?.cuePoints?.algorithmVersion === 5);
   const needsCoverage = jobs.filter(job => job.bundleKey && job.cuePoints?.algorithmVersion === 5 && !job.cueCoverage && !['queued','running'].includes(job.status));
   const pageJobs = ranked.slice(activeJobPage * 20, (activeJobPage + 1) * 20);
+  const auditionIndex = ranked.findIndex(job => job.id === auditionId);
+  const auditionJob = auditionIndex >= 0 ? ranked[auditionIndex] : undefined;
+  const moveAudition = (index: number) => {
+    const job = ranked[index];
+    if (!job) return;
+    setJobPage(Math.floor(index / 20));
+    setAuditionId(job.id);
+  };
   const selectableJobs = pageJobs.filter(job => !['queued', 'running'].includes(job.status));
   const selectJobs = (ids: string[]) => setJobSelected(current => selectPreparationIds(current, ids, jobs));
   const previewJobs = jobs.filter(job => job.status === 'prepared' && (job.id === outgoing || job.id === incoming
@@ -620,7 +630,10 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
               <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center"><Checkbox aria-label={`Select preparation entry ${job.title} by ${job.artist}`}
                 checked={selectedJobSet.has(job.id)} disabled={actionBusy || ['queued', 'running'].includes(job.status) || (!selectedJobSet.has(job.id) && selectedJobs.length >= SUBBEATS_BATCH_LIMIT)}
                 onCheckedChange={checked => checked === true ? selectJobs([job.id]) : setJobSelected(current => current.filter(id => id !== job.id))} /></label>
-              <div className="min-w-0 flex-1"><p className="text-sm font-semibold break-words">{job.title}</p><p className="text-sm break-words text-muted">{job.artist}</p></div>
+              <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                <div className="min-w-0"><p className="text-sm font-semibold break-words">{job.title}</p><p className="text-sm break-words text-muted">{job.artist}</p></div>
+                <Button className="min-h-11 min-w-11 shrink-0" size="icon" variant="ghost" aria-label={`Listen to original recording: ${job.artist} — ${job.title}`} title="Listen to original recording" onClick={() => { preview.stop(); setAuditionId(job.id); }}><Play /></Button>
+              </div>
               {(job.status !== 'queued' && job.status !== 'running') && <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto"><Button className="min-h-11" size="sm" disabled={actionBusy} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>
                 {job.bundleKey && job.cuePoints?.algorithmVersion === 5 && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate([job.id])}>Upgrade cue coverage</Button>}
                 {job.bundleKey && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => assess.mutate([job.id])}>Assess suitability</Button>}
@@ -638,6 +651,10 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <Button className="min-h-11" disabled={(activeJobPage + 1) * 20 >= ranked.length} onClick={() => setJobPage(activeJobPage + 1)}>Next entries</Button>
         </div>}
       </section>}
+      {page === 'preparation' && auditionJob && <SourceAudioDialog open trackId={auditionJob.id} title={auditionJob.title} artist={auditionJob.artist}
+        position={auditionIndex + 1} total={ranked.length}
+        cueSummary={`${LABEL[auditionJob.status]} · ${auditionJob.cuePoints ? `${auditionJob.cuePoints.incoming.length} incoming / ${auditionJob.cuePoints.outgoing.length} outgoing cues` : 'no cues saved'}`}
+        adminFetch={adminFetch} onOpenChange={open => { if (!open) setAuditionId(null); }} onPrevious={() => moveAudition(auditionIndex - 1)} onNext={() => moveAudition(auditionIndex + 1)} onPlay={() => preview.stop()} />}
     </div>
   </div>;
 }
