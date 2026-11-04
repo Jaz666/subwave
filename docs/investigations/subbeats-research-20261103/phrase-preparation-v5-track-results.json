@@ -1,0 +1,397 @@
+[
+  {
+    "name": "launch",
+    "sourceSha256": "2074950c1936f5a44ac6819c7d800c55e6507af52c6a379a88bbb68363fc528b",
+    "duration": 193.26666666666668,
+    "incoming": [
+      {
+        "sourceSeconds": 28.810298017101726,
+        "bpm": 136.50761885513919,
+        "strength": 0.9324009324009324,
+        "reason": "opening",
+        "phraseBars": 16,
+        "barNumber": 16,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 0.68
+      },
+      {
+        "sourceSeconds": 14.745149008550863,
+        "bpm": 136.50761885513919,
+        "strength": 0.9324009324009324,
+        "reason": "opening",
+        "phraseBars": 8,
+        "barNumber": 8,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 0.68
+      }
+    ],
+    "outgoing": [
+      {
+        "sourceSeconds": 162.42921359833494,
+        "bpm": 136.50761885513919,
+        "strength": 0.9324009324009324,
+        "reason": "ending",
+        "phraseBars": 16,
+        "barNumber": 92,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 190.55951161543666
+      },
+      {
+        "sourceSeconds": 176.4943626068858,
+        "bpm": 136.50761885513919,
+        "strength": 0.9324009324009324,
+        "reason": "ending",
+        "phraseBars": 8,
+        "barNumber": 100,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 190.55951161543666
+      }
+    ],
+    "grid": {
+      "originSeconds": 0.68,
+      "anchorSeconds": 0.68,
+      "drivingBeatSeconds": 4.2,
+      "bpm": 136.50761885513919,
+      "fitFraction": 0.9324009324009324,
+      "p95ErrorSeconds": 0.03570342754834747,
+      "phaseDisagreements": 11,
+      "confidence": "estimated"
+    },
+    "ending": {
+      "phraseEndSeconds": 190.55951161543666,
+      "audibleEndSeconds": 190.51356009070295,
+      "tailSeconds": 2.7071550512300178,
+      "bodyEndSeconds": 187.6148752834467,
+      "confidence": "estimated"
+    },
+    "algorithmVersion": 5,
+    "coverage": [
+      [
+        "head",
+        0.0,
+        46.14029801710173
+      ],
+      [
+        "exit",
+        162.42921359833494,
+        193.26666666666668
+      ]
+    ],
+    "maximumAcceptedClosingDeviationSeconds": 0.0
+  },
+  {
+    "name": "children",
+    "sourceSha256": "3904b492af33b2ef18f4e50cb5a677599acfdff4d7fc43acea6f889edb7f9cba",
+    "duration": 246.70666666666668,
+    "incoming": [
+      {
+        "sourceSeconds": 42.6,
+        "bpm": 137.0884298624686,
+        "strength": 0.9977924944812362,
+        "reason": "opening",
+        "phraseBars": 16,
+        "barNumber": 16,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 14.588883351772223
+      }
+    ],
+    "outgoing": [
+      {
+        "sourceSeconds": 210.66669988936667,
+        "bpm": 137.0884298624686,
+        "strength": 0.9977924944812362,
+        "reason": "ending",
+        "phraseBars": 16,
+        "barNumber": 112,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 238.67781653759445
+      },
+      {
+        "sourceSeconds": 224.67225821348057,
+        "bpm": 137.0884298624686,
+        "strength": 0.9977924944812362,
+        "reason": "ending",
+        "phraseBars": 8,
+        "barNumber": 120,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 238.67781653759445
+      }
+    ],
+    "grid": {
+      "originSeconds": 14.588883351772223,
+      "anchorSeconds": 42.6,
+      "drivingBeatSeconds": 42.6,
+      "bpm": 137.0884298624686,
+      "fitFraction": 0.9977924944812362,
+      "p95ErrorSeconds": 0.039720751357469906,
+      "phaseDisagreements": 38,
+      "confidence": "estimated"
+    },
+    "ending": {
+      "phraseEndSeconds": 238.67781653759445,
+      "audibleEndSeconds": 240.64081632653063,
+      "tailSeconds": 8.028850129072225,
+      "bodyEndSeconds": 238.99156462585034,
+      "confidence": "estimated"
+    },
+    "algorithmVersion": 5,
+    "coverage": [
+      [
+        "head",
+        0.0,
+        59.93
+      ],
+      [
+        "exit",
+        210.66669988936667,
+        246.70666666666668
+      ]
+    ],
+    "maximumAcceptedClosingDeviationSeconds": 0.007263365117950116
+  },
+  {
+    "name": "gusto",
+    "sourceSha256": "2a1b142700d54bd9bf70b35939baf32361b5f62a5b4579b4fdea949a1677203c",
+    "duration": 231.69333333333333,
+    "incoming": [
+      {
+        "sourceSeconds": 30.544644707111402,
+        "bpm": 125.96505673245427,
+        "strength": 0.9937759336099585,
+        "reason": "opening",
+        "phraseBars": 16,
+        "barNumber": 16,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 0.06
+      },
+      {
+        "sourceSeconds": 15.302322353555702,
+        "bpm": 125.96505673245427,
+        "strength": 0.9937759336099585,
+        "reason": "opening",
+        "phraseBars": 8,
+        "barNumber": 8,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 0.06
+      }
+    ],
+    "outgoing": [
+      {
+        "sourceSeconds": 198.21019059622412,
+        "bpm": 125.96505673245427,
+        "strength": 0.9937759336099585,
+        "reason": "ending",
+        "phraseBars": 16,
+        "barNumber": 104,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 228.69483530333554
+      },
+      {
+        "sourceSeconds": 213.45251294977984,
+        "bpm": 125.96505673245427,
+        "strength": 0.9937759336099585,
+        "reason": "ending",
+        "phraseBars": 8,
+        "barNumber": 112,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 228.69483530333554
+      }
+    ],
+    "grid": {
+      "originSeconds": 0.06,
+      "anchorSeconds": 0.06,
+      "drivingBeatSeconds": 0.06,
+      "bpm": 125.96505673245427,
+      "fitFraction": 0.9937759336099585,
+      "p95ErrorSeconds": 0.04783452328187535,
+      "phaseDisagreements": 43,
+      "confidence": "estimated"
+    },
+    "ending": {
+      "phraseEndSeconds": 228.69483530333554,
+      "audibleEndSeconds": 229.24598639455783,
+      "tailSeconds": 2.9984980299977906,
+      "bodyEndSeconds": 229.1960090702948,
+      "confidence": "estimated"
+    },
+    "algorithmVersion": 5,
+    "coverage": [
+      [
+        "head",
+        0.0,
+        47.8746447071114
+      ],
+      [
+        "exit",
+        198.21019059622412,
+        231.69333333333333
+      ]
+    ]
+  },
+  {
+    "name": "urban-cookie-collective",
+    "sourceSha256": "3d68dd0dbbd466efa54caff332d5f716cc56684d8cd5159f21a1f9be19d9eb7c",
+    "duration": 222.53333333333333,
+    "incoming": [
+      {
+        "sourceSeconds": 22.4,
+        "bpm": 129.89421833258444,
+        "strength": 1.0,
+        "reason": "opening",
+        "barNumber": 12,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 0.22811246743888702
+      },
+      {
+        "sourceSeconds": 29.79062917752037,
+        "bpm": 129.89421833258444,
+        "strength": 1.0,
+        "reason": "opening",
+        "phraseBars": 16,
+        "barNumber": 16,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 0.22811246743888702
+      }
+    ],
+    "outgoing": [
+      {
+        "sourceSeconds": 184.99384190544816,
+        "bpm": 129.89421833258444,
+        "strength": 1.0,
+        "reason": "ending",
+        "phraseBars": 16,
+        "barNumber": 100,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 214.55635861552963
+      },
+      {
+        "sourceSeconds": 199.7751002604889,
+        "bpm": 129.89421833258444,
+        "strength": 1.0,
+        "reason": "ending",
+        "phraseBars": 8,
+        "barNumber": 108,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 214.55635861552963
+      }
+    ],
+    "grid": {
+      "originSeconds": 0.22811246743888702,
+      "anchorSeconds": 22.4,
+      "drivingBeatSeconds": 22.4,
+      "bpm": 129.89421833258444,
+      "fitFraction": 1.0,
+      "p95ErrorSeconds": 0.024772468374146678,
+      "phaseDisagreements": 1,
+      "confidence": "estimated"
+    },
+    "ending": {
+      "phraseEndSeconds": 214.55635861552963,
+      "audibleEndSeconds": 219.30049886621316,
+      "tailSeconds": 7.976974717803699,
+      "bodyEndSeconds": 213.8029931972789,
+      "confidence": "estimated"
+    },
+    "algorithmVersion": 5,
+    "coverage": [
+      [
+        "head",
+        0.0,
+        47.12062917752037
+      ],
+      [
+        "exit",
+        184.99384190544816,
+        222.53333333333333
+      ]
+    ]
+  },
+  {
+    "name": "rozalla",
+    "sourceSha256": "0361d84927462004952db64b2d44acbd1af9b3e5a7325d65ab86029278971d74",
+    "duration": 213.6,
+    "incoming": [
+      {
+        "sourceSeconds": 43.08,
+        "bpm": 130.0393161812367,
+        "strength": 0.94750656167979,
+        "reason": "opening",
+        "barNumber": 19,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 8.013682105458805
+      },
+      {
+        "sourceSeconds": 37.54321296401981,
+        "bpm": 130.0393161812367,
+        "strength": 0.94750656167979,
+        "reason": "opening",
+        "phraseBars": 16,
+        "barNumber": 16,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 8.013682105458805
+      },
+      {
+        "sourceSeconds": 22.778447534739307,
+        "bpm": 130.0393161812367,
+        "strength": 0.94750656167979,
+        "reason": "opening",
+        "phraseBars": 8,
+        "barNumber": 8,
+        "timingSource": "fitted-grid",
+        "phraseStartSeconds": 8.013682105458805
+      }
+    ],
+    "outgoing": [
+      {
+        "sourceSeconds": 170.4261018275443,
+        "bpm": 130.0393161812367,
+        "strength": 0.94750656167979,
+        "reason": "ending",
+        "phraseBars": 16,
+        "barNumber": 88,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 199.9556326861053
+      },
+      {
+        "sourceSeconds": 185.1908672568248,
+        "bpm": 130.0393161812367,
+        "strength": 0.94750656167979,
+        "reason": "ending",
+        "phraseBars": 8,
+        "barNumber": 96,
+        "timingSource": "fitted-grid",
+        "phraseEndSeconds": 199.9556326861053
+      }
+    ],
+    "grid": {
+      "originSeconds": 8.013682105458805,
+      "anchorSeconds": 43.08,
+      "drivingBeatSeconds": 43.08,
+      "bpm": 130.0393161812367,
+      "fitFraction": 0.94750656167979,
+      "p95ErrorSeconds": 0.021228364765391916,
+      "phaseDisagreements": 0,
+      "confidence": "estimated"
+    },
+    "ending": {
+      "phraseEndSeconds": 199.9556326861053,
+      "audibleEndSeconds": 210.1546485260771,
+      "tailSeconds": 13.64436731389469,
+      "bodyEndSeconds": 199.5094784580499,
+      "confidence": "estimated"
+    },
+    "algorithmVersion": 5,
+    "coverage": [
+      [
+        "head",
+        0.0,
+        60.41
+      ],
+      [
+        "exit",
+        170.4261018275443,
+        213.6
+      ]
+    ]
+  }
+]

@@ -1,7 +1,8 @@
-"""Optional cue evidence on learned bars, independent of existing stem bundles.
+"""Estimated opening/closing passages on a consistent Beat This! grid.
 
-Uses official Beat This! on the original full mix, then local arrangement and
-ordered-bar repetition. Candidates are for preview, never pair/phrase approval.
+Retain source-zero introductions and natural ending tails. Historical local
+arrangement scoring remains for offline comparisons, not new phrase selection.
+Cue evidence is for preview, never automatic pair or phrase approval.
 """
 import importlib.metadata
 import json
@@ -10,7 +11,8 @@ from pathlib import Path
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 4
+ALGORITHM_VERSION = 5
+TAIL_SECONDS = 16
 
 
 def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False, incoming=False):
@@ -159,6 +161,129 @@ def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_secon
     return sorted(selected,key=rank,reverse=True) if incoming else selected
 
 
+def fitted_passages(y, sr, beats, downbeats):
+    """Estimated phrase grid, full opening and natural-ending hypotheses.
+
+    Audio origin is never a cue-in. Four-bar ending alignment is a conservative
+    phrase hypothesis, not proof of structure; retain the recording's whole tail.
+    """
+    import numpy as np
+    from scipy.signal import butter, sosfiltfilt
+    beats, downbeats = np.asarray(beats), np.asarray(downbeats)
+    if (beats.ndim != 1 or downbeats.ndim != 1 or not np.isfinite(beats).all()
+            or not np.isfinite(downbeats).all() or np.any(np.diff(beats)<=0)
+            or np.any(np.diff(downbeats)<=0) or not np.isin(downbeats,beats).all()
+            or np.any(beats<0) or np.any(beats>=len(y)/sr)):
+        raise ValueError('Invalid learned beat/bar grid')
+    empty = dict(incoming=[],outgoing=[],grid=None,ending=None)
+    if len(beats)<64 or len(downbeats)<8:
+        return empty
+    steps = np.diff(beats)
+    median = float(np.median(steps))
+    period = float(np.mean(steps[abs(steps/median-1)<.2]))
+    if not 60<=60/period<=190:
+        return empty
+    low = sosfiltfilt(butter(3,[35,160],btype='bandpass',fs=sr,output='sos'),y)
+    power = np.r_[0.,np.cumsum(low*low,dtype=np.float64)]
+    first = np.rint(beats*sr).astype(int)
+    stop = np.minimum(len(y),first+round(.16*sr))
+    strength = np.sqrt(np.maximum(0,power[stop]-power[first])/np.maximum(1,stop-first))
+    reference = float(np.percentile(strength,75))
+    if reference<1e-5:
+        return empty
+    late_first=np.minimum(len(y),first+round(.55*period*sr))
+    late_stop=np.minimum(len(y),first+round(.9*period*sr))
+    late=np.sqrt(np.maximum(0,power[late_stop]-power[late_first])/np.maximum(1,late_stop-late_first))
+    strong=(strength>=reference*.75)&(strength-late>=reference*.15)
+    # An established entry needs sustained beat-spaced low-frequency support.
+    # A single bass note or a model downbeat in a beatless intro is insufficient.
+    entry = None
+    for at in downbeats:
+        i = int(np.searchsorted(beats,at))
+        if (i+16<=len(beats) and strong[i] and np.mean(strong[i:i+16])>=.85
+                and np.mean(abs(np.diff(beats[i:i+16])/period-1)<.2)>=.85):
+            entry=float(at)
+            break
+    if entry is None:
+        return empty
+    # Short pickups use the earliest consistent bar phase. A long beatless
+    # opening is projected back sixteen bars from its established entry instead.
+    anchor = entry
+    if entry<16*period:
+        earlier = downbeats[(downbeats<=entry)&(abs((entry-downbeats)/(4*period)-np.rint((entry-downbeats)/(4*period)))<.08)]
+        if len(earlier):
+            anchor=float(earlier[0])
+    fit = beats[beats>=anchor]
+    for _ in range(5):
+        ordinals = np.rint((fit-anchor)/period)
+        good = abs(fit-(anchor+ordinals*period))<.06
+        if good.sum()<64 or np.dot(ordinals[good],ordinals[good])==0:
+            return empty
+        period = float(np.dot(ordinals[good],fit[good]-anchor)/np.dot(ordinals[good],ordinals[good]))
+    residual = abs(fit-(anchor+np.rint((fit-anchor)/period)*period))
+    if not 60<=60/period<=190 or np.mean(residual<.06)<.85:
+        return empty
+    bars_before=max(0,round((anchor-float(downbeats[0]))/(4*period)))
+    origin=anchor-bars_before*4*period
+    # Long openings retain at least sixteen bars before the established entry.
+    # Shift only whole four-bar groups, keeping the earlier phrase phase instead
+    # of assigning every late entry a new universal bar-zero phase.
+    if bars_before>16:
+        origin+=((bars_before-16)//4)*16*period
+    if origin<0:
+        origin+=4*period
+    bpm = 60/period
+    grid = dict(originSeconds=origin,anchorSeconds=anchor,drivingBeatSeconds=entry,bpm=bpm,
+                fitFraction=float(np.mean(residual<.06)),p95ErrorSeconds=float(np.percentile(residual[residual<.06],95)),
+                phaseDisagreements=int(np.sum(abs((downbeats-origin)/(4*period)-np.rint((downbeats-origin)/(4*period)))>.15)),
+                confidence='estimated')
+    def point(seconds,width,role):
+        return dict(sourceSeconds=float(seconds),bpm=bpm,strength=grid['fitFraction'],
+                    reason='opening' if role=='incoming' else 'ending',phraseBars=width,
+                    barNumber=int(round((seconds-origin)/(4*period))),timingSource='fitted-grid',
+                    **({'phraseStartSeconds':origin} if role=='incoming' else {'phraseEndSeconds':endpoint}))
+    duration=len(y)/sr
+    incoming=[]
+    for width in (16,8):
+        arrival=origin+width*4*period
+        if (arrival+8*period<duration and arrival<130-TAIL_SECONDS*1.08-.05
+                and (arrival>=entry-.1 or entry<16*period
+                     or float(np.interp(arrival,beats,strength))>=reference*.75)):
+            incoming.append(point(arrival,width,'incoming'))
+    if (entry-origin>=32*period and entry<130-TAIL_SECONDS*1.08-.05
+            and all(abs(entry-c['sourceSeconds'])>.1 for c in incoming)):
+        arrival=point(entry,16,'incoming')
+        arrival.pop('phraseBars')  # An observed entry need not be 8 or 16 bars.
+        incoming.insert(0,arrival)
+    # Last audible body/decay evidence is separate from EOF and the last model
+    # prediction. Relative threshold tolerates fades; an absolute floor avoids
+    # retaining digital noise as a musical ending. The complete tail stays saved.
+    hop=max(1,round(.05*sr));count=len(y)//hop
+    rms=np.sqrt(np.mean(y[:count*hop].reshape(count,hop)**2,axis=1))
+    audible=np.flatnonzero(rms>=max(1e-3,float(np.percentile(rms,75))*.01))
+    if not len(audible):
+        return {**empty,'grid':grid}
+    audible_end=min(duration,(int(audible[-1])+1)*hop/sr)
+    # ponytail: four-bar phrase continuation is an explicit hypothesis; section
+    # recognition can replace this after a broader set of listening references.
+    body=np.flatnonzero(rms>=max(1e-3,float(np.percentile(rms,75))*.4))
+    body_end=min(duration,(int(body[-1])+1)*hop/sr) if len(body) else audible_end
+    phrase=round((body_end-origin)/(16*period))
+    endpoint=origin+phrase*16*period
+    if endpoint>=duration:
+        endpoint-=16*period
+    outgoing=[];ending=None
+    if (audible_end<duration-.15 and duration*.5<endpoint<duration and 0<duration-endpoint<=TAIL_SECONDS
+            and abs(endpoint-body_end)<=8*period):
+        ending=dict(phraseEndSeconds=endpoint,audibleEndSeconds=audible_end,
+                    tailSeconds=duration-endpoint,bodyEndSeconds=body_end,confidence='estimated')
+        for width in (16,8):
+            start=endpoint-width*4*period
+            if start>=duration*.5:
+                outgoing.append(point(start,width,'outgoing'))
+    return dict(incoming=incoming,outgoing=outgoing,grid=grid,ending=ending)
+
+
 def predict(y, sr, model):
     from subbeats_models import model_path
     path = model_path(model)
@@ -181,7 +306,6 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
     import numpy as np
     from subbeats_models import MODELS
     from subbeats_prepare import SR, decode, require_shared_cache
-    from subbeats_structure import SR as FEATURE_SR, extract
     if model not in MODELS:
         raise ValueError('Unknown cue preparation method')
     identity = dict(mode='cue-points',version=ALGORITHM_VERSION,model=model,model_sha256=MODELS[model],
@@ -197,37 +321,17 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
         if (not np.isfinite(beats).all() or np.any(beats < 0) or np.any(beats >= len(y)/SR)):
             raise ValueError('Learned grid is outside the decoded recording')
         duration = len(y)/SR
-        roles = {}
-        for role, name in [('incoming','head'),('outgoing','exit')]:
-            if role == 'outgoing':
-                # The old exit stems can end at an early loss of percussion.
-                # Detect endings from the actual recording, with earlier context
-                # only for comparison; never offer that context as outgoing cues.
-                earliest = duration*.5
-                start,end = max(0.,earliest-64),duration
-            else:
-                region = next((r for r in record['metadata']['stem_regions'] if r['name']==name),None)
-                if region is None:
-                    roles[role] = []
-                    continue
-                earliest = 0.
-                start,end = region['start_sample']/region['sample_rate'],region['end_sample']/region['sample_rate']
-            b = beats[(beats>=start)&(beats<end)]
-            d = downbeats[(downbeats>=start)&(downbeats<end)]
-            audio = librosa.resample(y[round(start*SR):round(end*SR)],orig_sr=SR,target_sr=FEATURE_SR)
-            if len(b)<20 or len(d)<6:
-                roles[role] = []
-                continue
-            features = extract(audio,b-start,librosa)
-            roles[role] = bar_candidates(b,d,*features,earliest_seconds=earliest,outgoing=role=='outgoing',incoming=role=='incoming')
+        roles = fitted_passages(y,SR,beats,downbeats)
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
+        (stage/'grid.json').write_text(json.dumps(dict(beatsSeconds=np.asarray(beats).tolist(),downbeatsSeconds=np.asarray(downbeats).tolist()),allow_nan=False)+'\n')
         (stage/'cues.json').write_text(json.dumps(dict(version=VERSION,algorithmVersion=ALGORITHM_VERSION,model=model,durationSeconds=duration,**roles),allow_nan=False)+'\n')
         return dict(bundle_key=Path(folder).name,model=model,durationSeconds=duration,**roles)
     result = prepare_cached(state_dir,identity,build,cache_root=cache_root,allowance=allowance)
     return dict(version=VERSION,algorithmVersion=ALGORITHM_VERSION,model=model,artifactKey=Path(result['directory']).name,durationSeconds=result['metadata']['durationSeconds'],
-                incoming=result['metadata']['incoming'],outgoing=result['metadata']['outgoing'])
+                incoming=result['metadata']['incoming'],outgoing=result['metadata']['outgoing'],
+                grid=result['metadata'].get('grid'),ending=result['metadata'].get('ending'))
 
 
 def load_cues(state, stems_root, track_id, key, bundle):
@@ -238,7 +342,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')

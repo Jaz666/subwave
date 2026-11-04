@@ -2,19 +2,30 @@
 
 At most 120 preview seconds and 8% tempo adjustment bound all supported pairs:
 130 seconds of original incoming audio and the final 120 outgoing seconds suffice.
-Existing immutable base/cue bundles stay intact; an upgrade adds one artifact.
+New phrase cues retain only their opening/closing passages plus bounded incoming
+follow-through. Older immutable base/cue bundles stay intact.
 """
 import json
 from pathlib import Path
 
 from subbeats_cache import prepare_cached, cached_entry, digest, bundle_folder
+from subbeats_cues import TAIL_SECONDS
 from subbeats_prepare import STEM_SR, separate_regions, write_flac_region, require_shared_cache
 
-VERSION = 1
+VERSION = 2
 
 
 def coverage_regions(cues, duration):
     regions = []
+    if cues.get('algorithmVersion') == 5:
+        if cues.get('incoming'):
+            # The supported outgoing decay is <=16 playback seconds. Include
+            # its worst permitted tempo adjustment and two incoming bars.
+            end=max(c['sourceSeconds']+max(TAIL_SECONDS*1.08,8*60/c['bpm']) for c in cues['incoming'])
+            regions.append(('head',0.,min(duration,end+.05)))
+        if cues.get('outgoing'):
+            regions.append(('exit',min(c['sourceSeconds'] for c in cues['outgoing']),duration))
+        return regions
     if cues.get('incoming'):
         regions.append(('head',0.,min(duration,130.)))
     if cues.get('outgoing'):
@@ -70,7 +81,7 @@ def prepare_coverage(path,state,folder,parent,cues,*,cache_root,allowance,expect
         require_shared_cache(state,expected_cache_id)
         return dict(stem_regions=coverage,**vocals,used_models=bool(missing))
     result = prepare_cached(state,identity,build,cache_root=cache_root,allowance=allowance)
-    return dict(version=VERSION,artifactKey=Path(result['directory']).name,
+    return dict(version=1,artifactKey=Path(result['directory']).name,
                 incoming=result['metadata']['incoming'],outgoing=result['metadata']['outgoing']), bool(not result['cache_hit'] and result['metadata']['used_models'])
 
 
@@ -83,7 +94,7 @@ def load_coverage(state,stems_root,track_id,key,bundle,cue_key):
         identity = json.loads((folder/'manifest.json').read_text())['identity']
         record = cached_entry(folder,identity)
         cue_folder = bundle_folder(state,cue_key,stems_root,track_id)
-        if (record is None or identity.get('mode')!='cue-coverage' or identity.get('version')!=VERSION
+        if (record is None or identity.get('mode')!='cue-coverage' or identity.get('version') not in (1,VERSION)
                 or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')
                 or identity.get('cue_sha256')!=digest(cue_folder/'manifest.json')):
             raise ValueError('Saved cue coverage no longer matches this track. Upgrade coverage again.')

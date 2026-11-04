@@ -13,6 +13,10 @@ def assess_vocal_pair(outgoing, incoming, plan):
         return result('unassessed', 'Saved vocal measurements are missing. Audition checks the prepared audio.')
     # Compare source-coordinate observations on the outgoing recording's clock.
     start, end = max(plan['first'], plan['entry']), min(plan['out_end'], plan['end'])
+    if any(max(start,plan['entry']+p['startSeconds']/plan['rate']) <
+           min(end,outgoing['coverageStartSeconds'],plan['entry']+p['endSeconds']/plan['rate'])
+           for p in incoming['passages']):
+        return result('conflict', 'An incoming vocal would overlap the unmeasured outgoing lead-in. Choose a shorter opening or another pair.')
     outs = [(max(start,p['startSeconds']), min(end,p['endSeconds']))
             for p in outgoing['passages']]
     ins = [(max(start,plan['entry']+p['startSeconds']/plan['rate']),
@@ -22,10 +26,15 @@ def assess_vocal_pair(outgoing, incoming, plan):
         return result('conflict', 'Detected vocal passages overlap. Choose another incoming cue or outgoing finish.')
     tolerance = max(outgoing['resolutionSeconds'],incoming['resolutionSeconds']/plan['rate'])
     if (outgoing['coverageStartSeconds'] > start+tolerance
+            and outgoing['coverageEndSeconds'] >= end-tolerance
+            and incoming['coverageStartSeconds'] <= (start-plan['entry'])*plan['rate']+tolerance
+            and incoming['coverageEndSeconds'] >= (end-plan['entry'])*plan['rate']-tolerance):
+        return result('uncertain', 'The earlier outgoing lead-in uses the original mix. No incoming vocal was detected there; preview checks the overlap conservatively.')
+    if (outgoing['coverageStartSeconds'] > start+tolerance
             or outgoing['coverageEndSeconds'] < end-tolerance
             or incoming['coverageStartSeconds'] > (start-plan['entry'])*plan['rate']+tolerance
             or incoming['coverageEndSeconds'] < (end-plan['entry'])*plan['rate']-tolerance):
-        return result('coverage', 'Saved vocal coverage is incomplete. Audition checks the full overlap, preparing stems if needed.')
+        return result('coverage', 'Saved vocal coverage is incomplete. Audition checks the full overlap against prepared audio and the original lead-in.')
     if not outgoing['passages'] or not incoming['passages']:
         return result('uncertain', 'No clear vocal passage was detected on one side. This does not prove a vocal-free overlap.')
     return result('estimated', 'No detected vocal passages overlap. Background vocals and musical fit still need listening.')
@@ -34,6 +43,8 @@ def assess_vocal_pair(outgoing, incoming, plan):
 def find_cue_matches(jobs, outgoing_id, out_index=0):
     outgoing = next((j for j in jobs if j['id']==outgoing_id and j['status']=='prepared'),None)
     points = (outgoing or {}).get('cuePoints') or {}
+    if points.get('algorithmVersion') != 5:
+        raise ValueError('Rescan the outgoing track with Beat This! for the new phrase preview.')
     outs = points.get('outgoing',[])
     duration = points.get('durationSeconds')
     if (type(out_index) is not int or not 0<=out_index<len(outs) or not duration
@@ -46,7 +57,7 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
         if job['id']==outgoing_id or job['status']!='prepared':
             continue
         incoming = job.get('cuePoints') or {}
-        if not incoming.get('incoming') or not incoming.get('durationSeconds'):
+        if incoming.get('algorithmVersion')!=5 or not incoming.get('incoming') or not incoming.get('durationSeconds'):
             excluded['unassessed'] += 1
             continue
         choices = []

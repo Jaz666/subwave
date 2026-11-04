@@ -32,9 +32,7 @@ function useWorkspaceState() {
   const [previewSearch, setPreviewSearch] = useState('');
   const [outgoing, setOutgoing] = useState('');
   const [incoming, setIncoming] = useState('');
-  const [barShift, setBarShift] = useState(0);
   const [preparationMethod, setPreparationMethod] = useState<'classic'|'small0'|'final0'>('small0');
-  const [previewMethod, setPreviewMethod] = useState<'stems'|'cue-points'>('stems');
   const [outCueIndex, setOutCueIndex] = useState(0);
   const [inCueIndex, setInCueIndex] = useState(0);
   // Match Library's replaceState convention: filters survive refresh/bookmarks,
@@ -77,8 +75,8 @@ function useWorkspaceState() {
     const query = params.toString();
     window.history.replaceState(window.history.state, '', `${pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }, [browse, browsePage, pathname, restoredPath]);
-  return { preparationMethod, setPreparationMethod, previewMethod, setPreviewMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
-    jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming, barShift, setBarShift };
+  return { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+    jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming };
 }
 
 const Workspace = createContext<ReturnType<typeof useWorkspaceState> | null>(null);

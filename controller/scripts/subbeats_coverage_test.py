@@ -41,10 +41,10 @@ class CoverageTests(unittest.TestCase):
             source=state/'source';source.write_bytes(b'original')
             def base(stage):
                 (stage/'analysis.json').write_text(json.dumps(dict(duration_seconds=180)));return dict(stem_regions=[])
-            parent=prepare_cached(state,dict(source_sha256=digest(source),separator=dict(model='htdemucs',overlap=.25)),base,cache_root=artifacts)
+            parent=prepare_cached(state,dict(mode='cue-source',source_sha256=digest(source),separator=dict(model='htdemucs',overlap=.25)),base,cache_root=artifacts)
             def cue_build(stage):(stage/'cues.json').write_text('{}');return {}
             cue=prepare_cached(state,dict(mode='cue-points'),cue_build,cache_root=artifacts)
-            cues=dict(artifactKey=Path(cue['directory']).name,incoming=[{}],outgoing=[{}])
+            cues=dict(artifactKey=Path(cue['directory']).name,algorithmVersion=5,incoming=[dict(sourceSeconds=32,bpm=120)],outgoing=[dict(sourceSeconds=142,bpm=120,phraseEndSeconds=174)])
             allowance=dict(root=root,bytes=100000);folder=Path(parent['directory']);before=(folder/'manifest.json').read_bytes()
             def prepare(parent=parent,cues=cues,budget=allowance):
                 return coverage.prepare_coverage(source,state,Path(parent['directory']),parent,cues,cache_root=artifacts,allowance=budget,expected_cache_id='shared-cache-identity')
@@ -54,8 +54,8 @@ class CoverageTests(unittest.TestCase):
                   patch.object(worker,'DEMUCS_MODEL','htdemucs'),patch.object(worker,'DEMUCS_OVERLAP',.25),
                   patch.object(worker,'get_vocal_detector',return_value=Mock()) as detector):
                 first,used=prepare();self.assertTrue(used);self.assertEqual(separator.call_count,1)
-                self.assertEqual(first['incoming']['coverageEndSeconds'],130)
-                self.assertEqual(first['outgoing']['coverageStartSeconds'],60)
+                self.assertAlmostEqual(first['incoming']['coverageEndSeconds'],49.33)
+                self.assertEqual(first['outgoing']['coverageStartSeconds'],142)
                 self.assertEqual(first['outgoing']['coverageEndSeconds'],180)
                 left=allowance['bytes'];again,used=prepare()
                 self.assertEqual(again,first);self.assertFalse(used);self.assertEqual(allowance['bytes'],left);self.assertEqual(detector.call_count,1)
@@ -65,15 +65,33 @@ class CoverageTests(unittest.TestCase):
                 req=dict(state_dir=str(state),cache_id='shared-cache-identity',path=str(source),complete=True,
                          stems_root=str(root),track_id='track',remaining_bytes=100000,method='small0',
                          bundle_key=folder.name,cue_key=cues['artifactKey'])
-                with (patch('subbeats_cues.load_cues',return_value=dict(version=1,algorithmVersion=3,model='small0',durationSeconds=180,incoming=[{}],outgoing=[{}])),
+                with (patch('subbeats_cues.load_cues',return_value=dict(version=1,algorithmVersion=5,model='small0',durationSeconds=180,incoming=cues['incoming'],outgoing=cues['outgoing'])),
                       patch('subbeats_cues.prepare_cues') as predict,patch('subbeats_prepare.prepare') as base_prepare,
                       patch('subbeats_structure.prepare_structure') as structure,patch('subbeats_suitability.assess_bundle',return_value={})):
                     upgraded=subbeats_prepare.prepare_request(req)
                     predict.assert_not_called();base_prepare.assert_not_called();structure.assert_not_called()
                     self.assertEqual(upgraded['subbeats_result']['bundleKey'],folder.name)
-                    self.assertEqual(upgraded['subbeats_result']['cuePoints']['algorithmVersion'],3)
+                    self.assertEqual(upgraded['subbeats_result']['cuePoints']['algorithmVersion'],5)
                     self.assertEqual(upgraded['subbeats_result']['cueCoverage'],first)
                     self.assertFalse(upgraded['subbeats_used_models'])
+                fresh={k:v for k,v in req.items() if k not in ('bundle_key','cue_key')}
+                with (patch('subbeats_prepare.prepare_cue_source',return_value=parent) as lightweight,
+                      patch('subbeats_cues.prepare_cues',return_value=cues),
+                      patch('subbeats_coverage.prepare_coverage',return_value=(first,False)),
+                      patch('subbeats_prepare.prepare') as classic,
+                      patch('subbeats_structure.prepare_structure') as structure,
+                      patch('subbeats_suitability.assess_bundle') as assess):
+                    rebuilt=subbeats_prepare.prepare_request(fresh)
+                    lightweight.assert_called_once();classic.assert_not_called()
+                    structure.assert_not_called();assess.assert_not_called()
+                    self.assertEqual(rebuilt['subbeats_result']['status'],'prepared')
+                    self.assertEqual(rebuilt['subbeats_result']['suitability']['incoming']['vocalActivity'],first['incoming'])
+
+                from subbeats_suitability import assess_request
+                with patch('subbeats_cues.load_cues',return_value=cues):
+                    assessed=assess_request(dict(req,coverage_key=first['artifactKey']))
+                    self.assertEqual(assessed['subbeats_result']['status'],'prepared')
+                    self.assertEqual(assessed['subbeats_result']['suitability']['outgoing']['vocalActivity'],first['outgoing'])
                 source.write_bytes(b'replaced')
                 with self.assertRaisesRegex(ValueError,'source changed'):prepare()
                 source.write_bytes(b'original')

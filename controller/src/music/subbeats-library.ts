@@ -51,7 +51,7 @@ async function main() {
       let localPath: string | null = null;
       try {
         if (job.task === 'assess' && job.bundleKey) {
-          emit({id,...await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot())});
+          emit({id,...await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot(),job.cuePoints?.algorithmVersion === 5 && job.cueCoverage ? {cue_key:job.cuePoints.artifactKey,coverage_key:job.cueCoverage.artifactKey} : undefined)});
           continue;
         }
         if (!await analyzer.subbeatsAvailable()) throw new Error('Update the heavy analyzer to prepare Sub/Beats stems');

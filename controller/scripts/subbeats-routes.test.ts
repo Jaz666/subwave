@@ -374,7 +374,7 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
     db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:50});
     subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
     subbeatsStore.event({id,status:'running'},[id]);
-    subbeatsStore.event({id,status:'prepared',bundleKey:(i?'b':'a').repeat(64),cuePoints:{version:1,model:'small0',artifactKey:(i?'d':'c').repeat(64),durationSeconds:50,incoming:[point],outgoing:[point,{...point,sourceSeconds:10}]}},[id]);
+    subbeatsStore.event({id,status:'prepared',bundleKey:(i?'b':'a').repeat(64),cuePoints:{version:1,model:'small0',artifactKey:(i?'d':'c').repeat(64),algorithmVersion:5,durationSeconds:50,incoming:[point],outgoing:[point,{...point,sourceSeconds:10}]}},[id]);
   }
   const realFetch=globalThis.fetch;let rendered:Record<string,unknown>|undefined;
   const audio=new Uint8Array(44);audio.set(Buffer.from('RIFF'),0);audio.set(Buffer.from('WAVE'),8);
@@ -405,7 +405,7 @@ test('source auditions support incoming-only cues, preserve authentication and k
   db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:80});
   subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
   subbeatsStore.event({id,status:'running'},[id]);
-  subbeatsStore.event({id,status:'prepared',bundleKey:'a'.repeat(64),cuePoints:{version:1,algorithmVersion:4,model:'small0',artifactKey:'c'.repeat(64),durationSeconds:80,
+  subbeatsStore.event({id,status:'prepared',bundleKey:'a'.repeat(64),cuePoints:{version:1,algorithmVersion:5,model:'small0',artifactKey:'c'.repeat(64),durationSeconds:80,
     incoming:[{sourceSeconds:30,bpm:120,strength:1,reason:'arrangement',phraseBars:16,phraseStartSeconds:0}],outgoing:[]}},[id]);
   const before=JSON.stringify(subbeatsStore.read());
   const realFetch=globalThis.fetch;let loads=0;let badType=false;

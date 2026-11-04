@@ -8,7 +8,71 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-### Current research handoff — 4 November: Children head/tail previews accepted
+### Latest implementation — 4 November: phrase preparation and a single preview method
+
+Owner approved rebuilding the preparation/preview path and is happy to rescan
+existing tracks. Algorithm 5 now fits a consistent grid from reliable low-band
+pulse/timing evidence, retains phase when model downbeats shift, and separates
+source zero, projected grid zero and entry. It proposes 16/8-bar closing starts
+from an estimated musical ending rather than ranking unrelated early changes.
+Four-bar ending continuation and RMS body/fade evidence remain hypotheses, not
+a universal section detector. Outgoing starts stay in the later half; unsupported
+or still-active-at-EOF endings and tails beyond 16s produce no outgoing choices.
+
+New preparation skips the old Librosa rhythm/structure/base separation. A small
+source identity bundle owns cue and coverage artifacts. Save head source zero
+through latest arrival plus max(17.28s, two incoming bars) and 50ms rounding;
+save closing stems from the earliest selected start through EOF. Four-second
+separation context is discarded. Full learned beats/downbeats remain lightweight
+cue evidence. An incoming lead longer than the closing passage uses hash-verified
+original outgoing audio before the cached stems, with a 30ms seam and conservative
+vocal handling. Incoming vocals overlapping that unmeasured lead are refused.
+All outgoing stems retain their final beat and decay through EOF; the phrase
+marker does not cut them off. Normal 120-second/8% preview bounds remain.
+
+The browser now offers only cue previews: old stem-exchange method, old matching
+queries and bar-shift controls/state are removed. Artist ordering, playlist-only
+preparation filtering, outgoing negative countdown and source-zero incoming times
+remain. Earlier cue versions are visibly excluded with a rescan instruction.
+Supported non-8/16 entries retain an unforced musical-entry option; Children has
+only the supported 42.60s arrival, not an earlier point in its quiet introduction.
+Cache-only Assess suitability understands the new source/coverage bundle.
+
+[Maintained workflow and limits](../internals/subbeats-cue-methods.md#phrase-preparation-and-preview--algorithm-5--preview-11)
+and [five-track offline results](subbeats-research-20261103/phrase-preparation-v5-track-results.json)
+record the implementation. Original source hashes and saved official small0
+predictions were reused for The Launch, Children, Gusto, Urban Cookie Collective
+and Rozalla: no new model inference or live preparation. Launch closing markers
+match its accepted reference exactly; Children's differ by less than 8ms and its
+arrival remains 42.60s. Other new closing choices are not listening-approved;
+Rozalla's first proposed closing start is now about 170.43s, and still needs a
+listen rather than being presented as a reproduction of the earlier ~161s
+outro-section observation. Existing broad artifacts are kept under normal cache
+policy, not bulk deleted.
+
+Validation: 63 focused controller Sub/Beats cases; registered Python suites,
+including full-source cue preparation, phase projection, quiet-intro handling,
+natural rhythm-tail preservation, narrow coverage/cache/source/budget binding,
+cache-only reassessment and conservative original-lead-in rendering. Controller
+and web typechecks and scoped lint passed. Admin-query audit and nine audit tests
+passed. One desktop/mobile browser pass covered the cue-only UI, legacy rescan
+notice, artist order, negative countdown, Children arrival, candidate selection,
+request options and stale-result clearing; no browser errors. Required Library
+search and all six query-cache browser checks passed against an isolated fixture.
+Temporary servers stopped and generated Next files restored. No live audio or
+station state was touched. Five-track numerical checks reuse saved predictions;
+new separated pair previews still need the owner's listening after rescan.
+
+Upstream checked again: latest main release remains 1.30.0 at `03a48c21`, already
+integrated into the station's `b5eda6e4` base. No additional release update is
+needed. Station rollback before this increment is `a383ea66`. Owner rebuilds
+analyzer/controller/web together, checks health, then rescans selected existing
+tracks with Beat This! small/full through Recheck/retry selected (max 100/batch).
+Do not use an older coverage-only upgrade as the migration. No Docker build,
+restart, live rescan, cache deletion, picker/broadcast enablement or external
+issue message is performed by the agent.
+
+### Accepted research handoff — 4 November: Children head/tail previews accepted
 
 The owner accepted both Children original-mix metronome previews with “previews
 are spot on”. The prepared *30 Years* copy has accepted listening references:

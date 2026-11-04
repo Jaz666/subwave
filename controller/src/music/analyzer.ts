@@ -1278,10 +1278,10 @@ export async function matchSubbeatsCues(jobs: Array<ReturnType<typeof subbeatsJo
   return result.data;
 }
 
-export async function assessSubbeats(stateDir:string, cacheId:string, trackId:string, bundleKey:string, stemsRoot:string) {
+export async function assessSubbeats(stateDir:string, cacheId:string, trackId:string, bundleKey:string, stemsRoot:string, cueEvidence?:{cue_key:string;coverage_key:string}) {
   const backend = await sharedSubbeatsBackend();
   if (backend === 'sidecar' ? !_sidecarSubbeatsSuitability : !_localSubbeatsSuitability) throw new Error('Update the analyzer to assess Sub/Beats suitability');
-  const payload = {state_dir:stateDir,cache_id:cacheId,stems_root:stemsRoot,track_id:trackId,bundle_key:bundleKey};
+  const payload = {state_dir:stateDir,cache_id:cacheId,stems_root:stemsRoot,track_id:trackId,bundle_key:bundleKey,...cueEvidence};
   let answer:WorkerMessage;
   if (_backend === 'sidecar' && _sidecarBase) {
     const response = await fetchWithTimeout(`${_sidecarBase}/assess-subbeats`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:5*60_000});
@@ -1310,7 +1310,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
   if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
   if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
-  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 4)) throw new Error('Update the heavy analyzer for opening and closing cue preparation');
+  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 5)) throw new Error('Update the heavy analyzer for opening and closing cue preparation');
   if (method !== 'classic' && !result.cueCoverage) throw new Error('Update the heavy analyzer to save cue coverage and vocal measurements');
   return {...result, addedBytes:cacheGrowth(answer)};
 }

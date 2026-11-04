@@ -100,6 +100,15 @@ def assess_request(req):
     record = cached_entry(folder,identity)
     if record is None:
         raise ValueError('Prepared bundle failed integrity checks; recheck the track')
+    if identity.get('mode')=='cue-source':
+        from subbeats_cues import load_cues
+        from subbeats_coverage import load_coverage
+        from subbeats_prepare import cue_suitability
+        cues=load_cues(req['state_dir'],req['stems_root'],req['track_id'],req.get('cue_key'),folder)
+        _,coverage=load_coverage(req['state_dir'],req['stems_root'],req['track_id'],req.get('coverage_key'),folder,req.get('cue_key'))
+        return {'ok':True,'cache_added_bytes':0,'subbeats_result':dict(
+            status='prepared' if cues['incoming'] or cues['outgoing'] else 'unmeasurable',
+            bundleKey=key,error=None,suitability=cue_suitability(cues,coverage['metadata']))}
     return {'ok':True, 'cache_added_bytes':0, 'subbeats_result':{
         'status':'prepared' if record['metadata'].get('stem_regions') else 'unmeasurable',
         'bundleKey':key, 'error':None, 'suitability':assess_bundle(folder,record)}}

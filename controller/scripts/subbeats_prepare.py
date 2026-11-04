@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Explicit local Sub/Beats preparation; no station settings, DB or playback writes.
+"""Managed Sub/Beats preparation; no station settings, DB or playback writes.
 
-Uses Librosa for full-recording rhythm evidence and the normal worker's Demucs
-separator for requested regions. This development entrypoint precedes worker/API
-queue integration. Output is evidence plus stems, never approval of a pair.
+Cue preparation uses a source identity plus fitted passages and narrow coverage.
+Classic Librosa preparation remains available to older backend callers/CLI tools.
+Output is evidence plus stems, never approval of a pair.
 """
 import argparse
 import importlib.metadata
@@ -244,6 +244,40 @@ def prepare(path, state_dir, *, head_seconds=68., analysis_only=False, budget=DE
     return prepare_cached(state_dir, identity, build, budget, cache_root=cache_root, allowance=allowance)
 
 
+def prepare_cue_source(path,state_dir,*,expected_cache_id,cache_root,allowance):
+    """Source/decoder/separator identity only; cue coverage owns the new stems."""
+    import analyze_worker as worker
+    path=Path(path).resolve(strict=True)
+    identity=dict(mode='cue-source',version=1,source_sha256=digest(path),
+        separator=dict(model=worker.DEMUCS_MODEL,overlap=worker.DEMUCS_OVERLAP,
+            shifts=1,context_seconds=4,sample_rate=STEM_SR,subtype='PCM_24-shared-gain-v1',
+            demucs=importlib.metadata.version('demucs'),torch=importlib.metadata.version('torch')))
+    def build(stage):
+        duration=decode(path,SR,1).shape[1]/SR
+        (stage/'analysis.json').write_text(json.dumps(dict(version=1,duration_seconds=duration,
+            supported_regions=[],coverage='full_recording',pair_ready=False))+'\n')
+        if digest(path)!=identity['source_sha256']:
+            raise ValueError('Source changed during preparation')
+        require_shared_cache(state_dir,expected_cache_id)
+        return dict(stem_regions=[],pair_ready=False)
+    return prepare_cached(state_dir,identity,build,cache_root=cache_root,allowance=allowance)
+
+
+def cue_suitability(cues,coverage):
+    """Role availability, not legacy kick-window or pair approval."""
+    from datetime import datetime,timezone
+    roles={}
+    for role in ('incoming','outgoing'):
+        point=next(iter(cues.get(role,[])),None)
+        activity=coverage.get(role)
+        roles[role]=dict(level='subbeat' if point and activity else 'regular',
+            bpm=point['bpm'] if point else None,cueSeconds=point['sourceSeconds'] if point else None,
+            leadSeconds=None,postSeconds=None,
+            reason='Estimated phrase grid and saved passage coverage; check pair compatibility.' if point and activity else 'No reliable prepared cue passage for this role.',
+            **({'vocalActivity':activity} if activity else {}))
+    return dict(version=1,assessedAt=datetime.now(timezone.utc).isoformat(),**roles)
+
+
 def require_shared_cache(state_dir, expected):
     marker = Path(state_dir) / 'subbeats' / '.cache-id'
     try:
@@ -283,14 +317,18 @@ def prepare_request(req):
             raise ValueError('Saved stems failed integrity checks. Recheck this track.')
         saved = load_cues(state_dir,req['stems_root'],req['track_id'],req['cue_key'],folder)
         result = dict(directory=str(folder),cache_hit=True,**record)
+        if saved.get('algorithmVersion') != ALGORITHM_VERSION:
+            raise ValueError('Rescan this track with Beat This! to replace the older cue analysis.')
         cue_points = dict(version=saved['version'],algorithmVersion=saved.get('algorithmVersion',ALGORITHM_VERSION),
-            model=saved['model'],artifactKey=req['cue_key'],durationSeconds=saved['durationSeconds'],incoming=saved['incoming'],outgoing=saved['outgoing'])
+            model=saved['model'],artifactKey=req['cue_key'],durationSeconds=saved['durationSeconds'],incoming=saved['incoming'],outgoing=saved['outgoing'],grid=saved.get('grid'),ending=saved.get('ending'))
+    elif method != 'classic':
+        result = prepare_cue_source(req['path'],state_dir,expected_cache_id=expected,cache_root=cache_root,allowance=allowance)
     else:
         result = prepare(req['path'], state_dir, expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_structure import prepare_structure
-    structure = None if upgrading else prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
+    structure = None if upgrading or method != 'classic' else prepare_structure(req['path'], state_dir, result['directory'], expected_cache_id=expected, cache_root=cache_root, allowance=allowance)
     from subbeats_suitability import assess_bundle
-    suitability = assess_bundle(Path(result['directory']),result)
+    suitability = assess_bundle(Path(result['directory']),result) if method == 'classic' else None
     cues = {}
     coverage_used_models = False
     if method != 'classic':
@@ -300,8 +338,10 @@ def prepare_request(req):
         from subbeats_coverage import prepare_coverage
         cues['cueCoverage'],coverage_used_models = prepare_coverage(req['path'],state_dir,result['directory'],result,cues['cuePoints'],
             cache_root=cache_root,allowance=allowance,expected_cache_id=expected)
+    if method != 'classic':
+        suitability = cue_suitability(cues['cuePoints'],cues['cueCoverage'])
     return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': coverage_used_models or (method != 'classic' and not upgrading) or (not result.get('cache_hit', False) and bool(result['metadata']['stem_regions'])), 'subbeats_result': {
-        'status': ('prepared' if result['metadata']['stem_regions'] else 'unmeasurable'),
+        'status': ('prepared' if result['metadata']['stem_regions'] or (cues and (cues['cuePoints']['incoming'] or cues['cuePoints']['outgoing'])) else 'unmeasurable'),
         'bundleKey': Path(result['directory']).name, 'suitability':suitability, **cues,
         'error': None,
     }, 'subbeats_structure_key': Path(structure['directory']).name if structure else None}
