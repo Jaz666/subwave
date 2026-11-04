@@ -8,27 +8,29 @@ contain historical prototypes; they do not override the current decisions.
 
 ## Where to resume
 
-### Current research handoff — 4 November: Children preserves the full opening
+### Current research handoff — 4 November: Children head/tail previews accepted
 
-The next example is Robert Miles — Children. The owner specifies driving-beat
-entry around 42s at bar 16, a backwards-projected bar zero around 14s, and bar 112
-as the 16-bar outro start. The prepared *30 Years* copy already has saved markers
-at 14.64s/42.60s. An offline beat fit anchored at 42.60s gives projected bar zero
-14.587766s and bar 112 at 210.673405s. Later model downbeats disagree by half a
-bar despite consistent beat timing. Projected closing markers remain unauditioned.
+The owner accepted both Children original-mix metronome previews with “previews
+are spot on”. The prepared *30 Years* copy has accepted listening references:
+projected grid zero 14.587766s, driving-beat entry/bar 16 at 42.600000s, 16-bar
+outro/bar 112 at 210.673405s, 8-bar alternative/bar 120 at 224.679522s, and closing
+phrase/bar 128 at 238.685639s. These are fitted-grid references for this recording,
+not proof of automatic boundary detection. Later model downbeat labels disagree
+by half a bar despite consistent beat timing.
 
 [Children evidence and implementation implications](subbeats-research-20261103/children-grid-evaluation.md)
-record the distinction between audio start, musical grid zero and driving-beat
-entry. Preserve the complete opening from 0:00; incoming matching must account
-for all 42.6 seconds, and narrowed stem coverage must include it plus required
-follow-through. The owner clarified that about one second of echo follows the final
-**outro** beat, not the intro: preserve it in both cached coverage and the rendered fade, without
-moving the timing marker or hardcoding a one-second tail for all tracks. Include
-retained tails in vocal-overlap assessment. Do not force a strict 16-bar duration
-or silently trust shifting model downbeat phase. No runtime/station changes. New original-mix head/tail click auditions are generated and linked from the
-Children evidence: head 0–49.60s includes context after bar 16; tail 203.67s–EOF
-marks bars 112/120/128 and preserves the original ending including its echo. Audio checks passed; owner acceptance is pending.
-Next: owner audition and discussion before implementation.
+record audio start, projected grid zero and driving-beat entry separately.
+Preserve the complete opening from 0:00 and account for its full 42.6-second lead
+in matching and coverage. The owner clarified that roughly one second of echo
+follows the final **outro** beat, not the intro. Preserve natural tails in both
+retained audio and rendered gain envelopes without moving timing markers or
+hardcoding one second for every track. Include tails in vocal-overlap checks.
+
+The accepted head runs 0–49.60s, including context after bar 16. The accepted
+tail runs 203.67s–EOF, marking bars 112/120/128 and retaining the complete ending.
+Exact clip metadata and file locations are in the evidence document. No runtime
+or station changes. Next: discuss implementation using both the accepted Launch
+and Children references; acceptance does not authorize skipping pair/vocal checks.
 
 ### Previous research handoff — 4 November: accepted Launch reference
 

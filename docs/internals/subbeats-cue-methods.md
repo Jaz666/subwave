@@ -108,7 +108,10 @@ separates audio start (0:00), projected bar zero (~14.59s) and driving-beat entr
 at bar 16 (42.60s). Preserve the entire opening and count that complete lead in
 matching/cache coverage. Later model downbeat labels disagree by half a bar;
 maintaining musical phase requires separate confidence from beat timing.
-Projected bar-112 outro (~210.67s) still needs audition. Do not discard early
+The owner accepted both head/tail previews with “previews are spot on”, including
+bar-112 outro (~210.67s), bar-120 alternative (~224.68s) and bar-128 phrase ending
+(~238.69s), with the original ending/echo retained. These are listening references,
+not independent automatic detections or pair approval. Do not discard early
 music to fit a strict 16-bar-duration cache. Runtime behavior remains unchanged.
 
 ## Operator workflow

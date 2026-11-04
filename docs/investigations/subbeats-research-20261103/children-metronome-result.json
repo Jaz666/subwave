@@ -3,7 +3,7 @@
   "bpm": 137.08296124463112,
   "projectedGridOriginSeconds": 14.587765910984842,
   "drivingBeatSeconds": 42.6,
-  "method": "Fixed grid from saved offline fit anchored at driving-beat entry; backward-projected bar zero and owner-labelled/proposed closing markers, pending audition; original audio before grid zero and after phrase end retained",
+  "method": "Fixed grid from saved offline fit anchored at driving-beat entry; backward-projected bar zero and owner-labelled/proposed closing markers; original audio before grid zero and after phrase end retained",
   "lastPredictedBeatSeconds": 240.48,
   "musicGain": 0.6807809376603543,
   "clips": [
@@ -53,5 +53,11 @@
         }
       ]
     }
-  ]
+  ],
+  "listeningAcceptance": {
+    "date": "2026-11-04",
+    "source": "owner feedback in this conversation",
+    "quote": "previews are spot on",
+    "scope": "Both original-mix head/tail metronome previews; fitted reference markers and retained opening/ending, not automatic detector or stem-pair approval"
+  }
 }

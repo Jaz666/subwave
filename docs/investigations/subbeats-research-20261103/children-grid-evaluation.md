@@ -1,8 +1,7 @@
-# Children: complete beatless opening and provisional grid — 4 November 2026
+# Children: accepted opening and closing grid auditions — 4 November 2026
 
 Status: owner references plus offline investigation. No detector, renderer,
-station cue, preparation or cache policy changes. No listening approval of new
-Children previews has been given. This follows the accepted
+station cue, preparation or cache policy changes. The owner accepted both head and tail previews with “previews are spot on”. This follows the accepted
 [Launch auditions and implementation plan](launch-grid-evaluation.md).
 
 ## Recording and owner references
@@ -42,13 +41,13 @@ residuals are 12.35/37.00ms. Fitted tempo is 137.082961 BPM.
 | Musical grid origin | 0 | 14.587766 | Back-projected from bar 16 |
 | Driving beat enters | 16 | 42.600000 | Owner reference and model downbeat |
 | 16-bar outro start | 112 | 210.673405 | Owner bar label projected on fitted grid |
-| Possible 8-bar alternative | 120 | 224.679522 | Provisional continuation |
-| Possible phrase endpoint | 128 | 238.685639 | Provisional continuation |
+| 8-bar alternative | 120 | 224.679522 | Grid continuation accepted in tail audition |
+| Closing phrase endpoint | 128 | 238.685639 | Grid continuation accepted in tail audition |
 | Original audio end | — | 246.706667 | Decoded duration |
 
-The late timings are **not audition-confirmed**. Bar 128 is a proposed phrase
-endpoint, not a detected natural ending. Retain the original ending while that
-is evaluated. Early beat predictions exist even before the kick enters; their
+The owner accepted these head/tail timings as the listening reference for this
+recording. Bar 128 remains a grid-derived phrase endpoint, not independently
+detected natural-ending evidence. Preserve the original ending and its echo. Early beat predictions exist even before the kick enters; their
 presence alone does not prove reliable downbeats in the beatless opening.
 
 The model's downbeat phase also changes later: 189.66s agrees with projected
@@ -68,8 +67,8 @@ The owner clarified that the approximately one second of fading echo is on the
 very last beat of the **outro**, not the intro. This is owner listening evidence,
 not a newly measured tail endpoint. Preserve the decay after the closing phrase;
 the musical timing marker must not become a hard cut of the ending audio.
-The projected bar-128 endpoint still needs audition and is not independently
-confirmed by this clarification.
+The owner subsequently accepted the head/tail auditions, including this closing
+reference. This does not independently measure the echo endpoint.
 
 The retained stem coverage and rendered gain envelopes must both let that tail
 finish naturally. Retaining samples alone is insufficient if the mix mutes them
@@ -99,11 +98,11 @@ provide listening context, not evidence of an intro echo.
   grid zero. Aligning this 42.6-second opening against a roughly 28-second
   outgoing run requires an earlier incoming start or a different arrangement.
   Do not solve that mismatch by skipping music or suppressing either passage.
-- Bar 112 supplies a closing reference to audition against the natural ending;
-  it is not automatic approval of projected bars 120/128 or pair suitability.
+- Bars 112/120/128 are accepted listening references for this recording;
+  this does not establish automatic detector accuracy or pair suitability.
   Vocal-overlap protection remains required; beatless does not mean vocal-free.
 
-## New head and tail auditions
+## Accepted head and tail auditions
 
 At the owner's request, generated original-mix metronome previews from the saved
 fit, without repeating inference or separating stems. The head runs from source
@@ -114,7 +113,7 @@ listening context. Bells mark bar zero (14.587766s) and bar 16
 The tail runs from source 203.670340s through EOF. Bells mark bar 112, bar 120
 and proposed phrase end bar 128 at approximately 7.00s, 21.01s and 35.02s into
 the clip. Clicks stop at bar 128 while the original ending continues. These
-closing references remain proposed pending owner audition.
+closing references were accepted when the owner said “previews are spot on”.
 
 The source hash was verified, tempo/pitch and original audio continuity retained,
 and uniform gain applied before adding clicks. Both stereo 44.1kHz PCM16 WAVs
@@ -124,5 +123,6 @@ Files are `children-head-metronome.wav` and `children-tail-metronome.wav` in the
 external Children research directory above. These are full-mix timing auditions,
 not stem-pair transition or isolated echo tests. No station changes.
 
-Next: owner auditions, then discuss general detection and coverage choices
-before changing runtime behavior.
+Next: discuss implementation using the accepted Launch and Children references.
+No detector/renderer/cache changes are implied by listening acceptance; existing
+vocal checks and track-specific boundary evidence remain necessary.
