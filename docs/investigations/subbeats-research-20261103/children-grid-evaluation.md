@@ -62,6 +62,21 @@ model disagreement; a real musical phase change has not been established.
 fit and phase examples. Full grid and repeat probe remain outside Git in
 `/home/jaz666/codex/subbeats-beat-this-20261103/children/`.
 
+## Owner clarification: intro decay beyond the phrase boundary
+
+The owner reports approximately one second of fading echo from the final intro
+beat extending beyond the 16-bar opening. This is listening evidence supplied
+by the owner, not a newly measured tail endpoint. The bar-16 arrival remains the
+musical timing reference; it must not become a hard cut of the intro audio.
+
+Preserve that decay into the driving-beat section. The retained stem coverage
+and rendered gain envelopes must both allow the tail to finish naturally;
+retaining samples alone is insufficient if the mix mutes them at the marker.
+Required continuation is track-dependent: do not hardcode a universal one-second
+extension, move the beat-grid marker to the end of the echo, or apply one cutoff
+to every stem. Account for the audible retained tails in pair/vocal-overlap
+assessment. Audition the boundary and decay when validating this example.
+
 ## Implications for the proposed implementation
 
 - Keep audio origin, projected grid origin and established driving-beat entry

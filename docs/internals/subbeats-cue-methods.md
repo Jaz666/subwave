@@ -95,6 +95,14 @@ The existing 130/120-second coverage is conservative current behavior; replace
 it only alongside compatible selection, rendering and vocal checks. No automatic
 cache deletion or bulk recheck follows from this plan.
 
+A phrase/arrival marker is a timing reference, not an obligatory audio cutoff.
+The owner reports roughly one second of intro echo extending beyond Children’s
+16-bar boundary. Preserve such tails in both retained stem coverage and rendered
+gain envelopes, with duration determined by the audio rather than a universal
+one-second allowance. Keep the grid marker in place and assess the actual
+continued audio for pair/vocal overlap. This applies to intro boundaries as well
+as natural track endings; it remains a planned requirement, not runtime behavior.
+
 The next example, [Robert Miles — Children](../investigations/subbeats-research-20261103/children-grid-evaluation.md),
 separates audio start (0:00), projected bar zero (~14.59s) and driving-beat entry
 at bar 16 (42.60s). Preserve the entire opening and count that complete lead in

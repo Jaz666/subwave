@@ -21,8 +21,11 @@ bar despite consistent beat timing. Projected closing markers remain unauditione
 record the distinction between audio start, musical grid zero and driving-beat
 entry. Preserve the complete opening from 0:00; incoming matching must account
 for all 42.6 seconds, and narrowed stem coverage must include it plus required
-follow-through. Do not force a strict 16-bar duration or silently trust shifting
-model downbeat phase. No runtime/station changes. Next: head/tail marker audition
+follow-through. The owner also hears about one second of final-intro-beat echo
+beyond bar 16: preserve it in both cached coverage and the rendered fade, without
+moving the timing marker or hardcoding a one-second tail for all tracks. Include
+retained tails in vocal-overlap assessment. Do not force a strict 16-bar duration
+or silently trust shifting model downbeat phase. No runtime/station changes. Next: head/tail marker audition
 and discussion before implementation.
 
 ### Previous research handoff — 4 November: accepted Launch reference
