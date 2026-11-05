@@ -7,12 +7,210 @@ Cue evidence is for preview, never automatic pair or phrase approval.
 import importlib.metadata
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 5
+ALGORITHM_VERSION = 6
 TAIL_SECONDS = 16
+OPENING_WINDOW_BEATS = 32
+OPENING_WINDOW_STEP = 4
+OPENING_MAX_START_BEATS = 16
+SPAN_FIT_MAX_P95_SECONDS = .1
+
+
+def stable_beat_windows(beats, downbeats):
+    """Locally steady Beat This! windows with a supported bar phase."""
+    import numpy as np
+    beats, downbeats = np.asarray(beats, dtype=float), np.asarray(downbeats, dtype=float)
+    indices = np.searchsorted(beats, downbeats)
+    valid = indices < len(beats)
+    indices, matched = indices[valid], downbeats[valid]
+    exact = np.abs(beats[indices] - matched) < .02
+    indices = indices[exact]
+    windows = []
+    for start in range(0, len(beats) - OPENING_WINDOW_BEATS + 1, OPENING_WINDOW_STEP):
+        times = beats[start:start + OPENING_WINDOW_BEATS]
+        period, origin = np.polyfit(np.arange(OPENING_WINDOW_BEATS), times, 1)
+        error = np.abs(times - (origin + period * np.arange(OPENING_WINDOW_BEATS)))
+        if (not 60 <= 60 / period <= 190 or np.percentile(error, 95) > .045
+                or np.mean(np.abs(np.diff(times) / period - 1) < .2) < .9):
+            continue
+        local = indices[(indices >= start) & (indices < start + OPENING_WINDOW_BEATS)]
+        if len(local) < 5:
+            continue
+        phases, counts = np.unique(local % 4, return_counts=True)
+        winner = int(np.argmax(counts))
+        support = float(counts[winner] / len(local))
+        if support >= .75:
+            windows.append(dict(start_index=start, end_index=start + OPENING_WINDOW_BEATS - 1,
+                start_seconds=float(times[0]), end_seconds=float(times[-1]), bpm=float(60 / period),
+                p95_error_ms=float(np.percentile(error, 95) * 1000),
+                downbeat_phase=int(phases[winner]), downbeat_phase_support=support))
+    return windows, indices
+
+
+def tempo_relation(a, b):
+    import numpy as np
+    error, factor = min((abs(a / (b * factor) - 1), factor) for factor in (.5, 1., 2.))
+    return float(error), float(factor)
+
+
+def supported_grid_matches(windows, regions, beats):
+    """Require a stable Beat This! phase chain and independent Librosa tempo."""
+    import numpy as np
+    matches = []
+    by_start = {window['start_index']: window for window in windows}
+    for window in windows:
+        for region in regions:
+            if region['end_seconds'] < window['end_seconds']:
+                continue
+            relation, factor = tempo_relation(region['bpm'], window['bpm'])
+            if relation > .02:
+                continue
+            region_end = int(np.searchsorted(beats, region['end_seconds']))
+            expected = range(window['start_index'], max(window['start_index'] + 1, region_end - 31), 4)
+            chain = [by_start[start] for start in expected if start in by_start
+                and tempo_relation(by_start[start]['bpm'], window['bpm'])[1] == 1.
+                and tempo_relation(by_start[start]['bpm'], window['bpm'])[0] <= .02
+                and by_start[start]['downbeat_phase'] == window['downbeat_phase']
+                and by_start[start]['downbeat_phase_support'] >= .75]
+            coverage = len(chain) / max(1, len(expected))
+            if coverage < .7 or not chain or any(b['start_index']-a['start_index'] > 8 for a,b in zip(chain,chain[1:])):
+                continue
+            prior = [candidate for candidate in windows if candidate['start_index'] < window['start_index']
+                and candidate['downbeat_phase'] != window['downbeat_phase']
+                and tempo_relation(candidate['bpm'], window['bpm'])[1] == 1.
+                and tempo_relation(candidate['bpm'], window['bpm'])[0] <= .02]
+            matches.append(dict(window=window, region=region, relative_error=relation, factor=factor,
+                chain_coverage=coverage, earlier_phase_conflict=len(prior) >= 3))
+    matches.sort(key=lambda item:(item['window']['start_seconds'],item['relative_error'],
+        item['window']['downbeat_phase_support']*-1,item['region']['start_seconds']))
+    return matches
+
+
+def refit_opening_sixteen(beats, origin, initial_bpm):
+    """Use the observed 64-beat passage when its fixed-phase fit is sound."""
+    import numpy as np
+    beats = np.asarray(beats, dtype=float)
+    index = int(np.searchsorted(beats, origin))
+    if index >= len(beats) or (index and abs(beats[index - 1] - origin) < abs(beats[index] - origin)):
+        index -= 1
+    if index < 0 or abs(beats[index] - origin) > .05 or index + 64 >= len(beats):
+        return None
+    times = beats[index:index + 65]
+    period = (float(times[-1]) - origin) / 64
+    intervals = np.diff(times) / period
+    error = times - (origin + np.arange(65) * period)
+    bpm = 60 / period
+    if (not 60 <= bpm <= 190 or abs(bpm / initial_bpm - 1) > .02
+            or np.mean(np.abs(intervals - 1) < .2) < .98
+            or np.percentile(np.abs(error), 95) > SPAN_FIT_MAX_P95_SECONDS):
+        return None
+    return dict(sourceSeconds=float(times[-1]), bpm=float(bpm),
+        p95ErrorSeconds=float(np.percentile(np.abs(error), 95)))
+
+
+def opening_grid_incoming(beats, downbeats, supported_regions, duration):
+    """Propose early 8/16-bar arrivals; correct only a verified 16-bar span."""
+    import numpy as np
+    windows, downbeat_indices = stable_beat_windows(beats, downbeats)
+    matches = supported_grid_matches(windows, supported_regions, beats)
+    if not matches:
+        return None
+    match = matches[0]
+    window = match['window']
+    if (match['earlier_phase_conflict'] or window['start_index'] > OPENING_MAX_START_BEATS):
+        return None
+    phase_downbeats = [(float(at), int(index)) for at,index in zip(downbeats,
+        np.searchsorted(beats, downbeats)) if index < len(beats)
+        and abs(beats[index]-at) < .02 and window['start_index'] <= index <= window['end_index']
+        and index % 4 == window['downbeat_phase']]
+    if not phase_downbeats:
+        return None
+    origin = phase_downbeats[0][0]
+    period = 60 / window['bpm']
+    incoming = []
+    for bars in (8, 16):
+        seconds = origin + bars * 4 * period
+        bpm = window['bpm']
+        if bars == 16:
+            fitted = refit_opening_sixteen(beats, origin, bpm)
+            if fitted:
+                seconds, bpm = fitted['sourceSeconds'], fitted['bpm']
+        if seconds + 8 * period < duration and seconds < 130 - 16 * 1.08 - .05:
+            incoming.append(dict(sourceSeconds=float(seconds), bpm=float(bpm),
+                strength=float(match['chain_coverage']), reason='opening', phraseBars=bars,
+                barNumber=bars, timingSource='opening-grid', phraseStartSeconds=origin))
+    return incoming or None
+
+
+def onset_grid_incoming(beats, downbeats, onset, duration):
+    """Fallback for light/high-passed openings whose Beat This! grid is stable later."""
+    import numpy as np
+    beats, downbeats, onset = np.asarray(beats), np.asarray(downbeats), np.asarray(onset)
+    if len(beats) < 64 or len(downbeats) < 8 or not len(onset):
+        return None
+    steps = np.diff(beats)
+    median = float(np.median(steps))
+    period = float(np.mean(steps[np.abs(steps / median - 1) < .2]))
+    if not 60 <= 60 / period <= 190:
+        return None
+    hop = 256 / 22050
+    early, late = np.zeros(len(beats)), np.zeros(len(beats))
+    for i, at in enumerate(beats):
+        first = max(0, int(at / hop))
+        stop = min(len(onset), first + max(1, round(.16 / hop)))
+        late_first, late_stop = min(len(onset), first + round(.55 * period / hop)), min(len(onset), first + round(.9 * period / hop))
+        if first < len(onset): early[i] = float(np.max(onset[first:stop]))
+        if late_first < late_stop: late[i] = float(np.max(onset[late_first:late_stop]))
+    reference = float(np.percentile(early, 75))
+    if reference < 1e-5:
+        return None
+    strong = (early >= reference * .5) & (early - late >= reference * .1)
+    indices = np.searchsorted(beats, downbeats)
+    exact = (indices < len(beats)) & (np.abs(beats[np.minimum(indices, len(beats)-1)] - downbeats) < .02)
+    entry = next((float(at) for at,index in zip(downbeats[exact],indices[exact])
+        if index + 16 <= len(beats) and strong[index]
+        and np.mean(strong[index:index+16]) >= .85
+        and np.mean(np.abs(np.diff(beats[index:index+16]) / period - 1) < .2) >= .85), None)
+    if entry is None:
+        return None
+    anchor = entry
+    if entry < 16 * period:
+        earlier = downbeats[(downbeats <= entry) & (np.abs((entry-downbeats)/(4*period)
+            - np.rint((entry-downbeats)/(4*period))) < .08)]
+        if len(earlier): anchor = float(earlier[0])
+    fit = beats[beats >= anchor]
+    for _ in range(5):
+        ordinals = np.rint((fit-anchor)/period)
+        good = np.abs(fit-(anchor+ordinals*period)) < .06
+        if good.sum() < 64 or np.dot(ordinals[good],ordinals[good]) == 0:
+            return None
+        period = float(np.dot(ordinals[good],fit[good]-anchor)/np.dot(ordinals[good],ordinals[good]))
+    residual = np.abs(fit-(anchor+np.rint((fit-anchor)/period)*period))
+    if not 60 <= 60 / period <= 190 or np.mean(residual < .06) < .85:
+        return None
+    bars_before = max(0, round((anchor-float(downbeats[0]))/(4*period)))
+    origin = anchor-bars_before*4*period
+    if bars_before > 16: origin += ((bars_before-16)//4)*16*period
+    if origin < 0: origin += 4*period
+    bpm = 60 / period
+    incoming = []
+    for bars in (16, 8):
+        seconds = origin + bars * 4 * period
+        if seconds + 8*period < duration and seconds < 130-16*1.08-.05:
+            point = dict(sourceSeconds=float(seconds),bpm=float(bpm),strength=float(np.mean(residual < .06)),
+                reason='opening',phraseBars=bars,phraseStartSeconds=float(origin),timingSource='onset-grid')
+            if bars == 16:
+                fitted = refit_opening_sixteen(beats, origin, bpm)
+                if fitted: point.update(sourceSeconds=fitted['sourceSeconds'],bpm=fitted['bpm'])
+            incoming.append(point)
+    if entry-origin >= 32*period and entry < 130-16*1.08-.05 and all(abs(entry-c['sourceSeconds'])>.1 for c in incoming):
+        incoming.insert(0,dict(sourceSeconds=float(entry),bpm=float(bpm),strength=float(np.mean(residual < .06)),
+            reason='opening',phraseStartSeconds=float(origin),timingSource='onset-grid'))
+    return incoming or None
 
 
 def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False, incoming=False):
@@ -305,7 +503,7 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
     import librosa
     import numpy as np
     from subbeats_models import MODELS
-    from subbeats_prepare import SR, decode, require_shared_cache
+    from subbeats_prepare import SR, analyze, decode, require_shared_cache
     if model not in MODELS:
         raise ValueError('Unknown cue preparation method')
     identity = dict(mode='cue-points',version=ALGORITHM_VERSION,model=model,model_sha256=MODELS[model],
@@ -322,6 +520,25 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
             raise ValueError('Learned grid is outside the decoded recording')
         duration = len(y)/SR
         roles = fitted_passages(y,SR,beats,downbeats)
+        if not roles['incoming']:
+            with TemporaryDirectory(prefix='.cue-analysis-',dir=stage) as work:
+                evidence = analyze(path,Path(work),librosa)
+                windows, downbeat_indices = stable_beat_windows(beats,downbeats)
+                matches = supported_grid_matches(windows,evidence['supported_regions'],beats)
+                if matches:
+                    selected = matches[0]
+                    incoming = opening_grid_incoming(beats,downbeats,evidence['supported_regions'],duration)
+                    if (incoming is None and not selected['earlier_phase_conflict']
+                            and selected['chain_coverage'] >= .7):
+                        with np.load(Path(work)/'rhythm.npz') as rhythm:
+                            onset = rhythm['onset'].copy()
+                        fallback = onset_grid_incoming(beats,downbeats,onset,duration)
+                        if fallback:
+                            relation, _ = tempo_relation(selected['region']['bpm'],fallback[0]['bpm'])
+                            if relation <= .02:
+                                incoming = fallback
+                    if incoming:
+                        roles['incoming'] = incoming
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
@@ -342,7 +559,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')

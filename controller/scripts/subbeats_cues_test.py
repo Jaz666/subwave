@@ -65,9 +65,29 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],5)
+            self.assertEqual(result['algorithmVersion'],6)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
+
+    def test_opening_grid_refits_a_stable_sixteen_bar_tempo_drift(self):
+        origin=1.04; fast=60/114.03; slow=60/112.96
+        beats=origin+np.r_[0.,np.cumsum(np.linspace(fast,slow,64))]
+        downbeats=beats[::4]
+        arrivals=cues.opening_grid_incoming(beats,downbeats,[dict(start_seconds=0,end_seconds=60,bpm=114.03)],80)
+        self.assertEqual([cue['phraseBars'] for cue in arrivals],[8,16])
+        first_window=cues.stable_beat_windows(beats,downbeats)[0][0]
+        self.assertAlmostEqual(arrivals[0]['sourceSeconds'],origin+32*60/first_window['bpm'],places=3,
+                               msg='the accepted 8-bar opening remains on its local rate')
+        self.assertGreater(arrivals[1]['sourceSeconds'],origin+64*fast+.1)
+        self.assertLess(arrivals[1]['bpm'],arrivals[0]['bpm'])
+        self.assertLess(abs(arrivals[1]['sourceSeconds']-(origin+32*fast+32*slow)),.01)
+
+    def test_opening_grid_keeps_irregular_sixteen_bar_spans_on_the_review_route(self):
+        origin=.32; period=60/125.6
+        beats=origin+np.arange(65)*period
+        beats[10]+=.3
+        self.assertIsNone(cues.refit_opening_sixteen(beats,origin,125.6),
+                          'an irregular early grid must retain its existing candidate')
 
     def test_projected_grid_preserves_long_intro_phase_and_echo_beyond_the_outro(self):
         # Synthetic pulses exercise timing/selection. Real-track checks cover the

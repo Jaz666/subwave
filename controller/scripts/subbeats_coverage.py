@@ -17,7 +17,7 @@ VERSION = 2
 
 def coverage_regions(cues, duration):
     regions = []
-    if cues.get('algorithmVersion') == 5:
+    if cues.get('algorithmVersion') in (5, 6):
         if cues.get('incoming'):
             # The supported outgoing decay is <=16 playback seconds. Include
             # its worst permitted tempo adjustment and two incoming bars.

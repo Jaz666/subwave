@@ -166,7 +166,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     if (autoPlan && !cueMode) throw new Error('Automatic transition planning requires cue-point preview mode.');
     if (cueMode && (parsed.data.matched || parsed.data.referenceBars !== undefined || parsed.data.barShift !== 0)) throw new Error('Cue-point previews use saved cue choices. Reset the bar shift and match selection.');
     const cueIndices = parsed.data.cueIndices ?? [0,0];
-    if (cueMode && !autoPlan && tracks.some(track => track?.cuePoints?.algorithmVersion !== 5)) throw new Error('Rescan both tracks with Beat This! for the new phrase preview.');
+    if (cueMode && !autoPlan && tracks.some(track => !track?.cuePoints?.algorithmVersion || track.cuePoints.algorithmVersion < 5)) throw new Error('Rescan both tracks with Beat This! for the new phrase preview.');
     if (cueMode && !autoPlan && (!tracks[0]?.cuePoints?.outgoing[cueIndices[0]!] || !tracks[1]?.cuePoints?.incoming[cueIndices[1]!])) throw new Error('Recheck both tracks with a Beat This! preparation method and choose saved cue points.');
     await library.load();
     await blocklist.load();
@@ -194,7 +194,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
     const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
       ...(cueMode ? {method:'cue-points' as const,auto_plan:autoPlan,
-        cue_keys:tracks.map(track => track?.cuePoints?.algorithmVersion === 5 ? track.cuePoints.artifactKey : null),
+        cue_keys:tracks.map(track => track?.cuePoints?.algorithmVersion && track.cuePoints.algorithmVersion >= 5 ? track.cuePoints.artifactKey : null),
         cue_indices:cueIndices,coverage_keys:tracks.map(track => track?.cueCoverage?.artifactKey ?? null),
         ...(autoPlan ? {crossfade_seconds:settings.get().crossfadeDuration,
           equal_power_crossfade:settings.get().transitions?.equalPowerCrossfade === true} : {})} : {})});

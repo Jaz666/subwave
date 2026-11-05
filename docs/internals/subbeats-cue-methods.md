@@ -82,7 +82,7 @@ around 14.59s and driving-beat entry/bar 16 at 42.60s. Its final outro beat has
 approximately one second of echo beyond the closing phrase. These references
 inform the implementation below; audio boundaries and grid markers stay separate.
 
-## Phrase preparation and preview — algorithm 5 / preview 13
+## Phrase preparation and preview — algorithm 6 / preview 13
 
 Rebuild analyzer, controller and web together, then **rescan existing tracks**:
 select them on Preparation, choose Beat This! small (or full), and use
@@ -94,9 +94,36 @@ The ordinary shared cache budget and eviction policy still apply.
 New cue preparation creates a small source/decoder/separator identity artifact,
 runs Beat This! and detects fitted passages, then separates the selected regions.
 It skips the legacy full Librosa rhythm/structure analysis and its broad base
-stems. Classic preparation/backend APIs remain for compatibility; their preview
-controls, old match query, bar-shift controls and workspace state are removed
-from the browser. Normal Stem Blend and live picking/broadcast are unchanged.
+stems on the normal path. If the fitted passage finder finds no incoming cue,
+preparation also runs the existing Librosa analysis in a temporary directory
+and uses its supported tempo regions and onset strength as independent evidence
+for a bounded early-opening fallback. Classic preparation/backend APIs remain
+for compatibility; their preview controls, old match query, bar-shift controls
+and workspace state are removed from the browser. Normal Stem Blend and live
+picking/broadcast are unchanged.
+
+Algorithm 6 addresses incoming gaps where the track's opening grid is usable
+but the bass-gated passage finder misses a quiet or filtered beat. It accepts an
+early Beat This! grid only when 32-beat windows have a stable fit and repeated
+four-beat phase support, Librosa independently supports the tempo, and the grid
+continues with the same phase. The selected opening must begin within the first
+16 beats; a later phase conflict blocks this fallback. An eight-bar arrival
+keeps the local opening rate. A sixteen-bar arrival is refitted from the exact
+64-beat passage only when the observed phase, per-beat intervals, tempo and
+whole-span residual all pass the conservative fit checks. When that route cannot
+support a light intro, an onset-strength check may anchor a later driving beat
+and project the original opening grid backwards. Every new marker is evidence
+for preview, not an automatic suitability approval.
+
+The existing fitted-passage method still takes priority, so tracks with saved
+incoming cues retain those cue choices. The fallback only runs for a missing
+incoming role. Version-5 cue artifacts remain readable for preview and matching;
+rechecking selected tracks writes version 6. The owner-approved eight-bar
+Lovestation and Papua auditions are protected from sixteen-bar correction by
+the separate full-span fit: an irregular sixteen-bar run keeps its original
+proposal, and no rate adjustment is applied to the eight-bar point. Lonyo's
+one-bar-late natural release remains an arrangement-boundary issue, separate
+from beat-grid timing.
 
 The fitted grid uses sustained low-frequency pulses to establish an entry,
 then robustly fits a constant tempo to the learned beats. It requires at least

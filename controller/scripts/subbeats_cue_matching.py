@@ -46,7 +46,7 @@ def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2):
     """Suggest up to two vocal-free, fitted-grid, two-bar incoming drum loops."""
     if assess_vocal_pair(outgoing, incoming, plan)['status'] != 'conflict':
         return None
-    if cue.get('timingSource') != 'fitted-grid' or cue.get('phraseBars') not in (8, 16):
+    if cue.get('timingSource') not in ('fitted-grid','opening-grid','onset-grid') or cue.get('phraseBars') not in (8, 16):
         return None
     try:
         start, bpm = cue['sourceSeconds'], cue['bpm']
@@ -166,7 +166,7 @@ def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing
 def find_cue_matches(jobs, outgoing_id, out_index=0):
     outgoing_job = next((j for j in jobs if j['id']==outgoing_id and j['status']=='prepared'),None)
     points = (outgoing_job or {}).get('cuePoints') or {}
-    if points.get('algorithmVersion') != 5:
+    if points.get('algorithmVersion') not in (5,6):
         raise ValueError('Rescan the outgoing track with Beat This! for the new phrase preview.')
     outs = points.get('outgoing',[])
     duration = points.get('durationSeconds')
@@ -182,7 +182,7 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
         if job['id']==outgoing_id or job['status']!='prepared':
             continue
         incoming_points = job.get('cuePoints') or {}
-        if incoming_points.get('algorithmVersion')!=5 or not incoming_points.get('incoming') or not incoming_points.get('durationSeconds'):
+        if incoming_points.get('algorithmVersion') not in (5,6) or not incoming_points.get('incoming') or not incoming_points.get('durationSeconds'):
             excluded['unassessed'] += 1
             continue
         choices = []

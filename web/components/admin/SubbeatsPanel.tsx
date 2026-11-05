@@ -208,8 +208,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const selectedJobs = selectPreparationIds(jobSelected, [], jobs);
   const selectedJobSet = new Set(selectedJobs);
   const assessJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey);
-  const coverageJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey && byId.get(id)?.cuePoints?.algorithmVersion === 5);
-  const needsCoverage = jobs.filter(job => job.bundleKey && job.cuePoints?.algorithmVersion === 5 && !job.cueCoverage && !['queued','running'].includes(job.status));
+  const coverageJobs = selectedJobs.filter(id => byId.get(id)?.bundleKey && (byId.get(id)?.cuePoints?.algorithmVersion ?? 0) >= 5);
+  const needsCoverage = jobs.filter(job => job.bundleKey && (job.cuePoints?.algorithmVersion ?? 0) >= 5 && !job.cueCoverage && !['queued','running'].includes(job.status));
   const pageJobs = ranked.slice(activeJobPage * 20, (activeJobPage + 1) * 20);
   const auditionIndex = ranked.findIndex(job => job.id === auditionId);
   const auditionJob = auditionIndex >= 0 ? ranked[auditionIndex] : undefined;
@@ -245,7 +245,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     if (incoming && !valid.has(incoming)) { setIncoming(''); }
   },[state.data,outgoing,incoming,setOutgoing,setIncoming,setJobSelected]);
   const [soloRole,setSoloRole] = useState<'incoming'|'outgoing'|null>(null);
-  const outgoingPoints = byId.get(outgoing)?.cuePoints?.algorithmVersion === 5 ? byId.get(outgoing)?.cuePoints : undefined;
+  const outgoingPoints = (byId.get(outgoing)?.cuePoints?.algorithmVersion ?? 0) >= 5 ? byId.get(outgoing)?.cuePoints : undefined;
   const outgoingTrack = useAdminQuery({
     key: subbeatsKeys.duration(outgoing), adminFetch, enabled: ready && page === 'preview' && !!outgoing,
     request: async (fetcher, signal) => z.object({ track: z.object({ durationSec: z.number().finite().positive().nullish() }) }).parse(
@@ -259,7 +259,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     if (outgoingCues.length && !outgoingCues.some(item => item.index === outCueIndex)) setOutCueIndex(outgoingCues[0]!.index);
   }, [outgoingCues,outCueIndex,setOutCueIndex]);
   const cueIncoming = previewJobs.filter(job => job.id !== outgoing && job.bundleKey);
-  const incomingCues = subbeatsIncomingCues(byId.get(incoming)?.cuePoints?.algorithmVersion === 5 ? byId.get(incoming)!.cuePoints!.incoming : [],outgoingCue);
+  const incomingCues = subbeatsIncomingCues((byId.get(incoming)?.cuePoints?.algorithmVersion ?? 0) >= 5 ? byId.get(incoming)!.cuePoints!.incoming : [],outgoingCue);
   const incomingChoice = incomingCues.find(item => item.index === inCueIndex);
   const incomingCue = incomingChoice?.cue;
   const timelineTransitionType = preview.timeline
@@ -545,7 +545,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 <p className="mt-1 text-xs break-words text-muted lg:mt-0">{row.genres.join(' · ')}</p>
                 <p className="mt-2 text-xs text-muted lg:mt-0">{BROWSE_LABEL[job?.status ?? row.status]} · {row.hasBeatGrid ? 'Beat data available' : row.bpm ? 'Tempo estimate only' : 'No tempo data'}</p>
                 {job?.cuePoints && <p className="mt-1 text-xs text-muted lg:col-span-3">{job.cueCoverage ? 'Matching coverage and vocal measurements saved · check each pair for compatibility.' : 'Cues detected · upgrade cue coverage for saved vocal matching.'}</p>}
-                <SuitabilityDetails value={job ? job.suitability : row.suitability} cueBased={job?.cuePoints?.algorithmVersion === 5} />
+                <SuitabilityDetails value={job ? job.suitability : row.suitability} cueBased={(job?.cuePoints?.algorithmVersion ?? 0) >= 5} />
                 <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs lg:col-span-3">
                   <Checkbox aria-label={`Include ${row.title} by ${row.artist} in regular stem caching`} checked={regularIds.has(row.id)}
                     disabled={!cache.query.data || cache.query.isError || cache.update.isPending}
@@ -635,13 +635,13 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 <Button className="min-h-11 min-w-11 shrink-0" size="icon" variant="ghost" aria-label={`Listen to original recording: ${job.artist} — ${job.title}`} title="Listen to original recording" onClick={() => { preview.stop(); setAuditionId(job.id); }}><Play /></Button>
               </div>
               {(job.status !== 'queued' && job.status !== 'running') && <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto"><Button className="min-h-11" size="sm" disabled={actionBusy} onClick={() => enqueue.mutate([job.id])}>{job.status === 'prepared' || job.status === 'unmeasurable' ? 'Recheck' : 'Retry'}</Button>
-                {job.bundleKey && job.cuePoints?.algorithmVersion === 5 && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate([job.id])}>Upgrade cue coverage</Button>}
+                {job.bundleKey && (job.cuePoints?.algorithmVersion ?? 0) >= 5 && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => upgradeCoverage.mutate([job.id])}>Upgrade cue coverage</Button>}
                 {job.bundleKey && <Button className="min-h-11" size="sm" disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => assess.mutate([job.id])}>Assess suitability</Button>}
                 <Button className="min-h-11" size="sm" aria-label={`Remove Sub/Beats entry for ${job.title} by ${job.artist}`} disabled={actionBusy || !!state.data?.maintenanceRunning} onClick={() => { remove.reset(); setRemoving(job); }}>Remove</Button></div>}
             </div>
             <p className="mt-2 text-xs font-medium" role={job.status === 'running' ? 'status' : undefined}>{LABEL[job.status]}{job.cuePoints ? ` · ${job.cuePoints.model} cues: ${job.cuePoints.incoming.length} incoming / ${job.cuePoints.outgoing.length} outgoing` : job.preparationMethod ? ` · ${job.preparationMethod}` : ''}</p>
             {job.cuePoints && <p className="mt-1 text-xs text-muted">{job.cueCoverage ? `Matching coverage saved: ${[job.cueCoverage.incoming ? 'incoming' : '',job.cueCoverage.outgoing ? 'outgoing' : ''].filter(Boolean).join(' and ') || 'no cue roles detected'}. Pair compatibility still needs checking.` : 'Cues detected · upgrade coverage for saved vocal matching.'}</p>}
-            <SuitabilityDetails value={job.suitability} cueBased={job.cuePoints?.algorithmVersion === 5} />
+            <SuitabilityDetails value={job.suitability} cueBased={(job.cuePoints?.algorithmVersion ?? 0) >= 5} />
             {job.error && <p className="mt-1 text-xs leading-relaxed break-words text-muted">{job.error}</p>}
           </li>)}
         </ul>
