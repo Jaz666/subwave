@@ -40,7 +40,7 @@ export const subbeatsCuePointSchema = z.object({
 });
 export const subbeatsCuePointsSchema = z.object({
   version:z.literal(1),model:z.enum(['small0','final0']),artifactKey:z.string().regex(/^[a-f0-9]{64}$/),
-  durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.union([z.literal(3),z.literal(4),z.literal(5),z.literal(6)]).optional(),
+  durationSeconds:z.number().finite().positive().optional(),algorithmVersion:z.union([z.literal(3),z.literal(4),z.literal(5),z.literal(6),z.literal(7)]).optional(),
   grid:z.object({originSeconds:z.number().finite().nonnegative(),anchorSeconds:z.number().finite().nonnegative(),
     drivingBeatSeconds:z.number().finite().nonnegative(),bpm:z.number().finite().min(60).max(190),
     fitFraction:z.number().min(0).max(1),p95ErrorSeconds:z.number().finite().nonnegative(),

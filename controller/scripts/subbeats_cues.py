@@ -12,11 +12,12 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 6
+ALGORITHM_VERSION = 7
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
 OPENING_MAX_START_BEATS = 16
+MAX_BACKPROJECTED_ORIGIN_BARS = 16
 SPAN_FIT_MAX_P95_SECONDS = .1
 
 
@@ -211,6 +212,86 @@ def onset_grid_incoming(beats, downbeats, onset, duration):
         incoming.insert(0,dict(sourceSeconds=float(entry),bpm=float(bpm),strength=float(np.mean(residual < .06)),
             reason='opening',phraseStartSeconds=float(origin),timingSource='onset-grid'))
     return incoming or None
+
+
+def backprojected_natural_start_incoming(beats, downbeats, supported_regions, duration):
+    """Use a later stable beat as an anchor without skipping the track opening.
+
+    A later supported downbeat can supply a reviewable arrival cue even when
+    the opening is too sparse to identify its own grid. Only attach 8/16-bar
+    labels when the back-projected grid also fits observed opening beats.
+    Preview playback still begins at source zero.
+    """
+    import numpy as np
+    beats, downbeats = np.asarray(beats, dtype=float), np.asarray(downbeats, dtype=float)
+    windows, _ = stable_beat_windows(beats, downbeats)
+    matches = supported_grid_matches(windows, supported_regions, beats)
+    for match in matches:
+        window = match['window']
+        period = 60 / window['bpm']
+        bar_seconds = 4 * period
+        downbeat_indices = np.searchsorted(beats, downbeats)
+        exact = ((downbeat_indices < len(beats))
+                 & (np.abs(beats[np.minimum(downbeat_indices, len(beats) - 1)] - downbeats) < .02))
+        in_window = exact & (downbeat_indices >= window['start_index']) & (downbeat_indices <= window['end_index'])
+        anchor_candidates = downbeats[in_window]
+        if not len(anchor_candidates):
+            continue
+        anchor = float(anchor_candidates[0])
+        if anchor < 4 * period or anchor >= min(130 - TAIL_SECONDS * 1.08 - .05, duration - 8 * period):
+            continue
+
+        origin = None
+        if len(downbeats) and downbeats[0] < anchor:
+            first_downbeat = float(downbeats[0])
+            bars_back = round((anchor - first_downbeat) / bar_seconds)
+            projected = anchor - bars_back * bar_seconds
+            if (bars_back > 0 and projected <= MAX_BACKPROJECTED_ORIGIN_BARS * bar_seconds
+                    and abs(projected - first_downbeat) <= max(.08, .12 * period)):
+                origin = projected
+        if origin is not None and len(beats) and abs(float(beats[0]) - origin) > max(.2, .5 * period):
+            origin = None
+        if origin is None:
+            bars_back = round(anchor / bar_seconds)
+            projected = anchor - bars_back * bar_seconds
+            if bars_back > 0 and 0 <= projected <= max(.08, .12 * period):
+                origin = projected
+        if origin is not None and len(beats) and abs(float(beats[0]) - origin) > max(.2, .5 * period):
+            origin = None
+
+        incoming = []
+        opening_fit = False
+        if origin is not None:
+            for bars in (8, 16):
+                seconds = origin + bars * bar_seconds
+                if (seconds > anchor + .06 or seconds + 8 * period >= duration
+                        or seconds >= 130 - TAIL_SECONDS * 1.08 - .05):
+                    continue
+                observed = beats[(beats >= origin - .08) & (beats <= seconds + .06)]
+                if len(observed) < 8:
+                    continue
+                ordinals = np.rint((observed - origin) / period)
+                errors = np.abs(observed - (origin + ordinals * period))
+                support = float(np.mean(errors < .06))
+                if support < .8 or float(np.percentile(errors, 95)) > .08:
+                    continue
+                opening_fit = True
+                incoming.append(dict(sourceSeconds=float(seconds), bpm=float(window['bpm']),
+                    strength=float(min(match['chain_coverage'], support)), reason='opening',
+                    phraseBars=bars, barNumber=bars, timingSource='opening-grid',
+                    phraseStartSeconds=float(origin)))
+
+        if all(abs(anchor - cue['sourceSeconds']) > .1 for cue in incoming):
+            anchor_cue = dict(sourceSeconds=anchor, bpm=float(window['bpm']),
+                strength=float(match['chain_coverage'] * (1. if opening_fit else .75)),
+                reason='opening', timingSource='opening-grid')
+            if opening_fit and origin is not None:
+                anchor_cue.update(barNumber=int(round((anchor - origin) / bar_seconds)),
+                                  phraseStartSeconds=float(origin))
+            incoming.append(anchor_cue)
+        if incoming:
+            return sorted(incoming, key=lambda cue: cue['sourceSeconds'])
+    return None
 
 
 def bar_candidates(beats, downbeats, energy, spectrum, chroma, *, earliest_seconds=0., outgoing=False, incoming=False):
@@ -537,6 +618,9 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                             relation, _ = tempo_relation(selected['region']['bpm'],fallback[0]['bpm'])
                             if relation <= .02:
                                 incoming = fallback
+                    if incoming is None:
+                        incoming = backprojected_natural_start_incoming(
+                            beats,downbeats,evidence['supported_regions'],duration)
                     if incoming:
                         roles['incoming'] = incoming
         if digest(Path(path)) != identity['source_sha256']:
@@ -559,7 +643,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')

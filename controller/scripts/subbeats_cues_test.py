@@ -65,7 +65,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],6)
+            self.assertEqual(result['algorithmVersion'],7)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
 
@@ -88,6 +88,35 @@ class CueTests(unittest.TestCase):
         beats[10]+=.3
         self.assertIsNone(cues.refit_opening_sixteen(beats,origin,125.6),
                           'an irregular early grid must retain its existing candidate')
+
+    def test_later_anchor_backprojects_supported_natural_start_grid(self):
+        origin=.25; period=60/126; bar=4*period; anchor=origin+24*bar
+        early=origin+np.arange(28)*period  # Seven-bar opening groove, then a long gap.
+        later=anchor+np.arange(65)*period
+        beats=np.r_[early,later]
+        downbeats=beats[np.r_[np.arange(0,len(early),4),len(early)+np.arange(0,len(later),4)]]
+        regions=[dict(start_seconds=anchor,end_seconds=float(later[-1]),bpm=126.)]
+
+        result=cues.backprojected_natural_start_incoming(beats,downbeats,regions,100)
+        self.assertEqual([cue.get('phraseBars') for cue in result[:2]],[8,16])
+        self.assertAlmostEqual(result[0]['sourceSeconds'],origin+8*bar,places=3)
+        self.assertAlmostEqual(result[1]['sourceSeconds'],origin+16*bar,places=3)
+        self.assertAlmostEqual(result[0]['phraseStartSeconds'],origin,places=3)
+        self.assertAlmostEqual(result[-1]['sourceSeconds'],anchor,places=3)
+        self.assertNotIn('phraseBars',result[-1])
+
+    def test_later_anchor_does_not_claim_opening_bars_when_early_phase_disagrees(self):
+        origin=.25; period=60/126; bar=4*period; anchor=origin+24*bar
+        early=origin+.2+np.arange(28)*period
+        later=anchor+np.arange(65)*period
+        beats=np.r_[early,later]
+        downbeats=beats[np.r_[np.arange(0,len(early),4),len(early)+np.arange(0,len(later),4)]]
+        regions=[dict(start_seconds=anchor,end_seconds=float(later[-1]),bpm=126.)]
+
+        result=cues.backprojected_natural_start_incoming(beats,downbeats,regions,100)
+        self.assertEqual(len(result),1)
+        self.assertAlmostEqual(result[0]['sourceSeconds'],anchor,places=3)
+        self.assertNotIn('phraseBars',result[0])
 
     def test_projected_grid_preserves_long_intro_phase_and_echo_beyond_the_outro(self):
         # Synthetic pulses exercise timing/selection. Real-track checks cover the
@@ -359,6 +388,14 @@ class CueTests(unittest.TestCase):
 
         incoming['cueCoverage']['incoming']=activity(0,100,[(17,19)])
         self.assertEqual(find_cue_matches([outgoing,incoming],'out')['excluded']['vocals'],1)
+
+    def test_cue_matching_accepts_algorithm_seven_natural_start_anchor(self):
+        outgoing=dict(id='out',title='out',artist='A',status='prepared',cuePoints=dict(
+            algorithmVersion=7,outgoing=[dict(sourceSeconds=160,bpm=126,phraseEndSeconds=190)],durationSeconds=210))
+        incoming=dict(id='in',title='in',artist='B',status='prepared',cuePoints=dict(
+            algorithmVersion=7,incoming=[dict(sourceSeconds=46,bpm=126,reason='opening',timingSource='opening-grid')],durationSeconds=180))
+        result=matching.find_cue_matches([outgoing,incoming],'out')
+        self.assertEqual(result['matches'][0]['incomingSeconds'],46)
 
     def test_drum_loop_repeats_drums_and_holds_the_other_incoming_stems(self):
         from subbeats_cue_preview import insert_incoming_drum_loop
