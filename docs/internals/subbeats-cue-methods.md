@@ -82,6 +82,69 @@ around 14.59s and driving-beat entry/bar 16 at 42.60s. Its final outro beat has
 approximately one second of echo beyond the closing phrase. These references
 inform the implementation below; audio boundaries and grid markers stay separate.
 
+## Outgoing recovery — algorithm 12
+
+The 6 November audit reproduced all 36 missing outgoing roles: 34 prepared
+tracks and two unmeasurable tracks. Nineteen were blocked by the primary
+detector's sustained-kick entry rule, seven by its whole-recording fit, and ten
+by its ending checks. An unreliable opening must not prevent a separately
+measurable closing passage. The incoming detector and primary fitted-passage
+detector are unchanged; the new route runs only when no outgoing cues exist.
+
+The fallback projects bar boundaries from stable learned downbeats near the
+opening or closing, and the existing fitted clock when available. EOF supplies
+a bound, never the beat or bar phase. Candidate endpoints follow the fading
+body at 20% of the recording's reference RMS, rather than requiring it to remain
+above the primary detector's 40% threshold. Earlier supported endpoints within
+the existing 16-second tail allowance can retain lingering vocals/effects after
+the rhythm stops. No clear ending decay means no new automatic cue.
+
+Each 16-bar span, or an 8-bar span when sixteen is unmeasured, needs at least
+90% of expected learned beats within 80ms, a 95th-percentile error at most
+100ms, an observed endpoint within 80ms and 75% supported bar boundaries.
+The local refit can change tempo by at most 2% and move the projected endpoint
+by at most a quarter beat. It tolerates isolated extra/missed events without
+counting them as additional beats. Outgoing starts stay in the latter half of
+the recording and the complete original ending is retained. A local clock
+does not invent a global bar number when the full-track clock is uncertain.
+
+Librosa independently confirms beat positions inside that closing span using
+the last 100 seconds of audio. A measured eight-bar passage must confirm a
+sixteen-bar span; four measured bars suffice for an eight-bar span. The complete
+learned span still needs the fit above. Full-spectrum timing is tried first,
+then 30–250Hz timing if necessary: offbeat hats/claps can otherwise dominate
+the independent tracker. Half-beat disagreements are declined without shifting
+the learned clock. These are bounded CPU checks on missing roles; no extra
+neural model or HPSS pass is added. `decision.json.outgoing` records the fit,
+independent phase measurements and the decline/acceptance reason.
+
+The production-code replay recovered 26 of 36 missing outgoing roles, including
+the two previously unmeasurable tracks. All 70 hash-verified working outgoing
+controls reproduced exactly, including The Launch, Children and Rozalla;
+three other existing outgoing tracks had no matching local source copy and
+were excluded from audio replay. Core incoming outputs were preserved in all
+106 replays. These are measured proposals, pending owner listening acceptance,
+not proof of pair compatibility. See [the complete track results](../investigations/subbeats-research-20261103/outgoing-recovery-v12-results.json).
+
+Ten remain flagged: five lack measured ending decay; Orbital, Praise You,
+Bicep and Encore une fois retain disputed timing; Summer of Love lacks a
+supported closing span. The local listening pack and replay scripts are at
+`/home/jaz666/codex/subbeats-outgoing-evaluation-20261106/`; `AUDITIONS.md` links
+all 26 original-mix metronome clips with 16-bar, 8-bar and endpoint tones.
+
+Rebuild analyzer, controller and web together, then recheck the **Missing
+outgoing cues** selection with Beat This!. This writes new cue/coverage
+artifacts and prepares the newly supported outgoing stems. Old artifacts stay
+readable. No broadcast/picker integration or automatic library-wide rescan is
+included.
+
+Verification: 35 cue Python cases and the registered analyzer Python suites
+pass; the controller Sub/Beats filter passes 63 cases. Controller typecheck and
+scoped ESLint pass; the web schema mirror was regenerated.
+The source is prepared for owner-run station testing; no services were rebuilt
+or restarted and no prepared-library state was changed by the agent. The
+previous station source, `2805c464` (algorithm 11), remains the rollback.
+
 ## Incoming timing corrections — algorithm 9
 
 The 6 November review found that algorithm 8's later fitting anchor could
@@ -155,11 +218,12 @@ that phase. The preview remains available and automatic selection continues to
 skip it. This is the final planned intro-detection change; no broader detection
 rules or track-specific exceptions are added.
 
-Algorithm-10 artifacts remain readable. Rebuild the analyzer, controller and
-web together, then rescan tracks whose incoming cues need the new robust span
-fit. The owner has rescanned the review tracks; the corrected version still
-requires one rescan after rebuild. Beauty of Silence remains manual-review-only.
-Outro cues and live transitions are unchanged.
+The owner subsequently rescanned all three review tracks on algorithm 11.
+Praise You now has validated 8-bar/16-bar cues at 17.58s/35.08s and the later
+61.34s marker; I Feel Love retains 44.58s. Beauty of Silence's three incoming
+options remain manual-review-only. Algorithm-10/11 artifacts remain readable.
+The incoming-detection work is complete; the algorithm-12 work above changes
+only missing outgoing detection.
 
 ## Phrase preparation and preview — algorithm 6 / preview 13
 

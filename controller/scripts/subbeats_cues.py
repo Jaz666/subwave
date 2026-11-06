@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 11
+ALGORITHM_VERSION = 12
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
@@ -625,6 +625,137 @@ def fitted_passages(y, sr, beats, downbeats):
     return dict(incoming=incoming,outgoing=outgoing,grid=grid,ending=ending)
 
 
+def fit_closing_span(beats, endpoint, period, width):
+    """Refit expected closing beats without counting extra tracker events as beats."""
+    import numpy as np
+    ordinals = np.arange(-width * 4, 1)
+    initial_endpoint, initial_period = endpoint, period
+    for _ in range(5):
+        expected = endpoint + ordinals * period
+        indices = np.searchsorted(beats, expected)
+        before = np.clip(indices - 1, 0, len(beats) - 1)
+        after = np.clip(indices, 0, len(beats) - 1)
+        nearest = np.where(abs(beats[before] - expected) <= abs(beats[after] - expected), before, after)
+        errors = abs(beats[nearest] - expected)
+        good = errors <= .1
+        if good.sum() < len(ordinals) * .8:
+            return None
+        period, endpoint = np.polyfit(ordinals[good], beats[nearest][good], 1)
+        if abs(period / initial_period - 1) > .02 or abs(endpoint - initial_endpoint) > initial_period * .25:
+            return None
+    expected = endpoint + ordinals * period
+    indices = np.searchsorted(beats, expected)
+    errors = np.minimum(abs(beats[np.clip(indices - 1, 0, len(beats) - 1)] - expected),
+                        abs(beats[np.clip(indices, 0, len(beats) - 1)] - expected))
+    support, p95 = float(np.mean(errors <= .08)), float(np.percentile(errors, 95))
+    if support < .9 or p95 > SPAN_FIT_MAX_P95_SECONDS or errors[-1] > .08:
+        return None
+    return dict(endpoint=float(endpoint), period=float(period), support=support, p95=p95)
+
+
+def closing_phase_confirmation(y, sr, fit, librosa):
+    """Confirm a measured tail passage; offbeat hats can dominate the full spectrum."""
+    import numpy as np
+    hop = 256
+    start_sample = max(0, len(y) - round(100 * sr))
+    offset = start_sample / sr
+    bpm = 60 / fit['period']
+    grid = fit['endpoint'] + np.arange(-fit['width'] * 4, 1) * fit['period']
+    best = dict(validated=False, reason='Insufficient independent closing-beat coverage')
+    for lane, options in [('broadband', {}), ('bass', dict(fmin=30, fmax=250, n_mels=40))]:
+        onset = librosa.onset.onset_strength(y=y[start_sample:], sr=sr, hop_length=hop, **options)
+        _, frames = librosa.beat.beat_track(onset_envelope=onset, sr=sr, hop_length=hop, bpm=bpm, trim=True)
+        other = librosa.frames_to_time(frames, sr=sr, hop_length=hop) + offset
+        if not len(other):
+            continue
+        length = 32 if fit['width'] == 16 else 16
+        # Require an independently measured 8-bar (or 4-bar) passage inside the
+        # complete learned span. Weak fade beats need not drive the other tracker.
+        spans = [grid] + [grid[i:i + length] for i in range(len(grid) - length, -1, -4)]
+        for span in spans:
+            first, last = max(float(span[0]), float(other[0])), min(float(span[-1]), float(other[-1]))
+            if np.count_nonzero((span >= first) & (span <= last)) < length:
+                continue
+            match = dict(window=dict(start_seconds=first, bpm=bpm),
+                         region=dict(start_seconds=first, end_seconds=last, bpm=bpm))
+            phase = independent_phase_fit(match, span, other)
+            phase.update(lane=lane, startSeconds=first, endSeconds=last)
+            if phase['validated']:
+                return phase
+            if phase.get('supportFraction', 0) > best.get('supportFraction', 0):
+                best = phase
+    return best
+
+
+def closing_grid_passages(y, sr, beats, downbeats, librosa, grid=None):
+    """Recover missing endings from a local grid, preserving the complete audible tail."""
+    import numpy as np
+    empty = dict(outgoing=[], ending=None)
+    beats, downbeats = np.asarray(beats), np.asarray(downbeats)
+    duration = len(y) / sr
+    if len(beats) < 33 or len(downbeats) < 5:
+        return empty, dict(reason='Insufficient closing-grid evidence')
+    hop = max(1, round(.05 * sr))
+    count = len(y) // hop
+    rms = np.sqrt(np.mean(y[:count * hop].reshape(count, hop) ** 2, axis=1))
+    reference = float(np.percentile(rms, 75))
+    audible = np.flatnonzero(rms >= max(.001, reference * .01))
+    body = np.flatnonzero(rms >= max(.001, reference * .2))
+    if not len(audible) or not len(body):
+        return empty, dict(reason='No audible closing body')
+    audible_end, body_end = (int(audible[-1]) + 1) * hop / sr, (int(body[-1]) + 1) * hop / sr
+    if audible_end >= duration - .15:
+        return empty, dict(reason='No measured ending decay')
+
+    seeds = [(grid['originSeconds'], 60 / grid['bpm'])] if grid else []
+    windows, indices = stable_beat_windows(beats, downbeats)
+    for window in windows[:8] + windows[-12:]:
+        matched = [at for at, index in zip(downbeats, indices)
+                   if window['start_index'] <= index <= window['end_index']
+                   and index % 4 == window['downbeat_phase']]
+        if matched:
+            seeds.append((float(matched[-1]), 60 / window['bpm']))
+    fits = []
+    for width in (16, 8):
+        for anchor, period in seeds:
+            # The clock comes from observed downbeats, never from file end.
+            projected = anchor + round((body_end - anchor) / (4 * period)) * 4 * period
+            for shift in range(-int(np.ceil(TAIL_SECONDS / (4 * period))), 2):
+                trial = projected + shift * 4 * period
+                if not 0 < duration - trial <= TAIL_SECONDS or trial > body_end + period:
+                    continue
+                fit = fit_closing_span(beats, trial, period, width)
+                if fit is None:
+                    continue
+                endpoint, fitted_period = fit['endpoint'], fit['period']
+                if (not 60 <= 60 / fitted_period <= 190
+                        or not 0 < duration - endpoint <= TAIL_SECONDS
+                        or endpoint - width * 4 * fitted_period < duration * .5
+                        or endpoint > min(audible_end, body_end + fitted_period)):
+                    continue
+                expected_bars = endpoint + np.arange(-width, 1) * 4 * fitted_period
+                bar_support = float(np.mean([np.min(abs(downbeats - at)) <= .1 for at in expected_bars]))
+                if bar_support >= .75:
+                    fits.append(dict(**fit, width=width, barSupport=bar_support, distance=abs(endpoint - body_end)))
+        if fits:
+            break
+    if not fits:
+        return empty, dict(reason='No supported closing span', bodyEndSeconds=body_end, audibleEndSeconds=audible_end)
+    fit = min(fits, key=lambda fit: (fit['distance'], fit['p95']))
+    phase = closing_phase_confirmation(y, sr, fit, librosa)
+    decision = dict(route='closing-grid', fit=fit, phase=phase, bodyEndSeconds=body_end, audibleEndSeconds=audible_end)
+    if not phase['validated']:
+        return empty, dict(**decision, reason='Independent closing timing is uncertain')
+    endpoint, period = fit['endpoint'], fit['period']
+    outgoing = [dict(sourceSeconds=endpoint - width * 4 * period, bpm=60 / period,
+                     strength=min(fit['support'], phase['supportFraction']), reason='ending', phraseBars=width,
+                     phraseEndSeconds=endpoint, timingSource='fitted-grid', timingValidated=True)
+                for width in (16, 8) if width <= fit['width']]
+    ending = dict(phraseEndSeconds=endpoint, audibleEndSeconds=audible_end,
+                  tailSeconds=duration - endpoint, bodyEndSeconds=body_end, confidence='estimated')
+    return dict(outgoing=outgoing, ending=ending), dict(**decision, reason='Measured closing span')
+
+
 def predict(y, sr, model):
     from subbeats_models import model_path
     path = model_path(model)
@@ -694,6 +825,10 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                             cue['timingValidated'] = phase['validated'] and cue.get('timingValidated', True)
                         roles['incoming'] = incoming
                         decision['incoming'] = incoming
+        if not roles['outgoing']:
+            closing, closing_decision = closing_grid_passages(y, SR, beats, downbeats, librosa, roles.get('grid'))
+            roles.update(closing)
+            decision['outgoing'] = closing_decision
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
@@ -715,7 +850,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,10,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,10,11,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')
