@@ -1310,7 +1310,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
   if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
   if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
-  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 11)) throw new Error('Update the heavy analyzer for natural-start cue preparation');
+  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 12)) throw new Error('Update the heavy analyzer for natural-start cue preparation');
   if (method !== 'classic' && !result.cueCoverage) throw new Error('Update the heavy analyzer to save cue coverage and vocal measurements');
   return {...result, addedBytes:cacheGrowth(answer)};
 }

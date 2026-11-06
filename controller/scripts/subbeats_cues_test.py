@@ -66,7 +66,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],11)
+            self.assertEqual(result['algorithmVersion'],12)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
 
@@ -113,10 +113,12 @@ class CueTests(unittest.TestCase):
     def test_opening_grid_keeps_irregular_sixteen_bar_spans_on_the_review_route(self):
         origin=.32; period=60/125.6
         beats=origin+np.arange(240)*period
-        beats[10]+=.3
+        # The final intro refit tolerates isolated glitches; corrupt more than
+        # ten percent of this span while keeping its first eight bars measured.
+        beats[40:48]+=.3
         self.assertIsNone(cues.refit_opening_sixteen(beats,origin,125.6))
         result=cues.opening_grid_incoming(beats,beats[::4],
-            [dict(start_seconds=origin,end_seconds=float(beats[-1]),bpm=125.6)],130)
+            [dict(start_seconds=origin,end_seconds=float(beats[31])+.01,bpm=125.6)],130)
         self.assertFalse(any(cue.get('phraseBars')==16 for cue in result))
         self.assertTrue(any(cue.get('timingValidated') is False for cue in result))
 
@@ -129,6 +131,77 @@ class CueTests(unittest.TestCase):
         match['region']['bpm']=60.
         self.assertTrue(cues.independent_phase_fit(match,beats,beats[::2])['validated'])
         self.assertFalse(cues.independent_phase_fit(match,beats,[])['validated'])
+
+    def test_closing_span_ignores_extra_events_without_inventing_missing_rhythm(self):
+        regular=.25+np.arange(400)*.5
+        beats=np.sort(np.r_[np.delete(regular,[335,360]),regular[[338,345,350]]+.25])
+        fit=cues.fit_closing_span(beats,190.25,.5,16)
+        self.assertIsNotNone(fit)
+        self.assertAlmostEqual(fit['endpoint'],190.25,places=5)
+        self.assertAlmostEqual(fit['period'],.5,places=5)
+        broken=regular[(regular<158.25)|(regular>182.25)]
+        self.assertIsNone(cues.fit_closing_span(broken,190.25,.5,16))
+
+    def test_closing_fallback_is_independent_of_a_sustained_kick_entry(self):
+        sr=1000;beats=np.arange(.25,198,.5);bars=beats[::4]
+        y=np.full(202*sr,.2,dtype=np.float32)
+        start=round(194.25*sr)
+        y[start:]*=np.exp(-np.arange(len(y)-start)/sr*3)
+        signal=SimpleNamespace(butter=lambda *a,**k:None,sosfiltfilt=lambda _,audio:audio)
+        with patch.dict('sys.modules',{'scipy':SimpleNamespace(),'scipy.signal':signal}):
+            self.assertEqual(cues.fitted_passages(y,sr,beats,bars)['outgoing'],[])
+        phase=dict(validated=True,supportFraction=1.,p95ErrorSeconds=.01)
+        with patch.object(cues,'closing_phase_confirmation',return_value=phase):
+            result,decision=cues.closing_grid_passages(y,sr,beats,bars,object())
+        self.assertEqual([cue['phraseBars'] for cue in result['outgoing']],[16,8])
+        self.assertAlmostEqual(result['outgoing'][0]['sourceSeconds'],162.25,places=4)
+        self.assertAlmostEqual(result['ending']['phraseEndSeconds'],194.25,places=4)
+        self.assertGreater(result['ending']['audibleEndSeconds'],194.25+1)
+        self.assertLessEqual(result['ending']['tailSeconds'],cues.TAIL_SECONDS)
+        self.assertTrue(all(cue['timingValidated'] for cue in result['outgoing']))
+        self.assertEqual(decision['reason'],'Measured closing span')
+
+    def test_closing_fallback_keeps_an_eight_bar_span_when_sixteen_is_unmeasured(self):
+        sr=1000;regular=np.arange(.25,198,.5);bars=regular[::4]
+        beats=regular[(regular<162.75)|(regular>=177.75)]
+        bars=bars[np.isin(bars,beats)]
+        y=np.full(202*sr,.2,dtype=np.float32);start=round(194.25*sr)
+        y[start:]*=np.exp(-np.arange(len(y)-start)/sr*3)
+        with patch.object(cues,'closing_phase_confirmation',return_value=dict(validated=True,supportFraction=1.)):
+            result,_=cues.closing_grid_passages(y,sr,beats,bars,object())
+        self.assertEqual([cue['phraseBars'] for cue in result['outgoing']],[8])
+        self.assertAlmostEqual(result['outgoing'][0]['sourceSeconds'],178.25,places=4)
+
+    def test_closing_fallback_declines_unfinished_audio_and_disputed_phase(self):
+        sr=1000;beats=np.arange(.25,198,.5);bars=beats[::4]
+        y=np.full(202*sr,.2,dtype=np.float32)
+        with patch.object(cues,'closing_phase_confirmation') as check:
+            result,decision=cues.closing_grid_passages(y,sr,beats,bars,object())
+        self.assertEqual(result['outgoing'],[])
+        self.assertEqual(decision['reason'],'No measured ending decay')
+        check.assert_not_called()
+        start=round(194.25*sr);y[start:]*=np.exp(-np.arange(len(y)-start)/sr*3)
+        with patch.object(cues,'closing_phase_confirmation',return_value=dict(validated=False,supportFraction=0.)):
+            result,decision=cues.closing_grid_passages(y,sr,beats,bars,object())
+        self.assertEqual(result['outgoing'],[])
+        self.assertEqual(decision['reason'],'Independent closing timing is uncertain')
+
+    def test_closing_phase_checks_bass_without_shifting_a_disputed_grid(self):
+        fit=dict(endpoint=40.,period=.5,width=16)
+        wrong=np.arange(0,60,.5)+.25;right=np.arange(0,60,.5)
+        librosa=SimpleNamespace(
+            onset=SimpleNamespace(onset_strength=lambda **kw:np.array([int('fmax' in kw)])),
+            beat=SimpleNamespace(beat_track=lambda **kw:(None,right if kw['onset_envelope'][0] else wrong)),
+            frames_to_time=lambda frames,**kw:frames)
+        result=cues.closing_phase_confirmation(np.zeros(60000),1000,fit,librosa)
+        self.assertTrue(result['validated'])
+        self.assertEqual(result['lane'],'bass')
+        self.assertEqual(fit,dict(endpoint=40.,period=.5,width=16))
+        librosa.beat.beat_track=lambda **kw:(None,wrong)
+        self.assertFalse(cues.closing_phase_confirmation(np.zeros(60000),1000,fit,librosa)['validated'])
+        librosa.beat.beat_track=lambda **kw:(None,right[(right>=32)&(right<=40)])
+        self.assertFalse(cues.closing_phase_confirmation(np.zeros(60000),1000,fit,librosa)['validated'],
+                         'a short independent fragment cannot validate the full sixteen-bar clock')
 
     def test_automatic_planner_skips_review_cues_without_blocking_manual_geometry(self):
         out=dict(sourceSeconds=160,phraseEndSeconds=192,phraseBars=16,bpm=120)
