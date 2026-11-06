@@ -119,12 +119,14 @@ neural model or HPSS pass is added. `decision.json.outgoing` records the fit,
 independent phase measurements and the decline/acceptance reason.
 
 The production-code replay recovered 26 of 36 missing outgoing roles, including
-the two previously unmeasurable tracks. All 70 hash-verified working outgoing
-controls reproduced exactly, including The Launch, Children and Rozalla;
-three other existing outgoing tracks had no matching local source copy and
-were excluded from audio replay. Core incoming outputs were preserved in all
-106 replays. These are measured proposals, pending owner listening acceptance,
-not proof of pair compatibility. See [the complete track results](../investigations/subbeats-research-20261103/outgoing-recovery-v12-results.json).
+the two previously unmeasurable tracks. A fresh station scan then prepared all
+109 tracks and confirmed that exactly the same ten still lack outgoing cues.
+All 70 hash-verified working outgoing controls reproduced exactly, including
+The Launch, Children and Rozalla; three other existing outgoing tracks had no
+matching local source copy and were excluded from audio replay. Core incoming
+outputs were preserved in all 106 replays. These are measured proposals, pending
+owner listening acceptance, not proof of pair compatibility. See [the complete
+track results](../investigations/subbeats-research-20261103/outgoing-recovery-v12-results.json).
 
 Ten remain flagged: five lack measured ending decay; Orbital, Praise You,
 Bicep and Encore une fois retain disputed timing; Summer of Love lacks a

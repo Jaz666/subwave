@@ -10,6 +10,24 @@
   "existingOutgoingControlsUnchanged": true,
   "incomingCoreResultsUnchanged": 106,
   "ownerListeningApproved": false,
+  "stationRescan": {
+    "date": "2026-11-06",
+    "preparedTracks": 109,
+    "missingOutgoing": 10,
+    "matchesReplayRemaining": true,
+    "tracks": [
+      {"id": "5jEsrRrxT0nWc3gfhigyVX", "artist": "Orbital", "title": "Chime (edit)"},
+      {"id": "45oFaJbVctpHboLPchY5Zh", "artist": "Ninetoes", "title": "Finder (radio edit)"},
+      {"id": "3nmJqjvGdgMw05MeQQzRaH", "artist": "The MD X‐Spress", "title": "God Made Me Phunky"},
+      {"id": "0a0iuvZNdaENAs0dBBOytM", "artist": "Fatboy Slim", "title": "Praise You (radio edit)"},
+      {"id": "6U8RnjhAramrIRV8j7K3nA", "artist": "N‐Joi", "title": "Anthem"},
+      {"id": "6GtVK0BrkaxBPctdMaFEi1", "artist": "Junior Jack", "title": "Stupidisco (radio edit)"},
+      {"id": "6wckYgzaDkE8maAGaQo4OC", "artist": "Lonyo", "title": "Summer of Love (radio edit)"},
+      {"id": "0jYhwGvjnixsQ7CVNZr96s", "artist": "The Chemical Brothers", "title": "Hey Boy Hey Girl"},
+      {"id": "3DPInMTZpzUiFiMiUTS5qv", "artist": "Bicep", "title": "Glue"},
+      {"id": "0KUsUv7L4BrgKe6WC2EXrM", "artist": "Sash!", "title": "Encore une fois (Future Breeze edit)"}
+    ]
+  },
   "cases": [
     {
       "id": "5jEsrRrxT0nWc3gfhigyVX",
