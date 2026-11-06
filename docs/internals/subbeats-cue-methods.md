@@ -82,6 +82,49 @@ around 14.59s and driving-beat entry/bar 16 at 42.60s. Its final outro beat has
 approximately one second of echo beyond the closing phrase. These references
 inform the implementation below; audio boundaries and grid markers stay separate.
 
+## Incoming timing corrections — algorithm 9
+
+The 6 November review found that algorithm 8's later fitting anchor could
+displace the offered arrival by seven bars. The later downbeat now supports
+the tempo projection while the earliest supported downbeat remains the arrival.
+This restores the previous arrival location without claiming that a stable
+analysis-window edge establishes the musical release. Playback still starts
+at source zero, and the existing fitted-passage route retains priority.
+
+Fallback analysis uses the median tempo of its first eight stable windows.
+It checks actual Librosa beat positions against the learned grid in the shared
+supported passage, rather than relying on tempo agreement alone. At least 16
+slower-grid beats are required; 80% must align, and the 95th-percentile error
+must be within the smaller of 80ms and one fifth of the faster beat period.
+Half/double-tempo evidence uses the slower beats against the faster grid.
+
+A failed sixteen-bar span fit retains an unlabelled manual audition candidate
+with `timingValidated: false`; it no longer advertises a verified sixteen-bar
+option. Back-projection does not invent 8/16-bar arrivals inside gaps: the
+span needs sufficient observed beats, a nearby endpoint beat and a sound fit.
+Uncertain timing stays available under **Play selected cues**, with a review
+label. Automatic transition selection and loop proposals skip these candidates
+and retain their normal fallback. Previously accepted eight-bar options are
+not subjected to the stricter sixteen-bar refit.
+
+Each new cue artifact saves `decision.json`: the route, tempo proposal,
+supported regions, selected window, phase-fit measurements and resulting
+incoming candidates. It adds no model pass or duplicate source audio. Older
+version-5 through version-8 artifacts remain readable; they gain these checks
+only when rechecked. New preparation requires analyzer/controller/web version
+support to be rebuilt together. No outro detection or live broadcast changes
+are included.
+
+Focused verification passed: analyzer Python suite (29 cue cases), six analyzer
+adapter cases, 20 route cases, seven web selection cases, controller/web type
+checks and scoped lint. Counterexamples cover a half-beat disagreement, failed
+sixteen-bar refit, a seven-bar groove followed by a gap, preserved arrival
+anchors, and automatic exclusion with manual audition retained. Replaying saved
+grids with the same 5 November tempo evidence restores I Feel Love's 44.58s
+arrival and Praise You's 61.34s later anchor; these numbers are controlled
+regressions, not newly approved musical releases. The primary fitted detector
+is byte-for-byte unchanged. No full-library audio reanalysis was run.
+
 ## Phrase preparation and preview — algorithm 6 / preview 13
 
 Rebuild analyzer, controller and web together, then **rescan existing tracks**:

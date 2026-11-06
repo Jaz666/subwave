@@ -21,7 +21,8 @@ export function subbeatsIncomingCues(cues: readonly z.infer<typeof subbeatsCuePo
     const matchedSeconds = cue.sourceSeconds/rate;
     return {cue,index,tempoFits: Math.abs(rate-1) <= .08,matchedSeconds,
       differenceSeconds: length != null && length > 0 ? matchedSeconds-length : null};
-  }).sort((a,b) => Number(b.tempoFits)-Number(a.tempoFits)
+  }).sort((a,b) => Number(a.cue.timingValidated === false)-Number(b.cue.timingValidated === false)
+    || Number(b.tempoFits)-Number(a.tempoFits)
     || (a.differenceSeconds == null || b.differenceSeconds == null ? 0 : Math.abs(a.differenceSeconds)-Math.abs(b.differenceSeconds)) || a.index-b.index);
 }
 

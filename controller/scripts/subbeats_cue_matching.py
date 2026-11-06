@@ -46,7 +46,8 @@ def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2):
     """Suggest up to two vocal-free, fitted-grid, two-bar incoming drum loops."""
     if assess_vocal_pair(outgoing, incoming, plan)['status'] != 'conflict':
         return None
-    if cue.get('timingSource') not in ('fitted-grid','opening-grid','onset-grid') or cue.get('phraseBars') not in (8, 16):
+    if (cue.get('timingValidated') is False or cue.get('timingSource') not in ('fitted-grid','opening-grid','onset-grid')
+            or cue.get('phraseBars') not in (8, 16)):
         return None
     try:
         start, bpm = cue['sourceSeconds'], cue['bpm']
@@ -135,9 +136,11 @@ def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing
     choices=[]
     vocal_rank=dict(estimated=0,uncertain=1,coverage=2,unassessed=3)
     for out_index,out in enumerate(out_cues):
-        if out.get('sourceSeconds',0)<out_duration*.5:
+        if out.get('timingValidated') is False or out.get('sourceSeconds',0)<out_duration*.5:
             continue
         for in_index,cue in enumerate(in_cues):
+            if cue.get('timingValidated') is False:
+                continue
             try:
                 plan=passage_plan(out,cue,out_duration,in_duration)
             except (KeyError,TypeError,ValueError):
@@ -166,7 +169,7 @@ def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing
 def find_cue_matches(jobs, outgoing_id, out_index=0):
     outgoing_job = next((j for j in jobs if j['id']==outgoing_id and j['status']=='prepared'),None)
     points = (outgoing_job or {}).get('cuePoints') or {}
-    if points.get('algorithmVersion') not in (5,6,7,8):
+    if points.get('algorithmVersion') not in (5,6,7,8,9):
         raise ValueError('Rescan the outgoing track with Beat This! for the new phrase preview.')
     outs = points.get('outgoing',[])
     duration = points.get('durationSeconds')
@@ -182,7 +185,7 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
         if job['id']==outgoing_id or job['status']!='prepared':
             continue
         incoming_points = job.get('cuePoints') or {}
-        if incoming_points.get('algorithmVersion') not in (5,6,7,8) or not incoming_points.get('incoming') or not incoming_points.get('durationSeconds'):
+        if incoming_points.get('algorithmVersion') not in (5,6,7,8,9) or not incoming_points.get('incoming') or not incoming_points.get('durationSeconds'):
             excluded['unassessed'] += 1
             continue
         choices = []
@@ -190,6 +193,9 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
         incoming_vocals = ((job.get('cueCoverage') or {}).get('incoming')
                            or ((job.get('suitability') or {}).get('incoming') or {}).get('vocalActivity'))
         for index, cue in enumerate(incoming_points['incoming']):
+            if cue.get('timingValidated') is False:
+                reason = 'unassessed'
+                continue
             if abs(out['bpm']/cue['bpm']-1)>.08:
                 continue
             try:

@@ -60,4 +60,6 @@ test('incoming length order uses the complete source opening and matched tempo w
   assert.equal(ranked[2]!.tempoFits,false);
   assert.deepEqual(subbeatsIncomingCues(cues).map(c=>c.index),[0,1,2]);
   assert.equal(subbeatsIncomingCues(cues,{...outgoing,phraseEndSeconds:undefined})[0]!.differenceSeconds,null);
+  assert.deepEqual(subbeatsIncomingCues([{...cues[1]!,timingValidated:false},cues[0]!],outgoing)
+    .map(c=>c.index),[1,0],'review candidates stay available after usable choices with original indices');
 });

@@ -338,7 +338,7 @@ def prepare_request(req):
             raise ValueError('Saved stems failed integrity checks. Recheck this track.')
         saved = load_cues(state_dir,req['stems_root'],req['track_id'],req['cue_key'],folder)
         result = dict(directory=str(folder),cache_hit=True,**record)
-        if saved.get('algorithmVersion') not in (5,6,7,ALGORITHM_VERSION):
+        if saved.get('algorithmVersion') not in (5,6,7,8,ALGORITHM_VERSION):
             raise ValueError('Rescan this track with Beat This! to replace the older cue analysis.')
         cue_points = dict(version=saved['version'],algorithmVersion=saved.get('algorithmVersion',ALGORITHM_VERSION),
             model=saved['model'],artifactKey=req['cue_key'],durationSeconds=saved['durationSeconds'],incoming=saved['incoming'],outgoing=saved['outgoing'],grid=saved.get('grid'),ending=saved.get('ending'))

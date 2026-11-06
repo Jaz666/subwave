@@ -66,7 +66,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],8)
+            self.assertEqual(result['algorithmVersion'],9)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
 
@@ -78,17 +78,24 @@ class CueTests(unittest.TestCase):
             record=dict(identity=dict(source_sha256=cache.digest(source)),metadata=dict(stem_regions=[]))
             beats=np.arange(0,200,.5)
             roles=dict(incoming=[],outgoing=[],grid=None,ending=None)
-            evidence=dict(supported_regions=[])
+            evidence=dict(supported_regions=[dict(start_seconds=0.,end_seconds=80.,bpm=120.)])
+            def analysis(_path,stage,_librosa,**_kwargs):
+                np.savez(stage/'rhythm.npz',beat_times=beats+.25,onset=np.ones(100))
+                return evidence
             with (patch.dict('sys.modules',librosa=SimpleNamespace(__version__='test')),
                   patch.object(preparation,'SR',10),patch.object(preparation,'decode',return_value=np.zeros((1,2000))),
                   patch.object(preparation,'require_shared_cache'),
                   patch.object(cues,'predict',return_value=(beats,beats[::4])),
                   patch.object(cues,'fitted_passages',return_value=roles),
-                  patch.object(preparation,'analyze',return_value=evidence) as analyze,
+                  patch.object(preparation,'analyze',side_effect=analysis) as analyze,
                   patch('importlib.metadata.version',return_value='1.1.0')):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertAlmostEqual(analyze.call_args.kwargs['preferred_bpm'],120)
-            self.assertEqual(result['incoming'],[])
+            self.assertTrue(result['incoming'],'uncertain cues remain available for manual listening')
+            self.assertTrue(all(cue['timingValidated'] is False for cue in result['incoming']))
+            decision=json.loads(next(state.rglob('decision.json')).read_text())
+            self.assertFalse(decision['phase']['validated'])
+            self.assertAlmostEqual(decision['phase']['p95ErrorSeconds'],.25)
 
     def test_opening_grid_refits_a_stable_sixteen_bar_tempo_drift(self):
         origin=1.04; fast=60/114.03; slow=60/112.96
@@ -105,14 +112,33 @@ class CueTests(unittest.TestCase):
 
     def test_opening_grid_keeps_irregular_sixteen_bar_spans_on_the_review_route(self):
         origin=.32; period=60/125.6
-        beats=origin+np.arange(65)*period
+        beats=origin+np.arange(240)*period
         beats[10]+=.3
-        self.assertIsNone(cues.refit_opening_sixteen(beats,origin,125.6),
-                          'an irregular early grid must retain its existing candidate')
+        self.assertIsNone(cues.refit_opening_sixteen(beats,origin,125.6))
+        result=cues.opening_grid_incoming(beats,beats[::4],
+            [dict(start_seconds=origin,end_seconds=float(beats[-1]),bpm=125.6)],130)
+        self.assertFalse(any(cue.get('phraseBars')==16 for cue in result))
+        self.assertTrue(any(cue.get('timingValidated') is False for cue in result))
+
+    def test_independent_phase_requires_aligned_beats_and_accepts_tempo_aliases(self):
+        beats=np.arange(0,80,.5)
+        match=dict(window=dict(start_seconds=0.,bpm=120.),
+                   region=dict(start_seconds=0.,end_seconds=60.,bpm=120.))
+        self.assertTrue(cues.independent_phase_fit(match,beats,beats+.02)['validated'])
+        self.assertFalse(cues.independent_phase_fit(match,beats,beats+.25)['validated'])
+        match['region']['bpm']=60.
+        self.assertTrue(cues.independent_phase_fit(match,beats,beats[::2])['validated'])
+        self.assertFalse(cues.independent_phase_fit(match,beats,[])['validated'])
+
+    def test_automatic_planner_skips_review_cues_without_blocking_manual_geometry(self):
+        out=dict(sourceSeconds=160,phraseEndSeconds=192,phraseBars=16,bpm=120)
+        inc=dict(sourceSeconds=32,bpm=120,timingValidated=False)
+        self.assertEqual(matching.plan_pair_transitions([out],[inc],210,180),[])
+        self.assertEqual(preview.passage_plan(out,inc,210,180)['handover'],192)
 
     def test_later_anchor_backprojects_supported_natural_start_grid(self):
         origin=.25; period=60/126; bar=4*period; anchor=origin+24*bar
-        early=origin+np.arange(28)*period  # Seven-bar opening groove, then a long gap.
+        early=origin+np.arange(68)*period
         later=anchor+np.arange(65)*period
         beats=np.r_[early,later]
         downbeats=beats[np.r_[np.arange(0,len(early),4),len(early)+np.arange(0,len(later),4)]]
@@ -123,8 +149,21 @@ class CueTests(unittest.TestCase):
         self.assertAlmostEqual(result[0]['sourceSeconds'],origin+8*bar,places=3)
         self.assertAlmostEqual(result[1]['sourceSeconds'],origin+16*bar,places=3)
         self.assertAlmostEqual(result[0]['phraseStartSeconds'],origin,places=3)
-        self.assertAlmostEqual(result[-1]['sourceSeconds'],anchor+7*bar,places=3)
+        self.assertAlmostEqual(result[-1]['sourceSeconds'],anchor,places=3,
+                               msg='later fitting evidence must not displace the arrival')
         self.assertNotIn('phraseBars',result[-1])
+
+    def test_seven_bar_opening_does_not_invent_arrivals_inside_the_gap(self):
+        origin=.25;period=.5;anchor=48.25
+        early=origin+np.arange(28)*period
+        later=anchor+np.arange(65)*period
+        beats=np.r_[early,later]
+        downbeats=beats[np.r_[np.arange(0,len(early),4),len(early)+np.arange(0,len(later),4)]]
+        result=cues.backprojected_natural_start_incoming(beats,downbeats,
+            [dict(start_seconds=anchor,end_seconds=float(later[-1]),bpm=120.)],100)
+        self.assertEqual(len(result),1)
+        self.assertEqual(result[0]['sourceSeconds'],anchor)
+        self.assertNotIn('phraseBars',result[0])
 
     def test_later_anchor_does_not_claim_opening_bars_when_early_phase_disagrees(self):
         origin=.25; period=60/126; bar=4*period; anchor=origin+24*bar
@@ -136,7 +175,7 @@ class CueTests(unittest.TestCase):
 
         result=cues.backprojected_natural_start_incoming(beats,downbeats,regions,100)
         self.assertEqual(len(result),1)
-        self.assertAlmostEqual(result[0]['sourceSeconds'],anchor+7*bar,places=3)
+        self.assertAlmostEqual(result[0]['sourceSeconds'],anchor,places=3)
         self.assertNotIn('phraseBars',result[0])
 
     def test_projected_grid_preserves_long_intro_phase_and_echo_beyond_the_outro(self):

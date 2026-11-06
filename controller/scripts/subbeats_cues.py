@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 8
+ALGORITHM_VERSION = 9
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
@@ -113,6 +113,25 @@ def refit_opening_sixteen(beats, origin, initial_bpm):
         p95ErrorSeconds=float(np.percentile(np.abs(error), 95)))
 
 
+def independent_phase_fit(match, beats, independent_beats):
+    """Check actual beat positions on the supported passage, including tempo aliases."""
+    import numpy as np
+    region, window = match['region'], match['window']
+    start, end = max(region['start_seconds'], window['start_seconds']), region['end_seconds']
+    grid, other = np.asarray(beats), np.asarray(independent_beats)
+    grid, other = grid[(grid >= start) & (grid <= end)], other[(other >= start) & (other <= end)]
+    slow, fast = (other, grid) if region['bpm'] < window['bpm'] else (grid, other)
+    if len(slow) < 16 or not len(fast):
+        return dict(validated=False, reason='Insufficient independent beat-phase coverage')
+    indices = np.searchsorted(fast, slow)
+    errors = np.minimum(abs(slow-fast[np.clip(indices, 0, len(fast)-1)]),
+                        abs(slow-fast[np.clip(indices-1, 0, len(fast)-1)]))
+    tolerance = min(.08, .2 * 60 / max(region['bpm'], window['bpm']))
+    support, p95 = float(np.mean(errors <= tolerance)), float(np.percentile(errors, 95))
+    return dict(validated=support >= .8 and p95 <= tolerance,
+                supportFraction=support, p95ErrorSeconds=p95, toleranceSeconds=tolerance)
+
+
 def opening_grid_incoming(beats, downbeats, supported_regions, duration):
     """Propose early 8/16-bar arrivals; correct only a verified 16-bar span."""
     import numpy as np
@@ -136,14 +155,19 @@ def opening_grid_incoming(beats, downbeats, supported_regions, duration):
     for bars in (8, 16):
         seconds = origin + bars * 4 * period
         bpm = window['bpm']
+        fitted = None
         if bars == 16:
             fitted = refit_opening_sixteen(beats, origin, bpm)
             if fitted:
                 seconds, bpm = fitted['sourceSeconds'], fitted['bpm']
         if seconds + 8 * period < duration and seconds < 130 - 16 * 1.08 - .05:
-            incoming.append(dict(sourceSeconds=float(seconds), bpm=float(bpm),
+            point = dict(sourceSeconds=float(seconds), bpm=float(bpm),
                 strength=float(match['chain_coverage']), reason='opening', phraseBars=bars,
-                barNumber=bars, timingSource='opening-grid', phraseStartSeconds=origin))
+                barNumber=bars, timingSource='opening-grid', phraseStartSeconds=origin)
+            if bars == 16 and fitted is None:
+                point.pop('phraseBars')
+                point['timingValidated'] = False
+            incoming.append(point)
     return incoming or None
 
 
@@ -207,6 +231,9 @@ def onset_grid_incoming(beats, downbeats, onset, duration):
             if bars == 16:
                 fitted = refit_opening_sixteen(beats, origin, bpm)
                 if fitted: point.update(sourceSeconds=fitted['sourceSeconds'],bpm=fitted['bpm'])
+                else:
+                    point.pop('phraseBars')
+                    point['timingValidated'] = False
             incoming.append(point)
     if entry-origin >= 32*period and entry < 130-16*1.08-.05 and all(abs(entry-c['sourceSeconds'])>.1 for c in incoming):
         incoming.insert(0,dict(sourceSeconds=float(entry),bpm=float(bpm),strength=float(np.mean(residual < .06)),
@@ -237,8 +264,9 @@ def backprojected_natural_start_incoming(beats, downbeats, supported_regions, du
         anchor_candidates = downbeats[in_window]
         if not len(anchor_candidates):
             continue
-        anchor = float(anchor_candidates[-1])
-        if anchor < 4 * period or anchor >= min(130 - TAIL_SECONDS * 1.08 - .05, duration - 8 * period):
+        arrival = float(anchor_candidates[0])
+        anchor = float(anchor_candidates[-1])  # Fit on later evidence without moving the arrival.
+        if arrival < 4 * period or anchor >= min(130 - TAIL_SECONDS * 1.08 - .05, duration - 8 * period):
             continue
 
         origin = None
@@ -268,25 +296,39 @@ def backprojected_natural_start_incoming(beats, downbeats, supported_regions, du
                         or seconds >= 130 - TAIL_SECONDS * 1.08 - .05):
                     continue
                 observed = beats[(beats >= origin - .08) & (beats <= seconds + .06)]
-                if len(observed) < 8:
+                # Sparse early beats cannot establish arrivals inside an unmeasured gap.
+                if (len(observed) < bars * 4 * .9
+                        or float(np.min(abs(beats-seconds))) > .08):
                     continue
                 ordinals = np.rint((observed - origin) / period)
                 errors = np.abs(observed - (origin + ordinals * period))
                 support = float(np.mean(errors < .06))
                 if support < .8 or float(np.percentile(errors, 95)) > .08:
                     continue
-                opening_fit = True
-                incoming.append(dict(sourceSeconds=float(seconds), bpm=float(window['bpm']),
+                bpm = float(window['bpm'])
+                validated = True
+                if bars == 16:
+                    fitted = refit_opening_sixteen(beats, origin, bpm)
+                    if fitted is None:
+                        validated = False
+                    else:
+                        seconds, bpm = fitted['sourceSeconds'], fitted['bpm']
+                opening_fit = opening_fit or validated
+                point = dict(sourceSeconds=float(seconds), bpm=bpm,
                     strength=float(min(match['chain_coverage'], support)), reason='opening',
                     phraseBars=bars, barNumber=bars, timingSource='opening-grid',
-                    phraseStartSeconds=float(origin)))
+                    phraseStartSeconds=float(origin))
+                if not validated:
+                    point.pop('phraseBars')
+                    point['timingValidated'] = False
+                incoming.append(point)
 
-        if all(abs(anchor - cue['sourceSeconds']) > .1 for cue in incoming):
-            anchor_cue = dict(sourceSeconds=anchor, bpm=float(window['bpm']),
+        if all(abs(arrival - cue['sourceSeconds']) > .1 for cue in incoming):
+            anchor_cue = dict(sourceSeconds=arrival, bpm=float(window['bpm']),
                 strength=float(match['chain_coverage'] * (1. if opening_fit else .75)),
                 reason='opening', timingSource='opening-grid')
             if opening_fit and origin is not None:
-                anchor_cue.update(barNumber=int(round((anchor - origin) / bar_seconds)),
+                anchor_cue.update(barNumber=int(round((arrival - origin) / bar_seconds)),
                                   phraseStartSeconds=float(origin))
             incoming.append(anchor_cue)
         if incoming:
@@ -601,19 +643,24 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
             raise ValueError('Learned grid is outside the decoded recording')
         duration = len(y)/SR
         roles = fitted_passages(y,SR,beats,downbeats)
+        decision = dict(route='fitted-grid', incoming=roles['incoming'])
         if not roles['incoming']:
             with TemporaryDirectory(prefix='.cue-analysis-',dir=stage) as work:
                 windows, downbeat_indices = stable_beat_windows(beats,downbeats)
-                preferred_bpm = windows[0]['bpm'] if windows else None
+                preferred_bpm = float(np.median([w['bpm'] for w in windows[:8]])) if windows else None
                 evidence = analyze(path,Path(work),librosa,preferred_bpm=preferred_bpm)
                 matches = supported_grid_matches(windows,evidence['supported_regions'],beats)
+                decision = dict(route='incoming-fallback', preferredBpm=preferred_bpm,
+                                supportedRegions=evidence['supported_regions'], incoming=[])
                 if matches:
                     selected = matches[0]
+                    with np.load(Path(work)/'rhythm.npz') as rhythm:
+                        independent_beats, onset = rhythm['beat_times'].copy(), rhythm['onset'].copy()
+                    phase = independent_phase_fit(selected, beats, independent_beats)
+                    decision.update(window=selected['window'], region=selected['region'], phase=phase)
                     incoming = opening_grid_incoming(beats,downbeats,evidence['supported_regions'],duration)
                     if (incoming is None and not selected['earlier_phase_conflict']
                             and selected['chain_coverage'] >= .7):
-                        with np.load(Path(work)/'rhythm.npz') as rhythm:
-                            onset = rhythm['onset'].copy()
                         fallback = onset_grid_incoming(beats,downbeats,onset,duration)
                         if fallback:
                             relation, _ = tempo_relation(selected['region']['bpm'],fallback[0]['bpm'])
@@ -623,10 +670,14 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                         incoming = backprojected_natural_start_incoming(
                             beats,downbeats,evidence['supported_regions'],duration)
                     if incoming:
+                        for cue in incoming:
+                            cue['timingValidated'] = phase['validated'] and cue.get('timingValidated', True)
                         roles['incoming'] = incoming
+                        decision['incoming'] = incoming
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source changed during preparation')
         require_shared_cache(state_dir,expected_cache_id)
+        (stage/'decision.json').write_text(json.dumps(decision,allow_nan=False)+'\n')
         (stage/'grid.json').write_text(json.dumps(dict(beatsSeconds=np.asarray(beats).tolist(),downbeatsSeconds=np.asarray(downbeats).tolist()),allow_nan=False)+'\n')
         (stage/'cues.json').write_text(json.dumps(dict(version=VERSION,algorithmVersion=ALGORITHM_VERSION,model=model,durationSeconds=duration,**roles),allow_nan=False)+'\n')
         return dict(bundle_key=Path(folder).name,model=model,durationSeconds=duration,**roles)
@@ -644,7 +695,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')
