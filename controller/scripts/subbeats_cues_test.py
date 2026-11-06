@@ -11,6 +11,7 @@ import subbeats_cache as cache
 import subbeats_cues as cues
 import subbeats_cue_matching as matching
 import subbeats_cue_preview as preview
+import subbeats_prepare as preparation
 from subbeats_models import model_path
 
 
@@ -65,9 +66,29 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],7)
+            self.assertEqual(result['algorithmVersion'],8)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
+
+    def test_missing_incoming_grid_guides_librosa_tempo_search(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp);source=state/'source';source.write_bytes(b'complete recording')
+            bundle=state/'bundle';bundle.mkdir()
+            (bundle/'manifest.json').write_text('{}')
+            record=dict(identity=dict(source_sha256=cache.digest(source)),metadata=dict(stem_regions=[]))
+            beats=np.arange(0,200,.5)
+            roles=dict(incoming=[],outgoing=[],grid=None,ending=None)
+            evidence=dict(supported_regions=[])
+            with (patch.dict('sys.modules',librosa=SimpleNamespace(__version__='test')),
+                  patch.object(preparation,'SR',10),patch.object(preparation,'decode',return_value=np.zeros((1,2000))),
+                  patch.object(preparation,'require_shared_cache'),
+                  patch.object(cues,'predict',return_value=(beats,beats[::4])),
+                  patch.object(cues,'fitted_passages',return_value=roles),
+                  patch.object(preparation,'analyze',return_value=evidence) as analyze,
+                  patch('importlib.metadata.version',return_value='1.1.0')):
+                result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
+            self.assertAlmostEqual(analyze.call_args.kwargs['preferred_bpm'],120)
+            self.assertEqual(result['incoming'],[])
 
     def test_opening_grid_refits_a_stable_sixteen_bar_tempo_drift(self):
         origin=1.04; fast=60/114.03; slow=60/112.96
@@ -102,7 +123,7 @@ class CueTests(unittest.TestCase):
         self.assertAlmostEqual(result[0]['sourceSeconds'],origin+8*bar,places=3)
         self.assertAlmostEqual(result[1]['sourceSeconds'],origin+16*bar,places=3)
         self.assertAlmostEqual(result[0]['phraseStartSeconds'],origin,places=3)
-        self.assertAlmostEqual(result[-1]['sourceSeconds'],anchor,places=3)
+        self.assertAlmostEqual(result[-1]['sourceSeconds'],anchor+7*bar,places=3)
         self.assertNotIn('phraseBars',result[-1])
 
     def test_later_anchor_does_not_claim_opening_bars_when_early_phase_disagrees(self):
@@ -115,7 +136,7 @@ class CueTests(unittest.TestCase):
 
         result=cues.backprojected_natural_start_incoming(beats,downbeats,regions,100)
         self.assertEqual(len(result),1)
-        self.assertAlmostEqual(result[0]['sourceSeconds'],anchor,places=3)
+        self.assertAlmostEqual(result[0]['sourceSeconds'],anchor+7*bar,places=3)
         self.assertNotIn('phraseBars',result[0])
 
     def test_projected_grid_preserves_long_intro_phase_and_echo_beyond_the_outro(self):

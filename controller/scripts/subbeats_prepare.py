@@ -75,30 +75,51 @@ def mixing_windows(analysis):
     return {'version':1, 'incoming':windows[:8], 'outgoing':outgoing[-8:][::-1]}
 
 
-def analyze(path, stage, librosa):
+def analyze(path, stage, librosa, preferred_bpm=None):
     import numpy as np
     from scipy import ndimage
     y = decode(path, SR, 1)[0]
     duration = len(y) / SR
     percussive = librosa.effects.percussive(y, margin=3, hop_length=HOP)
     env = librosa.onset.onset_strength(y=percussive, sr=SR, hop_length=HOP)
-    seed = float(librosa.feature.tempo(onset_envelope=env, sr=SR, hop_length=HOP)[0])
-    ac = librosa.autocorrelate(env, max_size=int(SR / HOP) + 1)
-    peaks = np.flatnonzero(ac == ndimage.maximum_filter1d(ac, 3))
-    peaks = [i for i in peaks if i > 0 and 60 <= 60 * SR / HOP / i <= 190]
-    hypotheses = [seed, seed * 2, seed / 2] + [
-        60 * SR / HOP / i for i in sorted(peaks, key=lambda i: ac[i], reverse=True)[:5]]
+    if preferred_bpm is not None and math.isfinite(float(preferred_bpm)) and 60 <= float(preferred_bpm) <= 190:
+        preferred_bpm = float(preferred_bpm)
+        hypotheses = [(bpm, True) for bpm in (preferred_bpm, preferred_bpm / 2, preferred_bpm * 2)
+                      if 60 <= bpm <= 190]
+    else:
+        preferred_bpm = None
+        hypotheses = []
+
+    def global_hypotheses():
+        seed = float(librosa.feature.tempo(onset_envelope=env, sr=SR, hop_length=HOP)[0])
+        ac = librosa.autocorrelate(env, max_size=int(SR / HOP) + 1)
+        peaks = np.flatnonzero(ac == ndimage.maximum_filter1d(ac, 3))
+        peaks = [i for i in peaks if i > 0 and 60 <= 60 * SR / HOP / i <= 190]
+        return [seed, seed * 2, seed / 2] + [
+            60 * SR / HOP / i for i in sorted(peaks, key=lambda i: ac[i], reverse=True)[:5]]
+
+    if preferred_bpm is None:
+        hypotheses = [(bpm, False) for bpm in global_hypotheses()]
     regions, supported, beats = [], [], np.array([], dtype=int)
-    for bpm in hypotheses:
+    for index, (bpm, grid_guided) in enumerate(hypotheses):
         if not 60 <= bpm <= 190:
             continue
         _, beats = librosa.beat.beat_track(onset_envelope=env, sr=SR, hop_length=HOP, bpm=bpm, trim=True)
         regions, supported = timing_regions(librosa, beats, env)
+        if grid_guided:
+            supported = [r for r in supported if min(
+                abs(r['bpm'] / (preferred_bpm * factor) - 1) for factor in (.5, 1., 2.)) <= .02]
         if supported:
             refined = float(np.median([r['bpm'] for r in supported]))
             _, beats = librosa.beat.beat_track(onset_envelope=env, sr=SR, hop_length=HOP, bpm=refined, trim=True)
             regions, supported = timing_regions(librosa, beats, env)
-            break
+            if grid_guided:
+                supported = [r for r in supported if min(
+                    abs(r['bpm'] / (preferred_bpm * factor) - 1) for factor in (.5, 1., 2.)) <= .02]
+            if supported:
+                break
+        if grid_guided and index == len(hypotheses) - 1:
+            hypotheses.extend((candidate, False) for candidate in global_hypotheses())
     times = librosa.frames_to_time(beats, sr=SR, hop_length=HOP)
     rms = librosa.feature.rms(y=percussive, hop_length=HOP)[0]
     frame_seconds = librosa.frames_to_time(np.arange(len(rms)), sr=SR, hop_length=HOP)
@@ -317,7 +338,7 @@ def prepare_request(req):
             raise ValueError('Saved stems failed integrity checks. Recheck this track.')
         saved = load_cues(state_dir,req['stems_root'],req['track_id'],req['cue_key'],folder)
         result = dict(directory=str(folder),cache_hit=True,**record)
-        if saved.get('algorithmVersion') not in (5,6,ALGORITHM_VERSION):
+        if saved.get('algorithmVersion') not in (5,6,7,ALGORITHM_VERSION):
             raise ValueError('Rescan this track with Beat This! to replace the older cue analysis.')
         cue_points = dict(version=saved['version'],algorithmVersion=saved.get('algorithmVersion',ALGORITHM_VERSION),
             model=saved['model'],artifactKey=req['cue_key'],durationSeconds=saved['durationSeconds'],incoming=saved['incoming'],outgoing=saved['outgoing'],grid=saved.get('grid'),ending=saved.get('ending'))

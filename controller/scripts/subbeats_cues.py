@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 7
+ALGORITHM_VERSION = 8
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
@@ -237,7 +237,7 @@ def backprojected_natural_start_incoming(beats, downbeats, supported_regions, du
         anchor_candidates = downbeats[in_window]
         if not len(anchor_candidates):
             continue
-        anchor = float(anchor_candidates[0])
+        anchor = float(anchor_candidates[-1])
         if anchor < 4 * period or anchor >= min(130 - TAIL_SECONDS * 1.08 - .05, duration - 8 * period):
             continue
 
@@ -603,8 +603,9 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
         roles = fitted_passages(y,SR,beats,downbeats)
         if not roles['incoming']:
             with TemporaryDirectory(prefix='.cue-analysis-',dir=stage) as work:
-                evidence = analyze(path,Path(work),librosa)
                 windows, downbeat_indices = stable_beat_windows(beats,downbeats)
+                preferred_bpm = windows[0]['bpm'] if windows else None
+                evidence = analyze(path,Path(work),librosa,preferred_bpm=preferred_bpm)
                 matches = supported_grid_matches(windows,evidence['supported_regions'],beats)
                 if matches:
                     selected = matches[0]
@@ -643,7 +644,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')

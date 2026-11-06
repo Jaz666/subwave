@@ -71,6 +71,8 @@ test('cue methods are forwarded and an older analyzer cannot silently return cla
   cueResponse={...cueResponse,algorithmVersion:6};
   await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for natural-start cue preparation/);
   cueResponse={...cueResponse,algorithmVersion:7};
+  await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/Update the heavy analyzer for natural-start cue preparation/);
+  cueResponse={...cueResponse,algorithmVersion:8};
   await assert.rejects(analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0'),/save cue coverage/);
   coverageResponse={version:1,artifactKey:'d'.repeat(64),incoming:null,outgoing:null};
   const result=await analyzer.prepareSubbeats('/audio','/state','shared-cache-id-1','track-1',{stems_root:'/stems',remaining_bytes:1024},'final0');

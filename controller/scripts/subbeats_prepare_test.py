@@ -279,6 +279,38 @@ class CoverageTests(unittest.TestCase):
         _, silent = prepare.timing_regions(FakeLibrosa, np.arange(80), np.zeros(80))
         self.assertEqual(silent, [])
 
+    def test_grid_guided_tempo_search_falls_back_to_global_evidence(self):
+        import numpy as np
+        requested=[]
+        def beat_track(**kwargs):
+            requested.append(kwargs['bpm'])
+            return None,np.arange(64)
+        ac=np.zeros(100);ac[30]=1
+        fake=types.SimpleNamespace(
+            __version__='test',
+            effects=types.SimpleNamespace(percussive=lambda y,**_: y),
+            onset=types.SimpleNamespace(onset_strength=lambda **_: np.ones(100)),
+            feature=types.SimpleNamespace(tempo=lambda **_: np.array([95.]),
+                rms=lambda **_: np.ones((1,100))),
+            autocorrelate=lambda *_,**__: ac,
+            beat=types.SimpleNamespace(beat_track=beat_track),
+            frames_to_time=lambda frames,**_: np.asarray(frames)*prepare.HOP/prepare.SR)
+        scipy=types.SimpleNamespace(ndimage=types.SimpleNamespace(
+            maximum_filter1d=lambda values,*_,**__: np.where(np.arange(len(values))==30,values,-1),
+            median_filter=lambda values,**__: values))
+        def support(_librosa,frames,_envelope):
+            if requested[-1] < 90:
+                return [],[]
+            region=dict(start_seconds=0.,end_seconds=40.,bpm=95.,timing_error_ms=1.,onset_support=1.)
+            return [region],[region]
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict('sys.modules',{'librosa':fake,'scipy':scipy}), \
+                patch.object(prepare,'decode',return_value=np.ones((1,prepare.SR))), \
+                patch.object(prepare,'timing_regions',side_effect=support):
+            result=prepare.analyze('unused',Path(folder),fake,preferred_bpm=140.)
+        self.assertIn(95.,requested)
+        self.assertEqual(result['supported_regions'][0]['bpm'],95.)
+
 
 class ConversionTests(unittest.TestCase):
     def test_atomic_conversion_preserves_key_levels_and_analysis(self):
