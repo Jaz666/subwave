@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 9
+ALGORITHM_VERSION = 10
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
@@ -92,25 +92,45 @@ def supported_grid_matches(windows, regions, beats):
 
 
 def refit_opening_sixteen(beats, origin, initial_bpm):
-    """Use the observed 64-beat passage when its fixed-phase fit is sound."""
+    """Fit each expected beat independently so one extra detection cannot shift the phrase."""
     import numpy as np
     beats = np.asarray(beats, dtype=float)
     index = int(np.searchsorted(beats, origin))
     if index >= len(beats) or (index and abs(beats[index - 1] - origin) < abs(beats[index] - origin)):
         index -= 1
-    if index < 0 or abs(beats[index] - origin) > .05 or index + 64 >= len(beats):
+    if index < 0 or abs(beats[index] - origin) > .05 or not 60 <= initial_bpm <= 190:
         return None
-    times = beats[index:index + 65]
-    period = (float(times[-1]) - origin) / 64
-    intervals = np.diff(times) / period
-    error = times - (origin + np.arange(65) * period)
-    bpm = 60 / period
+
+    period = 60 / initial_bpm
+    ordinals = np.arange(65)
+    fits = []
+    for candidate_period in np.linspace(period * .98, period * 1.02, 161):
+        expected = origin + ordinals * candidate_period
+        nearby = np.searchsorted(beats, expected)
+        before = np.clip(nearby - 1, 0, len(beats) - 1)
+        after = np.clip(nearby, 0, len(beats) - 1)
+        chosen = np.where(abs(beats[before] - expected) <= abs(beats[after] - expected), before, after)
+        errors = abs(beats[chosen] - expected)
+        support = float(np.mean(errors <= .08))
+        if support >= .9 and errors[-1] <= .08:
+            fits.append((support, float(np.percentile(errors, 95)),
+                         abs(float(candidate_period) - period), float(beats[chosen[-1]])))
+    if not fits:
+        return None
+    _, _, _, endpoint = min(fits, key=lambda fit: (-fit[0], fit[1], fit[2]))
+    fitted_period = (endpoint - origin) / 64
+    bpm = 60 / fitted_period
+    expected = origin + ordinals * fitted_period
+    nearby = np.searchsorted(beats, expected)
+    before = np.clip(nearby - 1, 0, len(beats) - 1)
+    after = np.clip(nearby, 0, len(beats) - 1)
+    errors = np.minimum(abs(beats[before] - expected), abs(beats[after] - expected))
+    support = float(np.mean(errors <= .08))
+    p95 = float(np.percentile(errors, 95))
     if (not 60 <= bpm <= 190 or abs(bpm / initial_bpm - 1) > .02
-            or np.mean(np.abs(intervals - 1) < .2) < .98
-            or np.percentile(np.abs(error), 95) > SPAN_FIT_MAX_P95_SECONDS):
+            or support < .9 or errors[-1] > .08 or p95 > SPAN_FIT_MAX_P95_SECONDS):
         return None
-    return dict(sourceSeconds=float(times[-1]), bpm=float(bpm),
-        p95ErrorSeconds=float(np.percentile(np.abs(error), 95)))
+    return dict(sourceSeconds=endpoint, bpm=float(bpm))
 
 
 def independent_phase_fit(match, beats, independent_beats):
@@ -695,7 +715,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')

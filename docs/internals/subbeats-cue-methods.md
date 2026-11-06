@@ -125,6 +125,29 @@ arrival and Praise You's 61.34s later anchor; these numbers are controlled
 regressions, not newly approved musical releases. The primary fitted detector
 is byte-for-byte unchanged. No full-library audio reanalysis was run.
 
+## Final incoming timing pass — algorithm 10
+
+Praise You's expected 16-bar arrival at about 35.08s was discarded because a
+brief extra Beat This! detection around 30s shifted the exact 65-item slice used
+by the phrase refit. The refit now matches each expected beat position to its
+nearest observed beat across the 16-bar span. It tolerates isolated tracker
+glitches only when at least 90% of expected beats and the endpoint are within
+80ms, the 95th-percentile error is at most 100ms, and the fitted tempo remains
+within 2% of the opening tempo. This restores the measured 16-bar arrival while
+leaving the existing 8-bar candidate intact.
+
+Beauty of Silence remains marked for manual timing review: its stable
+Beat-This! grid and Librosa passage differ by about 195ms at 140 BPM, close to
+half a beat. The owner-identified driving-beat onset at 5.26s aligns with the
+Beat This! grid, but the full supported passage does not independently confirm
+that phase. The preview remains available and automatic selection continues to
+skip it. This is the final planned intro-detection change; no broader detection
+rules or track-specific exceptions are added.
+
+Algorithm-9 artifacts remain readable. Rebuild the analyzer, controller and
+web together, then rescan tracks whose incoming cues need the new robust span
+fit. Outro cues and live transitions are unchanged.
+
 ## Phrase preparation and preview — algorithm 6 / preview 13
 
 Rebuild analyzer, controller and web together, then **rescan existing tracks**:

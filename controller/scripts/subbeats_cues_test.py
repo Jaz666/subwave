@@ -66,7 +66,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],9)
+            self.assertEqual(result['algorithmVersion'],10)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
 

@@ -215,7 +215,7 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
     if isinstance(keys,list) and len(keys)==2 and all(isinstance(key,str) for key in keys):
         try:
             cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
-            if all(cue.get('algorithmVersion') in (5,6,7,8,9) for cue in cues):
+            if all(cue.get('algorithmVersion') in (5,6,7,8,9,10) for cue in cues):
                 durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
                 coverage=req.get('_cue_coverage') or [None,None]
                 outgoing_vocals=(coverage[0][1].get('metadata',{}).get('outgoing') if coverage[0] else None)
@@ -263,7 +263,7 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     if not isinstance(keys,list) or len(keys)!=2 or not isinstance(indices,list) or len(indices)!=2:
         raise ValueError('Choose two cue-prepared tracks')
     cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
-    if any(c.get('algorithmVersion') not in (5,6,7,8,9) for c in cues):
+    if any(c.get('algorithmVersion') not in (5,6,7,8,9,10) for c in cues):
         raise ValueError('Rescan both tracks with Beat This! for the new phrase preview.')
     outgoing=choose_cue(cues[0],'outgoing',indices[0])
     incoming=choose_cue(cues[1],'incoming',indices[1])
