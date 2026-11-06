@@ -125,16 +125,27 @@ arrival and Praise You's 61.34s later anchor; these numbers are controlled
 regressions, not newly approved musical releases. The primary fitted detector
 is byte-for-byte unchanged. No full-library audio reanalysis was run.
 
-## Final incoming timing pass — algorithm 10
+## Final incoming timing pass — algorithm 11
 
 Praise You's expected 16-bar arrival at about 35.08s was discarded because a
 brief extra Beat This! detection around 30s shifted the exact 65-item slice used
-by the phrase refit. The refit now matches each expected beat position to its
-nearest observed beat across the 16-bar span. It tolerates isolated tracker
-glitches only when at least 90% of expected beats and the endpoint are within
-80ms, the 95th-percentile error is at most 100ms, and the fitted tempo remains
-within 2% of the opening tempo. This restores the measured 16-bar arrival while
-leaving the existing 8-bar candidate intact.
+by the phrase refit. Algorithm 10 added a nearest-beat refit, but a preceding
+per-event spacing gate still rejected the phrase when the stray detections made
+its 95th-percentile error too high. Algorithm 11 lets the 16-bar route rely on
+the robust fit instead: each expected beat is matched independently to the
+nearest observed beat, and at least 90% plus the endpoint must land within 80ms;
+the fitted 95th-percentile error must stay within 100ms and tempo within 2% of
+the supported passage. Praise You's saved grid now yields the 16-bar marker at
+35.08s, alongside its 8-bar marker at
+17.58s and later supported marker at 61.34s. Other phrase lengths still use the
+per-event spacing gate.
+
+The latest algorithm-10 rescan still showed Praise You without that 16-bar cue;
+I Feel Love retained its validated 44.58s arrival, and Beauty of Silence kept
+three manual-review candidates. Replaying the saved Praise You grid through the
+algorithm-11 path restored 35.08s. The two focused backprojection tests pass;
+the controller Sub/Beats filter passes 63 tests, and controller lint/typecheck
+pass. No station rebuild or rescan was run by the agent.
 
 Beauty of Silence remains marked for manual timing review: its stable
 Beat-This! grid and Librosa passage differ by about 195ms at 140 BPM, close to
@@ -144,9 +155,11 @@ that phase. The preview remains available and automatic selection continues to
 skip it. This is the final planned intro-detection change; no broader detection
 rules or track-specific exceptions are added.
 
-Algorithm-9 artifacts remain readable. Rebuild the analyzer, controller and
+Algorithm-10 artifacts remain readable. Rebuild the analyzer, controller and
 web together, then rescan tracks whose incoming cues need the new robust span
-fit. Outro cues and live transitions are unchanged.
+fit. The owner has rescanned the review tracks; the corrected version still
+requires one rescan after rebuild. Beauty of Silence remains manual-review-only.
+Outro cues and live transitions are unchanged.
 
 ## Phrase preparation and preview — algorithm 6 / preview 13
 
