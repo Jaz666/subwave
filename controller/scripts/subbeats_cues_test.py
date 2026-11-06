@@ -66,7 +66,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],10)
+            self.assertEqual(result['algorithmVersion'],11)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
 
@@ -152,6 +152,22 @@ class CueTests(unittest.TestCase):
         self.assertAlmostEqual(result[-1]['sourceSeconds'],anchor,places=3,
                                msg='later fitting evidence must not displace the arrival')
         self.assertNotIn('phraseBars',result[-1])
+
+    def test_sixteen_bar_backprojection_ignores_isolated_extra_beat_detections(self):
+        origin=.1; bpm=109.7264; period=60/bpm
+        regular=origin+np.arange(300)*period
+        beats=np.sort(np.r_[regular,origin+np.array([55.5,56.5,57.5,58.5])*period])
+        downbeats=regular[::4]
+        start=int(np.searchsorted(beats,60.24)); end=int(np.searchsorted(beats,77.2))
+        window=dict(start_index=start,end_index=end,start_seconds=float(beats[start]),
+                    end_seconds=float(beats[end]),bpm=bpm,downbeat_phase=0,downbeat_phase_support=1.)
+        region=dict(start_seconds=43.3,end_seconds=77.8,bpm=bpm,timing_error_ms=10,onset_support=4.5)
+        match=dict(window=window,region=region,chain_coverage=1.,earlier_phase_conflict=False)
+        with (patch.object(cues,'stable_beat_windows',return_value=([window],[])),
+              patch.object(cues,'supported_grid_matches',return_value=[match])):
+            result=cues.backprojected_natural_start_incoming(beats,downbeats,[region],228)
+        sixteen=next(cue for cue in result if cue.get('phraseBars')==16)
+        self.assertAlmostEqual(sixteen['sourceSeconds'],origin+64*period,places=2)
 
     def test_seven_bar_opening_does_not_invent_arrivals_inside_the_gap(self):
         origin=.25;period=.5;anchor=48.25

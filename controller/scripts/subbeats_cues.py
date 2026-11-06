@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 10
+ALGORITHM_VERSION = 11
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
@@ -323,7 +323,7 @@ def backprojected_natural_start_incoming(beats, downbeats, supported_regions, du
                 ordinals = np.rint((observed - origin) / period)
                 errors = np.abs(observed - (origin + ordinals * period))
                 support = float(np.mean(errors < .06))
-                if support < .8 or float(np.percentile(errors, 95)) > .08:
+                if support < .8 or (bars != 16 and float(np.percentile(errors, 95)) > .08):
                     continue
                 bpm = float(window['bpm'])
                 validated = True
@@ -715,7 +715,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,10,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')
