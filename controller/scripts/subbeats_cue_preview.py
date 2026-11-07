@@ -31,7 +31,7 @@ def passage_plan(outgoing, incoming, out_duration, in_duration):
     if abs(rate-1)<.0001:
         rate=1.
     handover = outgoing.get('phraseEndSeconds',outgoing['sourceSeconds'])
-    if (not math.isfinite(handover) or not 0<=outgoing['sourceSeconds']<=handover<out_duration
+    if (not math.isfinite(handover) or not 0<=outgoing['sourceSeconds']<=handover<=out_duration
             or not 4*period<=incoming['sourceSeconds']/rate<in_duration/rate):
         raise ValueError('These saved cue passages are invalid. Recheck the selected tracks.')
     entry = handover-incoming['sourceSeconds']/rate
@@ -215,7 +215,7 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
     if isinstance(keys,list) and len(keys)==2 and all(isinstance(key,str) for key in keys):
         try:
             cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
-            if all(cue.get('algorithmVersion') in (5,6,7,8,9,10,11,12) for cue in cues):
+            if all(cue.get('algorithmVersion') in (5,6,7,8,9,10,11,12,13) for cue in cues):
                 durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
                 coverage=req.get('_cue_coverage') or [None,None]
                 outgoing_vocals=(coverage[0][1].get('metadata',{}).get('outgoing') if coverage[0] else None)
@@ -263,7 +263,7 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     if not isinstance(keys,list) or len(keys)!=2 or not isinstance(indices,list) or len(indices)!=2:
         raise ValueError('Choose two cue-prepared tracks')
     cues=[load_cues(req['state_dir'],req.get('stems_root'),req['track_ids'][i],keys[i],folders[i]) for i in range(2)]
-    if any(c.get('algorithmVersion') not in (5,6,7,8,9,10,11,12) for c in cues):
+    if any(c.get('algorithmVersion') not in (5,6,7,8,9,10,11,12,13) for c in cues):
         raise ValueError('Rescan both tracks with Beat This! for the new phrase preview.')
     outgoing=choose_cue(cues[0],'outgoing',indices[0])
     incoming=choose_cue(cues[1],'incoming',indices[1])

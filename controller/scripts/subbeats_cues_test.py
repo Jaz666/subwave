@@ -66,7 +66,7 @@ class CueTests(unittest.TestCase):
                 result=cues.prepare_cues(source,state,bundle,record,'small0',cache_root=None,allowance=None,expected_cache_id='test')
             self.assertEqual(len(detect.call_args.args[0]),2000)
             self.assertEqual(result['durationSeconds'],200)
-            self.assertEqual(result['algorithmVersion'],12)
+            self.assertEqual(result['algorithmVersion'],13)
             self.assertEqual(result['incoming'],roles['incoming'])
             self.assertEqual(result['outgoing'],roles['outgoing'])
 
@@ -186,6 +186,18 @@ class CueTests(unittest.TestCase):
         self.assertEqual(result['outgoing'],[])
         self.assertEqual(decision['reason'],'Independent closing timing is uncertain')
 
+    def test_terminal_grid_cues_keep_the_natural_track_end(self):
+        sr=1000;duration=202;beats=np.arange(.25,198,.5);bars=beats[::4]
+        y=np.full(duration*sr,.2,dtype=np.float32)
+        result,decision=cues.natural_finish_grid_cues(y,sr,beats,bars)
+        self.assertEqual(decision['reason'],'Natural finish on the supported terminal grid')
+        self.assertEqual(len(result),4)
+        self.assertTrue(all(cue['timingValidated'] for cue in result))
+        self.assertTrue(all(cue['phraseEndSeconds']==duration for cue in result))
+        self.assertTrue(all('phraseBars' not in cue for cue in result),
+                        'the marker starts a variable-length natural finish, not a fixed 8/16-bar exchange')
+        self.assertTrue(all(np.min(abs(beats-cue['sourceSeconds']))<.02 for cue in result))
+
     def test_closing_phase_checks_bass_without_shifting_a_disputed_grid(self):
         fit=dict(endpoint=40.,period=.5,width=16)
         wrong=np.arange(0,60,.5)+.25;right=np.arange(0,60,.5)
@@ -208,6 +220,19 @@ class CueTests(unittest.TestCase):
         inc=dict(sourceSeconds=32,bpm=120,timingValidated=False)
         self.assertEqual(matching.plan_pair_transitions([out],[inc],210,180),[])
         self.assertEqual(preview.passage_plan(out,inc,210,180)['handover'],192)
+
+    def test_natural_finish_candidate_is_usable_by_the_pair_planner(self):
+        out=dict(sourceSeconds=192.5,phraseEndSeconds=220.5,bpm=110,
+                 reason='ending',timingSource='fitted-grid',timingValidated=True)
+        inc=dict(sourceSeconds=32,bpm=110,timingSource='fitted-grid',timingValidated=True)
+        plans=matching.plan_pair_transitions([out],[inc],220.5,240)
+        self.assertEqual(len(plans),1)
+        self.assertEqual(plans[0]['transition'],dict(method='standard'))
+        self.assertIsNone(plans[0]['outgoingBars'])
+        self.assertEqual(plans[0]['outgoingTimeToEndSeconds'],-28)
+        plan=preview.passage_plan(out,inc,220.5,240)
+        self.assertEqual(plan['handover'],220.5)
+        self.assertEqual(plan['entry'],188.5)
 
     def test_later_anchor_backprojects_supported_natural_start_grid(self):
         origin=.25; period=60/126; bar=4*period; anchor=origin+24*bar
@@ -417,6 +442,11 @@ class CueTests(unittest.TestCase):
             self.assertEqual(plan['entry']+arrival,190)
             self.assertEqual(plan['out_end'],210)
         plan=preview.passage_plan(out,dict(sourceSeconds=32,bpm=120),210,180)
+        natural=preview.passage_plan(
+            dict(sourceSeconds=178,bpm=120,phraseEndSeconds=210,timingSource='fitted-grid'),
+            dict(sourceSeconds=32,bpm=120),210,180)
+        self.assertEqual(natural['handover'],210)
+        self.assertEqual(natural['out_end'],210)
         sr=1000
         with patch.object(preview,'STEM_SR',sr):
             outgoing={s:np.zeros((2,56000),dtype=np.float32) for s in preview.STEMS}
