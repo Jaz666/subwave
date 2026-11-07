@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from subbeats_cache import cached_entry, digest, prepare_cached
 
 VERSION = 1
-ALGORITHM_VERSION = 12
+ALGORITHM_VERSION = 13
 TAIL_SECONDS = 16
 OPENING_WINDOW_BEATS = 32
 OPENING_WINDOW_STEP = 4
@@ -653,6 +653,88 @@ def fit_closing_span(beats, endpoint, period, width):
     return dict(endpoint=float(endpoint), period=float(period), support=support, p95=p95)
 
 
+def natural_finish_grid_cues(y, sr, beats, downbeats, grid=None):
+    """Offer locally fitted closing starts when fade/phrase checks cannot decide.
+
+    The cue remains on the learned bar grid; each candidate's handover is the
+    complete source end so preview can match its natural remaining length.
+    """
+    import numpy as np
+    beats, downbeats = np.asarray(beats, dtype=float), np.asarray(downbeats, dtype=float)
+    duration = len(y) / sr
+    if len(beats) < 64 or len(downbeats) < 8:
+        return [], dict(reason='Insufficient terminal grid evidence')
+
+    windows, _ = stable_beat_windows(beats, downbeats)
+    seeds = [(float(grid['originSeconds']), 60 / float(grid['bpm']))] if grid else []
+    for window in windows[:8] + windows[-12:]:
+        indices = np.searchsorted(beats, downbeats)
+        exact = (indices < len(beats)) & (np.abs(beats[np.minimum(indices, len(beats) - 1)] - downbeats) < .02)
+        matched = [float(at) for at, index in zip(downbeats[exact], indices[exact])
+                   if window['start_index'] <= index <= window['end_index']
+                   and index % 4 == window['downbeat_phase']]
+        if matched:
+            seeds.append((matched[-1], 60 / window['bpm']))
+    if not seeds:
+        return [], dict(reason='No stable terminal grid')
+
+    hop = max(1, round(.05 * sr))
+    count = len(y) // hop
+    rms = np.sqrt(np.mean(y[:count * hop].reshape(count, hop) ** 2, axis=1))
+    reference = float(np.percentile(rms, 75))
+    body = np.flatnonzero(rms >= max(.001, reference * .2))
+    if not len(body):
+        return [], dict(reason='No audible terminal body')
+    body_end = (int(body[-1]) + 1) * hop / sr
+    candidates = []
+    for width in (16, 14, 20, 24):
+        fits = []
+        for trial_endpoint in downbeats[-8:]:
+            for _, period in seeds:
+                if not 0 < duration - trial_endpoint <= TAIL_SECONDS or trial_endpoint > body_end + period:
+                    continue
+                fit = fit_closing_span(beats, float(trial_endpoint), period, width)
+                if fit is None:
+                    continue
+                fit_endpoint, fitted_period = fit['endpoint'], fit['period']
+                if (not 60 <= 60 / fitted_period <= 190
+                        or not 0 < duration - fit_endpoint <= TAIL_SECONDS
+                        or fit_endpoint - width * 4 * fitted_period < duration * .5
+                        or fit_endpoint > min(duration, body_end + fitted_period)):
+                    continue
+                expected_bars = fit_endpoint + np.arange(-width, 1) * 4 * fitted_period
+                bar_support = float(np.mean([np.min(abs(downbeats - at)) <= .1 for at in expected_bars]))
+                if bar_support >= .65:
+                    fits.append(dict(**fit, width=width, barSupport=bar_support,
+                                     distance=abs(fit_endpoint - body_end)))
+        if not fits:
+            continue
+        fit = min(fits, key=lambda item: (item['distance'], item['p95']))
+        source = fit['endpoint'] - fit['width'] * 4 * fit['period']
+        nearest_beat = int(np.argmin(abs(beats - source)))
+        if abs(float(beats[nearest_beat]) - source) > .1:
+            continue
+        source = float(beats[nearest_beat])
+        candidates.append(dict(sourceSeconds=float(source), bpm=float(60 / fit['period']),
+            strength=float(fit['support']), reason='ending',
+            timingSource='fitted-grid', timingValidated=True,
+            phraseEndSeconds=float(duration), _width=width,
+            _fit=dict(width=width, endpoint=fit['endpoint'], support=fit['support'],
+                      p95=fit['p95'], barSupport=fit['barSupport'])))
+
+    unique = []
+    for cue in sorted(candidates, key=lambda item: (abs(item['_width'] - 16), item['sourceSeconds'])):
+        if all(abs(cue['sourceSeconds'] - previous['sourceSeconds']) > .5 * 60 / cue['bpm']
+               for previous in unique):
+            unique.append(cue)
+    evidence = [cue['_fit'] for cue in unique[:8]]
+    for cue in unique:
+        cue.pop('_width')
+        cue.pop('_fit')
+    return unique[:8], dict(reason='Natural finish on the supported terminal grid',
+                            candidates=evidence)
+
+
 def closing_phase_confirmation(y, sr, fit, librosa):
     """Confirm a measured tail passage; offbeat hats can dominate the full spectrum."""
     import numpy as np
@@ -827,6 +909,11 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
                         decision['incoming'] = incoming
         if not roles['outgoing']:
             closing, closing_decision = closing_grid_passages(y, SR, beats, downbeats, librosa, roles.get('grid'))
+            if not closing['outgoing']:
+                terminal, terminal_decision = natural_finish_grid_cues(y, SR, beats, downbeats, roles.get('grid'))
+                if terminal:
+                    closing['outgoing'] = terminal
+                    closing_decision = terminal_decision
             roles.update(closing)
             decision['outgoing'] = closing_decision
         if digest(Path(path)) != identity['source_sha256']:
@@ -850,7 +937,7 @@ def load_cues(state, stems_root, track_id, key, bundle):
     folder = bundle_folder(state,key,stems_root,track_id)
     identity = json.loads((folder/'manifest.json').read_text())['identity']
     record = cached_entry(folder,identity)
-    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,10,11,ALGORITHM_VERSION)
+    if (record is None or identity.get('mode')!='cue-points' or identity.get('version') not in (3,4,5,6,7,8,9,10,11,12,ALGORITHM_VERSION)
             or record['metadata'].get('bundle_key')!=bundle.name
             or identity.get('bundle_sha256')!=digest(bundle/'manifest.json')):
         raise ValueError('Cue points no longer match these stems. Recheck with a cue-point method.')
