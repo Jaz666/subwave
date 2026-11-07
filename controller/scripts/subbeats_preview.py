@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 13
+VERSION = 14
 PREVIEW_BUDGET = 200 * 1024**2
 
 

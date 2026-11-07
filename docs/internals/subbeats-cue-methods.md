@@ -499,14 +499,13 @@ availability and blocklist, and passes only server-owned jobs to the existing
 analyzer match operation. Old analyzers cannot silently return classic matches.
 Suggestions are not playback admission or source-integrity approval.
 
-Before a cue preview renders, it measures the actual covered/extended stems,
-reuses the same vocal timeline assessment, and rejects detected overlaps before
-time stretching or mixing. Both complete vocal passages remain intact when a
-pair passes. Version 9 invalidates old cached previews that allowed clashes; cue
-reanalysis is not required just for this renderer change. Saved measurements may
-be incomplete, so a suggested audition can still be refused after its full
-coverage is prepared. Background vocals in `other`, detector misses, phrase fit
-and harmony still require listening. Classic/reference preview behavior is
+Before a cue preview renders, it measures the actual covered/extended stems and
+reuses the same vocal timeline assessment. A detected overlap can be resolved
+with a safe two-bar incoming drum loop; otherwise the preview refuses the pair.
+Both complete vocal passages remain intact. Saved measurements may be
+incomplete, so a suggested audition can still be refused after its full coverage
+is prepared. Background vocals in `other`, detector misses, loop quality, phrase
+fit and harmony still require listening. Classic/reference preview behavior is
 unchanged. No broadcast or picker integration is enabled.
 
 ## Preview scope and limits
@@ -525,12 +524,11 @@ handover meaning. Incoming source zero is retained. Its start follows from the
 chosen arrival after tempo adjustment, so 8/16-bar alternatives need not enter
 at the same time. Drums/bass exchange over the last bar before that meeting point; outgoing
 `vocals` and `other` continue to EOF. The preview includes
-at least two incoming bars beyond the handover. Version 9 refuses detected vocal
-clashes before mixing (above). Voices/background grooves still
-need listening, including Gusto's groove in `other`. There is no loop or automatic
-broadcast/pair approval.
+at least two incoming bars beyond the handover. Voices/background grooves still
+need listening, including Gusto's groove in `other`. Looping is preview-only; no
+automatic broadcast/pair approval is enabled.
 
-## Pair transition planning — preview 13
+## Pair transition planning — preview 14
 
 **Find Suitable Transition** evaluates the outgoing and incoming tracks already
 selected on the Preview page. It compares the prepared cue combinations and
@@ -553,7 +551,8 @@ check, the automatic action prepares a regular Subwave crossfade preview using
 the station's current crossfade duration and curve. This also covers prepared
 tracks with missing/empty cue artifacts. The fallback is for audition only;
 the regular transition path remains responsible for normal station playback.
-Preview cache version 13 invalidates renders made with earlier planning rules.
+Preview cache version 14 invalidates renders made before the earlier incoming
+loop timing change.
 
 Saved stems are sliced and reused when they fully cover the required window.
 Otherwise the preview fetches the complete original (256 MiB limit), requires
