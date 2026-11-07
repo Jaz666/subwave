@@ -1,12 +1,15 @@
 // The analyzer writes cached head/tail stems on the shared volume. The controller manages
 // paths and evicts by the same priority the backfill uses.
 
-import { access, constants, readdir, stat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
+import { access, constants, readdir, stat, lstat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
 import * as db from './library-db.js';
 import * as likes from '../broadcast/likes.js';
+import * as subsonic from './subsonic.js';
+import { readSubbeatsStemPolicy } from './subbeats-stem-policy.js';
+import { invalidateSubbeatsBundles, readSubbeatsQueue } from './subbeats-store.js';
 import { evictQueuedLast, stemEvictionOrder, UNKNOWN_TRACK_PRIORITY } from './stem-priority.js';
 import { mapPool } from '../util/async-pool.js';
 import type { StemScanOpts } from './library-db.js';
@@ -258,14 +261,17 @@ async function measureDir(dir: string): Promise<{ dir: string; bytes: number; mt
     const st = await stat(dir);
     if (!st.isDirectory()) return null;
     const files = await readdir(dir);
-    const stats = await Promise.all(
-      files.map(f => stat(path.join(dir, f)).catch(() => null)), // file vanished mid-scan
-    );
+    const stats = await Promise.all(files.map(async f => {
+      const target = path.join(dir, f);
+      const st = await lstat(target).catch(() => null);
+      if (!st || st.isSymbolicLink()) return null;
+      return st.isDirectory() ? measureDir(target) : {bytes:st.size, mtimeMs:st.mtimeMs};
+    }));
     let bytes = 0;
     let mtimeMs = 0;
     for (const fst of stats) {
       if (!fst) continue;
-      bytes += fst.size;
+      bytes += fst.bytes;
       if (fst.mtimeMs > mtimeMs) mtimeMs = fst.mtimeMs;
     }
     return { dir, bytes, mtimeMs };
@@ -504,15 +510,12 @@ export async function markPassPending(): Promise<boolean> {
 
 // Bytes on disk under one track dir (one readdir + a stat per file).
 async function dirBytes(dir: string): Promise<number | null> {
-  try {
-    let bytes = 0;
-    for (const f of await readdir(dir)) {
-      try { bytes += (await stat(path.join(dir, f))).size; } catch { /* vanished */ }
-    }
-    return bytes;
-  } catch {
-    return null; // never written (failed separation, or offline)
-  }
+  return (await measureDir(dir))?.bytes ?? null;
+}
+
+export async function invalidateUsageSnapshot(): Promise<void> {
+  snapshotUntrusted = true;
+  await rm(snapshotPath(), {force:true});
 }
 
 // End of an analysis pass: add the NET-NEW dirs it allocated to the snapshot
@@ -614,6 +617,35 @@ export function likeSignals(): StemScanOpts {
   }
 }
 
+// The maintenance child only reads likes; it must never mint a second secret.
+export async function admissionSignals({ strict = false } = {}): Promise<StemScanOpts> {
+  await likes.load({ readOnly: true });
+  const signals: StemScanOpts = likeSignals();
+  try {
+    const policy = readSubbeatsStemPolicy();
+    signals.selectiveStems = policy.enabled;
+    signals.regularStemIds = policy.regularIds;
+  } catch (error) {
+    if (strict) throw error;
+    console.warn('[stems] Could not read Sub/Beats cache policy; preserving original admission');
+  }
+  if (!signals.selectiveStems && !strict) return signals;
+  if (strict) signals.operatorLikedIds = await likes.operatorHeartsForCleanup();
+  try {
+    signals.starredIds = (await subsonic.getStarred({ strict })).flatMap(track => track?.id ? [String(track.id)] : []);
+  } catch (error) {
+    if (strict) throw error;
+    console.warn('[stems] Could not refresh Navidrome stars; local operator hearts still qualify');
+  }
+  try {
+    signals.subbeatsIds = readSubbeatsQueue(config.stateDir).jobs.filter(job => job.status === 'prepared' || (!!job.task && !!job.bundleKey)).map(job => job.id);
+  } catch (error) {
+    if (strict) throw error;
+    console.warn('[stems] Could not read Sub/Beats preparation; keeping the saved list unchanged');
+  }
+  return signals;
+}
+
 // If priority lookup fails, return null for every dir and use mtime eviction. Dirs for tracks
 // absent from the catalogue evict first. #1622.
 function withPriorities(
@@ -639,6 +671,8 @@ function withPriorities(
 // cleared stamp has the backfill separate the track again either way.
 export async function forgetStems(trackIds: readonly string[]): Promise<{ removed: number; failed: number; offline?: string }> {
   if (trackIds.length === 0) return { removed: 0, failed: 0 };
+  // Invalidate even when the cache is offline or deletion is refused.
+  invalidateSubbeatsBundles(config.stateDir, trackIds);
   const root = await stemsRootStatus({ readOnly: true });
   if (!root.online) return { removed: 0, failed: 0, offline: root.message };
   let removed = 0;

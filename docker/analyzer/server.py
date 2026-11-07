@@ -23,7 +23,7 @@ import math
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable
+from typing import Any, Literal, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -384,6 +384,10 @@ class StdioWorker:
         flags opt every request in."""
         if payload.get("texts") is not None:
             return True
+        if payload.get("op") == "preview_subbeats" and payload.get("method") == "cue-points":
+            return True
+        if payload.get("op") == "prepare_subbeats":
+            return True
         if payload.get("op"):
             return False
         facets = payload.get("facets")
@@ -399,6 +403,8 @@ class StdioWorker:
     def _used_models(msg: dict[str, Any]) -> bool:
         """Whether a response proves model use (flat or facet shape)."""
         if any(k in msg for k in ("audio_embedding", "vocal_ranges", "stems_cached")):
+            return True
+        if msg.get("subbeats_used_models") is True:
             return True
         facets = msg.get("facets")
         if isinstance(facets, dict):
@@ -745,6 +751,10 @@ async def health():
         "analyze_loudness_curve_capable": analyzer_pool.capability("loudness_curve_capable", "whole_file"),
         # How many whole-file requests this host runs at once (its own lane).
         "analyze_whole_file_concurrency": WHOLE_FILE_CONCURRENCY,
+
+        "analyze_subbeats_suitability_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_suitability_version") == 1 for w in analyzer_pool.ready_workers) else None),
+        "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
+        "analyze_subbeats_cache_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_cache_version") == 2 for w in analyzer_pool.ready_workers) else None),
         # Best-effort residency (#1204): whether CLAP/Demucs are believed
         # loaded right now — lets an operator confirm the idle release
         # without grepping logs. None while the worker is down.
@@ -872,6 +882,112 @@ async def analyze(req: AnalyzeRequest):
     if "audio_embedding" in msg:
         out["audio_embedding"] = msg["audio_embedding"]
     return out
+
+
+class SubbeatsCacheRequest(BaseModel):
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    remaining_bytes: int = Field(ge=0, strict=True)
+
+
+@app.post("/migrate-subbeats")
+async def migrate_subbeats(req: SubbeatsCacheRequest):
+    msg = await analyzer_pool.request({"id": "1", "op": "migrate_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Sub/Beats migration failed")
+    return msg
+
+
+class SubbeatsPrepareRequest(SubbeatsCacheRequest):
+    bundle_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
+    cue_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
+    method: str = Field(default='classic',pattern=r'^(classic|small0|final0)$')
+    path: str
+    track_id: str
+    complete: bool
+
+
+@app.post("/prepare-subbeats")
+async def prepare_subbeats(req: SubbeatsPrepareRequest):
+    payload = {"id": "1", "op": "prepare_subbeats", **req.model_dump()}
+    msg = await analyzer_pool.request(payload)
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Sub/Beats preparation failed")
+    return {"ok": True, "subbeats_result": msg.get("subbeats_result"), "cache_added_bytes": msg.get("cache_added_bytes")}
+
+
+class SubbeatsMatchRequest(BaseModel):
+    method: Literal['stems', 'cue-points'] = 'stems'
+    outgoing_cue_index: int = Field(default=0, ge=0, le=7)
+    jobs: list[dict[str, Any]] = Field(max_length=500)
+    outgoing_id: str
+    bar_shift: int = Field(default=0, ge=-2, le=2)
+
+
+@app.post("/match-subbeats")
+async def match_subbeats(req: SubbeatsMatchRequest):
+    msg = await analyzer_pool.request({"id":"1","op":"match_subbeats",**req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422,msg.get("error") or "Match search failed")
+    return {"ok":True,"subbeats_matches":msg.get("subbeats_matches")}
+
+
+class SubbeatsAssessRequest(BaseModel):
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    track_id: str
+    bundle_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    cue_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    coverage_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+@app.post("/assess-subbeats")
+async def assess_subbeats(req: SubbeatsAssessRequest):
+    msg = await analyzer_pool.request({"id":"1", "op":"assess_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Suitability assessment failed")
+    return {"ok":True, "subbeats_result":msg.get("subbeats_result"), "cache_added_bytes":0}
+
+
+class SubbeatsReferencePreview(BaseModel):
+    out_seconds: float = Field(gt=0, lt=1200, allow_inf_nan=False)
+    in_resolve: float = Field(gt=0, lt=1200, allow_inf_nan=False)
+    bars: int = Field(ge=4, le=32, strict=True)
+    out_url: str
+    in_url: str
+
+
+class SubbeatsPreviewRequest(BaseModel):
+    coverage_keys: list[str | None] | None = Field(default=None, min_length=2, max_length=2)
+    source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)
+    method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')
+    auto_plan: bool = False
+    cue_keys: list[str | None] | None = Field(default=None,min_length=2,max_length=2)
+    cue_indices: list[int] | None = Field(default=None,min_length=2,max_length=2)
+    crossfade_seconds: float = Field(default=10, ge=0, le=30, allow_inf_nan=False)
+    equal_power_crossfade: bool = False
+    window_plan: dict[str, float] | None = None
+    bar_shift: int = Field(default=0, ge=-2, le=2, strict=True)
+    out_gain_db: float = Field(default=0, ge=-120, le=40)
+    in_gain_db: float = Field(default=0, ge=-120, le=40)
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    track_ids: list[str] = Field(min_length=2, max_length=2)
+    out_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    in_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reference: SubbeatsReferencePreview | None = None
+
+
+@app.post("/subbeats-preview")
+async def subbeats_preview(req: SubbeatsPreviewRequest):
+    from fastapi.responses import FileResponse
+    msg = await analyzer_pool.request({"id": "1", "op": "preview_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Preview could not be prepared")
+    return FileResponse(msg["subbeats_preview"], media_type="audio/wav", headers={"Cache-Control": "no-store", "X-Subbeats-Timeline": json.dumps(msg.get("subbeats_timeline"), separators=(",", ":"))})
 
 
 class RenderTransitionRequest(BaseModel):
