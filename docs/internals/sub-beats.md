@@ -1821,13 +1821,15 @@ with rhythm support, not the earlier Stem Blend vocal policy.
 
 Original sources are fetched serially to bounded temporary files (256 MiB each),
 decoded from sample zero, and removed on success or failure. Completeness and
-prepared duration are required. An exact source hash is accepted directly;
-when container/tag bytes differ, the first eight seconds must match the restored
-prepared head reconstruction within 10% relative RMS error at the same sample
-clock. Silent or mismatching heads are declined. This permits the raw recordings
-used in the accepted auditions without treating a changed recording as aligned.
-No source URLs or their credentials enter cache identity, metadata or browser
-responses. Cached previews need no source fetch.
+prepared duration are required. An exact source hash is accepted directly. If
+container or tag bytes differ, decoded audio is checked against the saved stem
+sum at the start, middle and end of each available passage, using up to eight
+seconds per window and a 10% relative RMS limit. At least one non-silent window
+must match, and every checked window must match; a source with no usable saved
+coverage or an audible mismatch is declined. This keeps harmless container
+changes from requiring another scan while guarding previews against a changed
+recording. No source URLs or credentials enter cache identity, metadata or
+browser responses. Cached previews need no source fetch.
 
 The timeline reports actual source entry times, the loop source, original EOF
 extension when used, the annotated incoming release and the one-bar handover.

@@ -61,7 +61,8 @@ def cue_region(req, index, folder, record, name, start, end, fetch_source):
     from subbeats_prepare import separate_regions
     from subbeats_cache import digest
     import analyze_worker as worker
-    audio = source_audio(urls[index],folder,record,fetch_source,require_hash=True)
+    audio = source_audio(urls[index],folder,record,fetch_source,require_reference=True,
+        reference_regions=[(folder,record)])
     parent = Path(req['state_dir'])/'subbeats'/'previews'
     parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.cue-region-',dir=parent) as temporary:
@@ -161,7 +162,13 @@ def render_regular_fallback(req,folders,records,gains,fetch_source):
     urls=req.get('source_urls')
     if fetch_source is None or not isinstance(urls,list) or len(urls)!=2:
         raise ValueError('No Sub/Beat transition fits, and the original tracks are unavailable for a regular preview.')
-    sources=[source_audio(urls[i],folders[i],records[i],fetch_source,require_hash=True) for i in range(2)]
+    coverage=req.get('_cue_coverage') or [None,None]
+    sources=[]
+    for i in range(2):
+        references=[coverage[i]] if coverage[i] else []
+        references.append((folders[i],records[i]))
+        sources.append(source_audio(urls[i],folders[i],records[i],fetch_source,
+            require_reference=True,reference_regions=references))
     out_duration,in_duration=(source.shape[1]/STEM_SR for source in sources)
     fade=float(req.get('crossfade_seconds',10.))
     if not math.isfinite(fade) or not 0<=fade<=30:
@@ -290,7 +297,8 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
                 urls=req.get('source_urls')
                 if not isinstance(urls,list) or len(urls)!=2 or not isinstance(urls[0],str) or urlsplit(urls[0]).scheme not in ('http','https'):
                     raise ValueError('The original outgoing lead-in is unavailable. Choose another pair.')
-                source=source_audio(urls[0],folders[0],records[0],fetch_source,require_hash=True)
+                source=source_audio(urls[0],folders[0],records[0],fetch_source,require_reference=True,
+                    reference_regions=[entry,(folders[0],records[0])])
                 prefix=source[:,round(start*STEM_SR):round(available*STEM_SR)]
                 # The original mix needs no separated stems before the closing
                 # passage. Treat its unknown vocal content conservatively as

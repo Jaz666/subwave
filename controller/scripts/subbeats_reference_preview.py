@@ -43,9 +43,40 @@ def repeat_rhythm(audio, cue, period, length, phase_seconds):
     return result.astype(np.float32)
 
 
-def source_audio(url, folder, record, fetch_source, *, require_hash=False):
-    """Verify source timing; cue extensions additionally require identical bytes."""
+def _matches_saved_regions(audio, references):
+    """Check the decoded source against several windows of saved stem coverage."""
     import numpy as np
+    checked = 0
+    for folder, record in references:
+        for region in record.get('metadata', {}).get('stem_regions', []):
+            start = region['start_sample'] / STEM_SR
+            end = region['end_sample'] / STEM_SR
+            window = min(8., end - start)
+            if window < 1:
+                continue
+            offsets = sorted({start, start + (end - start - window) / 2, end - window})
+            for offset in offsets:
+                parts, _ = load_region(folder, record, region['name'], limit_seconds=window,
+                    start_seconds=offset, end_seconds=offset + window, require_tempo=False)
+                reference = sum(parts.values())
+                first = round(offset * STEM_SR)
+                original = audio[:, first:first + reference.shape[1]]
+                frames = min(original.shape[1], reference.shape[1])
+                if frames < STEM_SR:
+                    continue
+                original, reference = original[:, :frames], reference[:, :frames]
+                level = float(np.sqrt(np.mean(original**2)))
+                if level < 1e-5:
+                    continue
+                error = float(np.sqrt(np.mean((original-reference)**2))) / level
+                if error > .1:
+                    return False
+                checked += 1
+    return checked > 0
+
+
+def source_audio(url, folder, record, fetch_source, *, require_reference=False, reference_regions=None):
+    """Verify source timing and, after byte changes, its saved audio coverage."""
     path = None
     try:
         try:
@@ -59,19 +90,9 @@ def source_audio(url, folder, record, fetch_source, *, require_hash=False):
         if abs(audio.shape[1] / STEM_SR - duration) > .05:
             raise ValueError('Original recording timing differs from the prepared audio. Recheck the track.')
         if digest(path) != record['identity']['source_sha256']:
-            if require_hash:
-                raise ValueError('The original recording changed. Recheck this track before extending cue coverage.')
-            head, _ = load_region(folder, record, 'head', limit_seconds=8)
-            reconstructed = sum(head.values())
-            frames = min(audio.shape[1], reconstructed.shape[1], 8 * STEM_SR)
-            if frames < STEM_SR:
-                raise ValueError('Insufficient audio to verify the original recording.')
-            original = audio[:, :frames]
-            reference = reconstructed[:, :frames]
-            level = float(np.sqrt(np.mean(original**2)))
-            error = float(np.sqrt(np.mean((original-reference)**2))) / max(1e-9, level)
-            if level < 1e-5 or error > .1:
-                raise ValueError('The original recording differs from the prepared audio. Recheck the track.')
+            references = reference_regions or ([] if require_reference else [(folder, record)])
+            if not _matches_saved_regions(audio, references):
+                raise ValueError('The original recording differs from its saved audio coverage. Recheck this track before previewing.')
         return audio
     finally:
         if path is not None:
