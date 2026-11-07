@@ -1,5 +1,16 @@
 # Sub/Beats development
 
+## Earlier incoming loop support — 7 November 2026
+
+Station source candidate `7cf715f9` applies the reviewed PR #10 loop-timing
+change on top of `9dd2b326`. When a two-bar incoming drum loop resolves vocal
+overlap, preview now selects the earliest safe grid-aligned section in the
+intro and starts the incoming rhythm there; it retries later sections if audio
+or remeasurement rejects an earlier choice. This is preview-only and does not
+require rescanning prepared tracks. Source integration only: running containers
+remain unchanged until the owner rebuilds. Roll back source with
+`git revert 7cf715f9` (or return to `9dd2b326` before any later station commits).
+
 ## Cue preparation and 1.30.0 source candidate — 3 November 2026
 
 See the [cue-point preparation and preview guide](subbeats-cue-methods.md) for the new optional methods. This candidate incorporates upstream release `v1.30.0` through `03a48c21` and preserves station-specific Sub/Flow, Sub/Shows and Sleeve Notes behaviour. Beat This! for normal Stem Blend remains an unmerged upstream draft; these methods are separate auditions.
