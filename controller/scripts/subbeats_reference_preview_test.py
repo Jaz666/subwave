@@ -54,7 +54,8 @@ class ReferencePreviewTests(unittest.TestCase):
             root = Path(tmp); source = root/'download.audio'
             (root/'analysis.json').write_text(json.dumps({'duration_seconds': 2}))
             audio = np.full((2, 2000), .1, dtype=np.float32)
-            record = {'identity': {'source_sha256': 'different-container'}}
+            record = {'identity': {'source_sha256': 'different-container'},
+                'metadata': {'stem_regions': [{'name':'head','start_sample':0,'end_sample':2000}]}}
             def fetch(_url, max_bytes):
                 self.assertEqual(max_bytes, 256*1024**2)
                 source.write_bytes(b'same audio in another container')
@@ -63,8 +64,11 @@ class ReferencePreviewTests(unittest.TestCase):
                     patch.object(reference, 'load_region', return_value=({'other': audio}, 120)):
                 np.testing.assert_equal(reference.source_audio('http://source', root, record, fetch), audio)
                 self.assertFalse(source.exists())
-                with self.assertRaisesRegex(ValueError,'recording changed'):
-                    reference.source_audio('http://source',root,record,fetch,require_hash=True)
+                with self.assertRaisesRegex(ValueError,'differs from its saved audio coverage'):
+                    reference.source_audio('http://source',root,record,fetch,require_reference=True)
+                self.assertFalse(source.exists())
+                np.testing.assert_equal(reference.source_audio('http://source',root,record,fetch,
+                    require_reference=True,reference_regions=[(root,record)]),audio)
                 self.assertFalse(source.exists())
                 with patch.object(reference, 'load_region', return_value=({'other': -audio}, 120)):
                     with self.assertRaisesRegex(ValueError, 'differs'):

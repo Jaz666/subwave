@@ -655,9 +655,10 @@ class CueTests(unittest.TestCase):
                   patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
                   patch.object(preview,'STEM_SR',1000),
                   patch.object(preview,'load_region',side_effect=[(dict((s,a[:,6000:]) for s,a in outgoing.items()),None),(incoming,None)]),
-                  patch('subbeats_reference_preview.source_audio',return_value=source)):
+                  patch('subbeats_reference_preview.source_audio',return_value=source) as source_check):
                 with self.assertRaisesRegex(ValueError,'vocal passages overlap'):
                     preview.render_cue_preview(req,folders,[{},{}],[0,0],fetch_source=object())
+                self.assertEqual(source_check.call_args.kwargs['reference_regions'][0],req['_cue_coverage'][0])
             incoming['vocals'][:]=0;incoming['vocals'][:,5000:7000]=.3
             with (patch.dict('sys.modules',librosa=SimpleNamespace()),
                   patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
