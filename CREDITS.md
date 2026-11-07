@@ -60,6 +60,7 @@ in the `package.json` files, lockfiles, and `docker/Dockerfile.*`, not here.
 | Project | Used for | Licence |
 | --- | --- | --- |
 | [librosa](https://librosa.org) | BPM, key, onsets, endings, and silence measurement | ISC |
+| [Beat This!](https://github.com/CPJKU/beat_this) (CPJKU): `small0`, `final0` | Optional Sub/Beats cue-point preparation in heavy images | MIT (code and released weights) |
 | [pyloudnorm](https://github.com/csteinmetz1/pyloudnorm) | LUFS loudness measurement | MIT |
 | [NumPy](https://numpy.org) and [SciPy](https://scipy.org) | Numerical work in the analyzer and TTS workers | BSD-3-Clause |
 | [PyTorch](https://pytorch.org) and torchaudio | Model runtime for CLAP, Demucs, Chatterbox, and Pocket TTS | BSD-3-Clause |

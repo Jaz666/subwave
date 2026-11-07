@@ -1313,16 +1313,20 @@ def get_embedder(force=False):
 # while real vocals — a genuine fraction of the mix — still cross. Frames that
 # sustain above threshold merge into ranges (gaps <0.4s bridged so a breath
 # doesn't split a phrase); sub-300ms blips are dropped as separation artefacts.
-def vocal_ranges_from_rms(rms, mix_rms, sr, hop):
+def vocal_ranges_from_rms(rms, mix_rms, sr, hop, *, stem_rel=None, mix_floor=None, loud_reference=None):
     import numpy as np
 
     if rms.size == 0:
         return []
-    loud = float(np.percentile(rms, 90))
+    reference = rms if loud_reference is None else loud_reference
+    if reference.size == 0:
+        return []
+    loud = float(np.percentile(reference, 90))
     if loud <= 0:
         return []
     mix_loud = float(np.percentile(mix_rms, 90)) if mix_rms.size else 0.0
-    thr = max(VOCAL_STEM_REL * loud, VOCAL_MIX_FLOOR * mix_loud)
+    thr = max((VOCAL_STEM_REL if stem_rel is None else stem_rel) * loud,
+              (VOCAL_MIX_FLOOR if mix_floor is None else mix_floor) * mix_loud)
     # frames → seconds; librosa.frames_to_time's default is frames * hop / sr.
     times = np.arange(rms.size) * (hop / float(sr))
     active = rms >= thr
@@ -1860,10 +1864,13 @@ def render_transition(req):
     }
 
 
-def fetch_audio(url):
+def fetch_audio(url, max_bytes=None):
     """Download (capped) to a temp file. Returns (path, complete) — `complete`
     is False when the byte cap truncated the download, which vetoes outro
     analysis (the file's "tail" would be mid-song audio)."""
+    max_bytes = ANALYZE_MAX_BYTES if max_bytes is None else max_bytes
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError('Invalid audio download limit')
     suffix = ".audio"
     fd, path = tempfile.mkstemp(suffix=suffix, prefix="swanalyze_")
     try:
@@ -1877,9 +1884,9 @@ def fetch_audio(url):
                         break
                     out.write(chunk)
                     read += len(chunk)
-                    if read >= ANALYZE_MAX_BYTES:
+                    if read >= max_bytes:
                         break
-        return path, read < ANALYZE_MAX_BYTES
+        return path, read < max_bytes
     except BaseException:
         try:
             os.remove(path)
@@ -3549,6 +3556,10 @@ def main():
         # Older workers never emit the key; the controller re-plans a v2
         # figure stored without a curve only on `=== true`.
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
+
+        "subbeats_capable": vocal_capable,
+        "subbeats_cache_version": 2,
+        "subbeats_suitability_version": 1,
     })
 
     for line in sys.stdin:
@@ -3561,6 +3572,51 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "match_subbeats":
+            try:
+                from subbeats_matching import find_matches
+                if req.get('method') == 'cue-points':
+                    from subbeats_cue_matching import find_cue_matches
+                    matches = find_cue_matches(req['jobs'],req['outgoing_id'],req.get('outgoing_cue_index',0))
+                else:
+                    matches = find_matches(req['jobs'],req['outgoing_id'],req.get('bar_shift',0))
+                emit({"id":rid,"ok":True,"subbeats_matches":matches})
+            except Exception as error:
+                emit({"id":rid,"ok":False,"error":str(error)})
+            continue
+        if req.get("op") == "assess_subbeats":
+            try:
+                from subbeats_suitability import assess_request
+                emit({"id": rid, **assess_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "migrate_subbeats":
+            try:
+                from subbeats_cache import shared_context, migrate_shared
+                from subbeats_prepare import require_shared_cache
+                require_shared_cache(req['state_dir'], req['cache_id'])
+                allowance = shared_context(req)
+                moved = migrate_shared(req['state_dir'], req['stems_root'], allowance)
+                emit({"id": rid, "ok": True, "migrated": moved,
+                      "cache_added_bytes": req['remaining_bytes'] - allowance['bytes']})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "preview_subbeats":
+            try:
+                from subbeats_preview import render_preview
+                emit({"id": rid, **render_preview(req, fetch_source=fetch_audio)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "prepare_subbeats":
+            try:
+                from subbeats_prepare import prepare_request
+                emit({"id": rid, **prepare_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         # Transition render (feature: stem-blend transitions) — dispatched by
         # op key; a pure mix of cached stems, seconds of CPU, no model.
         if req.get("op") == "render_transition":

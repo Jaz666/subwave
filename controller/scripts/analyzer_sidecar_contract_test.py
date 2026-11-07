@@ -42,6 +42,21 @@ pydantic.Field = lambda **_kwargs: None
 sys.modules["fastapi"] = fastapi
 sys.modules["pydantic"] = pydantic
 
+# Catch missing worker modules before a rebuilt sidecar reaches a real station.
+import ast
+import shlex
+repo = Path(__file__).parents[2]
+packaged = set()
+for line in (repo / 'docker/Dockerfile.analyzer').read_text().splitlines():
+    if line.startswith('COPY ') and '/app/workers/' in line:
+        packaged.update(Path(src).stem for src in shlex.split(line)[1:-1])
+for name in packaged:
+    for node in ast.walk(ast.parse((repo/'controller/scripts'/f'{name}.py').read_text())):
+        imports = [node.module] if isinstance(node,ast.ImportFrom) else [alias.name for alias in node.names] if isinstance(node,ast.Import) else []
+        for module in imports:
+            if module and module.startswith('subbeats_'):
+                assert module in packaged, f'{name} imports unpackaged {module}'
+
 server_path = Path(__file__).parents[2] / "docker" / "analyzer" / "server.py"
 spec = importlib.util.spec_from_file_location("subwave_analyzer_server", server_path)
 assert spec and spec.loader
@@ -458,6 +473,93 @@ def test_whole_file_timeout_env_matches_the_worker():
         else:
             os.environ[name] = old
 
+async def test_subbeats_contract():
+    assert server.StdioWorker._wants_models({'op': 'prepare_subbeats'})
+    assert server.StdioWorker._used_models({'subbeats_used_models': True})
+    assert not server.StdioWorker._used_models({'subbeats_result': {'status': 'prepared'}, 'subbeats_used_models': False})
+    original = server.analyzer_pool
+    seen = []
+    class Pool:
+        async def request(self, payload):
+            seen.append(payload)
+            return {'ok': True, 'subbeats_result': {'status': 'prepared', 'bundleKey': 'a' * 64}}
+    server.analyzer_pool = Pool()
+    try:
+        body = {'path': '/recording', 'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'complete': True}
+        result = await server.prepare_subbeats(types.SimpleNamespace(model_dump=lambda: body))
+        assert seen == [{'id': '1', 'op': 'prepare_subbeats', **body}]
+        assert result['subbeats_result']['status'] == 'prepared'
+    finally:
+        server.analyzer_pool = original
+
+
+async def test_subbeats_assessment_contract():
+    assert not server.StdioWorker._wants_models({'op':'assess_subbeats'})
+    original = server.analyzer_pool
+    seen = []
+    class Pool:
+        failed = False
+        async def request(self, payload):
+            seen.append(payload)
+            return {'ok':False,'error':'Invalid cached stem coverage'} if self.failed else {'ok':True,'subbeats_result':{'status':'prepared','suitability':{'version':1}}}
+    pool = Pool()
+    server.analyzer_pool = pool
+    try:
+        body = {'state_dir':'/state','stems_root':'/stems','cache_id':'shared-cache-identity','track_id':'track','bundle_key':'a'*64}
+        result = await server.assess_subbeats(types.SimpleNamespace(model_dump=lambda:body))
+        assert seen == [{'id':'1','op':'assess_subbeats',**body}]
+        assert result['subbeats_result']['suitability']['version'] == 1
+        assert result['cache_added_bytes'] == 0
+        pool.failed = True
+        try:
+            await server.assess_subbeats(types.SimpleNamespace(model_dump=lambda:body))
+        except server.HTTPException as error:
+            assert error.status_code == 422 and error.detail == 'Invalid cached stem coverage'
+        else:
+            raise AssertionError('Assessment failure was not surfaced')
+    finally:
+        server.analyzer_pool = original
+
+
+async def test_subbeats_preview_contract():
+    assert not server.StdioWorker._wants_models({'op': 'preview_subbeats'})
+    assert server.StdioWorker._wants_models({'op':'preview_subbeats','method':'cue-points'})
+    assert server.StdioWorker._used_models({'subbeats_used_models':True})
+    assert not server.StdioWorker._used_models({'subbeats_preview': '/state/subbeats/previews/a/preview.wav'})
+    from typing import get_type_hints
+    request_fields = get_type_hints(server.SubbeatsPreviewRequest)
+    assert {'auto_plan', 'crossfade_seconds', 'equal_power_crossfade'} <= set(request_fields)
+    assert 'str | None' in str(server.SubbeatsPreviewRequest.__annotations__['cue_keys'])
+    responses = types.ModuleType('fastapi.responses')
+    responses.FileResponse = lambda path, **kwargs: types.SimpleNamespace(path=path, **kwargs)
+    sys.modules['fastapi.responses'] = responses
+    original = server.analyzer_pool
+    seen = []
+    class Pool:
+        async def request(self, payload):
+            seen.append(payload)
+            return {'ok': True, 'subbeats_preview': '/state/subbeats/previews/a/preview.wav', 'subbeats_timeline': {'duration': 44, 'events': [{'at': 0, 'label': 'Outgoing lead'}]}}
+    server.analyzer_pool = Pool()
+    try:
+        body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64,
+                'method':'cue-points','auto_plan':True,'cue_keys':[None,'b'*64],
+                'crossfade_seconds':8.5,'equal_power_crossfade':True}
+        result = await server.subbeats_preview(types.SimpleNamespace(model_dump=lambda: body))
+        assert seen == [{'id': '1', 'op': 'preview_subbeats', **body}]
+        assert result.media_type == 'audio/wav'
+        assert result.headers['Cache-Control'] == 'no-store'
+        import json
+        assert json.loads(result.headers['X-Subbeats-Timeline'])['duration'] == 44
+        body = {'state_dir': '/state', 'cache_id': 'shared-cache-identity', 'out_key': 'a' * 64, 'in_key': 'b' * 64}
+        body['reference'] = {'out_seconds':219, 'in_resolve':68, 'bars':32,
+                             'out_url':'http://source/out', 'in_url':'http://source/in'}
+        await server.subbeats_preview(types.SimpleNamespace(model_dump=lambda: body))
+        assert seen[-1]['reference'] == body['reference']
+        assert not server.StdioWorker._wants_models(seen[-1])
+    finally:
+        server.analyzer_pool = original
+
+
 
 async def main():
     test_concurrency_env_validation()
@@ -473,6 +575,9 @@ async def main():
     await test_latched_capability_error_does_not_fan_out()
     await test_path_contract()
     await test_facet_contract()
+    await test_subbeats_contract()
+    await test_subbeats_assessment_contract()
+    await test_subbeats_preview_contract()
 
 
 asyncio.run(main())

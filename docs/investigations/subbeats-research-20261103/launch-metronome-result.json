@@ -1,0 +1,62 @@
+{
+  "sourceSha256": "2074950c1936f5a44ac6819c7d800c55e6507af52c6a379a88bbb68363fc528b",
+  "bpm": 136.50761885513919,
+  "firstDownbeatSeconds": 0.68,
+  "method": "Constant grid fitted to consistent learned beats; owner-labelled bar references; continued after final prediction, not a new detector result",
+  "lastPredictedBeatSeconds": 188.38,
+  "musicGain": 0.7,
+  "clips": [
+    {
+      "file": "/home/jaz666/codex/subbeats-beat-this-20261103/launch/the-launch-head-metronome.wav",
+      "sourceStartSeconds": 0.0,
+      "durationSeconds": 35.842879818594106,
+      "peak": 0.5990410447120667,
+      "markers": [
+        {
+          "bar": 0,
+          "sourceSeconds": 0.68,
+          "clipSeconds": 0.68,
+          "label": "First established downbeat"
+        },
+        {
+          "bar": 16,
+          "sourceSeconds": 28.810298017101726,
+          "clipSeconds": 28.810298017101726,
+          "label": "16-bar intro finishes"
+        }
+      ]
+    },
+    {
+      "file": "/home/jaz666/codex/subbeats-beat-this-20261103/launch/the-launch-tail-metronome.wav",
+      "sourceStartSeconds": 141.33149659863946,
+      "durationSeconds": 51.93517006802721,
+      "peak": 0.6760333180427551,
+      "markers": [
+        {
+          "bar": 84,
+          "sourceSeconds": 148.36406458978408,
+          "clipSeconds": 7.032567991144617,
+          "label": "Outro section begins"
+        },
+        {
+          "bar": 92,
+          "sourceSeconds": 162.42921359833494,
+          "clipSeconds": 21.09771699969548,
+          "label": "16-bar closing run begins"
+        },
+        {
+          "bar": 100,
+          "sourceSeconds": 176.4943626068858,
+          "clipSeconds": 35.16286600824634,
+          "label": "8-bar closing run begins"
+        },
+        {
+          "bar": 108,
+          "sourceSeconds": 190.55951161543666,
+          "clipSeconds": 49.2280150167972,
+          "label": "Proposed closing phrase end (grid continuation)"
+        }
+      ]
+    }
+  ]
+}

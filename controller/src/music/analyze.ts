@@ -110,15 +110,16 @@ async function readQuietConfig(): Promise<QuietConfig> {
 // How often the paused pass re-checks Icecast (one status fetch, no history).
 const QUIET_POLL_MS = 30_000;
 
-interface QuietGate {
+export interface QuietGate {
   state: QuietState;
   paused: boolean; // for one-per-transition logging, not decision logic
 }
 
 // Block until the gate allows the next track. Sits BETWEEN tracks, so only the
 // next compute waits. Unbounded by design (Stop button / admin toggle).
-async function waitForQuiet(gate: QuietGate, progress: { done: number; total: number }): Promise<void> {
+export async function waitForQuiet(gate: QuietGate, progress: { done: number; total: number }, shouldStop?: () => boolean): Promise<boolean> {
   for (;;) {
+    if (shouldStop?.()) return false;
     const quiet = await readQuietConfig();
     // Skip the probe while off; the pure helper still resets the quiet clock.
     const count = quiet.enabled ? await probeListenerCount() : null;
@@ -136,7 +137,7 @@ async function waitForQuiet(gate: QuietGate, progress: { done: number; total: nu
         // The per-track reporter only fires every 25 tracks, so restore now.
         reportProgress({ phase: 'analyze', label: 'Analysing audio', done: progress.done, total: progress.total });
       }
-      return;
+      return true;
     }
     // An unknown count never reaches here: the gate fails open.
     const why = count && count > 0 ? `${count} listening` : 'waiting out the quiet window';
@@ -316,6 +317,8 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // A raw --re-analyze leaves the scope null and redoes the whole library.
   let reAnalyzeScope: string[] | null = null;
   const plan = opts.plan;
+  const stemSignals = stemCache || plan?.items.some(item => item.request.stems)
+    ? await stemCacheStore.admissionSignals() : {};
   if (plan && opts.reAnalyze) console.log('[analyze] facet plan given — ignoring --re-analyze');
   if (opts.reAnalyze && !plan) {
     if (opts.rescan) reAnalyzeScope = db.analysedIds();
@@ -399,7 +402,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     // The loop spends stemSlotsLeft in ids order and the earlier widenings'
     // tracks run FIRST, draining slots before this slice is reached. Reserve
     // them up front, or the announcement over-promises.
-    const reserved = ids.filter(id => !existingStemDirs.has(id)).length;
+    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
     const backfillSlots = Math.max(0, stemSlotsLeft - reserved);
     if (backfillSlots <= 0) {
       console.log(
@@ -416,7 +419,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       // the never-starve reasoning live in music/stem-priority.ts; the like
       // signals it reads are resolved here because library-db must not import
       // the likes store.
-      const needing = db.needsStemsIds(undefined, stemCacheStore.likeSignals())
+      const needing = db.needsStemsIds(undefined, stemSignals)
         .filter(id => !seen.has(id));
       // Under --limit, only the slots the bpm/CLAP/vocal scopes haven't already
       // spent are available — sizing off the raw cap would log stem tracks a
@@ -439,10 +442,10 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   }
 
   // Only ids pulled in solely by the CLAP widening may take the fast path;
-  // vocal and stem work applies to every id, so those runs stay full.
+  // Vocal work applies to every id; stem work only to eligible recordings.
   const fullAnalysisIds = new Set(bpmIds);
-  if (vocalBackfill || stemCache) {
-    for (const id of ids) fullAnalysisIds.add(id);
+  for (const id of ids) {
+    if (vocalBackfill || (stemCache && db.canCacheStems(id, stemSignals))) fullAnalysisIds.add(id);
   }
 
   // A facet plan replaces everything the widenings above decided: the plan's
@@ -578,6 +581,10 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     const want = planned.get(id);
     // A planned track gets stems only when its plan asks for them.
     if (plan && (!want?.stems || planStemsOffline)) return undefined;
+    if (!plan && !stemCache) return undefined;
+    // Played/starred/Sub/Beats exceptions and the dance gate share one policy.
+    // Other fresh tracks gain beat evidence first and join a later backfill.
+    if (!db.canCacheStems(id, stemSignals)) return undefined;
     const trackStemDecision = stemCacheStore.stemWriteDecision({
       cacheOn: plan ? true : stemCache,
       slotsLeft: stemSlotsLeft,

@@ -11,7 +11,7 @@
 #   * subwave-analyzer-cuda   — heavy + cu128 torch, amd64-only. Selected by
 #       the docker-compose.analyzer-gpu.yml overlay (a device reservation
 #       can't be toggled from .env).
-# Models are NOT baked — the heavy worker downloads weights into HF_HOME on
+# CLAP/Demucs models are NOT baked — the heavy worker downloads weights into HF_HOME on
 # first use; compose mounts a named volume over that cache. That makes the
 # heavy tier's FIRST sounds-like/vocals pass a one-time outbound dependency on
 # huggingface.co, which is documented (and given an offline pre-seed recipe) in
@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG WITH_CLAP=0
 ARG WITH_DEMUCS=0
 ARG WITH_CUDA=0
+COPY controller/scripts/subbeats_models.py /tmp/subbeats_models.py
 ENV ANALYZER_HF_HOME=/opt/analyzer/hf-cache
 RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
     if [ "$WITH_CUDA" = "1" ]; then TORCH_INDEX="https://download.pytorch.org/whl/cu128"; fi && \
@@ -69,6 +70,8 @@ RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
         --extra-index-url https://pypi.org/simple \
         torch==2.7.1 torchaudio==2.7.1 demucs==4.0.1 diffq==0.2.4 && \
       /opt/analyzer/venv/bin/python -c "import torch, torchaudio, demucs, diffq" && \
+      /opt/analyzer/venv/bin/pip install --no-cache-dir beat-this==1.1.0 && \
+      /opt/analyzer/venv/bin/python /tmp/subbeats_models.py /opt/analyzer/beat-this && \
       apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* ; \
     fi && \
     find /opt/analyzer/venv -depth -type d -name __pycache__ -exec rm -rf {} +
@@ -88,6 +91,7 @@ WORKDIR /app
 COPY docker/analyzer/server.py /app/server.py
 # The SAME worker the controller runs in-process — single source of truth.
 COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
+COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.

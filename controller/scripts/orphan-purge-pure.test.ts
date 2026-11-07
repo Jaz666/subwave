@@ -194,3 +194,10 @@ test('a subdirectory disqualifies the dir, even one named like a stem', () => {
   assert.equal(isStemDirListing([file('head-drums.flac'), dir('@eaDir')]), false);
   assert.equal(isStemDirListing([dir('head-drums.flac')]), false);
 });
+
+
+test('shared Sub/Beats subfolders and unique analyzer temp files are recognised', () => {
+  assert.equal(isStemDirListing([{name:'head-drums.flac',isDirectory:false},{name:'subbeats',isDirectory:true}]),true);
+  assert.equal(isStemDirListing([{name:'head-drums.flac.1234abcd.tmp',isDirectory:false}]),true);
+  assert.equal(isStemDirListing([{name:'subbeats',isDirectory:true}]),false);
+});

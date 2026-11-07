@@ -530,9 +530,12 @@ export async function getSonicSimilarTracks(id, { count = 20 } = {}) {
   return rejectArchive(sonicSimilarSongs(r));
 }
 
-export async function getStarred() {
+export async function getStarred({ strict = false } = {}): Promise<ReturnType<typeof rejectArchive>> {
   const r = await call('getStarred2', {}, RETRY_FAST_TRANSPORT);
-  return rejectArchive(r.starred2?.song || []);
+  if (strict && (!r.starred2 || typeof r.starred2 !== 'object' || (r.starred2.song !== undefined && !Array.isArray(r.starred2.song)))) throw new Error('Navidrome stars could not be verified; cleanup stopped');
+  const songs = r.starred2?.song || [];
+  if (strict && songs.some(song => typeof song?.id !== 'string' || !song.id)) throw new Error('Navidrome stars could not be verified; cleanup stopped');
+  return strict ? songs : rejectArchive(songs);
 }
 
 // Star write-back for the listener like feature (#991) — mirrors the player
