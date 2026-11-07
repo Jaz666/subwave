@@ -558,15 +558,31 @@ class CueTests(unittest.TestCase):
             algorithmVersion=5,outgoing=[dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)],durationSeconds=210),
             cueCoverage=dict(outgoing=activity(150,210,[(170,200)])))
         incoming=dict(id='in',title='in',artist='B',status='prepared',cuePoints=dict(
-            algorithmVersion=5,incoming=[dict(sourceSeconds=16,bpm=120,phraseBars=8,timingSource='fitted-grid')],durationSeconds=180),
+            algorithmVersion=5,incoming=[dict(sourceSeconds=16,bpm=120,phraseBars=8,phraseStartSeconds=0,timingSource='fitted-grid')],durationSeconds=180),
             cueCoverage=dict(incoming=activity(0,100,[(25,35)])))
         match=find_cue_matches([outgoing,incoming],'out')['matches'][0]
         self.assertEqual(match['transition']['method'],'drum-loop')
+        self.assertEqual(match['transition']['loopStartSeconds'],0)
         self.assertEqual(match['transition']['repeatCount'],1)
         self.assertEqual(match['vocal']['status'],'estimated')
 
         incoming['cueCoverage']['incoming']=activity(0,100,[(17,19)])
         self.assertEqual(find_cue_matches([outgoing,incoming],'out')['excluded']['vocals'],1)
+
+    def test_drum_loop_uses_the_earliest_vocal_free_two_bar_grid_section(self):
+        from subbeats_cue_matching import plan_incoming_drum_loop
+        def activity(start,end,passages):
+            return dict(coverageStartSeconds=start,coverageEndSeconds=end,resolutionSeconds=.05,
+                        passages=[dict(startSeconds=a,endSeconds=b) for a,b in passages])
+        outgoing=activity(150,210,[(198,205)])
+        incoming=activity(0,100,[(8,10),(35,45)])
+        out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
+        in_cue=dict(sourceSeconds=24,bpm=120,phraseBars=8,phraseStartSeconds=8,timingSource='fitted-grid')
+        plan=preview.passage_plan(out_cue,in_cue,210,180)
+        loop,_,_=plan_incoming_drum_loop(outgoing,incoming,in_cue,plan)
+        self.assertEqual(loop['startSeconds'],12,'skip the opening two-bar section because it contains vocals')
+        retry,_,_=plan_incoming_drum_loop(outgoing,incoming,in_cue,plan,after_seconds=12)
+        self.assertEqual(retry['startSeconds'],16,'move to the next safe grid section after a silent loop')
 
     def test_cue_matching_accepts_algorithm_seven_natural_start_anchor(self):
         outgoing=dict(id='out',title='out',artist='A',status='prepared',cuePoints=dict(
@@ -654,10 +670,10 @@ class CueTests(unittest.TestCase):
 
     def test_cue_renderer_applies_the_suggested_drum_loop_and_rechecks_vocals(self):
         out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
-        in_cue=dict(sourceSeconds=16,bpm=120,phraseBars=8,timingSource='fitted-grid')
+        in_cue=dict(sourceSeconds=16,bpm=120,phraseBars=8,phraseStartSeconds=0,timingSource='fitted-grid')
         outgoing={s:np.zeros((2,56000),dtype=np.float32) for s in preview.STEMS}
         incoming={s:np.zeros((2,52000),dtype=np.float32) for s in preview.STEMS}
-        outgoing['drums'][:]=.1;incoming['drums'][:]=.1
+        incoming['drums'][:]=.1;incoming['drums'][:,:4000]=0
         outgoing['vocals'][:,44000:50000]=.3 # source200–206
         incoming['vocals'][:,25000:35000]=.3 # source25–35 after placement
         with tempfile.TemporaryDirectory() as tmp:
@@ -671,7 +687,10 @@ class CueTests(unittest.TestCase):
                   patch.object(preview,'cue_region',side_effect=[(outgoing,False),(incoming,False)])):
                 audio,result=preview.render_cue_preview(req,folders,[{},{}],[0,0])
         self.assertEqual(result['transition']['method'],'drum-loop')
+        self.assertEqual(result['transition']['startSeconds'],4,'skip an earlier phrase section with no usable drums')
         self.assertEqual(result['transition']['repeats'],2)
+        self.assertEqual(float(audio[0,21000]),0,'looped incoming drums stay out before their earlier loop start')
+        self.assertGreater(float(audio[0,23000]),0,'looped incoming drums begin before the final four-beat handover')
         self.assertEqual(audio.shape[1],54000)
         loop_events=[event for event in result['timeline']['events'] if 'drums loop' in event['label']]
         self.assertEqual(len(loop_events),1)
