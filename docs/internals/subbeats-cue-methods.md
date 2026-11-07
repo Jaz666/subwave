@@ -312,15 +312,21 @@ still uncertainty, not proof of silence; background vocals in `other` remain a
 listening limitation. Saved coverage/vocal measurements are reused and cache-only
 Assess suitability understands the new source/coverage artifacts.
 
-The incoming drums/bass rise over the final four beats before arrival. All
+The incoming drums/bass normally rise over the final four beats before arrival.
+For a looped plan, that rise begins at the selected earlier loop, bringing its
+groove in sooner while the repeated section delays later incoming material. All
 outgoing stems retain their natural finish through EOF, including the last
 rhythm beat and echo beyond the phrase marker. No phrase-boundary cutoff or
 fixed one-second tail fade is applied. Incoming vocals/other and the original
 prefix are retained; a fitted vocal-free two-bar drum loop may keep measured
-overlapping vocals apart without trimming words. If no rendered Sub/Beat plan
-clears the measured overlap, automatic pair planning falls back to the regular
-Subwave crossfade preview. Cue previews remain bounded to 120 seconds and 8%
-tempo adjustment.
+overlapping vocals apart without trimming words. When its opening phrase has a
+saved start, the loop uses the earliest vocal-free two-bar grid section before
+the selected arrival, so incoming rhythm can enter sooner; rendering still
+checks that the prepared drum stem contains usable audio and tries later safe
+sections when an earlier one is silent. If no rendered Sub/Beat plan clears the
+measured overlap, automatic pair planning falls back to the regular Subwave
+crossfade preview. Cue previews remain bounded to 120 seconds and 8% tempo
+adjustment.
 
 ## Operator workflow
 

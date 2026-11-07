@@ -42,20 +42,29 @@ def assess_vocal_pair(outgoing, incoming, plan):
     return result('estimated', 'No detected vocal passages overlap. Background vocals and musical fit still need listening.')
 
 
-def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2):
-    """Suggest up to two vocal-free, fitted-grid, two-bar incoming drum loops."""
+def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2, after_seconds=None):
+    """Suggest an early, vocal-free, fitted-grid, two-bar incoming drum loop."""
     if assess_vocal_pair(outgoing, incoming, plan)['status'] != 'conflict':
         return None
     if (cue.get('timingValidated') is False or cue.get('timingSource') not in ('fitted-grid','opening-grid','onset-grid')
             or cue.get('phraseBars') not in (8, 16)):
         return None
     try:
-        start, bpm = cue['sourceSeconds'], cue['bpm']
-        if not math.isfinite(start) or not math.isfinite(bpm) or start < 0 or bpm <= 0:
+        arrival, bpm = cue['sourceSeconds'], cue['bpm']
+        if not math.isfinite(arrival) or not math.isfinite(bpm) or arrival < 0 or bpm <= 0:
             return None
         loop_seconds = 8 * 60 / bpm
     except (KeyError, TypeError, ZeroDivisionError):
         return None
+
+    phrase_start = cue.get('phraseStartSeconds', arrival)
+    if not isinstance(phrase_start, (int, float)) or not math.isfinite(phrase_start) or not 0 <= phrase_start <= arrival:
+        return None
+    loop_starts = [phrase_start + i * loop_seconds
+                   for i in range(int((arrival - phrase_start + 1e-6) / loop_seconds))
+                   if phrase_start + (i + 1) * loop_seconds <= arrival + 1e-6]
+    if not loop_starts:
+        loop_starts = [arrival]  # Older cue artifacts may not contain a phrase start.
 
     timeline_start = max(plan['first'], plan['entry'])
     timeline_end = min(plan['out_end'], plan['end'])
@@ -63,71 +72,80 @@ def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2):
     tolerance = max(outgoing.get('resolutionSeconds', 0), incoming.get('resolutionSeconds', 0) / plan['rate'])
     if (outgoing.get('coverageEndSeconds', 0) < timeline_end - tolerance
             or incoming.get('coverageStartSeconds', float('inf')) > tolerance
-            or incoming.get('coverageEndSeconds', 0) < source_end - tolerance
-            or incoming.get('coverageStartSeconds', float('inf')) > start + tolerance
-            or incoming.get('coverageEndSeconds', 0) < start + loop_seconds + tolerance):
+            or incoming.get('coverageEndSeconds', 0) < source_end - tolerance):
         return None
 
-    loop_end = start + loop_seconds
-    # Measurements include vocal release padding, so any intersection makes
-    # this phrase unsafe to repeat.
-    if any(p['startSeconds'] < loop_end and p['endSeconds'] > start
-           for p in incoming.get('passages', [])):
-        return None
-
-    conflicts = []
-    for out_passage in outgoing.get('passages', []):
-        out_start = max(timeline_start, out_passage['startSeconds'])
-        out_end = min(timeline_end, out_passage['endSeconds'])
-        if out_start >= out_end:
+    for start in loop_starts:
+        if after_seconds is not None and start <= after_seconds + 1e-6:
             continue
-        for in_passage in incoming.get('passages', []):
-            in_start = plan['entry'] + in_passage['startSeconds'] / plan['rate']
-            in_end = plan['entry'] + in_passage['endSeconds'] / plan['rate']
-            if max(out_start, in_start) < min(out_end, in_end):
-                # A loop at this cue cannot move a vocal passage that starts
-                # before the repeated section has finished.
-                if in_passage['startSeconds'] < loop_end:
-                    return None
-                conflicts.append((out_start, out_end, in_passage))
-    if not conflicts:
-        return None
-
-    for repeats in range(1, max_repeats + 1):
-        source_shift = repeats * loop_seconds
-        shifted = dict(incoming)
-        shifted['coverageEndSeconds'] = incoming['coverageEndSeconds'] + source_shift
-        shifted['passages'] = []
-        for passage in incoming.get('passages', []):
-            if passage['startSeconds'] >= loop_end:
-                shifted['passages'].append({
-                    **passage,
-                    'startSeconds': passage['startSeconds'] + source_shift,
-                    'endSeconds': passage['endSeconds'] + source_shift,
-                    'activityStartSeconds': passage.get('activityStartSeconds', passage['startSeconds']) + source_shift,
-                    'activityEndSeconds': passage.get('activityEndSeconds', passage['endSeconds']) + source_shift,
-                })
-            else:
-                shifted['passages'].append(passage)
-        fit = assess_vocal_pair(outgoing, shifted, plan)
-        if fit['status'] in ('conflict', 'coverage'):
+        if (incoming.get('coverageStartSeconds', float('inf')) > start + tolerance
+                or incoming.get('coverageEndSeconds', 0) < start + loop_seconds + tolerance):
             continue
 
-        safe = True
-        for out_start, out_end, passage in conflicts:
-            in_start = plan['entry'] + (passage['startSeconds'] + source_shift) / plan['rate']
-            in_end = plan['entry'] + (passage['endSeconds'] + source_shift) / plan['rate']
-            if max(out_start, in_start) < min(out_end, in_end):
-                safe = False
+        loop_end = start + loop_seconds
+        # Measurements include vocal release padding, so any intersection makes
+        # this phrase unsafe to repeat.
+        if any(p['startSeconds'] < loop_end and p['endSeconds'] > start
+               for p in incoming.get('passages', [])):
+            continue
+
+        conflicts = []
+        cannot_move = False
+        for out_passage in outgoing.get('passages', []):
+            out_start = max(timeline_start, out_passage['startSeconds'])
+            out_end = min(timeline_end, out_passage['endSeconds'])
+            if out_start >= out_end:
+                continue
+            for in_passage in incoming.get('passages', []):
+                in_start = plan['entry'] + in_passage['startSeconds'] / plan['rate']
+                in_end = plan['entry'] + in_passage['endSeconds'] / plan['rate']
+                if max(out_start, in_start) < min(out_end, in_end):
+                    # A loop cannot move a vocal passage that starts before
+                    # the repeated section has finished.
+                    if in_passage['startSeconds'] < loop_end:
+                        cannot_move = True
+                        break
+                    conflicts.append((out_start, out_end, in_passage))
+            if cannot_move:
                 break
-            gap = in_start - out_end if in_start >= out_end else out_start - in_end
-            if gap < plan['period']:
-                safe = False
-                break
-        if safe:
-            loop = dict(method='drum-loop', startSeconds=start, bars=2, repeats=repeats,
-                        loopSeconds=loop_seconds, addedSeconds=source_shift / plan['rate'])
-            return loop, shifted, fit
+        if cannot_move or not conflicts:
+            continue
+
+        for repeats in range(1, max_repeats + 1):
+            source_shift = repeats * loop_seconds
+            shifted = dict(incoming)
+            shifted['coverageEndSeconds'] = incoming['coverageEndSeconds'] + source_shift
+            shifted['passages'] = []
+            for passage in incoming.get('passages', []):
+                if passage['startSeconds'] >= loop_end:
+                    shifted['passages'].append({
+                        **passage,
+                        'startSeconds': passage['startSeconds'] + source_shift,
+                        'endSeconds': passage['endSeconds'] + source_shift,
+                        'activityStartSeconds': passage.get('activityStartSeconds', passage['startSeconds']) + source_shift,
+                        'activityEndSeconds': passage.get('activityEndSeconds', passage['endSeconds']) + source_shift,
+                    })
+                else:
+                    shifted['passages'].append(passage)
+            fit = assess_vocal_pair(outgoing, shifted, plan)
+            if fit['status'] in ('conflict', 'coverage'):
+                continue
+
+            safe = True
+            for out_start, out_end, passage in conflicts:
+                in_start = plan['entry'] + (passage['startSeconds'] + source_shift) / plan['rate']
+                in_end = plan['entry'] + (passage['endSeconds'] + source_shift) / plan['rate']
+                if max(out_start, in_start) < min(out_end, in_end):
+                    safe = False
+                    break
+                gap = in_start - out_end if in_start >= out_end else out_start - in_end
+                if gap < plan['period']:
+                    safe = False
+                    break
+            if safe:
+                loop = dict(method='drum-loop', startSeconds=start, bars=2, repeats=repeats,
+                            loopSeconds=loop_seconds, addedSeconds=source_shift / plan['rate'])
+                return loop, shifted, fit
     return None
 
 

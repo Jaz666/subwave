@@ -90,6 +90,9 @@ def mix_passages(out_parts,in_parts,plan):
     arrival=plan['handover']-plan['first']
     t=np.arange(total)/STEM_SR
     cross_start=max(plan['entry']-plan['first'],arrival-4*plan['period'])
+    if plan.get('incoming_loop'):
+        loop=plan['incoming_loop']
+        cross_start=min(cross_start,plan['entry']-plan['first']+loop['startSeconds']/plan['rate'])
     rhythm=np.clip((t-cross_start)/(arrival-cross_start),0,1)
     audio=np.zeros((2,total),dtype=np.float32)
     for name in STEMS:
@@ -126,7 +129,7 @@ def mix_passages(out_parts,in_parts,plan):
     if plan.get('incoming_loop'):
         loop=plan['incoming_loop']
         events.append(dict(at=plan['entry']-plan['first']+loop['startSeconds']/plan['rate'],
-                           label=f"Incoming drums loop · 2 bars × {loop['repeats']}"))
+                           label=f"Incoming drums loop from {loop['startSeconds']:.1f}s · 2 bars × {loop['repeats']}"))
     duration=audio.shape[1]/STEM_SR
     for event in events:
         event['at']=min(duration,max(0.,event['at']))
@@ -236,7 +239,7 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
                      f" · in arrival {candidate['incomingSeconds']:.2f}s from start")
             loop=result['transition']
             if loop.get('method')=='drum-loop':
-                label+=f" · incoming drums looped for {loop['bars']} bars × {loop['repeats']}"
+                label+=f" · incoming drums looped from {loop['startSeconds']:.1f}s for {loop['bars']} bars × {loop['repeats']}"
             result['timeline']['kind']='subbeats-transition'
             result['timeline']['events'][0]['label']='Outgoing track · '+label
             for event in result['timeline']['events']:
@@ -315,17 +318,29 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     vocal = assess_vocal_pair(outgoing_vocals,incoming_vocals,plan)
     transition=dict(method='standard')
     if vocal['status']=='conflict':
-        loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,incoming,plan)
-        if loop_plan is None:
-            raise ValueError(vocal['reason'])
-        loop,_,_=loop_plan
-        in_parts=insert_incoming_drum_loop(in_parts,loop)
-        actual_incoming_vocals=measure_vocals(in_parts,STEM_SR)
-        vocal=assess_vocal_pair(actual_outgoing_vocals,actual_incoming_vocals,plan)
-        if vocal['status']=='conflict' or vocal['status']=='coverage':
-            raise ValueError('The two-bar incoming drum loop did not clear the measured vocal overlap. Choose another transition.')
-        transition=loop
-        plan={**plan,'incoming_loop':loop}
+        after_seconds=None
+        loop_error=None
+        while True:
+            loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,incoming,plan,after_seconds=after_seconds)
+            if loop_plan is None:
+                raise ValueError(str(loop_error) if loop_error else vocal['reason'])
+            loop,_,_=loop_plan
+            try:
+                looped_parts=insert_incoming_drum_loop(in_parts,loop)
+            except ValueError as error:
+                loop_error=error
+                after_seconds=loop['startSeconds']
+                continue
+            actual_incoming_vocals=measure_vocals(looped_parts,STEM_SR)
+            vocal=assess_vocal_pair(actual_outgoing_vocals,actual_incoming_vocals,plan)
+            if vocal['status'] in ('conflict','coverage'):
+                loop_error=ValueError('The two-bar incoming drum loop did not clear the measured vocal overlap. Choose another transition.')
+                after_seconds=loop['startSeconds']
+                continue
+            in_parts=looped_parts
+            transition=loop
+            plan={**plan,'incoming_loop':loop}
+            break
     if plan['rate']!=1.:
         in_parts={name:librosa.effects.time_stretch(part,rate=plan['rate']) for name,part in in_parts.items()}
     out_parts={name:part*10**(gains[0]/20) for name,part in out_parts.items()}
