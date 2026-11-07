@@ -2,14 +2,16 @@
 
 ## Earlier incoming loop support — 7 November 2026
 
-Station source candidate `7cf715f9` applies the reviewed PR #10 loop-timing
-change on top of `9dd2b326`. When a two-bar incoming drum loop resolves vocal
-overlap, preview now selects the earliest safe grid-aligned section in the
-intro and starts the incoming rhythm there; it retries later sections if audio
-or remeasurement rejects an earlier choice. This is preview-only and does not
-require rescanning prepared tracks. Source integration only: running containers
-remain unchanged until the owner rebuilds. Roll back source with
-`git revert 7cf715f9` (or return to `9dd2b326` before any later station commits).
+Station source commits `7cf715f9` and `29a89048` apply the reviewed PR #10
+loop-timing and preview-cache fix on top of `9dd2b326`. When a two-bar incoming
+drum loop resolves vocal overlap, preview selects the earliest safe grid-aligned
+section in the intro and starts the incoming rhythm there; it retries later
+sections if audio or remeasurement rejects an earlier choice. Preview cache
+version 14 invalidates version-13 renders, so the updated renderer runs without
+manual cache clearing or rescanning prepared tracks. This is preview-only.
+Running containers remain unchanged until the owner rebuilds. Roll back the loop
+timing with `git revert 7cf715f9` (or return to `9dd2b326` before later station
+commits).
 
 ## Cue preparation and 1.30.0 source candidate — 3 November 2026
 
