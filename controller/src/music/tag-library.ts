@@ -23,6 +23,9 @@
 //                         (never source='manual'). promptHash keys off
 //                         TAGGER_CONTRACT_VERSION + the mood vocabulary, not
 //                         the prompt text (#1548).
+//   --upgrade-blind       with --upgrade: re-tag only rows the LLM tagged
+//                         without audio measurements that have been measured
+//                         since (#2281), whatever their stamp
 //   --rescan              fire ONLY the selected re-* passes, each scoped to
 //                         already-done tracks; never forward-process the
 //                         untagged remainder
@@ -36,7 +39,6 @@ import { vote, fuseNeighbours } from './tag-propagator.js';
 import { summariseEval, formatEvalSummary } from './propagation-eval.js';
 import { activeModelLabel } from '../llm/provider.js';
 import { setRawDebugStderrMirror } from '../llm/log.js';
-import { TAGGER_CONTRACT_VERSION } from './tagger-core.js';
 import { runAnalysisPass } from './analyze.js';
 import { adoptAndPrune } from './id-rotation.js';
 import { reportProgress, reportCatalogueReady, formatPhaseBreakdown, sortedPhaseTimings } from './tagger-progress.js';
@@ -53,7 +55,7 @@ import {
   walkNavidrome,
 } from './tag-library/flags.js';
 import { llmTagInBatches, resolveTagConsumers } from './tag-library/tag.js';
-import { rememberedUntaggable } from './tag-library/tag-input.js';
+import { rememberedUntaggable, tagPromptStamp } from './tag-library/tag-input.js';
 import { runPropagatedEnergyPass } from './propagated-energy.js';
 
 
@@ -237,7 +239,7 @@ async function main() {
     if (flags.rescan && reembedIds.length === 0) reembedIds = db.unembeddedIds();
   }
 
-  const promptHash = embeddings.promptVocabHash(TAGGER_CONTRACT_VERSION);
+  const promptHash = tagPromptStamp();
   const modelLabel = activeModelLabel();
 
   // Single- vs dual-LLM tagging: probed once here, not per phase, so the banner
@@ -544,23 +546,29 @@ async function main() {
 
   // Re-scan RE-DECIDE: re-LLM-tag tagged rows whose prompt or model went stale
   // (never manual). Scoped to the tagged set, never the untagged remainder.
+  // --upgrade-blind swaps the scope for the rows tagged without measurements
+  // that have been measured since (#2281); it never adds the stale ones.
   if (plan.reDecide) {
-    const stale = db.staleTaggedIds(
-      promptHash,
-      modelLabel,
-      flags.limit === Infinity ? undefined : flags.limit,
-    );
-    if (stale.length === 0) {
-      console.log('[tag] re-decide: no tagged rows are stale (prompt/model unchanged) — nothing to redo');
+    const reDecideLimit = flags.limit === Infinity ? undefined : flags.limit;
+    const redo = flags.upgradeBlind
+      ? db.blindTaggedIds(reDecideLimit)
+      : db.staleTaggedIds(promptHash, modelLabel, reDecideLimit);
+    const scope = flags.upgradeBlind ? 'blind' : 'stale';
+    if (redo.length === 0) {
+      console.log(
+        flags.upgradeBlind
+          ? '[tag] re-decide: no blind rows have been measured since they were tagged — nothing to redo'
+          : '[tag] re-decide: no tagged rows are stale (prompt/model unchanged) — nothing to redo',
+      );
     } else {
-      console.log(`[tag] re-decide: re-tagging ${stale.length} stale row(s)`);
+      console.log(`[tag] re-decide: re-tagging ${redo.length} ${scope} row(s)`);
       const tagged = await llmTagInBatches(
-        stale, tagBatchSize, promptHash, 'llm', tagConsumers, { phase: 'seed' },
+        redo, tagBatchSize, promptHash, 'llm', tagConsumers, { phase: 'seed' },
       );
       llmCalls += tagged.callCount;
       llmTagged += tagged.tagged;
       mergeByLeg(tagged.byLeg);
-      console.log(`[tag] re-decide done: ${tagged.tagged}/${stale.length} re-tagged`);
+      console.log(`[tag] re-decide done: ${tagged.tagged}/${redo.length} re-tagged`);
     }
     lap('seed');
   }

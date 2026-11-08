@@ -11,9 +11,8 @@ import * as musicbrainz from '../../music/musicbrainz.js';
 import * as settings from '../../settings.js';
 import * as embeddings from '../../music/embeddings.js';
 import { resolveEraYear } from '../../music/show-filter.js';
-import { tagBatch, TAGGER_CONTRACT_VERSION } from '../../music/tagger-core.js';
-import { tagInputFor, recordTagAnswer } from '../../music/tag-library/tag-input.js';
-import { promptVocabHash } from '../../music/embeddings.js';
+import { tagBatch } from '../../music/tagger-core.js';
+import { tagInputFor, recordTagAnswer, tagPromptStamp } from '../../music/tag-library/tag-input.js';
 import { activeModelLabel } from '../../llm/provider.js';
 import { queue } from '../../broadcast/queue.js';
 import {
@@ -332,12 +331,16 @@ router.post('/library/retag', requireAdmin, async (req, res) => {
       }
     }
 
+    // The stored row as the steps above left it (enrichment, original year), for
+    // the embed and the tagger alike. Retag measures nothing, so its acoustics
+    // are what the analyzer last wrote.
+    const rec = db.getTrack(id);
+
     // 3. Re-embed (best-effort).
     if (embedCfg.enabled !== false && embeddings.isAvailable()) {
       try {
         // Same acoustics + era inputs as the bulk path (#1246): this must
         // produce the SAME text phaseEmbed would, or the track drifts in KNN space.
-        const rec = db.getTrack(id);
         const eraYear = resolveEraYear(
           rec?.year ?? song.year, rec?.originalYear ?? null, rec?.yearUntrusted ?? null,
         );
@@ -367,16 +370,17 @@ router.post('/library/retag', requireAdmin, async (req, res) => {
     }
 
     // 4. Tag, always through the LLM: an operator press skips the bulk run's
-    // untaggable memory. The input and the write are the bulk path's own, so an
-    // empty answer is left untagged and marked here too, never saved as a tag
-    // (#2283). Step 1 wrote the row this input is built from.
-    const rec = db.getTrack(id);
+    // untaggable memory. The input and the write are the bulk path's own
+    // (tagInputFor, recordTagAnswer), so the model hears the same evidence
+    // (#2281), an empty answer is left untagged and marked here too, never saved
+    // as a tag (#2283), and the measured stamp is the same one. Step 1 wrote the
+    // row this input is built from.
     if (!rec) return res.status(404).json({ error: 'track metadata not found' });
     const input = tagInputFor(rec);
     const [result] = await tagBatch([input]);
     const outcome = recordTagAnswer(id, input, result, {
       source: 'llm',
-      promptHash: promptVocabHash(TAGGER_CONTRACT_VERSION),
+      promptHash: tagPromptStamp(),
       model: activeModelLabel(),
     });
     if (outcome === 'untaggable') {
