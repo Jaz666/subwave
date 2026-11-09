@@ -9,6 +9,113 @@ from subbeats_cue_preview import passage_plan
 from subbeats_vocal_confidence import assess_pair as assess_vocal_pair, shift_lyrics
 
 
+def live_handoff_timing(plan, incoming_bpm, loop=None):
+    """Propose sample positions for a linear tempo release, not rendered audio.
+
+    Source zero is retained. The source clock includes inserted drum-loop audio
+    until after the loop; remove that insertion when locating the original-track
+    resume. Release starts only after the complete outgoing recording and loop.
+    """
+    sample_rate = 44100
+    first = round(plan['first'] * sample_rate)
+    entry = round(plan['entry'] * sample_rate) - first
+    arrival = round(plan['handover'] * sample_rate) - first
+    outgoing_end = round(plan['out_end'] * sample_rate) - first
+    rate = plan['rate']
+    inserted = 0
+    loop_end = entry
+    loop_samples = None
+    if loop:
+        start = round(loop['startSeconds'] * sample_rate)
+        length = round(loop['loopSeconds'] * sample_rate)
+        inserted = length * loop['repeats']
+        loop_end = entry + math.ceil((start + length + inserted) / rate)
+        loop_samples = dict(startSample=start, lengthSamples=length, repeats=loop['repeats'])
+    release_start = max(outgoing_end, arrival + round(2 * plan['period'] * sample_rate), loop_end)
+    release_frames = round(8 * plan['period'] * sample_rate) if rate != 1. else 0
+    release_end = release_start + release_frames
+    # A native-tempo bar (at least one second) leaves room for the final
+    # original-audio join and the existing 300ms Liquidsoap seam overlap.
+    native_frames = max(sample_rate, round(4 * 60 / incoming_bpm * sample_rate))
+    clip_frames = release_end + native_frames
+    virtual_end = round(rate * (release_start - entry)
+                        + (rate + 1) * .5 * release_frames + native_frames)
+    resume = virtual_end - inserted
+    if entry < 0 or resume <= 0 or clip_frames > 120 * sample_rate:
+        raise ValueError('The complete live handoff exceeds its supported timeline.')
+    result = dict(sampleRate=sample_rate, outgoingStartSample=first,
+                  incomingEntryFrame=entry, handoverFrame=arrival,
+                  outgoingEndFrame=outgoing_end, incomingRate=rate, releaseCurve='linear-rate',
+                  releaseStartFrame=release_start, releaseEndFrame=release_end,
+                  clipFrames=clip_frames, incomingResumeSample=resume)
+    if loop_samples:
+        result['loop'] = loop_samples
+    return result
+
+
+def plan_live_pair(jobs, outgoing_id, incoming_id, mix_style):
+    """Read-only admission proposal using the audition planner's ranked cues.
+
+    This checks saved metadata, not files/source identity or audible joins.
+    renderReady stays false: no result may directly arm a broadcast seam.
+    """
+    if outgoing_id == incoming_id:
+        raise ValueError('Choose two different tracks.')
+    if mix_style not in ('long-blend', 'short-exchange', 'bass-swap', 'drums-first'):
+        raise ValueError('Choose an available mixing style.')
+    pair = [next((job for job in jobs if job['id'] == track_id), None)
+            for track_id in (outgoing_id, incoming_id)]
+    result = dict(version=1, method='live-pair', outgoingId=outgoing_id,
+                  incomingId=incoming_id, mixStyle=mix_style, status='unavailable',
+                  renderReady=False, plans=[], declined=dict(coverage=0, timing=0))
+    if any(not job or job.get('status') != 'prepared' or not job.get('bundleKey') for job in pair):
+        return dict(result, reason='Both tracks need completed Sub/Beats preparation.')
+    points = [job.get('cuePoints') or {} for job in pair]
+    if any(point.get('algorithmVersion') not in (5, 6, 7, 8, 9, 10, 11, 12, 13)
+           or not point.get('durationSeconds') for point in points):
+        return dict(result, reason='Saved phrase timing is unavailable for this pair.')
+    coverage = [job.get('cueCoverage') or {} for job in pair]
+    activities = [coverage[0].get('outgoing'), coverage[1].get('incoming')]
+    if any(not item.get('artifactKey') for item in coverage) or not all(activities):
+        return dict(result, reason='Saved head/tail stem coverage is unavailable for this pair.')
+    # Stale lyric corrections must never be attached to a different recording.
+    evidence = [job.get('lyricEvidence') if (job.get('lyricEvidence') or {}).get('bundleKey')
+                == job['bundleKey'] else None for job in pair]
+    durations = [point['durationSeconds'] for point in points]
+    candidates = plan_pair_transitions(points[0].get('outgoing', []), points[1].get('incoming', []),
+                                       *durations, *activities, *evidence)
+    for candidate in candidates:
+        out = points[0]['outgoing'][candidate['outgoingCueIndex']]
+        incoming = points[1]['incoming'][candidate['incomingCueIndex']]
+        try:
+            plan = passage_plan(out, incoming, *durations)
+            loop = candidate['transition'] if candidate['transition']['method'] == 'drum-loop' else None
+            timing = live_handoff_timing(plan, incoming['bpm'], loop)
+        except (KeyError, TypeError, ValueError):
+            result['declined']['timing'] += 1
+            continue
+        # No new separation in this route. An original-mix outgoing lead-in
+        # can precede the stems, as in auditions, but must be checked later.
+        outgoing_start = activities[0]['coverageStartSeconds']
+        incoming_end = timing['incomingResumeSample'] / timing['sampleRate']
+        if (outgoing_start > out['sourceSeconds'] + 2 / timing['sampleRate']
+                or activities[0]['coverageEndSeconds'] + 2 / timing['sampleRate'] < durations[0]
+                or activities[1]['coverageStartSeconds'] > 2 / timing['sampleRate']
+                or activities[1]['coverageEndSeconds'] + 2 / timing['sampleRate'] < incoming_end
+                or incoming_end >= durations[1]):
+            result['declined']['coverage'] += 1
+            continue
+        result['plans'].append(dict(outgoingCueIndex=candidate['outgoingCueIndex'],
+            incomingCueIndex=candidate['incomingCueIndex'], outgoingBars=candidate['outgoingBars'],
+            incomingBars=candidate['incomingBars'], vocal=candidate['vocal'], timing=timing,
+            originalLeadInSeconds=max(0., outgoing_start - timing['outgoingStartSample'] / timing['sampleRate'])))
+        if len(result['plans']) == 12:
+            break
+    if result['plans']:
+        return dict(result, status='planned', reason='Saved evidence supports a handoff proposal; audio, source identity and tempo release still need render verification.')
+    return dict(result, reason='No cue combination fits the saved timing, lyric policy and complete handoff coverage; retain the existing transition.')
+
+
 def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2, after_seconds=None, out_evidence=None, in_evidence=None):
     """Suggest an early, vocal-free, fitted-grid, two-bar incoming drum loop."""
     if assess_vocal_pair(outgoing, incoming, plan, out_evidence, in_evidence)['status'] != 'conflict':

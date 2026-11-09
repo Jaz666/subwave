@@ -15,7 +15,7 @@ rules.
 
 **Sub/Beats audition mixing styles.**
 
-Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks or alter live broadcast mixing. The preview selector is an in-memory workspace choice, initially Long blend. Style recommendations/variation based on key remain the next step after listening to the new styles.
+Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks or alter live broadcast mixing. The preview selector is an in-memory workspace choice, initially Long blend. The separate read-only pair planner now proposes Long blend for compatible library key estimates and Short exchange for mismatched/unknown keys; it does not change preview selection or live playback. See the [live integration checkpoint](subbeats-live-integration.md).
 
 | Style | Stem envelopes |
 |---|---|
