@@ -76,7 +76,7 @@
         "rate": 1.0341010875464653,
         "period": 0.45657517482517374
       },
-      "listeningReview": "pending",
+      "listeningReview": "both fine",
       "extractStartSeconds": 181.02,
       "incomingPrefixOmittedSeconds": 0.0,
       "sectionKeys": [
@@ -185,7 +185,14 @@
             ]
           }
         }
-      ]
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "no clear preference",
+        "comment": "Both fine; the owner struggled to hear a difference."
+      }
     },
     {
       "number": 2,
@@ -263,7 +270,7 @@
         "rate": 1.0380666522998874,
         "period": 0.4445439193612261
       },
-      "listeningReview": "pending",
+      "listeningReview": "both fine",
       "extractStartSeconds": 192.20297052154194,
       "incomingPrefixOmittedSeconds": 0.0,
       "sectionKeys": [
@@ -372,7 +379,14 @@
             ]
           }
         }
-      ]
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "no clear preference",
+        "comment": "Both fine; the owner struggled to hear a difference."
+      }
     },
     {
       "number": 3,
@@ -438,7 +452,7 @@
         "rate": 1.0221481792527745,
         "period": 0.46191432359502316
       },
-      "listeningReview": "pending",
+      "listeningReview": "both fine",
       "extractStartSeconds": 184.9938321995465,
       "incomingPrefixOmittedSeconds": 0.3455015957873111,
       "sectionKeys": [
@@ -555,7 +569,14 @@
             ]
           }
         }
-      ]
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "no clear preference",
+        "comment": "Both fine; the owner struggled to hear a difference."
+      }
     },
     {
       "number": 4,
@@ -615,7 +636,7 @@
         "rate": 0.9990551685678782,
         "period": 0.4445439193612261
       },
-      "listeningReview": "pending",
+      "listeningReview": "drums-first preferred",
       "extractStartSeconds": 192.20297052154194,
       "incomingPrefixOmittedSeconds": 0.0,
       "sectionKeys": [
@@ -732,17 +753,38 @@
             ]
           }
         }
-      ]
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "drums-first",
+        "strength": "not specified",
+        "comment": "Drums first preferred."
+      }
     }
   ],
   "investigation": {
     "date": "2026-11-09",
     "purpose": "Audition Bass swap and Drums first before automatic style selection",
-    "reviewStatus": "pending",
+    "reviewStatus": "complete",
     "audioDirectory": "/home/jaz666/codex/subbeats-style-auditions-20261109",
     "renderSource": "controller/scripts/subbeats_cue_preview.py::mix_passages",
     "renderSourceSha256": "7e2bb46d5574c779ab3b48ebfcec66e1bf46554a17c1c6b05af15509dcbe04c0",
     "levelPolicy": "Unity per-track gain and the same peak reduction for both versions of each pair.",
-    "keyEvidence": "Diagnostic estimates over overlapping bass/other/vocal stems; compatible labels are not proof of musical fit."
+    "keyEvidence": "Diagnostic estimates over overlapping bass/other/vocal stems; compatible labels are not proof of musical fit.",
+    "ownerReview": {
+      "date": "2026-11-09",
+      "reviewer": "owner",
+      "bothFinePairs": [
+        1,
+        2,
+        3
+      ],
+      "preferredDrumsFirstPairs": [
+        4
+      ],
+      "comment": "I struggle to tell any difference in the first three.",
+      "scope": "Preference between the rendered styles on these four pairs; not proof of equivalence or a universal style advantage."
+    }
   }
 }
