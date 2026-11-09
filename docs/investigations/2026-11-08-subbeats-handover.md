@@ -1,16 +1,40 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest work — 9 November: complete handoff renderer and auditions
+
+The next slice implements `subbeats_handoff.py`, reached by the existing
+operator join-preview API with `method: cue-points`, `autoPlan: true` and
+`handoff: true`. It consumes the first shared pair plan, verifies saved coverage
+and original audio, rechecks lyric activity, applies Rubber Band R3's common
+time map to all stems, releases tempo and matches original-audio guards at both
+ends. Results remain `renderReady: false`; queue publication is not implemented.
+Ordinary previews, prepared stems and live station behaviour are unchanged.
+
+Read the [handoff audition record](2026-11-09-live-handoff-auditions.md) and
+[live integration checkpoint](../internals/subbeats-live-integration.md).
+Three final auditions cover +3.32%, −0.09% and −5.85% incoming tempo changes;
+the 300ms source guards matched exactly. The reverse Insomnia → Encore une fois
+direction has invalid saved incoming cues and was declined. A reproduced Rubber
+Band zero-anchor reset was corrected and all audio regenerated with handoff
+renderer cache version 2. Owner listening is pending.
+
+Both analyzer/AIO image recipes include `rubberband-cli`; local workers need the
+command for adjusted-tempo handoffs. Only an isolated audition image was built.
+No station source, settings or running service changed. The next step is owner
+listening to the complete handoffs, then queue publication/timing/recovery and
+an initially disabled live switch before the strict-playlist station trial.
+
 ## Next work — 9 November: live integration and strict-playlist trial
 
 First implementation checkpoint: `music/subbeats-pair.ts::assessSubbeatsPair`
-and operator-only `POST /library/subbeats/pair-plan` now return a read-only
+and operator-only `POST /library/subbeats/pair-plan` return a read-only
 proposal using the shared audition cue planner. Key estimates select a style;
 sample-based timing includes a proposed eight-beat tempo release, native bar,
 and loop-corrected source resume. A response is always `renderReady: false`;
-source/audio integrity, actual rendering and queue admission are still pending.
+source/audio integrity and rendering were pending at that checkpoint; the
+complete-handoff audition implementation above now supplies them for previews.
 No station source/settings/services were changed. The maintained plan records
-the contract and checks; the next action is the pitch-preserving release and
-original-audio handoff renderer, followed by complete-handoff auditions.
+the contracts, checks and remaining live admission work.
 
 The owner has agreed to plan live queue integration. Read the maintained
 [live integration plan](../internals/subbeats-live-integration.md) before

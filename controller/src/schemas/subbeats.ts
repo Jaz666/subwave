@@ -169,14 +169,23 @@ export const subbeatsLiveTimingSchema = z.object({
     && Math.abs(value.incomingResumeSample-expectedResume) <= 1
     && (value.incomingRate === 1 ? releaseFrames === 0 : releaseFrames > 0);
 },'Invalid live handoff timing');
+export const subbeatsLiveCandidateSchema = z.object({
+  outgoingCueIndex:z.number().int().min(0).max(7),incomingCueIndex:z.number().int().min(0).max(7),
+  outgoingBars:z.union([z.literal(8),z.literal(16)]).nullable(),incomingBars:z.union([z.literal(8),z.literal(16)]).nullable(),
+  vocal:subbeatsCueVocalFitSchema,timing:subbeatsLiveTimingSchema,originalLeadInSeconds:z.number().finite().nonnegative(),
+});
+export const subbeatsHandoffInputSchema = z.object({
+  version:z.literal(1),evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),candidate:subbeatsLiveCandidateSchema,
+});
+export const subbeatsHandoffResultSchema = z.object({
+  version:z.literal(1),evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),timing:subbeatsLiveTimingSchema,
+  sourceVerified:z.literal(true),renderReady:z.literal(false),engine:z.enum(['native','rubberband-r3']),
+});
 export const subbeatsPairPlanSchema = z.object({
   version:z.literal(1),method:z.literal('live-pair'),outgoingId:z.string(),incomingId:z.string(),
   status:z.enum(['planned','unavailable']),renderReady:z.literal(false),reason:z.string().min(1),mixStyle:subbeatsMixStyleSchema,
   declined:z.object({coverage:z.number().int().nonnegative(),timing:z.number().int().nonnegative()}),
-  plans:z.array(z.object({outgoingCueIndex:z.number().int().min(0).max(7),incomingCueIndex:z.number().int().min(0).max(7),
-    outgoingBars:z.union([z.literal(8),z.literal(16)]).nullable(),incomingBars:z.union([z.literal(8),z.literal(16)]).nullable(),
-    vocal:subbeatsCueVocalFitSchema,timing:subbeatsLiveTimingSchema,originalLeadInSeconds:z.number().finite().nonnegative(),
-  })).max(12),
+  plans:z.array(subbeatsLiveCandidateSchema).max(12),
 }).refine(value => (value.status === 'planned') === (value.plans.length > 0), 'Invalid pair planning outcome');
 export const subbeatsPairAssessmentSchema = z.object({
   plan:subbeatsPairPlanSchema,evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),
@@ -184,12 +193,15 @@ export const subbeatsPairAssessmentSchema = z.object({
     incomingKey:z.string().nullable(),evidence:z.literal('library-estimate'),reason:z.string()}),
 });
 export const subbeatsTimelineSchema = z.object({
+  handoff:subbeatsHandoffResultSchema.optional(),
   mixStyle:subbeatsMixStyleSchema.optional(),
   vocal:subbeatsCueVocalFitSchema.optional(),
-  kind:z.enum(['reference','subbeats-transition','regular-fallback']).optional(),
+  kind:z.enum(['reference','subbeats-transition','regular-fallback','subbeats-handoff']).optional(),
   duration: z.number().finite().positive().max(120),
   events: z.array(z.object({ at: z.number().finite().nonnegative().max(120), label: z.string().min(1).max(180) })).min(1).max(12),
-}).refine(value => value.events[0]?.at === 0 && value.events.every((event, i) =>
+}).refine(value => !!value.handoff === (value.kind === 'subbeats-handoff')
+  && (!value.handoff || Math.abs(value.duration-value.handoff.timing.clipFrames/44100) <= 1/44100)
+  && value.events[0]?.at === 0 && value.events.every((event, i) =>
   event.at <= value.duration && (i === 0 || event.at >= value.events[i - 1]!.at)), 'Invalid preview stage timing');
 
 export const subbeatsMatchQuerySchema = z.object({
@@ -233,6 +245,7 @@ export const subbeatsMatchesSchema = z.object({
 });
 
 export const subbeatsPreviewSchema = z.object({
+  handoff:z.boolean().optional(),
   mixStyle:subbeatsMixStyleSchema.optional(),
   method:z.enum(['stems','cue-points']).default('stems'),
   autoPlan:z.boolean().optional(),

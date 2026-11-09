@@ -28,6 +28,15 @@ Vocal envelopes, vocal-overlap assessment, cue timing and outgoing drum tails us
 
 `subbeatsMixStyleSchema` owns the request/timeline values. The controller passes `mix_style` through both analyzer backends, validates the returned style, and reports an analyzer update requirement if a non-default request came back as another style. Regular-crossfade fallback retains its own timeline kind and has no stem-style claim. The style is included in preview cache version 16; stems, cues and library analysis do not need re-preparation. The mixer implementation is `controller/scripts/subbeats_cue_preview.py::mix_passages`. [The style audition sheet](../investigations/2026-11-09-stem-mixing-styles.md) records the current listening candidate and exact profiles.
 
+Complete handoff auditions add `handoff: true` to automatic cue-point preview
+requests. They use the shared pair planner's style and saved coverage, verify
+original audio, release incoming tempo through Rubber Band R3 and match both
+clip ends to original samples. The normal browser preview remains unchanged.
+These float-WAV auditions have a separate renderer/tool cache identity and are
+not published to the live queue. See the
+[handoff audition evidence](../investigations/2026-11-09-live-handoff-auditions.md)
+and the maintained live integration checkpoint for scope and remaining work.
+
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
 only when a supported preference advantage genuinely

@@ -5,6 +5,59 @@ description of live functionality already delivered. Preparation, automatic
 cue-plan search and four mixing styles currently work in browser auditions;
 Sub/Beats does not yet upgrade live queue transitions or influence discovery.
 
+## Implementation checkpoint: complete handoff auditions
+
+The shared plan can now be rendered through the existing operator-only
+`POST /library/subbeats/join-preview` route. Use `method: "cue-points"`,
+`autoPlan: true`, `handoff: true` and the two `trackIds`; omit manual style,
+cue/reference/match overrides. The controller assesses the pair, uses its first
+ranked plan and automatic style, then rechecks the evidence fingerprint after
+rendering. There is no new browser button yet. Existing preview requests retain
+their previous behaviour and cache identities.
+
+`subbeats_handoff.py` loads verified saved bundles/cue coverage and both original
+recordings. It recalculates the proposed clock from saved cues, remeasures lyric
+activity and checks any inserted loop before rendering. Missing coverage causes
+refusal rather than fresh separation. Original source bytes, or matching saved
+audio windows after a byte change, establish source agreement through the
+existing source-verification helper.
+
+Rubber Band R3 applies a common input/output time map to all four stereo stems
+in one multichannel process, with no pitch shift. The map samples the planned
+linear-rate release every 50ms and supplies the overall duration separately.
+It omits an explicit zero anchor because that can trigger a ratio reset in R3;
+reset warnings and inconsistent length/level/sample data are rejected. See the
+[complete handoff audition record](../investigations/2026-11-09-live-handoff-auditions.md)
+for the reproduced fault and corrected final outputs.
+
+The renderer reuses the existing stem envelopes with audition edge fades and
+whole-clip normalization disabled. Both sources use the supplied station gains.
+The first 300ms is the decoded outgoing original, followed by a 250ms join into
+the stem mix. Once incoming tempo is native, a 250ms join returns to the original
+incoming recording; its remaining native bar includes the final 300ms guard.
+The cached WAV is float PCM so overlap peaks are retained without clipping or
+changing source levels. Live limiter/codec behaviour remains to be checked.
+
+The response timeline has kind `subbeats-handoff` and a validated `handoff`
+result containing the clock, evidence fingerprint, engine and source-verification
+flag. It remains `renderReady: false`: this is an audition, not a queue admission.
+The preview cache is evictable; live publication must protect/copy the clip into
+the queue's transition ownership and honour the actual commitment deadline.
+The worker's stretch process has a 180-second limit; the controller audition
+request allows 240 seconds. This download/decode/render path must not be inherited
+as an unbudgeted live handoff.
+
+Analyzer and AIO images now include `rubberband-cli`; local workers need it on
+PATH for adjusted-tempo handoffs. No Python stretching wrapper or new model is
+required. Handoff renderer cache version 2 and the tool version enter its cache
+identity; source/cue/stem caches and ordinary preview identities are unchanged.
+
+Three real complete handoffs rendered in isolation, covering +3.32%, −0.09% and
+−5.85% incoming tempo adjustments. All final 300ms source guards matched exactly.
+The reverse Insomnia → Encore une fois direction was declined because the saved
+incoming cues are explicitly invalid. Owner listening and live playback are
+pending; no full test suites or station operations were run for this milestone.
+
 ## Implementation checkpoint: read-only pair planning
 
 The first implementation adds `music/subbeats-pair.ts::assessSubbeatsPair` and
@@ -39,7 +92,7 @@ approval. Head coverage must reach the calculated original resume position;
 the planner does not extend stems. Any outgoing original-mix prefix is recorded
 as `originalLeadInSeconds` for later source/audio validation.
 
-Every response has `renderReady: false`. No audio is rendered, no models or
+Every pair-plan response has `renderReady: false`. No audio is rendered, no models or
 lyric lookups run, and no cache-file integrity or audible seam is claimed.
 `subbeatsLiveTimingSchema` validates ordering and consistency of the proposed
 source resume with the tempo/loop map; `subbeatsPairAssessmentSchema` owns the
@@ -49,9 +102,9 @@ and its manually selected styles retain their existing behaviour.
 Checks for this slice: controller and web type checks, focused controller lint,
 Python syntax parsing and documentation/diff checks. Runtime pair fixtures,
 audio rendering/listening, full test suites and station deployment are not
-part of this checkpoint. Next: render this contract with pitch-preserving
-tempo release and original-audio seam matching, then audition both handoffs
-before wiring the queue.
+part of that first checkpoint. The complete-handoff renderer above now consumes
+this contract. Queue publication, playback timing and live enablement remain
+the next implementation stage after the complete-handoff listening exercise.
 
 ## First trial: a temporary strict-playlist show
 

@@ -28,28 +28,31 @@ export function subbeatsHarmonicChoice(outgoing:KeyTrack,incoming:KeyTrack) {
   };
 }
 
+// Call after library/blocklist load. Reused after audition rendering so a
+// cancelled preparation or edited lyric correction cannot return stale audio.
+export function subbeatsPairSnapshot(outgoingId:string,incomingId:string) {
+  const outgoing = db.getTrack(outgoingId), incoming = db.getTrack(incomingId);
+  if (!outgoing || !incoming || blocklist.hitOf(outgoing) || blocklist.hitOf(incoming)) {
+    throw new Error('A selected track is unavailable or blocked. Choose another pair.');
+  }
+  const prepared = readSubbeatsQueue(config.stateDir).jobs;
+  const jobs = withSubbeatsLyrics([outgoingId,incomingId].flatMap(id => {
+    const job = prepared.find(item => item.id === id);
+    return job ? [job] : [];
+  }),config.stateDir);
+  const choice = subbeatsHarmonicChoice(outgoing,incoming);
+  const evidenceFingerprint = createHash('sha256').update(JSON.stringify({version:1,
+    outgoingId,incomingId,jobs,choice})).digest('hex');
+  return {jobs,...choice,evidenceFingerprint};
+}
+
 export async function assessSubbeatsPair(outgoingId:string,incomingId:string) {
   subbeatsPairPlanRequestSchema.parse({outgoingId,incomingId});
   await library.load();
   await blocklist.load();
-  const snapshot = () => {
-    const outgoing = db.getTrack(outgoingId), incoming = db.getTrack(incomingId);
-    if (!outgoing || !incoming || blocklist.hitOf(outgoing) || blocklist.hitOf(incoming)) {
-      throw new Error('A selected track is unavailable or blocked. Choose another pair.');
-    }
-    const prepared = readSubbeatsQueue(config.stateDir).jobs;
-    const jobs = withSubbeatsLyrics([outgoingId,incomingId].flatMap(id => {
-      const job = prepared.find(item => item.id === id);
-      return job ? [job] : [];
-    }),config.stateDir);
-    const choice = subbeatsHarmonicChoice(outgoing,incoming);
-    const evidenceFingerprint = createHash('sha256').update(JSON.stringify({version:1,
-      outgoingId,incomingId,jobs,choice})).digest('hex');
-    return {jobs,...choice,evidenceFingerprint};
-  };
-  const before = snapshot();
+  const before = subbeatsPairSnapshot(outgoingId,incomingId);
   const plan = await planSubbeatsPairFromEvidence(before.jobs,outgoingId,incomingId,before.mixStyle);
-  if (snapshot().evidenceFingerprint !== before.evidenceFingerprint) {
+  if (subbeatsPairSnapshot(outgoingId,incomingId).evidenceFingerprint !== before.evidenceFingerprint) {
     throw new Error('The prepared evidence changed while planning. Request the pair plan again.');
   }
   return subbeatsPairAssessmentSchema.parse({plan,harmonic:before.harmonic,evidenceFingerprint:before.evidenceFingerprint});

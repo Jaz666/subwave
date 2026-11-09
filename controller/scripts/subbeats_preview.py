@@ -307,6 +307,9 @@ def render_preview(req, fetch_source=None):
     method = req.get('method','stems')
     if method not in ('stems','cue-points'):
         raise ValueError('Unknown preview method')
+    handoff = req.get('handoff')
+    if handoff and (method != 'cue-points' or req.get('auto_plan')):
+        raise ValueError('Complete handoffs need an explicit saved cue plan.')
     bar_shift = validate_bar_shift(req.get('bar_shift', 0))
     reference = None
     if req.get('reference') is not None:
@@ -360,6 +363,10 @@ def render_preview(req, fetch_source=None):
                               'coverage_manifests':coverage_manifests,'coverage_keys':coverage_keys,'reference': reference, 'window_plan':req.get('window_plan'), 'method':method,'auto_plan':req.get('auto_plan'),
                               'cue_keys':req.get('cue_keys'),'cue_indices':req.get('cue_indices'),'crossfade_seconds':req.get('crossfade_seconds'),
                               'equal_power_crossfade':req.get('equal_power_crossfade'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)
+    if handoff:
+        from subbeats_handoff import cache_identity
+        fingerprint = json.dumps(dict(json.loads(fingerprint), handoff=handoff,
+                                      handoff_renderer=cache_identity(handoff['candidate']['timing'])), sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
     previews = root / 'previews'
     if previews.is_symlink():
@@ -374,7 +381,10 @@ def render_preview(req, fetch_source=None):
                 raise ValueError('The saved preview failed integrity checks.')
             return {'ok': True, 'subbeats_preview': str(dest / 'preview.wav'),
             'subbeats_timeline': record['metadata']['timeline'], 'subbeats_used_models':False}
-        if method == 'cue-points':
+        if handoff:
+            from subbeats_handoff import render_handoff
+            audio,metadata = render_handoff(req,folders,records,gains,fetch_source)
+        elif method == 'cue-points':
             from subbeats_cue_preview import render_cue_preview
             audio,metadata = render_cue_preview(req,folders,records,gains,fetch_source=fetch_source)
         elif reference is not None:
@@ -384,7 +394,7 @@ def render_preview(req, fetch_source=None):
             audio, metadata = render_beat_preview(folders, records, gains, bar_shift, req.get('window_plan'))
         stage = Path(tempfile.mkdtemp(prefix='.pending-', dir=previews))
         try:
-            sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='PCM_16')
+            sf.write(stage / 'preview.wav', audio.T, STEM_SR, subtype='FLOAT' if handoff else 'PCM_16')
             record = {'identity': {'fingerprint': fingerprint}, 'metadata': metadata,
                       'files': {'preview.wav': {'bytes': (stage / 'preview.wav').stat().st_size,
                                                 'sha256': digest(stage / 'preview.wav')}}}

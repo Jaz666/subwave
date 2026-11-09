@@ -24,6 +24,13 @@ sample-based handoff timing contract. It shares the audition cue search and
 checks additional tempo-release coverage. It never arms playback; see the
 live plan's implementation checkpoint for the endpoint and limitations.
 
+Complete handoff auditions now consume that clock, with pitch-preserving tempo
+release and original-audio guards at both clip ends. They reuse the same preview
+transport through an explicit `handoff` flag and never publish queue audio.
+The [handoff audition record](../investigations/2026-11-09-live-handoff-auditions.md)
+contains three completed renders and a direction declined for invalid saved
+incoming cues; owner listening remains pending.
+
 ### Minimum: assess already queued pairs and upgrade suitable transitions
 
 Assess adjacent queued tracks for Sub/Beats compatibility, regardless of which
