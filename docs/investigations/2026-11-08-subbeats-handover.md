@@ -16,12 +16,15 @@ Three final auditions cover +3.32%, −0.09% and −5.85% incoming tempo changes
 the 300ms source guards matched exactly. The reverse Insomnia → Encore une fois
 direction has invalid saved incoming cues and was declined. A reproduced Rubber
 Band zero-anchor reset was corrected and all audio regenerated with handoff
-renderer cache version 2. Owner listening is pending.
+renderer cache version 2. On 9 November the owner accepted all three final
+auditions ("They sound fine") for their tempo return and audio joins. This
+acceptance covers these Short exchange examples; it does not establish live
+playback, other styles or higher lyric/key confidence.
 
 Both analyzer/AIO image recipes include `rubberband-cli`; local workers need the
 command for adjusted-tempo handoffs. Only an isolated audition image was built.
-No station source, settings or running service changed. The next step is owner
-listening to the complete handoffs, then queue publication/timing/recovery and
+No station source, settings or running service changed. The next step is
+queue publication/timing/recovery and
 an initially disabled live switch before the strict-playlist station trial.
 
 ## Next work — 9 November: live integration and strict-playlist trial

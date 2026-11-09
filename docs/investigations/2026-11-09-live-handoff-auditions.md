@@ -19,15 +19,17 @@ lookups, station source changes or playback writes were used.
 
 Three complete renders succeeded. A fourth planned direction was declined
 because the incoming track's saved opening cues are explicitly invalid.
-Listening remains pending; numerical seam agreement does not establish that
-the tempo release or musical blend sounds good.
+On 9 November the owner accepted all three final auditions: “They sound fine”.
+This records acceptance of the tempo return and audio joins in these three
+Short exchange examples. It does not raise lyric/key confidence or establish
+other styles, looped transitions, station loudness or live playback behaviour.
 
 | Case | Pair | Incoming tempo during blend | Release in audition | Native tempo reached | Outcome |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Sash! — Encore une fois → Faithless — Insomnia | +3.32% | 39.13–42.79s | 42.79s | Rendered |
+| 1 | Sash! — Encore une fois → Faithless — Insomnia | +3.32% | 39.13–42.79s | 42.79s | Accepted by owner |
 | 2 | Faithless — Insomnia → Sash! — Encore une fois | — | — | — | No valid saved incoming cue; ordinary transition retained by policy |
-| 3 | Agnelli & Nelson — El Nino → Everyday | −0.09% | 28.22–31.77s | 31.77s | Rendered |
-| 4 | Faithless — Insomnia → Agnelli & Nelson — El Nino | −5.85% | 24.87–28.64s | 28.64s | Rendered |
+| 3 | Agnelli & Nelson — El Nino → Everyday | −0.09% | 28.22–31.77s | 31.77s | Accepted by owner |
+| 4 | Faithless — Insomnia → Agnelli & Nelson — El Nino | −5.85% | 24.87–28.64s | 28.64s | Accepted by owner |
 
 The table's times refer to the exported MP3 auditions, including the four-second
 original-audio lead. The JSON holds exact timing; these values are rounded.
@@ -81,11 +83,11 @@ with this correction; superseded isolated outputs are not listening evidence.
 - The exact final clip length and source guards passed for all three renders.
 - Controller/web types, focused lint, Python syntax and documentation checks
   accompany the source commit. No full suites, HTTP/browser walk-through,
-  Liquidsoap playback, restart/cancellation exercises or owner listening result
-  are claimed for this milestone.
+  Liquidsoap playback or restart/cancellation exercises are claimed for this
+  milestone. Owner listening subsequently accepted the three final auditions.
 - Looped, exactly equal-tempo and other failure cases still need coverage before
   live enablement. The owner-run strict-playlist show remains the first live trial.
 
-Next: owner listening to these complete handoffs, followed by queue integration
+Next: queue integration
 behind an initially disabled switch, with protected clip publication, deadline
 handling, accurate playback timing and the established fallback chain.

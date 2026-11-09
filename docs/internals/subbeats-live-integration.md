@@ -55,8 +55,11 @@ identity; source/cue/stem caches and ordinary preview identities are unchanged.
 Three real complete handoffs rendered in isolation, covering +3.32%, −0.09% and
 −5.85% incoming tempo adjustments. All final 300ms source guards matched exactly.
 The reverse Insomnia → Encore une fois direction was declined because the saved
-incoming cues are explicitly invalid. Owner listening and live playback are
-pending; no full test suites or station operations were run for this milestone.
+incoming cues are explicitly invalid. On 9 November the owner accepted all three
+final auditions ("They sound fine") for their tempo return and audio joins.
+These Short exchange examples do not establish other styles, looped transitions,
+station loudness or live playback. No full test suites or station operations
+were run for this milestone. Queue integration is next.
 
 ## Implementation checkpoint: read-only pair planning
 
