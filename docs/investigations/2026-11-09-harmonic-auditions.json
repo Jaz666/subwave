@@ -145,7 +145,14 @@
         "outgoingEndSeconds": 37.859999999999985,
         "exchangeSeconds": 1.826300699300695,
         "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
-        "harmonicReview": "pending"
+        "harmonicReview": "B preferred"
+      },
+      "harmonicListeningReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "B",
+        "strength": "slight",
+        "comment": "B just about wins."
       }
     },
     {
@@ -275,7 +282,14 @@
         "outgoingEndSeconds": 36.58680272108843,
         "exchangeSeconds": 1.8750847635361152,
         "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
-        "harmonicReview": "pending"
+        "harmonicReview": "B preferred"
+      },
+      "harmonicListeningReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "B",
+        "strength": "slight",
+        "comment": "B just about wins."
       }
     },
     {
@@ -429,7 +443,14 @@
         "outgoingEndSeconds": 32.063469387755106,
         "exchangeSeconds": 1.7059720279720259,
         "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
-        "harmonicReview": "pending"
+        "harmonicReview": "B preferred"
+      },
+      "harmonicListeningReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "B",
+        "strength": "slight",
+        "comment": "B just about wins."
       }
     },
     {
@@ -559,7 +580,14 @@
         "outgoingEndSeconds": 37.53950113378684,
         "exchangeSeconds": 1.8476572943800926,
         "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
-        "harmonicReview": "pending"
+        "harmonicReview": "B preferred"
+      },
+      "harmonicListeningReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "B",
+        "strength": "clear",
+        "comment": "B is definitely ahead."
       }
     },
     {
@@ -695,7 +723,14 @@
         "outgoingEndSeconds": 43.173900226757354,
         "exchangeSeconds": 1.8455956786600625,
         "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
-        "harmonicReview": "pending"
+        "harmonicReview": "both fine"
+      },
+      "harmonicListeningReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "none",
+        "comment": "Both fine."
       }
     },
     {
@@ -819,20 +854,48 @@
         "outgoingEndSeconds": 34.34369614512471,
         "exchangeSeconds": 1.7781756774449045,
         "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
-        "harmonicReview": "pending"
+        "harmonicReview": "B preferred"
+      },
+      "harmonicListeningReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "B",
+        "strength": "slight",
+        "comment": "B just about wins."
       }
     }
   ],
   "investigation": {
     "date": "2026-11-09",
     "purpose": "Harmonic handover listening comparison; earlier approval applied to vocal-overlap exercise only",
-    "reviewStatus": "pending",
+    "reviewStatus": "complete",
     "audioDirectory": "/home/jaz666/codex/subbeats-harmonic-auditions-20261109",
     "image": "sha256:76dc8f98230ad5f146e26d20629ca29010f78484d802b3b21742f6212dce1335",
     "libraryKeyCoverage": 109,
     "endingKeyRangesReachingEnd": 0,
     "audioSource": "Existing cue-coverage stems; no new separation or station writes",
     "levelPolicy": "Unity per-track gain; one shared peak reduction per A/B pair; no per-variant loudness normalization",
-    "keyProbe": "Existing library CQT/Krumhansl-Schmuckler estimator on the sum of bass, other and vocal stems in each overlapping section; diagnostic estimates, not verified keys or clash decisions"
+    "keyProbe": "Existing library CQT/Krumhansl-Schmuckler estimator on the sum of bass, other and vocal stems in each overlapping section; diagnostic estimates, not verified keys or clash decisions",
+    "ownerReview": {
+      "date": "2026-11-09",
+      "reviewer": "owner",
+      "preferredBCount": 5,
+      "preferredACount": 0,
+      "bothFineCount": 1,
+      "slightBPreferencePairs": [
+        1,
+        2,
+        3,
+        6
+      ],
+      "clearBPreferencePairs": [
+        4
+      ],
+      "bothFinePairs": [
+        5
+      ],
+      "comment": "For the majority B just about wins, with the exception of 4, where it's definitely ahead.",
+      "scope": "Preference between the rendered harmonic handovers; not confirmation of key estimates or exact vocal boundaries."
+    }
   }
 }

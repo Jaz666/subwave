@@ -1,6 +1,25 @@
 # Harmonic handover auditions — 9 November 2026
 
-The owner clarified that the earlier six passes applied to the vocal-overlap exercise. All six pairs below require a fresh harmonic listening judgement; none is recorded as an accepted harmonic mix.
+The owner clarified that the earlier six passes applied to the vocal-overlap exercise. The owner has now completed a separate harmonic A/B review: B is slightly preferred in pairs 1, 2, 3 and 6, clearly preferred in pair 4, and both versions are fine in pair 5.
+
+## Listening results — 9 November 2026
+
+| Pair | Preference | Strength |
+|---|---|---|
+| 1 — Encore une fois → Show Me Love | B | Slight |
+| 2 — XTC → So Good to Me | B | Slight |
+| 3 — A Trip to Trumpton → Summer of Love | B | Slight |
+| 4 — The Key, the Secret → Insomnia | B | Clear improvement |
+| 5 — Everybody’s Free → Hideaway | Both fine | No preference |
+| 6 — El Nino → Everyday | B | Slight |
+
+The owner reported that B “just about wins” for the majority, with pair 4 “definitely ahead.” That is five preferences for B, one tie, and no preference for A. A preference for B does not mean A was rejected as unusable.
+
+This supports the four-beat bass/`other` exchange as the candidate default for apparent harmonic mismatches. The exchange already auditioned is about 1.7–1.9 seconds at these tempos; no duration adjustment follows from this feedback. Both vocal stems and drum envelopes retain the existing handling.
+
+The next implementation should offer this short handover in Sub/Beats and recommend it for apparent key mismatches through the existing Camelot relationship helper. Compatible keys can retain the longer blend; unknown keys remain eligible with a conservative handover and no mandatory review. These are proposed selection rules: the mixer and picker have not yet been changed.
+
+The six section-key estimates remain unverified. Listening preference does not establish key-detection accuracy, and no compatible-key A/B controls were included, so the results do not establish that B helps only when keys mismatch. No further listening judgement is needed for these six extracts.
 
 ## What the current mixer does
 
@@ -19,7 +38,7 @@ Each A/B pair uses identical timing, tempo adjustment, source crops and level tr
 
 ## Comparison summary
 
-The section keys are fresh estimates over the overlapping pitched stems. Different source windows and omitting the drum stem can change the answer. Their raw estimator score gaps are saved in the JSON; they are not probabilities or verified key confidence. All six section-key pairs are outside the basic same/relative/adjacent Camelot moves, but listening must establish whether the audio clashes.
+The section keys are fresh estimates over the overlapping pitched stems. Different source windows and omitting the drum stem can change the answer. Their raw estimator score gaps are saved in the JSON; they are not probabilities or verified key confidence. All six section-key pairs are outside the basic same/relative/adjacent Camelot moves. The results above record transition preference; they do not diagnose the cause of any audible clash.
 
 | # | Outgoing → incoming | Section key estimates | Potential overlap in A | Four-beat exchange in B | Incoming prefix omitted |
 |---|---|---|---:|---:|---:|
@@ -32,7 +51,7 @@ The section keys are fresh estimates over the overlapping pitched stems. Differe
 
 ## Listen
 
-For each pair, judge A first for an audible clash, then B for whether the shorter handover improves it and preserves the musical feel. A useful response is the pair number with **A**, **B**, **both fine**, or **neither**; a short note is enough when something sounds wrong. No exact boundary marking is needed.
+The completed judgements are recorded above. The extracts remain available below for reference; no repeat review is requested.
 
 ### 1. Sash! — Encore une fois (Future Breeze edit) → Steve Angello & Laidback Luke feat. Robin S — Show Me Love
 
@@ -112,4 +131,4 @@ Incoming arrival: 28.5s into the extract. Outgoing end: 34.3s. Extract length: 3
 
 The six A/B pairs were rendered successfully in an isolated CPU-limited analyzer-image process with read-only source/stem mounts and networking disabled. No production mixer, picker or library analysis was changed, and no additional test suite or independent listening judgement was performed.
 
-Next: collect the six harmonic listening judgements before choosing an automatic handover policy. The existing Camelot helpers should own key relationships if this reaches product code; unknown or contradictory keys remain permissive. The ordinary transition fallback remains a separate live-integration decision.
+Next: integrate the auditioned four-beat bass/`other` exchange as a Sub/Beats handover option, with a recommendation for apparent harmonic mismatches. The existing Camelot helpers should own key relationships if this reaches product code; unknown or contradictory keys remain permissive. The ordinary transition fallback remains a separate live-integration decision.

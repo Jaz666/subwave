@@ -53,7 +53,7 @@ The saved-data pairing audit evaluated 7,873 feasible suggestions using each out
 
 ## Pairing auditions — all six accepted, 9 November 2026
 
-The owner reported: “All 6 audition pairs sound fine.” Record all six transitions below as acceptable for that vocal-overlap exercise. The owner later clarified that they need to be heard again for harmonic suitability; they are not accepted harmonic mixes. The displayed overlap numbers remain the original saved-evidence estimates; no measured audible crossover durations or exact tail endpoints were supplied with this feedback.
+The owner reported: “All 6 audition pairs sound fine.” Record all six transitions below as acceptable for that vocal-overlap exercise. The owner later clarified that this feedback did not establish harmonic suitability. A subsequent, separate [harmonic A/B review](2026-11-09-harmonic-auditions.md) records five preferences for the shorter handover and one tie. The displayed overlap numbers remain the original saved-evidence estimates; no measured audible crossover durations or exact tail endpoints were supplied with this feedback.
 
 Choose the markers below and use **Play selected mix** to reproduce the accepted examples; **Find Suitable Transition** can select different markers to reduce overlap. Outgoing markers are seconds before the recording end; incoming markers are the arrival time from the recording start.
 
@@ -70,7 +70,7 @@ The El Nino → Everyday case deliberately retains the known questionable Everyd
 
 The machine-readable shortlist is in `2026-11-09-head-tail-confidence-pairings.json`; the reviewed head inputs are in `2026-11-09-reviewed-head-onsets.json`.
 
-This listening result supports retaining the permissive overlap policy: short and uncertain overlaps can produce acceptable transitions, including the longer low-confidence activity estimate in El Nino → Everyday. Keep confidence available for ranking and explanation without requiring routine operator reviews. No further vocal-overlap review was requested. Harmonic suitability remains unreviewed and is now a separate listening exercise.
+This listening result supports retaining the permissive overlap policy: short and uncertain overlaps can produce acceptable transitions, including the longer low-confidence activity estimate in El Nino → Everyday. Keep confidence available for ranking and explanation without requiring routine operator reviews. No further vocal-overlap review was requested. The subsequent harmonic judgements are recorded separately in the linked A/B report.
 
 Acceptance within the vocal-overlap exercise does not supply a new exact head/tail timing measurement, so this feedback does not promote any tail boundary or overall timing confidence to high, validate the numerical overlap estimates, or establish a universal tolerance for longer actual lyric crossover. No threshold or audio handling change follows from these six passes.
 
