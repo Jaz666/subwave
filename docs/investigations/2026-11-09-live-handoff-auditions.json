@@ -1,0 +1,278 @@
+{
+  "date": "2026-11-09",
+  "rendererVersion": 2,
+  "rubberbandVersion": "3.1.2",
+  "engine": "R3",
+  "sampleRate": 44100,
+  "sourceGainsDb": [
+    0,
+    0
+  ],
+  "originalContextSeconds": {
+    "before": 4,
+    "after": 8
+  },
+  "environment": {
+    "baseAnalyzerImage": "sha256:1eedc9c7978e5d2ed785b362f49fd180d8b59a000381efb939f562958c5b0e7c",
+    "auditionImage": "sha256:2c33331db61743d87954e7a54893a47c19074917849107feb7b110b41c3ad7f1",
+    "cpus": 2,
+    "memoryGiB": 4,
+    "network": "none"
+  },
+  "stationChanged": false,
+  "scope": "Offline render_preview handoff path; no HTTP, browser or Liquidsoap playback verification.",
+  "pairs": [
+    {
+      "case": 1,
+      "label": "Sash! — Encore une fois → Faithless — Insomnia",
+      "status": "planned",
+      "reason": "Saved evidence supports a handoff proposal; audio, source identity and tempo release still need render verification.",
+      "file": "01-complete-handoff.mp3",
+      "mixStyle": "short-exchange",
+      "tempoAdjustmentPercent": 3.3191959877979516,
+      "releaseStartsSeconds": 39.13394557823129,
+      "nativeTempoSeconds": 42.789750566893424,
+      "originalResumeInAuditionSeconds": 44.678321995464856,
+      "incomingResumeSeconds": 37.11210884353741,
+      "durationSeconds": 52.678321995464856,
+      "timing": {
+        "sampleRate": 44100,
+        "outgoingStartSample": 8143506,
+        "incomingEntryFrame": 204583,
+        "handoverFrame": 1509102,
+        "outgoingEndFrame": 1509102,
+        "incomingRate": 1.0331919598779795,
+        "releaseCurve": "linear-rate",
+        "releaseStartFrame": 1549407,
+        "releaseEndFrame": 1710628,
+        "clipFrames": 1793914,
+        "incomingResumeSample": 1636644
+      },
+      "sourceGuardMaxError": [
+        0.0,
+        0.0
+      ],
+      "auditionPeakGain": 0.7394884213914228,
+      "listening": "pending",
+      "tracks": [
+        {
+          "id": "0KUsUv7L4BrgKe6WC2EXrM",
+          "bundleKey": "a285588684c7df845e11deda3e7f47838d085e793a3b7d27e25dc684ab68db22",
+          "cueKey": "3b693b3704799beba63f3af53292b092d1376336855f0c756d81921c6cb89984",
+          "coverageKey": "81baed9c8bbce1800eba8ba2d7bb623f75194e388af9535577160e0e75e2530a"
+        },
+        {
+          "id": "2bMGqIxYFp3CnUZhMdjlMz",
+          "bundleKey": "35ed0f3c429a65fec68097ac2353840425105ffaf706a2c0966597e01a6094ac",
+          "cueKey": "42aea7033d862511ab442ddee4672f5b120725ee40f6a503613cf4f405357cf5",
+          "coverageKey": "2bb1a673c693f1731629b01cb76d83e43eda1e9b67944ebbd36f817813356744"
+        }
+      ],
+      "outgoingCueIndex": 1,
+      "incomingCueIndex": 2,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 0.00s vocal overlap (longest 0.00s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 0,
+        "longestOverlapSeconds": 0.0,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Plausible lyric versions disagree on this boundary by more than two seconds.",
+          "firstSeconds": 30.45,
+          "lastSeconds": 30.562784145996535,
+          "activeSeconds": 0.1127841459965353,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 30.63
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 189.29906505969518,
+          "lastSeconds": 214.31,
+          "activeSeconds": 24.360934940304844,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 212.38
+        }
+      }
+    },
+    {
+      "case": 2,
+      "label": "Faithless — Insomnia → Sash! — Encore une fois",
+      "status": "unavailable",
+      "reason": "The incoming track has no valid saved opening cue; retain the existing transition.",
+      "tracks": [
+        {
+          "id": "2bMGqIxYFp3CnUZhMdjlMz",
+          "bundleKey": "35ed0f3c429a65fec68097ac2353840425105ffaf706a2c0966597e01a6094ac",
+          "cueKey": "42aea7033d862511ab442ddee4672f5b120725ee40f6a503613cf4f405357cf5",
+          "coverageKey": "2bb1a673c693f1731629b01cb76d83e43eda1e9b67944ebbd36f817813356744"
+        },
+        {
+          "id": "0KUsUv7L4BrgKe6WC2EXrM",
+          "bundleKey": "a285588684c7df845e11deda3e7f47838d085e793a3b7d27e25dc684ab68db22",
+          "cueKey": "3b693b3704799beba63f3af53292b092d1376336855f0c756d81921c6cb89984",
+          "coverageKey": "81baed9c8bbce1800eba8ba2d7bb623f75194e388af9535577160e0e75e2530a"
+        }
+      ]
+    },
+    {
+      "case": 3,
+      "label": "Agnelli & Nelson — El Nino → Everyday",
+      "status": "planned",
+      "reason": "Saved evidence supports a handoff proposal; audio, source identity and tempo release still need render verification.",
+      "file": "03-complete-handoff.mp3",
+      "mixStyle": "short-exchange",
+      "tempoAdjustmentPercent": -0.09448314321217621,
+      "releaseStartsSeconds": 28.218390022675738,
+      "nativeTempoSeconds": 31.774739229024945,
+      "originalResumeInAuditionSeconds": 33.55122448979592,
+      "incomingResumeSeconds": 25.530430839002268,
+      "durationSeconds": 41.55122448979592,
+      "timing": {
+        "sampleRate": 44100,
+        "outgoingStartSample": 8922677,
+        "incomingEntryFrame": 176400,
+        "handoverFrame": 808155,
+        "outgoingEndFrame": 1068031,
+        "incomingRate": 0.9990551685678782,
+        "releaseCurve": "linear-rate",
+        "releaseStartFrame": 1068031,
+        "releaseEndFrame": 1224866,
+        "clipFrames": 1303209,
+        "incomingResumeSample": 1125892
+      },
+      "sourceGuardMaxError": [
+        0.0,
+        0.0
+      ],
+      "auditionPeakGain": 0.6870842990120866,
+      "listening": "pending",
+      "tracks": [
+        {
+          "id": "75cQfewXIS03M3D1qiDnO8",
+          "bundleKey": "9f687ea78f57965e3b34d402690297ff981ca2829a9c6a865b351ca1baff7be9",
+          "cueKey": "fba1f309f7ce32f802a8f8178f1a14a28e3bcccd8e76db6e15dcdd3e221c163c",
+          "coverageKey": "4254e9520e6fcabc9ed71758c74970c9ec514b1c1541250c1836b351d1284f9a"
+        },
+        {
+          "id": "3CZAByVhRxf1wrPPNX1PUG",
+          "bundleKey": "4a8144e80f5447af3e88f72ef17e0c37499d4fc167d4180882ed16bfbc08453a",
+          "cueKey": "42ca0e568f5c3e14c2dd7895bde7727840103f89fa8d074e155a948cb54ace0d",
+          "coverageKey": "d2bc9803c344a2d26bcfa289ba100cf022531f5e6b133d99c1878e08e5559783"
+        }
+      ],
+      "outgoingCueIndex": 1,
+      "incomingCueIndex": 0,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 16.50s vocal overlap (longest 16.50s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 16.499992632880293,
+        "longestOverlapSeconds": 16.499992632880293,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 0.0,
+          "lastSeconds": 19.349999999999998,
+          "activeSeconds": 19.349999999999998,
+          "boundaryVocal": "likely",
+          "lyricAnchorSeconds": null
+        },
+        "tail": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 206.32828401111064,
+          "lastSeconds": 222.82827664399093,
+          "activeSeconds": 16.499992632880293,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": null
+        }
+      }
+    },
+    {
+      "case": 4,
+      "label": "Faithless — Insomnia → Agnelli & Nelson — El Nino",
+      "status": "planned",
+      "reason": "Saved evidence supports a handoff proposal; audio, source identity and tempo release still need render verification.",
+      "file": "04-complete-handoff.mp3",
+      "mixStyle": "short-exchange",
+      "tempoAdjustmentPercent": -5.845867732304477,
+      "releaseStartsSeconds": 24.865487528344673,
+      "nativeTempoSeconds": 28.64265306122449,
+      "originalResumeInAuditionSeconds": 30.420839002267574,
+      "incomingResumeSeconds": 21.324489795918367,
+      "durationSeconds": 38.42083900226758,
+      "timing": {
+        "sampleRate": 44100,
+        "outgoingStartSample": 8493124,
+        "incomingEntryFrame": 176400,
+        "handoverFrame": 850185,
+        "outgoingEndFrame": 920168,
+        "incomingRate": 0.9415413226769552,
+        "releaseCurve": "linear-rate",
+        "releaseStartFrame": 920168,
+        "releaseEndFrame": 1086741,
+        "clipFrames": 1165159,
+        "incomingResumeSample": 940410
+      },
+      "sourceGuardMaxError": [
+        0.0,
+        0.0
+      ],
+      "auditionPeakGain": 0.7912305762777965,
+      "listening": "pending",
+      "tracks": [
+        {
+          "id": "2bMGqIxYFp3CnUZhMdjlMz",
+          "bundleKey": "35ed0f3c429a65fec68097ac2353840425105ffaf706a2c0966597e01a6094ac",
+          "cueKey": "42aea7033d862511ab442ddee4672f5b120725ee40f6a503613cf4f405357cf5",
+          "coverageKey": "2bb1a673c693f1731629b01cb76d83e43eda1e9b67944ebbd36f817813356744"
+        },
+        {
+          "id": "75cQfewXIS03M3D1qiDnO8",
+          "bundleKey": "9f687ea78f57965e3b34d402690297ff981ca2829a9c6a865b351ca1baff7be9",
+          "cueKey": "fba1f309f7ce32f802a8f8178f1a14a28e3bcccd8e76db6e15dcdd3e221c163c",
+          "coverageKey": "4254e9520e6fcabc9ed71758c74970c9ec514b1c1541250c1836b351d1284f9a"
+        }
+      ],
+      "outgoingCueIndex": 1,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 3.02s vocal overlap (longest 2.30s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 3.0165065287752384,
+        "longestOverlapSeconds": 2.295581747028507,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 0.25,
+          "lastSeconds": 15.879549971808235,
+          "activeSeconds": 13.729549971808234,
+          "boundaryVocal": "likely",
+          "lyricAnchorSeconds": null
+        },
+        "tail": {
+          "confidence": "low",
+          "reason": "Plausible lyric versions disagree on this boundary by more than two seconds.",
+          "firstSeconds": 196.5878494832352,
+          "lastSeconds": 202.53784580498865,
+          "activeSeconds": 5.29999632175344,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 197.7
+        }
+      }
+    }
+  ],
+  "codeSha256": {
+    "controller/scripts/subbeats_handoff.py": "a5a8a661d1d4edb662e75000ebc226fa716b1fef1b6f90f76183ee9437ec593f",
+    "controller/scripts/subbeats_cue_preview.py": "42bcde95594558b44001d9dbfba13fa5ae26bbe0eeafdc12ea5686f3ebd59b7e",
+    "controller/scripts/subbeats_preview.py": "cf5605d2d13aaf45d3b85dc73b86d35e4784fc6a8a1e3436a073816d778f1cd2",
+    "controller/scripts/subbeats_cue_matching.py": "e030e173e269630ed2e96923fbb6a58f2a24bf7ef868e6e0d305dd90d2701223"
+  },
+  "controllerStyleSelectionExercised": false
+}

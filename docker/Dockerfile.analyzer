@@ -21,9 +21,9 @@
 FROM python:3.11-slim-bookworm
 
 # ffmpeg + libsndfile1: librosa codec coverage for the Navidrome stream
-# formats. curl: operator healthchecks.
+# formats. rubberband-cli: mapped-tempo handoff auditions. curl: healthchecks.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates ffmpeg libsndfile1 \
+    curl ca-certificates ffmpeg libsndfile1 rubberband-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Analyzer venv ----------------------------------------------------------
@@ -88,7 +88,7 @@ WORKDIR /app
 COPY docker/analyzer/server.py /app/server.py
 # The SAME worker the controller runs in-process — single source of truth.
 COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
-COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
+COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_handoff.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.

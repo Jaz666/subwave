@@ -85,7 +85,7 @@ def cue_region(req, index, folder, record, name, start, end, fetch_source):
     return parts,True
 
 
-def mix_passages(out_parts,in_parts,plan,mix_style='long-blend',*,normalize=True):
+def mix_passages(out_parts,in_parts,plan,mix_style='long-blend',*,normalize=True,edges=True):
     import numpy as np
     if mix_style not in MIX_STYLE_LABELS:
         raise ValueError('Choose an available mixing style.')
@@ -126,9 +126,10 @@ def mix_passages(out_parts,in_parts,plan,mix_style='long-blend',*,normalize=True
             in_env=exchange[begin:begin+in_frames]
         audio[:,:out_frames]+=outgoing[:,:out_frames]*out_env
         audio[:,begin:begin+in_frames]+=incoming[:,:in_frames]*in_env
-    edge=min(round(.03*STEM_SR),total//2)
-    audio[:,:edge]*=np.linspace(0,1,edge)
-    audio[:,-edge:]*=np.linspace(1,0,edge)
+    if edges:
+        edge=min(round(.03*STEM_SR),total//2)
+        audio[:,:edge]*=np.linspace(0,1,edge)
+        audio[:,-edge:]*=np.linspace(1,0,edge)
     peak=float(np.max(np.abs(audio)))
     if not np.isfinite(audio).all() or peak<1e-8:
         raise ValueError('This cue-point preview contains no usable audio')

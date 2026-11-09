@@ -1,4 +1,4 @@
-import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsPairPlanSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
+import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsPairPlanSchema, subbeatsTimelineSchema, type subbeatsHandoffInputSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -1345,12 +1345,17 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';auto_plan?:boolean;mix_style?:ReturnType<typeof subbeatsMixStyleSchema.parse>;cue_keys?:Array<string|null>;cue_indices?:number[];coverage_keys?:Array<string|null>;lyric_evidence?:Array<ReturnType<typeof subbeatsLyricEvidenceSchema.parse>|null>;crossfade_seconds?:number;equal_power_crossfade?:boolean}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {handoff?:ReturnType<typeof subbeatsHandoffInputSchema.parse>;stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';auto_plan?:boolean;mix_style?:ReturnType<typeof subbeatsMixStyleSchema.parse>;cue_keys?:Array<string|null>;cue_indices?:number[];coverage_keys?:Array<string|null>;lyric_evidence?:Array<ReturnType<typeof subbeatsLyricEvidenceSchema.parse>|null>;crossfade_seconds?:number;equal_power_crossfade?:boolean}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
-  const timeoutMs = shared?.method === 'cue-points' ? 30*60_000 : 180_000;
+  const timeoutMs = shared?.handoff ? 240_000 : shared?.method === 'cue-points' ? 30*60_000 : 180_000;
   const checkedTimeline = (raw:unknown) => {
     const timeline = raw ? subbeatsTimelineSchema.parse(raw) : null;
+    if (shared?.handoff && (timeline?.kind !== 'subbeats-handoff'
+      || timeline.handoff?.evidenceFingerprint !== shared.handoff.evidenceFingerprint
+      || JSON.stringify(timeline.handoff?.timing) !== JSON.stringify(shared.handoff.candidate.timing))) {
+      throw new Error('The analyzer did not return the requested complete handoff. Update the analyzer and retry.');
+    }
     if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
     if (shared?.method === 'cue-points' && timeline?.kind !== 'regular-fallback'
       && (timeline?.mixStyle ?? 'long-blend') !== (shared.mix_style ?? 'long-blend')) {
@@ -1371,7 +1376,7 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
     if (!response.ok) await sidecarFailure(response);
     if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('The analyzer returned an invalid preview.');
     const audio = Buffer.from(await response.arrayBuffer());
-    if (audio.length > 24 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
+    if (audio.length > (shared?.handoff ? 48 : 24) * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
     const raw = response.headers.get('x-subbeats-timeline');
     const timeline = checkedTimeline(raw ? JSON.parse(raw) : null);
     return { audio, timeline };

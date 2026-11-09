@@ -22,7 +22,7 @@ import * as subsonic from '../../music/subsonic.js';
 import { fetchWithTimeout } from '../../util/fetch-timeout.js';
 import * as settings from '../../settings.js';
 import { withSubbeatsLyrics } from '../../music/subbeats-lyrics.js';
-import { assessSubbeatsPair } from '../../music/subbeats-pair.js';
+import { assessSubbeatsPair, subbeatsPairSnapshot } from '../../music/subbeats-pair.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
@@ -170,14 +170,16 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
   previewBusy = true;
   try {
     const state = subbeatsStore.read();
-    const tracks = parsed.data.trackIds.map(id => state.jobs.find(j => j.id === id));
+    let tracks = parsed.data.trackIds.map(id => state.jobs.find(j => j.id === id));
     if (tracks[0]?.id === tracks[1]?.id || tracks.some(j => j?.status !== 'prepared' || !j.bundleKey)) throw new Error('Choose two different prepared tracks.');
     const cueMode = parsed.data.method === 'cue-points';
     if (!cueMode && parsed.data.mixStyle && parsed.data.mixStyle !== 'long-blend') throw new Error('Mixing styles require a cue-point preview.');
     const autoPlan = parsed.data.autoPlan === true;
+    if (parsed.data.handoff && (!cueMode || !autoPlan)) throw new Error('Complete handoffs require automatic cue-point planning.');
+    if (parsed.data.handoff && parsed.data.cueIndices) throw new Error('Complete handoffs use the shared pair plan. Remove the manual cue override.');
     if (autoPlan && !cueMode) throw new Error('Automatic transition planning requires cue-point preview mode.');
     if (cueMode && (parsed.data.matched || parsed.data.referenceBars !== undefined || parsed.data.barShift !== 0)) throw new Error('Cue-point previews use saved cue choices. Reset the bar shift and match selection.');
-    const cueIndices = parsed.data.cueIndices ?? [0,0];
+    let cueIndices = parsed.data.cueIndices ?? [0,0];
     if (cueMode && !autoPlan && tracks.some(track => !track?.cuePoints?.algorithmVersion || track.cuePoints.algorithmVersion < 5)) throw new Error('Rescan both tracks with Beat This! for the new phrase preview.');
     if (cueMode && !autoPlan && (!tracks[0]?.cuePoints?.outgoing[cueIndices[0]!] || !tracks[1]?.cuePoints?.incoming[cueIndices[1]!])) throw new Error('Recheck both tracks with a Beat This! preparation method and choose saved cue points.');
     await library.load();
@@ -203,14 +205,33 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     }
     const windowPlan = parsed.data.matched ? (await matchSubbeats(tracks as typeof state.jobs, parsed.data.trackIds[0]!, parsed.data.barShift)).matches.find(match => match.id === parsed.data.trackIds[1])?.plan : undefined;
     if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
+    let handoff;
+    let mixStyle = parsed.data.mixStyle ?? 'long-blend';
+    if (parsed.data.handoff) {
+      const assessment = await assessSubbeatsPair(parsed.data.trackIds[0]!,parsed.data.trackIds[1]!);
+      const candidate = assessment.plan.plans[0];
+      if (!candidate) throw new Error(assessment.plan.reason);
+      if (parsed.data.mixStyle && parsed.data.mixStyle !== assessment.plan.mixStyle) {
+        throw new Error('Complete handoffs currently use the automatically planned mixing style. Omit the style override.');
+      }
+      const snapshot = subbeatsPairSnapshot(parsed.data.trackIds[0]!,parsed.data.trackIds[1]!);
+      if (snapshot.evidenceFingerprint !== assessment.evidenceFingerprint) throw new Error('The prepared evidence changed. Retry planning.');
+      tracks = parsed.data.trackIds.map(id => snapshot.jobs.find(job => job.id === id));
+      cueIndices = [candidate.outgoingCueIndex,candidate.incomingCueIndex];
+      mixStyle = assessment.plan.mixStyle;
+      handoff = {version:1 as const,evidenceFingerprint:assessment.evidenceFingerprint,candidate};
+    }
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
     const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
-      ...(cueMode ? {method:'cue-points' as const,auto_plan:autoPlan,mix_style:parsed.data.mixStyle ?? 'long-blend',
+      ...(cueMode ? {method:'cue-points' as const,auto_plan:handoff ? false : autoPlan,mix_style:mixStyle,...(handoff ? {handoff} : {}),
         lyric_evidence:withSubbeatsLyrics(tracks as typeof state.jobs,config.stateDir).map(track => track.lyricEvidence ?? null),
         cue_keys:tracks.map(track => track?.cuePoints?.algorithmVersion && track.cuePoints.algorithmVersion >= 5 ? track.cuePoints.artifactKey : null),
         cue_indices:cueIndices,coverage_keys:tracks.map(track => track?.cueCoverage?.artifactKey ?? null),
         ...(autoPlan ? {crossfade_seconds:settings.get().crossfadeDuration,
           equal_power_crossfade:settings.get().transitions?.equalPowerCrossfade === true} : {})} : {})});
+    if (handoff && subbeatsPairSnapshot(parsed.data.trackIds[0]!,parsed.data.trackIds[1]!).evidenceFingerprint !== handoff.evidenceFingerprint) {
+      throw new Error('The prepared evidence changed during rendering. Retry the handoff preview.');
+    }
     if (!abort.signal.aborted) {
       if (preview.timeline) res.set('X-Subbeats-Timeline', JSON.stringify(preview.timeline).replace(/[^\x00-\x7F]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)).set('Access-Control-Expose-Headers', 'X-Subbeats-Timeline');
       res.set('Cache-Control', 'no-store').type('audio/wav').send(preview.audio);

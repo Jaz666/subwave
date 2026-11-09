@@ -74,6 +74,11 @@ def plan_live_pair(jobs, outgoing_id, incoming_id, mix_style):
     if any(point.get('algorithmVersion') not in (5, 6, 7, 8, 9, 10, 11, 12, 13)
            or not point.get('durationSeconds') for point in points):
         return dict(result, reason='Saved phrase timing is unavailable for this pair.')
+    if not any(cue.get('timingValidated') is not False for cue in points[1].get('incoming', [])):
+        return dict(result, reason='The incoming track has no valid saved opening cue; retain the existing transition.')
+    if not any(cue.get('timingValidated') is not False and cue.get('sourceSeconds', 0) >= points[0]['durationSeconds'] * .5
+               for cue in points[0].get('outgoing', [])):
+        return dict(result, reason='The outgoing track has no valid saved closing cue; retain the existing transition.')
     coverage = [job.get('cueCoverage') or {} for job in pair]
     activities = [coverage[0].get('outgoing'), coverage[1].get('incoming')]
     if any(not item.get('artifactKey') for item in coverage) or not all(activities):
