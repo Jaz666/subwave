@@ -132,3 +132,7 @@ Incoming arrival: 28.5s into the extract. Outgoing end: 34.3s. Extract length: 3
 The six A/B pairs were rendered successfully in an isolated CPU-limited analyzer-image process with read-only source/stem mounts and networking disabled. No production mixer, picker or library analysis was changed, and no additional test suite or independent listening judgement was performed.
 
 Next: integrate the auditioned four-beat bass/`other` exchange as a Sub/Beats handover option, with a recommendation for apparent harmonic mismatches. The existing Camelot helpers should own key relationships if this reaches product code; unknown or contradictory keys remain permissive. The ordinary transition fallback remains a separate live-integration decision.
+
+## Follow-up: selectable styles
+
+The four-beat B profile is now implemented as **Short exchange**, alongside Long blend, Bass swap and Drums first in the cue-point preview. See [the new style audition sheet](2026-11-09-stem-mixing-styles.md). The operator chooses the style for this stage; automatic recommendations based on key await the new style listening results.

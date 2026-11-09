@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { subbeatsTimelineSchema } from '../../../lib/schemas.generated';
+import { subbeatsTimelineSchema, type subbeatsMixStyleSchema } from '../../../lib/schemas.generated';
 import { adminResponse, AdminResponseError, type AdminFetch } from '../../../lib/admin-query';
 
 export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoint = '/library/sub-flow/join-preview') {
@@ -26,7 +26,7 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoin
     return clear;
   }, [trackKey, clear]);
 
-  const toggle = async (index: number, trackIds: string[], options?: { barShift?: number; referenceBars?: number; matched?: boolean; method?:'cue-points'; autoPlan?:boolean; cueIndices?:number[] }) => {
+  const toggle = async (index: number, trackIds: string[], options?: { barShift?: number; referenceBars?: number; matched?: boolean; method?:'cue-points'; mixStyle?:ReturnType<typeof subbeatsMixStyleSchema.parse>; autoPlan?:boolean; cueIndices?:number[] }) => {
     // A second click cancels preparation or stops playback. Only one join plays.
     if (active === index && (loading || !audio.current?.paused)) {
       clear(); setActive(null); setLoading(false); setPlaying(false); setMessage(null); setPosition(0); setDuration(0); setTimeline(null); return;
@@ -46,6 +46,10 @@ export function useJoinPreview(trackKey: string, adminFetch: AdminFetch, endpoin
       });
       const rawTiming = response.headers.get('x-subbeats-timeline');
       const timing = rawTiming ? subbeatsTimelineSchema.parse(JSON.parse(rawTiming)) : null;
+      if (options?.mixStyle && timing?.kind !== 'regular-fallback'
+        && (timing?.mixStyle ?? 'long-blend') !== options.mixStyle) {
+        throw new Error('The selected mixing style is unavailable. Update the station, then try again.');
+      }
       const blob = await response.blob();
       if (ac.signal.aborted) return;
       url.current = URL.createObjectURL(blob);

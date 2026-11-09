@@ -10,7 +10,7 @@ import tempfile
 from subbeats_cache import cached_entry, digest, tree_bytes
 from subbeats_prepare import STEMS, STEM_SR, require_shared_cache
 
-VERSION = 15
+VERSION = 16
 PREVIEW_BUDGET = 200 * 1024**2
 
 
@@ -356,7 +356,7 @@ def render_preview(req, fetch_source=None):
     if any(not np.isfinite(g) or not -120 <= g <= 40 for g in gains):
         raise ValueError('Invalid preview playback level.')
     fingerprint = json.dumps({'version': VERSION, 'librosa': librosa.__version__, 'keys': keys, 'gains_db': gains, 'bar_shift': bar_shift,
-                              'lyric_evidence':req.get('lyric_evidence'),
+                              'lyric_evidence':req.get('lyric_evidence'),'mix_style':req.get('mix_style','long-blend'),
                               'coverage_manifests':coverage_manifests,'coverage_keys':coverage_keys,'reference': reference, 'window_plan':req.get('window_plan'), 'method':method,'auto_plan':req.get('auto_plan'),
                               'cue_keys':req.get('cue_keys'),'cue_indices':req.get('cue_indices'),'crossfade_seconds':req.get('crossfade_seconds'),
                               'equal_power_crossfade':req.get('equal_power_crossfade'), 'manifests': [digest(p / 'manifest.json') for p in folders]}, sort_keys=True)

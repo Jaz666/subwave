@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -35,6 +35,12 @@ const LABEL: Record<Status, string> = {
   unavailable: 'Unavailable', failed: 'Needs retry',
 };
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const MIX_STYLE: Record<z.infer<typeof subbeatsMixStyleSchema>, {label:string;description:string}> = {
+  'long-blend': {label:'Long blend',description:'A longer musical overlap for compatible keys and spacious arrangements.'},
+  'short-exchange': {label:'Short exchange',description:'Exchange bass and melody over four beats. A useful choice when keys may clash.'},
+  'bass-swap': {label:'Bass swap',description:'Exchange bass over one beat while melodies blend longer. Try it with compatible keys.'},
+  'drums-first': {label:'Drums first',description:'Build incoming drums over up to eight bars, then exchange bass and melody over four beats.'},
+};
 const SELECT_CLASS = 'h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
 const BROWSE_LABEL = { 'not-started': 'Not started', ...LABEL };
 const PAGES = [
@@ -50,7 +56,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const ready = hydrated && !needsAuth;
   const cache = useSubbeatsCache();
   const regularIds = new Set(cache.query.data?.policy.regularIds ?? []);
-  const { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
+  const { preparationMethod, setPreparationMethod, mixStyle, setMixStyle, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobCueFilter, setJobCueFilter, jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
   const { query, offset, scope, genre, status, sort, mixing, playlistId } = browse[browsePage];
@@ -70,7 +76,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     key: subbeatsKeys.state, adminFetch, enabled: ready, refetchInterval: 3000,
     request: async (fetcher, signal) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats', undefined, signal)),
   });
-  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, outCueIndex, inCueIndex, state.data?.jobs.filter(job => job.id === outgoing || job.id === incoming).map(job => [job.cuePoints?.artifactKey,job.cueCoverage?.artifactKey])]), adminFetch, '/library/subbeats/join-preview');
+  const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, outCueIndex, inCueIndex, mixStyle, state.data?.jobs.filter(job => job.id === outgoing || job.id === incoming).map(job => [job.cuePoints?.artifactKey,job.cueCoverage?.artifactKey])]), adminFetch, '/library/subbeats/join-preview');
   const candidates = useAdminQuery({
     key: subbeatsKeys.candidates(q, offset, scope, genre, status, sort, mixing,playlistId), adminFetch, enabled: ready && browsing && browseRestored,
     request: async (fetcher, signal) => subbeatsCandidatePageSchema.parse(await adminJson(fetcher,
@@ -378,12 +384,20 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         {incomingChoice && incomingCues[0]?.index !== inCueIndex && incomingCues[0]?.tempoFits && outgoingCue?.phraseEndSeconds != null && <Button className="mt-3" onClick={() => setInCueIndex(incomingCues[0]!.index)}>Use closest opening length</Button>}
         {incomingCue && <CueAudition role="incoming" key={`incoming:${incoming}:${byId.get(incoming)?.cuePoints?.artifactKey}`} trackId={incoming} cueSeconds={incomingCue.sourceSeconds} tailSeconds={8*60/incomingCue.bpm} adminFetch={adminFetch} onPlay={() => { setSoloRole('incoming'); preview.stop(); }} pause={preview.loading || preview.playing || soloRole === 'outgoing'} />}
       </section>
+      {prepared > 0 && <div className="mt-4 max-w-prose">
+        <label htmlFor="subbeats-mix-style" className="mb-1 block text-sm font-medium">Mixing style</label>
+        <select id="subbeats-mix-style" className={SELECT_CLASS} value={mixStyle} aria-describedby="subbeats-mix-style-description"
+          onChange={event => setMixStyle(subbeatsMixStyleSchema.parse(event.target.value))}>
+          {subbeatsMixStyleSchema.options.map(style => <option key={style} value={style}>{MIX_STYLE[style].label}</option>)}
+        </select>
+        <p id="subbeats-mix-style-description" className="mt-2 text-sm leading-relaxed text-muted">{MIX_STYLE[mixStyle].description} Vocal timing follows the same overlap rules in every style.</p>
+      </div>}
       {prepared > 0 && <div className="mt-4 flex flex-wrap gap-3">
-        <Button className="min-h-11" variant="solid" disabled={preview.active !== 0 && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], {method:'cue-points',autoPlan:true})}>
+        <Button className="min-h-11" variant="solid" disabled={preview.active !== 0 && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], {method:'cue-points',autoPlan:true,mixStyle})}>
           {preview.active === 0 && preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.active === 0 && preview.playing ? <Square /> : <Play />}
           {preview.active === 0 && preview.loading ? 'Cancel preview' : preview.active === 0 && preview.playing ? 'Stop preview' : preview.active === 0 && preview.duration > 0 ? 'Play transition' : 'Find Suitable Transition'}
         </Button>
-        <Button className="min-h-11" disabled={preview.active !== 1 && (!ready || !incomingReady || !outgoing || !incoming || outgoing === incoming)} onClick={() => void preview.toggle(1, [outgoing, incoming], {method:'cue-points',cueIndices:[outCueIndex,inCueIndex]})}>
+        <Button className="min-h-11" disabled={preview.active !== 1 && (!ready || !incomingReady || !outgoing || !incoming || outgoing === incoming)} onClick={() => void preview.toggle(1, [outgoing, incoming], {method:'cue-points',cueIndices:[outCueIndex,inCueIndex],mixStyle})}>
           {preview.active === 1 && preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.active === 1 && preview.playing ? <Square /> : <Play />}
           {preview.active === 1 && preview.loading ? 'Cancel selected mix' : preview.active === 1 && preview.playing ? 'Stop selected mix' : 'Play selected mix'}
         </Button>
@@ -414,6 +428,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="subbeats-preview-position" className="text-sm font-medium">Preview timeline</label>
+            {preview.timeline?.mixStyle && <span className="border border-ink/30 bg-ink-soft px-2 py-1 text-xs font-medium text-ink">{MIX_STYLE[preview.timeline.mixStyle].label}</span>}
             {timelineTransitionType && <span className="border border-ink/30 bg-ink-soft px-2 py-1 text-xs font-medium text-ink">{timelineTransitionType}</span>}
           </div>
           <span className="shrink-0 font-mono text-xs text-muted tabular-nums">{clock(preview.position)} / {clock(preview.duration)}</span>

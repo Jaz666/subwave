@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { z } from 'zod';
 import { usePathname } from 'next/navigation';
-import { subbeatsBrowseStatusSchema, subbeatsMixFilterSchema, subbeatsSortSchema } from '../../../lib/schemas.generated';
+import { subbeatsBrowseStatusSchema, subbeatsMixFilterSchema, subbeatsSortSchema, type subbeatsMixStyleSchema } from '../../../lib/schemas.generated';
 import type { SubbeatsCandidate } from '../library/subbeats-selection';
 
 export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview' | 'cache';
@@ -37,6 +37,7 @@ function useWorkspaceState() {
   const [preparationMethod, setPreparationMethod] = useState<'classic'|'small0'|'final0'>('small0');
   const [outCueIndex, setOutCueIndex] = useState(0);
   const [inCueIndex, setInCueIndex] = useState(0);
+  const [mixStyle, setMixStyle] = useState<z.infer<typeof subbeatsMixStyleSchema>>('long-blend');
   // Match Library's replaceState convention: filters survive refresh/bookmarks,
   // while bulk selections stay temporary. Keep each sub-page's filters separate.
   useEffect(() => {
@@ -77,7 +78,7 @@ function useWorkspaceState() {
     const query = params.toString();
     window.history.replaceState(window.history.state, '', `${pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }, [browse, browsePage, pathname, restoredPath]);
-  return { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus, jobCueFilter, setJobCueFilter,
+  return { preparationMethod, setPreparationMethod, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, mixStyle, setMixStyle, browseRestored: restoredPath === pathname, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus, jobCueFilter, setJobCueFilter,
     jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming };
 }
 

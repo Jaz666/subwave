@@ -1,5 +1,13 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest work — 9 November: four selectable stem mixing styles
+
+The approved next step is implemented in `feat/subbeats-draft`: Long blend, Short exchange (the preferred B), Bass swap and Drums first are selectable in cue-point preview. Both preview actions honour the selected style; changing it clears old audio, and the returned timeline names the actual style. The long-blend default preserves existing clients while these profiles are auditioned. Automatic style choice/variation and live Picker integration remain later work; automatic cue-plan search uses the operator-selected style now.
+
+Bass swap exchanges bass across one beat while retaining longer melody overlap. Drums first brings incoming drums in over up to eight bars, then uses B's four-beat bass/`other` exchange. Vocal envelopes and the current vocal-overlap policy apply to every style. Four comparisons using the actual renderer are ready in [the style audition sheet](2026-11-09-stem-mixing-styles.md), with two matching-key candidates for Bass swap and two established pairs for Drums first.
+
+The request and timeline schemas, both analyzer transports, Pydantic request forwarding and preview-cache version 16 include the style. An old analyzer cannot silently substitute Long blend for a requested new style. No new analysis or stem preparation is required. The maintained contract is in `docs/internals/music.md`.
+
 ## Latest work — 9 November: harmonic handover investigation
 
 Read [the harmonic audition sheet](2026-11-09-harmonic-auditions.md). The owner clarified that the previous six passes may have applied only to the vocal-overlap exercise; the earlier feedback did not confirm harmonic suitability. The review scope is corrected in the earlier report and JSON. Six A/B extracts now compare the current envelopes with a four-beat exchange of bass and `other`, retaining the current vocal/drum envelopes. Audio lives locally under `/home/jaz666/codex/subbeats-harmonic-auditions-20261109`; source keys, measurements and exact input are documented in the new report/JSON. No product code, library state or running service was changed. The owner has now reviewed all six: B slightly wins 1, 2, 3 and 6, clearly wins 4 (The Key, the Secret → Insomnia), and both versions are fine for 5. This supports B as the candidate default for apparent mismatches; it does not verify the key estimates or prove that B benefits only incompatible pairs. No repeat review of these extracts is needed. Next: integrate the auditioned four-beat bass/`other` exchange as a Sub/Beats option, recommending it for apparent mismatches through the existing Camelot helper while keeping unknown keys eligible.

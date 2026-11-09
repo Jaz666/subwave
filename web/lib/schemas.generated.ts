@@ -5786,7 +5786,9 @@ export const subbeatsViewSchema = subbeatsQueueSchema.extend({
   references: z.array(subbeatsReferenceSchema).default([]),
 });
 
+export const subbeatsMixStyleSchema = z.enum(['long-blend','short-exchange','bass-swap','drums-first']);
 export const subbeatsTimelineSchema = z.object({
+  mixStyle:subbeatsMixStyleSchema.optional(),
   vocal:subbeatsCueVocalFitSchema.optional(),
   kind:z.enum(['reference','subbeats-transition','regular-fallback']).optional(),
   duration: z.number().finite().positive().max(120),
@@ -5835,6 +5837,7 @@ export const subbeatsMatchesSchema = z.object({
 });
 
 export const subbeatsPreviewSchema = z.object({
+  mixStyle:subbeatsMixStyleSchema.optional(),
   method:z.enum(['stems','cue-points']).default('stems'),
   autoPlan:z.boolean().optional(),
   cueIndices:z.array(z.number().int().min(0).max(7)).length(2).optional(),
