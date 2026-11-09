@@ -15,6 +15,7 @@ import * as settings from '../settings.js';
 import { reportProgress, reportEvent } from './tagger-progress.js';
 import { SUBBEATS_EVENT_PREFIX, subbeatsEnqueueSchema } from '../schemas/subbeats.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
+import { refreshPreparedSubbeatsLyrics } from './subbeats-lyric-refresh.js';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -65,6 +66,10 @@ async function main() {
         const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},job.preparationMethod,job.task === 'coverage' && job.bundleKey && job.cuePoints ? {bundle_key:job.bundleKey,cue_key:job.cuePoints.artifactKey} : undefined);
         remaining = Math.max(0, remaining - result.addedBytes);
         changed ||= result.addedBytes > 0; uncertain = false;
+        if (result.status === 'prepared' && result.bundleKey) {
+          reportProgress({phase:'analyze',label:`Looking up lyrics: ${job.artist} — ${job.title}`,done,total:ids.length});
+          await refreshPreparedSubbeatsLyrics(id,result.bundleKey);
+        }
         emit({id, ...result});
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

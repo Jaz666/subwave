@@ -378,6 +378,12 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
     subbeatsStore.event({id,status:'running'},[id]);
     subbeatsStore.event({id,status:'prepared',bundleKey:(i?'b':'a').repeat(64),cuePoints:{version:1,model:'small0',artifactKey:(i?'d':'c').repeat(64),algorithmVersion:i?6:5,durationSeconds:50,incoming:[point],outgoing:[point,{...point,sourceSeconds:10}]}},[id]);
   }
+  const {config}=await import('../src/config.js');
+  const {selectSubbeatsLyrics,saveSubbeatsLyrics}=await import('../src/music/subbeats-lyrics.js');
+  const evidence=selectSubbeatsLyrics('b'.repeat(64),{title:ids[1]!,artist:'Cue artist',durationSec:50},
+    {synced:true,lines:[{startMs:1000,text:'Reviewed opening'}]},[],false);
+  evidence.reviewedHeadSeconds=1;
+  await saveSubbeatsLyrics(config.stateDir,{[ids[1]!]:evidence});
   const realFetch=globalThis.fetch;let rendered:Record<string,unknown>|undefined;
   const audio=new Uint8Array(44);audio.set(Buffer.from('RIFF'),0);audio.set(Buffer.from('WAVE'),8);
   globalThis.fetch=(async (url,init) => {
@@ -392,9 +398,11 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
       assert.equal((await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',...extra})).status,400);
     }
     assert.equal(Boolean(rendered),false);
-    const response=await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',cueIndices:[0,0],cue_keys:['forged','forged'],source_urls:['http://forged/out','http://forged/in']});
+    const response=await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',cueIndices:[0,0],cue_keys:['forged','forged'],source_urls:['http://forged/out','http://forged/in'],lyric_evidence:[{reviewedHeadSeconds:999},{reviewedHeadSeconds:999}]});
     assert.equal(response.status,200);await response.arrayBuffer();
     assert.deepEqual(rendered?.cue_keys,['c'.repeat(64),'d'.repeat(64)]);
+    assert.equal((rendered?.lyric_evidence as Array<{reviewedHeadSeconds:number}|null>)[0],null);
+    assert.equal((rendered?.lyric_evidence as Array<{reviewedHeadSeconds:number}|null>)[1]?.reviewedHeadSeconds,1,'client cannot forge reviewed confidence');
     assert.equal((rendered?.source_urls as string[]).length,2);
     assert.ok((rendered?.source_urls as string[]).every(url=>!url.includes('forged')));
     assert.deepEqual(rendered?.cue_indices,[0,0]);assert.equal(rendered?.method,'cue-points');

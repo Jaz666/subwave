@@ -960,6 +960,7 @@ class SubbeatsReferencePreview(BaseModel):
 
 
 class SubbeatsPreviewRequest(BaseModel):
+    lyric_evidence: list[dict[str, Any] | None] | None = Field(default=None, min_length=2, max_length=2)
     coverage_keys: list[str | None] | None = Field(default=None, min_length=2, max_length=2)
     source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)
     method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')

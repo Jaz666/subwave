@@ -21,6 +21,7 @@ import { pipeline } from 'node:stream/promises';
 import * as subsonic from '../../music/subsonic.js';
 import { fetchWithTimeout } from '../../util/fetch-timeout.js';
 import * as settings from '../../settings.js';
+import { withSubbeatsLyrics } from '../../music/subbeats-lyrics.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
@@ -91,7 +92,7 @@ router.get('/library/subbeats/cue-matches', requireAdmin, async (req,res) => {
       const track = db.getTrack(job.id);
       return track && !blocklist.hitOf(track);
     });
-    res.set('Cache-Control','no-store').json(await matchSubbeatsCues(jobs,parsed.data.outgoingId,parsed.data.outgoingCueIndex));
+    res.set('Cache-Control','no-store').json(await matchSubbeatsCues(withSubbeatsLyrics(jobs,config.stateDir),parsed.data.outgoingId,parsed.data.outgoingCueIndex));
   } catch (error) { res.status(400).json({error:error instanceof Error ? error.message : 'Candidates could not be found.'}); }
 });
 router.get('/library/subbeats/candidates', requireAdmin, async (req, res) => {
@@ -194,6 +195,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
     const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
       ...(cueMode ? {method:'cue-points' as const,auto_plan:autoPlan,
+        lyric_evidence:withSubbeatsLyrics(tracks as typeof state.jobs,config.stateDir).map(track => track.lyricEvidence ?? null),
         cue_keys:tracks.map(track => track?.cuePoints?.algorithmVersion && track.cuePoints.algorithmVersion >= 5 ? track.cuePoints.artifactKey : null),
         cue_indices:cueIndices,coverage_keys:tracks.map(track => track?.cueCoverage?.artifactKey ?? null),
         ...(autoPlan ? {crossfade_seconds:settings.get().crossfadeDuration,

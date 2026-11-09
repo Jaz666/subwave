@@ -6,45 +6,12 @@ preview renderer checks the actual drum stem and remains the final audition.
 import math
 
 from subbeats_cue_preview import passage_plan
+from subbeats_vocal_confidence import assess_pair as assess_vocal_pair, shift_lyrics
 
 
-def assess_vocal_pair(outgoing, incoming, plan):
-    def result(status, reason):
-        return dict(status=status, reason=reason)
-    if not outgoing or not incoming:
-        return result('unassessed', 'Saved vocal measurements are missing. Audition checks the prepared audio.')
-    # Compare source-coordinate observations on the outgoing recording's clock.
-    start, end = max(plan['first'], plan['entry']), min(plan['out_end'], plan['end'])
-    if any(max(start,plan['entry']+p['startSeconds']/plan['rate']) <
-           min(end,outgoing['coverageStartSeconds'],plan['entry']+p['endSeconds']/plan['rate'])
-           for p in incoming['passages']):
-        return result('conflict', 'An incoming vocal would overlap the unmeasured outgoing lead-in. Choose a shorter opening or another pair.')
-    outs = [(max(start,p['startSeconds']), min(end,p['endSeconds']))
-            for p in outgoing['passages']]
-    ins = [(max(start,plan['entry']+p['startSeconds']/plan['rate']),
-            min(end,plan['entry']+p['endSeconds']/plan['rate']))
-           for p in incoming['passages']]
-    if any(max(a,c) < min(b,d) for a,b in outs for c,d in ins):
-        return result('conflict', 'Detected vocal passages overlap. Choose another incoming cue or outgoing finish.')
-    tolerance = max(outgoing['resolutionSeconds'],incoming['resolutionSeconds']/plan['rate'])
-    if (outgoing['coverageStartSeconds'] > start+tolerance
-            and outgoing['coverageEndSeconds'] >= end-tolerance
-            and incoming['coverageStartSeconds'] <= (start-plan['entry'])*plan['rate']+tolerance
-            and incoming['coverageEndSeconds'] >= (end-plan['entry'])*plan['rate']-tolerance):
-        return result('uncertain', 'The earlier outgoing lead-in uses the original mix. No incoming vocal was detected there; preview checks the overlap conservatively.')
-    if (outgoing['coverageStartSeconds'] > start+tolerance
-            or outgoing['coverageEndSeconds'] < end-tolerance
-            or incoming['coverageStartSeconds'] > (start-plan['entry'])*plan['rate']+tolerance
-            or incoming['coverageEndSeconds'] < (end-plan['entry'])*plan['rate']-tolerance):
-        return result('coverage', 'Saved vocal coverage is incomplete. Audition checks the full overlap against prepared audio and the original lead-in.')
-    if not outgoing['passages'] or not incoming['passages']:
-        return result('uncertain', 'No clear vocal passage was detected on one side. This does not prove a vocal-free overlap.')
-    return result('estimated', 'No detected vocal passages overlap. Background vocals and musical fit still need listening.')
-
-
-def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2, after_seconds=None):
+def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2, after_seconds=None, out_evidence=None, in_evidence=None):
     """Suggest an early, vocal-free, fitted-grid, two-bar incoming drum loop."""
-    if assess_vocal_pair(outgoing, incoming, plan)['status'] != 'conflict':
+    if assess_vocal_pair(outgoing, incoming, plan, out_evidence, in_evidence)['status'] != 'conflict':
         return None
     if (cue.get('timingValidated') is False or cue.get('timingSource') not in ('fitted-grid','opening-grid','onset-grid')
             or cue.get('phraseBars') not in (8, 16)):
@@ -127,7 +94,9 @@ def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2, after_
                     })
                 else:
                     shifted['passages'].append(passage)
-            fit = assess_vocal_pair(outgoing, shifted, plan)
+            loop = dict(method='drum-loop', startSeconds=start, bars=2, repeats=repeats,
+                        loopSeconds=loop_seconds, addedSeconds=source_shift / plan['rate'])
+            fit = assess_vocal_pair(outgoing, shifted, plan, out_evidence, shift_lyrics(in_evidence, loop))
             if fit['status'] in ('conflict', 'coverage'):
                 continue
 
@@ -149,7 +118,7 @@ def plan_incoming_drum_loop(outgoing, incoming, cue, plan, max_repeats=2, after_
     return None
 
 
-def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing_vocals=None, incoming_vocals=None):
+def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing_vocals=None, incoming_vocals=None, out_evidence=None, in_evidence=None):
     """Rank feasible cue combinations for one selected pair."""
     choices=[]
     vocal_rank=dict(estimated=0,uncertain=1,coverage=2,unassessed=3)
@@ -163,10 +132,10 @@ def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing
                 plan=passage_plan(out,cue,out_duration,in_duration)
             except (KeyError,TypeError,ValueError):
                 continue
-            vocal=assess_vocal_pair(outgoing_vocals,incoming_vocals,plan)
+            vocal=assess_vocal_pair(outgoing_vocals,incoming_vocals,plan,out_evidence,in_evidence)
             transition=dict(method='standard')
             if vocal['status']=='conflict':
-                loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,cue,plan)
+                loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,cue,plan,out_evidence=out_evidence,in_evidence=in_evidence)
                 if loop_plan is None:
                     continue
                 loop,_,fit=loop_plan
@@ -175,7 +144,7 @@ def plan_pair_transitions(out_cues, in_cues, out_duration, in_duration, outgoing
             out_bars=out.get('phraseBars') if out.get('phraseBars') in (8,16) else None
             in_bars=cue.get('phraseBars') if cue.get('phraseBars') in (8,16) else None
             difference=abs((plan['handover']-out['sourceSeconds'])-cue['sourceSeconds']/plan['rate'])
-            rank=(vocal_rank[vocal['status']],difference,abs(plan['rate']-1),
+            rank=(vocal_rank[vocal['status']],vocal['overlapSeconds'],difference,abs(plan['rate']-1),
                   -(out_bars or 0)-(in_bars or 0),transition.get('repeats',0),out_index,in_index)
             choices.append((rank,dict(outgoingCueIndex=out_index,incomingCueIndex=in_index,
                 outgoingBars=out_bars,incomingBars=in_bars,
@@ -222,17 +191,18 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
                 if reason != 'vocals':
                     reason = 'coverage'
                 continue
-            vocal = assess_vocal_pair(outgoing_vocals, incoming_vocals, plan)
+            out_evidence,in_evidence=outgoing_job.get('lyricEvidence'),job.get('lyricEvidence')
+            vocal = assess_vocal_pair(outgoing_vocals, incoming_vocals, plan, out_evidence, in_evidence)
             transition = dict(method='standard')
             if vocal['status']=='conflict':
-                loop_plan = plan_incoming_drum_loop(outgoing_vocals, incoming_vocals, cue, plan)
+                loop_plan = plan_incoming_drum_loop(outgoing_vocals, incoming_vocals, cue, plan, out_evidence=out_evidence,in_evidence=in_evidence)
                 if loop_plan is None:
                     reason = 'vocals'
                     continue
                 loop, _, fit = loop_plan
                 lead_in_note = (' The original-mix lead-in remains uncertain; the preview checks it before playback.'
                                 if fit['status'] == 'uncertain' else '')
-                vocal = dict(status=fit['status'], reason=(
+                vocal = dict(fit, reason=(
                     f"A {loop['repeats']}× two-bar incoming drum loop is estimated to clear the detected vocal overlap. "
                     f"{lead_in_note} Audition the groove, loop seam and background-vocal leakage."
                 ))
@@ -246,7 +216,7 @@ def find_cue_matches(jobs, outgoing_id, out_index=0):
                 # This uncertainty is only the short original-mix lead-in; the
                 # loop clears every measured vocal passage and the preview rechecks it.
                 vocal_rank = 0
-            rank = (vocal_rank,
+            rank = (vocal_rank,vocal['overlapSeconds'],
                     abs(plan['rate']-1),difference,index)
             choices.append((rank,dict(id=job['id'],title=job['title'],artist=job['artist'],
                 outgoingCueIndex=out_index,incomingCueIndex=index,incomingSeconds=cue['sourceSeconds'],

@@ -1,0 +1,105 @@
+# Sub/Beats handover — 8 November 2026
+
+## Latest work — 9 November: head/tail confidence
+
+The audition change is consolidated on `feat/subbeats-draft` in `/home/jaz666/codex/subbeats-draft-pr`, with candidate source in `/home/jaz666/Docker/subwave`. This research checkout retains separate pending cue/Silero work. Read [Head and tail confidence changes](2026-11-09-head-tail-confidence.md) for the policy, current evidence, six pairings and the rebuild command. Codex did not rebuild or restart services during implementation; the owner runs station rebuilds. Earlier source-identity and lyric-only notes below are retained as history.
+
+The owner subsequently auditioned all six proposed pairings and reported that all sound fine (9 November). All six are recorded as acceptable in the report and its JSON shortlist. This supports allowing short/uncertain overlap and retaining confidence as a ranking signal. It does not supply measured lyric-overlap durations or exact tail endpoints; do not promote timing confidence or demand additional reviews for these accepted mixes. No policy threshold or main-library cue was changed in response to this feedback.
+
+Head and tail are assessed separately using prepared stem activity, source/version evidence and optional reviewed boundaries. A two-second total overlap allowance replaces the old any-intersection refusal. Longer high-confidence overlap steers automatic planning to another cue/loop; uncertain overlaps remain auditionable. Manual selected mixes can report and play a reviewed conflict. Confidence and overlap measurements are returned in the preview timeline and displayed in the web UI.
+
+The isolated refreshed scan has already saved `state/subbeats/lyric-evidence.json` on the station, with metadata for selected versions, independent head/tail disagreements and the owner's 16 reviewed head onsets bound to their prepared recording keys. No Demucs pass or main-library cue update was performed. Version selection recovered Show Me Love at 9.13s. Of 109 tracks, head confidence is 16 high, 22 medium, 70 low and one unknown; tail confidence is 22 medium, 86 low and one unknown. High overall pair confidence requires reviewed tail evidence too, which has not yet been supplied. Do not promote metadata/energy agreement to high or invent probability percentages.
+
+Preparation now refreshes lyric evidence automatically on successful preparation/coverage upgrade, using the same lookup as the explicit scan. The scan awaits candidate lookups, prints progress and accepts `--save`; strict reads and an exclusive save lock protect existing reviewed corrections. Read failures leave pairing uncertain; lookup/save failure never fails usable stems. Subsequent saves preserve reviewed boundaries for an unchanged prepared key. Matching/preview reads this saved evidence without network requests. The listener lyric cache and ordinary acoustic analysis remain separate. Preview cache version 15 includes the lyric evidence in its fingerprint. The station has later cue algorithms/earlier-loop handling than this research checkout; those station differences were preserved while applying these changes.
+
+This note supersedes the immediate next steps in the [3 November handover](2026-11-03-subbeats-handover.md). It captures the source-identity fix now pushed to the draft PR and station branch. The ongoing phrase-detection research in this checkout is separate and must be preserved.
+
+## Historical source-identity task and next step
+
+The owner asked to prevent preview cache upgrades from making users rescan every prepared track. The code fix is complete and pushed to both the draft PR and the test-station branch. The station source has **not** been rebuilt or restarted; the owner runs station rebuilds.
+
+Next, the owner can rebuild only the analyzer from the station checkout and retry the preview that previously reported `The original recording changed`:
+
+```sh
+cd /home/jaz666/Docker/subwave
+docker compose --parallel 1 \
+  -f docker-compose.yml \
+  -f docker-compose.analyzer-gpu.yml \
+  -f docker-compose.discord.yml \
+  up -d --no-deps --build analyzer
+```
+
+No rescan should be needed when the downloaded recording still matches its saved stem audio. If the preview succeeds, record that result and continue pair testing. If it still fails, capture the exact message and selected pair; only a real audio mismatch or insufficient saved evidence should require rechecking.
+
+## Vocal overlap handling — revisit today
+
+The current policy is **detect and avoid vocal overlap while keeping the stems intact**. It does not duck, mute, or cut vocal stems to make a pair fit. The first pair check uses persisted incoming/outgoing vocal activity from cue coverage when available; otherwise it uses measurements from the selected prepared passages. The renderer loads and measures those passages as well. A preview only tries a drum loop when it detects an overlap.
+
+Measurements are energy estimates, not voice recognition. `subbeats_vocals.py` measures 50 ms RMS frames from the separated `vocals` stem and the reconstructed full mix. The shared gate in `analyze_worker.py` requires energy to clear both 15% of the vocal stem's 90th-percentile level and 6% of the mix's 90th-percentile level. It bridges gaps up to 400 ms and discards runs shorter than 300 ms. A second, lower gate extends the ends of already detected activity; passage boundaries get 200 ms padding. Coverage-edge passages are marked uncertain. This can miss quiet/background vocals, especially content that Demucs places in `other`; it cannot establish that a passage contains words. Gusto's low background-vocal groove in `other` is a known example where listening remains essential.
+
+`assess_vocal_pair()` maps incoming passage times onto the outgoing clock using the selected tempo ratio, then checks intersections over the actual transition window. It reports `conflict`, `estimated`, `uncertain`, `coverage`, or `unassessed`. Missing/incomplete measurements and empty detections do not prove silence. When the natural outgoing lead-in starts before saved exit stems, the renderer copies that original stereo lead-in into the outgoing vocal-analysis channel conservatively. Thus any audible lead-in energy may be treated as possible outgoing vocal activity, and an incoming vocal over it can be refused even if that lead-in is instrumental.
+
+On a measured conflict, the planner may extend the incoming opening with one or two repeats of a **two-bar, grid-aligned, vocal-free drums-only** passage. The cue must not be explicitly invalidated, must use a fitted/opening/onset grid, and must have an 8/16-bar phrase. The candidate loop must fit before its natural arrival, have saved coverage and usable drum energy, and contain no measured incoming vocal passage. Bass, `other`, and vocals are silent in the inserted bars. Incoming passages after the loop are shifted by the added time; the planner requires them to clear the outgoing activity with at least a one-beat gap. The renderer inserts the loop, remeasures the resulting incoming stems and checks the pair again before mixing. It still preserves both vocal stems and lets the outgoing recording finish naturally.
+
+If a manual cue selection conflicts and no safe loop works, the preview returns an error. **Find Suitable Transition** can try other cue combinations, then prepares the configured regular crossfade preview if none render. That crossfade preview does not run this vocal-avoidance planner; it is only an audition of the regular fallback. The eventual Picker integration must defer to Subwave's regular transition selector. Loop timing and actual drums are checked, but seam quality, Demucs bleed, background vocals, and musical fit still require listening. The looped stems are remeasured before tempo-stretch and their source-coordinate activity is mapped by the tempo ratio; the final stretched mix is not independently passed through another vocal detector.
+
+Useful questions for today's review:
+
+- Should an unmeasured outgoing original-mix lead-in continue to be treated as entirely possible vocal energy, or should it get its own measurement/coverage?
+- How should low-level or background vocals in `other` be detected and represented without treating Demucs bleed as a sung passage?
+- Should `uncertain`, `coverage`, and `unassessed` pairs remain previewable with a warning, or should some of those states block an automatic Sub/Beat choice?
+- Is repeating only incoming drums acceptable when it delays the natural vocal arrival, and should the final tempo-stretched audio receive an additional vocal check?
+
+Relevant implementation and tests: `controller/scripts/subbeats_vocals.py`, `subbeats_cue_matching.py`, `subbeats_cue_preview.py`, and `subbeats_cues_test.py`.
+
+## Branches and worktrees
+
+- Draft PR: [Subwave PR #10](https://github.com/Jaz666/subwave/pull/10), branch `feat/subbeats-draft`, worktree `/home/jaz666/codex/subbeats-draft-pr`, pushed head `cd439fa8` (`fix(subbeats): verify changed containers against saved stems`).
+- Test station: branch `test-station/sleeve-notes-clean-20261014`, checkout `/home/jaz666/Docker/subwave`, pushed head `0998785f` with the same fix cherry-picked. Working tree was clean after the push.
+- This checkout: `/home/jaz666/codex/subwave-sub-beats`, branch `feat/subbeats-phrase-evidence-20261102`, based at `4b7295c0` when checked. It has many modified and untracked cue-detection, cue-coverage, planner, UI and research files, including a modified 3 November handover. Those are separate ongoing work; do not reset, overwrite, or merge them as part of the source-hash fix. This new handover file is additive and uncommitted.
+
+## What changed for the scan-once issue
+
+Preparation stores a byte-level SHA-256 of the Navidrome raw source. Cue preview previously required that exact hash whenever it fetched original audio. A preview-cache version bump invalidated cached WAVs and forced a new render, which exposed this strict check. A different container/tag byte stream could be rejected even when its decoded audio still matched the prepared stems.
+
+In `subbeats_reference_preview.py`, the exact hash remains the fast path. When it differs, the renderer now checks decoded audio against the sum of saved stems at the start, middle, and end of each available passage, using up to eight seconds per window and a 10% relative-RMS limit. It accepts only if at least one non-silent window is usable and every checked window matches. Cue preview callers pass their saved coverage into this comparison. A genuine audio change, duration mismatch, or lack of usable saved evidence still declines the preview and can require rechecking. The preview cache version bump itself does not change source identity or require rescanning.
+
+Focused verification passed on the PR branch using the existing analyzer CUDA image with the working-tree scripts mounted read-only:
+
+- `subbeats_reference_preview_test.py`: 5 tests passed.
+- `subbeats_cues_test.py`: 38 tests passed, including verification that cue previews use saved coverage.
+- `git diff --check` passed.
+
+The host Python lacks NumPy, so these tests were run inside the analyzer image. No station build, restart, or rescan was performed.
+
+## Broader Sub/Beats direction
+
+The preview work is still a development milestone, not live Picker integration. The eventual behavior should assess the already selected outgoing/incoming pair, use a suitable Sub/Beat stem transition when one can be prepared (including the supported bar combinations and drum-loop handling for vocal separation), and defer incompatible pairs to Subwave's existing regular transition selector when integrated into the selection path. Key-clash analysis remains later work. Do not turn preview fallback behavior into a new live crossfade rule.
+
+For Beat This!/Librosa cue detection and the owner's listening notes, continue from the 3 November handover and its linked research artifacts. Keep those detector investigations distinct from the current source-identity fix; the owner had asked to stop chasing perfect intro detection while moving on to outro work.
+
+## New direction: lyric boundaries
+
+The next detection work is about **where lyrics begin and end**, not expanding vocal/instrumental classification. Keep lyric timing separate from `introMs`, `outro.startMs`, and Demucs/Silero vocal ranges so it cannot silently change musical cues or playback policy.
+
+Use this source order:
+
+1. Synced structured lyrics from Navidrome.
+2. If absent, Subwave's existing on-demand LRCLIB lookup, but only if it supplies synced lyrics. Its lookup is asynchronous in the listener path; distinguish `pending`, unavailable, and a timed result rather than treating the first pending response as a miss.
+3. If neither source supplies usable timing, leave the lyric boundary unknown. Plain lyrics and Subwave's vocal/instrumental flag can provide context, but cannot supply timestamps.
+
+The first timed lyric is an onset. The final timed line's timestamp is only its onset, not its end; do not publish it as an exact lyric end. Keep source and uncertainty alongside the timing. Use Subwave's vocal/instrumental flag as supporting evidence: a timed lyric that conflicts with an instrumental classification remains usable and records a disagreement.
+
+Uncertain lyric evidence must not block a track from airing. Keep current playback and cue behavior when evidence is missing or unclear. Flag only exceptional cases for later review, and preserve manual corrections across future analysis runs. The initial comparison should report lyric boundaries beside existing intro/outro measurements for the 92 lyric-enriched tracks without changing those measurements or Demucs/Silero vocal ranges.
+
+Implementation boundary: `lyrics-sources.ts` already owns Navidrome-first lyric choice and LRCLIB's on-demand cache for the listener route. `analyze.ts` currently reads Navidrome lyrics directly for vocal-range derivation. Implement lyric-boundary evidence as a separate path; do not route LRCLIB timings through `deriveVocalFromLyrics`, since alternate-edit mismatches can make estimated vocal ranges unsafe.
+
+The first report-only slice is `controller/scripts/lyric-boundary-scan.ts`. From the controller container, run `npm run lyrics:boundaries -- --prepared` to inspect prepared Sub/Beats tracks, or pass `--ids id1,id2` / `--ids-file PATH`. It reports the first and last lyric-line starts, source/status, Subwave's instrumental verdict, and existing intro/outro cues. `lastLyricEndMs` is deliberately null because the synced line timestamp does not provide a line end. A pending LRCLIB lookup can be picked up by rerunning the scan after it completes. This may populate the existing external-lyrics cache, but it does not write acoustic analysis, cues, or playback state.
+
+### Listening feedback — 2026-11-09
+
+The settled 109-track report found 55 timed lyric results (16 music-server, 39 LRCLIB), 21 untimed, 31 without lyrics, and two explicit instrumental lyric results. The owner reviewed the 16 first-onset disagreements of at least five seconds: nine preferred the lyric timestamp, four preferred the existing cue, and three needed a separate correction. Both sources produced errors; this selected disagreement sample is not an overall accuracy estimate. The full feedback and approximate reviewed onsets are recorded in `2026-11-08-synced-lyric-boundary-scan.md`.
+
+Explicit corrections: N‐Joi — Anthem 6.0s; Steve Angello & Laidback Luke feat. Robin S — Show Me Love 9.0s; Armand van Helden — My My My 14.0s (slow fade in, first detectable word). These are documented evidence, not yet applied library overrides. Source order remains a lookup preference, but a synced timestamp is only an onset candidate until checked against the recording. Investigate word matching against the audio for confirmation; do not assume the first timed line includes the first audible lyric, or revert to energy/Silero alone as a lyric recognizer. Uncertainty remains non-blocking and does not require a review for every disagreement. No outro listening judgements were supplied.
+
+The owner then raised LRCLIB version mismatches. An audit of the six rejected LRCLIB candidates found a useful alternative for Show Me Love: selected record 9747087 starts at 6.5s; record 33069994 starts at 9.13s, close to the owner's 9.0s correction, and names the same compilation. Both records are 182s versus the station's 184s. The current client accepts a synced `/api/get` result before considering alternatives, and its fallback search takes the first synced artist/title/duration match without album/edit ranking. Other rejected tracks had exact duration matches; Feels Like Heaven also matched album/title/artist, so metadata cannot prove audio timing. The report's LRCLIB version audit records selected IDs, metadata and alternatives. Investigate matching and provenance before adding a recognizer; version mismatch remains a hypothesis rather than a diagnosis for every failure. No matching policy or station data was changed by this audit.

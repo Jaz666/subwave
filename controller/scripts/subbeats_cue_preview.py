@@ -231,7 +231,7 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
                 outgoing_vocals=(coverage[0][1].get('metadata',{}).get('outgoing') if coverage[0] else None)
                 incoming_vocals=(coverage[1][1].get('metadata',{}).get('incoming') if coverage[1] else None)
                 candidates=plan_pair_transitions(cues[0].get('outgoing',[]),cues[1].get('incoming',[]),
-                    *durations,outgoing_vocals,incoming_vocals)
+                    *durations,outgoing_vocals,incoming_vocals,*(req.get('lyric_evidence') or [None,None]))
         except (OSError,KeyError,TypeError,ValueError):
             candidates=[]
     for candidate in candidates[:12]:
@@ -239,6 +239,8 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
             audio,result=render_cue_preview({**req,'auto_plan':False,
                 'cue_indices':[candidate['outgoingCueIndex'],candidate['incomingCueIndex']]},
                 folders,records,gains,fetch_source)
+            if (result['timeline'].get('vocal') or {}).get('status') == 'conflict':
+                continue
             out_bars,in_bars=candidate['outgoingBars'],candidate['incomingBars']
             label=(f'{out_bars} bars out → {in_bars} bars in' if out_bars and in_bars
                    else 'Cue-point Sub/Beat mix')
@@ -279,6 +281,7 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     incoming=choose_cue(cues[1],'incoming',indices[1])
     durations=[json.loads((folder/'analysis.json').read_text())['duration_seconds'] for folder in folders]
     plan=passage_plan(outgoing,incoming,*durations)
+    unmeasured_until={}
     def parts(index,name,start,end):
         entry = (req.get('_cue_coverage') or [None,None])[index]
         if entry:
@@ -300,9 +303,9 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
                 source=source_audio(urls[0],folders[0],records[0],fetch_source,require_reference=True,
                     reference_regions=[entry,(folders[0],records[0])])
                 prefix=source[:,round(start*STEM_SR):round(available*STEM_SR)]
-                # The original mix needs no separated stems before the closing
-                # passage. Treat its unknown vocal content conservatively as
-                # vocal energy, so an incoming vocal cannot slip through here.
+                unmeasured_until[index]=available
+                # Preserve the original mix for sound; its energy does not
+                # establish vocal content or a high-confidence clash.
                 seam=min(round(.03*STEM_SR),audio['vocals'].shape[1])
                 ramp=np.linspace(0,1,seam)
                 for stem in audio:
@@ -320,18 +323,19 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     from subbeats_cue_matching import assess_vocal_pair, plan_incoming_drum_loop
     actual_outgoing_vocals=measure_vocals(out_parts,STEM_SR,plan['first'])
     actual_incoming_vocals=measure_vocals(in_parts,STEM_SR)
-    coverage=req.get('_cue_coverage') or [None,None]
-    outgoing_vocals=(coverage[0][1].get('metadata',{}).get('outgoing') if coverage[0] else None) or actual_outgoing_vocals
-    incoming_vocals=(coverage[1][1].get('metadata',{}).get('incoming') if coverage[1] else None) or actual_incoming_vocals
-    vocal = assess_vocal_pair(outgoing_vocals,incoming_vocals,plan)
+    if 0 in unmeasured_until:
+        actual_outgoing_vocals['unmeasuredUntilSeconds']=unmeasured_until[0]
+    outgoing_vocals,incoming_vocals=actual_outgoing_vocals,actual_incoming_vocals
+    out_evidence,in_evidence=req.get('lyric_evidence') or [None,None]
+    vocal = assess_vocal_pair(outgoing_vocals,incoming_vocals,plan,out_evidence,in_evidence)
     transition=dict(method='standard')
     if vocal['status']=='conflict':
         after_seconds=None
         loop_error=None
         while True:
-            loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,incoming,plan,after_seconds=after_seconds)
+            loop_plan=plan_incoming_drum_loop(outgoing_vocals,incoming_vocals,incoming,plan,after_seconds=after_seconds,out_evidence=out_evidence,in_evidence=in_evidence)
             if loop_plan is None:
-                raise ValueError(str(loop_error) if loop_error else vocal['reason'])
+                break  # A manual audition can still play the reported conflict.
             loop,_,_=loop_plan
             try:
                 looped_parts=insert_incoming_drum_loop(in_parts,loop)
@@ -340,7 +344,8 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
                 after_seconds=loop['startSeconds']
                 continue
             actual_incoming_vocals=measure_vocals(looped_parts,STEM_SR)
-            vocal=assess_vocal_pair(actual_outgoing_vocals,actual_incoming_vocals,plan)
+            from subbeats_vocal_confidence import shift_lyrics
+            vocal=assess_vocal_pair(actual_outgoing_vocals,actual_incoming_vocals,plan,out_evidence,shift_lyrics(in_evidence,loop))
             if vocal['status'] in ('conflict','coverage'):
                 loop_error=ValueError('The two-bar incoming drum loop did not clear the measured vocal overlap. Choose another transition.')
                 after_seconds=loop['startSeconds']
@@ -354,6 +359,7 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
     out_parts={name:part*10**(gains[0]/20) for name,part in out_parts.items()}
     in_parts={name:part*10**(gains[1]/20) for name,part in in_parts.items()}
     audio,timeline=mix_passages(out_parts,in_parts,plan)
+    timeline['vocal']=vocal
     return audio,dict(timeline=timeline,experimental=True,phrase_verified=False,
         method='cue-points',incoming_rate=plan['rate'],bpm=outgoing['bpm'],used_models=out_extended or in_extended,
         transition=transition,
