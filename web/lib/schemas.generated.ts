@@ -5743,6 +5743,34 @@ export const subbeatsSuitabilitySchema = z.object({
 });
 export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','beat','subbeat']);
 export const subbeatsPreparationMethodSchema = z.enum(['classic','small0','final0']);
+// Sub/Beats experiment evidence; never replaces the library's acoustic ranges.
+export const subbeatsLyricEvidenceSchema = z.object({
+  bundleKey:z.string().regex(/^[a-f0-9]{64}$/),
+  source:z.enum(['music-server','lrclib']).nullable(),
+  status:z.enum(['timed','unsynced','no-lyrics','instrumental','unavailable']),
+  firstSeconds:z.number().finite().nonnegative().nullable(),lastStartSeconds:z.number().finite().nonnegative().nullable(),
+  versionConfidence:z.enum(['medium','low','unknown']),versionReason:z.string(),
+  candidateCount:z.number().int().nonnegative(),firstSpreadSeconds:z.number().finite().nonnegative(),
+  tailSpreadSeconds:z.number().finite().nonnegative(),
+  selected:z.object({id:z.number().int().nullable(),title:z.string(),artist:z.string(),album:z.string(),durationSeconds:z.number().finite().nonnegative()}).nullable(),
+  instrumental:z.boolean().nullable(),
+  reviewedHeadSeconds:z.number().finite().nonnegative().nullable(),reviewedTailSeconds:z.number().finite().nonnegative().nullable(),
+});
+export const subbeatsLyricFileSchema = z.object({version:z.literal(1),tracks:z.record(z.string(),subbeatsLyricEvidenceSchema)});
+export const subbeatsBoundaryConfidenceSchema = z.enum(['high','medium','low','unknown']);
+export const subbeatsBoundaryAssessmentSchema = z.object({
+  confidence:subbeatsBoundaryConfidenceSchema,reason:z.string(),
+  firstSeconds:z.number().finite().nonnegative().nullable(),lastSeconds:z.number().finite().nonnegative().nullable(),
+  activeSeconds:z.number().finite().nonnegative(),boundaryVocal:z.enum(['likely','unlikely','unknown']),
+  lyricAnchorSeconds:z.number().finite().nonnegative().nullable(),
+});
+export const subbeatsCueVocalFitSchema = z.object({
+  status:z.enum(['estimated','conflict','coverage','uncertain','unassessed']),reason:z.string(),
+  confidence:subbeatsBoundaryConfidenceSchema.optional(),
+  overlapSeconds:z.number().finite().nonnegative().optional(),longestOverlapSeconds:z.number().finite().nonnegative().optional(),
+  allowanceSeconds:z.number().finite().nonnegative().optional(),
+  head:subbeatsBoundaryAssessmentSchema.optional(),tail:subbeatsBoundaryAssessmentSchema.optional(),
+});
 export const subbeatsCuePointSchema = z.object({
   sourceSeconds:z.number().finite().nonnegative().max(1200), bpm:z.number().finite().min(60).max(190),
   strength:z.number().finite().nonnegative(), reason:z.enum(['repetition','arrangement','fade','opening','ending']),
@@ -5769,6 +5797,7 @@ export const subbeatsCueCoverageSchema = z.object({
 });
 export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
+  lyricEvidence:subbeatsLyricEvidenceSchema.optional(),
   task:z.enum(['assess','coverage']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
   preparationMethod:subbeatsPreparationMethodSchema.optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
@@ -5825,6 +5854,7 @@ export const subbeatsViewSchema = subbeatsQueueSchema.extend({
 });
 
 export const subbeatsTimelineSchema = z.object({
+  vocal:subbeatsCueVocalFitSchema.optional(),
   kind:z.enum(['reference','subbeats-transition','regular-fallback']).optional(),
   duration: z.number().finite().positive().max(120),
   events: z.array(z.object({ at: z.number().finite().nonnegative().max(120), label: z.string().min(1).max(180) })).min(1).max(12),
@@ -5836,9 +5866,6 @@ export const subbeatsMatchQuerySchema = z.object({
 });
 export const subbeatsCueMatchQuerySchema = z.object({
   outgoingId:z.string().min(1).max(200), outgoingCueIndex:z.coerce.number().int().min(0).max(7).default(0),
-});
-export const subbeatsCueVocalFitSchema = z.object({
-  status:z.enum(['estimated','conflict','coverage','uncertain','unassessed']),reason:z.string(),
 });
 export const subbeatsCueMatchesSchema = z.object({
   method:z.literal('cue-points'),outgoingId:z.string(),outgoingCueIndex:z.number().int().min(0).max(7),

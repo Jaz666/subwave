@@ -533,15 +533,15 @@ class CueTests(unittest.TestCase):
             durationSeconds=180),suitability=dict(incoming=dict(vocalActivity=activity(0,100,[(0,3)]))))
         result=find_cue_matches([out,inc],'out')
         self.assertEqual(result['matches'][0]['incomingCueIndex'],1,'exclude conflicting first cue, retain original second index')
-        self.assertEqual(result['matches'][0]['vocal']['status'],'estimated')
+        self.assertEqual(result['matches'][0]['vocal']['status'],'uncertain')
         plan=preview.passage_plan(out_cue,dict(sourceSeconds=32,bpm=120),210,180)
         plan['rate']=2 # Test coordinate conversion independently of tempo admission.
-        self.assertEqual(assess_vocal_pair(activity(150,210,[(170,178)]),activity(0,120,[(26,30)]),plan)['status'],'conflict')
+        self.assertAlmostEqual(assess_vocal_pair(activity(150,210,[(170,178)]),activity(0,120,[(26,30)]),plan)['overlapSeconds'],2)
         self.assertEqual(assess_vocal_pair(activity(150,180,[]),activity(0,120,[]),plan)['status'],'coverage')
         self.assertEqual(assess_vocal_pair(activity(150,210,[]),activity(0,120,[]),plan)['status'],'uncertain')
-        self.assertEqual(assess_vocal_pair(activity(160,210,[]),activity(0,100,[(0,1)]),preview.passage_plan(out_cue,dict(sourceSeconds=32,bpm=120),210,180))['status'],'conflict')
+        self.assertEqual(assess_vocal_pair(activity(160,210,[]),activity(0,100,[(0,1)]),preview.passage_plan(out_cue,dict(sourceSeconds=32,bpm=120),210,180))['status'],'coverage')
         inc['cuePoints']['incoming']=inc['cuePoints']['incoming'][:1]
-        self.assertEqual(find_cue_matches([out,inc],'out')['excluded']['vocals'],1)
+        self.assertEqual(find_cue_matches([out,inc],'out')['matches'][0]['vocal']['status'],'uncertain')
         inc['cuePoints']['incoming'][0]['bpm']=90
         self.assertEqual(find_cue_matches([out,inc],'out')['excluded']['tempo'],1)
         inc.pop('suitability');inc['cuePoints']['incoming'][0]['bpm']=120
@@ -556,17 +556,18 @@ class CueTests(unittest.TestCase):
                         passages=[dict(startSeconds=a,endSeconds=b) for a,b in passages])
         outgoing=dict(id='out',title='out',artist='A',status='prepared',cuePoints=dict(
             algorithmVersion=5,outgoing=[dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)],durationSeconds=210),
-            cueCoverage=dict(outgoing=activity(150,210,[(170,200)])))
+            cueCoverage=dict(outgoing=activity(150,210,[(170,206)])),lyricEvidence=dict(reviewedTailSeconds=206))
         incoming=dict(id='in',title='in',artist='B',status='prepared',cuePoints=dict(
             algorithmVersion=5,incoming=[dict(sourceSeconds=16,bpm=120,phraseBars=8,phraseStartSeconds=0,timingSource='fitted-grid')],durationSeconds=180),
-            cueCoverage=dict(incoming=activity(0,100,[(25,35)])))
+            cueCoverage=dict(incoming=activity(0,100,[(25,35)])),lyricEvidence=dict(reviewedHeadSeconds=25))
         match=find_cue_matches([outgoing,incoming],'out')['matches'][0]
         self.assertEqual(match['transition']['method'],'drum-loop')
         self.assertEqual(match['transition']['loopStartSeconds'],0)
-        self.assertEqual(match['transition']['repeatCount'],1)
+        self.assertEqual(match['transition']['repeatCount'],2)
         self.assertEqual(match['vocal']['status'],'estimated')
 
-        incoming['cueCoverage']['incoming']=activity(0,100,[(17,19)])
+        incoming['cueCoverage']['incoming']=activity(0,100,[(17,23)])
+        incoming['lyricEvidence']['reviewedHeadSeconds']=17
         self.assertEqual(find_cue_matches([outgoing,incoming],'out')['excluded']['vocals'],1)
 
     def test_drum_loop_uses_the_earliest_vocal_free_two_bar_grid_section(self):
@@ -579,9 +580,9 @@ class CueTests(unittest.TestCase):
         out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
         in_cue=dict(sourceSeconds=24,bpm=120,phraseBars=8,phraseStartSeconds=8,timingSource='fitted-grid')
         plan=preview.passage_plan(out_cue,in_cue,210,180)
-        loop,_,_=plan_incoming_drum_loop(outgoing,incoming,in_cue,plan)
+        loop,_,_=plan_incoming_drum_loop(outgoing,incoming,in_cue,plan,out_evidence=dict(reviewedTailSeconds=205),in_evidence=dict(reviewedHeadSeconds=8))
         self.assertEqual(loop['startSeconds'],12,'skip the opening two-bar section because it contains vocals')
-        retry,_,_=plan_incoming_drum_loop(outgoing,incoming,in_cue,plan,after_seconds=12)
+        retry,_,_=plan_incoming_drum_loop(outgoing,incoming,in_cue,plan,after_seconds=12,out_evidence=dict(reviewedTailSeconds=205),in_evidence=dict(reviewedHeadSeconds=8))
         self.assertEqual(retry['startSeconds'],16,'move to the next safe grid section after a silent loop')
 
     def test_cue_matching_accepts_algorithm_seven_natural_start_anchor(self):
@@ -607,7 +608,7 @@ class CueTests(unittest.TestCase):
         self.assertFalse(np.any(looped['other'][:,stop:stop+length]))
         self.assertFalse(np.any(looped['vocals'][:,stop:stop+length]))
 
-    def test_cue_renderer_refuses_detected_overlap_without_cutting_either_vocal(self):
+    def test_cue_renderer_allows_uncertain_overlap_without_cutting_either_vocal(self):
         out_cue=dict(sourceSeconds=160,bpm=120,phraseEndSeconds=190)
         inc_cue=dict(sourceSeconds=32,bpm=120)
         outgoing={s:np.zeros((2,56000),dtype=np.float32) for s in preview.STEMS}
@@ -625,8 +626,9 @@ class CueTests(unittest.TestCase):
                   patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[inc_cue])),
                   patch.object(preview,'STEM_SR',1000),
                   patch.object(preview,'cue_region',side_effect=[(outgoing,False),(incoming,False)])):
-                with self.assertRaisesRegex(ValueError,'vocal passages overlap'):
-                    preview.render_cue_preview(req,folders,[{},{}],[0,0])
+                _,result=preview.render_cue_preview(req,folders,[{},{}],[0,0])
+                self.assertEqual(result['timeline']['vocal']['confidence'],'low')
+                self.assertGreater(result['timeline']['vocal']['overlapSeconds'],2)
             np.testing.assert_array_equal(incoming['vocals'],before)
             # A complete earlier incoming line fits, without moving or muting it.
             incoming['vocals'][:]=0;incoming['vocals'][:,1000:4000]=.3
@@ -656,8 +658,8 @@ class CueTests(unittest.TestCase):
                   patch.object(preview,'STEM_SR',1000),
                   patch.object(preview,'load_region',side_effect=[(dict((s,a[:,6000:]) for s,a in outgoing.items()),None),(incoming,None)]),
                   patch('subbeats_reference_preview.source_audio',return_value=source) as source_check):
-                with self.assertRaisesRegex(ValueError,'vocal passages overlap'):
-                    preview.render_cue_preview(req,folders,[{},{}],[0,0],fetch_source=object())
+                _,result=preview.render_cue_preview(req,folders,[{},{}],[0,0],fetch_source=object())
+                self.assertEqual(result['timeline']['vocal']['status'],'coverage')
                 self.assertEqual(source_check.call_args.kwargs['reference_regions'][0],req['_cue_coverage'][0])
             incoming['vocals'][:]=0;incoming['vocals'][:,5000:7000]=.3
             with (patch.dict('sys.modules',librosa=SimpleNamespace()),
@@ -681,7 +683,7 @@ class CueTests(unittest.TestCase):
             folders=[Path(tmp)/name for name in ['out','in']]
             for folder,duration in zip(folders,[210,180]):
                 folder.mkdir();(folder/'analysis.json').write_text(json.dumps(dict(duration_seconds=duration)))
-            req=dict(state_dir=tmp,track_ids=['out','in'],cue_keys=['a','b'])
+            req=dict(state_dir=tmp,track_ids=['out','in'],cue_keys=['a','b'],lyric_evidence=[dict(reviewedTailSeconds=206),dict(reviewedHeadSeconds=25)])
             with (patch.dict('sys.modules',librosa=SimpleNamespace()),
                   patch.object(cues,'load_cues',return_value=dict(algorithmVersion=5,outgoing=[out_cue],incoming=[in_cue])),
                   patch.object(preview,'STEM_SR',1000),

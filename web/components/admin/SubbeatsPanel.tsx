@@ -392,6 +392,24 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
       {preview.timeline?.kind === 'regular-fallback' && <p role="status" className="mt-3 max-w-prose text-sm">No Sub/Beat transition fit this pair. The preview uses the regular Subwave crossfade.</p>}
       {preview.timeline?.kind === 'subbeats-transition' && <p role="status" className="mt-3 max-w-prose text-sm">Selected plan: {preview.timeline.events[0]?.label.replace('Outgoing track · ', '')}. Listen for vocal bleed and musical fit.</p>}
+      {preview.timeline?.vocal && <div className="mt-4 border-t border-ink/20 pt-4" aria-label="Vocal overlap assessment">
+        <p className="text-sm font-medium">Estimated vocal overlap: {preview.timeline.vocal.overlapSeconds?.toFixed(2) ?? 'Unknown'}s · {preview.timeline.vocal.confidence ?? 'unknown'} confidence</p>
+        <p className="mt-1 max-w-prose text-xs text-muted">Short overlaps up to {preview.timeline.vocal.allowanceSeconds ?? 2}s are allowed. Confidence describes the evidence, not a measured probability.</p>
+        <dl className="mt-3 grid min-w-0 gap-4 text-sm sm:grid-cols-2">
+          {preview.timeline.vocal.head && <div className="min-w-0">
+            <dt className="font-medium">Incoming head · {preview.timeline.vocal.head.confidence} confidence</dt>
+            <dd className="mt-1 text-muted">Vocals in the opening bar: {preview.timeline.vocal.head.boundaryVocal}. Estimated activity: {preview.timeline.vocal.head.activeSeconds.toFixed(1)}s.
+              {preview.timeline.vocal.head.firstSeconds != null && ` First possible vocal: ${preview.timeline.vocal.head.firstSeconds.toFixed(1)}s from the recording start.`}</dd>
+            <dd className="mt-1 text-xs text-muted">{preview.timeline.vocal.head.reason}</dd>
+          </div>}
+          {preview.timeline.vocal.tail && <div className="min-w-0">
+            <dt className="font-medium">Outgoing tail · {preview.timeline.vocal.tail.confidence} confidence</dt>
+            <dd className="mt-1 text-muted">Vocals in the closing bar: {preview.timeline.vocal.tail.boundaryVocal}. Estimated activity: {preview.timeline.vocal.tail.activeSeconds.toFixed(1)}s.
+              {preview.timeline.vocal.tail.lastSeconds != null && outgoingDuration != null && ` Last possible vocal: ${Math.max(0,outgoingDuration-preview.timeline.vocal.tail.lastSeconds).toFixed(1)}s before the recording ends.`}</dd>
+            <dd className="mt-1 text-xs text-muted">{preview.timeline.vocal.tail.reason}</dd>
+          </div>}
+        </dl>
+      </div>}
       {preview.duration > 0 && <div className="mt-5 border-t border-ink/20 pt-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">

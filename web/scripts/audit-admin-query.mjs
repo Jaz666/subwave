@@ -246,6 +246,9 @@ const allowed = new Map([
   ['subbeats/CueAudition.tsx', new Map([
     ['subbeats-source-audition', { callee: 'adminResponse', method: 'GET', path: /^\/library\/subbeats\/source-audio\/\$\{\}$/ }],
   ])],
+  ['subbeats/SourceAudioDialog.tsx', new Map([
+    ['subbeats-source-audition', { callee: 'adminResponse', method: 'GET', path: /^\/library\/subbeats\/source-audio\/\$\{\}$/ }],
+  ])],
   ['skills/SkillEditModal.tsx', new Map([
     ['skill-export', { callee: 'adminResponse', method: 'GET', path: /^\/dj\/skills\/\$\{\}\/export$/ }],
   ])],
