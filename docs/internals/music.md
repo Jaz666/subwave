@@ -13,7 +13,7 @@ track length, clean shows, seed-vs-pick,
 dead-air trim, festivals, listener request hardening, likes, and the blocklist
 rules.
 
-## Sub/Beats audition mixing styles
+**Sub/Beats audition mixing styles.**
 
 Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks or alter live broadcast mixing. The preview selector is an in-memory workspace choice, initially Long blend. Style recommendations/variation based on key remain the next step after listening to the new styles.
 

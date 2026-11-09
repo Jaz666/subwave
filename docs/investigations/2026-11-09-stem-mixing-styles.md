@@ -86,7 +86,7 @@ Controller and web TypeScript checks passed. Focused lint passed for the changed
 
 ## Station candidate
 
-The candidate is maintained on `feat/subbeats-draft` in `/home/jaz666/codex/subbeats-draft-pr`. The approved source will be carried into `/home/jaz666/Docker/subwave`, preserving its unrelated prompt/skill edits. The station source rollback baseline is `3deda1e6`. No live service has been rebuilt or restarted by Codex. After the source transfer, the owner can rebuild controller, analyzer and web together from the station checkout:
+The candidate is maintained on `feat/subbeats-draft` in `/home/jaz666/codex/subbeats-draft-pr`. The approved source from development commit `4e8d0852` is carried into `/home/jaz666/Docker/subwave`, preserving its unrelated prompt/skill edits. The station source rollback baseline is `3deda1e6`. No live service has been rebuilt or restarted by Codex. After the source transfer, the owner can rebuild controller, analyzer and web together from the station checkout:
 
 ```sh
 docker compose --parallel 1 -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --no-deps --build controller analyzer web
