@@ -59,7 +59,8 @@
       "auditionReview": {
         "date": "2026-11-09",
         "reviewer": "owner",
-        "result": "acceptable"
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
       }
     },
     {
@@ -102,7 +103,8 @@
       "auditionReview": {
         "date": "2026-11-09",
         "reviewer": "owner",
-        "result": "acceptable"
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
       }
     },
     {
@@ -145,7 +147,8 @@
       "auditionReview": {
         "date": "2026-11-09",
         "reviewer": "owner",
-        "result": "acceptable"
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
       }
     },
     {
@@ -188,7 +191,8 @@
       "auditionReview": {
         "date": "2026-11-09",
         "reviewer": "owner",
-        "result": "acceptable"
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
       }
     },
     {
@@ -231,7 +235,8 @@
       "auditionReview": {
         "date": "2026-11-09",
         "reviewer": "owner",
-        "result": "acceptable"
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
       }
     },
     {
@@ -274,7 +279,8 @@
       "auditionReview": {
         "date": "2026-11-09",
         "reviewer": "owner",
-        "result": "acceptable"
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
       }
     }
   ],
@@ -283,8 +289,10 @@
     "reviewer": "owner",
     "acceptableCount": 6,
     "totalCount": 6,
-    "scope": "complete transition acceptability",
+    "scope": "vocal-overlap audition exercise; harmonic suitability not confirmed",
     "comment": "All 6 audition pairs sound fine",
-    "exactVocalTimingsConfirmed": false
+    "exactVocalTimingsConfirmed": false,
+    "harmonicSuitabilityConfirmed": false,
+    "clarification": "The owner clarified that the earlier acceptance may have applied to the vocal-overlap exercise; the pairs need another listen for harmonic mixing."
   }
 }

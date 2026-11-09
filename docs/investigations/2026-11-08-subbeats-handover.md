@@ -1,5 +1,9 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest work — 9 November: harmonic handover investigation
+
+Read [the harmonic audition sheet](2026-11-09-harmonic-auditions.md). The owner clarified that the previous six passes may have applied only to the vocal-overlap exercise; harmonic suitability is unreviewed. The review scope is corrected in the earlier report and JSON. Six A/B extracts now compare the current envelopes with a four-beat exchange of bass and `other`, retaining the current vocal/drum envelopes. Audio lives locally under `/home/jaz666/codex/subbeats-harmonic-auditions-20261109`; source keys, measurements and exact input are documented in the new report/JSON. No product code, library state or running service was changed. Next: listen to these six comparisons before choosing automatic harmonic handling.
+
 ## Latest work — 9 November: head/tail confidence
 
 Completion: confidence/automatic-refresh implementation committed as `aa621f25`, with the source-audition audit registration in `b180a38b`, and pushed to `jaz666/feat/subbeats-draft` (draft PR #10). The station candidate is committed and pushed as `2d8af4ea` on `test-station/sleeve-notes-clean-20261014`. The canonical development checkout is clean. The research checkout retains its documented pending cue/Silero experiments; the station retains two unrelated prompt/skill edits, excluded from these commits.
@@ -15,7 +19,7 @@ curl --fail http://localhost:7700/api/health
 
 The audition change is consolidated on `feat/subbeats-draft` in `/home/jaz666/codex/subbeats-draft-pr`, with candidate source in `/home/jaz666/Docker/subwave`. This research checkout retains separate pending cue/Silero work. Read [Head and tail confidence changes](2026-11-09-head-tail-confidence.md) for the policy, current evidence, six pairings and the rebuild command. Codex did not rebuild or restart services during implementation; the owner runs station rebuilds. Earlier source-identity and lyric-only notes below are retained as history.
 
-The owner subsequently auditioned all six proposed pairings and reported that all sound fine (9 November). All six are recorded as acceptable in the report and its JSON shortlist. This supports allowing short/uncertain overlap and retaining confidence as a ranking signal. It does not supply measured lyric-overlap durations or exact tail endpoints; do not promote timing confidence or demand additional reviews for these accepted mixes. No policy threshold or main-library cue was changed in response to this feedback.
+The owner subsequently auditioned all six proposed pairings and reported that all sound fine (9 November). All six are recorded as acceptable for the vocal-overlap exercise in the report and its JSON shortlist. The owner subsequently clarified that harmonic suitability needs another listen; none is yet accepted as a harmonic mix. This supports allowing short/uncertain overlap and retaining confidence as a ranking signal. It does not supply measured lyric-overlap durations or exact tail endpoints; do not promote timing confidence or demand additional reviews for these accepted mixes. No policy threshold or main-library cue was changed in response to this feedback.
 
 Head and tail are assessed separately using prepared stem activity, source/version evidence and optional reviewed boundaries. A two-second total overlap allowance replaces the old any-intersection refusal. Longer high-confidence overlap steers automatic planning to another cue/loop; uncertain overlaps remain auditionable. Manual selected mixes can report and play a reviewed conflict. Confidence and overlap measurements are returned in the preview timeline and displayed in the web UI.
 
@@ -85,7 +89,7 @@ The host Python lacks NumPy, so these tests were run inside the analyzer image. 
 
 ## Broader Sub/Beats direction
 
-The preview work is still a development milestone, not live Picker integration. The eventual behavior should assess the already selected outgoing/incoming pair, use a suitable Sub/Beat stem transition when one can be prepared (including the supported bar combinations and drum-loop handling for vocal separation), and defer incompatible pairs to Subwave's existing regular transition selector when integrated into the selection path. Key-clash analysis remains later work. Do not turn preview fallback behavior into a new live crossfade rule.
+The preview work is still a development milestone, not live Picker integration. The eventual behavior should assess the already selected outgoing/incoming pair, use a suitable Sub/Beat stem transition when one can be prepared (including the supported bar combinations and drum-loop handling for vocal separation), and defer incompatible pairs to Subwave's existing regular transition selector when integrated into the selection path. Key-clash analysis is now being investigated separately from vocal overlap. Do not turn preview fallback behavior into a new live crossfade rule.
 
 For Beat This!/Librosa cue detection and the owner's listening notes, continue from the 3 November handover and its linked research artifacts. Keep those detector investigations distinct from the current source-identity fix; the owner had asked to stop chasing perfect intro detection while moving on to outro work.
 

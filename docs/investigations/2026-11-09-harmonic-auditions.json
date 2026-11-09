@@ -1,0 +1,838 @@
+{
+  "pairs": [
+    {
+      "case": "medium confidence, short overlap",
+      "outgoingId": "0KUsUv7L4BrgKe6WC2EXrM",
+      "outgoing": "Sash! — Encore une fois (Future Breeze edit)",
+      "incomingId": "0mmLLJ4Yi2ugzsKaGvSN43",
+      "incoming": "Steve Angello & Laidback Luke feat. Robin S — Show Me Love",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "estimated",
+        "reason": "Estimated 1.43s vocal overlap (longest 1.43s); medium confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "medium",
+        "overlapSeconds": 1.4326161949611844,
+        "longestOverlapSeconds": 1.4326161949611844,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "high",
+          "reason": "Boundary reviewed against this prepared recording; activity duration remains an estimate.",
+          "firstSeconds": 9,
+          "lastSeconds": 15.166918981490541,
+          "activeSeconds": 6.06691898149054,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 9.13
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 203.87383397343606,
+          "lastSeconds": 214.31,
+          "activeSeconds": 10.086166026563944,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 212.38
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      },
+      "number": 1,
+      "tracks": [
+        {
+          "id": "0KUsUv7L4BrgKe6WC2EXrM",
+          "bundleKey": "a285588684c7df845e11deda3e7f47838d085e793a3b7d27e25dc684ab68db22",
+          "coverageKey": "81baed9c8bbce1800eba8ba2d7bb623f75194e388af9535577160e0e75e2530a",
+          "key": "1A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "G#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "B",
+              "mode": "minor"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "G#",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "0mmLLJ4Yi2ugzsKaGvSN43",
+          "bundleKey": "85b62fd7731effb8e59eda3fb97e19b5829927f9ce7ed7c031e907a016c8f137",
+          "coverageKey": "379e3110af798147e1f707c4f13308deb56c7df309752b631b45f6215ecc31aa",
+          "key": "8A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "G#",
+              "mode": "major"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "C",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 30023,
+              "tonic": "F",
+              "mode": "major"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "A",
+              "mode": "minor"
+            }
+          ]
+        }
+      ],
+      "plan": {
+        "first": 181.02,
+        "end": 222.53260139860137,
+        "out_end": 218.88,
+        "entry": 203.87383397343606,
+        "handover": 218.88,
+        "out_cue": 185.02,
+        "incoming_end": 18.858648726863162,
+        "rate": 1.0107124601075348,
+        "period": 0.45657517482517374
+      },
+      "extractStartSeconds": 181.02,
+      "originalPreviewStartSeconds": 181.02,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 203.87383397343606,
+          "endSeconds": 218.88,
+          "key": "10A",
+          "separation": 0.11017796397209167
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 15.166918981490541,
+          "key": "8B",
+          "separation": 0.1075519323348999
+        }
+      ],
+      "comparison": {
+        "current": "01-A-current.mp3",
+        "short": "01-B-short-handover.mp3",
+        "commonPeakGain": 0.8586004972457886,
+        "loudnessGainsDb": [
+          0,
+          0
+        ],
+        "durationSeconds": 41.51260770975057,
+        "arrivalSeconds": 37.859999999999985,
+        "outgoingEndSeconds": 37.859999999999985,
+        "exchangeSeconds": 1.826300699300695,
+        "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
+        "harmonicReview": "pending"
+      }
+    },
+    {
+      "case": "medium confidence, longer overlap",
+      "outgoingId": "3AZOHWF8DUl5La3yypEqii",
+      "outgoing": "Solardo x Eli Brown — XTC (radio edit)",
+      "incomingId": "4BWTA4c9JnZ5pGCxDi1h9G",
+      "incoming": "Chris Malinchak — So Good to Me (radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 5.01s vocal overlap (longest 5.01s); medium confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "medium",
+        "overlapSeconds": 5.010411874020917,
+        "longestOverlapSeconds": 5.010411874020917,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "high",
+          "reason": "Boundary reviewed against this prepared recording; activity duration remains an estimate.",
+          "firstSeconds": 11.3,
+          "lastSeconds": 16.599999999999998,
+          "activeSeconds": 5.299999999999997,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 11.29
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 135.02587731805784,
+          "lastSeconds": 154.24340136054423,
+          "activeSeconds": 19.21752404248639,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 151.78
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      },
+      "number": 2,
+      "tracks": [
+        {
+          "id": "3AZOHWF8DUl5La3yypEqii",
+          "bundleKey": "9129ad54542de5dac06eea90aaa78c6036b37ea9daad277e0575600a6a933427",
+          "coverageKey": "b018372cc100a56c559025816aeb8d9af615b7381fa276eb339ec5786022ed4c",
+          "key": "2B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 20016,
+              "tonic": "D#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "G#",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "4BWTA4c9JnZ5pGCxDi1h9G",
+          "bundleKey": "452dd836c9f0dccebeb859abb29f17d8213679b486abb00c6ea3d86e3d9d3e5d",
+          "coverageKey": "a678ab31f5e8d23047339f599854a7be9ab4c24cbe1c3284ab49d861c0c4edfa",
+          "key": "1A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "B",
+              "mode": "major"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 40008,
+              "tonic": "G#",
+              "mode": "minor"
+            }
+          ]
+        }
+      ],
+      "plan": {
+        "first": 116.04339054144458,
+        "end": 156.63020408163266,
+        "out_end": 156.63020408163266,
+        "entry": 135.02587731805784,
+        "handover": 150.04474675802243,
+        "out_cue": 120.04339054144458,
+        "incoming_end": 22.85299786244044,
+        "rate": 1.0577972696178108,
+        "period": 0.4687711908840288
+      },
+      "extractStartSeconds": 120.04340136054422,
+      "originalPreviewStartSeconds": 116.04339054144458,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 135.02587731805784,
+          "endSeconds": 156.63020408163266,
+          "key": "2A",
+          "separation": 0.23320606350898743
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 22.85299786244044,
+          "key": "1B",
+          "separation": 0.2593246102333069
+        }
+      ],
+      "comparison": {
+        "current": "02-A-current.mp3",
+        "short": "02-B-short-handover.mp3",
+        "commonPeakGain": 0.6049460768699646,
+        "loudnessGainsDb": [
+          0,
+          0
+        ],
+        "durationSeconds": 36.58680272108843,
+        "arrivalSeconds": 30.001345397478204,
+        "outgoingEndSeconds": 36.58680272108843,
+        "exchangeSeconds": 1.8750847635361152,
+        "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
+        "harmonicReview": "pending"
+      }
+    },
+    {
+      "case": "reviewed head with automatic tail",
+      "outgoingId": "28dLudClz8uL7yraekHlvQ",
+      "outgoing": "Urban Hype — A Trip to Trumpton",
+      "incomingId": "6wckYgzaDkE8maAGaQo4OC",
+      "incoming": "Lonyo — Summer of Love (radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 0,
+      "vocal": {
+        "status": "estimated",
+        "reason": "Estimated 1.43s vocal overlap (longest 1.43s); medium confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "medium",
+        "overlapSeconds": 1.426283871752048,
+        "longestOverlapSeconds": 1.426283871752048,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "high",
+          "reason": "Boundary reviewed against this prepared recording; activity duration remains an estimate.",
+          "firstSeconds": 18.4,
+          "lastSeconds": 21.564673184024475,
+          "activeSeconds": 2.3646731840244755,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 18.45
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 194.4765306122449,
+          "lastSeconds": 209.9265306122449,
+          "activeSeconds": 12.75,
+          "boundaryVocal": "likely",
+          "lyricAnchorSeconds": 207.18
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      },
+      "number": 3,
+      "tracks": [
+        {
+          "id": "28dLudClz8uL7yraekHlvQ",
+          "bundleKey": "f91ef007ac0659cc5ea94452ceb4210cb324ae7bf7385fda78c2f8af02d48680",
+          "coverageKey": "7e16241f48df68248f7ec44cf0481f74df521c67bbf9ec7b278f999132315585",
+          "key": "1B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "E",
+              "mode": "major"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "B",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 30023,
+              "tonic": "B",
+              "mode": "minor"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "G#",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "6wckYgzaDkE8maAGaQo4OC",
+          "bundleKey": "0c5a63a044c7eb58d93acb8e8f66eb4f84b8c8d38c2449ab4602a2ba84d66f79",
+          "coverageKey": "141977b76cc2314ba744b2a845f700411794a97e4d8f1c6c427ed1e23f4b470c",
+          "key": "11B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "G",
+              "mode": "major"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "C#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 30023,
+              "tonic": "D",
+              "mode": "major"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "E",
+              "mode": "major"
+            }
+          ]
+        }
+      ],
+      "plan": {
+        "first": 175.37653146853143,
+        "end": 211.44,
+        "out_end": 211.44,
+        "entry": 191.4079731218489,
+        "handover": 206.67208391608384,
+        "out_cue": 179.37653146853143,
+        "incoming_end": 21.564673184024475,
+        "rate": 1.0765097967967001,
+        "period": 0.42649300699300646
+      },
+      "extractStartSeconds": 179.3765306122449,
+      "originalPreviewStartSeconds": 175.37653146853143,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 191.4079731218489,
+          "endSeconds": 211.44,
+          "key": "2A",
+          "separation": 0.158627450466156
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 21.564673184024475,
+          "key": "12B",
+          "separation": 0.15212476253509521
+        }
+      ],
+      "comparison": {
+        "current": "03-A-current.mp3",
+        "short": "03-B-short-handover.mp3",
+        "commonPeakGain": 0.9325857758522034,
+        "loudnessGainsDb": [
+          0,
+          0
+        ],
+        "durationSeconds": 32.0634693877551,
+        "arrivalSeconds": 27.295553303838943,
+        "outgoingEndSeconds": 32.063469387755106,
+        "exchangeSeconds": 1.7059720279720259,
+        "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
+        "harmonicReview": "pending"
+      }
+    },
+    {
+      "case": "low confidence, short overlap",
+      "outgoingId": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "outgoing": "Urban Cookie Collective — The Key, the Secret",
+      "incomingId": "2bMGqIxYFp3CnUZhMdjlMz",
+      "incoming": "Faithless — Insomnia (radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 2,
+      "vocal": {
+        "status": "coverage",
+        "reason": "Estimated 1.50s vocal overlap (longest 1.50s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 1.4978138930696616,
+        "longestOverlapSeconds": 1.4978138930696616,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Plausible lyric versions disagree on this boundary by more than two seconds.",
+          "firstSeconds": 30.45,
+          "lastSeconds": 38.71643432974499,
+          "activeSeconds": 8.266434329744992,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 30.63
+        },
+        "tail": {
+          "confidence": "low",
+          "reason": "Stem coverage is incomplete or includes an unseparated original-mix lead-in.",
+          "firstSeconds": 184.9938321995465,
+          "lastSeconds": 215.94383219954648,
+          "activeSeconds": 30.94999999999999,
+          "boundaryVocal": "unknown",
+          "lyricAnchorSeconds": 219.25
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      },
+      "number": 4,
+      "tracks": [
+        {
+          "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+          "bundleKey": "02f3df0689f925be94078919afb44042a4f697bb76209246fde87fdd486749d7",
+          "coverageKey": "bd72d7ff6016cedb98b0d97f87e477fca0746ec44ddae8aee0def37368f15b8a",
+          "key": "7B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 40008,
+              "tonic": "F",
+              "mode": "major"
+            }
+          ]
+        },
+        {
+          "id": "2bMGqIxYFp3CnUZhMdjlMz",
+          "bundleKey": "35ed0f3c429a65fec68097ac2353840425105ffaf706a2c0966597e01a6094ac",
+          "coverageKey": "2bb1a673c693f1731629b01cb76d83e43eda1e9b67944ebbd36f817813356744",
+          "key": "10A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "D#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "B",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "B",
+              "mode": "minor"
+            }
+          ]
+        }
+      ],
+      "plan": {
+        "first": 180.65581702444743,
+        "end": 222.53333333333333,
+        "out_end": 222.53333333333333,
+        "entry": 184.65581702444743,
+        "handover": 214.55635861552963,
+        "out_cue": 184.99384190544816,
+        "incoming_end": 38.71643432974499,
+        "rate": 1.0221481792527745,
+        "period": 0.46191432359502316
+      },
+      "extractStartSeconds": 184.9938321995465,
+      "originalPreviewStartSeconds": 180.65581702444743,
+      "incomingPrefixOmittedSeconds": 0.3455015957873111,
+      "sectionKeys": [
+        {
+          "startSeconds": 184.9938321995465,
+          "endSeconds": 222.53333333333333,
+          "key": "7B",
+          "separation": 0.08316540718078613
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 38.71643432974499,
+          "key": "10A",
+          "separation": 0.08452069759368896
+        }
+      ],
+      "comparison": {
+        "current": "04-A-current.mp3",
+        "short": "04-B-short-handover.mp3",
+        "commonPeakGain": 0.7782821655273438,
+        "loudnessGainsDb": [
+          0,
+          0
+        ],
+        "durationSeconds": 37.53950113378685,
+        "arrivalSeconds": 29.562526415983143,
+        "outgoingEndSeconds": 37.53950113378684,
+        "exchangeSeconds": 1.8476572943800926,
+        "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
+        "harmonicReview": "pending"
+      }
+    },
+    {
+      "case": "low confidence, longer overlap",
+      "outgoingId": "6OYcg2iOqZu1SZNm3TKwBI",
+      "outgoing": "Rozalla — Everybody’s Free (To Feel Good)",
+      "incomingId": "0m0nKleIHadas4LDgo9V17",
+      "incoming": "De’Lacy — Hideaway (Deep Dish radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 5.00s vocal overlap (longest 3.52s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 5.001081461082208,
+        "longestOverlapSeconds": 3.5178024401972436,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "A nearby-duration lyric version was found, but album or full title differs.",
+          "firstSeconds": 16.8,
+          "lastSeconds": 31.5243180076177,
+          "activeSeconds": 14.224318007617697,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 17.36
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 184.02764724993293,
+          "lastSeconds": 204.97609977324265,
+          "activeSeconds": 20.948452523309726,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 198.69
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      },
+      "number": 5,
+      "tracks": [
+        {
+          "id": "6OYcg2iOqZu1SZNm3TKwBI",
+          "bundleKey": "063a4b18a936d22c0d179ad2ae97f1645f40cbda63b0b45463e9a1ebc24db0e8",
+          "coverageKey": "53bc0895ce546b9a0fdb4c31b89e411b7f554af83ae0b376c14002666dcd3186",
+          "key": "8A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "A",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "C",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "A",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "0m0nKleIHadas4LDgo9V17",
+          "bundleKey": "0959fa973a73aac86856707089b5a677fe0cfe2d272b9c5132803703dc06a88e",
+          "coverageKey": "b400ac0beba8b224c2963fb73d11b9d8e54fbb39bd3c167e599148671cba068e",
+          "key": "2B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "A#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 40008,
+              "tonic": "F#",
+              "mode": "major"
+            }
+          ]
+        }
+      ],
+      "plan": {
+        "first": 166.4261018275443,
+        "end": 213.6,
+        "out_end": 213.6,
+        "entry": 184.02764724993293,
+        "handover": 199.9556326861053,
+        "out_cue": 170.4261018275443,
+        "incoming_end": 31.5243180076177,
+        "rate": 1.0660064241099723,
+        "period": 0.4613989196650156
+      },
+      "extractStartSeconds": 170.42609977324264,
+      "originalPreviewStartSeconds": 166.4261018275443,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 184.02764724993293,
+          "endSeconds": 213.6,
+          "key": "8A",
+          "separation": 0.378066748380661
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 31.5243180076177,
+          "key": "2B",
+          "separation": 0.12135493755340576
+        }
+      ],
+      "comparison": {
+        "current": "05-A-current.mp3",
+        "short": "05-B-short-handover.mp3",
+        "commonPeakGain": 1.0,
+        "loudnessGainsDb": [
+          0,
+          0
+        ],
+        "durationSeconds": 43.17390022675737,
+        "arrivalSeconds": 29.529532912862663,
+        "outgoingEndSeconds": 43.173900226757354,
+        "exchangeSeconds": 1.8455956786600625,
+        "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
+        "harmonicReview": "pending"
+      }
+    },
+    {
+      "case": "original Agnelli & Nelson comparison",
+      "outgoingId": "75cQfewXIS03M3D1qiDnO8",
+      "outgoing": "Agnelli & Nelson — El Nino",
+      "incomingId": "3CZAByVhRxf1wrPPNX1PUG",
+      "incoming": "Agnelli & Nelson — Everyday",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 0,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 16.52s vocal overlap (longest 16.52s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 16.52468651043131,
+        "longestOverlapSeconds": 16.52468651043131,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 0.0,
+          "lastSeconds": 19.349999999999998,
+          "activeSeconds": 19.349999999999998,
+          "boundaryVocal": "likely",
+          "lyricAnchorSeconds": null
+        },
+        "tail": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 206.32828401111064,
+          "lastSeconds": 222.85297052154195,
+          "activeSeconds": 16.52468651043131,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": null
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      },
+      "number": 6,
+      "tracks": [
+        {
+          "id": "75cQfewXIS03M3D1qiDnO8",
+          "bundleKey": "9f687ea78f57965e3b34d402690297ff981ca2829a9c6a865b351ca1baff7be9",
+          "coverageKey": "4254e9520e6fcabc9ed71758c74970c9ec514b1c1541250c1836b351d1284f9a",
+          "key": "8A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 30023,
+              "tonic": "A",
+              "mode": "major"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "A",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "3CZAByVhRxf1wrPPNX1PUG",
+          "bundleKey": "4a8144e80f5447af3e88f72ef17e0c37499d4fc167d4180882ed16bfbc08453a",
+          "coverageKey": "d2bc9803c344a2d26bcfa289ba100cf022531f5e6b133d99c1878e08e5559783",
+          "key": "9B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 40008,
+              "tonic": "G",
+              "mode": "major"
+            }
+          ]
+        }
+      ],
+      "plan": {
+        "first": 188.2029731640497,
+        "end": 226.54666666666665,
+        "out_end": 226.54666666666665,
+        "entry": 206.32828401111064,
+        "handover": 220.65378400316817,
+        "out_cue": 192.2029731640497,
+        "incoming_end": 20.199279692116377,
+        "rate": 0.9990551685678782,
+        "period": 0.4445439193612261
+      },
+      "extractStartSeconds": 192.20297052154194,
+      "originalPreviewStartSeconds": 188.2029731640497,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 206.32828401111064,
+          "endSeconds": 226.54666666666665,
+          "key": "8A",
+          "separation": 0.06627172231674194
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 20.199279692116377,
+          "key": "9B",
+          "separation": 0.31516438722610474
+        }
+      ],
+      "comparison": {
+        "current": "06-A-current.mp3",
+        "short": "06-B-short-handover.mp3",
+        "commonPeakGain": 0.7134256362915039,
+        "loudnessGainsDb": [
+          0,
+          0
+        ],
+        "durationSeconds": 34.34369614512472,
+        "arrivalSeconds": 28.450813481626227,
+        "outgoingEndSeconds": 34.34369614512471,
+        "exchangeSeconds": 1.7781756774449045,
+        "vocals": "Both vocal stems retain the current envelope; no pitch shift.",
+        "harmonicReview": "pending"
+      }
+    }
+  ],
+  "investigation": {
+    "date": "2026-11-09",
+    "purpose": "Harmonic handover listening comparison; earlier approval applied to vocal-overlap exercise only",
+    "reviewStatus": "pending",
+    "audioDirectory": "/home/jaz666/codex/subbeats-harmonic-auditions-20261109",
+    "image": "sha256:76dc8f98230ad5f146e26d20629ca29010f78484d802b3b21742f6212dce1335",
+    "libraryKeyCoverage": 109,
+    "endingKeyRangesReachingEnd": 0,
+    "audioSource": "Existing cue-coverage stems; no new separation or station writes",
+    "levelPolicy": "Unity per-track gain; one shared peak reduction per A/B pair; no per-variant loudness normalization",
+    "keyProbe": "Existing library CQT/Krumhansl-Schmuckler estimator on the sum of bass, other and vocal stems in each overlapping section; diagnostic estimates, not verified keys or clash decisions"
+  }
+}
