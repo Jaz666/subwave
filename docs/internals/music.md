@@ -13,6 +13,21 @@ track length, clean shows, seed-vs-pick,
 dead-air trim, festivals, listener request hardening, likes, and the blocklist
 rules.
 
+**Sub/Beats audition mixing styles.**
+
+Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks or alter live broadcast mixing. The preview selector is an in-memory workspace choice, initially Long blend. Style recommendations/variation based on key remain the next step after listening to the new styles.
+
+| Style | Stem envelopes |
+|---|---|
+| Long blend | Original behaviour: incoming vocals/`other` enter at source entry; incoming drums/bass ramp over the final four beats before arrival; outgoing stems reach the recording end. |
+| Short exchange | Bass and `other` exchange across four beats centred on arrival. The incoming instrumental prefix is withheld until this exchange. |
+| Bass swap | Bass exchanges over one beat centred on arrival; `other` retains the longer blend. |
+| Drums first | Incoming drums normally build over up to 32 beats before arrival, bounded by source entry; an inserted drum loop can start this entrance earlier. Bass/`other` use the four-beat exchange. |
+
+Vocal envelopes, vocal-overlap assessment, cue timing and outgoing drum tails use the existing handling for all four styles. A compatible key is guidance for longer melodic overlap, not a guarantee of fit. The two new styles are listening candidates, not yet approved for automatic variety.
+
+`subbeatsMixStyleSchema` owns the request/timeline values. The controller passes `mix_style` through both analyzer backends, validates the returned style, and reports an analyzer update requirement if a non-default request came back as another style. Regular-crossfade fallback retains its own timeline kind and has no stem-style claim. The style is included in preview cache version 16; stems, cues and library analysis do not need re-preparation. The mixer implementation is `controller/scripts/subbeats_cue_preview.py::mix_passages`. [The style audition sheet](../investigations/2026-11-09-stem-mixing-styles.md) records the current listening candidate and exact profiles.
+
 **Sub/Flow join previews.** The editor's play buttons audition up to ten seconds
 on either side of each join through the browser. `POST /library/sub-flow/join-preview`
 requires admin authentication and a pair that passes the same current album-order,

@@ -868,6 +868,7 @@ class SubbeatsReferencePreview(BaseModel):
 
 
 class SubbeatsPreviewRequest(BaseModel):
+    mix_style: str = Field(default='long-blend', pattern=r'^(long-blend|short-exchange|bass-swap|drums-first)$')
     lyric_evidence: list[dict[str, Any] | None] | None = Field(default=None, min_length=2, max_length=2)
     coverage_keys: list[str | None] | None = Field(default=None, min_length=2, max_length=2)
     source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)

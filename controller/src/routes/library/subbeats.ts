@@ -163,6 +163,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     const tracks = parsed.data.trackIds.map(id => state.jobs.find(j => j.id === id));
     if (tracks[0]?.id === tracks[1]?.id || tracks.some(j => j?.status !== 'prepared' || !j.bundleKey)) throw new Error('Choose two different prepared tracks.');
     const cueMode = parsed.data.method === 'cue-points';
+    if (!cueMode && parsed.data.mixStyle && parsed.data.mixStyle !== 'long-blend') throw new Error('Mixing styles require a cue-point preview.');
     const autoPlan = parsed.data.autoPlan === true;
     if (autoPlan && !cueMode) throw new Error('Automatic transition planning requires cue-point preview mode.');
     if (cueMode && (parsed.data.matched || parsed.data.referenceBars !== undefined || parsed.data.barShift !== 0)) throw new Error('Cue-point previews use saved cue choices. Reset the bar shift and match selection.');
@@ -194,7 +195,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
     const gains = await Promise.all(songs.map(song => resolveGainDb(song && { ...song })));
     const preview = await previewSubbeats(tracks[0]!.bundleKey!, tracks[1]!.bundleKey!, config.stateDir, subbeatsStore.cacheId(), abort.signal, gains.map(gain => gain ?? 0), parsed.data.barShift, reference, {stems_root:stemCache.stemsRoot(), track_ids:parsed.data.trackIds, ...(windowPlan ? {window_plan:windowPlan} : {}),
-      ...(cueMode ? {method:'cue-points' as const,auto_plan:autoPlan,
+      ...(cueMode ? {method:'cue-points' as const,auto_plan:autoPlan,mix_style:parsed.data.mixStyle ?? 'long-blend',
         lyric_evidence:withSubbeatsLyrics(tracks as typeof state.jobs,config.stateDir).map(track => track.lyricEvidence ?? null),
         cue_keys:tracks.map(track => track?.cuePoints?.algorithmVersion && track.cuePoints.algorithmVersion >= 5 ? track.cuePoints.artifactKey : null),
         cue_indices:cueIndices,coverage_keys:tracks.map(track => track?.cueCoverage?.artifactKey ?? null),

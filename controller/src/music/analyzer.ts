@@ -1,4 +1,4 @@
-import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema } from '../schemas/subbeats.js';
+import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -1323,10 +1323,19 @@ export function subbeatsCapability(): boolean | null {
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
 export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
-  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';auto_plan?:boolean;cue_keys?:Array<string|null>;cue_indices?:number[];coverage_keys?:Array<string|null>;lyric_evidence?:Array<ReturnType<typeof subbeatsLyricEvidenceSchema.parse>|null>;crossfade_seconds?:number;equal_power_crossfade?:boolean}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';auto_plan?:boolean;mix_style?:ReturnType<typeof subbeatsMixStyleSchema.parse>;cue_keys?:Array<string|null>;cue_indices?:number[];coverage_keys?:Array<string|null>;lyric_evidence?:Array<ReturnType<typeof subbeatsLyricEvidenceSchema.parse>|null>;crossfade_seconds?:number;equal_power_crossfade?:boolean}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
   const backend = await sharedSubbeatsBackend();
   signal.throwIfAborted();
   const timeoutMs = shared?.method === 'cue-points' ? 30*60_000 : 180_000;
+  const checkedTimeline = (raw:unknown) => {
+    const timeline = raw ? subbeatsTimelineSchema.parse(raw) : null;
+    if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
+    if (shared?.method === 'cue-points' && timeline?.kind !== 'regular-fallback'
+      && (timeline?.mixStyle ?? 'long-blend') !== (shared.mix_style ?? 'long-blend')) {
+      throw new Error('Update the analyzer to enable the selected Sub/Beats mixing style.');
+    }
+    return timeline;
+  };
   const payload = { ...shared, out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,
     ...(shared?.method === 'cue-points' ? {source_urls:shared.track_ids.map(id => subsonic.getRawStreamUrl(id))} : {}),
     ...(reference ? { reference: { out_seconds: reference.out_seconds, in_resolve: reference.in_resolve, bars: reference.bars,
@@ -1342,15 +1351,13 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
     const audio = Buffer.from(await response.arrayBuffer());
     if (audio.length > 24 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
     const raw = response.headers.get('x-subbeats-timeline');
-    const timeline = raw ? subbeatsTimelineSchema.parse(JSON.parse(raw)) : null;
-    if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
+    const timeline = checkedTimeline(raw ? JSON.parse(raw) : null);
     return { audio, timeline };
   }
   const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, timeoutMs);
   signal.throwIfAborted();
   const path = answer.subbeats_preview;
   if (typeof path !== 'string' || !path.startsWith(`${stateDir}/subbeats/previews/`) || path.includes('..')) throw new Error('The analyzer returned an invalid preview.');
-  const timeline = answer.subbeats_timeline ? subbeatsTimelineSchema.parse(answer.subbeats_timeline) : null;
-  if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
+  const timeline = checkedTimeline(answer.subbeats_timeline);
   return { audio: readFileSync(path), timeline };
 }

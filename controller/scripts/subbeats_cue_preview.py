@@ -11,6 +11,8 @@ import tempfile
 from subbeats_cues import TAIL_SECONDS
 from subbeats_preview import STEM_SR, STEMS, load_region
 
+MIX_STYLE_LABELS = {'long-blend':'Long blend','short-exchange':'Short exchange',
+                    'bass-swap':'Bass swap','drums-first':'Drums first'}
 
 def choose_cue(cues, role, index):
     if type(index) is not int or not 0<=index<len(cues.get(role,[])):
@@ -83,34 +85,45 @@ def cue_region(req, index, folder, record, name, start, end, fetch_source):
     return parts,True
 
 
-def mix_passages(out_parts,in_parts,plan):
+def mix_passages(out_parts,in_parts,plan,mix_style='long-blend',*,normalize=True):
     import numpy as np
+    if mix_style not in MIX_STYLE_LABELS:
+        raise ValueError('Choose an available mixing style.')
     duration=plan['end']-plan['first']
     total=round(duration*STEM_SR)
-    begin=round((plan['entry']-plan['first'])*STEM_SR)
+    source_offset=max(0,round((plan['first']-plan['entry'])*STEM_SR))
+    begin=max(0,round((plan['entry']-plan['first'])*STEM_SR))
     arrival=plan['handover']-plan['first']
     t=np.arange(total)/STEM_SR
-    cross_start=max(plan['entry']-plan['first'],arrival-4*plan['period'])
+    cross_start=max(plan['entry']-plan['first'],arrival-(32 if mix_style=='drums-first' else 4)*plan['period'])
     if plan.get('incoming_loop'):
         loop=plan['incoming_loop']
         cross_start=min(cross_start,plan['entry']-plan['first']+loop['startSeconds']/plan['rate'])
     rhythm=np.clip((t-cross_start)/(arrival-cross_start),0,1)
+    exchange_beats=1 if mix_style=='bass-swap' else 4
+    exchange_start=arrival-exchange_beats*.5*plan['period']
+    exchange_end=arrival+exchange_beats*.5*plan['period']
+    exchange=np.clip((t-exchange_start)/(exchange_end-exchange_start),0,1)
     audio=np.zeros((2,total),dtype=np.float32)
     for name in STEMS:
         outgoing=out_parts[name]
-        incoming=in_parts[name]
+        incoming=in_parts[name][:,source_offset:]
         if outgoing.shape[1]<round((plan['out_end']-plan['first'])*STEM_SR)-2:
             raise ValueError('The outgoing stems do not cover the recording end.')
         if incoming.shape[1]<total-begin-2:
             raise ValueError('The incoming stems do not cover the selected passage after tempo adjustment.')
         out_frames=min(total,outgoing.shape[1])
         in_frames=min(total-begin,incoming.shape[1])
-        # Keep the final outgoing beat and its decay, including rhythm stems.
-        # A phrase marker is not a hard audio cutoff.
+        # Vocal and drum tails retain the current envelope in every style.
+        # Short styles intentionally exchange bass/other around the arrival.
         out_env=np.ones(out_frames)
         if name in ('other','vocals'):
             out_env*=np.clip((out_frames-np.arange(out_frames))/(.03*STEM_SR),0,1)
         in_env=rhythm[begin:begin+in_frames] if name in ('drums','bass') else np.ones(in_frames)
+        if (mix_style in ('short-exchange','drums-first') and name in ('bass','other')
+                or mix_style=='bass-swap' and name=='bass'):
+            out_env*=1-exchange[:out_frames]
+            in_env=exchange[begin:begin+in_frames]
         audio[:,:out_frames]+=outgoing[:,:out_frames]*out_env
         audio[:,begin:begin+in_frames]+=incoming[:,:in_frames]*in_env
     edge=min(round(.03*STEM_SR),total//2)
@@ -119,14 +132,20 @@ def mix_passages(out_parts,in_parts,plan):
     peak=float(np.max(np.abs(audio)))
     if not np.isfinite(audio).all() or peak<1e-8:
         raise ValueError('This cue-point preview contains no usable audio')
-    audio*=min(1.,.98/peak)
+    if normalize:
+        audio*=min(1.,.98/peak)
     events=[dict(at=0.,label='Outgoing track'),
             dict(at=plan['out_cue']-plan['first'],label='Selected outgoing closing cue'),
-            dict(at=plan['entry']-plan['first'],label='Incoming opening · complete source prefix retained'),
-            dict(at=cross_start,label='Rhythm handover begins'),
+            dict(at=plan['entry']-plan['first'],label='Incoming opening begins'),
+            dict(at=cross_start,label='Incoming drums begin entering' if mix_style=='drums-first' else 'Rhythm handover begins'),
             dict(at=arrival,label='Incoming arrival meets outgoing closing change'),
-            dict(at=plan['out_end']-plan['first'],label='Outgoing recording finishes naturally'),
+            dict(at=plan['out_end']-plan['first'],label='Outgoing recording finishes naturally' if mix_style=='long-blend'
+                 else 'Outgoing recording ends · vocal and drum tails retained'),
             dict(at=duration,label='Preview complete')]
+    if mix_style!='long-blend':
+        exchanged='Bass' if mix_style=='bass-swap' else 'Bass and melody'
+        events.extend([dict(at=exchange_start,label=f'{exchanged} exchange begins'),
+                       dict(at=exchange_end,label=f'{exchanged} exchange complete')])
     if plan.get('incoming_loop'):
         loop=plan['incoming_loop']
         events.append(dict(at=plan['entry']-plan['first']+loop['startSeconds']/plan['rate'],
@@ -134,7 +153,7 @@ def mix_passages(out_parts,in_parts,plan):
     duration=audio.shape[1]/STEM_SR
     for event in events:
         event['at']=min(duration,max(0.,event['at']))
-    return audio,dict(duration=duration,events=sorted(events,key=lambda e:e['at']))
+    return audio,dict(mixStyle=mix_style,duration=duration,events=sorted(events,key=lambda e:e['at']))
 
 
 def insert_incoming_drum_loop(parts, loop):
@@ -246,6 +265,7 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
                    else 'Cue-point Sub/Beat mix')
             label+= (f" · out cue {candidate['outgoingTimeToEndSeconds']:.2f}s to end"
                      f" · in arrival {candidate['incomingSeconds']:.2f}s from start")
+            label+=' · '+MIX_STYLE_LABELS[result['timeline']['mixStyle']]
             loop=result['transition']
             if loop.get('method')=='drum-loop':
                 label+=f" · incoming drums looped from {loop['startSeconds']:.1f}s for {loop['bars']} bars × {loop['repeats']}"
@@ -254,7 +274,7 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
             for event in result['timeline']['events']:
                 if event['label']=='Selected outgoing closing cue':
                     event['label']=f"Selected outgoing cue · {candidate['outgoingTimeToEndSeconds']:.2f}s to track end"
-                elif event['label'].startswith('Incoming opening ·'):
+                elif event['label']=='Incoming opening begins':
                     event['label']=f"Incoming arrival · {candidate['incomingSeconds']:.2f}s from source start"
             result['transition_summary']=label
             return audio,result
@@ -266,6 +286,9 @@ def render_automatic_transition(req,folders,records,gains,fetch_source):
 def render_cue_preview(req,folders,records,gains,fetch_source=None):
     import librosa
     from subbeats_cues import load_cues
+    mix_style=req.get('mix_style','long-blend')
+    if mix_style not in MIX_STYLE_LABELS:
+        raise ValueError('Choose an available mixing style.')
     if req.get('auto_plan'):
         return render_automatic_transition(req,folders,records,gains,fetch_source)
     if req.get('bar_shift',0) or req.get('reference') is not None or req.get('window_plan') is not None:
@@ -358,7 +381,7 @@ def render_cue_preview(req,folders,records,gains,fetch_source=None):
         in_parts={name:librosa.effects.time_stretch(part,rate=plan['rate']) for name,part in in_parts.items()}
     out_parts={name:part*10**(gains[0]/20) for name,part in out_parts.items()}
     in_parts={name:part*10**(gains[1]/20) for name,part in in_parts.items()}
-    audio,timeline=mix_passages(out_parts,in_parts,plan)
+    audio,timeline=mix_passages(out_parts,in_parts,plan,mix_style)
     timeline['vocal']=vocal
     return audio,dict(timeline=timeline,experimental=True,phrase_verified=False,
         method='cue-points',incoming_rate=plan['rate'],bpm=outgoing['bpm'],used_models=out_extended or in_extended,
