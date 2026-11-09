@@ -19,6 +19,11 @@ a temporary strict-playlist show containing only prepared tracks. Start with
 upgrading selected queued pairs; mixed prepared/regular pairs and follow-up
 discovery come afterward. Live integration remains unimplemented.
 
+The first integration slice now exposes a read-only pair-plan diagnostic and
+sample-based handoff timing contract. It shares the audition cue search and
+checks additional tempo-release coverage. It never arms playback; see the
+live plan's implementation checkpoint for the endpoint and limitations.
+
 ### Minimum: assess already queued pairs and upgrade suitable transitions
 
 Assess adjacent queued tracks for Sub/Beats compatibility, regardless of which

@@ -1,4 +1,4 @@
-import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
+import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsPairPlanSchema, subbeatsTimelineSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -1375,6 +1375,28 @@ export async function matchSubbeats(jobs: Array<ReturnType<typeof subbeatsJobSch
 export async function matchSubbeatsCues(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, outgoingCueIndex:number) {
   const result = subbeatsCueMatchesSchema.safeParse(await requestSubbeatsMatches(jobs,outgoingId,0,outgoingCueIndex));
   if (!result.success) throw new Error('Update the analyzer to find cue-point candidates.');
+  return result.data;
+}
+
+// Metadata-only planning. This never renders, fetches recordings or loads models.
+export async function planSubbeatsPairFromEvidence(jobs:Array<ReturnType<typeof subbeatsJobSchema.parse>>,
+  outgoingId:string,incomingId:string,mixStyle:ReturnType<typeof subbeatsMixStyleSchema.parse>) {
+  const backend = await sharedSubbeatsBackend();
+  const payload = {method:'live-pair',jobs,outgoing_id:outgoingId,incoming_id:incomingId,mix_style:mixStyle};
+  let answer:WorkerMessage;
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/match-subbeats`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:5000,bodyDeadline:true,
+    });
+    if (response.status === 404) throw new Error('Update the analyzer to enable Sub/Beats live pair planning.');
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'match_subbeats',...payload},5000);
+  const result = subbeatsPairPlanSchema.safeParse(answer.subbeats_matches);
+  if (!result.success) throw new Error('The analyzer did not return a supported Sub/Beats pair plan. Update the analyzer.');
+  if (result.data.outgoingId !== outgoingId || result.data.incomingId !== incomingId || result.data.mixStyle !== mixStyle) {
+    throw new Error('The analyzer returned a plan for a different pair or mixing style.');
+  }
   return result.data;
 }
 

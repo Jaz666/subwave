@@ -5,6 +5,54 @@ description of live functionality already delivered. Preparation, automatic
 cue-plan search and four mixing styles currently work in browser auditions;
 Sub/Beats does not yet upgrade live queue transitions or influence discovery.
 
+## Implementation checkpoint: read-only pair planning
+
+The first implementation adds `music/subbeats-pair.ts::assessSubbeatsPair` and
+the operator-only `POST /library/subbeats/pair-plan` diagnostic. Supply
+`{"outgoingId":"prepared-outgoing-id","incomingId":"prepared-incoming-id"}`.
+The route changes no queue, preparation or playback state and needs the updated
+controller and analyzer. It is not yet a browser control or a live queue hook.
+
+The controller selects Long blend for compatible library key estimates and
+Short exchange for mismatched/unknown keys, using the existing Camelot maths.
+Both remain estimates, including any leading-window fallback for an unmeasured
+ending. It attaches source-bound lyric evidence and sends only the two selected
+preparation records through the existing model-free match operation, with a
+five-second request budget. It fingerprints the evidence/style and rejects
+changes during the request. This is not a substitute for final queue/show
+eligibility or validating the actual audio/source before publication.
+
+The analyzer reuses `plan_pair_transitions`, also used by automatic auditions,
+then filters proposals by the additional live handoff coverage requirements.
+The response contains up to twelve ranked plans, or an ordinary-transition
+reason. It proposes sample positions at 44.1 kHz for incoming entry, handover,
+outgoing end, tempo release, clip end and original incoming resume. Inserted
+drum-loop samples are removed when calculating the original source position.
+Frame offsets refer to clip time; source samples refer to original file time.
+
+The initial release contract is a linear change in playback rate over eight
+outgoing beats, beginning after the outgoing recording, tonal exchange and any
+inserted loop finish. One incoming bar at native tempo (at least one second)
+follows before the original-track handoff. Equal-tempo pairs have no release
+ramp. These are proposed parameters to render and audition, not a listening
+approval. Head coverage must reach the calculated original resume position;
+the planner does not extend stems. Any outgoing original-mix prefix is recorded
+as `originalLeadInSeconds` for later source/audio validation.
+
+Every response has `renderReady: false`. No audio is rendered, no models or
+lyric lookups run, and no cache-file integrity or audible seam is claimed.
+`subbeatsLiveTimingSchema` validates ordering and consistency of the proposed
+source resume with the tempo/loop map; `subbeatsPairAssessmentSchema` owns the
+controller response and its generated web mirror. The browser audition API
+and its manually selected styles retain their existing behaviour.
+
+Checks for this slice: controller and web type checks, focused controller lint,
+Python syntax parsing and documentation/diff checks. Runtime pair fixtures,
+audio rendering/listening, full test suites and station deployment are not
+part of this checkpoint. Next: render this contract with pitch-preserving
+tempo release and original-audio seam matching, then audition both handoffs
+before wiring the queue.
+
 ## First trial: a temporary strict-playlist show
 
 The owner will use a temporary show with strict playlist selection containing

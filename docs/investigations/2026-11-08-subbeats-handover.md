@@ -2,6 +2,16 @@
 
 ## Next work — 9 November: live integration and strict-playlist trial
 
+First implementation checkpoint: `music/subbeats-pair.ts::assessSubbeatsPair`
+and operator-only `POST /library/subbeats/pair-plan` now return a read-only
+proposal using the shared audition cue planner. Key estimates select a style;
+sample-based timing includes a proposed eight-beat tempo release, native bar,
+and loop-corrected source resume. A response is always `renderReady: false`;
+source/audio integrity, actual rendering and queue admission are still pending.
+No station source/settings/services were changed. The maintained plan records
+the contract and checks; the next action is the pitch-preserving release and
+original-audio handoff renderer, followed by complete-handoff auditions.
+
 The owner has agreed to plan live queue integration. Read the maintained
 [live integration plan](../internals/subbeats-live-integration.md) before
 implementation. First upgrade already-selected prepared pairs through the
@@ -16,12 +26,11 @@ Keep lyric uncertainty permissive and reuse the existing regular Stem Blend /
 pair-aware crossfade when a Sub/Beats plan cannot fit. The future DJ Booth can
 consume the same timing/envelope plan; its UI is separate work.
 
-This update documents the plan and refreshes draft PR #10 only. No live
-integration is implemented or station source/settings/services changed. Only
-documentation diff and link checks are required for this update; the owner
-explicitly waived a full PR test run at this stage. Next action in
-`feat/subbeats-draft`: define the live render result and shared pair assessment,
-including tempo release and exact source resume positions, before queue wiring.
+The earlier documentation-only update was committed as `44873c79`. The owner
+explicitly waived a full PR test run at this stage. The first planning slice
+adds a callable diagnostic and timing contract; it does not implement live
+audio rendering or queue publication. Continue in `feat/subbeats-draft` before
+moving an approved runtime candidate into the station checkout.
 
 ## Latest work — 9 November: four selectable stem mixing styles
 

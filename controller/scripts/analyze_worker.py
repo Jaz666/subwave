@@ -3575,7 +3575,10 @@ def main():
         if req.get("op") == "match_subbeats":
             try:
                 from subbeats_matching import find_matches
-                if req.get('method') == 'cue-points':
+                if req.get('method') == 'live-pair':
+                    from subbeats_cue_matching import plan_live_pair
+                    matches = plan_live_pair(req['jobs'], req['outgoing_id'], req['incoming_id'], req['mix_style'])
+                elif req.get('method') == 'cue-points':
                     from subbeats_cue_matching import find_cue_matches
                     matches = find_cue_matches(req['jobs'],req['outgoing_id'],req.get('outgoing_cue_index',0))
                 else:

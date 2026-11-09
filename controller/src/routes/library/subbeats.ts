@@ -9,7 +9,7 @@ import { resolveGainDb } from '../../music/loudness.js';
 import * as blocklist from '../../music/blocklist.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
-import { subbeatsCueMatchQuerySchema, subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
+import { subbeatsPairPlanRequestSchema, subbeatsCueMatchQuerySchema, subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
 import * as db from '../../music/library-db.js';
 import * as library from '../../music/library.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
@@ -22,6 +22,7 @@ import * as subsonic from '../../music/subsonic.js';
 import { fetchWithTimeout } from '../../util/fetch-timeout.js';
 import * as settings from '../../settings.js';
 import { withSubbeatsLyrics } from '../../music/subbeats-lyrics.js';
+import { assessSubbeatsPair } from '../../music/subbeats-pair.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
@@ -31,6 +32,15 @@ const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
 router.get('/library/subbeats', requireAdmin, (_req, res) => {
   try { res.json(view()); }
   catch { res.status(503).json({ error: 'The Sub/Beats preparation list could not be read' }); }
+});
+// Diagnostic proposal only: does not modify preparation, queue or playback.
+router.post('/library/subbeats/pair-plan', requireAdmin, validateBody(subbeatsPairPlanRequestSchema), async (req,res) => {
+  try {
+    const assessment = await assessSubbeatsPair(req.body.outgoingId,req.body.incomingId);
+    res.set('Cache-Control','no-store').json(assessment);
+  } catch (error) {
+    res.status(400).json({error:error instanceof Error ? error.message : 'The pair could not be assessed.'});
+  }
 });
 // Audition original recordings without modifying Subwave playback state.
 // Keep Navidrome credentials server-side and stream without writing shared state.

@@ -918,7 +918,9 @@ async def prepare_subbeats(req: SubbeatsPrepareRequest):
 
 
 class SubbeatsMatchRequest(BaseModel):
-    method: Literal['stems', 'cue-points'] = 'stems'
+    method: Literal['stems', 'cue-points', 'live-pair'] = 'stems'
+    incoming_id: str | None = Field(default=None, min_length=1, max_length=200)
+    mix_style: Literal['long-blend', 'short-exchange', 'bass-swap', 'drums-first'] = 'long-blend'
     outgoing_cue_index: int = Field(default=0, ge=0, le=7)
     jobs: list[dict[str, Any]] = Field(max_length=500)
     outgoing_id: str
@@ -927,6 +929,8 @@ class SubbeatsMatchRequest(BaseModel):
 
 @app.post("/match-subbeats")
 async def match_subbeats(req: SubbeatsMatchRequest):
+    if req.method == 'live-pair' and (not req.incoming_id or req.incoming_id == req.outgoing_id):
+        raise HTTPException(422, 'Choose two different tracks for live pair planning')
     msg = await analyzer_pool.request({"id":"1","op":"match_subbeats",**req.model_dump()})
     if not msg.get("ok"):
         raise HTTPException(422,msg.get("error") or "Match search failed")

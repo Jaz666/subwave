@@ -141,6 +141,48 @@ export const subbeatsViewSchema = subbeatsQueueSchema.extend({
 });
 
 export const subbeatsMixStyleSchema = z.enum(['long-blend','short-exchange','bass-swap','drums-first']);
+export const subbeatsPairPlanRequestSchema = z.object({
+  outgoingId:z.string().trim().min(1).max(200),incomingId:z.string().trim().min(1).max(200),
+}).refine(value => value.outgoingId !== value.incomingId, 'Choose two different tracks.');
+// Proposed sample positions, not proof that audio has been rendered or verified.
+// Frame offsets are relative to clip start; source samples are original file offsets.
+const subbeatsSamplePositionSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+export const subbeatsLiveTimingSchema = z.object({
+  sampleRate:z.literal(44100),outgoingStartSample:subbeatsSamplePositionSchema,
+  incomingEntryFrame:subbeatsSamplePositionSchema,handoverFrame:subbeatsSamplePositionSchema,
+  outgoingEndFrame:subbeatsSamplePositionSchema,incomingRate:z.number().finite().min(.92).max(1.08),releaseCurve:z.literal('linear-rate'),
+  releaseStartFrame:subbeatsSamplePositionSchema,releaseEndFrame:subbeatsSamplePositionSchema,
+  clipFrames:subbeatsSamplePositionSchema.min(1).max(120*44100),incomingResumeSample:subbeatsSamplePositionSchema.min(1),
+  loop:z.object({startSample:subbeatsSamplePositionSchema,lengthSamples:subbeatsSamplePositionSchema.min(1),
+    repeats:z.number().int().min(1).max(2)}).optional(),
+}).refine(value => {
+  const inserted = value.loop ? value.loop.lengthSamples*value.loop.repeats : 0;
+  const loopEnd = value.loop ? value.loop.startSample+value.loop.lengthSamples+inserted : 0;
+  const stretchedFrames = value.releaseStartFrame-value.incomingEntryFrame;
+  const releaseFrames = value.releaseEndFrame-value.releaseStartFrame;
+  const expectedResume = Math.round(value.incomingRate*stretchedFrames
+    + (value.incomingRate+1)*.5*releaseFrames + value.clipFrames-value.releaseEndFrame)-inserted;
+  return value.incomingEntryFrame <= value.handoverFrame
+    && value.handoverFrame <= value.releaseStartFrame && value.outgoingEndFrame <= value.releaseStartFrame
+    && value.releaseStartFrame <= value.releaseEndFrame && value.releaseEndFrame+44100 <= value.clipFrames
+    && value.incomingRate*stretchedFrames+1 >= loopEnd
+    && Math.abs(value.incomingResumeSample-expectedResume) <= 1
+    && (value.incomingRate === 1 ? releaseFrames === 0 : releaseFrames > 0);
+},'Invalid live handoff timing');
+export const subbeatsPairPlanSchema = z.object({
+  version:z.literal(1),method:z.literal('live-pair'),outgoingId:z.string(),incomingId:z.string(),
+  status:z.enum(['planned','unavailable']),renderReady:z.literal(false),reason:z.string().min(1),mixStyle:subbeatsMixStyleSchema,
+  declined:z.object({coverage:z.number().int().nonnegative(),timing:z.number().int().nonnegative()}),
+  plans:z.array(z.object({outgoingCueIndex:z.number().int().min(0).max(7),incomingCueIndex:z.number().int().min(0).max(7),
+    outgoingBars:z.union([z.literal(8),z.literal(16)]).nullable(),incomingBars:z.union([z.literal(8),z.literal(16)]).nullable(),
+    vocal:subbeatsCueVocalFitSchema,timing:subbeatsLiveTimingSchema,originalLeadInSeconds:z.number().finite().nonnegative(),
+  })).max(12),
+}).refine(value => (value.status === 'planned') === (value.plans.length > 0), 'Invalid pair planning outcome');
+export const subbeatsPairAssessmentSchema = z.object({
+  plan:subbeatsPairPlanSchema,evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),
+  harmonic:z.object({compatibility:z.enum(['compatible','mismatch','unknown']),outgoingKey:z.string().nullable(),
+    incomingKey:z.string().nullable(),evidence:z.literal('library-estimate'),reason:z.string()}),
+});
 export const subbeatsTimelineSchema = z.object({
   mixStyle:subbeatsMixStyleSchema.optional(),
   vocal:subbeatsCueVocalFitSchema.optional(),
