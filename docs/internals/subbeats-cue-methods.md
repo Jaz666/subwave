@@ -13,6 +13,12 @@ surface for an eventual unattended Sub/Beats transition capability. They are not
 the final product boundary. The two intended integration stages are below;
 neither is connected to broadcast or picking today.
 
+The agreed [live integration plan](subbeats-live-integration.md) now details
+the next implementation and rollout. The first owner-run live trial will use
+a temporary strict-playlist show containing only prepared tracks. Start with
+upgrading selected queued pairs; mixed prepared/regular pairs and follow-up
+discovery come afterward. Live integration remains unimplemented.
+
 ### Minimum: assess already queued pairs and upgrade suitable transitions
 
 Assess adjacent queued tracks for Sub/Beats compatibility, regardless of which
@@ -57,15 +63,18 @@ before playback if the queue or prepared evidence changes.
 - Keep competing vocal passages apart while preserving complete vocal endings
   and entries. Tempo/grid fit, musical passage fit, valid source identity and
   sufficient stem coverage also constrain a plan. Duration matching and 8/16-bar
-  labels guide candidates; they do not establish compatibility. Harmonic/Camelot
-  key compatibility is a later addition.
+  labels guide candidates; they do not establish compatibility. The live plan
+  adds evidence-aware harmonic style selection, informed by the November
+  listening results, without making key compatibility a hard track filter.
 - Preserve automatic cue selection as the eventual normal path. Manual auditions
   and the owner's pair-specific preferences are evaluation evidence, not a
   requirement for an operator to approve every future join.
 - Prepare/cache sufficient audio ahead of playback. Preview may currently extend
   stems on demand, but discovery must not launch heavy separation and a live
   handoff must not wait for the preview's potentially 30-minute preparation path.
-  Missing, uncertain, stale or late evidence means no Sub/Beats upgrade.
+  Missing required audio/timing, stale evidence or a late result means no
+  Sub/Beats upgrade. Lyric uncertainty alone remains permissive under the
+  current head/tail confidence policy; it is not a routine review requirement.
 
 Vocal-aware assessment and saved-evidence discovery now run in the cue preview
 (see below). Validate the suggestions by listening before enabling queued-pair

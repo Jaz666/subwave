@@ -1,5 +1,28 @@
 # Sub/Beats handover — 8 November 2026
 
+## Next work — 9 November: live integration and strict-playlist trial
+
+The owner has agreed to plan live queue integration. Read the maintained
+[live integration plan](../internals/subbeats-live-integration.md) before
+implementation. First upgrade already-selected prepared pairs through the
+existing pair drain and rendered-clip handoff; do not bias track selection.
+The first owner-run trial will use a temporary strict-playlist-only show whose
+playlist contains prepared tracks. Check playlist preparation and selection
+recovery, log actual upgrade/fallback usage, and audition complete clip joins
+including the return from adjusted incoming tempo to normal playback.
+
+Mixed prepared/regular pairings in both directions follow the initial trial.
+Keep lyric uncertainty permissive and reuse the existing regular Stem Blend /
+pair-aware crossfade when a Sub/Beats plan cannot fit. The future DJ Booth can
+consume the same timing/envelope plan; its UI is separate work.
+
+This update documents the plan and refreshes draft PR #10 only. No live
+integration is implemented or station source/settings/services changed. Only
+documentation diff and link checks are required for this update; the owner
+explicitly waived a full PR test run at this stage. Next action in
+`feat/subbeats-draft`: define the live render result and shared pair assessment,
+including tempo release and exact source resume positions, before queue wiring.
+
 ## Latest work — 9 November: four selectable stem mixing styles
 
 The approved next step is implemented in `feat/subbeats-draft`: Long blend, Short exchange (the preferred B), Bass swap and Drums first are selectable in cue-point preview. Both preview actions honour the selected style; changing it clears old audio, and the returned timeline names the actual style. The long-blend default preserves existing clients while these profiles are auditioned. Automatic style choice/variation and live Picker integration remain later work; automatic cue-plan search uses the operator-selected style now.
@@ -35,7 +58,7 @@ The isolated refreshed scan has already saved `state/subbeats/lyric-evidence.jso
 
 Preparation now refreshes lyric evidence automatically on successful preparation/coverage upgrade, using the same lookup as the explicit scan. The scan awaits candidate lookups, prints progress and accepts `--save`; strict reads and an exclusive save lock protect existing reviewed corrections. Read failures leave pairing uncertain; lookup/save failure never fails usable stems. Subsequent saves preserve reviewed boundaries for an unchanged prepared key. Matching/preview reads this saved evidence without network requests. The listener lyric cache and ordinary acoustic analysis remain separate. Preview cache version 15 includes the lyric evidence in its fingerprint. The station has later cue algorithms/earlier-loop handling than this research checkout; those station differences were preserved while applying these changes.
 
-This note supersedes the immediate next steps in the [3 November handover](2026-11-03-subbeats-handover.md). It captures the source-identity fix now pushed to the draft PR and station branch. The ongoing phrase-detection research in this checkout is separate and must be preserved.
+This note supersedes the immediate next steps in the [earlier handover](2026-10-30-subbeats-handover.md). It captures the source-identity fix now pushed to the draft PR and station branch. The ongoing phrase-detection research in this checkout is separate and must be preserved.
 
 ## Historical source-identity task and next step
 
