@@ -2,6 +2,17 @@
 
 ## Latest work — 9 November: head/tail confidence
 
+Completion: confidence/automatic-refresh implementation committed as `aa621f25`, with the source-audition audit registration in `b180a38b`, and pushed to `jaz666/feat/subbeats-draft` (draft PR #10). The station candidate is committed and pushed as `2d8af4ea` on `test-station/sleeve-notes-clean-20261014`. The canonical development checkout is clean. The research checkout retains its documented pending cue/Silero experiments; the station retains two unrelated prompt/skill edits, excluded from these commits.
+
+Controller type checks passed in the draft and station checkouts, and focused lint passed for the refresh/preparation modules. No additional tests or auditions were run for this final follow-up. No service was restarted. The running controller/analyzer had the earlier confidence implementation; the final refresh/storage additions need only an owner-run controller rebuild. No stem or lyric rescan is needed. Source rollback baseline: station `0998785f`; preserve unrelated local edits when reverting this candidate.
+
+Next action from `/home/jaz666/Docker/subwave`:
+
+```sh
+docker compose --parallel 1 -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --no-deps --build controller
+curl --fail http://localhost:7700/api/health
+```
+
 The audition change is consolidated on `feat/subbeats-draft` in `/home/jaz666/codex/subbeats-draft-pr`, with candidate source in `/home/jaz666/Docker/subwave`. This research checkout retains separate pending cue/Silero work. Read [Head and tail confidence changes](2026-11-09-head-tail-confidence.md) for the policy, current evidence, six pairings and the rebuild command. Codex did not rebuild or restart services during implementation; the owner runs station rebuilds. Earlier source-identity and lyric-only notes below are retained as history.
 
 The owner subsequently auditioned all six proposed pairings and reported that all sound fine (9 November). All six are recorded as acceptable in the report and its JSON shortlist. This supports allowing short/uncertain overlap and retaining confidence as a ranking signal. It does not supply measured lyric-overlap durations or exact tail endpoints; do not promote timing confidence or demand additional reviews for these accepted mixes. No policy threshold or main-library cue was changed in response to this feedback.
