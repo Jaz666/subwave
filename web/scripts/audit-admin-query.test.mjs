@@ -89,6 +89,10 @@ const validImperativeFixtures = {
   // admin-query-imperative: subbeats-source-audition
   return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
 }\n`,
+  'subbeats/SourceAudioDialog.tsx': `export async function run(adminFetch, id) {
+  // admin-query-imperative: subbeats-source-audition
+  return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
+}\n`,
   'skills/SkillEditModal.tsx': `export async function run(adminFetch, id) {
   // admin-query-imperative: skill-export
   return adminResponse(adminFetch, \`/dj/skills/\${id}/export\`);
