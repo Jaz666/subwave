@@ -9,7 +9,7 @@ Four mixing styles are now implemented for Sub/Beats cue-point previews. The own
 | Long blend (A) | Existing four-beat entrance; outgoing bass reaches the end | Longer overlap | Existing entrance |
 | Short exchange (B) | Four-beat exchange centred on arrival | Same four-beat exchange | Existing entrance |
 | Bass swap | One-beat exchange centred on arrival | Longer overlap | Existing entrance |
-| Drums first | Four-beat exchange centred on arrival | Same four-beat exchange | Gradual entrance over up to eight bars |
+| Drums first | Four-beat exchange centred on arrival | Same four-beat exchange | Gradual entrance, normally up to eight bars |
 
 The established B handover is **Short exchange**. The owner preferred it slightly in four of six earlier comparisons, clearly in one, and found both versions fine in the remaining case. Bass swap and Drums first are new listening candidates. All styles use the existing vocal envelopes, vocal-overlap rules, cue timing and outgoing drum tail. Short styles intentionally withhold incoming instrumental content before its handover and fade outgoing bass/melody earlier.
 
@@ -82,7 +82,9 @@ The four values are defined in `subbeatsMixStyleSchema`, mirrored to the web sch
 
 The eight comparison files were generated successfully through the actual `mix_passages` implementation, in an isolated CPU-limited analyzer-image process with read-only source/stem mounts and no network. The source hash, input cues, prepared keys, crops, section estimates, timelines and gain treatment are in `2026-11-09-stem-mixing-styles.json`; `subbeats_style_auditions.py` reproduces the comparisons. Audio files remain local, outside Git.
 
-Controller and web TypeScript checks passed. Focused lint passed for the changed controller and web modules. The admin-query audit passed, Python syntax parsing passed, the UI mechanical detector returned no findings and Git whitespace checks passed. No unit suite, independent listening judgement or browser walkthrough was performed for this change.
+Controller and web TypeScript checks passed in both the development and station checkouts. Focused lint passed for the changed controller and web modules. The admin-query audit passed, Python syntax parsing passed, the UI mechanical detector returned no findings and Git whitespace checks passed. No unit suite, independent listening judgement or browser walkthrough was performed for this change.
+
+An inserted incoming drum loop can bring the drum entrance earlier than the normal eight-bar window, so the loop remains audible.
 
 ## Station candidate
 
