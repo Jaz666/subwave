@@ -180,13 +180,16 @@ export default function NowPlayingWaveform() {
 
   const historySeconds = historyTracks.reduce((total, track) => total + track.duration, 0);
   const totalTimelineSec = trimmedHistorySeconds + historySeconds + currentDuration + nextDuration;
+  const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + totalTimelineSec * pxPerSec);
 
   useEffect(() => {
     const probe = createColorProbe();
     if (!probe) return;
     const update = () => {
       const theme = readThemeRgb(document.documentElement, probe);
-      setColors({ current: cssRgb(theme.accent), next: cssRgb(theme.accent2) });
+      const current = cssRgb(theme.accent);
+      const next = cssRgb(theme.accent2);
+      setColors(previous => previous.current === current && previous.next === next ? previous : { current, next });
     };
     update();
     return watchTheme(update);
@@ -232,17 +235,25 @@ export default function NowPlayingWaveform() {
     if (!currentDuration) return;
     const update = () => setElapsed(currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt) / 1000) : 0);
     update();
-    const timer = window.setInterval(update, 100);
+    const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
   }, [currentDuration, currentStartedAt]);
 
   useEffect(() => {
     const element = viewport.current;
     if (!element || !viewportWidth) return;
-    const scrollLeft = Math.max(0, Math.min((trimmedHistorySeconds + historySeconds + elapsed) * pxPerSec, element.scrollWidth - element.clientWidth));
-    element.scrollLeft = scrollLeft;
-    if (markerViewport.current) markerViewport.current.scrollLeft = scrollLeft;
-  }, [elapsed, viewportWidth, currentDuration, nextDuration, pxPerSec, trimmedHistorySeconds, historySeconds]);
+    let frame = 0;
+    const maxScroll = Math.max(0, timelineWidth - viewportWidth);
+    const tick = () => {
+      const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt) / 1000) : 0;
+      const scrollLeft = Math.min((trimmedHistorySeconds + historySeconds + liveElapsed) * pxPerSec, maxScroll);
+      element.scrollLeft = scrollLeft;
+      if (markerViewport.current) markerViewport.current.scrollLeft = scrollLeft;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [currentStartedAt, viewportWidth, timelineWidth, pxPerSec, trimmedHistorySeconds, historySeconds]);
 
   const markers = useMemo(() => {
     if (!currentStartedAt || !currentDuration) return [];
@@ -271,7 +282,6 @@ export default function NowPlayingWaveform() {
       style={{ left, width }} />;
   });
 
-  const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + totalTimelineSec * pxPerSec);
   const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
   const onReady = useMemo(() => () => setMessage('Live deck follows station playback.'), []);
 
@@ -295,7 +305,10 @@ export default function NowPlayingWaveform() {
           color={nextColor} pxPerSec={pxPerSec} expectedDuration={nextDuration} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />}
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
       </div>
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-[3px] -translate-x-1/2 bg-ink shadow-[0_0_0_1px_var(--bg)]" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 z-[100] w-[5px] -translate-x-1/2 bg-[var(--bg)]" aria-hidden="true">
+        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--accent)]" />
+        <span className="absolute top-0 left-1/2 size-3 -translate-x-1/2 rounded-full border-2 border-[var(--bg)] bg-[var(--accent)]" />
+      </div>
     </div>
     <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2" aria-label="Speech and jingle timeline">
       <div className="space-y-1 text-[10px] text-muted"><div>Speech</div><div>Jingles</div></div>
