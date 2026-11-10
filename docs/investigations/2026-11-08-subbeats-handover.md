@@ -18,8 +18,8 @@ key is unknown. **Find Suitable
 Transition** uses the same automatic style rule as live;
 **Play selected mix** still uses the operator's selected style and cue markers.
 The Queue row now distinguishes a committed Sub/Beats transition from ordinary
-Stem blend. No station runtime was rebuilt or restarted. No checks were run for
-this follow-up.
+Stem blend. No station runtime was rebuilt or restarted. Tests and type checks
+were not run for this follow-up; `git diff --check` passed.
 
 ## Latest work — 9 November: four selectable stem mixing styles
 
