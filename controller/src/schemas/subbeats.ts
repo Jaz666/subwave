@@ -181,6 +181,32 @@ export const subbeatsHandoffResultSchema = z.object({
   version:z.literal(1),evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),timing:subbeatsLiveTimingSchema,
   sourceVerified:z.literal(true),renderReady:z.literal(false),engine:z.enum(['native','rubberband-r3']),
 });
+// Private controller/analyzer contract. Source URLs stay out of listener
+// feeds and queue snapshots; the queue retains only owned clips and timing.
+export const subbeatsLiveRenderRequestSchema = z.object({
+  version:z.literal(1),transitionId:z.string().uuid(),deadlineMs:z.number().int().positive(),
+  stateDir:z.string().min(1),cacheId:z.string().min(16).max(100),stemsRoot:z.string().min(1),
+  outgoingId:z.string().min(1),incomingId:z.string().min(1),
+  jobs:z.array(subbeatsJobSchema).length(2),sourceUrls:z.array(z.string().url()).length(2),
+  gainsDb:z.array(z.number().finite().min(-120).max(40)).length(2),
+  mixStyle:subbeatsMixStyleSchema,evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),
+});
+const subbeatsLiveResultFields = {
+  version:z.literal(1),transitionId:z.string().uuid(),mixStyle:subbeatsMixStyleSchema,
+  evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),reason:z.string().min(1),
+};
+export const subbeatsLiveRenderResultSchema = z.discriminatedUnion('status',[
+  z.object({...subbeatsLiveResultFields,status:z.literal('unavailable')}),
+  z.object({...subbeatsLiveResultFields,status:z.literal('rendered'),sourceVerified:z.literal(true),
+    candidate:subbeatsLiveCandidateSchema,clipPath:z.string().min(1),leadPath:z.string().min(1).nullable()}),
+]);
+export const subbeatsPlaybackSchema = z.object({
+  version:z.literal(1),transitionId:z.string().uuid(),outgoingId:z.string(),incomingId:z.string(),
+  evidenceFingerprint:z.string().regex(/^[a-f0-9]{64}$/),mixStyle:subbeatsMixStyleSchema,
+  timing:subbeatsLiveTimingSchema,loudnessSettings:z.string(),
+  gainsDb:z.array(z.number().finite().min(-120).max(40)).length(2),
+  clipPath:z.string().min(1),leadPath:z.string().nullable(),incomingDurationSeconds:z.number().positive(),
+});
 export const subbeatsPairPlanSchema = z.object({
   version:z.literal(1),method:z.literal('live-pair'),outgoingId:z.string(),incomingId:z.string(),
   status:z.enum(['planned','unavailable']),renderReady:z.literal(false),reason:z.string().min(1),mixStyle:subbeatsMixStyleSchema,

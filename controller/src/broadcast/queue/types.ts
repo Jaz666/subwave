@@ -6,6 +6,7 @@
 import type { TrackOutro, TrackKeyRange } from '../../music/library-db.js';
 import type { HostSpeechStamp } from '../session.js';
 import type { ClipSeamCues } from '../stem-seam.js';
+import type { SubbeatsPlayback } from '../subbeats-clock.js';
 import type { TransitionEffect } from '../../settings/vocab.js';
 import type { MixDropReason } from '../../schemas/transitions.js';
 import type { FlowPlayback } from '../../music/sub-flow-playback.js';
@@ -203,6 +204,12 @@ export interface QueueItem {
   // is pre-rendered) and it cues in past the head the clip already played.
   stemBlend?: ClipSeamCues & {
     clipPath: string;
+    leadPath?: string;
+    subbeats?: SubbeatsPlayback;
+    // Persist publication progress separately from rendering. A restart can
+    // finish handing over parts after the outgoing source was committed.
+    partsPublished?: boolean;
+    partsWritten?: string[];
     // Persist the provisional exit so restart recovery can undo it exactly.
     originalExit?: Pick<Track, 'washout' | 'washoutAuto' | 'washoutDelay' | 'loop' | 'loopBar' | 'crossSec'>;
   } | null;
@@ -210,6 +217,7 @@ export interface QueueItem {
   // Outgoing music already committed an early ending into this clip/track.
   lengthPolicyCommitted?: boolean;
   stemCueInSec?: number;
+  subbeatsHandoff?: SubbeatsPlayback;
 }
 
 // One row in the rolling recent-plays sidecar (the picker's repeat window).

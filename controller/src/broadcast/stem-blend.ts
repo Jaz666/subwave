@@ -16,6 +16,7 @@ import { separationInFlight } from './pick-stems.js';
 import { renderStandsDown } from './pick-stems-policy.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
+import type { SubbeatsPlayback } from './subbeats-clock.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
 // lives with it in broadcast/stem-seam.ts.
@@ -31,9 +32,11 @@ export type BlendTrack = loudness.LoudnessTrack & {
   gainDb?: number;
 };
 
-interface BlendPlan extends ClipSeamCues {
+export interface BlendPlan extends ClipSeamCues {
   clipPath: string;
   clipSec: number;
+  leadPath?: string;
+  subbeats?: SubbeatsPlayback;
 }
 
 function transitionsDir(): string {

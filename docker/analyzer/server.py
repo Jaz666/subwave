@@ -24,7 +24,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Literal, Awaitable, Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 ANALYZE_PYTHON = os.environ.get("ANALYZE_PYTHON", "/opt/analyzer/venv/bin/python")
@@ -619,6 +619,26 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="subwave-analyzer", lifespan=lifespan)
 
 
+class SubbeatsLiveRequest(BaseModel):
+    version: Literal[1]
+    transitionId: str = Field(pattern=r'^[a-f0-9-]{36}$')
+    deadlineMs: int = Field(gt=0)
+    stateDir: str
+    cacheId: str = Field(min_length=16, max_length=100)
+    stemsRoot: str
+    outgoingId: str
+    incomingId: str
+    jobs: list[dict[str, Any]] = Field(min_length=2, max_length=2)
+    sourceUrls: list[str] = Field(min_length=2, max_length=2)
+    gainsDb: list[float] = Field(min_length=2, max_length=2)
+    mixStyle: Literal['long-blend', 'short-exchange', 'bass-swap', 'drums-first']
+    evidenceFingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+@app.post('/render-subbeats-transition')
+async def render_subbeats_transition(req: SubbeatsLiveRequest, request: Request):
+    from subbeats_live_service import render_live_request
+    return await render_live_request(req.model_dump(), request, ANALYZE_PYTHON, ANALYZE_WORKER)
 @app.get("/health")
 async def health():
     # `engines` lists engines *currently ready*, not the static set — the

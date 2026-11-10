@@ -36,6 +36,7 @@ class BaseModel:
 fastapi = types.ModuleType("fastapi")
 fastapi.FastAPI = FastAPI
 fastapi.HTTPException = HTTPException
+fastapi.Request = object
 pydantic = types.ModuleType("pydantic")
 pydantic.BaseModel = BaseModel
 pydantic.Field = lambda **_kwargs: None
@@ -499,6 +500,29 @@ async def test_subbeats_preview_contract():
 
 
 
+async def test_live_subbeats_route_uses_the_bounded_lane():
+    helper = types.ModuleType('subbeats_live_service')
+    calls = []
+    async def render_live_request(body, request, python, worker):
+        calls.append((body, request, python, worker))
+        return {'status': 'unavailable', 'reason': 'fixture'}
+    helper.render_live_request = render_live_request
+    previous = sys.modules.get('subbeats_live_service')
+    sys.modules['subbeats_live_service'] = helper
+    try:
+        body = {'transitionId': 'fixture', 'deadlineMs': 1234}
+        request = object()
+        result = await server.render_subbeats_transition(types.SimpleNamespace(model_dump=lambda: body), request)
+        assert result['status'] == 'unavailable'
+        assert calls == [(body, request, server.ANALYZE_PYTHON, server.ANALYZE_WORKER)]
+        assert 'COPY docker/analyzer/subbeats_live_service.py /app/subbeats_live_service.py' in (repo/'docker/Dockerfile.analyzer').read_text()
+    finally:
+        if previous is None:
+            del sys.modules['subbeats_live_service']
+        else:
+            sys.modules['subbeats_live_service'] = previous
+
+
 async def main():
     test_concurrency_env_validation()
     await test_pool_concurrency()
@@ -515,6 +539,7 @@ async def main():
     await test_subbeats_contract()
     await test_subbeats_assessment_contract()
     await test_subbeats_preview_contract()
+    await test_live_subbeats_route_uses_the_bounded_lane()
 
 
 asyncio.run(main())

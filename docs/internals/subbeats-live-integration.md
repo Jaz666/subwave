@@ -1,9 +1,92 @@
 # Sub/Beats live integration plan
 
 Agreed direction, 9 November 2026. This is an implementation plan, not a
-description of live functionality already delivered. Preparation, automatic
-cue-plan search and four mixing styles currently work in browser auditions;
-Sub/Beats does not yet upgrade live queue transitions or influence discovery.
+description of a completed station trial. Preparation, automatic cue-plan search
+and four mixing styles work in browser auditions. This branch now includes an
+opt-in live queue path; its switch defaults off. Discovery continues to use the
+existing picker. The owner-run station trial remains outstanding.
+
+## Implementation checkpoint — 10 November: live queue candidate
+
+`broadcast/queue.ts` now offers the actual adjacent pair to
+[`broadcast/subbeats.ts`](../../controller/src/broadcast/subbeats.ts) before
+ordinary Stem Blend. It reads the same saved evidence/harmonic style choice as
+the pair diagnostic. The one-shot
+[`subbeats_live.py`](../../controller/scripts/subbeats_live.py) uses the shared
+`plan_live_pair` and complete-handoff renderer. Missing preparation, unsuitable
+cues, insufficient coverage, supported lyric conflict or a render failure keep
+the selected music and fall through to enabled ordinary Stem Blend, then the
+existing crossfade. No new selection, ranking or playlist mode is introduced.
+
+The persisted switch is `transitions.subbeatsLive`, shown as **Live Sub/Beats**
+on Settings → Stems. It requires DJ mode and pair-aware transitions, and is
+independent of `transitions.stemBlends`: turning Sub/Beats on does not enable
+ordinary Stem Blend. Turning it off revokes unpublished proposals; committed
+audio finishes coherently. A cold/unavailable analyzer is probed in the
+background while the current pair falls through.
+
+Live rendering has a separate CPU-only process rather than occupying a model
+worker. Both analyzer transports enforce an absolute deadline: the smaller of
+the existing render budget, 120 seconds and time to the drain's hard fallback
+minus ten seconds. The default render budget is 60 seconds. Busy analysis and
+short/unknown queue clocks decline early. Cancellation/deadline kills the whole
+process group, including downloads, ffmpeg and Rubber Band. There is one live
+render lane per sidecar, with immediate busy refusal. Source reads and all
+scratch work are inside that budget; no model loading, stem extension or lyric
+lookup occurs. The controller rechecks pair order, eligibility, saved evidence,
+gain settings, trims and show boundaries before publishing linked cues.
+
+The renderer writes two float WAV parts into owned `state/transitions` storage,
+with identical samples across a 300ms overlap at the incoming entry. The first
+part carries outgoing identity; the second carries incoming identity. An entry
+at frame zero needs only the incoming part; a nonzero outgoing-only segment
+under one second declines to avoid requests swallowed by the mixer buffer.
+The existing clip seam and codec cue-landing compensation complete the native
+resume. Live cue positions retain sample precision. Both sources use resolved
+station gains, and native continuation retains the committed incoming gain.
+
+Both parts share one durable transition record. Cleanup keeps pending parts,
+cancellation removes the pair's pending clip requests, and restart publication
+checks actual mixer requests before adding missing parts. A queued incoming
+part never gets an old outgoing lead appended after it. If the outgoing track
+and both parts have disappeared, an unsent incoming track resumes its ordinary
+opening. Mixer metadata observes the incoming entry once, preserving play and
+request bookkeeping through native continuation. Recovery can reconstruct entry
+time when its first marker is the outgoing lead or resumed original.
+
+[`subbeats-clock.ts`](../../controller/src/broadcast/subbeats-clock.ts) maps
+source positions through the linear tempo release and inserted drum loops.
+Queue forecasts/progress use elapsed playback duration; current and recent-play
+lyric replies map timed lines to that same clock while retaining the operator's
+offset control. No listener client change is needed. Existing spoken heads,
+beds, silence trims and show boundaries take precedence; pending generic speech
+holds for another boundary when a committed Sub/Beats opening owns this one.
+
+Operator mix logs distinguish `attempt`, `rendered`, `committed`, `observed` and
+`fallback`, including style, tempo, loop and lyric-fit evidence. An observed
+metadata entry is not a listening result. **Sub/Beats** is also the upcoming
+transition label. The first strict-playlist trial must confirm both audible
+joins and listener timing on the running mixer.
+
+Two isolated live-worker renders completed in 24.849s and 15.695s, respectively,
+for Sash! → Insomnia and Insomnia → El Nino. Their split overlaps and original
+source guards had zero sample error; reconstructing their complete audio
+matched the accepted auditions with zero error. These used unity gains and
+explicit Short exchange, not automatic controller style selection. Read-only
+source/stem mounts, no network, two CPUs and 4 GiB RAM were used. See the
+[validation measurements](../investigations/2026-11-10-subbeats-live-queue.json).
+Focused source checks accompany this candidate; full suites, HTTP/browser and
+live Liquidsoap playback are not established by the offline renders. Station
+source, settings and services have not been changed.
+
+Focused validation for this candidate: 90 controller cases (live queue and both
+transports, existing seam/recovery, length-policy, pick-time stem and lyric
+contracts) and 15 web settings cases passed. The live cases include real child
+process deadline/disconnect cleanup and a local HTTP sidecar fixture. Controller
+and web type checks and targeted lint passed; existing shared-module lint
+warnings remain. Schema generation, Python parsing, evidence hashes and local
+documentation links were checked. Full suites, an actual HTTP analyzer render,
+browser interaction and live mixer playback remain outside these checks.
 
 ## Implementation checkpoint: complete handoff auditions
 
@@ -103,8 +186,8 @@ Checks for this slice: controller and web type checks, focused controller lint,
 Python syntax parsing and documentation/diff checks. Runtime pair fixtures,
 audio rendering/listening, full test suites and station deployment are not
 part of that first checkpoint. The complete-handoff renderer above now consumes
-this contract. Queue publication, playback timing and live enablement remain
-the next implementation stage after the complete-handoff listening exercise.
+this contract. The live queue candidate above adds publication and playback
+timing. Station enablement and the owner-run trial are still outstanding.
 
 ## First trial: a temporary strict-playlist show
 
@@ -285,9 +368,9 @@ playback and fallbacks separately; a plan is not proof that its audio aired.
    soft offer/preference, subject to the same constraints as other candidates.
 
 Use focused isolated checks for changed policy, settings and queue/render
-contracts, plus the owner listening trial. This documentation-only update does
-not run the application or full PR test suites, as requested. Broader validation
-for the eventual implementation is recorded when that candidate exists.
+contracts, plus the owner listening trial. The current candidate records its
+focused checks and isolated render measurements above; full PR suites and
+live station acceptance remain separate gates.
 
 ## Later mixed pairings and cache implications
 

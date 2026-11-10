@@ -86,8 +86,10 @@ ENV PATH=/opt/analyzer/venv/bin:/opt/server/venv/bin:$PATH \
 
 WORKDIR /app
 COPY docker/analyzer/server.py /app/server.py
+COPY docker/analyzer/subbeats_live_service.py /app/subbeats_live_service.py
 # The SAME worker the controller runs in-process — single source of truth.
 COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
+COPY controller/scripts/subbeats_live.py /app/workers/subbeats_live.py
 COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_handoff.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
 
 # Shared state mount — the controller pre-fetches tracks into

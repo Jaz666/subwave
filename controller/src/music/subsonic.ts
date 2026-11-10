@@ -1212,7 +1212,8 @@ export function getAnnotatedUri(song, opts: { maxDurationSec?: number | null; cu
 // and the controller's lastSeenKey dedup swallows the identical second fire at
 // cue-in. `subwave_clip="1"` stops the telnet rid helpers
 // (liquidsoap-control.ts) mistaking the clip for the track itself.
-export function getClipUri(song, clipPath: string, crossSec: number) {
+export function getClipUri(song, clipPath: string, crossSec: number,
+  handoff?: {transitionId:string;part:string;incomingId:string}) {
   const fields = [
     `title="${escAnnotate(song.title)}"`,
     `artist="${escAnnotate(song.artist)}"`,
@@ -1224,6 +1225,8 @@ export function getClipUri(song, clipPath: string, crossSec: number) {
     // radio.liq aligns the clip on it rather than on what `cross` buffered.
     `liq_clip_lead="${escAnnotate(crossSec)}"`,
   ];
+  if (handoff) fields.push(`subwave_transition="${escAnnotate(handoff.transitionId)}"`,
+    `subwave_part="${escAnnotate(handoff.part)}"`,`subwave_clip_for="${escAnnotate(handoff.incomingId)}"`);
   // No liq_amplify: the render already gain-matched both sources, so a stamp
   // here would double-apply.
   return `annotate:${fields.join(',')}:${clipPath}`;
