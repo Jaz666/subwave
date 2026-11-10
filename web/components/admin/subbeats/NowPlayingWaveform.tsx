@@ -420,16 +420,16 @@ export default function NowPlayingWaveform() {
 
   return <section className={`${styles.panel} space-y-2 border border-ink/30 p-4`} aria-label="Station waveform">
     <div aria-label="Speech, jingle and bed timeline">
-      <div className={styles.eventsViewport} role="img" aria-label="Speech, jingle and bed events">
-        <div ref={eventTimeline} className={styles.eventsTimeline}>
-          <div className={styles.eventLane}>{eventMarkers}</div>
-        </div>
-      </div>
       <div className={styles.eventLegend}>
         <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
         <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
         <span className="text-ink">Beds</span>
         <span className={styles.trackTime} aria-label="Current track time">{formatTime(elapsed)} / {formatTime(currentDuration)}</span>
+      </div>
+      <div className={styles.eventsViewport} role="img" aria-label="Speech, jingle and bed events">
+        <div ref={eventTimeline} className={styles.eventsTimeline}>
+          <div className={styles.eventLane}>{eventMarkers}</div>
+        </div>
       </div>
     </div>
     <div className={styles.deck}>
@@ -467,6 +467,7 @@ export default function NowPlayingWaveform() {
           <div className={`${styles.eventLane} ${styles.stemLane}`}>{stemBar}</div>
         </div>
       </div>
+      <div className={styles.laneLabel}>Stems</div>
     </div>
     {message && <p className="text-xs text-muted" role="status">{message}</p>}
   </section>;
