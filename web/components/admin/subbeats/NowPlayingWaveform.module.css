@@ -2,12 +2,6 @@
   background: var(--bg);
 }
 
-/* The fixed page grain composites over this moving canvas and modulates its
-   theme colors. Keep the experiment's themed background, without the overlay. */
-:global(body):has(.panel)::after {
-  display: none;
-}
-
 .deck {
   position: relative;
   isolation: isolate;
@@ -16,6 +10,15 @@
 .viewport,
 .eventsViewport {
   overflow: clip;
+}
+
+.eventsViewport {
+  height: 10px;
+}
+
+.eventsTimeline {
+  position: relative;
+  height: 100%;
 }
 
 .viewport,
@@ -36,7 +39,8 @@
 }
 
 .eventLane {
-  position: relative;
+  position: absolute;
+  inset: 1px 0;
   height: 8px;
   border-radius: 2px;
   background: color-mix(in oklab, var(--ink) 10%, transparent);
@@ -71,6 +75,35 @@
   background: var(--bg);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.stemLane {
+  inset-block: 0;
+  height: 10px;
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+}
+
+.stemMarker {
+  position: absolute;
+  inset-block: 0;
+  min-width: 2px;
+  overflow: visible;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    var(--outgoing-color) 0 var(--out-width),
+    color-mix(in oklab, var(--outgoing-color) 50%, var(--incoming-color)) var(--out-width) calc(var(--out-width) + var(--overlap-width)),
+    var(--incoming-color) calc(var(--out-width) + var(--overlap-width)) 100%);
+}
+
+.stemMarker > span {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  color: var(--bg);
+  font-size: 9px;
+  line-height: 10px;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px var(--ink);
 }
 
 .playhead {

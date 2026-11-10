@@ -204,6 +204,7 @@ export interface QueueItem {
   // is pre-rendered) and it cues in past the head the clip already played.
   stemBlend?: ClipSeamCues & {
     clipPath: string;
+    clipSec?: number;
     leadPath?: string;
     subbeats?: SubbeatsPlayback;
     // Persist publication progress separately from rendering. A restart can
