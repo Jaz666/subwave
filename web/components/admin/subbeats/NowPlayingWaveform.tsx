@@ -5,21 +5,27 @@ import type WaveSurfer from 'wavesurfer.js';
 import { useStationFeed } from '../../../hooks/useStationFeed';
 import { adminResponse } from '../../../lib/admin-query';
 import { useAdminAuth } from '../../../lib/adminAuth';
-import { watchTheme } from '../../../lib/theme-rgb';
+import { createColorProbe, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
 
-const PX_PER_SEC = 8;
+const HISTORY_SECONDS = 30;
+const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle'; airedAt: number; durationMs: number; label: string };
 type JingleMarker = { airedAt: string; durationMs: number };
+
+function cssRgb([r, g, b]: readonly number[]): string {
+  return `rgb(${r} ${g} ${b})`;
+}
 
 function clock(seconds: number): string {
   const value = Math.max(0, Math.floor(seconds));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 
-function DeckSegment({ id, adminFetch, color, expectedDuration, onDuration, onReady, onError }: {
+function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, onDuration, onReady, onError }: {
   id: string;
   adminFetch: (path: string, init?: RequestInit) => Promise<Response>;
   color: string;
+  pxPerSec: number;
   expectedDuration: number;
   onDuration: (seconds: number) => void;
   onReady: () => void;
@@ -28,7 +34,7 @@ function DeckSegment({ id, adminFetch, color, expectedDuration, onDuration, onRe
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<WaveSurfer | null>(null);
   const [duration, setDuration] = useState(expectedDuration);
-  const width = Math.max(160, duration * PX_PER_SEC);
+  const width = Math.max(160, duration * pxPerSec);
 
   useEffect(() => {
     setDuration(expectedDuration);
@@ -51,7 +57,7 @@ function DeckSegment({ id, adminFetch, color, expectedDuration, onDuration, onRe
           container: host.current,
           height: 88,
           width,
-          minPxPerSec: PX_PER_SEC,
+          minPxPerSec: pxPerSec,
           fillParent: false,
           waveColor: color,
           progressColor: color,
@@ -84,14 +90,10 @@ function DeckSegment({ id, adminFetch, color, expectedDuration, onDuration, onRe
     };
   // A change in the available width is applied below without fetching audio again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminFetch, color, id, onDuration, onError, onReady]);
+  }, [adminFetch, id, onDuration, onError, onReady]);
 
-  useEffect(() => { player.current?.setOptions({ width }); }, [width]);
-  useEffect(() => {
-    const updateColor = () => player.current?.setOptions({ waveColor: color, progressColor: color });
-    const unwatch = watchTheme(updateColor);
-    return unwatch;
-  }, [color]);
+  useEffect(() => { player.current?.setOptions({ width, minPxPerSec: pxPerSec }); }, [width, pxPerSec]);
+  useEffect(() => { player.current?.setOptions({ waveColor: color, progressColor: color }); }, [color]);
 
   return <div className="h-[5.5rem] shrink-0 overflow-hidden" style={{ width }}><div ref={host} className="h-full" /></div>;
 }
@@ -106,6 +108,7 @@ export default function NowPlayingWaveform() {
   const [nextDuration, setNextDuration] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [jingle, setJingle] = useState<JingleMarker | null>(null);
+  const [colors, setColors] = useState(DEFAULT_COLORS);
   const [message, setMessage] = useState('Waiting for a library track…');
   const currentId = nowPlaying?.subsonic_id;
   const next = state.upcoming[0];
@@ -113,6 +116,18 @@ export default function NowPlayingWaveform() {
   const currentStartedAt = trackStartedAt ?? 0;
   const totalTimelineSec = currentDuration + nextDuration;
   const sidePadding = viewportWidth / 2;
+  const pxPerSec = viewportWidth / (HISTORY_SECONDS * 2);
+
+  useEffect(() => {
+    const probe = createColorProbe();
+    if (!probe) return;
+    const update = () => {
+      const theme = readThemeRgb(document.documentElement, probe);
+      setColors({ current: cssRgb(theme.accent), next: cssRgb(theme.accent2) });
+    };
+    update();
+    return watchTheme(update);
+  }, []);
 
   useEffect(() => {
     if (!viewport.current) return;
@@ -161,10 +176,10 @@ export default function NowPlayingWaveform() {
   useEffect(() => {
     const element = viewport.current;
     if (!element || !viewportWidth) return;
-    const scrollLeft = Math.max(0, Math.min(elapsed * PX_PER_SEC, element.scrollWidth - element.clientWidth));
+    const scrollLeft = Math.max(0, Math.min(elapsed * pxPerSec, element.scrollWidth - element.clientWidth));
     element.scrollLeft = scrollLeft;
     if (markerViewport.current) markerViewport.current.scrollLeft = scrollLeft;
-  }, [elapsed, viewportWidth, currentDuration, nextDuration]);
+  }, [elapsed, viewportWidth, currentDuration, nextDuration, pxPerSec]);
 
   const markers = useMemo(() => {
     if (!currentStartedAt || !currentDuration) return [];
@@ -186,14 +201,14 @@ export default function NowPlayingWaveform() {
     const start = Math.max(currentStartedAt, marker.airedAt);
     const end = Math.min(currentStartedAt + currentDuration * 1000, marker.airedAt + marker.durationMs);
     if (end <= start) return null;
-    const left = sidePadding + ((start - currentStartedAt) / 1000) * PX_PER_SEC;
-    const width = Math.max(2, ((end - start) / 1000) * PX_PER_SEC);
+    const left = sidePadding + ((start - currentStartedAt) / 1000) * pxPerSec;
+    const width = Math.max(2, ((end - start) / 1000) * pxPerSec);
     return <span key={`${marker.airedAt}-${index}`} title={marker.label}
       className={`absolute inset-y-0 rounded-sm ${kind === 'speech' ? 'bg-[var(--accent)]' : 'bg-[var(--accent-2)]'}`}
       style={{ left, width }} />;
   });
 
-  const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + totalTimelineSec * PX_PER_SEC);
+  const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + totalTimelineSec * pxPerSec);
   const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
   const onReady = useMemo(() => () => setMessage('Live deck follows station playback.'), []);
 
@@ -208,9 +223,9 @@ export default function NowPlayingWaveform() {
       <div className="flex h-[5.5rem] items-center" style={{ width: timelineWidth }}>
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
         {currentId && hydrated && !needsAuth && <DeckSegment key={currentId} id={currentId} adminFetch={adminFetch}
-          color="var(--accent)" expectedDuration={currentDuration} onDuration={setCurrentDuration} onReady={onReady} onError={onError} />}
+          color={colors.current} pxPerSec={pxPerSec} expectedDuration={currentDuration} onDuration={setCurrentDuration} onReady={onReady} onError={onError} />}
         {nextId && hydrated && !needsAuth && <DeckSegment key={nextId} id={nextId} adminFetch={adminFetch}
-          color="var(--accent-2)" expectedDuration={nextDuration} onDuration={setNextDuration} onReady={onReady} onError={onError} />}
+          color={colors.next} pxPerSec={pxPerSec} expectedDuration={nextDuration} onDuration={setNextDuration} onReady={onReady} onError={onError} />}
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
       </div>
       <span className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px -translate-x-1/2 bg-ink" aria-hidden="true" />
