@@ -35,11 +35,6 @@
   align-items: center;
 }
 
-.timeline,
-.eventsTimeline {
-  will-change: transform;
-}
-
 .eventLane {
   position: relative;
   height: 8px;
@@ -82,7 +77,7 @@
   position: absolute;
   z-index: 3;
   inset-block: 0;
-  left: 50%;
+  left: 25%;
   width: 5px;
   transform: translateX(-50%);
   pointer-events: none;
