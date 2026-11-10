@@ -73,7 +73,7 @@ export function createNowPlayingFileRouter(deps: {
       return;
     }
     const nextId = deps.nextTrackId?.() ?? null;
-    if (asked !== id && asked !== nextId) {
+    if (!asked || (asked !== id && asked !== nextId)) {
       res.status(409).json({ error: 'The requested track is no longer on air.' });
       return;
     }
@@ -86,7 +86,7 @@ export function createNowPlayingFileRouter(deps: {
     const cancel = () => abort.abort();
     res.on('close', cancel);
     try {
-      const source = await deps.streamAudio(id, abort.signal);
+      const source = await deps.streamAudio(asked, abort.signal);
       const type = source.headers.get('content-type')?.toLowerCase() ?? '';
       if (!source.ok || !source.body || type.includes('json') || type.includes('xml') || type.startsWith('text/')) {
         throw new Error('The on-air recording could not be loaded.');
