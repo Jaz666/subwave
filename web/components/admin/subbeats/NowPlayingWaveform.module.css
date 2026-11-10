@@ -1,6 +1,47 @@
+.panel {
+  background: var(--bg);
+}
+
+/* Paper grain blends new colours into each moving bar. Keep this experimental
+   page free of that overlay; navigating away restores the normal theme. */
+:global(body):has(.panel)::after {
+  display: none;
+}
+
+.deck {
+  position: relative;
+  isolation: isolate;
+}
+
+.viewport,
+.eventsViewport {
+  overflow: clip;
+}
+
+.viewport,
+.segment,
+.timeline {
+  height: 88px;
+}
+
+.segment {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.timeline {
+  display: flex;
+  align-items: center;
+}
+
+.timeline,
+.eventsTimeline {
+  will-change: transform;
+}
+
 .playhead {
   position: absolute;
-  z-index: 9999;
+  z-index: 3;
   inset-block: 0;
   left: 50%;
   width: 5px;
@@ -13,9 +54,9 @@
   position: absolute;
   inset-block: 0;
   left: 50%;
-  width: 1px;
+  width: 2px;
   transform: translateX(-50%);
-  background: var(--accent);
+  background: var(--ink);
   content: '';
 }
 

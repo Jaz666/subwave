@@ -6,11 +6,11 @@ import { Button } from '../../ui/button';
 import NowPlayingWaveform from './NowPlayingWaveform';
 
 const LANES = [
-  { id: 'mix', label: 'Original mix', color: 'var(--accent)' },
-  { id: 'vocals', label: 'Vocals', color: 'var(--accent-2)' },
-  { id: 'drums', label: 'Drums', color: 'var(--ink)' },
-  { id: 'bass', label: 'Bass', color: 'var(--muted)' },
-  { id: 'other', label: 'Other', color: 'color-mix(in oklab, var(--accent) 55%, var(--accent-2))' },
+  { id: 'mix', label: 'Original mix', color: 'var(--accent)', textClass: 'text-accent' },
+  { id: 'vocals', label: 'Vocals', color: 'var(--accent-2)', textClass: 'text-accent-2' },
+  { id: 'drums', label: 'Drums', color: 'var(--ink)', textClass: 'text-ink' },
+  { id: 'bass', label: 'Bass', color: 'var(--muted)', textClass: 'text-muted' },
+  { id: 'other', label: 'Other', color: 'color-mix(in oklab, var(--accent) 55%, var(--accent-2))', textClass: 'text-[color-mix(in_oklab,var(--accent)_55%,var(--accent-2))]' },
 ] as const;
 
 type LaneId = (typeof LANES)[number]['id'];
@@ -99,7 +99,7 @@ export default function WaveformTest() {
 
     <section className="grid gap-3 border-y border-ink/25 py-4 sm:grid-cols-2 lg:grid-cols-5" aria-label="Choose local audio files">
       {LANES.map(lane => <div key={lane.id} className="min-w-0 space-y-2">
-        <label htmlFor={`waveform-file-${lane.id}`} className="block text-xs font-semibold" style={{ color: lane.color }}>{lane.label}</label>
+        <label htmlFor={`waveform-file-${lane.id}`} className={`block text-xs font-semibold ${lane.textClass}`}>{lane.label}</label>
         <input
           key={files[lane.id]?.name ?? lane.id}
           className="block w-full min-w-0 text-xs text-muted file:mr-2 file:border file:border-ink/40 file:bg-transparent file:px-2 file:py-1.5 file:text-[10px] file:font-semibold file:text-ink"
@@ -141,7 +141,7 @@ export default function WaveformTest() {
         <div ref={host} className="min-h-24 overflow-x-auto px-2" />
         <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-ink/15 p-3">
           {tracks.map((lane, index) => <label key={lane.id} className="flex items-center gap-2 text-xs">
-            <span className="w-20 truncate font-medium" style={{ color: lane.color }}>{lane.label}</span>
+            <span className={`w-20 truncate font-medium ${lane.textClass}`}>{lane.label}</span>
             <input aria-label={`${lane.label} volume`} type="range" min="0" max="1" step="0.01" defaultValue="1"
               onChange={event => instance.current?.setTrackVolume(index, Number(event.currentTarget.value))} />
           </label>)}

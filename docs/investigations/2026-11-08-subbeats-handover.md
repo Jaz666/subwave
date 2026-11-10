@@ -1,5 +1,36 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest web experiment — 10 November: on-air waveform corrections
+
+`NowPlayingWaveform` remains on the experimental WaveSurfer page. Browser
+reproduction found the missing playhead at x = -154.5px: it was inside the
+element whose `scrollLeft` advanced, so increasing z-index could not fix it.
+The playhead now sits outside the moving layer. Animation translates that
+layer by fractional pixels, without rounding through native scrolling.
+
+History, current and next segments now share one keyed React list. The old
+separate history list destroyed the outgoing WaveSurfer instance and fetched
+its recording again after it was no longer eligible for the protected audio
+endpoint. The revised handoff retains the same canvas, clips it at the audible
+handoff point and releases it once it is 30 seconds behind the playhead.
+Decoded duration stays authoritative when a queued track becomes current.
+
+The test page suppresses the global paper-grain blend overlay while mounted;
+theme colors remain in use. The canvas uses smooth image sampling during
+translation. Dynamic geometry is applied through DOM refs, and local file
+lane labels use theme utilities; neither component needs JSX inline styles or
+an ESLint exemption.
+
+An isolated Chromium harness exercised the actual component and stylesheet
+with mocked station/auth hooks and generated WAV responses. It verified a
+stationary center marker at desktop and mobile widths, fractional animation,
+unchanged canvas identity and colors through a handoff between different
+recording lengths, one audio fetch per track, retention before 30 seconds and
+release afterward, light/dark themes, and restoration of grain on unmount.
+Focused ESLint and TypeScript checks are recorded with the candidate. No full
+PR suite or live broadcast test is implied. Station integration is source-only;
+the owner rebuilds `web`. Previous station source candidate: `8870839c`.
+
 ## Latest work — 10 November: station live-picker candidate
 
 The live queue implementation is now applied on `test-station/subbeats-live-queue-20261110`, based on the station's `813094ba` source. It includes the read-only planner, complete handoff renderer and opt-in live queue path. The adaptation retains this station branch's protected Sub/Flow queue behavior and its existing analyzer-pool API; it does not merge the broad upstream release currently on `develop`.
