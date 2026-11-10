@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '../../ui/button';
+import NowPlayingWaveform from './NowPlayingWaveform';
 
 const LANES = [
   { id: 'mix', label: 'Original mix', color: '#d94b2a' },
@@ -93,6 +94,8 @@ export default function WaveformTest() {
       <h1 className="mt-2 font-display text-3xl font-bold">WaveSurfer multitrack test</h1>
       <p className="mt-2 text-sm leading-relaxed text-muted">Load an original and any prepared stem files to see how they line up. Files stay in this browser and are not uploaded.</p>
     </header>
+
+    <NowPlayingWaveform />
 
     <section className="grid gap-3 border-y border-ink/25 py-4 sm:grid-cols-2 lg:grid-cols-5" aria-label="Choose local audio files">
       {LANES.map(lane => <div key={lane.id} className="min-w-0 space-y-2">
