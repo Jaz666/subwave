@@ -6,11 +6,11 @@ import { Button } from '../../ui/button';
 import NowPlayingWaveform from './NowPlayingWaveform';
 
 const LANES = [
-  { id: 'mix', label: 'Original mix', color: '#d94b2a' },
-  { id: 'vocals', label: 'Vocals', color: '#8b5cf6' },
-  { id: 'drums', label: 'Drums', color: '#e59b25' },
-  { id: 'bass', label: 'Bass', color: '#278b79' },
-  { id: 'other', label: 'Other', color: '#5776b7' },
+  { id: 'mix', label: 'Original mix', color: 'var(--accent)' },
+  { id: 'vocals', label: 'Vocals', color: 'var(--accent-2)' },
+  { id: 'drums', label: 'Drums', color: 'var(--ink)' },
+  { id: 'bass', label: 'Bass', color: 'var(--muted)' },
+  { id: 'other', label: 'Other', color: 'color-mix(in oklab, var(--accent) 55%, var(--accent-2))' },
 ] as const;
 
 type LaneId = (typeof LANES)[number]['id'];

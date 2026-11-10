@@ -22,11 +22,14 @@
 // while one airs the answer is still the song before it, as the title is.
 
 import { Router } from 'express';
+import { readFileSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { requireAdmin } from '../middleware/auth.js';
 import { queue } from '../broadcast/queue.js';
+import { config } from '../config.js';
 import * as subsonic from '../music/subsonic.js';
 import { createFileFormatLookup, type FileFormat } from '../music/file-format.js';
+import * as settings from '../settings.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 
 type NowPlaying = { subsonic_id?: string | null; [k: string]: unknown } | null | undefined;
@@ -35,6 +38,8 @@ export function createNowPlayingFileRouter(deps: {
   nowPlaying: () => Promise<NowPlaying>;
   lookup: (id: string) => Promise<FileFormat | null>;
   streamAudio?: (id: string, signal: AbortSignal) => Promise<Response>;
+  latestJingle?: () => { filename?: string; startedAt?: number; durationSec?: number; queuedSec?: number; placement?: string } | null;
+  crossfadeSeconds?: () => number;
 }): Router {
   const router = Router();
   router.get('/now-playing/file', requireAdmin, async (req, res) => {
@@ -103,6 +108,35 @@ export function createNowPlayingFileRouter(deps: {
       res.off('close', cancel);
     }
   });
+  router.get('/now-playing/visual-events', requireAdmin, async (req, res) => {
+    const asked = typeof req.query.id === 'string' && req.query.id ? req.query.id : null;
+    let id: string | null = null;
+    try {
+      const np = await deps.nowPlaying();
+      id = typeof np?.subsonic_id === 'string' && np.subsonic_id ? np.subsonic_id : null;
+    } catch { /* treated as nothing on air */ }
+    if (!id || asked !== id) {
+      res.status(id ? 409 : 404).json({ jingle: null });
+      return;
+    }
+    let jingle = null;
+    try {
+      const marker = deps.latestJingle?.();
+      const startedAt = Number(marker?.startedAt) * 1000;
+      const durationMs = Number(marker?.durationSec) * 1000;
+      if (Number.isFinite(startedAt) && startedAt > 0 && Number.isFinite(durationMs) && durationMs > 0) {
+        const delayMs = marker?.placement === 'over'
+          ? 0
+          : ((Number(marker?.queuedSec) || 0) + (deps.crossfadeSeconds?.() ?? 10)) * 1000;
+        jingle = {
+          airedAt: new Date(startedAt + delayMs).toISOString(),
+          durationMs,
+          filename: marker?.filename,
+        };
+      }
+    } catch { /* no usable marker */ }
+    res.set('Cache-Control', 'no-store').json({ jingle });
+  });
   return router;
 }
 
@@ -112,4 +146,9 @@ export const router = createNowPlayingFileRouter({
   streamAudio: (id, signal) => fetchWithTimeout(subsonic.getRawStreamUrl(id), {
     timeoutMs: 5 * 60_000, bodyDeadline: true, signal,
   }),
+  latestJingle: () => {
+    try { return JSON.parse(readFileSync(config.liquidsoap.jinglePlayingFile, 'utf8')); }
+    catch { return null; }
+  },
+  crossfadeSeconds: () => Number(settings.get()?.crossfadeDuration) || 10,
 });
