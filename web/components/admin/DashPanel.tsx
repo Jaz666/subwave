@@ -102,6 +102,7 @@ import {
   runDashAction,
 } from './dash/queries';
 import { useCardHashJump } from '../../hooks/useCardHashJump';
+import NowPlayingWaveform from './subbeats/NowPlayingWaveform';
 
 // Listeners-table header cells. `sticky top-0` resolves against the ScrollArea
 // viewport, and the opaque card-bg stops rows showing through. The rule is an
@@ -545,6 +546,10 @@ export default function DashPanel() {
       />
 
       {err && <ErrorState error={err} />}
+
+      <Card title="Mixing Desk">
+        <NowPlayingWaveform />
+      </Card>
 
       {/* Share rows only while Sleeve Notes is visible; otherwise Booth log fills below Queue. */}
       <div data-dash-layout className="stack-mobile grid grid-cols-[1.4fr_1fr] gap-4">
