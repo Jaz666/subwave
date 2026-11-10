@@ -32,7 +32,7 @@ export default function NowPlayingWaveform() {
     let objectUrl: string | null = null;
     void (async () => {
       try {
-        const response = await adminResponse(adminFetch, `/library/subbeats/source-audio/${encodeURIComponent(id)}`, { signal: abort.signal });
+        const response = await adminResponse(adminFetch, `/now-playing/audio?id=${encodeURIComponent(id)}`, { signal: abort.signal });
         const blob = await response.blob();
         if (abort.signal.aborted || !host.current) return;
         objectUrl = URL.createObjectURL(blob);
@@ -58,7 +58,7 @@ export default function NowPlayingWaveform() {
           setMessage('Waveform follows station playback.');
         });
       } catch {
-        if (!abort.signal.aborted) setMessage('This track has no prepared source audio yet.');
+        if (!abort.signal.aborted) setMessage('Could not load the on-air recording.');
       }
     })();
 
