@@ -11,6 +11,7 @@ const HISTORY_SECONDS = 30;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle'; airedAt: number; durationMs: number; label: string };
 type JingleMarker = { airedAt: string; durationMs: number };
+type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2' };
 
 function cssRgb([r, g, b]: readonly number[]): string {
   return `rgb(${r} ${g} ${b})`;
@@ -27,7 +28,7 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, onDura
   color: string;
   pxPerSec: number;
   expectedDuration: number;
-  onDuration: (seconds: number) => void;
+  onDuration: (id: string, seconds: number) => void;
   onReady: () => void;
   onError: () => void;
 }) {
@@ -74,7 +75,7 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, onDura
           const actual = instance?.getDuration() ?? 0;
           if (actual > 0) {
             setDuration(actual);
-            onDuration(actual);
+            onDuration(id, actual);
           }
           onReady();
         });
@@ -109,14 +110,76 @@ export default function NowPlayingWaveform() {
   const [elapsed, setElapsed] = useState(0);
   const [jingle, setJingle] = useState<JingleMarker | null>(null);
   const [colors, setColors] = useState(DEFAULT_COLORS);
+  const [colorPhase, setColorPhase] = useState(false);
+  const [historyTracks, setHistoryTracks] = useState<DeckTrack[]>([]);
+  const [trimmedHistorySeconds, setTrimmedHistorySeconds] = useState(0);
   const [message, setMessage] = useState('Waiting for a library track…');
   const currentId = nowPlaying?.subsonic_id;
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
   const currentStartedAt = trackStartedAt ?? 0;
-  const totalTimelineSec = currentDuration + nextDuration;
   const sidePadding = viewportWidth / 2;
   const pxPerSec = viewportWidth / (HISTORY_SECONDS * 2);
+  const currentRole = colorPhase ? 'accent2' : 'accent';
+  const nextRole = colorPhase ? 'accent' : 'accent2';
+  const currentColor = colors[currentRole === 'accent' ? 'current' : 'next'];
+  const nextColor = colors[nextRole === 'accent' ? 'current' : 'next'];
+  const activeTrack = useRef<DeckTrack | null>(currentId ? {
+    id: currentId, duration: currentDuration, startedAt: currentStartedAt, colorRole: currentRole,
+  } : null);
+  const historyRef = useRef(historyTracks);
+  const currentIdRef = useRef(currentId);
+  const nextIdRef = useRef(nextId);
+  currentIdRef.current = currentId;
+  nextIdRef.current = nextId;
+
+  const updateTrackDuration = useMemo(() => (id: string, duration: number) => {
+    if (currentIdRef.current === id) {
+      if (activeTrack.current?.id === id) activeTrack.current.duration = duration;
+      setCurrentDuration(duration);
+    } else if (nextIdRef.current === id) {
+      setNextDuration(duration);
+    } else {
+      const updated = historyRef.current.map(track => track.id === id ? { ...track, duration } : track);
+      historyRef.current = updated;
+      setHistoryTracks(updated);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentId || activeTrack.current?.id === currentId) return;
+    const previous = activeTrack.current;
+    if (previous) {
+      const cutoff = currentStartedAt - HISTORY_SECONDS * 1000;
+      const candidates = [...historyRef.current, previous];
+      const retained = candidates.filter(track => track.startedAt + track.duration * 1000 > cutoff);
+      const trimmed = candidates.filter(track => track.startedAt + track.duration * 1000 <= cutoff);
+      const trimmedSeconds = trimmed.reduce((total, track) => total + track.duration, 0);
+      historyRef.current = retained;
+      setHistoryTracks(retained);
+      if (trimmedSeconds) setTrimmedHistorySeconds(value => value + trimmedSeconds);
+      setColorPhase(value => !value);
+    }
+    activeTrack.current = {
+      id: currentId,
+      duration: nowPlaying?.duration ?? 0,
+      startedAt: currentStartedAt,
+      colorRole: previous ? (previous.colorRole === 'accent' ? 'accent2' : 'accent') : currentRole,
+    };
+  }, [currentId, currentRole, currentStartedAt, nowPlaying?.duration]);
+
+  useEffect(() => {
+    const cutoff = Date.now() - HISTORY_SECONDS * 1000;
+    const expired = historyRef.current.filter(track => track.startedAt + track.duration * 1000 <= cutoff);
+    if (!expired.length) return;
+    const retained = historyRef.current.filter(track => track.startedAt + track.duration * 1000 > cutoff);
+    historyRef.current = retained;
+    setHistoryTracks(retained);
+    setTrimmedHistorySeconds(value => value + expired.reduce((total, track) => total + track.duration, 0));
+  }, [elapsed]);
+
+  const historySeconds = historyTracks.reduce((total, track) => total + track.duration, 0);
+  const totalTimelineSec = trimmedHistorySeconds + historySeconds + currentDuration + nextDuration;
 
   useEffect(() => {
     const probe = createColorProbe();
@@ -176,10 +239,10 @@ export default function NowPlayingWaveform() {
   useEffect(() => {
     const element = viewport.current;
     if (!element || !viewportWidth) return;
-    const scrollLeft = Math.max(0, Math.min(elapsed * pxPerSec, element.scrollWidth - element.clientWidth));
+    const scrollLeft = Math.max(0, Math.min((trimmedHistorySeconds + historySeconds + elapsed) * pxPerSec, element.scrollWidth - element.clientWidth));
     element.scrollLeft = scrollLeft;
     if (markerViewport.current) markerViewport.current.scrollLeft = scrollLeft;
-  }, [elapsed, viewportWidth, currentDuration, nextDuration, pxPerSec]);
+  }, [elapsed, viewportWidth, currentDuration, nextDuration, pxPerSec, trimmedHistorySeconds, historySeconds]);
 
   const markers = useMemo(() => {
     if (!currentStartedAt || !currentDuration) return [];
@@ -201,7 +264,7 @@ export default function NowPlayingWaveform() {
     const start = Math.max(currentStartedAt, marker.airedAt);
     const end = Math.min(currentStartedAt + currentDuration * 1000, marker.airedAt + marker.durationMs);
     if (end <= start) return null;
-    const left = sidePadding + ((start - currentStartedAt) / 1000) * pxPerSec;
+    const left = sidePadding + (trimmedHistorySeconds + historySeconds + (start - currentStartedAt) / 1000) * pxPerSec;
     const width = Math.max(2, ((end - start) / 1000) * pxPerSec);
     return <span key={`${marker.airedAt}-${index}`} title={marker.label}
       className={`absolute inset-y-0 rounded-sm ${kind === 'speech' ? 'bg-[var(--accent)]' : 'bg-[var(--accent-2)]'}`}
@@ -215,20 +278,24 @@ export default function NowPlayingWaveform() {
   return <section className="space-y-3 border border-ink/30 p-4" aria-label="Currently playing waveform">
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
       <span className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase">On air</span>
-      <h2 className="min-w-0 break-words text-sm font-semibold">{nowPlaying?.title ?? 'Nothing playing'}</h2>
+      <h2 className="min-w-0 text-sm font-semibold break-words">{nowPlaying?.title ?? 'Nothing playing'}</h2>
       {nowPlaying?.artist && <span className="text-sm text-muted">— {nowPlaying.artist}</span>}
-      <span className="ml-auto text-xs tabular-nums text-muted">{clock(elapsed)}{currentDuration ? ` / ${clock(currentDuration)}` : ''}</span>
+      <span className="ml-auto text-xs text-muted tabular-nums">{clock(elapsed)}{currentDuration ? ` / ${clock(currentDuration)}` : ''}</span>
     </div>
-    <div ref={viewport} className="relative overflow-hidden" aria-label="Scrolling current and next track waveforms">
+      <div ref={viewport} className="relative overflow-hidden" aria-label="Scrolling current and next track waveforms">
       <div className="flex h-[5.5rem] items-center" style={{ width: timelineWidth }}>
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
+        <div className="shrink-0" aria-hidden="true" style={{ width: trimmedHistorySeconds * pxPerSec }} />
+        {historyTracks.map(track => <DeckSegment key={track.id} id={track.id} adminFetch={adminFetch}
+          color={colors[track.colorRole === 'accent' ? 'current' : 'next']} pxPerSec={pxPerSec}
+          expectedDuration={track.duration} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />)}
         {currentId && hydrated && !needsAuth && <DeckSegment key={currentId} id={currentId} adminFetch={adminFetch}
-          color={colors.current} pxPerSec={pxPerSec} expectedDuration={currentDuration} onDuration={setCurrentDuration} onReady={onReady} onError={onError} />}
+          color={currentColor} pxPerSec={pxPerSec} expectedDuration={currentDuration} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />}
         {nextId && hydrated && !needsAuth && <DeckSegment key={nextId} id={nextId} adminFetch={adminFetch}
-          color={colors.next} pxPerSec={pxPerSec} expectedDuration={nextDuration} onDuration={setNextDuration} onReady={onReady} onError={onError} />}
+          color={nextColor} pxPerSec={pxPerSec} expectedDuration={nextDuration} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />}
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
       </div>
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px -translate-x-1/2 bg-ink" aria-hidden="true" />
+      <span className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-[3px] -translate-x-1/2 bg-ink shadow-[0_0_0_1px_var(--bg)]" aria-hidden="true" />
     </div>
     <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2" aria-label="Speech and jingle timeline">
       <div className="space-y-1 text-[10px] text-muted"><div>Speech</div><div>Jingles</div></div>
