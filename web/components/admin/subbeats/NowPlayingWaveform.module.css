@@ -2,6 +2,12 @@
   background: var(--bg);
 }
 
+/* The fixed page grain composites over this moving canvas and modulates its
+   theme colors. Keep the experiment's themed background, without the overlay. */
+:global(body):has(.panel)::after {
+  display: none;
+}
+
 .deck {
   position: relative;
   isolation: isolate;
