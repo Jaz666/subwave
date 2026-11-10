@@ -22,16 +22,19 @@
 // while one airs the answer is still the song before it, as the title is.
 
 import { Router } from 'express';
+import { pipeline } from 'node:stream/promises';
 import { requireAdmin } from '../middleware/auth.js';
 import { queue } from '../broadcast/queue.js';
 import * as subsonic from '../music/subsonic.js';
 import { createFileFormatLookup, type FileFormat } from '../music/file-format.js';
+import { fetchWithTimeout } from '../util/fetch-timeout.js';
 
 type NowPlaying = { subsonic_id?: string | null; [k: string]: unknown } | null | undefined;
 
 export function createNowPlayingFileRouter(deps: {
   nowPlaying: () => Promise<NowPlaying>;
   lookup: (id: string) => Promise<FileFormat | null>;
+  streamAudio?: (id: string, signal: AbortSignal) => Promise<Response>;
 }): Router {
   const router = Router();
   router.get('/now-playing/file', requireAdmin, async (req, res) => {
@@ -49,10 +52,64 @@ export function createNowPlayingFileRouter(deps: {
     try { format = await deps.lookup(id); } catch { /* null: the lookup fails open */ }
     res.json({ id, format });
   });
+  // Audio for the current library track only. The caller must name the id it
+  // saw in /now-playing, preventing this endpoint from becoming an arbitrary
+  // Navidrome proxy when the station changes tracks between polling and load.
+  router.get('/now-playing/audio', requireAdmin, async (req, res) => {
+    const asked = typeof req.query.id === 'string' && req.query.id ? req.query.id : null;
+    let id: string | null = null;
+    try {
+      const np = await deps.nowPlaying();
+      id = typeof np?.subsonic_id === 'string' && np.subsonic_id ? np.subsonic_id : null;
+    } catch { /* treated as nothing on air */ }
+    if (!id) {
+      res.status(404).json({ error: 'No library track is on air.' });
+      return;
+    }
+    if (asked !== id) {
+      res.status(409).json({ error: 'The requested track is no longer on air.' });
+      return;
+    }
+    if (!deps.streamAudio) {
+      res.status(501).json({ error: 'On-air audio is unavailable.' });
+      return;
+    }
+
+    const abort = new AbortController();
+    const cancel = () => abort.abort();
+    res.on('close', cancel);
+    try {
+      const source = await deps.streamAudio(id, abort.signal);
+      const type = source.headers.get('content-type')?.toLowerCase() ?? '';
+      if (!source.ok || !source.body || type.includes('json') || type.includes('xml') || type.startsWith('text/')) {
+        throw new Error('The on-air recording could not be loaded.');
+      }
+      const maxBytes = 256 * 1024 * 1024;
+      if (Number(source.headers.get('content-length')) > maxBytes) throw new Error('The recording is too large to visualize.');
+      res.set('Cache-Control', 'no-store').type(type || 'application/octet-stream');
+      await pipeline((async function* () {
+        let bytes = 0;
+        for await (const chunk of source.body as unknown as AsyncIterable<Uint8Array>) {
+          bytes += chunk.length;
+          if (bytes > maxBytes) throw new Error('The recording is too large to visualize.');
+          yield chunk;
+        }
+      })(), res);
+    } catch {
+      if (!abort.signal.aborted && !res.headersSent) res.status(502).json({ error: 'Could not load the on-air recording.' });
+      else if (!res.destroyed) res.destroy();
+    } finally {
+      abort.abort();
+      res.off('close', cancel);
+    }
+  });
   return router;
 }
 
 export const router = createNowPlayingFileRouter({
   nowPlaying: () => queue.getNowPlaying(),
   lookup: createFileFormatLookup({ getSong: subsonic.getSong }),
+  streamAudio: (id, signal) => fetchWithTimeout(subsonic.getRawStreamUrl(id), {
+    timeoutMs: 5 * 60_000, bodyDeadline: true, signal,
+  }),
 });
