@@ -35,7 +35,9 @@ canvas bars between pixel boundaries changes their brightness. The animation
 now rounds its position to physical pixels using `devicePixelRatio`, read each
 frame so browser zoom and monitor changes are respected. The elapsed clock is
 not rounded. This can make low-density movement look slightly more stepped.
-The normal background texture has been restored at the owner's request.
+The restored fixed grain also changed bar pixels as they moved underneath it.
+The theme backdrop stays in place, but the page-wide grain overlay is hidden
+only while this experimental waveform page is mounted.
 
 An isolated Chromium harness used the actual component, styles and theme CSS,
 with mocked station/auth hooks and generated WAV responses. Across 12 captured
@@ -44,13 +46,15 @@ DPR 1, 1.25 and 2, with a mean RGB error below 0.003/255 at DPR 1.5, with grain
 disabled. With grain restored, mean error was about 1.6–1.8/255 across those
 densities, reflecting the fixed texture over moving content. This is rendering
 evidence, not acceptance on the owner's desktop browsers; that remains open.
+After suppressing grain on the experiment page, same-frame deck screenshots
+with and without the overlay were pixel-identical.
 
 History, current and next segments retain one keyed React list. The same
 outgoing canvas survives the handoff, is clipped at the audible handoff point,
 and is released after 30 seconds. Desktop/mobile browser checks also covered
 the stationary marker, stable track colors, different source durations, one
 audio fetch per track, shared event lane, armed/pending transition labels and
-forecast placement, light/dark themes, and restored background. No page errors
+forecast placement, light/dark themes, and the themed background. No page errors
 were reported. Focused web ESLint and TypeScript checks passed; five forecast
 unit checks and sixteen protected-file route checks passed. No full PR suite
 or live broadcast test is implied.
