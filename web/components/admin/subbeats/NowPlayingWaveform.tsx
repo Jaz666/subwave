@@ -5,7 +5,8 @@ import type WaveSurfer from 'wavesurfer.js';
 import { useStationFeed } from '../../../hooks/useStationFeed';
 import { adminResponse } from '../../../lib/admin-query';
 import { useAdminAuth } from '../../../lib/adminAuth';
-import { createColorProbe, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
+import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
+import styles from './NowPlayingWaveform.module.css';
 
 const HISTORY_SECONDS = 30;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
@@ -120,13 +121,20 @@ export default function NowPlayingWaveform() {
   const currentStartedAt = trackStartedAt ?? 0;
   const sidePadding = viewportWidth / 2;
   const pxPerSec = viewportWidth / (HISTORY_SECONDS * 2);
-  const currentRole = colorPhase ? 'accent2' : 'accent';
-  const nextRole = colorPhase ? 'accent' : 'accent2';
+  const activeTrack = useRef<DeckTrack | null>(currentId ? {
+    id: currentId, duration: currentDuration, startedAt: currentStartedAt, colorRole: colorPhase ? 'accent2' : 'accent',
+  } : null);
+  const phaseRole = colorPhase ? 'accent2' : 'accent';
+  const currentRole = activeTrack.current && activeTrack.current.id !== currentId
+    ? (activeTrack.current.colorRole === 'accent' ? 'accent2' : 'accent')
+    : phaseRole;
+  const nextRole = currentRole === 'accent' ? 'accent2' : 'accent';
   const currentColor = colors[currentRole === 'accent' ? 'current' : 'next'];
   const nextColor = colors[nextRole === 'accent' ? 'current' : 'next'];
-  const activeTrack = useRef<DeckTrack | null>(currentId ? {
-    id: currentId, duration: currentDuration, startedAt: currentStartedAt, colorRole: currentRole,
-  } : null);
+  const outgoingTrack = activeTrack.current && activeTrack.current.id !== currentId ? activeTrack.current : null;
+  const visibleHistoryTracks = outgoingTrack
+    ? [...historyTracks.filter(track => track.id !== outgoingTrack.id), outgoingTrack]
+    : historyTracks;
   const historyRef = useRef(historyTracks);
   const currentIdRef = useRef(currentId);
   const nextIdRef = useRef(nextId);
@@ -178,7 +186,7 @@ export default function NowPlayingWaveform() {
     setTrimmedHistorySeconds(value => value + expired.reduce((total, track) => total + track.duration, 0));
   }, [elapsed]);
 
-  const historySeconds = historyTracks.reduce((total, track) => total + track.duration, 0);
+  const historySeconds = visibleHistoryTracks.reduce((total, track) => total + track.duration, 0);
   const totalTimelineSec = trimmedHistorySeconds + historySeconds + currentDuration + nextDuration;
   const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + totalTimelineSec * pxPerSec);
 
@@ -188,7 +196,10 @@ export default function NowPlayingWaveform() {
     const update = () => {
       const theme = readThemeRgb(document.documentElement, probe);
       const current = cssRgb(theme.accent);
-      const next = cssRgb(theme.accent2);
+      const secondary = theme.accent.every((channel, index) => channel === theme.accent2[index])
+        ? mix(theme.accent, theme.ink, 0.35)
+        : theme.accent2;
+      const next = cssRgb(secondary);
       setColors(previous => previous.current === current && previous.next === next ? previous : { current, next });
     };
     update();
@@ -292,11 +303,11 @@ export default function NowPlayingWaveform() {
       {nowPlaying?.artist && <span className="text-sm text-muted">— {nowPlaying.artist}</span>}
       <span className="ml-auto text-xs text-muted tabular-nums">{clock(elapsed)}{currentDuration ? ` / ${clock(currentDuration)}` : ''}</span>
     </div>
-      <div ref={viewport} className="relative overflow-hidden" aria-label="Scrolling current and next track waveforms">
+      <div ref={viewport} className="relative isolate overflow-hidden" aria-label="Scrolling current and next track waveforms">
       <div className="flex h-[5.5rem] items-center" style={{ width: timelineWidth }}>
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
         <div className="shrink-0" aria-hidden="true" style={{ width: trimmedHistorySeconds * pxPerSec }} />
-        {historyTracks.map(track => <DeckSegment key={track.id} id={track.id} adminFetch={adminFetch}
+        {visibleHistoryTracks.map(track => <DeckSegment key={track.id} id={track.id} adminFetch={adminFetch}
           color={colors[track.colorRole === 'accent' ? 'current' : 'next']} pxPerSec={pxPerSec}
           expectedDuration={track.duration} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />)}
         {currentId && hydrated && !needsAuth && <DeckSegment key={currentId} id={currentId} adminFetch={adminFetch}
@@ -305,10 +316,7 @@ export default function NowPlayingWaveform() {
           color={nextColor} pxPerSec={pxPerSec} expectedDuration={nextDuration} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />}
         <div className="shrink-0" aria-hidden="true" style={{ width: sidePadding }} />
       </div>
-      <div className="pointer-events-none absolute inset-y-0 left-1/2 z-[100] w-[5px] -translate-x-1/2 bg-[var(--bg)]" aria-hidden="true">
-        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--accent)]" />
-        <span className="absolute top-0 left-1/2 size-3 -translate-x-1/2 rounded-full border-2 border-[var(--bg)] bg-[var(--accent)]" />
-      </div>
+      <div className={styles.playhead} aria-hidden="true" />
     </div>
     <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2" aria-label="Speech and jingle timeline">
       <div className="space-y-1 text-[10px] text-muted"><div>Speech</div><div>Jingles</div></div>
