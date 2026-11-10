@@ -22,7 +22,8 @@
 // while one airs the answer is still the song before it, as the title is.
 
 import { Router } from 'express';
-import { readFileSync } from 'node:fs';
+import { createReadStream, lstatSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { requireAdmin } from '../middleware/auth.js';
 import { queue } from '../broadcast/queue.js';
@@ -30,9 +31,73 @@ import { config } from '../config.js';
 import * as subsonic from '../music/subsonic.js';
 import { createFileFormatLookup, type FileFormat } from '../music/file-format.js';
 import * as settings from '../settings.js';
+import * as stemCache from '../music/stem-cache.js';
+import { readSubbeatsQueue } from '../music/subbeats-store.js';
+import type { SubbeatsTiming } from '../broadcast/subbeats-clock.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 
 type NowPlaying = { subsonic_id?: string | null; [k: string]: unknown } | null | undefined;
+const VISUAL_STEMS = ['vocals', 'drums', 'bass', 'other'] as const;
+type VisualStem = typeof VISUAL_STEMS[number];
+type VisualStemSide = 'outgoing' | 'incoming';
+type StemSource = { path: string; startSec: number; endSec: number | null; storageGain: number };
+type VisualTransition = {
+  kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
+  outgoingId?: string; incomingId?: string;
+  mixStyle?: 'long-blend' | 'short-exchange' | 'bass-swap' | 'drums-first';
+  gainsDb?: [number, number]; timing?: SubbeatsTiming; periodSec?: number;
+  outgoingGainDb?: number; incomingGainDb?: number;
+  sources?: { outgoing: Omit<StemSource, 'path'>; incoming: Omit<StemSource, 'path'> };
+};
+
+function regularStemSource(id: string, side: VisualStemSide, stem: VisualStem): StemSource | null {
+  const window = side === 'outgoing' ? 'tail' : 'head';
+  const folder = stemCache.dirFor(id);
+  try {
+    if (!lstatSync(folder).isDirectory()) return null;
+    const file = stemCache.stemPath(id, window, stem);
+    if (!lstatSync(file).isFile()) return null;
+    const metaPath = path.join(folder, 'tail-meta.json');
+    if (side !== 'outgoing') return { path: file, startSec: 0, endSec: null, storageGain: 1 };
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { tail_start_sec?: number; duration_sec?: number };
+    if (!Number.isFinite(meta.tail_start_sec) || !Number.isFinite(meta.duration_sec)) return null;
+    return { path: file, startSec: meta.tail_start_sec!, endSec: meta.duration_sec!, storageGain: 1 };
+  } catch { return null; }
+}
+
+function subbeatsStemSource(id: string, side: VisualStemSide, stem: VisualStem): StemSource | null {
+  const job = readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === id && item.status === 'prepared' && item.bundleKey);
+  if (!job?.bundleKey) return null;
+  const roots = [
+    path.join(stemCache.dirFor(id), 'subbeats', 'v1', job.bundleKey),
+    path.join(config.stateDir, 'subbeats', 'v1', job.bundleKey),
+  ];
+  const regionName = side === 'outgoing' ? 'exit' : 'head';
+  for (const root of roots) {
+    try {
+      if (!lstatSync(root).isDirectory()) continue;
+      const manifestPath = path.join(root, 'manifest.json');
+      if (!lstatSync(manifestPath).isFile()) continue;
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+        files?: Record<string, { bytes?: number }>;
+        metadata?: { stem_regions?: Array<{ name?: string; start_sample?: number; end_sample?: number; sample_rate?: number; storage_gain?: number }> };
+      };
+      const region = manifest.metadata?.stem_regions?.find(item => item.name === regionName);
+      if (!region || region.sample_rate !== 44100 || !Number.isFinite(region.start_sample) || !Number.isFinite(region.end_sample)) continue;
+      const file = path.join(root, `${regionName}-${stem}.flac`);
+      const record = manifest.files?.[path.basename(file)];
+      const stat = lstatSync(file);
+      if (!stat.isFile() || stat.size !== record?.bytes) continue;
+      return { path: file, startSec: region.start_sample! / region.sample_rate,
+        endSec: region.end_sample! / region.sample_rate, storageGain: Number(region.storage_gain) || 1 };
+    } catch { /* try the legacy bundle root */ }
+  }
+  return null;
+}
+
+function stemSource(id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean): StemSource | null {
+  return (subbeats ? subbeatsStemSource(id, side, stem) : null) ?? regularStemSource(id, side, stem);
+}
 
 export function createNowPlayingFileRouter(deps: {
   nowPlaying: () => Promise<NowPlaying>;
@@ -41,9 +106,8 @@ export function createNowPlayingFileRouter(deps: {
   nextTrackId?: () => string | null;
   latestJingle?: () => { filename?: string; startedAt?: number; durationSec?: number; queuedSec?: number; placement?: string } | null;
   latestBed?: () => { filename?: string; startedAt?: number; durationSec?: number | string } | null;
-  stemTransition?: (currentId: string) => {
-    kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
-  } | null;
+  stemTransition?: (currentId: string) => VisualTransition | null;
+  stemSource?: typeof stemSource;
   crossfadeSeconds?: () => number;
 }): Router {
   const router = Router();
@@ -114,6 +178,48 @@ export function createNowPlayingFileRouter(deps: {
       res.off('close', cancel);
     }
   });
+  router.get('/now-playing/stem-audio', requireAdmin, async (req, res) => {
+    const side = req.query.side;
+    const stem = req.query.stem;
+    if ((side !== 'outgoing' && side !== 'incoming') || !VISUAL_STEMS.includes(stem as VisualStem)) {
+      res.status(400).json({ error: 'Choose a valid stem and transition side.' });
+      return;
+    }
+    let currentId: string | null = null;
+    try {
+      const np = await deps.nowPlaying();
+      currentId = typeof np?.subsonic_id === 'string' && np.subsonic_id ? np.subsonic_id : null;
+    } catch { /* treated as nothing on air */ }
+    if (!currentId) {
+      res.status(404).json({ error: 'No library track is on air.' });
+      return;
+    }
+    const transition = deps.stemTransition?.(currentId);
+    const nextId = deps.nextTrackId?.() ?? null;
+    const askedId = side === 'outgoing' ? currentId : nextId;
+    const expectedId = side === 'outgoing' ? transition?.outgoingId : transition?.incomingId;
+    if (!transition || !askedId || askedId !== expectedId) {
+      res.status(409).json({ error: 'The stem transition is no longer current.' });
+      return;
+    }
+    const source = (deps.stemSource ?? stemSource)(askedId, side, stem as VisualStem, transition.kind === 'subbeats');
+    if (!source) {
+      res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
+      return;
+    }
+    try {
+      const stat = lstatSync(source.path);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 44 || stat.size > 64 * 1024 * 1024) {
+        res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
+        return;
+      }
+      res.set({ 'Cache-Control': 'no-store', 'Content-Type': 'audio/flac' });
+      await pipeline(createReadStream(source.path), res);
+    } catch {
+      if (!res.headersSent) res.status(404).json({ error: 'The prepared stem waveform is unavailable.' });
+      else if (!res.destroyed) res.destroy();
+    }
+  });
   router.get('/now-playing/visual-events', requireAdmin, async (req, res) => {
     const asked = typeof req.query.id === 'string' && req.query.id ? req.query.id : null;
     let id: string | null = null;
@@ -179,15 +285,33 @@ export const router = createNowPlayingFileRouter({
     const incoming = queue.upcoming[0];
     const blend = outgoing?.stemBlend;
     if (outgoing?.track?.id !== currentId || !incoming?.stemSeam || !blend) return null;
+    if (!outgoing.track?.id || !incoming.track?.id) return null;
     const timing = blend.subbeats?.timing;
     const durationSec = Number(blend.clipSec) || (timing ? timing.clipFrames / timing.sampleRate : 0);
     if (!(durationSec > 0)) return null;
+    const ids = { outgoingId: outgoing.track.id, incomingId: incoming.track.id };
+    const sourceInfo = (side: VisualStemSide) => {
+      const id = side === 'outgoing' ? ids.outgoingId : ids.incomingId;
+      const source = stemSource(id, side, 'drums', !!timing);
+      return source ? { startSec: source.startSec, endSec: source.endSec, storageGain: source.storageGain } : undefined;
+    };
+    const sources = { outgoing: sourceInfo('outgoing'), incoming: sourceInfo('incoming') };
+    const trackGains = {
+      outgoingGainDb: Number(outgoing.track.gainDb) || 0,
+      incomingGainDb: Number(incoming.track.gainDb) || 0,
+    };
     if (timing) {
       return {
         kind: 'subbeats',
         durationSec,
         incomingAtSec: timing.incomingEntryFrame / timing.sampleRate,
         outgoingUntilSec: timing.outgoingEndFrame / timing.sampleRate,
+        ...ids,
+        mixStyle: blend.subbeats!.mixStyle,
+        gainsDb: [blend.subbeats!.gainsDb[0] ?? 0, blend.subbeats!.gainsDb[1] ?? 0],
+        timing,
+        ...trackGains,
+        ...(sources.outgoing && sources.incoming ? { sources: { outgoing: sources.outgoing, incoming: sources.incoming } } : {}),
       };
     }
     // The regular rendered blend has no published internal handoff frame.
@@ -195,7 +319,10 @@ export const router = createNowPlayingFileRouter({
     const seam = Math.min(0.3, durationSec / 4);
     const middle = durationSec / 2;
     return { kind: 'stem-blend', durationSec,
-      incomingAtSec: middle - seam / 2, outgoingUntilSec: middle + seam / 2 };
+      incomingAtSec: middle - seam / 2, outgoingUntilSec: middle + seam / 2,
+      ...ids, ...trackGains,
+      ...(sources.outgoing && sources.incoming ? { sources: { outgoing: sources.outgoing, incoming: sources.incoming } } : {}),
+    };
   },
   crossfadeSeconds: () => Number(settings.get()?.crossfadeDuration) || 10,
 });
