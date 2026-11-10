@@ -67,6 +67,95 @@
   color: var(--muted);
 }
 
+.stemFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.expandButton {
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.expandedLanes {
+  margin-top: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  padding-top: 8px;
+}
+
+.expandedLegend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 5px;
+  font-size: 10px;
+}
+
+.expandedDuration {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.expandedStatus {
+  padding-block: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.expandedPlot {
+  overflow-x: auto;
+}
+
+.stemDetailRow {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  border-top: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.stemDetailName {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.stemDetailChart {
+  min-width: 320px;
+}
+
+.stemDetailChart svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.chartRule {
+  stroke: color-mix(in oklab, var(--ink) 12%, transparent);
+  stroke-width: 1;
+}
+
+.chartMarker {
+  stroke: color-mix(in oklab, var(--ink) 65%, transparent);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.chartArrival {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.chartLabel {
+  color: var(--muted);
+  font-size: 8px;
+}
+
 .trackTime {
   margin-left: auto;
   color: var(--ink);

@@ -24,6 +24,21 @@ type VisualEvents = {
     durationSec: number;
     incomingAtSec: number;
     outgoingUntilSec: number;
+    outgoingId?: string;
+    incomingId?: string;
+    mixStyle?: 'long-blend' | 'short-exchange' | 'bass-swap' | 'drums-first';
+    gainsDb?: [number, number];
+    outgoingGainDb?: number;
+    incomingGainDb?: number;
+    timing?: {
+      sampleRate: number; outgoingStartSample: number; incomingEntryFrame: number; handoverFrame: number;
+      outgoingEndFrame: number; clipFrames: number; incomingRate: number; releaseStartFrame: number;
+      releaseEndFrame: number; loop?: { startSample: number; lengthSamples: number; repeats: number };
+    };
+    sources?: {
+      outgoing?: { startSec: number; endSec: number | null; storageGain: number };
+      incoming?: { startSec: number; endSec: number | null; storageGain: number };
+    };
   } | null;
 };
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
@@ -47,6 +62,158 @@ function finishTrack(track: DeckTrack, endedAt: number): DeckTrack {
 
 function cssRgb([r, g, b]: readonly number[]): string {
   return `rgb(${r} ${g} ${b})`;
+}
+
+const STEM_NAMES = ['vocals', 'drums', 'bass', 'other'] as const;
+type StemName = typeof STEM_NAMES[number];
+type StemLaneData = { outgoing: number[]; incoming: number[] };
+
+function peaksFromBuffer(buffer: AudioBuffer, bins: number, gain: number): number[] {
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
+  return Array.from({ length: bins }, (_, bin) => {
+    const start = Math.floor(bin * buffer.length / bins);
+    const end = Math.max(start + 1, Math.floor((bin + 1) * buffer.length / bins));
+    let square = 0;
+    let count = 0;
+    for (const channel of channels) {
+      for (let sample = start; sample < end; sample += 1) { square += (channel[sample] ?? 0) ** 2; count += 1; }
+    }
+    return Math.min(1, Math.sqrt(square / Math.max(1, count)) * gain);
+  });
+}
+
+function envelopePath(values: number[], width: number, height: number): string {
+  return values.map((value, index) => `${index ? 'L' : 'M'}${(index / Math.max(1, values.length - 1)) * width},${height - Math.max(0, Math.min(1, value)) * height}`).join(' ');
+}
+
+function ExpandedStemLanes({ transition, adminFetch, colors }: {
+  transition: NonNullable<VisualEvents['stemTransition']>;
+  adminFetch: (path: string, init?: RequestInit) => Promise<Response>;
+  colors: { current: string; next: string };
+}) {
+  const [lanes, setLanes] = useState<Partial<Record<StemName, StemLaneData>>>({});
+  const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [plotWidth, setPlotWidth] = useState(640);
+  const plot = useRef<HTMLDivElement>(null);
+  const bins = 160;
+  const outgoingStorageGain = transition.sources?.outgoing?.storageGain ?? 1;
+  const incomingStorageGain = transition.sources?.incoming?.storageGain ?? 1;
+
+  useEffect(() => {
+    if (!transition.outgoingId || !transition.incomingId) { setStatus('unavailable'); return; }
+    const abort = new AbortController();
+    let context: AudioContext | null = null;
+    void (async () => {
+      try {
+        context = new AudioContext();
+        const decoded: Array<readonly [StemName, StemLaneData]> = [];
+        for (const stem of STEM_NAMES) {
+          const pair = await Promise.all((['outgoing', 'incoming'] as const).map(async side => {
+            const response = await adminResponse(adminFetch,
+              `/now-playing/stem-audio?side=${side}&stem=${stem}`, { signal: abort.signal });
+            const buffer = await context!.decodeAudioData(await response.arrayBuffer());
+            const storageGain = side === 'outgoing' ? outgoingStorageGain : incomingStorageGain;
+            return peaksFromBuffer(buffer, bins, storageGain);
+          }));
+          decoded.push([stem, { outgoing: pair[0]!, incoming: pair[1]! }]);
+        }
+        if (!abort.signal.aborted) { setLanes(Object.fromEntries(decoded)); setStatus('ready'); }
+      } catch {
+        if (!abort.signal.aborted) setStatus('unavailable');
+      } finally {
+        await context?.close();
+      }
+    })();
+    return () => { abort.abort(); void context?.close(); };
+  }, [adminFetch, transition.kind, transition.incomingId, transition.outgoingId,
+    incomingStorageGain, outgoingStorageGain]);
+
+  useEffect(() => {
+    const element = plot.current;
+    if (!element) return;
+    const resize = () => setPlotWidth(Math.max(320, element.clientWidth));
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const duration = Math.max(1, transition.durationSec);
+  const incomingAt = Math.max(0, Math.min(duration, transition.incomingAtSec));
+  const outgoingUntil = Math.max(incomingAt, Math.min(duration, transition.outgoingUntilSec));
+  const arrival = transition.timing
+    ? Math.max(incomingAt, Math.min(duration, transition.timing.handoverFrame / transition.timing.sampleRate))
+    : (incomingAt + outgoingUntil) / 2;
+  const outgoingGain = 10 ** ((transition.gainsDb?.[0] ?? transition.outgoingGainDb ?? 0) / 20);
+  const incomingGain = 10 ** ((transition.gainsDb?.[1] ?? transition.incomingGainDb ?? 0) / 20);
+  const gainCurves = (stem: StemName) => {
+    const outgoing = Array.from({ length: bins }, (_, i) => {
+      const t = i / (bins - 1) * duration;
+      let value = t <= outgoingUntil ? 1 : Math.max(0, 1 - (t - outgoingUntil) / Math.max(0.03, duration - outgoingUntil));
+      if ((stem === 'vocals' || stem === 'other') && t > outgoingUntil - 0.03) value *= Math.max(0, (outgoingUntil - t) / 0.03);
+      if (transition.kind === 'subbeats' && ['short-exchange', 'drums-first'].includes(transition.mixStyle ?? '')
+        && (stem === 'bass' || stem === 'other')) value *= Math.max(0, 1 - Math.max(0, t - arrival) / Math.max(0.03, duration * 0.08));
+      if (transition.kind === 'subbeats' && transition.mixStyle === 'bass-swap' && stem === 'bass')
+        value *= Math.max(0, 1 - Math.max(0, t - arrival) / Math.max(0.03, duration * 0.02));
+      return value * outgoingGain;
+    });
+    const incoming = Array.from({ length: bins }, (_, i) => {
+      const t = i / (bins - 1) * duration;
+      let value = t < incomingAt ? 0 : 1;
+      if ((stem === 'drums' || stem === 'bass') && t < arrival) value = Math.max(0, (t - incomingAt) / Math.max(0.03, arrival - incomingAt));
+      if (transition.kind === 'subbeats' && ['short-exchange', 'drums-first'].includes(transition.mixStyle ?? '')
+        && (stem === 'bass' || stem === 'other')) value = Math.max(value, Math.min(1, Math.max(0, (t - arrival) / Math.max(0.03, duration * 0.08))));
+      if (transition.kind === 'subbeats' && transition.mixStyle === 'bass-swap' && stem === 'bass')
+        value = Math.max(value, Math.min(1, Math.max(0, (t - arrival) / Math.max(0.03, duration * 0.02))));
+      return value * incomingGain;
+    });
+    return { outgoing, incoming };
+  };
+
+  return <div className={styles.expandedLanes}>
+    <div className={styles.expandedLegend}>
+      <span ref={element => { if (element) element.style.color = colors.current; }}>Outgoing stems</span>
+      <span ref={element => { if (element) element.style.color = colors.next; }}>Incoming stems</span>
+      <span>Gain · {transition.kind === 'subbeats' ? 'approx.' : 'est.'}</span>
+      <span className={styles.expandedDuration}>Transition {duration.toFixed(1)}s</span>
+    </div>
+    {status === 'loading' && <p className={styles.expandedStatus}>Loading transition stems…</p>}
+    {status === 'unavailable' && <p className={styles.expandedStatus}>Prepared stem audio is unavailable for this transition.</p>}
+    {status === 'ready' && <div ref={plot} className={styles.expandedPlot}>
+      {STEM_NAMES.map(stem => {
+        const data = lanes[stem];
+        if (!data) return null;
+        const curves = gainCurves(stem);
+        const waveform = (values: number[], color: string, from: number, until: number) => {
+          const path = values.map((value, index) => {
+            const x = from + index / (values.length - 1) * (until - from);
+            const amp = value * 14;
+            return `M${x},${14 - amp} L${x},${14 + amp}`;
+          }).join(' ');
+          return <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity=".78" />;
+        };
+        return <div className={styles.stemDetailRow} key={stem}>
+          <div className={styles.stemDetailName}>{stem}</div>
+          <div className={styles.stemDetailChart}>
+            <svg width={plotWidth} height="74" viewBox={`0 0 ${plotWidth} 74`} role="img" aria-label={`${stem} outgoing and incoming waveforms and estimated gain envelopes`}>
+              <line x1="0" x2={plotWidth} y1="14" y2="14" className={styles.chartRule} />
+              <line x1="0" x2={plotWidth} y1="45" y2="45" className={styles.chartRule} />
+              {waveform(data.outgoing, colors.current, 0, outgoingUntil / duration * plotWidth)}
+              {waveform(data.incoming, colors.next, incomingAt / duration * plotWidth, plotWidth)}
+              <path d={envelopePath(curves.outgoing, plotWidth, 16)} transform="translate(0 29)" fill="none" stroke={colors.current} strokeWidth="2" />
+              <path d={envelopePath(curves.incoming, plotWidth, 16)} transform="translate(0 29)" fill="none" stroke={colors.next} strokeWidth="2" strokeDasharray="4 2" />
+              <line x1={incomingAt / duration * plotWidth} x2={incomingAt / duration * plotWidth} y1="0" y2="55" className={styles.chartMarker} />
+              <line x1={arrival / duration * plotWidth} x2={arrival / duration * plotWidth} y1="0" y2="55" className={styles.chartArrival} />
+              <text x="2" y="70" className={styles.chartLabel}>Transition starts</text>
+              <text x={incomingAt / duration * plotWidth + 3} y="70" className={styles.chartLabel}>Incoming entry</text>
+              <text x={arrival / duration * plotWidth + 3} y="70" className={styles.chartLabel}>Handover</text>
+              <text x={plotWidth - 2} y="70" textAnchor="end" className={styles.chartLabel}>Transition ends</text>
+            </svg>
+          </div>
+        </div>;
+      })}
+    </div>}
+  </div>;
 }
 
 function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, playedSeconds, onDuration, onError }: {
@@ -158,6 +325,7 @@ export default function NowPlayingWaveform() {
   const [historyTracks, setHistoryTracks] = useState<DeckTrack[]>([]);
   const [trimmedHistorySeconds, setTrimmedHistorySeconds] = useState(0);
   const [message, setMessage] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const currentId = nowPlaying?.subsonic_id;
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
@@ -295,6 +463,8 @@ export default function NowPlayingWaveform() {
     setElapsed(0);
     setMessage('');
   }, [currentId, next?.subsonic_id, needsAuth, nowPlaying?.duration, next?.duration]);
+
+  useEffect(() => setExpanded(false), [currentId, nextId]);
 
   useEffect(() => {
     if (!currentId || !hydrated || needsAuth) return;
@@ -467,7 +637,12 @@ export default function NowPlayingWaveform() {
           <div className={`${styles.eventLane} ${styles.stemLane}`}>{stemBar}</div>
         </div>
       </div>
-      <div className={styles.laneLabel}>Stems</div>
+      <div className={styles.stemFooter}>
+        <div className={styles.laneLabel}>Stems</div>
+        {stemTransition?.outgoingId && stemTransition.incomingId && <button type="button" className={styles.expandButton}
+          aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Collapse' : 'Expand'}</button>}
+      </div>
+      {expanded && stemTransition && <ExpandedStemLanes transition={stemTransition} adminFetch={adminFetch} colors={colors} />}
     </div>
     {message && <p className="text-xs text-muted" role="status">{message}</p>}
   </section>;
