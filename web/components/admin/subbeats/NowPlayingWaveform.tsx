@@ -588,7 +588,7 @@ export default function NowPlayingWaveform() {
 
   const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
 
-  return <section className={`${styles.panel} space-y-2 border border-ink/30 p-4`} aria-label="Station waveform">
+  return <section className="space-y-2" aria-label="Station waveform">
     <div aria-label="Speech, jingle and bed timeline">
       <div className={styles.eventLegend}>
         <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>

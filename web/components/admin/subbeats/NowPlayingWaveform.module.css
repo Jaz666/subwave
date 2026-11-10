@@ -1,7 +1,3 @@
-.panel {
-  background: var(--bg);
-}
-
 .deck {
   position: relative;
   isolation: isolate;
