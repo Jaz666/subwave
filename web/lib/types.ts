@@ -217,8 +217,11 @@ export interface RequestResult {
 /** `/state` response. The booth log (`djLog`) is operator diagnostics and is
  *  not part of this public read; older controllers still send it. */
 export interface StationState {
+  current?: QueueEntry | null;
   upcoming: QueueEntry[];
   history: QueueEntry[];
+  /** Mixer-armed handoff from current to upcoming[0]; null while undecided. */
+  nextTransition?: string | null;
   timezone?: string;
   locale?: StationLocale;
   /** Operator player defaults. `skin` indexes components/skins;

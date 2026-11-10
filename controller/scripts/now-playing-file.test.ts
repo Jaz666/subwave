@@ -166,3 +166,41 @@ test('route: an unreachable Navidrome is a null format, not an error', async () 
   assert.deepEqual(await res.json(), { id: 'gone', format: null });
   await s.close();
 });
+
+test('audio: current and next each stream their own recording', async () => {
+  const calls: string[] = [];
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'a' }), lookup: async () => null,
+    nextTrackId: () => 'b',
+    streamAudio: async id => {
+      calls.push(id);
+      return new Response(`recording-${id}`, { headers: { 'content-type': 'audio/wav' } });
+    },
+  });
+  try {
+    for (const id of ['a', 'b']) {
+      const response = await get(s, `/now-playing/audio?id=${id}`);
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), `recording-${id}`);
+    }
+    assert.deepEqual(calls, ['a', 'b']);
+  } finally { await s.close(); }
+});
+
+test('audio: missing, stale and unauthorized ids do not reach the audio source', async () => {
+  const calls: string[] = [];
+  let nextId: string | null = 'b';
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'a' }), lookup: async () => null,
+    nextTrackId: () => nextId,
+    streamAudio: async id => { calls.push(id); return new Response('audio'); },
+  });
+  try {
+    assert.equal((await get(s, '/now-playing/audio?id=a', {})).status, 401);
+    for (const id of ['', 'stale']) assert.equal((await get(s, `/now-playing/audio?id=${id}`)).status, 409);
+    nextId = null;
+    assert.equal((await get(s, '/now-playing/audio')).status, 409);
+    assert.equal((await get(s, '/now-playing/audio?id=b')).status, 409);
+    assert.deepEqual(calls, []);
+  } finally { await s.close(); }
+});

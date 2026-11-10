@@ -7,6 +7,7 @@ import { adminResponse } from '../../../lib/admin-query';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
 import styles from './NowPlayingWaveform.module.css';
+import { queuedTransition } from './waveform-timeline';
 
 const HISTORY_SECONDS = 30;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
@@ -96,7 +97,7 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
         });
         player.current = instance;
         instance.on('redrawcomplete', () => {
-          // Smooth the canvas texture while the deck moves by fractional pixels.
+          // Keep normal canvas sampling; the timeline moves in physical pixels.
           instance?.getWrapper().querySelectorAll('canvas').forEach(canvas => { canvas.style.imageRendering = 'auto'; });
         });
         instance.on('ready', () => {
@@ -144,6 +145,7 @@ export default function NowPlayingWaveform() {
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
   const currentStartedAt = trackStartedAt ?? 0;
+  const transition = queuedTransition(state, currentId, leadMs);
   const sidePadding = viewportWidth / 2;
   const pxPerSec = viewportWidth / (HISTORY_SECONDS * 2);
   const activeTrack = useRef<DeckTrack | null>(currentId ? {
@@ -257,7 +259,6 @@ export default function NowPlayingWaveform() {
     setCurrentDuration(nowPlaying?.duration ?? 0);
     setNextDuration(next?.duration ?? 0);
     setElapsed(0);
-    setJingle(null);
     setMessage(!currentId ? 'No library track is on air.' : needsAuth ? 'Sign in to load the on-air waveform.' : 'Loading the on-air deck…');
   }, [currentId, next?.subsonic_id, needsAuth, nowPlaying?.duration, next?.duration]);
 
@@ -295,7 +296,12 @@ export default function NowPlayingWaveform() {
     const tick = () => {
       const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt) / 1000) : 0;
       const scrollLeft = Math.min((trimmedHistorySeconds + historySeconds + liveElapsed) * pxPerSec, maxScroll);
-      const transform = `translate3d(${-scrollLeft}px, 0, 0)`;
+      // Fractional physical pixels resample the narrow bars on every frame,
+      // making their brightness pulse. Read the ratio here to follow browser
+      // zoom and moves between monitors without changing the playback clock.
+      const pixelRatio = window.devicePixelRatio || 1;
+      const position = Math.round(scrollLeft * pixelRatio) / pixelRatio;
+      const transform = `translate3d(${-position}px, 0, 0)`;
       if (waveformTimeline.current) waveformTimeline.current.style.transform = transform;
       if (eventTimeline.current) eventTimeline.current.style.transform = transform;
       frame = requestAnimationFrame(tick);
@@ -317,21 +323,23 @@ export default function NowPlayingWaveform() {
     const jingles: TimedMarker[] = jingle
       ? [{ kind: 'jingle', airedAt: Date.parse(jingle.airedAt) + leadMs, durationMs: jingle.durationMs, label: 'Jingle' }]
       : [];
-    return [...speech, ...jingles];
+    return [...speech, ...jingles].filter(marker => Number.isFinite(marker.airedAt) && marker.durationMs > 0);
   }, [currentDuration, currentStartedAt, jingle, leadMs, session.messages]);
 
-  const markerRows = (kind: TimedMarker['kind']) => markers.filter(marker => marker.kind === kind).map((marker, index) => {
-    const start = Math.max(currentStartedAt, marker.airedAt);
-    const end = Math.min(currentStartedAt + currentDuration * 1000, marker.airedAt + marker.durationMs);
+  const eventMarkers = markers.map((marker, index) => {
+    const timelineStart = currentStartedAt - (trimmedHistorySeconds + historySeconds) * 1000;
+    const start = Math.max(timelineStart, marker.airedAt);
+    const end = marker.airedAt + marker.durationMs;
     if (end <= start) return null;
     const left = sidePadding + (trimmedHistorySeconds + historySeconds + (start - currentStartedAt) / 1000) * pxPerSec;
     const width = Math.max(2, ((end - start) / 1000) * pxPerSec);
-    return <span key={`${marker.airedAt}-${index}`} title={marker.label}
-      className={`absolute inset-y-0 rounded-sm ${kind === 'speech' ? 'bg-[var(--accent)]' : 'bg-[var(--accent-2)]'}`}
+    return <span key={`${marker.kind}-${marker.airedAt}-${index}`} title={`${marker.kind === 'speech' ? 'Speech' : 'Jingle'}: ${marker.label}`}
+      className={styles.eventMarker} data-event-kind={marker.kind}
       ref={element => {
         if (!element) return;
         element.style.left = `${left}px`;
         element.style.width = `${width}px`;
+        element.style.backgroundColor = marker.kind === 'speech' ? colors.current : colors.next;
       }} />;
   });
 
@@ -353,18 +361,28 @@ export default function NowPlayingWaveform() {
             color={colors[track.colorRole === 'accent' ? 'current' : 'next']} pxPerSec={pxPerSec}
             expectedDuration={track.duration} playedSeconds={track.playedSeconds} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />)}
           <div ref={trailingPadding} className="shrink-0" aria-hidden="true" />
+          {transition && currentStartedAt > 0 && <div className={styles.transitionMarker} role="img"
+            aria-label={`Estimated incoming entry: ${transition.label}`} title={`Estimated incoming entry: ${transition.label}. Timing may change before it airs.`}
+            data-transition-armed={transition.armed}
+            ref={element => {
+              if (!element) return;
+              element.style.left = `${sidePadding + (trimmedHistorySeconds + historySeconds + (transition.airedAt - currentStartedAt) / 1000) * pxPerSec}px`;
+            }}>
+            <span className={styles.transitionLabel}>{transition.label} · est.</span>
+          </div>}
         </div>
       </div>
       <div className={styles.playhead} aria-hidden="true" />
     </div>
-    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2" aria-label="Speech and jingle timeline">
-      <div className="space-y-1 text-[10px] text-muted"><div>Speech</div><div>Jingles</div></div>
-      <div className={styles.eventsViewport} role="img" aria-label="Speech and jingle markers">
-        <div ref={eventTimeline} className={`${styles.eventsTimeline} space-y-1`}>
-          {(['speech', 'jingle'] as const).map(kind => <div key={kind} className="relative h-2 rounded-sm bg-ink/10">
-            {markerRows(kind)}
-          </div>)}
+    <div aria-label="Speech and jingle timeline">
+      <div className={styles.eventsViewport} role="img" aria-label="Speech and jingle events">
+        <div ref={eventTimeline} className={styles.eventsTimeline}>
+          <div className={styles.eventLane}>{eventMarkers}</div>
         </div>
+      </div>
+      <div className={styles.eventLegend}>
+        <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
+        <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
       </div>
     </div>
     <p className="text-xs text-muted" role="status">{message}</p>

@@ -1,35 +1,50 @@
 # Sub/Beats handover — 8 November 2026
 
-## Latest web experiment — 10 November: on-air waveform corrections
+## Latest web experiment — 10 November: stable bars and transition markers
 
-`NowPlayingWaveform` remains on the experimental WaveSurfer page. Browser
-reproduction found the missing playhead at x = -154.5px: it was inside the
-element whose `scrollLeft` advanced, so increasing z-index could not fix it.
-The playhead now sits outside the moving layer. Animation translates that
-layer by fractional pixels, without rounding through native scrolling.
+The experimental on-air WaveSurfer deck now shares one horizontal lane between
+speech and jingles, with distinct theme colors and a labeled legend. Their
+positions use the same listener clock and full-width viewport as the waveform.
+A dashed marker shows the next track's published `airsAt` forecast plus listener
+lead, labeled with the controller's authoritative `nextTransition` (including
+Sub/Beats). Unarmed seams say “Transition pending”; all timings are explicitly
+estimated. Missing timestamps stay unknown, and a live-edge `/state` pair ahead
+of the audible track cannot label a different pair. Detailed Sub/Beats styles
+and the full overlap range are not currently published in this feed.
 
-History, current and next segments now share one keyed React list. The old
-separate history list destroyed the outgoing WaveSurfer instance and fetched
-its recording again after it was no longer eligible for the protected audio
-endpoint. The revised handoff retains the same canvas, clips it at the audible
-handoff point and releases it once it is 30 seconds behind the playhead.
-Decoded duration stays authoritative when a queued track becomes current.
+The owner confirmed the stationary center playhead is visible. Their later
+1016×240, 30fps desktop recording shows bar brightness shimmer rather than a
+whole-track color swap, with the background grain already suppressed. Browser
+reproduction isolated fractional physical-pixel translation: moving narrow
+canvas bars between pixel boundaries changes their brightness. The animation
+now rounds its position to physical pixels using `devicePixelRatio`, read each
+frame so browser zoom and monitor changes are respected. The elapsed clock is
+not rounded. This can make low-density movement look slightly more stepped.
+The normal background texture has been restored at the owner's request.
 
-The test page suppresses the global paper-grain blend overlay while mounted;
-theme colors remain in use. The canvas uses smooth image sampling during
-translation. Dynamic geometry is applied through DOM refs, and local file
-lane labels use theme utilities; neither component needs JSX inline styles or
-an ESLint exemption.
+An isolated Chromium harness used the actual component, styles and theme CSS,
+with mocked station/auth hooks and generated WAV responses. Across 12 captured
+positions per pixel density, motion-compensated bar pixels were identical at
+DPR 1, 1.25 and 2, with a mean RGB error below 0.003/255 at DPR 1.5, with grain
+disabled. With grain restored, mean error was about 1.6–1.8/255 across those
+densities, reflecting the fixed texture over moving content. This is rendering
+evidence, not acceptance on the owner's desktop browsers; that remains open.
 
-An isolated Chromium harness exercised the actual component and stylesheet
-with mocked station/auth hooks and generated WAV responses. It verified a
-stationary center marker at desktop and mobile widths, fractional animation,
-unchanged canvas identity and colors through a handoff between different
-recording lengths, one audio fetch per track, retention before 30 seconds and
-release afterward, light/dark themes, and restoration of grain on unmount.
-Focused ESLint and TypeScript checks are recorded with the candidate. No full
-PR suite or live broadcast test is implied. Station integration is source-only;
-the owner rebuilds `web`. Previous station source candidate: `8870839c`.
+History, current and next segments retain one keyed React list. The same
+outgoing canvas survives the handoff, is clipped at the audible handoff point,
+and is released after 30 seconds. Desktop/mobile browser checks also covered
+the stationary marker, stable track colors, different source durations, one
+audio fetch per track, shared event lane, armed/pending transition labels and
+forecast placement, light/dark themes, and restored background. No page errors
+were reported. Focused web ESLint and TypeScript checks passed; five forecast
+unit checks and sixteen protected-file route checks passed. No full PR suite
+or live broadcast test is implied.
+
+The protected `/now-playing/audio` route had authorized a queue-head request
+but streamed the current track's ID. It now streams the validated requested ID
+and rejects missing IDs, including when the queue is empty. Both `controller`
+and `web` need an owner-run rebuild for this candidate. Station integration is
+source-only, preserving unrelated prompt edits; rollback source is `b5436ff1`.
 
 ## Latest work — 10 November: station live-picker candidate
 

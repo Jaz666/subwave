@@ -2,12 +2,6 @@
   background: var(--bg);
 }
 
-/* Paper grain blends new colours into each moving bar. Keep this experimental
-   page free of that overlay; navigating away restores the normal theme. */
-:global(body):has(.panel)::after {
-  display: none;
-}
-
 .deck {
   position: relative;
   isolation: isolate;
@@ -21,6 +15,7 @@
 .viewport,
 .segment,
 .timeline {
+  position: relative;
   height: 88px;
 }
 
@@ -37,6 +32,44 @@
 .timeline,
 .eventsTimeline {
   will-change: transform;
+}
+
+.eventLane {
+  position: relative;
+  height: 8px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.eventMarker {
+  position: absolute;
+  inset-block: 0;
+  border-radius: 2px;
+}
+
+.eventLegend {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.transitionMarker {
+  position: absolute;
+  z-index: 3;
+  inset-block: 0;
+  border-inline-start: 1px dashed var(--ink);
+}
+
+.transitionLabel {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  padding-inline: 3px;
+  color: var(--ink);
+  background: var(--bg);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .playhead {
