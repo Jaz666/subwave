@@ -5509,6 +5509,7 @@ class Queue {
       // pair drain, cleared if the clip is pulled with a cancel, so it's
       // definitive, not a prediction; absent = plain crossfade.
       stemSeam: i.stemSeam || undefined,
+      subbeats: i.subbeatsHandoff ? true : undefined,
     });
     // Running-order timing. `duration` is the playable span in seconds,
     // the same measure as /now-playing's; `airsAt` is the upcoming item's

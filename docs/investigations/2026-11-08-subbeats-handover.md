@@ -91,6 +91,19 @@ adds a callable diagnostic and timing contract; it does not implement live
 audio rendering or queue publication. Continue in `feat/subbeats-draft` before
 moving an approved runtime candidate into the station checkout.
 
+## Latest follow-up — 10 November: automatic style and Queue labels
+
+The owner auditioned the 16-out/8-in Drums First plan on two pairs whose
+library-key estimates fall outside the usual Camelot matches; both sounded
+fine. The shared automatic style rule now uses Drums First for mismatched key
+estimates, Long blend for compatible estimates, and keeps Short exchange when a
+key is unknown. **Find Suitable
+Transition** uses the same automatic style rule as live;
+**Play selected mix** still uses the operator's selected style and cue markers.
+The Queue row now distinguishes a committed Sub/Beats transition from ordinary
+Stem blend. No station runtime was rebuilt or restarted. No checks were run for
+this follow-up.
+
 ## Latest work — 9 November: four selectable stem mixing styles
 
 The approved next step is implemented in `feat/subbeats-draft`: Long blend, Short exchange (the preferred B), Bass swap and Drums first are selectable in cue-point preview. Both preview actions honour the selected style; changing it clears old audio, and the returned timeline names the actual style. The long-blend default preserves existing clients while these profiles are auditioned. Automatic style choice/variation and live Picker integration remain later work; automatic cue-plan search uses the operator-selected style now.

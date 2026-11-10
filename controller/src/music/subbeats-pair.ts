@@ -1,4 +1,4 @@
-// Read-only pair planning shared by operator diagnostics and future queue admission.
+// Read-only pair planning shared by operator diagnostics and live queue admission.
 // A metadata proposal is never permission to publish a clip or its cue stamps.
 import { createHash } from 'node:crypto';
 import { config } from '../config.js';
@@ -21,7 +21,8 @@ export function subbeatsHarmonicChoice(outgoing:KeyTrack,incoming:KeyTrack) {
   const known = !!parseCamelot(outgoingKey) && !!parseCamelot(incomingKey);
   const compatibility = !known ? 'unknown' : keyCompat(outgoingKey,incomingKey) > 0 ? 'compatible' : 'mismatch';
   return {
-    mixStyle:compatibility === 'compatible' ? 'long-blend' as const : 'short-exchange' as const,
+    mixStyle:compatibility === 'compatible' ? 'long-blend' as const
+      : compatibility === 'mismatch' ? 'drums-first' as const : 'short-exchange' as const,
     harmonic:{compatibility,outgoingKey,incomingKey,evidence:'library-estimate' as const,
       reason:!known ? 'A usable Camelot key is missing; the pair remains eligible.'
         : 'Library key estimates guide style only; an ending without measured coverage uses the leading-window fallback.'},
