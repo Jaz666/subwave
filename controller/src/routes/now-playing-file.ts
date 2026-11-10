@@ -38,6 +38,7 @@ export function createNowPlayingFileRouter(deps: {
   nowPlaying: () => Promise<NowPlaying>;
   lookup: (id: string) => Promise<FileFormat | null>;
   streamAudio?: (id: string, signal: AbortSignal) => Promise<Response>;
+  nextTrackId?: () => string | null;
   latestJingle?: () => { filename?: string; startedAt?: number; durationSec?: number; queuedSec?: number; placement?: string } | null;
   crossfadeSeconds?: () => number;
 }): Router {
@@ -57,9 +58,9 @@ export function createNowPlayingFileRouter(deps: {
     try { format = await deps.lookup(id); } catch { /* null: the lookup fails open */ }
     res.json({ id, format });
   });
-  // Audio for the current library track only. The caller must name the id it
-  // saw in /now-playing, preventing this endpoint from becoming an arbitrary
-  // Navidrome proxy when the station changes tracks between polling and load.
+  // Audio for the current library track or queue head only. The caller must
+  // name one of those ids, preventing this from becoming an arbitrary
+  // Navidrome proxy when the queue changes between polling and load.
   router.get('/now-playing/audio', requireAdmin, async (req, res) => {
     const asked = typeof req.query.id === 'string' && req.query.id ? req.query.id : null;
     let id: string | null = null;
@@ -71,7 +72,8 @@ export function createNowPlayingFileRouter(deps: {
       res.status(404).json({ error: 'No library track is on air.' });
       return;
     }
-    if (asked !== id) {
+    const nextId = deps.nextTrackId?.() ?? null;
+    if (asked !== id && asked !== nextId) {
       res.status(409).json({ error: 'The requested track is no longer on air.' });
       return;
     }
@@ -146,6 +148,7 @@ export const router = createNowPlayingFileRouter({
   streamAudio: (id, signal) => fetchWithTimeout(subsonic.getRawStreamUrl(id), {
     timeoutMs: 5 * 60_000, bodyDeadline: true, signal,
   }),
+  nextTrackId: () => queue.upcoming[0]?.track?.id || null,
   latestJingle: () => {
     try { return JSON.parse(readFileSync(config.liquidsoap.jinglePlayingFile, 'utf8')); }
     catch { return null; }
