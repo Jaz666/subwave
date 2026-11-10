@@ -15,7 +15,7 @@ rules.
 
 **Sub/Beats audition mixing styles.**
 
-Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks or alter live broadcast mixing. The preview selector is an in-memory workspace choice, initially Long blend. The separate read-only pair planner now proposes Long blend for compatible library key estimates and Short exchange for mismatched/unknown keys; it does not change preview selection or live playback. See the [live integration checkpoint](subbeats-live-integration.md).
+Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks. The preview selector is an in-memory workspace choice, initially Long blend. The shared pair planner proposes Long blend for compatible library key estimates and Short exchange for mismatched/unknown keys; it does not change preview selection. The opt-in live queue path uses this same automatic style policy. See the [live integration checkpoint](subbeats-live-integration.md).
 
 | Style | Stem envelopes |
 |---|---|
@@ -36,6 +36,16 @@ These float-WAV auditions have a separate renderer/tool cache identity and are
 not published to the live queue. See the
 [handoff audition evidence](../investigations/2026-11-09-live-handoff-auditions.md)
 and the maintained live integration checkpoint for scope and remaining work.
+
+`transitions.subbeatsLive` (off by default, Settings → Stems) offers already
+selected, adjacent prepared pairs to the shared planner/renderer through the
+pair drain. It requires DJ mode/pair-aware transitions and falls through to
+enabled ordinary Stem Blend, then the existing crossfade. A separate bounded
+CPU process verifies originals and saved coverage without separation or lyric
+lookups. The two lossless parts share transition ownership and switch metadata
+at incoming entry; source/tempo/loop timing maps queue clocks and lyric lines
+through the native resume. The station trial and wider mixed prepared/regular
+rollout remain outstanding; see the current integration checkpoint.
 
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it

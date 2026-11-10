@@ -155,7 +155,7 @@ def mix_handoff(out_parts, in_parts, sources, plan, candidate, gains, mix_style,
     return audio, vocal
 
 
-def render_handoff(req, folders, records, gains, fetch_source):
+def render_handoff(req, folders, records, gains, fetch_source, scratch_root=None):
     from subbeats_cues import load_cues
     from subbeats_cue_preview import choose_cue, passage_plan
     from subbeats_cue_matching import live_handoff_timing
@@ -208,7 +208,7 @@ def render_handoff(req, folders, records, gains, fetch_source):
     # Recompute the lead-in from actual files, not the controller's metadata.
     candidate = dict(candidate, originalLeadInSeconds=max(0, available - first) / STEM_SR,
                      lyricEvidence=req.get('lyric_evidence'))
-    parent = Path(req['state_dir']) / 'subbeats' / 'previews'
+    parent = scratch_root if scratch_root is not None else Path(req['state_dir']) / 'subbeats' / 'previews'
     with tempfile.TemporaryDirectory(prefix='.handoff-', dir=parent) as work:
         audio, vocal = mix_handoff(out_parts, incoming_parts, sources, plan, candidate, gains,
                                    req.get('mix_style', 'long-blend'), Path(work), time.monotonic() + 180)

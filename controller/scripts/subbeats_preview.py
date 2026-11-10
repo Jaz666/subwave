@@ -299,7 +299,7 @@ def render_beat_preview(folders, records, gains, bar_shift, window_plan=None):
     return audio, metadata
 
 
-def render_preview(req, fetch_source=None):
+def render_preview(req, fetch_source=None, preview_root=None):
     import numpy as np
     import librosa
     import soundfile as sf
@@ -368,7 +368,7 @@ def render_preview(req, fetch_source=None):
         fingerprint = json.dumps(dict(json.loads(fingerprint), handoff=handoff,
                                       handoff_renderer=cache_identity(handoff['candidate']['timing'])), sort_keys=True)
     key = hashlib.sha256(fingerprint.encode()).hexdigest()
-    previews = root / 'previews'
+    previews = Path(preview_root) if preview_root is not None else root / 'previews'
     if previews.is_symlink():
         raise ValueError('Preview cache must not be a symlink.')
     previews.mkdir(exist_ok=True)
@@ -383,7 +383,7 @@ def render_preview(req, fetch_source=None):
             'subbeats_timeline': record['metadata']['timeline'], 'subbeats_used_models':False}
         if handoff:
             from subbeats_handoff import render_handoff
-            audio,metadata = render_handoff(req,folders,records,gains,fetch_source)
+            audio,metadata = render_handoff(req,folders,records,gains,fetch_source,scratch_root=previews)
         elif method == 'cue-points':
             from subbeats_cue_preview import render_cue_preview
             audio,metadata = render_cue_preview(req,folders,records,gains,fetch_source=fetch_source)

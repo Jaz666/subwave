@@ -16,6 +16,7 @@ interface TransitionItem {
   track: Track;
   sent?: boolean;
   stemSeam?: boolean;
+  subbeatsHandoff?: unknown;
 }
 
 // Human-readable description of the NEXT FINALISED seam the operator will
@@ -32,7 +33,7 @@ export function nextTransitionLabel(
   incoming: TransitionItem | null | undefined,
 ): string | null {
   if (!incoming || incoming.sent !== true) return null;
-  if (incoming.stemSeam) return 'Stem blend';
+  if (incoming.stemSeam) return incoming.subbeatsHandoff ? 'Sub/Beats' : 'Stem blend';
   // radio.liq reads liq_show_fade off the OUTGOING track and disarms all six
   // gestures, on both sides of the seam: what airs is the plain crossfade.
   if (outgoing?.track.showFade) return 'Normal';

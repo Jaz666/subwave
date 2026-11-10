@@ -1,5 +1,30 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest work — 10 November: live queue candidate
+
+The shared pair drain now tries Sub/Beats before enabled regular Stem Blend and
+the ordinary crossfade. `transitions.subbeatsLive` defaults off and is exposed
+on Settings → Stems. It requires DJ mode/pair drain and does not change which
+tracks the picker selects. The controller and analyzer source must both be
+built from this candidate before an owner-run strict-playlist trial.
+
+Read the [current implementation checkpoint](../internals/subbeats-live-integration.md).
+Live rendering runs in a bounded CPU process, kills its process group on
+cancellation/deadline, and publishes two lossless parts under one queue-owned
+transition identity. Their identical 300ms overlap changes metadata at incoming
+entry. The source clock, tempo release, loops, lyrics, native resume, committed
+gains, cleanup and restart publication share this record. Existing trims,
+speech, caps, show boundaries and pair eligibility retain precedence.
+
+Two real isolated live-worker runs produced audio matching the accepted
+auditions exactly (Sash! → Insomnia and Insomnia → El Nino). Focused checks and
+measurements are recorded with the implementation. This is a development
+candidate: no station source/settings/services have changed, and actual mixer
+playback and listener timing still need the owner-run trial. Disable Live
+Sub/Beats to roll back future upgrades without changing the ordinary Stem Blend
+setting. The precise next step after source review is to integrate this
+candidate into the station checkout and let the owner rebuild it for that trial.
+
 ## Latest work — 9 November: complete handoff renderer and auditions
 
 The next slice implements `subbeats_handoff.py`, reached by the existing

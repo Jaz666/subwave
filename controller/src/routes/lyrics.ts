@@ -24,6 +24,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { requireStationAuth } from '../middleware/station-auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { lyricOffsetBodySchema, lyricsQuerySchema, lyricsTrackIdSchema } from '../schemas/lyrics.js';
+import { subbeatsPlaybackSeconds, type SubbeatsPlayback } from '../broadcast/subbeats-clock.js';
 
 export const router = express.Router();
 
@@ -41,6 +42,7 @@ interface PlayRecord {
   cueInSec?: number;
   stemSeam?: boolean;
   source?: string;
+  subbeatsHandoff?: SubbeatsPlayback;
 }
 
 // The play `songId` names among those a listener can be hearing: the queue's
@@ -115,6 +117,8 @@ router.get('/lyrics/current', lyricsEnabled, requireStationAuth, async (req, res
       cueInSec,
       source: chosen.source,
       pending: chosen.pending,
+      ...(play?.subbeatsHandoff ? {playbackTimeMs:(sourceMs:number) =>
+        subbeatsPlaybackSeconds(play.subbeatsHandoff!.timing,sourceMs/1000)*1000} : {}),
     }));
   } catch (err) {
     queue.log('error', `/lyrics/current failed: ${err instanceof Error ? err.message : String(err)}`);

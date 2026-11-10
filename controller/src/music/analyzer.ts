@@ -13,6 +13,8 @@ import * as subsonic from './subsonic.js';
 import { recordHttpAttempt } from './subsonic-log.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 import { envInt } from '../util/env.js';
+import { dirname, join } from 'node:path';
+import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
 import { parseWholeLoudnessCurve, type WholeLoudnessCurve } from './whole-loudness-curve.js';
 
 // A structural span over the track, in ms. Contiguous over the analysed
@@ -1462,6 +1464,76 @@ export function subbeatsCapability(): boolean | null {
   if (_backend === 'sidecar') return _sidecarSubbeatsCapable;
   if (_backend === 'local') return _localSubbeatsCapable;
   return null;
+}
+
+// A live render gets its own killable CPU process, never the persistent
+// analysis pool. Call only after the queue's saved-cache/contention gates.
+export async function renderSubbeatsLive(
+  input: ReturnType<typeof subbeatsLiveRenderRequestSchema.parse>, signal: AbortSignal,
+) {
+  const request = subbeatsLiveRenderRequestSchema.parse(input);
+  const timeoutMs = Math.min(120_000, request.deadlineMs - Date.now());
+  signal.throwIfAborted();
+  if (timeoutMs < 1 || subbeatsCapability() !== true) throw new Error('The live handoff renderer is unavailable.');
+  let complete = false;
+  try {
+    let raw: unknown;
+    if (_backend === 'sidecar' && _sidecarBase) {
+      const response = await fetchWithTimeout(`${_sidecarBase}/render-subbeats-transition`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request),
+        timeoutMs, bodyDeadline:true, signal,
+      });
+      if (!response.ok) throw new Error('The live handoff renderer is busy, unavailable or exceeded its budget.');
+      raw = await response.json();
+    } else if (_backend === 'local') {
+      raw = await new Promise<unknown>((resolve, reject) => {
+        const child = spawn(config.analyzer.python, [join(dirname(config.analyzer.workerScript), 'subbeats_live.py')], {
+          detached:true, stdio:['pipe','pipe','ignore'],
+          env:{...process.env, OMP_NUM_THREADS:'1', OPENBLAS_NUM_THREADS:'1', NUMBA_NUM_THREADS:'1'},
+        });
+        let output = '', stopped = false;
+        const stop = () => {
+          stopped = true;
+          if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+        };
+        const timer = setTimeout(stop, timeoutMs);
+        signal.addEventListener('abort', stop, {once:true});
+        child.stdout.on('data', chunk => {
+          output += chunk.toString();
+          if (Buffer.byteLength(output) > 128 * 1024) stop();
+        });
+        child.on('error', reject);
+        child.stdin.on('error', () => {}); // close/error owns the result
+        child.on('close', code => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', stop);
+          // A decoder must not survive its direct parent, even on success.
+          if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group exited */ }
+          if (stopped || code !== 0) reject(new Error('The live handoff could not finish within its budget.'));
+          else try { resolve(JSON.parse(output.trim().split('\n').at(-1) ?? '')); }
+          catch { reject(new Error('The live handoff renderer returned no usable result.')); }
+        });
+        child.stdin.end(JSON.stringify(request) + '\n');
+        if (signal.aborted) stop();
+      });
+    } else throw new Error('The live handoff renderer is unavailable.');
+    signal.throwIfAborted();
+    const result = subbeatsLiveRenderResultSchema.parse(raw);
+    if (result.transitionId !== request.transitionId || result.evidenceFingerprint !== request.evidenceFingerprint
+      || result.mixStyle !== request.mixStyle || Date.now() >= request.deadlineMs) {
+      throw new Error('The live handoff result is stale or belongs to another pair.');
+    }
+    if (result.status === 'rendered' && (result.clipPath !== join(request.stateDir,'transitions',`subbeats-${request.transitionId}-in.wav`)
+      || (result.leadPath !== null && result.leadPath !== join(request.stateDir,'transitions',`subbeats-${request.transitionId}-out.wav`)))) {
+      throw new Error('The live handoff returned an invalid clip path.');
+    }
+    complete = result.status === 'rendered';
+    return result;
+  } finally {
+    if (_backend === 'local') await rm(join(request.stateDir,'transitions',`.subbeats-${request.transitionId}`), {recursive:true,force:true}).catch(() => {});
+    if (!complete) await Promise.all(['out','in'].map(role =>
+      rm(join(request.stateDir,'transitions',`subbeats-${request.transitionId}-${role}.wav`), {force:true}).catch(() => {})));
+  }
 }
 
 // Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.

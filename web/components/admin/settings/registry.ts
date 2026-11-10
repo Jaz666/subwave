@@ -48,7 +48,7 @@ export const LLM_PROVIDER_FORM_KEYS = [
 // stem cache under transitions; it saves to `audio.*`). One list, read by the
 // section's dirty check and its SaveBar's error scope.
 export const STEM_FORM_KEYS = [
-  'transitions.pairDrain', 'transitions.stemBlends', 'transitions.pickTimeStems',
+  'transitions.pairDrain', 'transitions.stemBlends', 'transitions.subbeatsLive', 'transitions.pickTimeStems',
   'transitions.stemCache', 'transitions.stemCacheGb',
 ] as const;
 
@@ -371,6 +371,7 @@ export const SETTINGS_INDEX: readonly IndexEntry[] = [
   { label: 'Stem cache', section: 'stems', card: 'Stem transitions', keywords: 'demucs drums bass vocals disk' },
   { label: 'Stem cache budget', section: 'stems', card: 'Stem transitions', keywords: 'gb evict oldest' },
   { label: 'Stem-blend seams', section: 'stems', card: 'Stem transitions', keywords: 'drums carry under intro blend' },
+  { label: 'Live Sub/Beats', section: 'stems', card: 'Stem transitions', keywords: 'prepared tracks beat phrase mixing transition' },
   { label: 'Orphan stems cleanup', section: 'stems', card: 'Orphan stems cleanup', keywords: 'quarantine purge deleted tracks left library reclaim disk daily pass' },
   { label: 'Crossfade curve', section: 'broadcast', card: 'Crossfade', keywords: 'equal power linear dip fade shape' },
   { label: 'Sweep', section: 'broadcast', card: 'DJ transition effects', keywords: 'transition effect filter gear change clash dj mode' },

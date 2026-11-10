@@ -11,7 +11,7 @@ type Fmt = { audioFormat: number; channels: number; sampleRate: number; bitsPerS
 
 // Walk the RIFF chunks for `fmt ` + `data`. Returns null on anything that
 // isn't a plain little-endian WAV.
-function parseWav(buf: Buffer): { fmt: Fmt; dataStart: number; dataLen: number } | null {
+export function parseWav(buf: Buffer): { fmt: Fmt; dataStart: number; dataLen: number } | null {
   if (buf.length < 44) return null;
   if (buf.readUInt32LE(0) !== RIFF || buf.readUInt32LE(8) !== WAVE) return null;
   let fmt: Fmt | null = null;
