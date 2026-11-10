@@ -209,6 +209,7 @@ export interface QueueItem {
   // is pre-rendered) and it cues in past the head the clip already played.
   stemBlend?: ClipSeamCues & {
     clipPath: string;
+    clipSec?: number;
     leadPath?: string;
     subbeats?: SubbeatsPlayback;
     // Persist publication progress separately from rendering. A restart can
@@ -269,4 +270,3 @@ export interface NowPlaying {
 //   chatty     → uniform 1-5 tracks
 //   aggressive → uniform 1-3 tracks
 // A DJ-mode persona reads one rung chattier (effectiveFrequency), so it links
-

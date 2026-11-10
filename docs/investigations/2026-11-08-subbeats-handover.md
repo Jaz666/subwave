@@ -1,5 +1,22 @@
 # Sub/Beats handover — 8 November 2026
 
+# Latest waveform test-page update — 10 November: event and stem lanes
+
+The on-air test panel is now compact enough for the main dashboard: it no
+longer repeats the current/next track labels or the explanatory waveform line,
+and the site's normal themed background/grain is restored. Speech, jingles and
+beds share one lane above the waveform. Bed annotations now carry their cued
+length into `bed-playing.json`; older markers without that field remain a
+start tick. One lane below the waveform shows the armed Stem Blend or
+Sub/Beats span, with outgoing, overlap and incoming theme colors. Sub/Beats
+uses its prepared sample timing; regular Stem Blend's internal handoff is
+estimated because the renderer publishes only total clip length.
+
+The stem lane is sourced from the admin-only visual-events endpoint and only
+appears when the same current/upcoming pair still has a prepared seam. Both
+event lanes share the waveform's snapped timeline transform. This is still the
+compact test view; the extended DJ Booth visualization remains a later step.
+
 ## Latest web correction — 10 November: waveform window positioning
 
 The owner rejected continuous waveform motion because the bars still shimmered.

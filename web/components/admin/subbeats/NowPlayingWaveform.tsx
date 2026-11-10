@@ -13,8 +13,18 @@ const HISTORY_SECONDS = 30;
 const PLAYHEAD_START_SECONDS = 15;
 const SNAP_INTERVAL_SECONDS = 30;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
-type TimedMarker = { kind: 'speech' | 'jingle'; airedAt: number; durationMs: number; label: string };
+type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string };
 type JingleMarker = { airedAt: string; durationMs: number };
+type VisualEvents = {
+  jingle?: { airedAt: string; durationMs: number } | null;
+  bed?: { airedAt: string; durationMs?: number } | null;
+  stemTransition?: {
+    kind: 'stem-blend' | 'subbeats';
+    durationSec: number;
+    incomingAtSec: number;
+    outgoingUntilSec: number;
+  } | null;
+};
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
 
 function trackSpan(track: DeckTrack): number {
@@ -32,12 +42,7 @@ function cssRgb([r, g, b]: readonly number[]): string {
   return `rgb(${r} ${g} ${b})`;
 }
 
-function clock(seconds: number): string {
-  const value = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
-}
-
-function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, playedSeconds, onDuration, onReady, onError }: {
+function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, playedSeconds, onDuration, onError }: {
   id: string;
   adminFetch: (path: string, init?: RequestInit) => Promise<Response>;
   color: string;
@@ -45,7 +50,6 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
   expectedDuration: number;
   playedSeconds?: number;
   onDuration: (id: string, seconds: number) => void;
-  onReady: () => void;
   onError: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -108,7 +112,6 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
             setDecodedDuration(actual);
             onDuration(id, actual);
           }
-          onReady();
         });
       } catch {
         if (!abort.signal.aborted) onError();
@@ -120,7 +123,7 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
       instance?.destroy();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [adminFetch, id, onDuration, onError, onReady]);
+  }, [adminFetch, id, onDuration, onError]);
 
   return <div ref={segment} className={styles.segment} data-track-id={id}><div ref={host} className="h-full" /></div>;
 }
@@ -131,6 +134,7 @@ export default function NowPlayingWaveform() {
   const viewport = useRef<HTMLDivElement>(null);
   const waveformTimeline = useRef<HTMLDivElement>(null);
   const eventTimeline = useRef<HTMLDivElement>(null);
+  const stemsTimeline = useRef<HTMLDivElement>(null);
   const playhead = useRef<HTMLDivElement>(null);
   const leadingPadding = useRef<HTMLDivElement>(null);
   const trailingPadding = useRef<HTMLDivElement>(null);
@@ -139,11 +143,13 @@ export default function NowPlayingWaveform() {
   const [nextDuration, setNextDuration] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [jingle, setJingle] = useState<JingleMarker | null>(null);
+  const [bed, setBed] = useState<{ airedAt: string; durationMs?: number } | null>(null);
+  const [stemTransition, setStemTransition] = useState<VisualEvents['stemTransition']>(null);
   const [colors, setColors] = useState(DEFAULT_COLORS);
   const [colorPhase, setColorPhase] = useState(false);
   const [historyTracks, setHistoryTracks] = useState<DeckTrack[]>([]);
   const [trimmedHistorySeconds, setTrimmedHistorySeconds] = useState(0);
-  const [message, setMessage] = useState('Waiting for a library track…');
+  const [message, setMessage] = useState('');
   const currentId = nowPlaying?.subsonic_id;
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
@@ -160,7 +166,6 @@ export default function NowPlayingWaveform() {
     ? (activeTrack.current.colorRole === 'accent' ? 'accent2' : 'accent')
     : phaseRole;
   const nextRole = currentRole === 'accent' ? 'accent2' : 'accent';
-  const nextColor = colors[nextRole === 'accent' ? 'current' : 'next'];
   const outgoingTrack = activeTrack.current && activeTrack.current.id !== currentId
     ? finishTrack(activeTrack.current, currentStartedAt)
     : null;
@@ -229,6 +234,7 @@ export default function NowPlayingWaveform() {
   useLayoutEffect(() => {
     waveformTimeline.current?.style.setProperty('width', `${timelineWidth}px`);
     eventTimeline.current?.style.setProperty('width', `${timelineWidth}px`);
+    stemsTimeline.current?.style.setProperty('width', `${timelineWidth}px`);
     leadingPadding.current?.style.setProperty('width', `${timelineOrigin + trimmedHistorySeconds * pxPerSec}px`);
     trailingPadding.current?.style.setProperty('width', `${sidePadding}px`);
   }, [timelineWidth, timelineOrigin, sidePadding, trimmedHistorySeconds, pxPerSec]);
@@ -263,7 +269,7 @@ export default function NowPlayingWaveform() {
     setCurrentDuration(nowPlaying?.duration ?? 0);
     setNextDuration(next?.duration ?? 0);
     setElapsed(0);
-    setMessage(!currentId ? 'No library track is on air.' : needsAuth ? 'Sign in to load the on-air waveform.' : 'Loading the on-air deck…');
+    setMessage('');
   }, [currentId, next?.subsonic_id, needsAuth, nowPlaying?.duration, next?.duration]);
 
   useEffect(() => {
@@ -273,10 +279,14 @@ export default function NowPlayingWaveform() {
     const poll = async () => {
       try {
         const response = await adminResponse(adminFetch, `/now-playing/visual-events?id=${encodeURIComponent(currentId)}`, { signal: abort.signal });
-        const data = await response.json() as { jingle?: JingleMarker | null };
-        if (!stopped) setJingle(data.jingle ?? null);
+        const data = await response.json() as VisualEvents;
+        if (!stopped) {
+          setJingle(data.jingle ?? null);
+          setBed(data.bed ?? null);
+          setStemTransition(data.stemTransition ?? null);
+        }
       } catch {
-        if (!stopped) setJingle(null);
+        if (!stopped) { setJingle(null); setBed(null); setStemTransition(null); }
       }
     };
     void poll();
@@ -308,6 +318,7 @@ export default function NowPlayingWaveform() {
       if (lastTransform !== transform) {
         waveformTimeline.current?.style.setProperty('transform', transform);
         eventTimeline.current?.style.setProperty('transform', transform);
+        stemsTimeline.current?.style.setProperty('transform', transform);
         lastTransform = transform;
       }
       playhead.current?.style.setProperty('left', `${motionPreference.matches ? 25 : 25 + phase / SNAP_INTERVAL_SECONDS * 50}%`);
@@ -330,35 +341,71 @@ export default function NowPlayingWaveform() {
     const jingles: TimedMarker[] = jingle
       ? [{ kind: 'jingle', airedAt: Date.parse(jingle.airedAt) + leadMs, durationMs: jingle.durationMs, label: 'Jingle' }]
       : [];
-    return [...speech, ...jingles].filter(marker => Number.isFinite(marker.airedAt) && marker.durationMs > 0);
-  }, [currentDuration, currentStartedAt, jingle, leadMs, session.messages]);
+    const beds: TimedMarker[] = bed
+      ? [{ kind: 'bed', airedAt: Date.parse(bed.airedAt) + leadMs, durationMs: bed.durationMs ?? 0, label: 'Bed' }]
+      : [];
+    return [...speech, ...jingles, ...beds].filter(marker => Number.isFinite(marker.airedAt) && (marker.kind === 'bed' || marker.durationMs > 0));
+  }, [bed, currentDuration, currentStartedAt, jingle, leadMs, session.messages]);
 
   const eventMarkers = markers.map((marker, index) => {
     const timelineStart = currentStartedAt - (trimmedHistorySeconds + historySeconds) * 1000;
+    const timelineEnd = currentStartedAt + (currentDuration + nextDuration) * 1000;
+    if (marker.airedAt < timelineStart || marker.airedAt > timelineEnd) return null;
     const start = Math.max(timelineStart, marker.airedAt);
     const end = marker.airedAt + marker.durationMs;
-    if (end <= start) return null;
+    if (marker.kind !== 'bed' && end <= start) return null;
     const left = timelineOrigin + (trimmedHistorySeconds + historySeconds + (start - currentStartedAt) / 1000) * pxPerSec;
-    const width = Math.max(2, ((end - start) / 1000) * pxPerSec);
-    return <span key={`${marker.kind}-${marker.airedAt}-${index}`} title={`${marker.kind === 'speech' ? 'Speech' : 'Jingle'}: ${marker.label}`}
+    const width = marker.kind === 'bed' && marker.durationMs <= 0
+      ? 2
+      : Math.max(2, ((end - start) / 1000) * pxPerSec);
+    const label = marker.kind === 'speech' ? 'Speech' : marker.kind === 'jingle' ? 'Jingle' : 'Bed';
+    return <span key={`${marker.kind}-${marker.airedAt}-${index}`} title={`${label}: ${marker.label}`}
       className={styles.eventMarker} data-event-kind={marker.kind}
       ref={element => {
         if (!element) return;
         element.style.left = `${left}px`;
         element.style.width = `${width}px`;
-        element.style.backgroundColor = marker.kind === 'speech' ? colors.current : colors.next;
+        element.style.backgroundColor = marker.kind === 'speech' ? colors.current : marker.kind === 'jingle' ? colors.next : 'var(--ink)';
       }} />;
   });
 
-  const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
-  const onReady = useMemo(() => () => setMessage('Waveform holds still, then advances every 30 seconds.'), []);
+  const stemBar = transition && stemTransition && transition.armed && currentStartedAt > 0
+    ? (() => {
+      const duration = stemTransition.durationSec;
+      const startAt = transition.airedAt - duration * 1000;
+      const left = timelineOrigin + (trimmedHistorySeconds + historySeconds + (startAt - currentStartedAt) / 1000) * pxPerSec;
+      const width = duration * pxPerSec;
+      const incomingAt = Math.max(0, Math.min(duration, stemTransition.incomingAtSec));
+      const outgoingUntil = Math.max(incomingAt, Math.min(duration, stemTransition.outgoingUntilSec));
+      return <div className={styles.stemMarker} role="img"
+        aria-label={`Estimated ${stemTransition.kind === 'subbeats' ? 'Sub/Beats' : 'Stem Blend'} stem transition`}
+        title={`Estimated ${stemTransition.kind === 'subbeats' ? 'Sub/Beats' : 'Stem Blend'} stem transition · ${duration.toFixed(1)} seconds`}
+        ref={element => {
+          if (!element) return;
+          element.style.left = `${left}px`;
+          element.style.width = `${width}px`;
+          element.style.setProperty('--out-width', `${incomingAt / duration * 100}%`);
+          element.style.setProperty('--overlap-width', `${(outgoingUntil - incomingAt) / duration * 100}%`);
+          element.style.setProperty('--outgoing-color', colors.current);
+          element.style.setProperty('--incoming-color', colors.next);
+        }}><span>{stemTransition.kind === 'subbeats' ? 'Sub/Beats' : 'Stem Blend'}</span></div>;
+    })()
+    : null;
 
-  return <section className={`${styles.panel} space-y-3 border border-ink/30 p-4`} aria-label="Currently playing waveform">
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <span className="text-[10px] font-bold tracking-[0.2em] text-muted uppercase">On air</span>
-      <h2 className="min-w-0 text-sm font-semibold break-words">{nowPlaying?.title ?? 'Nothing playing'}</h2>
-      {nowPlaying?.artist && <span className="text-sm text-muted">— {nowPlaying.artist}</span>}
-      <span className="ml-auto text-xs text-muted tabular-nums">{clock(elapsed)}{currentDuration ? ` / ${clock(currentDuration)}` : ''}</span>
+  const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
+
+  return <section className={`${styles.panel} space-y-2 border border-ink/30 p-4`} aria-label="Station waveform">
+    <div aria-label="Speech, jingle and bed timeline">
+      <div className={styles.eventsViewport} role="img" aria-label="Speech, jingle and bed events">
+        <div ref={eventTimeline} className={styles.eventsTimeline}>
+          <div className={styles.eventLane}>{eventMarkers}</div>
+        </div>
+      </div>
+      <div className={styles.eventLegend}>
+        <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
+        <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
+        <span className="text-ink">Beds</span>
+      </div>
     </div>
     <div className={styles.deck}>
       <div ref={viewport} className={styles.viewport} aria-label="Scrolling current and next track waveforms">
@@ -366,7 +413,7 @@ export default function NowPlayingWaveform() {
           <div ref={leadingPadding} className="shrink-0" aria-hidden="true" />
           {deckTracks.map(track => <DeckSegment key={track.id} id={track.id} adminFetch={adminFetch}
             color={colors[track.colorRole === 'accent' ? 'current' : 'next']} pxPerSec={pxPerSec}
-            expectedDuration={track.duration} playedSeconds={track.playedSeconds} onDuration={updateTrackDuration} onReady={onReady} onError={onError} />)}
+            expectedDuration={track.duration} playedSeconds={track.playedSeconds} onDuration={updateTrackDuration} onError={onError} />)}
           <div ref={trailingPadding} className="shrink-0" aria-hidden="true" />
           {transition && currentStartedAt > 0 && <div className={styles.transitionMarker} role="img"
             aria-label={`Estimated incoming entry: ${transition.label}`} title={`Estimated incoming entry: ${transition.label}. Timing may change before it airs.`}
@@ -381,18 +428,13 @@ export default function NowPlayingWaveform() {
       </div>
       <div ref={playhead} className={styles.playhead} aria-hidden="true" />
     </div>
-    <div aria-label="Speech and jingle timeline">
-      <div className={styles.eventsViewport} role="img" aria-label="Speech and jingle events">
-        <div ref={eventTimeline} className={styles.eventsTimeline}>
-          <div className={styles.eventLane}>{eventMarkers}</div>
+    <div aria-label="Stem transition timeline">
+      <div className={styles.eventsViewport} role="img" aria-label="Stem transition">
+        <div ref={stemsTimeline} className={styles.eventsTimeline}>
+          <div className={`${styles.eventLane} ${styles.stemLane}`}>{stemBar}</div>
         </div>
       </div>
-      <div className={styles.eventLegend}>
-        <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
-        <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
-      </div>
     </div>
-    <p className="text-xs text-muted" role="status">{message}</p>
-    {nextId && <p className="text-[10px] text-muted"><span ref={element => { if (element) element.style.color = nextColor; }}>●</span> Next: {next?.title}{next?.artist ? ` — ${next.artist}` : ''}</p>}
+    {message && <p className="text-xs text-muted" role="status">{message}</p>}
   </section>;
 }

@@ -2252,7 +2252,8 @@ def on_meta(m) =
     file.write(
       data=json.stringify(compact=true, {
         filename = filename,
-        startedAt = time()
+        startedAt = time(),
+        durationSec = m["subwave_bed_sec"]
       }),
       atomic=true,
       temp_dir=bed_tmp_dir,

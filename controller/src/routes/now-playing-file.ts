@@ -40,6 +40,10 @@ export function createNowPlayingFileRouter(deps: {
   streamAudio?: (id: string, signal: AbortSignal) => Promise<Response>;
   nextTrackId?: () => string | null;
   latestJingle?: () => { filename?: string; startedAt?: number; durationSec?: number; queuedSec?: number; placement?: string } | null;
+  latestBed?: () => { filename?: string; startedAt?: number; durationSec?: number | string } | null;
+  stemTransition?: (currentId: string) => {
+    kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
+  } | null;
   crossfadeSeconds?: () => number;
 }): Router {
   const router = Router();
@@ -122,6 +126,8 @@ export function createNowPlayingFileRouter(deps: {
       return;
     }
     let jingle: { airedAt: string; durationMs: number; filename?: string } | null = null;
+    let bed: { airedAt: string; durationMs?: number; filename?: string } | null = null;
+    let stemTransition: ReturnType<NonNullable<typeof deps.stemTransition>> = null;
     try {
       const marker = deps.latestJingle?.();
       const startedAt = Number(marker?.startedAt) * 1000;
@@ -137,7 +143,18 @@ export function createNowPlayingFileRouter(deps: {
         };
       }
     } catch { /* no usable marker */ }
-    res.set('Cache-Control', 'no-store').json({ jingle });
+    try {
+      const marker = deps.latestBed?.();
+      const startedAt = Number(marker?.startedAt) * 1000;
+      const duration = Number(marker?.durationSec) * 1000;
+      if (Number.isFinite(startedAt) && startedAt > 0) {
+        bed = { airedAt: new Date(startedAt).toISOString(),
+          ...(Number.isFinite(duration) && duration > 0 ? { durationMs: duration } : {}), filename: marker?.filename };
+      }
+    } catch { /* no usable marker */ }
+    try { stemTransition = deps.stemTransition?.(id) ?? null; }
+    catch { /* no usable transition */ }
+    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition });
   });
   return router;
 }
@@ -152,6 +169,33 @@ export const router = createNowPlayingFileRouter({
   latestJingle: () => {
     try { return JSON.parse(readFileSync(config.liquidsoap.jinglePlayingFile, 'utf8')); }
     catch { return null; }
+  },
+  latestBed: () => {
+    try { return JSON.parse(readFileSync(config.liquidsoap.bedPlayingFile, 'utf8')); }
+    catch { return null; }
+  },
+  stemTransition: (currentId) => {
+    const outgoing = queue.current;
+    const incoming = queue.upcoming[0];
+    const blend = outgoing?.stemBlend;
+    if (outgoing?.track?.id !== currentId || !incoming?.stemSeam || !blend) return null;
+    const timing = blend.subbeats?.timing;
+    const durationSec = Number(blend.clipSec) || (timing ? timing.clipFrames / timing.sampleRate : 0);
+    if (!(durationSec > 0)) return null;
+    if (timing) {
+      return {
+        kind: 'subbeats',
+        durationSec,
+        incomingAtSec: timing.incomingEntryFrame / timing.sampleRate,
+        outgoingUntilSec: timing.outgoingEndFrame / timing.sampleRate,
+      };
+    }
+    // The regular rendered blend has no published internal handoff frame.
+    // Show its duration and the short clip seam as an estimate.
+    const seam = Math.min(0.3, durationSec / 4);
+    const middle = durationSec / 2;
+    return { kind: 'stem-blend', durationSec,
+      incomingAtSec: middle - seam / 2, outgoingUntilSec: middle + seam / 2 };
   },
   crossfadeSeconds: () => Number(settings.get()?.crossfadeDuration) || 10,
 });
