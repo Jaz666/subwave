@@ -1,5 +1,14 @@
 # Sub/Beats handover — 8 November 2026
 
+# Latest waveform test-page update — 10 November: observed markers and compact deck
+
+Forecast transition markers retain the dashed `est.` treatment while ahead of
+the listener. When the forecasted incoming track is observed, its marker is
+recorded at the listener-adjusted track start, becomes solid, loses `est.`, and
+stays in the rolling 30-second history. The event legend now shows elapsed and
+total track time at the right edge. The waveform and WaveSurfer canvas are both
+44px high, half the previous height; this is ready for the owner's visual check.
+
 # Latest waveform test-page update — 10 November: event and stem lanes
 
 The on-air test panel is now compact enough for the main dashboard: it no

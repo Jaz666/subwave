@@ -12,6 +12,7 @@ import { queuedTransition } from './waveform-timeline';
 const HISTORY_SECONDS = 30;
 const PLAYHEAD_START_SECONDS = 15;
 const SNAP_INTERVAL_SECONDS = 30;
+const WAVEFORM_HEIGHT = 44;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string };
 type JingleMarker = { airedAt: string; durationMs: number };
@@ -26,6 +27,12 @@ type VisualEvents = {
   } | null;
 };
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
+type TransitionMarker = { airedAt: number; label: string };
+
+function formatTime(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, '0')}`;
+}
 
 function trackSpan(track: DeckTrack): number {
   return track.playedSeconds ?? track.duration;
@@ -87,7 +94,7 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
         const options = renderOptions.current;
         instance = WaveSurfer.create({
           container: host.current,
-          height: 88,
+          height: WAVEFORM_HEIGHT,
           width: options.width,
           minPxPerSec: options.pxPerSec,
           fillParent: false,
@@ -145,6 +152,7 @@ export default function NowPlayingWaveform() {
   const [jingle, setJingle] = useState<JingleMarker | null>(null);
   const [bed, setBed] = useState<{ airedAt: string; durationMs?: number } | null>(null);
   const [stemTransition, setStemTransition] = useState<VisualEvents['stemTransition']>(null);
+  const [observedTransitions, setObservedTransitions] = useState<TransitionMarker[]>([]);
   const [colors, setColors] = useState(DEFAULT_COLORS);
   const [colorPhase, setColorPhase] = useState(false);
   const [historyTracks, setHistoryTracks] = useState<DeckTrack[]>([]);
@@ -155,6 +163,7 @@ export default function NowPlayingWaveform() {
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
   const currentStartedAt = trackStartedAt ?? 0;
   const transition = queuedTransition(state, currentId, leadMs);
+  const previousPlayback = useRef({ currentId, nextId, transition });
   const sidePadding = viewportWidth / 2;
   const pxPerSec = viewportWidth / (HISTORY_SECONDS * 2);
   const timelineOrigin = sidePadding + PLAYHEAD_START_SECONDS * pxPerSec;
@@ -192,6 +201,17 @@ export default function NowPlayingWaveform() {
   }, []);
 
   useEffect(() => {
+    const previous = previousPlayback.current;
+    if (currentId && previous.currentId && currentId !== previous.currentId
+      && previous.nextId === currentId && previous.transition?.armed && currentStartedAt > 0) {
+      const label = previous.transition.label;
+      setObservedTransitions(markers => [...markers, { airedAt: currentStartedAt, label }]
+        .filter(marker => marker.airedAt >= Date.now() - HISTORY_SECONDS * 1000));
+    }
+    previousPlayback.current = { currentId, nextId, transition };
+  }, [currentId, currentStartedAt, nextId, transition]);
+
+  useEffect(() => {
     if (!currentId || activeTrack.current?.id === currentId) return;
     const previous = activeTrack.current ? finishTrack(activeTrack.current, currentStartedAt) : null;
     if (previous) {
@@ -215,6 +235,10 @@ export default function NowPlayingWaveform() {
 
   useEffect(() => {
     const cutoff = Date.now() - HISTORY_SECONDS * 1000;
+    setObservedTransitions(previous => {
+      const retained = previous.filter(marker => marker.airedAt > cutoff);
+      return retained.length === previous.length ? previous : retained;
+    });
     const expired = historyRef.current.filter(track => track.startedAt + trackSpan(track) * 1000 <= cutoff);
     if (!expired.length) return;
     const retained = historyRef.current.filter(track => track.startedAt + trackSpan(track) * 1000 > cutoff);
@@ -405,6 +429,7 @@ export default function NowPlayingWaveform() {
         <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
         <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
         <span className="text-ink">Beds</span>
+        <span className={styles.trackTime} aria-label="Current track time">{formatTime(elapsed)} / {formatTime(currentDuration)}</span>
       </div>
     </div>
     <div className={styles.deck}>
@@ -415,6 +440,14 @@ export default function NowPlayingWaveform() {
             color={colors[track.colorRole === 'accent' ? 'current' : 'next']} pxPerSec={pxPerSec}
             expectedDuration={track.duration} playedSeconds={track.playedSeconds} onDuration={updateTrackDuration} onError={onError} />)}
           <div ref={trailingPadding} className="shrink-0" aria-hidden="true" />
+          {observedTransitions.map(marker => <div key={marker.airedAt} className={`${styles.transitionMarker} ${styles.observedTransitionMarker}`} role="img"
+            aria-label={`Observed incoming entry: ${marker.label}`} title={`Observed incoming entry: ${marker.label}`} data-observed="true"
+            ref={element => {
+              if (!element) return;
+              element.style.left = `${timelineOrigin + (trimmedHistorySeconds + historySeconds + (marker.airedAt - currentStartedAt) / 1000) * pxPerSec}px`;
+            }}>
+            <span className={styles.transitionLabel}>{marker.label}</span>
+          </div>)}
           {transition && currentStartedAt > 0 && <div className={styles.transitionMarker} role="img"
             aria-label={`Estimated incoming entry: ${transition.label}`} title={`Estimated incoming entry: ${transition.label}. Timing may change before it airs.`}
             data-transition-armed={transition.armed}
