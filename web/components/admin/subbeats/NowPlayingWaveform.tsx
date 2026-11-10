@@ -203,8 +203,8 @@ export default function NowPlayingWaveform() {
   useEffect(() => {
     const previous = previousPlayback.current;
     if (currentId && previous.currentId && currentId !== previous.currentId
-      && previous.nextId === currentId && previous.transition?.armed && currentStartedAt > 0) {
-      const label = previous.transition.label;
+      && previous.nextId === currentId && previous.transition && currentStartedAt > 0) {
+      const label = previous.transition.armed ? previous.transition.label : 'Track change';
       setObservedTransitions(markers => [...markers, { airedAt: currentStartedAt, label }]
         .filter(marker => marker.airedAt >= Date.now() - HISTORY_SECONDS * 1000));
     }
