@@ -381,6 +381,23 @@ contracts, plus the owner listening trial. The current candidate records its
 focused checks and isolated render measurements above; full PR suites and
 live station acceptance remain separate gates.
 
+### Observation for the extended playlist trial — 10 November 2026
+
+The owner queued My My My → Go and heard a normal transition. Controller logs
+showed a Drums First attempt at 12:50:55, a pending station ID at 12:51:17,
+a successful render at 12:51:30, then the generic live queue boundary veto.
+The station ID aired at the start of My My My, around 12:52:59; Go started
+around 12:59:09. Times are Europe/London.
+
+The suspected cause is the blanket pending-speech guard: speech for the start
+of the outgoing track may veto its later outgoing transition. The generic veto
+does not identify which condition failed, so this remains a hypothesis. During
+the extended prepared-playlist show, observe whether station IDs or other
+pending speech repeatedly coincide with rendered transitions falling back,
+and identify which track boundary the speech actually accompanies. The owner
+has deferred this to observation during that trial; no guard change is made.
+The trial awaits enough prepared tracks; individual pair auditions continue.
+
 ## Later mixed pairings and cache implications
 
 Regular analysis defaults to a 40-second head and 20-second tail. Sub/Beats
