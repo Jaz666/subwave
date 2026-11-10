@@ -174,7 +174,7 @@ function ExpandedStemLanes({ transition, adminFetch, colors }: {
     <div className={styles.expandedLegend}>
       <span ref={element => { if (element) element.style.color = colors.current; }}>Outgoing stems</span>
       <span ref={element => { if (element) element.style.color = colors.next; }}>Incoming stems</span>
-      <span>Gain · {transition.kind === 'subbeats' ? 'approx.' : 'est.'}</span>
+      <span>Gain · {transition.kind === 'subbeats' ? 'approx.' : 'est.'} (solid / dashed)</span>
       <span className={styles.expandedDuration}>Transition {duration.toFixed(1)}s</span>
     </div>
     {status === 'loading' && <p className={styles.expandedStatus}>Loading transition stems…</p>}
@@ -642,7 +642,8 @@ export default function NowPlayingWaveform() {
         {stemTransition?.outgoingId && stemTransition.incomingId && <button type="button" className={styles.expandButton}
           aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Collapse' : 'Expand'}</button>}
       </div>
-      {expanded && stemTransition && <ExpandedStemLanes transition={stemTransition} adminFetch={adminFetch} colors={colors} />}
+      {expanded && stemTransition && <ExpandedStemLanes key={`${stemTransition.outgoingId}-${stemTransition.incomingId}`}
+        transition={stemTransition} adminFetch={adminFetch} colors={colors} />}
     </div>
     {message && <p className="text-xs text-muted" role="status">{message}</p>}
   </section>;
