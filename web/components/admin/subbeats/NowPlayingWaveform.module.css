@@ -1,0 +1,33 @@
+.playhead {
+  position: absolute;
+  z-index: 9999;
+  inset-block: 0;
+  left: 50%;
+  width: 5px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: var(--bg);
+}
+
+.playhead::before {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--accent);
+  content: '';
+}
+
+.playhead::after {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%);
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
+}
