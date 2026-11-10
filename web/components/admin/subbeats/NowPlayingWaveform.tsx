@@ -301,10 +301,9 @@ export default function NowPlayingWaveform() {
     let lastTransform = '';
     const tick = () => {
       const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt) / 1000) : 0;
-      const playedSeconds = trimmedHistorySeconds + historySeconds + liveElapsed;
-      const snappedSeconds = Math.floor(playedSeconds / SNAP_INTERVAL_SECONDS) * SNAP_INTERVAL_SECONDS;
-      const phase = playedSeconds - snappedSeconds;
-      const scrollLeft = Math.min((sidePadding + snappedSeconds) * pxPerSec, maxScroll);
+      const snappedSeconds = Math.floor(liveElapsed / SNAP_INTERVAL_SECONDS) * SNAP_INTERVAL_SECONDS;
+      const phase = liveElapsed - snappedSeconds;
+      const scrollLeft = Math.min((sidePadding + trimmedHistorySeconds + historySeconds + snappedSeconds) * pxPerSec, maxScroll);
       const transform = `translate3d(${-scrollLeft}px, 0, 0)`;
       if (lastTransform !== transform) {
         waveformTimeline.current?.style.setProperty('transform', transform);
