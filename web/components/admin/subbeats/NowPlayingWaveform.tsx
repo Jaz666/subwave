@@ -10,6 +10,8 @@ import styles from './NowPlayingWaveform.module.css';
 import { queuedTransition } from './waveform-timeline';
 
 const HISTORY_SECONDS = 30;
+const PLAYHEAD_START_SECONDS = 15;
+const SNAP_INTERVAL_SECONDS = 30;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle'; airedAt: number; durationMs: number; label: string };
 type JingleMarker = { airedAt: string; durationMs: number };
@@ -129,6 +131,7 @@ export default function NowPlayingWaveform() {
   const viewport = useRef<HTMLDivElement>(null);
   const waveformTimeline = useRef<HTMLDivElement>(null);
   const eventTimeline = useRef<HTMLDivElement>(null);
+  const playhead = useRef<HTMLDivElement>(null);
   const leadingPadding = useRef<HTMLDivElement>(null);
   const trailingPadding = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -148,6 +151,7 @@ export default function NowPlayingWaveform() {
   const transition = queuedTransition(state, currentId, leadMs);
   const sidePadding = viewportWidth / 2;
   const pxPerSec = viewportWidth / (HISTORY_SECONDS * 2);
+  const timelineOrigin = sidePadding + PLAYHEAD_START_SECONDS * pxPerSec;
   const activeTrack = useRef<DeckTrack | null>(currentId ? {
     id: currentId, duration: currentDuration, startedAt: currentStartedAt, colorRole: colorPhase ? 'accent2' : 'accent',
   } : null);
@@ -216,7 +220,7 @@ export default function NowPlayingWaveform() {
 
   const historySeconds = visibleHistoryTracks.reduce((total, track) => total + trackSpan(track), 0);
   const totalTimelineSec = trimmedHistorySeconds + historySeconds + currentDuration + nextDuration;
-  const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + totalTimelineSec * pxPerSec);
+  const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + (PLAYHEAD_START_SECONDS + totalTimelineSec) * pxPerSec);
   // One list keeps a preloaded WaveSurfer instance mounted as its role changes.
   const deckTracks = [...visibleHistoryTracks];
   if (currentId && hydrated && !needsAuth) deckTracks.push({ id: currentId, duration: currentDuration, startedAt: currentStartedAt, colorRole: currentRole });
@@ -225,9 +229,9 @@ export default function NowPlayingWaveform() {
   useLayoutEffect(() => {
     waveformTimeline.current?.style.setProperty('width', `${timelineWidth}px`);
     eventTimeline.current?.style.setProperty('width', `${timelineWidth}px`);
-    leadingPadding.current?.style.setProperty('width', `${sidePadding + trimmedHistorySeconds * pxPerSec}px`);
+    leadingPadding.current?.style.setProperty('width', `${timelineOrigin + trimmedHistorySeconds * pxPerSec}px`);
     trailingPadding.current?.style.setProperty('width', `${sidePadding}px`);
-  }, [timelineWidth, sidePadding, trimmedHistorySeconds, pxPerSec]);
+  }, [timelineWidth, timelineOrigin, sidePadding, trimmedHistorySeconds, pxPerSec]);
 
   useEffect(() => {
     const probe = createColorProbe();
@@ -293,22 +297,26 @@ export default function NowPlayingWaveform() {
     if (!element || !viewportWidth) return;
     let frame = 0;
     const maxScroll = Math.max(0, timelineWidth - viewportWidth);
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let lastTransform = '';
     const tick = () => {
       const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt) / 1000) : 0;
-      const scrollLeft = Math.min((trimmedHistorySeconds + historySeconds + liveElapsed) * pxPerSec, maxScroll);
-      // Fractional physical pixels resample the narrow bars on every frame,
-      // making their brightness pulse. Read the ratio here to follow browser
-      // zoom and moves between monitors without changing the playback clock.
-      const pixelRatio = window.devicePixelRatio || 1;
-      const position = Math.round(scrollLeft * pixelRatio) / pixelRatio;
-      const transform = `translate3d(${-position}px, 0, 0)`;
-      if (waveformTimeline.current) waveformTimeline.current.style.transform = transform;
-      if (eventTimeline.current) eventTimeline.current.style.transform = transform;
+      const playedSeconds = trimmedHistorySeconds + historySeconds + liveElapsed;
+      const snappedSeconds = Math.floor(playedSeconds / SNAP_INTERVAL_SECONDS) * SNAP_INTERVAL_SECONDS;
+      const phase = playedSeconds - snappedSeconds;
+      const scrollLeft = Math.min((sidePadding + snappedSeconds) * pxPerSec, maxScroll);
+      const transform = `translate3d(${-scrollLeft}px, 0, 0)`;
+      if (lastTransform !== transform) {
+        waveformTimeline.current?.style.setProperty('transform', transform);
+        eventTimeline.current?.style.setProperty('transform', transform);
+        lastTransform = transform;
+      }
+      playhead.current?.style.setProperty('left', `${motionPreference.matches ? 25 : 25 + phase / SNAP_INTERVAL_SECONDS * 50}%`);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [currentStartedAt, viewportWidth, timelineWidth, pxPerSec, trimmedHistorySeconds, historySeconds]);
+  }, [currentStartedAt, viewportWidth, timelineWidth, pxPerSec, sidePadding, trimmedHistorySeconds, historySeconds]);
 
   const markers = useMemo(() => {
     if (!currentStartedAt || !currentDuration) return [];
@@ -331,7 +339,7 @@ export default function NowPlayingWaveform() {
     const start = Math.max(timelineStart, marker.airedAt);
     const end = marker.airedAt + marker.durationMs;
     if (end <= start) return null;
-    const left = sidePadding + (trimmedHistorySeconds + historySeconds + (start - currentStartedAt) / 1000) * pxPerSec;
+    const left = timelineOrigin + (trimmedHistorySeconds + historySeconds + (start - currentStartedAt) / 1000) * pxPerSec;
     const width = Math.max(2, ((end - start) / 1000) * pxPerSec);
     return <span key={`${marker.kind}-${marker.airedAt}-${index}`} title={`${marker.kind === 'speech' ? 'Speech' : 'Jingle'}: ${marker.label}`}
       className={styles.eventMarker} data-event-kind={marker.kind}
@@ -344,7 +352,7 @@ export default function NowPlayingWaveform() {
   });
 
   const onError = useMemo(() => () => setMessage('Could not load one of the current queue recordings.'), []);
-  const onReady = useMemo(() => () => setMessage('Live deck follows station playback.'), []);
+  const onReady = useMemo(() => () => setMessage('Waveform holds still, then advances every 30 seconds.'), []);
 
   return <section className={`${styles.panel} space-y-3 border border-ink/30 p-4`} aria-label="Currently playing waveform">
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -366,13 +374,13 @@ export default function NowPlayingWaveform() {
             data-transition-armed={transition.armed}
             ref={element => {
               if (!element) return;
-              element.style.left = `${sidePadding + (trimmedHistorySeconds + historySeconds + (transition.airedAt - currentStartedAt) / 1000) * pxPerSec}px`;
+              element.style.left = `${timelineOrigin + (trimmedHistorySeconds + historySeconds + (transition.airedAt - currentStartedAt) / 1000) * pxPerSec}px`;
             }}>
             <span className={styles.transitionLabel}>{transition.label} · est.</span>
           </div>}
         </div>
       </div>
-      <div className={styles.playhead} aria-hidden="true" />
+      <div ref={playhead} className={styles.playhead} aria-hidden="true" />
     </div>
     <div aria-label="Speech and jingle timeline">
       <div className={styles.eventsViewport} role="img" aria-label="Speech and jingle events">
