@@ -248,6 +248,17 @@ elapsed time, listener lyrics, DJ speech and the original-track resume. Keep
 live-edge timing distinct from the listener stream buffer delay. Preserve
 single-delivery play/history/request accounting through the clip handoff.
 
+The audition renderer confirms that the clip's first event is outgoing original
+audio and that the incoming recording enters later. The queue's current
+single-clip stamp gives the whole clip the incoming identity, so it would switch
+Now Playing and lyrics too early. Before live admission, split the lossless
+handoff at `incomingEntryFrame`: publish the pre-entry segment with outgoing
+identity and the post-entry segment with incoming identity, then resume the
+incoming original at `incomingResumeSample`. Keep both segments under one
+transition ownership record so cancellation, restart recovery, cleanup and
+single-delivery accounting treat them as one seam. The incoming entry event,
+not clip start, owns the incoming track clock and listener metadata.
+
 Expose compact operator diagnostics: actual transition kind, selected cues,
 style, phrase length, tempo adjustment/release, loop use, lyric confidence and
 fallback reason. Keep these behind existing operator surfaces and out of

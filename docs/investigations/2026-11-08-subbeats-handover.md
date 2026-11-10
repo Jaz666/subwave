@@ -21,6 +21,13 @@ auditions ("They sound fine") for their tempo return and audio joins. This
 acceptance covers these Short exchange examples; it does not establish live
 playback, other styles or higher lyric/key confidence.
 
+Live integration has one additional playback-clock requirement: auditions begin
+with outgoing-only audio before the incoming entry. A live handoff must split
+its clip at the planned incoming-entry frame so Now Playing, lyrics and elapsed
+time change with the incoming audio, then resume its original recording at the
+planned source sample. The existing single-clip stem-blend marker cannot
+represent that internal identity change.
+
 Both analyzer/AIO image recipes include `rubberband-cli`; local workers need the
 command for adjusted-tempo handoffs. Only an isolated audition image was built.
 No station source, settings or running service changed. The next step is
