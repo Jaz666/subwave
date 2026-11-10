@@ -119,7 +119,7 @@ export function createNowPlayingFileRouter(deps: {
       res.status(id ? 409 : 404).json({ jingle: null });
       return;
     }
-    let jingle = null;
+    let jingle: { airedAt: string; durationMs: number; filename?: string } | null = null;
     try {
       const marker = deps.latestJingle?.();
       const startedAt = Number(marker?.startedAt) * 1000;
