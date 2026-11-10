@@ -1,5 +1,48 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest web correction — 10 November: waveform window positioning
+
+The owner rejected continuous waveform motion because the bars still shimmered.
+The experiment now holds the waveform and event lane still while the playhead
+sweeps from 25% to 75%, then advances both lanes by 30 seconds. Each 60-second
+window follows the current track's listener clock. This supersedes the
+continuous-motion implementation described below; grain remains suppressed.
+
+The owner's 17:50 recording showed an incorrect portion of each track and
+windows that failed to advance. The scroll calculation added `sidePadding`
+(pixels) to history/window offsets (seconds), then multiplied the whole sum by
+pixels per second. This sent the deck far ahead and could clamp it to the
+timeline end. The correction adds pixel padding after converting the time
+offsets. The earlier canvas-width checks established that audio was decoded,
+but did not establish which audio time was visible beneath the playhead. The
+previous history-phase change alone did not fix this error.
+
+An isolated Chromium check using the actual component, CSS and generated audio
+reproduced the failure: the playhead at 0:17 sat over approximately 7:00 of
+source audio. With the corrected calculation, source timestamps beneath the
+playhead matched 17, 29.9, 30 and 60 seconds at desktop (1036px) and mobile
+(390px) browser sizes. The waveform stayed stationary before a snap; the marker
+reset to 25% at the snap; forecast timing, the shared event transform, incoming
+canvas identity and track-change alignment passed. No browser errors occurred.
+These checks verify positioning, not comfort on the owner's browsers.
+Focused web ESLint, TypeScript and all five forecast unit checks passed. The
+full PR suite was not run.
+
+The candidate is integrated into the source checkout at
+`/home/jaz666/Docker/subwave`; source rollback baseline is `de129179`. Preserve
+the unrelated local controller prompt edits. The owner rebuilds only `web`:
+
+```sh
+cd /home/jaz666/Docker/subwave
+docker compose --parallel 1 -f docker-compose.yml -f docker-compose.analyzer-gpu.yml -f docker-compose.discord.yml up -d --no-deps --build web
+curl -fsS http://localhost:7700/api/health
+```
+
+`docker-compose.dev.yml` has no web service and is not the station rebuild
+command. No service rebuild or restart was performed by the agent. The next
+acceptance check is a hard refresh of the experimental page and observation
+through 0:30, 1:00 and a track change.
+
 ## Latest work — 10 November: remove the preparation list cap
 
 The 500-entry constant had two jobs: it capped persisted queue entries and
