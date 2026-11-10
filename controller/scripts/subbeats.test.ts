@@ -44,6 +44,19 @@ test('admission persists, deduplicates and leaves a pause intact', () => {
   assert.equal(reloaded.jobs[0].status, 'queued');
 });
 
+test('preparation queue persists more than 500 tracks', async () => {
+  const dir = createTempDir(join(tmpdir(), 'subwave-subbeats-unbounded-'));
+  try {
+    const unbounded = createSubbeatsStore(dir);
+    unbounded.enqueue(Array.from({ length: 501 }, (_, i) => ({
+      id: `track-${i}`, title: `Track ${i}`, artist: 'Artist', album: 'Album',
+    })));
+    assert.equal(unbounded.read().jobs.length, 501);
+  } finally {
+    await removeTempDir(dir);
+  }
+});
+
 test('events preserve other admissions and terminal results cannot increment attempts', () => {
   store.event({ id: 'a', status: 'running' }, ['a']);
   store.enqueue([{ ...a, id: 'c' }]);

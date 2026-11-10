@@ -5742,7 +5742,7 @@ export function quotedSteer(text: string | null | undefined): string {
 // ─── from controller/src/schemas/subbeats.ts ─────────────────────────────
 
 export const SUBBEATS_BATCH_LIMIT = 100;
-export const SUBBEATS_QUEUE_LIMIT = 500;
+export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
 export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
@@ -5832,7 +5832,7 @@ export const subbeatsJobSchema = z.object({
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });
 export const subbeatsQueueSchema = z.object({
-  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(SUBBEATS_QUEUE_LIMIT),
+  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema),
 });
 export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT), method:subbeatsPreparationMethodSchema.default('classic') });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
@@ -5986,7 +5986,7 @@ export const subbeatsCueMatchesSchema = z.object({
     openingDifferenceSeconds:z.number().finite().nonnegative(),vocal:subbeatsCueVocalFitSchema,
     transition:z.object({method:z.enum(['standard','drum-loop']),loopStartSeconds:z.number().finite().nonnegative().optional(),
       loopBars:z.literal(2).optional(),repeatCount:z.number().int().min(1).max(2).optional(),addedSeconds:z.number().finite().nonnegative().optional()}).optional(),
-  })).max(SUBBEATS_QUEUE_LIMIT),
+  })).max(SUBBEATS_MATCH_LIMIT),
   excluded:z.object({tempo:z.number().int().nonnegative(),coverage:z.number().int().nonnegative(),
     unassessed:z.number().int().nonnegative(),vocals:z.number().int().nonnegative()}),
 });
@@ -6006,7 +6006,7 @@ export const subbeatsVocalSuggestionSchema = z.object({
 export const subbeatsMatchesSchema = z.object({
   outgoingId:z.string(), barShift:z.number().int(),
   matches:z.array(z.object({id:z.string(),title:z.string(),artist:z.string(),bpm:z.number(),
-    tempoAdjustmentPercent:z.number(),plan:subbeatsWindowPlanSchema,vocalSuggestion:subbeatsVocalSuggestionSchema.optional()})).max(SUBBEATS_QUEUE_LIMIT),
+    tempoAdjustmentPercent:z.number(),plan:subbeatsWindowPlanSchema,vocalSuggestion:subbeatsVocalSuggestionSchema.optional()})).max(SUBBEATS_MATCH_LIMIT),
   excluded:z.object({tempo:z.number().int().nonnegative(),coverage:z.number().int().nonnegative(),
     unassessed:z.number().int().nonnegative(),unsuitable:z.number().int().nonnegative()}),
 });
