@@ -340,7 +340,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose any two prepared tracks. Find Suitable Transition compares their saved cue plans and prepares the best Sub/Beat preview; if none fits, it previews the regular Subwave crossfade.</p>
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose any two prepared tracks. Find Suitable Transition chooses cue points automatically and uses the live picker’s automatic mixing style; if no Sub/Beat plan fits, it previews the regular Subwave crossfade. Play selected mix uses the markers and style chosen below.</p>
       <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">A Sub/Beat plan may use an 8- or 16-bar mix and can loop incoming drums when that clears a detected vocal clash. Cue markers remain available below for manual listening.</p>
       {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find prepared tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
       {prepared > 0 && <section className="mt-4 grid min-w-0 gap-4 border-t border-ink/20 pt-4 sm:grid-cols-2" aria-labelledby="subbeats-preview-pair">
@@ -393,7 +393,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <p id="subbeats-mix-style-description" className="mt-2 text-sm leading-relaxed text-muted">{MIX_STYLE[mixStyle].description} Vocal timing follows the same overlap rules in every style.</p>
       </div>}
       {prepared > 0 && <div className="mt-4 flex flex-wrap gap-3">
-        <Button className="min-h-11" variant="solid" disabled={preview.active !== 0 && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], {method:'cue-points',autoPlan:true,mixStyle})}>
+        <Button className="min-h-11" variant="solid" disabled={preview.active !== 0 && (!ready || !outgoing || !incoming || outgoing === incoming || byId.get(outgoing)?.status !== 'prepared' || byId.get(incoming)?.status !== 'prepared')} onClick={() => void preview.toggle(0, [outgoing, incoming], {method:'cue-points',autoPlan:true})}>
           {preview.active === 0 && preview.loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : preview.active === 0 && preview.playing ? <Square /> : <Play />}
           {preview.active === 0 && preview.loading ? 'Cancel preview' : preview.active === 0 && preview.playing ? 'Stop preview' : preview.active === 0 && preview.duration > 0 ? 'Play transition' : 'Find Suitable Transition'}
         </Button>
@@ -402,7 +402,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {preview.active === 1 && preview.loading ? 'Cancel selected mix' : preview.active === 1 && preview.playing ? 'Stop selected mix' : 'Play selected mix'}
         </Button>
       </div>}
-      {preview.loading && <p role="status" className="mt-3 text-sm text-muted">{preview.active === 0 ? 'Comparing this pair’s cue plans and preparing the best preview… press again to cancel.' : 'Preparing the selected cue preview from saved passages… press again to cancel.'}</p>}
+      {preview.loading && <p role="status" className="mt-3 text-sm text-muted">{preview.active === 0 ? 'Choosing cue points and the live mixing style, then preparing the preview… press again to cancel.' : 'Preparing the selected cue preview from saved passages… press again to cancel.'}</p>}
       {preview.message && <p role="status" className="mt-3 text-sm text-muted">{preview.message}</p>}
       {preview.timeline?.kind === 'regular-fallback' && <p role="status" className="mt-3 max-w-prose text-sm">No Sub/Beat transition fit this pair. The preview uses the regular Subwave crossfade.</p>}
       {preview.timeline?.kind === 'subbeats-transition' && <p role="status" className="mt-3 max-w-prose text-sm">Selected plan: {preview.timeline.events[0]?.label.replace('Outgoing track · ', '')}. Listen for vocal bleed and musical fit.</p>}

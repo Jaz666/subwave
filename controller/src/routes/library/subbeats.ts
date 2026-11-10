@@ -22,7 +22,7 @@ import * as subsonic from '../../music/subsonic.js';
 import { fetchWithTimeout } from '../../util/fetch-timeout.js';
 import * as settings from '../../settings.js';
 import { withSubbeatsLyrics } from '../../music/subbeats-lyrics.js';
-import { assessSubbeatsPair, subbeatsPairSnapshot } from '../../music/subbeats-pair.js';
+import { assessSubbeatsPair, subbeatsHarmonicChoice, subbeatsPairSnapshot } from '../../music/subbeats-pair.js';
 
 export const router = express.Router();
 const view = () => ({ ...subbeatsStore.read(), capable: subbeatsCapability(),
@@ -207,6 +207,7 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
     if (parsed.data.matched && !windowPlan) throw new Error('The saved measurements no longer match. Find matches again.');
     let handoff;
     let mixStyle = parsed.data.mixStyle ?? 'long-blend';
+    if (autoPlan) mixStyle = subbeatsHarmonicChoice(songs[0]!,songs[1]!).mixStyle;
     if (parsed.data.handoff) {
       const assessment = await assessSubbeatsPair(parsed.data.trackIds[0]!,parsed.data.trackIds[1]!);
       const candidate = assessment.plan.plans[0];
