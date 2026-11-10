@@ -49,7 +49,7 @@ export async function maybeRenderSubbeats(
   if (settings.get().transitions.pairDrain === false || !settings.getEffectivePersona()?.djMode) return fallback('DJ mode and pair-aware transitions are required.');
   if (opts.outCapped || opts.inHeadTrimmed || opts.incomingHasSpeech) return fallback('A trim, boundary or spoken handoff owns this seam.');
   if (busy || bulkPassRunning() || renderStandsDown({separating:separationInFlight(),backend:analyzer.backendLabel(),
-    concurrency:config.analyzer.concurrency,sidecarConcurrency:analyzer.sidecarConcurrency()})) return fallback('Analysis is busy.');
+    concurrency:config.analyzer.concurrency})) return fallback('Analysis is busy.');
   if (analyzer.subbeatsCapability() !== true) {
     // Cold/previously offline backends warm outside the sender's deadline.
     // The current pair falls through; a later pair can use the ready backend.

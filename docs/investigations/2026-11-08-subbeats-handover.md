@@ -1,5 +1,13 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest work — 10 November: station live-picker candidate
+
+The live queue implementation is now applied on `test-station/subbeats-live-queue-20261110`, based on the station's `813094ba` source. It includes the read-only planner, complete handoff renderer and opt-in live queue path. The adaptation retains this station branch's protected Sub/Flow queue behavior and its existing analyzer-pool API; it does not merge the broad upstream release currently on `develop`.
+
+Controller and web type checks passed. Focused checks passed: 16 live Sub/Beats cases, 12 seam/recovery cases, 49 Sub/Flow cases, 9 track-length blend cases, 4 pick-time stem drain cases, 13 settings form cases, and 2 settings registry cases. Python compilation passed for the worker, analyzer route/service and handoff renderers. No station services were rebuilt or restarted, and the Live Sub/Beats switch defaults off.
+
+The station checkout's two pre-existing edits to the cohosted skill and look-ahead files remain untouched. Source rollback is the station baseline `813094ba`. Owner-run trial still needs controller, analyzer and web image rebuilds, the temporary strict playlist, and actual on-air checks of both joins and timing. The offline PCM comparisons are evidence for the renderer, not for Liquidsoap playback.
+
 ## Latest work — 9 November: four selectable stem mixing styles
 
 The approved next step is implemented in `feat/subbeats-draft`: Long blend, Short exchange (the preferred B), Bass swap and Drums first are selectable in cue-point preview. Both preview actions honour the selected style; changing it clears old audio, and the returned timeline names the actual style. The long-blend default preserves existing clients while these profiles are auditioned. Automatic style choice/variation and live Picker integration remain later work; automatic cue-plan search uses the operator-selected style now.

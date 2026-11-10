@@ -2,9 +2,10 @@
 
 Agreed direction, 9 November 2026. This is an implementation plan, not a
 description of a completed station trial. Preparation, automatic cue-plan search
-and four mixing styles work in browser auditions. This branch now includes an
-opt-in live queue path; its switch defaults off. Discovery continues to use the
-existing picker. The owner-run station trial remains outstanding.
+and four mixing styles work in browser auditions. The live queue candidate is
+now on the station-based `test-station/subbeats-live-queue-20261110` branch; its
+switch defaults off. Discovery continues to use the existing picker. The
+owner-run station trial remains outstanding.
 
 ## Implementation checkpoint — 10 November: live queue candidate
 
@@ -76,8 +77,11 @@ explicit Short exchange, not automatic controller style selection. Read-only
 source/stem mounts, no network, two CPUs and 4 GiB RAM were used. See the
 [validation measurements](../investigations/2026-11-10-subbeats-live-queue.json).
 Focused source checks accompany this candidate; full suites, HTTP/browser and
-live Liquidsoap playback are not established by the offline renders. Station
-source, settings and services have not been changed.
+live Liquidsoap playback are not established by the offline renders. The
+station checkout has the source candidate, while its settings and running
+services remain unchanged until the owner rebuilds the controller, analyzer
+and web images and enables the switch for the strict-playlist trial. The
+rollback source is `813094ba`.
 
 Focused validation for this candidate: 90 controller cases (live queue and both
 transports, existing seam/recovery, length-policy, pick-time stem and lyric
