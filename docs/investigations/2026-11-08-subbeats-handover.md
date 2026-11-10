@@ -1,5 +1,20 @@
 # Sub/Beats handover — 8 November 2026
 
+## Latest work — 10 November: remove the preparation list cap
+
+The 500-entry constant had two jobs: it capped persisted queue entries and
+bounded candidate-match response arrays. Only the first was a preparation
+limit. The durable queue schema and store now accept all queued entries, and
+Explore selection no longer calculates free slots from the saved-list size.
+The UI describes batches instead of a 500-entry capacity. Each API admission
+still accepts up to 100 IDs; the operator can add more batches. Match-result
+arrays remain bounded at 500 for response size.
+
+Focused checks accepted 501 persisted entries and selected another batch with
+501 saved entries. Web selection tests passed. The Sub/Beats controller run had
+83 passes and one existing cue-preview route failure (`subbeats-routes.test.ts`
+line 415, expected 200, received 400); rerunning that file reproduced it.
+
 ## Latest web experiment — 10 November: stable bars and transition markers
 
 The experimental on-air WaveSurfer deck now shares one horizontal lane between

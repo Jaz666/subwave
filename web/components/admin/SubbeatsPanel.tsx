@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, SUBBEATS_QUEUE_LIMIT, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -544,12 +544,11 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
               {candidates.data && candidates.data.selectableCount <= SUBBEATS_BATCH_LIMIT ? `Select matching · ${candidates.data.selectableCount} available` : `Select matching · up to ${SUBBEATS_BATCH_LIMIT}`}
             </Button>
           </div>
-          <p id="subbeats-selection-limit" className="mt-2 text-xs text-muted" role="status">{selection.length >= SUBBEATS_BATCH_LIMIT ? 'Batch limit reached. Remove selected tracks or queue this batch before selecting more.' : jobs.length + selection.filter(row => !byId.has(row.id)).length >= SUBBEATS_QUEUE_LIMIT ? 'Preparation list capacity reached. Remove completed entries or retry failed ones.' : ''}</p>
+          <p id="subbeats-selection-limit" className="mt-2 text-xs text-muted" role="status">{selection.length >= SUBBEATS_BATCH_LIMIT ? 'Batch limit reached. Queue this batch before selecting more.' : ''}</p>
           <div className="mt-3 border-t border-ink/20 pt-3">
             <p className="text-sm tabular-nums" aria-live="polite">{selection.length} selected{selection.length > selectionOnPage ? ` · ${selection.length - selectionOnPage} on other pages or filters` : ''}</p>
             <div className="mb-3">{preparationControl}</div>
-            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT} preparation entries used. Prepared audio shares the regular stem-cache budget.</p>
-            {jobs.length >= SUBBEATS_QUEUE_LIMIT && <p className="mt-2 text-sm">The preparation list is full. Existing failed or unavailable entries can still be retried.</p>}
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Queue up to {SUBBEATS_BATCH_LIMIT} tracks per batch; batches can be added as needed. Prepared audio shares the regular stem-cache budget.</p>
             <div className="mt-3 flex flex-wrap gap-3">
               <Button className="min-h-11" variant="solid" disabled={!selection.length || enqueue.isPending || !state.data || query.trim() !== q} onClick={() => enqueue.mutate(selection.map(row => row.id))}>
                 <Plus /> {enqueue.isPending ? 'Adding…' : `Queue analysis (${selection.length})`}
@@ -614,7 +613,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {assess.isError && <p role="alert" className="mt-2 text-sm">Could not queue assessment. {assess.error instanceof Error ? assess.error.message : 'Try again.'}</p>}
           <p className="mt-3 text-sm tabular-nums" aria-live="polite">{state.isLoading ? 'Loading progress…' : `${prepared} prepared · ${pending} remaining`}</p>
           <p className="mt-2 text-sm leading-relaxed break-words text-muted">{state.data?.paused ? 'Paused. Any track already being prepared will finish first.' : state.data?.progress && pending ? state.data.progress : pending ? 'Queued tracks will run when library analysis is available.' : 'Choose tracks to prepare. Saved results are reused.'}</p>
-          <p className="mt-3 text-xs text-muted">Preparation respects your analysis quiet-time setting. Saved results share the regular stem-cache budget; the list holds up to 500 entries.</p>
+          <p className="mt-3 text-xs text-muted">Preparation respects your analysis quiet-time setting. Saved results share the regular stem-cache budget.</p>
         </div>
         <div className="grid gap-3 border-b border-ink p-4">
           <div><label htmlFor="subbeats-job-search" className="mb-1 block text-sm font-medium">Find preparation entries</label><Input className="min-h-11" id="subbeats-job-search" type="search" value={jobQuery} placeholder="Artist, track or album" onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /></div>

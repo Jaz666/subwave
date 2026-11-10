@@ -19,11 +19,10 @@ test('selection accumulates across pages/filters, deduplicates and stops at the 
   assert.equal(new Set(selected.map(item => item.id)).size, 100);
 });
 
-test('list capacity counts only new admissions and still permits existing failed entries to retry', () => {
-  const jobs = Array.from({length:499}, (_,i) => ({id:`known-${i}`, status:'failed' as const}));
+test('more than 500 saved entries do not block another batch or retries', () => {
+  const jobs = Array.from({length:501}, (_,i) => ({id:`known-${i}`, status:'failed' as const}));
   const selected = selectSubbeatsRows([], [row('new-a'), row('new-b'), row('known-0')], jobs);
-  assert.deepEqual(selected.map(item => item.id), ['new-a','known-0']);
-  assert.deepEqual(selectSubbeatsRows([], [row('new-a'),row('known-0')], [...jobs,{id:'last',status:'prepared'}]).map(item => item.id), ['known-0']);
+  assert.deepEqual(selected.map(item => item.id), ['new-a','new-b','known-0']);
 });
 
 test('fresh queue state removes selections that another request has queued or completed', () => {
