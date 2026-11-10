@@ -589,7 +589,7 @@ export default function DashPanel() {
                         <QueueItemContent className="text-[12px] text-ink">
                           {t.title} <span className="text-muted">— {t.artist}</span>
                         </QueueItemContent>
-                        {/* stemSeam belongs to the successor track. */}
+                        {/* Stem seam labels belong to the successor track. */}
                         {t.flow ? (
                           <span
                             title={`${t.flow.label} · track ${t.flow.index + 1} of ${t.flow.size} · protected joins`}
@@ -599,10 +599,10 @@ export default function DashPanel() {
                           </span>
                         ) : t.stemSeam ? (
                           <span
-                            title="Arrives via a rendered blend mixed from cached stems"
+                            title={t.subbeats ? 'Arrives via a rendered Sub/Beats transition' : 'Arrives via a rendered blend mixed from cached stems'}
                             className="shrink-0 text-[8px] font-bold tracking-[0.14em] whitespace-nowrap text-vermilion/80 uppercase"
                           >
-                            Stem blend
+                            {t.subbeats ? 'Sub/Beats' : 'Stem blend'}
                           </span>
                         ) : null}
                         {t.block && upcoming.findIndex(u => u.block?.id === t.block!.id) === i ? (

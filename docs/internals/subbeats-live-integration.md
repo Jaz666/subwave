@@ -12,7 +12,10 @@ owner-run station trial remains outstanding.
 `broadcast/queue.ts` now offers the actual adjacent pair to
 [`broadcast/subbeats.ts`](../../controller/src/broadcast/subbeats.ts) before
 ordinary Stem Blend. It reads the same saved evidence/harmonic style choice as
-the pair diagnostic. The one-shot
+the pair diagnostic. Compatible library keys choose Long blend; mismatched or
+mismatched keys choose Drums First; unknown keys retain Short exchange as the
+conservative default. **Find Suitable Transition** now uses this same automatic
+style rule; its cue search remains an audition plan. The one-shot
 [`subbeats_live.py`](../../controller/scripts/subbeats_live.py) uses the shared
 `plan_live_pair` and complete-handoff renderer. Missing preparation, unsuitable
 cues, insufficient coverage, supported lyric conflict or a render failure keep
@@ -63,7 +66,8 @@ offset control. No listener client change is needed. Existing spoken heads,
 beds, silence trims and show boundaries take precedence; pending generic speech
 holds for another boundary when a committed Sub/Beats opening owns this one.
 
-Operator mix logs distinguish `attempt`, `rendered`, `committed`, `observed` and
+The queue row labels committed prepared handoffs **Sub/Beats**, distinct from
+ordinary **Stem blend**. Operator mix logs distinguish `attempt`, `rendered`, `committed`, `observed` and
 `fallback`, including style, tempo, loop and lyric-fit evidence. An observed
 metadata entry is not a listening result. **Sub/Beats** is also the upcoming
 transition label. The first strict-playlist trial must confirm both audible
@@ -154,7 +158,7 @@ The route changes no queue, preparation or playback state and needs the updated
 controller and analyzer. It is not yet a browser control or a live queue hook.
 
 The controller selects Long blend for compatible library key estimates and
-Short exchange for mismatched/unknown keys, using the existing Camelot maths.
+Drums First for mismatched/unknown keys, using the existing Camelot maths.
 Both remain estimates, including any leading-window fallback for an unmeasured
 ending. It attaches source-bound lyric evidence and sends only the two selected
 preparation records through the existing model-free match operation, with a
@@ -241,22 +245,24 @@ Avoid independent preview, discovery and broadcast compatibility rules. A plan
 needs valid timing, source identity, sufficient audio, supported tempo adjustment
 and a feasible musical handover. An 8/16-bar label alone does not prove fit.
 
-Start with deterministic automatic style selection:
+Automatic style selection uses:
 
 | Evidence | Initial choice |
 | --- | --- |
 | Plausibly compatible keys | Long blend available |
-| Apparent harmonic mismatch | Prefer Short exchange |
-| Key unknown or unreliable | Keep eligible; Short exchange as the conservative starting choice |
+| Apparent harmonic mismatch | Drums First |
+| Key unknown or unreliable | Keep eligible; Short exchange |
 | Bass swap | Keep as an optional audition/editing choice initially |
-| Drums first | Add selective automatic use after the basic live path is established |
+| Drums First | Use for mismatched/unknown keys; builds incoming drums before the bass/other exchange |
 
 Use existing key evidence honestly. Leading-window library keys and diagnostic
 section estimates are not confirmed ending keys or probability scores. Do not
 promote confidence just to choose a style. The owner preferred Short exchange
 in five of six harmonic comparisons, with one tie. Bass swap tied in both of
-its comparisons; Drums first had one tie and one preference. These are small
-listening samples, not universal guarantees. See the
+its comparisons; Drums First had one tie and one preference. Since then, the
+owner accepted the 16-out/8-in Drums First preview on two pairs classified
+outside the usual Camelot matches. These are small listening samples, not
+universal guarantees. See the
 [harmonic](../investigations/2026-11-09-harmonic-auditions.md) and
 [style](../investigations/2026-11-09-stem-mixing-styles.md) audition records.
 

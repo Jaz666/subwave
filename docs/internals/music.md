@@ -15,7 +15,7 @@ rules.
 
 **Sub/Beats audition mixing styles.**
 
-Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to both manually selected cues and automatic cue-plan search; it does not select tracks. The preview selector is an in-memory workspace choice, initially Long blend. The shared pair planner proposes Long blend for compatible library key estimates and Short exchange for mismatched/unknown keys; it does not change preview selection. The opt-in live queue path uses this same automatic style policy. See the [live integration checkpoint](subbeats-live-integration.md).
+Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap` or `drums-first`. The selected style applies to manually selected cues and does not select tracks. **Find Suitable Transition** chooses cues automatically and uses the live queue's style rule: Long blend for compatible library key estimates, Drums First for mismatches, and Short exchange when a key is unknown. The preview selector remains an in-memory workspace choice, initially Long blend, and applies to **Play selected mix**. See the [live integration checkpoint](subbeats-live-integration.md).
 
 | Style | Stem envelopes |
 |---|---|
@@ -24,7 +24,7 @@ Cue-point previews accept `mixStyle`: `long-blend`, `short-exchange`, `bass-swap
 | Bass swap | Bass exchanges over one beat centred on arrival; `other` retains the longer blend. |
 | Drums first | Incoming drums normally build over up to 32 beats before arrival, bounded by source entry; an inserted drum loop can start this entrance earlier. Bass/`other` use the four-beat exchange. |
 
-Vocal envelopes, vocal-overlap assessment, cue timing and outgoing drum tails use the existing handling for all four styles. A compatible key is guidance for longer melodic overlap, not a guarantee of fit. The two new styles are listening candidates, not yet approved for automatic variety.
+Vocal envelopes, vocal-overlap assessment, cue timing and outgoing drum tails use the existing handling for all four styles. A compatible key is guidance for longer melodic overlap, not a guarantee of fit. The owner accepted the 16-out/8-in Drums First preview on two pairs with mismatched library-key estimates; this supports the automatic mismatch choice but does not guarantee every pair will fit.
 
 `subbeatsMixStyleSchema` owns the request/timeline values. The controller passes `mix_style` through both analyzer backends, validates the returned style, and reports an analyzer update requirement if a non-default request came back as another style. Regular-crossfade fallback retains its own timeline kind and has no stem-style claim. The style is included in preview cache version 16; stems, cues and library analysis do not need re-preparation. The mixer implementation is `controller/scripts/subbeats_cue_preview.py::mix_passages`. [The style audition sheet](../investigations/2026-11-09-stem-mixing-styles.md) records the current listening candidate and exact profiles.
 
