@@ -25,7 +25,7 @@
 .segment,
 .timeline {
   position: relative;
-  height: 88px;
+  height: 44px;
 }
 
 .segment {
@@ -54,9 +54,16 @@
 
 .eventLegend {
   display: flex;
+  align-items: center;
   gap: 12px;
   margin-top: 4px;
   font-size: 10px;
+}
+
+.trackTime {
+  margin-left: auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
 .transitionMarker {
@@ -75,6 +82,10 @@
   background: var(--bg);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.observedTransitionMarker {
+  border-inline-start-style: solid;
 }
 
 .stemLane {
