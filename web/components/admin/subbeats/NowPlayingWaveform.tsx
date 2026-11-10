@@ -315,6 +315,7 @@ export default function NowPlayingWaveform() {
   const [viewportWidth, setViewportWidth] = useState(0);
   const [currentDuration, setCurrentDuration] = useState(nowPlaying?.duration ?? 0);
   const [nextDuration, setNextDuration] = useState(0);
+  const [bufferedDuration, setBufferedDuration] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [jingle, setJingle] = useState<JingleMarker | null>(null);
   const [bed, setBed] = useState<{ airedAt: string; durationMs?: number } | null>(null);
@@ -329,6 +330,10 @@ export default function NowPlayingWaveform() {
   const currentId = nowPlaying?.subsonic_id;
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
+  // /state leads this listener by its stream buffer. Keep the live queue's
+  // current deck mounted between it leaving upcoming and becoming audible.
+  const queuedCurrent = currentId && state.current?.subsonic_id !== currentId ? state.current : null;
+  const bufferedId = queuedCurrent?.subsonic_id;
   const currentStartedAt = trackStartedAt ?? 0;
   const transition = queuedTransition(state, currentId, leadMs);
   const previousPlayback = useRef({ currentId, nextId, transition });
@@ -352,8 +357,10 @@ export default function NowPlayingWaveform() {
   const historyRef = useRef(historyTracks);
   const currentIdRef = useRef(currentId);
   const nextIdRef = useRef(nextId);
+  const bufferedIdRef = useRef(bufferedId);
   currentIdRef.current = currentId;
   nextIdRef.current = nextId;
+  bufferedIdRef.current = bufferedId;
 
   const updateTrackDuration = useMemo(() => (id: string, duration: number) => {
     if (currentIdRef.current === id) {
@@ -361,6 +368,8 @@ export default function NowPlayingWaveform() {
       setCurrentDuration(duration);
     } else if (nextIdRef.current === id) {
       setNextDuration(duration);
+    } else if (bufferedIdRef.current === id) {
+      setBufferedDuration(duration);
     } else {
       const updated = historyRef.current.map(track => track.id === id ? { ...track, duration } : track);
       historyRef.current = updated;
@@ -416,12 +425,14 @@ export default function NowPlayingWaveform() {
   }, [elapsed]);
 
   const historySeconds = visibleHistoryTracks.reduce((total, track) => total + trackSpan(track), 0);
-  const totalTimelineSec = trimmedHistorySeconds + historySeconds + currentDuration + nextDuration;
+  const totalTimelineSec = trimmedHistorySeconds + historySeconds + currentDuration + bufferedDuration + nextDuration;
   const timelineWidth = Math.max(viewportWidth, sidePadding * 2 + (PLAYHEAD_START_SECONDS + totalTimelineSec) * pxPerSec);
   // One list keeps a preloaded WaveSurfer instance mounted as its role changes.
   const deckTracks = [...visibleHistoryTracks];
   if (currentId && hydrated && !needsAuth) deckTracks.push({ id: currentId, duration: currentDuration, startedAt: currentStartedAt, colorRole: currentRole });
-  if (nextId && hydrated && !needsAuth) deckTracks.push({ id: nextId, duration: nextDuration, startedAt: 0, colorRole: nextRole });
+  if (bufferedId && bufferedId !== currentId && bufferedId !== nextId && hydrated && !needsAuth)
+    deckTracks.push({ id: bufferedId, duration: bufferedDuration, startedAt: 0, colorRole: nextRole });
+  if (nextId && hydrated && !needsAuth) deckTracks.push({ id: nextId, duration: nextDuration, startedAt: 0, colorRole: bufferedId ? currentRole : nextRole });
 
   useLayoutEffect(() => {
     waveformTimeline.current?.style.setProperty('width', `${timelineWidth}px`);
@@ -460,9 +471,11 @@ export default function NowPlayingWaveform() {
   useEffect(() => {
     setCurrentDuration(nowPlaying?.duration ?? 0);
     setNextDuration(next?.duration ?? 0);
+    setBufferedDuration(queuedCurrent?.duration ?? 0);
     setElapsed(0);
     setMessage('');
-  }, [currentId, next?.subsonic_id, needsAuth, nowPlaying?.duration, next?.duration]);
+  }, [currentId, next?.subsonic_id, needsAuth, nowPlaying?.duration, next?.duration,
+    queuedCurrent?.subsonic_id, queuedCurrent?.duration]);
 
   useEffect(() => setExpanded(false), [currentId, nextId]);
 
@@ -543,7 +556,7 @@ export default function NowPlayingWaveform() {
 
   const eventMarkers = markers.map((marker, index) => {
     const timelineStart = currentStartedAt - (trimmedHistorySeconds + historySeconds) * 1000;
-    const timelineEnd = currentStartedAt + (currentDuration + nextDuration) * 1000;
+    const timelineEnd = currentStartedAt + (currentDuration + bufferedDuration + nextDuration) * 1000;
     if (marker.airedAt < timelineStart || marker.airedAt > timelineEnd) return null;
     const start = Math.max(timelineStart, marker.airedAt);
     const end = marker.airedAt + marker.durationMs;
