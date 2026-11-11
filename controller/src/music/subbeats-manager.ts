@@ -5,8 +5,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.js';
 import { createSubbeatsStore } from './subbeats-store.js';
+import { runnableSubbeatsJobs } from './subbeats-scan-policy.js';
 import { startSubbeats, tagger } from '../broadcast/tagger.js';
-import * as settings from '../settings.js';
 import { queue } from '../broadcast/queue.js';
 import { isPidAlive, readPidfile } from './tagger-lock.js';
 
@@ -24,9 +24,7 @@ export function kickSubbeats(delayMs = 0, scanIds: readonly string[] = []): void
     let admitted: string[] = [];
     try {
       const state = subbeatsStore.read();
-      const immediate = settings.get()?.transitions?.pickTimeStems === true;
-      const ids = state.jobs.filter(j => j.status === 'queued'
-        && (immediate || j.task === 'assess' || libraryReady.has(j.id))).slice(0, 100).map(j => j.id);
+      const ids = runnableSubbeatsJobs(state.jobs, libraryReady);
       const migrate = !migrationAttempted && existsSync(join(config.stateDir, 'subbeats', 'v1'));
       if ((state.paused || !ids.length) && !migrate) return;
       const locked = readPidfile();

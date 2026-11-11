@@ -1,6 +1,16 @@
 type QueuedJob = { id: string; status: string; task?: string };
 
 /** Preparation runs after a Library Demucs scan; read-only assessments stay immediate. */
+export function runnableSubbeatsJobs(
+  jobs: readonly QueuedJob[],
+  libraryReady: ReadonlySet<string>,
+  limit = 100,
+): string[] {
+  return jobs.filter(job => job.status === 'queued'
+    && (job.task === 'assess' || libraryReady.has(job.id)))
+    .slice(0, limit).map(job => job.id);
+}
+
 export function queuedSubbeatsForScan(
   jobs: readonly QueuedJob[],
   scope?: ReadonlySet<string> | null,
