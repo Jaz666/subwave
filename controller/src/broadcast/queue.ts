@@ -446,6 +446,7 @@ class Queue {
   _deadlinePickAt = 0;          // last deadline-pick ATTEMPT (ms epoch) — failure-retry cooldown, see maybeDeadlinePick
   _coastHandover = createHandoverEdge(); // armed by a queued track starting, fired by the first moment picking stops (#1975, #1992)
   _pendingVoice: PendingVoice | null = null; // one boundary-deferred segment awaiting the next track start — see announceAtNextTrack
+  _speechAwaitingAir = new Set<string>(); // handed-off voice IDs not yet confirmed by the mixer
   _handoffBoundaryTimer: NodeJS.Timeout | null = null;
   _handoffGenerationTimer: NodeJS.Timeout | null = null;
   _lengthDropped = new WeakSet<QueueItem>();
@@ -2893,6 +2894,7 @@ class Queue {
     // A jingle is one kind of event on air however it was placed (playJingle):
     // it is not DJ speech, so it reserves no song and publishes no voice.* event.
     if (kind === 'jingle') return;
+    this._speechAwaitingAir.add(q.voiceId);
     // Remember speech for the whole song, even after its handoff was consumed
     // or its clip finished. An optional ID never follows another voice on it.
     if (this._overlayBoundary) this._overlayBoundary.speech = true;
@@ -2918,6 +2920,7 @@ class Queue {
     settlesHandoff = true,
   }: SegmentDesc): Promise<boolean> {
     const airedAt = await handoff.aired;
+    this._speechAwaitingAir.delete(handoff.voiceId);
     try {
       const safeText = normalizeForDisplay(text);
       const safeLogText = logText == null ? safeText : normalizeForDisplay(logText);
@@ -3254,6 +3257,13 @@ class Queue {
   pendingVoiceTalk(): PendingTalk | null {
     const p = this._pendingVoice;
     return p ? { kind: p.kind, queuedAt: p.t } : null;
+  }
+
+  hasPreparedSpeech(): boolean {
+    return this._speechAwaitingAir.size > 0
+      || this._pendingVoice?.clips.some(clip => existsSync(clip.wavPath)) === true
+      || (!!this.current && !this.current.introAired && !!this.current.introWav && existsSync(this.current.introWav))
+      || this.upcoming.some(item => !item.introAired && !!item.introWav && existsSync(item.introWav));
   }
 
   // Discard a scheduled-but-unaired deferred segment. A mic-pass supersedes an

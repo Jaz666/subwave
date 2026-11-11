@@ -107,6 +107,7 @@ export function createNowPlayingFileRouter(deps: {
   latestJingle?: () => { filename?: string; startedAt?: number; durationSec?: number; queuedSec?: number; placement?: string } | null;
   latestBed?: () => { filename?: string; startedAt?: number; durationSec?: number | string } | null;
   stemTransition?: (currentId: string) => VisualTransition | null;
+  preparedSpeech?: () => boolean;
   stemSource?: typeof stemSource;
   crossfadeSeconds?: () => number;
 }): Router {
@@ -260,7 +261,10 @@ export function createNowPlayingFileRouter(deps: {
     } catch { /* no usable marker */ }
     try { stemTransition = deps.stemTransition?.(id) ?? null; }
     catch { /* no usable transition */ }
-    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition });
+    let preparedSpeech = false;
+    try { preparedSpeech = deps.preparedSpeech?.() ?? false; }
+    catch { /* no prepared-speech indicator */ }
+    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition, preparedSpeech });
   });
   return router;
 }
@@ -272,6 +276,7 @@ export const router = createNowPlayingFileRouter({
     timeoutMs: 5 * 60_000, bodyDeadline: true, signal,
   }),
   nextTrackId: () => queue.upcoming[0]?.track?.id || null,
+  preparedSpeech: () => queue.hasPreparedSpeech(),
   latestJingle: () => {
     try { return JSON.parse(readFileSync(config.liquidsoap.jinglePlayingFile, 'utf8')); }
     catch { return null; }
