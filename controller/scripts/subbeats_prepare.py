@@ -320,7 +320,7 @@ def prepare_request(req):
     allowance = shared_context(req)
     cache_root = track_cache_root(req['stems_root'], req['track_id'])
     method = req.get('method','classic')
-    if method not in ('classic','small0','final0'):
+    if method not in ('classic','small0'):
         raise ValueError('Unknown preparation method')
     upgrading = req.get('bundle_key') is not None
     if upgrading:

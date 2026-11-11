@@ -49,6 +49,7 @@ class CoverageTests(unittest.TestCase):
             def prepare(parent=parent,cues=cues,budget=allowance):
                 return coverage.prepare_coverage(source,state,Path(parent['directory']),parent,cues,cache_root=artifacts,allowance=budget,expected_cache_id='shared-cache-identity')
             with (patch.object(coverage,'STEM_SR',100),patch('subbeats_preview.load_region',side_effect=load),
+                  patch('subbeats_vocals.measure_silero',return_value=dict(method='silero-vad-v5.1.2',threshold=.5,sampleRate=16000,resolutionSeconds=.032,passages=[])),
                   patch.object(coverage,'separate_regions',side_effect=separate) as separator,
                   patch.object(coverage,'write_flac_region',side_effect=write),patch.object(worker,'_model_lock',threading.Lock()),
                   patch.object(worker,'DEMUCS_MODEL','htdemucs'),patch.object(worker,'DEMUCS_OVERLAP',.25),

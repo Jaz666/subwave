@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_QUEUE_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -281,8 +281,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const incomingReady = !!incomingCue && !!outgoingCue;
   const preparationControl = <div className="max-w-md"><label htmlFor="subbeats-preparation-method" className="mb-1 block text-sm font-medium">Preparation method</label>
     <select id="subbeats-preparation-method" className={SELECT_CLASS} value={preparationMethod} disabled={enqueue.isPending} onChange={event => setPreparationMethod(event.target.value as typeof preparationMethod)}>
-      <option value="small0">Beat This! small · cue points</option><option value="final0">Beat This! full · cue points</option>
-    </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation saves musical cues, reusable opening/ending coverage and vocal measurements. Sufficient saved stems are reused. The full model takes longer and may choose different points.</p></div>;
+      <option value="small0">Beat This! small · cue points</option>
+    </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation saves musical cues, reusable opening/ending coverage and vocal measurements. Sufficient saved stems are reused.</p></div>;
   const outgoingControl = <div className="min-w-0">
           <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
           <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setOutCueIndex(0); setInCueIndex(0); }}>
@@ -548,7 +548,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <div className="mt-3 border-t border-ink/20 pt-3">
             <p className="text-sm tabular-nums" aria-live="polite">{selection.length} selected{selection.length > selectionOnPage ? ` · ${selection.length - selectionOnPage} on other pages or filters` : ''}</p>
             <div className="mb-3">{preparationControl}</div>
-            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Queue up to {SUBBEATS_BATCH_LIMIT} tracks per batch; batches can be added as needed. Prepared audio shares the regular stem-cache budget.</p>
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT.toLocaleString()} preparation entries used. Prepared audio shares the regular stem-cache budget.</p>
             <div className="mt-3 flex flex-wrap gap-3">
               <Button className="min-h-11" variant="solid" disabled={!selection.length || enqueue.isPending || !state.data || query.trim() !== q} onClick={() => enqueue.mutate(selection.map(row => row.id))}>
                 <Plus /> {enqueue.isPending ? 'Adding…' : `Queue analysis (${selection.length})`}
@@ -613,7 +613,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {assess.isError && <p role="alert" className="mt-2 text-sm">Could not queue assessment. {assess.error instanceof Error ? assess.error.message : 'Try again.'}</p>}
           <p className="mt-3 text-sm tabular-nums" aria-live="polite">{state.isLoading ? 'Loading progress…' : `${prepared} prepared · ${pending} remaining`}</p>
           <p className="mt-2 text-sm leading-relaxed break-words text-muted">{state.data?.paused ? 'Paused. Any track already being prepared will finish first.' : state.data?.progress && pending ? state.data.progress : pending ? 'Queued tracks will run when library analysis is available.' : 'Choose tracks to prepare. Saved results are reused.'}</p>
-          <p className="mt-3 text-xs text-muted">Preparation respects your analysis quiet-time setting. Saved results share the regular stem-cache budget.</p>
+          <p className="mt-3 text-xs text-muted">With pick-time caching enabled, selections prepare as soon as the analyzer is available; otherwise they wait for a Library Demucs scan. Preparation respects your analysis quiet-time setting and shared stem-cache budget. The queue holds up to {SUBBEATS_QUEUE_LIMIT.toLocaleString()} entries.</p>
         </div>
         <div className="grid gap-3 border-b border-ink p-4">
           <div><label htmlFor="subbeats-job-search" className="mb-1 block text-sm font-medium">Find preparation entries</label><Input className="min-h-11" id="subbeats-job-search" type="search" value={jobQuery} placeholder="Artist, track or album" onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /></div>

@@ -1,10 +1,13 @@
 import { z } from 'zod';
 
-export const SUBBEATS_BATCH_LIMIT = 100;
+export const SUBBEATS_BATCH_LIMIT = 1000;
+export const SUBBEATS_QUEUE_LIMIT = 20000;
 export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
 export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
+export const SUBBEATS_SCAN_PREFIX = '[subbeats-scan] ';
+export const subbeatsScanReadySchema = z.array(z.string().min(1).max(200)).max(SUBBEATS_QUEUE_LIMIT);
 export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
 export const subbeatsMixLevelSchema = z.enum(['regular','beat','subbeat']);
 export const subbeatsMeasuredWindowSchema = z.object({
@@ -29,7 +32,7 @@ export const subbeatsSuitabilitySchema = z.object({
   version:z.literal(1), assessedAt:z.string(),incoming:subbeatsRoleSuitabilitySchema,outgoing:subbeatsRoleSuitabilitySchema,
 });
 export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','beat','subbeat']);
-export const subbeatsPreparationMethodSchema = z.enum(['classic','small0','final0']);
+export const subbeatsPreparationMethodSchema = z.enum(['classic','small0']);
 // Sub/Beats experiment evidence; never replaces the library's acoustic ranges.
 export const subbeatsLyricEvidenceSchema = z.object({
   bundleKey:z.string().regex(/^[a-f0-9]{64}$/),
@@ -86,12 +89,12 @@ export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
   lyricEvidence:subbeatsLyricEvidenceSchema.optional(),
   task:z.enum(['assess','coverage']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
-  preparationMethod:subbeatsPreparationMethodSchema.optional(),cuePoints:subbeatsCuePointsSchema.optional(),
+  preparationMethod:z.union([subbeatsPreparationMethodSchema,z.literal('final0')]).optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });
 export const subbeatsQueueSchema = z.object({
-  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema),
+  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(SUBBEATS_QUEUE_LIMIT),
 });
 export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT), method:subbeatsPreparationMethodSchema.default('classic') });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });

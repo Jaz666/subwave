@@ -108,7 +108,7 @@ export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsC
       </div>
       <div className="mt-6 border-t border-ink/20 pt-5">
         <h3 className="text-sm font-semibold">Free space for Stem Blends</h3>
-        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Enabling this marks cached tracks outside the Stem Blend criteria for deletion. Played or starred tracks are protected from this cleanup, along with prepared Sub/Beats tracks and your manual inclusions. Other tracks need a dance-related genre, 90–180 BPM and a measured bar grid.</p>
+        <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Enabling this marks cached tracks outside the Stem Blend criteria for deletion. Played or starred tracks are protected from this cleanup, along with prepared Sub/Beats tracks and previously saved cache exceptions. Other tracks need a dance-related genre, 90–180 BPM and a measured bar grid.</p>
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">After confirmation, unsuitable folders move into a seven-day quarantine. Disk space is freed only when that period ends and the folders are deleted. The same criteria apply to future automatic stem caching.</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button className="min-h-11" disabled={busy || update.isPending} onClick={() => action.mutate('estimate')}>Calculate reclaimable space</Button>
@@ -129,14 +129,14 @@ export function SubbeatsCache({ cache }: { cache: ReturnType<typeof useSubbeatsC
         </label>
         {data.policy.enabled && !data.policy.cleanupEnabled && <p className="mt-2 text-sm">Selective caching is already on. Deletion has not been authorised; confirm cleanup separately.</p>}
         <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Cleanup is off by default. Turning it off stops further cleanup and restores quarantined folders where possible. Played/starred protection applies to this cleanup; the normal cache-budget eviction rule still applies.</p>
-        <p className="mt-3 text-sm">{data.policy.regularIds.length.toLocaleString()} manual inclusions. In Explore, choose Entire library and mark “Include in regular stem caching” on any track.</p>
+        {data.policy.regularIds.length > 0 && <p className="mt-3 text-sm">{data.policy.regularIds.length.toLocaleString()} previously saved cache exceptions remain protected.</p>}
         <div className="mt-3 flex flex-wrap gap-x-6"><Link href="/admin/library/subbeats?scope=library" className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">Choose tracks</Link>
           <Link href="/admin/settings?section=stems" className="inline-flex min-h-11 items-center text-sm underline underline-offset-4">Cache budget and orphan cleanup</Link></div>
         {update.isError && <p role="alert" className="mt-3 text-sm">Could not save. Your previous choice is still shown. Try again.</p>}
       </div>
     </>}
     <V3AlertDialog open={confirm} onOpenChange={setConfirm} title="Enable stem cleanup?"
-      description={estimate ? `Mark ${estimate.folders.toLocaleString()} ${estimate.folders === 1 ? 'folder' : 'folders'} (about ${space(estimate.bytes)}) for deletion. Quarantine starts now; disk space is reclaimed after seven days. Played, starred, prepared and manually included tracks are protected from this cleanup.` : 'Calculate reclaimable space before enabling cleanup.'}
+      description={estimate ? `Mark ${estimate.folders.toLocaleString()} ${estimate.folders === 1 ? 'folder' : 'folders'} (about ${space(estimate.bytes)}) for deletion. Quarantine starts now; disk space is reclaimed after seven days. Played, starred, prepared tracks and previously saved cache exceptions are protected from this cleanup.` : 'Calculate reclaimable space before enabling cleanup.'}
       confirmLabel="Enable and quarantine" danger
       onConfirm={() => { if (canEnable) update.mutate({enabled:true,confirmCleanup:true}); }} />
   </section>;

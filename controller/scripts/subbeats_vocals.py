@@ -2,8 +2,60 @@
 Energy gates cannot prove words/phrases or musical bar starts. No mixing changes.
 """
 import math
+import os
+from pathlib import Path
 import numpy as np
-from analyze_worker import VOCAL_MIX_FLOOR, VOCAL_STEM_REL, vocal_ranges_from_rms
+from analyze_worker import TAIL_VOCAL_MIX_FLOOR, VOCAL_STEM_REL, vocal_ranges_from_rms
+
+SILERO_MODEL = Path(os.environ.get('SILERO_VAD_MODEL', '/opt/analyzer/silero_vad.onnx'))
+SILERO_THRESHOLD = .5
+
+
+def measure_silero(vocal, sample_rate, start_seconds=0.):
+    """Run the pinned Silero ONNX VAD over a mono vocal stem; return evidence spans."""
+    import librosa
+    import onnxruntime as ort
+
+    audio = np.asarray(vocal, dtype=np.float32)
+    if audio.ndim == 2:
+        audio = audio.mean(axis=0)
+    if audio.ndim != 1 or not audio.size or not np.isfinite(audio).all():
+        raise ValueError('Invalid audio for Silero VAD')
+    if sample_rate != 16000:
+        audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
+    options = ort.SessionOptions()
+    options.inter_op_num_threads = options.intra_op_num_threads = 1
+    session = ort.InferenceSession(str(SILERO_MODEL), sess_options=options, providers=['CPUExecutionProvider'])
+    state = np.zeros((2, 1, 128), dtype=np.float32)
+    context = np.zeros((1, 64), dtype=np.float32)
+    probabilities = []
+    for offset in range(0, len(audio), 512):
+        chunk = audio[offset:offset + 512]
+        if len(chunk) < 512:
+            chunk = np.pad(chunk, (0, 512-len(chunk)))
+        data = np.concatenate((context, chunk[None, :]), axis=1)
+        out, state = session.run(None, {'input': data, 'state': state, 'sr': np.array(16000, dtype=np.int64)})
+        probabilities.append(float(out[0][0]))
+        context = data[:, -64:]
+    # Collapse adjacent 32 ms windows, allowing the default 150 ms hysteresis.
+    active = np.array(probabilities) >= SILERO_THRESHOLD
+    spans, began = [], None
+    last_active = None
+    for i, yes in enumerate(active):
+        if yes:
+            if began is None:
+                began = i
+            last_active = i
+        elif began is not None and (i-last_active)*.032 >= .15:
+            if (last_active+1-began)*.032 >= .25:
+                spans.append(dict(startSeconds=start_seconds+began*.032,
+                                  endSeconds=start_seconds+(last_active+1)*.032))
+            began = last_active = None
+    if began is not None and (len(active)-began)*.032 >= .25:
+        spans.append(dict(startSeconds=start_seconds+began*.032,
+                          endSeconds=start_seconds+len(active)*.032))
+    return dict(method='silero-vad-v5.1.2', threshold=SILERO_THRESHOLD,
+                sampleRate=16000, resolutionSeconds=.032, passages=spans)
 
 
 def measure_vocals(parts, sample_rate, start_seconds=0.):
@@ -26,10 +78,10 @@ def measure_vocals(parts, sample_rate, start_seconds=0.):
     mix = rms(sum(parts.values()))
     # Sparse passages must not disappear when over 90% of the stem is silent.
     reference = vocal[vocal > 0]
-    core = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,loud_reference=reference)
+    core = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,TAIL_VOCAL_MIX_FLOOR,loud_reference=reference)
     # Lower thresholds extend observed passages through quieter releases; they
     # cannot create a passage without evidence from the normal vocal gate.
-    tails = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,stem_rel=VOCAL_STEM_REL*.2,mix_floor=VOCAL_MIX_FLOOR*.2,loud_reference=reference)
+    tails = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,stem_rel=VOCAL_STEM_REL*.2,mix_floor=TAIL_VOCAL_MIX_FLOOR*.2,loud_reference=reference)
     passages = []
     for tail in tails:
         active = [run for run in core if run['startMs'] < tail['endMs'] and run['endMs'] > tail['startMs']]

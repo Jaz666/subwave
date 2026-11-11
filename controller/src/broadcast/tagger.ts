@@ -17,7 +17,7 @@ import { writePidfile, clearPidfile, readPidfile, isPidAlive, MANAGED_ENV } from
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STATE_DIR } from '../config.js';
-import { SUBBEATS_EVENT_PREFIX } from '../schemas/subbeats.js';
+import { SUBBEATS_EVENT_PREFIX, SUBBEATS_SCAN_PREFIX, subbeatsScanReadySchema } from '../schemas/subbeats.js';
 import {
   openRunLog, listRunLogs, runLogPath, RUN_LOG_DIR_NAME,
   type RunLog, type RunLogPage, type RunLogFileInfo,
@@ -312,6 +312,7 @@ function spawnChild(
   const thisRunLog = runLog;
 
   let catalogueReady = false;
+  const readySubbeats = new Set<string>();
   let earlyRefresh: Promise<boolean> | null = null;
   const invalidatePools = async () => {
     clearPoolCache();
@@ -344,6 +345,11 @@ function spawnChild(
       for (const raw of lines) {
         const line = raw.trim();
         if (!line) continue;
+        if (!opts.subbeats && line.startsWith(SUBBEATS_SCAN_PREFIX)) {
+          try { for (const id of subbeatsScanReadySchema.parse(JSON.parse(line.slice(SUBBEATS_SCAN_PREFIX.length)))) readySubbeats.add(id); }
+          catch { queue.log('error', 'Sub/Beats scan scope could not be read'); }
+          continue;
+        }
         if (opts.subbeats && line.startsWith(SUBBEATS_EVENT_PREFIX)) {
           try { opts.subbeats.onEvent(JSON.parse(line.slice(SUBBEATS_EVENT_PREFIX.length))); }
           catch (error) { queue.log('error', `Sub/Beats result refused: ${error instanceof Error ? error.message : String(error)}`); }
@@ -429,6 +435,10 @@ function spawnChild(
     thisRunLog.close();
     try { opts.subbeats?.onClose(signal !== null || code === 130 || code === 143); }
     catch (error) { queue.log('error', `Sub/Beats completion could not be saved: ${error instanceof Error ? error.message : String(error)}`); }
+    if (!opts.subbeats && code === 0 && signal === null && readySubbeats.size) {
+      void import('../music/subbeats-manager.js').then(({kickSubbeats}) => kickSubbeats(0, [...readySubbeats]))
+        .catch(error => queue.log('error', `Sub/Beats preparation could not start: ${String(error)}`));
+    }
   });
   child.on('exit', (code, signal) => {
     tagger.running = false;

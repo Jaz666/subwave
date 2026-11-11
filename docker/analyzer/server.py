@@ -830,7 +830,7 @@ async def migrate_subbeats(req: SubbeatsCacheRequest):
 class SubbeatsPrepareRequest(SubbeatsCacheRequest):
     bundle_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
     cue_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
-    method: str = Field(default='classic',pattern=r'^(classic|small0|final0)$')
+    method: str = Field(default='classic',pattern=r'^(classic|small0)$')
     path: str
     track_id: str
     complete: bool

@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
+  'shared_stem_coverage_test.py', // source/model/boundary proof and no-copy ordinary views
   'subbeats_coverage_test.py', // persistent cue coverage, budget/source binding and cache/model reuse
   'subbeats_cues_test.py', // cue evidence, integrity, source-prefix and vocal-tail preservation
   'subbeats_vocal_plan_test.py', // provisional complete-passage handovers; rendering unchanged

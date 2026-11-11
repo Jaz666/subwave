@@ -46,7 +46,7 @@ export const NAME_SIDECAR = '.track-meta.json';
 // <window>-<stem>.flac and tail-meta.json, each through a .tmp a crash can leave
 // behind. The stem is the model's own source name, not a fixed four: a
 // non-default DEMUCS_MODEL writes guitar and piano too.
-const STEM_FILE = /^(?:(?:head|tail)-[a-z0-9_]+\.flac|tail-meta\.json)(?:(?:\.[a-f0-9]{8})?\.tmp)?$/;
+const STEM_FILE = /^(?:(?:head|tail)-[a-z0-9_]+\.flac|tail-meta\.json|(?:head|tail)-coverage\.json)(?:(?:\.[a-f0-9]{8})?\.tmp)?$/;
 
 /**
  * Pure: do these directory entries read as a track's stem dir? "Not a known id"

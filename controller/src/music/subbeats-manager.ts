@@ -6,14 +6,17 @@ import { join } from 'node:path';
 import { config } from '../config.js';
 import { createSubbeatsStore } from './subbeats-store.js';
 import { startSubbeats, tagger } from '../broadcast/tagger.js';
+import * as settings from '../settings.js';
 import { queue } from '../broadcast/queue.js';
 import { isPidAlive, readPidfile } from './tagger-lock.js';
 
 export const subbeatsStore = createSubbeatsStore(config.stateDir);
 let migrationAttempted = false;
+const libraryReady = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-export function kickSubbeats(delayMs = 0): void {
+export function kickSubbeats(delayMs = 0, scanIds: readonly string[] = []): void {
+  for (const id of scanIds) libraryReady.add(id);
   if (delayMs === 0) migrationAttempted = false; // A manual queue/resume also retries a failed migration.
   if (timer) return;
   timer = setTimeout(() => {
@@ -21,7 +24,9 @@ export function kickSubbeats(delayMs = 0): void {
     let admitted: string[] = [];
     try {
       const state = subbeatsStore.read();
-      const ids = state.jobs.filter(j => j.status === 'queued').slice(0, 100).map(j => j.id);
+      const immediate = settings.get()?.transitions?.pickTimeStems === true;
+      const ids = state.jobs.filter(j => j.status === 'queued'
+        && (immediate || j.task === 'assess' || libraryReady.has(j.id))).slice(0, 100).map(j => j.id);
       const migrate = !migrationAttempted && existsSync(join(config.stateDir, 'subbeats', 'v1'));
       if ((state.paused || !ids.length) && !migrate) return;
       const locked = readPidfile();
@@ -30,11 +35,17 @@ export function kickSubbeats(delayMs = 0): void {
       migrationAttempted = true;
       subbeatsStore.cacheId();
       let reported = false;
-      startSubbeats(admitted, raw => { subbeatsStore.event(raw, ids); reported = true; }, stopped => {
+      let budgetBlocked = false;
+      startSubbeats(admitted, raw => {
+        subbeatsStore.event(raw, ids); reported = true;
+        const event = raw as {id:string;status?:string;error?:string};
+        if (event.status === 'running') libraryReady.delete(event.id);
+        budgetBlocked ||= event.status === 'queued' && !!event.error;
+      }, stopped => {
         if (stopped) subbeatsStore.pause(true);
         if (!reported && !subbeatsStore.read().paused) subbeatsStore.failQueued(ids, 'Preparation could not start. Check the analysis log, then queue again.');
         subbeatsStore.interrupted('Preparation was interrupted. Queue this track again to retry.');
-        kickSubbeats(1000);
+        if (!budgetBlocked) kickSubbeats(1000);
       });
     } catch (error) {
       try { if (admitted.length) subbeatsStore.failQueued(admitted, 'Preparation could not start. Check the analysis log, then queue again.'); } catch { /* keep unreadable state intact */ }

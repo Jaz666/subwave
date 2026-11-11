@@ -11,6 +11,7 @@ let requests = 0;
 let migrations = 0;
 let assessments = 0;
 let streams = 0;
+let rejectBudget = false;
 const fixture = createServer(async (req, res) => {
   if (req.url === '/health') {
     res.setHeader('Content-Type', 'application/json');
@@ -29,6 +30,7 @@ const fixture = createServer(async (req, res) => {
     assert.equal(payload.complete, true);
     assert.equal(readFileSync(payload.path).length, 2048);
     requests++;
+    if (rejectBudget) { res.writeHead(422,{'Content-Type':'application/json'}); res.end(JSON.stringify({detail:'prepared result exceeds remaining Sub/Beats cache budget'})); return; }
     if (requests === 1 || requests === 4) await new Promise<void>(resolve => { release = resolve; });
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ ok: true, cache_added_bytes:0, subbeats_result: { status: 'prepared', bundleKey: 'a'.repeat(64), error: null, suitability } })); return;
@@ -42,6 +44,8 @@ process.env.ANALYZE_PYTHON = '';
 process.env.NAVIDROME_URL = address;
 process.env.NAVIDROME_USER = 'fixture';
 process.env.NAVIDROME_PASS = 'fixture';
+const settings = await import('../src/settings.js');
+await settings.update({transitions:{pickTimeStems:true}});
 const { subbeatsStore: store, kickSubbeats } = await import('../src/music/subbeats-manager.js');
 const { tagger, stopTagger, startSubbeats } = await import('../src/broadcast/tagger.js');
 after(async () => { release?.(); if (tagger.running) stopTagger(); await new Promise<void>(resolve => fixture.close(() => resolve())); });
@@ -119,4 +123,34 @@ test('cache-only assessments use the managed slot without fetching or separating
   assert.equal(streams, sources, 'assessment must not fetch source audio');
   assert.equal(requests, preparations, 'assessment must not run preparation');
   assert.deepEqual(store.read().jobs.find(job => job.id === 'first')?.suitability, suitability);
+});
+
+
+test('Explore selections wait with pick-time caching off, then run after a Library Demucs scan', async () => {
+  await settings.update({transitions:{pickTimeStems:false}});
+  store.enqueue([track('deferred')]);store.pause(false);
+  const before = requests;
+  kickSubbeats();
+  await new Promise(resolve => setTimeout(resolve,300));
+  assert.equal(requests,before);
+  assert.equal(store.read().jobs.find(job => job.id === 'deferred')?.status,'queued');
+  kickSubbeats(0,['deferred']);
+  await waitUntil(() => store.read().jobs.find(job => job.id === 'deferred')?.status === 'prepared' && !tagger.running);
+  assert.equal(requests,before+1);
+});
+
+
+test('a full cache keeps selected tracks queued without a retry loop', async () => {
+  await settings.update({transitions:{pickTimeStems:true}});
+  store.enqueue([track('budget-held')]);
+  const before=requests;rejectBudget=true;
+  try {
+    kickSubbeats();
+    await waitUntil(()=>store.read().jobs.find(job=>job.id==='budget-held')?.error?.startsWith('Waiting for cache space:')===true && !tagger.running);
+    assert.equal(store.read().jobs.find(job=>job.id==='budget-held')?.status,'queued');
+    await new Promise(resolve=>setTimeout(resolve,1300));
+    assert.equal(requests,before+1,'no repeated separation while space is unavailable');
+  } finally {rejectBudget=false;}
+  kickSubbeats();
+  await waitUntil(()=>store.read().jobs.find(job=>job.id==='budget-held')?.status==='prepared' && !tagger.running);
 });

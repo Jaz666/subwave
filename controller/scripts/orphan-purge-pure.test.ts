@@ -163,6 +163,8 @@ const dir = (name: string) => ({ name, isDirectory: true });
 test('a stem dir holds stem files and nothing else', () => {
   assert.equal(isStemDirListing([file('head-drums.flac'), file('head-vocals.flac')]), true);
   assert.equal(isStemDirListing([file('tail-bass.flac'), file('tail-meta.json')]), true);
+  assert.equal(isStemDirListing([file('head-coverage.json'), dir('subbeats')]), true);
+  assert.equal(isStemDirListing([file('tail-coverage.json'), file('tail-meta.json'), dir('subbeats')]), true);
   assert.equal(isStemDirListing([file('head-other.flac'), file('.orphaned-at'), file('.track-meta.json')]), true);
 });
 

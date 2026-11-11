@@ -36,7 +36,7 @@ test('a previous admission-only opt-in cannot authorise cleanup', async () => {
   assert.ok(existsSync(join(root,'rock')));
 });
 test('the estimate is read-only and protects plays, stars, preparation and manual inclusions', async () => {
-  policy.updateSubbeatsStemPolicy({track:{id:'manual',include:true}});
+  writeFileSync(join(stateDir,'subbeats','stem-policy.json'),JSON.stringify({enabled:true,cleanupEnabled:false,regularIds:['manual']}));
   const before = readFileSync(join(stateDir,'subbeats','stem-policy.json'),'utf8');
   const estimate = await cleanup.estimateSubbeatsCleanup({signals,now});
   assert.equal(estimate.folders,1);assert.equal(estimate.bytes,10);
@@ -82,7 +82,7 @@ test('an unprotected quarantine is deleted only after seven days, with actual fr
   assert.equal(existsSync(qu('rock')),false);
 });
 
-test('a pass interrupted after deletion still invalidates the usage snapshot', async () => {
+test('a pass interrupted after quarantine deletion leaves live usage unchanged', async () => {
   const dir = qu('aged-abort');mkdirSync(dir,{recursive:true});
   writeFileSync(join(dir,'head-drums.flac'),'audio');
   writeFileSync(join(dir,'.orphaned-at'),String(now - 10*day));
@@ -93,7 +93,7 @@ test('a pass interrupted after deletion still invalidates the usage snapshot', a
     beforeMutations:async () => { if (++phases === 2) throw new Error('choices changed'); },
   }),/choices changed/);
   assert.equal(existsSync(dir),false);
-  assert.equal(JSON.parse(readFileSync(snapshot,'utf8')).stale,true);
+  assert.deepEqual(JSON.parse(readFileSync(snapshot,'utf8')),{});
 });
 
 test('corrupt operator-heart data blocks the real strict signal loader', async () => {

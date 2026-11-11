@@ -21,11 +21,6 @@ export function updateSubbeatsStemPolicy(patch: z.infer<typeof subbeatsStemPolic
     if (!patch.enabled) state.cleanupEnabled = false;
     else if (patch.confirmCleanup === true) state.cleanupEnabled = true;
   }
-  if (patch.track) {
-    const ids = new Set(state.regularIds);
-    if (patch.track.include) ids.add(patch.track.id); else ids.delete(patch.track.id);
-    state.regularIds = [...ids];
-  }
   const validated = subbeatsStemPolicySchema.parse(state);
   const root = join(config.stateDir, 'subbeats');
   if (existsSync(root) && lstatSync(root).isSymbolicLink()) throw new Error('Sub/Beats requires its own state folder');

@@ -1,0 +1,901 @@
+{
+  "scope": "Read-only review of the four owner-flagged opening previews.",
+  "beat_this_window": "32 beats stepped by 4; retained only windows with p95 linear-fit residual <=45ms.",
+  "librosa_onset_probe": "On the exact source mix after percussive separation; hypothesis score only, not ground truth.",
+  "results": [
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "route_method": "opening-grid-within-16-beats",
+      "route_bpm": 133.6414183887587,
+      "route_origin_seconds": 1.94,
+      "route_cues": [
+        {
+          "bar": 8,
+          "seconds": 16.306803519061585
+        },
+        {
+          "bar": 16,
+          "seconds": 30.67360703812317
+        }
+      ],
+      "selected_beat_this_window": [
+        1.54,
+        15.44
+      ],
+      "selected_window_bpm": 133.6414183887587,
+      "selected_window_p95_ms": 19.526026392962233,
+      "librosa_supported_region": [
+        94.4239455782313,
+        122.71746031746032
+      ],
+      "librosa_bpm": 133.80695054160117,
+      "local_beat_this_windows_first_45s": [
+        {
+          "start_seconds": 1.54,
+          "end_seconds": 15.44,
+          "bpm": 133.6414183887587,
+          "p95_fit_error_ms": 19.526026392962237
+        },
+        {
+          "start_seconds": 3.3,
+          "end_seconds": 17.26,
+          "bpm": 133.5313025175806,
+          "p95_fit_error_ms": 16.597873900294545
+        },
+        {
+          "start_seconds": 5.12,
+          "end_seconds": 19.06,
+          "bpm": 133.32247291683638,
+          "p95_fit_error_ms": 19.553152492672904
+        },
+        {
+          "start_seconds": 6.9,
+          "end_seconds": 20.88,
+          "bpm": 132.98883634768194,
+          "p95_fit_error_ms": 20.483504398827534
+        },
+        {
+          "start_seconds": 8.7,
+          "end_seconds": 22.7,
+          "bpm": 132.7192527244421,
+          "p95_fit_error_ms": 19.25989736070246
+        },
+        {
+          "start_seconds": 10.48,
+          "end_seconds": 24.52,
+          "bpm": 132.4829216175089,
+          "p95_fit_error_ms": 15.87903225806073
+        },
+        {
+          "start_seconds": 12.28,
+          "end_seconds": 26.34,
+          "bpm": 132.28911572872966,
+          "p95_fit_error_ms": 12.238086510261503
+        },
+        {
+          "start_seconds": 14.08,
+          "end_seconds": 28.16,
+          "bpm": 132.10973631322784,
+          "p95_fit_error_ms": 11.616935483874347
+        },
+        {
+          "start_seconds": 15.9,
+          "end_seconds": 30.0,
+          "bpm": 132.0447248261507,
+          "p95_fit_error_ms": 19.512463343106205
+        },
+        {
+          "start_seconds": 17.7,
+          "end_seconds": 31.82,
+          "bpm": 131.7980513728962,
+          "p95_fit_error_ms": 23.874999999994092
+        },
+        {
+          "start_seconds": 19.52,
+          "end_seconds": 33.66,
+          "bpm": 131.61259196719323,
+          "p95_fit_error_ms": 18.460593841646045
+        },
+        {
+          "start_seconds": 21.34,
+          "end_seconds": 35.48,
+          "bpm": 131.4698795180721,
+          "p95_fit_error_ms": 16.74340175954558
+        },
+        {
+          "start_seconds": 23.16,
+          "end_seconds": 37.32,
+          "bpm": 131.28850102669398,
+          "p95_fit_error_ms": 15.249266862175222
+        },
+        {
+          "start_seconds": 24.98,
+          "end_seconds": 39.14,
+          "bpm": 131.17171409566996,
+          "p95_fit_error_ms": 15.459310850448025
+        },
+        {
+          "start_seconds": 26.8,
+          "end_seconds": 40.96,
+          "bpm": 131.22324306123423,
+          "p95_fit_error_ms": 17.501099706750264
+        },
+        {
+          "start_seconds": 28.62,
+          "end_seconds": 42.78,
+          "bpm": 131.32852993565135,
+          "p95_fit_error_ms": 22.376466275656878
+        },
+        {
+          "start_seconds": 30.46,
+          "end_seconds": 44.6,
+          "bpm": 131.55758457445526,
+          "p95_fit_error_ms": 18.445381231682482
+        },
+        {
+          "start_seconds": 32.28,
+          "end_seconds": 46.42,
+          "bpm": 131.65175986101264,
+          "p95_fit_error_ms": 18.736436950144856
+        },
+        {
+          "start_seconds": 34.1,
+          "end_seconds": 48.24,
+          "bpm": 131.75349346384172,
+          "p95_fit_error_ms": 20.65799120234324
+        },
+        {
+          "start_seconds": 35.94,
+          "end_seconds": 50.06,
+          "bpm": 131.8893830980464,
+          "p95_fit_error_ms": 12.403592375363456
+        },
+        {
+          "start_seconds": 37.76,
+          "end_seconds": 51.88,
+          "bpm": 131.87981919702176,
+          "p95_fit_error_ms": 12.889112903237173
+        },
+        {
+          "start_seconds": 39.58,
+          "end_seconds": 53.7,
+          "bpm": 131.8288351414691,
+          "p95_fit_error_ms": 9.22360703814249
+        },
+        {
+          "start_seconds": 41.4,
+          "end_seconds": 55.52,
+          "bpm": 131.78213437462244,
+          "p95_fit_error_ms": 10.465359237533532
+        },
+        {
+          "start_seconds": 43.22,
+          "end_seconds": 57.34,
+          "bpm": 131.78107337809757,
+          "p95_fit_error_ms": 10.526026392964736
+        }
+      ],
+      "raw_grid_segment_tempo": [
+        {
+          "start_seconds": 0,
+          "end_seconds": 16,
+          "beat_count": 37,
+          "median_interval_bpm": 133.3333333333333,
+          "mean_interval_bpm": 137.5796178343949
+        },
+        {
+          "start_seconds": 16,
+          "end_seconds": 35,
+          "beat_count": 41,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 131.72338090010976
+        },
+        {
+          "start_seconds": 30,
+          "end_seconds": 45,
+          "beat_count": 33,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 131.50684931506848
+        }
+      ],
+      "fixed_phase_onset_grid_search_first_16_bars": {
+        "metric": "median percussive onset strength within +/-50ms of each projected beat; opening phase held fixed",
+        "beat_count": 64,
+        "selected_bpm_score": 5.545302867889404,
+        "best_local_bpm": 132.99994,
+        "best_local_score": 8.373200416564941,
+        "best_score_gain_fraction": 0.5099626866281268,
+        "nearby_top": [
+          {
+            "bpm": 132.99994,
+            "score": 8.373200416564941
+          },
+          {
+            "bpm": 132.973211,
+            "score": 8.373200416564941
+          },
+          {
+            "bpm": 132.946483,
+            "score": 8.373200416564941
+          },
+          {
+            "bpm": 132.919755,
+            "score": 8.373200416564941
+          },
+          {
+            "bpm": 132.893026,
+            "score": 8.373200416564941
+          }
+        ]
+      }
+    },
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "route_method": "opening-grid-within-16-beats",
+      "route_bpm": 114.03093214435002,
+      "route_origin_seconds": 1.04,
+      "route_cues": [
+        {
+          "bar": 8,
+          "seconds": 17.877536656891493
+        },
+        {
+          "bar": 16,
+          "seconds": 34.71507331378299
+        }
+      ],
+      "selected_beat_this_window": [
+        0.0,
+        16.28
+      ],
+      "selected_window_bpm": 114.03093214435002,
+      "selected_window_p95_ms": 32.04178885630275,
+      "librosa_supported_region": [
+        102.91083900226758,
+        136.3243537414966
+      ],
+      "librosa_bpm": 113.12154696132596,
+      "local_beat_this_windows_first_45s": [
+        {
+          "start_seconds": 0.0,
+          "end_seconds": 16.28,
+          "bpm": 114.03093214435002,
+          "p95_fit_error_ms": 32.04178885630275
+        },
+        {
+          "start_seconds": 2.1,
+          "end_seconds": 18.44,
+          "bpm": 113.97455626658125,
+          "p95_fit_error_ms": 33.82313049853316
+        },
+        {
+          "start_seconds": 4.2,
+          "end_seconds": 20.58,
+          "bpm": 113.84454877412625,
+          "p95_fit_error_ms": 36.57478005865098
+        },
+        {
+          "start_seconds": 6.32,
+          "end_seconds": 22.72,
+          "bpm": 113.6358902797159,
+          "p95_fit_error_ms": 44.725989736071355
+        },
+        {
+          "start_seconds": 10.52,
+          "end_seconds": 26.96,
+          "bpm": 112.96923852052255,
+          "p95_fit_error_ms": 25.992851906158954
+        },
+        {
+          "start_seconds": 12.62,
+          "end_seconds": 29.06,
+          "bpm": 112.91157053868913,
+          "p95_fit_error_ms": 18.520527859234903
+        },
+        {
+          "start_seconds": 14.74,
+          "end_seconds": 31.2,
+          "bpm": 112.86252120309454,
+          "p95_fit_error_ms": 19.61253665689462
+        },
+        {
+          "start_seconds": 16.86,
+          "end_seconds": 33.32,
+          "bpm": 112.9357215797752,
+          "p95_fit_error_ms": 17.39772727272566
+        },
+        {
+          "start_seconds": 18.98,
+          "end_seconds": 35.46,
+          "bpm": 112.90845502769582,
+          "p95_fit_error_ms": 18.574780058648876
+        },
+        {
+          "start_seconds": 21.1,
+          "end_seconds": 37.58,
+          "bpm": 112.9435144422516,
+          "p95_fit_error_ms": 19.295087976537495
+        },
+        {
+          "start_seconds": 23.24,
+          "end_seconds": 39.7,
+          "bpm": 112.9817150193617,
+          "p95_fit_error_ms": 15.771077712600775
+        },
+        {
+          "start_seconds": 25.36,
+          "end_seconds": 41.82,
+          "bpm": 112.97547642548007,
+          "p95_fit_error_ms": 14.374999999998646
+        },
+        {
+          "start_seconds": 27.48,
+          "end_seconds": 43.96,
+          "bpm": 112.95676477692265,
+          "p95_fit_error_ms": 14.301502932547725
+        },
+        {
+          "start_seconds": 29.6,
+          "end_seconds": 46.08,
+          "bpm": 112.9637809187278,
+          "p95_fit_error_ms": 13.36143695014087
+        },
+        {
+          "start_seconds": 31.72,
+          "end_seconds": 48.2,
+          "bpm": 112.97391688465851,
+          "p95_fit_error_ms": 13.487170087966582
+        },
+        {
+          "start_seconds": 33.88,
+          "end_seconds": 50.32,
+          "bpm": 112.98561449043251,
+          "p95_fit_error_ms": 13.543255131959596
+        },
+        {
+          "start_seconds": 35.98,
+          "end_seconds": 52.44,
+          "bpm": 112.93805932560053,
+          "p95_fit_error_ms": 10.5053152492637
+        },
+        {
+          "start_seconds": 38.1,
+          "end_seconds": 54.58,
+          "bpm": 112.92792979260652,
+          "p95_fit_error_ms": 11.365469208203294
+        },
+        {
+          "start_seconds": 40.22,
+          "end_seconds": 56.7,
+          "bpm": 112.96144210795087,
+          "p95_fit_error_ms": 12.070931085040826
+        },
+        {
+          "start_seconds": 42.36,
+          "end_seconds": 58.8,
+          "bpm": 113.06287948386733,
+          "p95_fit_error_ms": 12.19684750731247
+        },
+        {
+          "start_seconds": 44.48,
+          "end_seconds": 60.94,
+          "bpm": 113.0503850537001,
+          "p95_fit_error_ms": 13.104655425218326
+        }
+      ],
+      "raw_grid_segment_tempo": [
+        {
+          "start_seconds": 0,
+          "end_seconds": 16,
+          "beat_count": 31,
+          "median_interval_bpm": 115.38461538461533,
+          "mean_interval_bpm": 114.06844106463878
+        },
+        {
+          "start_seconds": 16,
+          "end_seconds": 35,
+          "beat_count": 36,
+          "median_interval_bpm": 111.11111111111128,
+          "mean_interval_bpm": 112.66094420600858
+        },
+        {
+          "start_seconds": 30,
+          "end_seconds": 45,
+          "beat_count": 28,
+          "median_interval_bpm": 111.11111111111128,
+          "mean_interval_bpm": 112.97071129707116
+        }
+      ],
+      "fixed_phase_onset_grid_search_first_16_bars": {
+        "metric": "median percussive onset strength within +/-50ms of each projected beat; opening phase held fixed",
+        "beat_count": 64,
+        "selected_bpm_score": 1.9549460411071777,
+        "best_local_bpm": 113.483584,
+        "best_local_score": 2.7842209339141846,
+        "best_score_gain_fraction": 0.4241932387746874,
+        "nearby_top": [
+          {
+            "bpm": 113.483584,
+            "score": 2.7842209339141846
+          },
+          {
+            "bpm": 113.460777,
+            "score": 2.7842209339141846
+          },
+          {
+            "bpm": 113.437971,
+            "score": 2.7842209339141846
+          },
+          {
+            "bpm": 113.415165,
+            "score": 2.7842209339141846
+          },
+          {
+            "bpm": 113.392359,
+            "score": 2.7842209339141846
+          }
+        ]
+      }
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "route_method": "opening-grid-within-16-beats",
+      "route_bpm": 128.87174238248954,
+      "route_origin_seconds": 2.72,
+      "route_cues": [
+        {
+          "bar": 8,
+          "seconds": 17.61853372434018
+        },
+        {
+          "bar": 16,
+          "seconds": 32.51706744868036
+        }
+      ],
+      "selected_beat_this_window": [
+        1.12,
+        15.34
+      ],
+      "selected_window_bpm": 128.87174238248954,
+      "selected_window_p95_ms": 35.85007331378298,
+      "librosa_supported_region": [
+        126.86222222222223,
+        156.23546485260772
+      ],
+      "librosa_bpm": 128.7211558035662,
+      "local_beat_this_windows_first_45s": [
+        {
+          "start_seconds": 1.12,
+          "end_seconds": 15.34,
+          "bpm": 128.87174238248954,
+          "p95_fit_error_ms": 35.85007331378298
+        },
+        {
+          "start_seconds": 2.72,
+          "end_seconds": 17.2,
+          "bpm": 128.4399350267191,
+          "p95_fit_error_ms": 13.533174486803711
+        },
+        {
+          "start_seconds": 4.6,
+          "end_seconds": 19.06,
+          "bpm": 128.54988690625783,
+          "p95_fit_error_ms": 12.202346041057455
+        },
+        {
+          "start_seconds": 6.46,
+          "end_seconds": 20.94,
+          "bpm": 128.53373539389366,
+          "p95_fit_error_ms": 12.318181818183449
+        },
+        {
+          "start_seconds": 8.34,
+          "end_seconds": 22.8,
+          "bpm": 128.58119201552276,
+          "p95_fit_error_ms": 10.61968475073769
+        },
+        {
+          "start_seconds": 10.2,
+          "end_seconds": 24.68,
+          "bpm": 128.54685818850078,
+          "p95_fit_error_ms": 10.82313049853969
+        },
+        {
+          "start_seconds": 12.06,
+          "end_seconds": 26.54,
+          "bpm": 128.53878230549947,
+          "p95_fit_error_ms": 10.879948680351959
+        },
+        {
+          "start_seconds": 13.94,
+          "end_seconds": 28.4,
+          "bpm": 128.56301299925371,
+          "p95_fit_error_ms": 10.570014662752136
+        },
+        {
+          "start_seconds": 15.8,
+          "end_seconds": 30.28,
+          "bpm": 128.51960614959398,
+          "p95_fit_error_ms": 10.616935483866818
+        },
+        {
+          "start_seconds": 17.66,
+          "end_seconds": 32.12,
+          "bpm": 128.55897391591193,
+          "p95_fit_error_ms": 10.532991202348008
+        },
+        {
+          "start_seconds": 19.54,
+          "end_seconds": 34.0,
+          "bpm": 128.6104912468175,
+          "p95_fit_error_ms": 11.254398826972789
+        },
+        {
+          "start_seconds": 21.4,
+          "end_seconds": 35.86,
+          "bpm": 128.64283693294337,
+          "p95_fit_error_ms": 12.307184750730293
+        },
+        {
+          "start_seconds": 23.26,
+          "end_seconds": 37.74,
+          "bpm": 128.65193708882532,
+          "p95_fit_error_ms": 13.571297653951042
+        },
+        {
+          "start_seconds": 25.14,
+          "end_seconds": 39.6,
+          "bpm": 128.6539595205343,
+          "p95_fit_error_ms": 13.953445747795
+        },
+        {
+          "start_seconds": 27.0,
+          "end_seconds": 41.44,
+          "bpm": 128.69340965200558,
+          "p95_fit_error_ms": 15.63856304984945
+        },
+        {
+          "start_seconds": 28.88,
+          "end_seconds": 43.32,
+          "bpm": 128.72073545718345,
+          "p95_fit_error_ms": 15.937683284446178
+        },
+        {
+          "start_seconds": 30.74,
+          "end_seconds": 45.2,
+          "bpm": 128.67115275768796,
+          "p95_fit_error_ms": 17.723607038127653
+        },
+        {
+          "start_seconds": 32.6,
+          "end_seconds": 47.06,
+          "bpm": 128.6590158780064,
+          "p95_fit_error_ms": 17.59750733138432
+        },
+        {
+          "start_seconds": 34.46,
+          "end_seconds": 48.94,
+          "bpm": 128.57513177222825,
+          "p95_fit_error_ms": 19.792338709684643
+        },
+        {
+          "start_seconds": 36.32,
+          "end_seconds": 50.8,
+          "bpm": 128.55089651055934,
+          "p95_fit_error_ms": 20.214992668625342
+        },
+        {
+          "start_seconds": 38.2,
+          "end_seconds": 52.66,
+          "bpm": 128.51758793969822,
+          "p95_fit_error_ms": 16.95381231671895
+        },
+        {
+          "start_seconds": 40.06,
+          "end_seconds": 54.52,
+          "bpm": 128.46513672181547,
+          "p95_fit_error_ms": 15.287756598239
+        },
+        {
+          "start_seconds": 41.92,
+          "end_seconds": 56.4,
+          "bpm": 128.46614499532993,
+          "p95_fit_error_ms": 13.908174486806855
+        },
+        {
+          "start_seconds": 43.78,
+          "end_seconds": 58.26,
+          "bpm": 128.51153369030934,
+          "p95_fit_error_ms": 13.097873900295909
+        }
+      ],
+      "raw_grid_segment_tempo": [
+        {
+          "start_seconds": 0,
+          "end_seconds": 16,
+          "beat_count": 33,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 130.79019073569484
+        },
+        {
+          "start_seconds": 16,
+          "end_seconds": 35,
+          "beat_count": 41,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 128.75536480686694
+        },
+        {
+          "start_seconds": 30,
+          "end_seconds": 45,
+          "beat_count": 32,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 128.63070539419087
+        }
+      ],
+      "fixed_phase_onset_grid_search_first_16_bars": {
+        "metric": "median percussive onset strength within +/-50ms of each projected beat; opening phase held fixed",
+        "beat_count": 64,
+        "selected_bpm_score": 4.77415132522583,
+        "best_local_bpm": 128.768645,
+        "best_local_score": 6.361339569091797,
+        "best_score_gain_fraction": 0.3324545318619301,
+        "nearby_top": [
+          {
+            "bpm": 128.768645,
+            "score": 6.361339569091797
+          },
+          {
+            "bpm": 128.742871,
+            "score": 6.361339569091797
+          },
+          {
+            "bpm": 128.717096,
+            "score": 6.361339569091797
+          },
+          {
+            "bpm": 128.691322,
+            "score": 6.361339569091797
+          },
+          {
+            "bpm": 128.665548,
+            "score": 6.361339569091797
+          }
+        ]
+      }
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "route_method": "opening-grid-within-16-beats",
+      "route_bpm": 130.68367811319854,
+      "route_origin_seconds": 1.74,
+      "route_cues": [
+        {
+          "bar": 8,
+          "seconds": 16.43196480938416
+        },
+        {
+          "bar": 16,
+          "seconds": 31.12392961876832
+        }
+      ],
+      "selected_beat_this_window": [
+        1.74,
+        15.98
+      ],
+      "selected_window_bpm": 130.68367811319854,
+      "selected_window_p95_ms": 16.83486070381164,
+      "librosa_supported_region": [
+        84.41614512471655,
+        113.32498866213152
+      ],
+      "librosa_bpm": 130.67098750174378,
+      "local_beat_this_windows_first_45s": [
+        {
+          "start_seconds": 1.74,
+          "end_seconds": 15.98,
+          "bpm": 130.68367811319854,
+          "p95_fit_error_ms": 16.834860703811636
+        },
+        {
+          "start_seconds": 3.58,
+          "end_seconds": 17.82,
+          "bpm": 130.6544696951555,
+          "p95_fit_error_ms": 11.085960410556204
+        },
+        {
+          "start_seconds": 5.4,
+          "end_seconds": 19.64,
+          "bpm": 130.62840178129636,
+          "p95_fit_error_ms": 12.056818181819471
+        },
+        {
+          "start_seconds": 7.26,
+          "end_seconds": 21.48,
+          "bpm": 130.68576492850127,
+          "p95_fit_error_ms": 10.155058651028614
+        },
+        {
+          "start_seconds": 9.1,
+          "end_seconds": 23.32,
+          "bpm": 130.62631679754833,
+          "p95_fit_error_ms": 12.68255131965157
+        },
+        {
+          "start_seconds": 10.92,
+          "end_seconds": 25.16,
+          "bpm": 130.6263167975483,
+          "p95_fit_error_ms": 12.590175953081937
+        },
+        {
+          "start_seconds": 12.76,
+          "end_seconds": 27.0,
+          "bpm": 130.6596845264704,
+          "p95_fit_error_ms": 13.025659824047684
+        },
+        {
+          "start_seconds": 14.6,
+          "end_seconds": 28.84,
+          "bpm": 130.68785181045143,
+          "p95_fit_error_ms": 14.903592375370776
+        },
+        {
+          "start_seconds": 16.44,
+          "end_seconds": 30.68,
+          "bpm": 130.61589287709265,
+          "p95_fit_error_ms": 16.823680351908617
+        },
+        {
+          "start_seconds": 18.28,
+          "end_seconds": 32.5,
+          "bpm": 130.63987038175125,
+          "p95_fit_error_ms": 16.63508064516428
+        },
+        {
+          "start_seconds": 20.1,
+          "end_seconds": 34.34,
+          "bpm": 130.66594287356483,
+          "p95_fit_error_ms": 16.3321114369543
+        },
+        {
+          "start_seconds": 21.96,
+          "end_seconds": 36.18,
+          "bpm": 130.74944482609854,
+          "p95_fit_error_ms": 14.743401759535853
+        },
+        {
+          "start_seconds": 23.8,
+          "end_seconds": 38.02,
+          "bpm": 130.7222949877007,
+          "p95_fit_error_ms": 15.209310850444876
+        },
+        {
+          "start_seconds": 25.62,
+          "end_seconds": 39.86,
+          "bpm": 130.6815913645398,
+          "p95_fit_error_ms": 13.424486803513952
+        },
+        {
+          "start_seconds": 27.46,
+          "end_seconds": 41.7,
+          "bpm": 130.66802912249312,
+          "p95_fit_error_ms": 15.260997067448121
+        },
+        {
+          "start_seconds": 29.3,
+          "end_seconds": 43.52,
+          "bpm": 130.7097680955726,
+          "p95_fit_error_ms": 12.383064516128073
+        },
+        {
+          "start_seconds": 31.14,
+          "end_seconds": 45.36,
+          "bpm": 130.6263167975481,
+          "p95_fit_error_ms": 12.880131964819874
+        },
+        {
+          "start_seconds": 32.96,
+          "end_seconds": 47.2,
+          "bpm": 130.65238387918146,
+          "p95_fit_error_ms": 11.909274193545372
+        },
+        {
+          "start_seconds": 34.8,
+          "end_seconds": 49.04,
+          "bpm": 130.67741806714278,
+          "p95_fit_error_ms": 12.072763929618802
+        },
+        {
+          "start_seconds": 36.64,
+          "end_seconds": 50.88,
+          "bpm": 130.66907227193946,
+          "p95_fit_error_ms": 12.125183284449646
+        },
+        {
+          "start_seconds": 38.48,
+          "end_seconds": 52.72,
+          "bpm": 130.6555126281168,
+          "p95_fit_error_ms": 13.463343108501036
+        },
+        {
+          "start_seconds": 40.32,
+          "end_seconds": 54.54,
+          "bpm": 130.6346571319112,
+          "p95_fit_error_ms": 13.188782991215573
+        },
+        {
+          "start_seconds": 42.14,
+          "end_seconds": 56.38,
+          "bpm": 130.60026011537607,
+          "p95_fit_error_ms": 14.417338709682426
+        },
+        {
+          "start_seconds": 43.98,
+          "end_seconds": 58.22,
+          "bpm": 130.6555126281168,
+          "p95_fit_error_ms": 13.46334310849997
+        }
+      ],
+      "raw_grid_segment_tempo": [
+        {
+          "start_seconds": 0,
+          "end_seconds": 16,
+          "beat_count": 32,
+          "median_interval_bpm": 130.43478260869566,
+          "mean_interval_bpm": 130.61797752808988
+        },
+        {
+          "start_seconds": 16,
+          "end_seconds": 35,
+          "beat_count": 41,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 130.71895424836603
+        },
+        {
+          "start_seconds": 30,
+          "end_seconds": 45,
+          "beat_count": 33,
+          "median_interval_bpm": 130.4347826086954,
+          "mean_interval_bpm": 130.7901907356948
+        }
+      ],
+      "fixed_phase_onset_grid_search_first_16_bars": {
+        "metric": "median percussive onset strength within +/-50ms of each projected beat; opening phase held fixed",
+        "beat_count": 64,
+        "selected_bpm_score": 4.917511940002441,
+        "best_local_bpm": 130.814362,
+        "best_local_score": 5.682880401611328,
+        "best_score_gain_fraction": 0.15564140381294256,
+        "nearby_top": [
+          {
+            "bpm": 130.814362,
+            "score": 5.682880401611328
+          },
+          {
+            "bpm": 130.788225,
+            "score": 5.682880401611328
+          },
+          {
+            "bpm": 130.762088,
+            "score": 5.682880401611328
+          },
+          {
+            "bpm": 130.735952,
+            "score": 5.682880401611328
+          },
+          {
+            "bpm": 130.840499,
+            "score": 5.626044273376465
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -34,7 +34,7 @@ function useWorkspaceState() {
   const [previewSearch, setPreviewSearch] = useState('');
   const [outgoing, setOutgoing] = useState('');
   const [incoming, setIncoming] = useState('');
-  const [preparationMethod, setPreparationMethod] = useState<'classic'|'small0'|'final0'>('small0');
+  const [preparationMethod, setPreparationMethod] = useState<'classic'|'small0'>('small0');
   const [outCueIndex, setOutCueIndex] = useState(0);
   const [inCueIndex, setInCueIndex] = useState(0);
   const [mixStyle, setMixStyle] = useState<z.infer<typeof subbeatsMixStyleSchema>>('long-blend');

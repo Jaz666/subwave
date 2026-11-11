@@ -1,0 +1,919 @@
+{
+  "date": "2026-11-05",
+  "method": "For each stored 8/16-bar marker, compare projected beats only in the immediately preceding 4 or 8 bars with the nearest beat timestamp in the exact cached Beat This! grid. Grid artifacts were matched to the prior whole-passage audit using its p95 error, maximum error, and fraction within 50ms.",
+  "metric": "Absolute difference between each projected beat and its nearest cached Beat This! beat; marker error is signed cached beat time minus projected marker time.",
+  "interpretation_limit": "This measures agreement between the selected constant-BPM cue grid and Beat This! timestamps. It cannot establish musical truth, phrase placement, or vocal safety. Short local windows reduce penalties from remote intro anomalies but are not a production acceptance rule.",
+  "threshold_ms": 50,
+  "summary": {
+    "candidate_16_bar_pass": 11,
+    "candidate_16_bar_total": 14,
+    "candidate_16_bar_review": [
+      "Justice — D.A.N.C.E. (radio edit)",
+      "Lovestation — Teardrops",
+      "Sash! — Encore une fois (Future Breeze edit)"
+    ],
+    "candidate_8_bar_pass": 12,
+    "candidate_8_bar_total": 14,
+    "candidate_8_bar_review": [
+      "Lovestation — Teardrops",
+      "The Future Sound of London — Papua New Guinea"
+    ],
+    "forward_control_16_bar_pass": 4,
+    "forward_control_16_bar_total": 4
+  },
+  "records": [
+    {
+      "id": "3CZAByVhRxf1wrPPNX1PUG",
+      "artist": "Agnelli & Nelson",
+      "title": "Everyday",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "061be83003c729c2d10106c3836524e88c87cf1db84e3a316b24552ff26e1fba",
+      "whole_passage_p95_ms": 29.362903225804793,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 14.311964809384161,
+          "projected_beat_index": 32,
+          "marker_error_ms": -11.964809384160446,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 24.293988269791097,
+            "max_abs_error_ms": 26.601906158354893,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 33.2390029325504,
+            "max_abs_error_ms": 37.73460410557039,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 28.523929618768324,
+          "projected_beat_index": 64,
+          "marker_error_ms": -3.929618768324872,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 19.88709677419038,
+            "max_abs_error_ms": 22.690615835774253,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 21.079912023459002,
+            "max_abs_error_ms": 22.690615835774253,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0qKLpGNoW7JYrZCSOplfBy",
+      "artist": "Altern 8",
+      "title": "Activ 8 (Come with Me)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "f6604fd025e2d31e0a1811a3a5f8d15d4febdd76a83874c30a18331b2b9b6f4b",
+      "whole_passage_p95_ms": 38.5571847507407,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 15.133782991202343,
+          "projected_beat_index": 32,
+          "marker_error_ms": 6.217008797657186,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 19.51906158357843,
+            "max_abs_error_ms": 22.052785923754925,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 18.909090909091297,
+            "max_abs_error_ms": 22.052785923754925,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 29.887565982404684,
+          "projected_beat_index": 64,
+          "marker_error_ms": 32.4340175953175,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 41.09090909091506,
+            "max_abs_error_ms": 41.93548387097579,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 40.24633431085647,
+            "max_abs_error_ms": 41.93548387097579,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "3DPInMTZpzUiFiMiUTS5qv",
+      "artist": "Bicep",
+      "title": "Glue",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "f8cddf4f14ddb179464c3bffbe367069f2c72e24b1c51023dad92e293084c8e4",
+      "whole_passage_p95_ms": 31.87536656891581,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 14.822932551319647,
+          "projected_beat_index": 32,
+          "marker_error_ms": 17.06744868035237,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 31.55718475073392,
+            "max_abs_error_ms": 35.85043988269909,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 31.07038123167207,
+            "max_abs_error_ms": 35.85043988269909,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 29.585865102639293,
+          "projected_beat_index": 64,
+          "marker_error_ms": -5.865102639294406,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 31.844574780061663,
+            "max_abs_error_ms": 32.91788856305189,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 32.11290322580922,
+            "max_abs_error_ms": 34.3841642228746,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "6DyC0TGnYEorEtY4jdBgbg",
+      "artist": "Blue Boy",
+      "title": "Remember Me (Sure Is Pure 7\" edit)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "fd251981f659c6675bd450c17ebe23f8138de8e812f7794c442dfebf1419c804",
+      "whole_passage_p95_ms": 14.66055718474557,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 21.22287390029325,
+          "projected_beat_index": 32,
+          "marker_error_ms": -2.873900293252518,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 10.512463343109246,
+            "max_abs_error_ms": 11.081378299119038,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 14.779325513196184,
+            "max_abs_error_ms": 20.711143695015366,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 40.20574780058651,
+          "projected_beat_index": 64,
+          "marker_error_ms": -5.747800586505036,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 8.882697947210966,
+            "max_abs_error_ms": 14.31085043988034,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 14.453079178881723,
+            "max_abs_error_ms": 21.0960410557135,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "01YqBxP7rV2u10PYe2NSne",
+      "artist": "Disciples",
+      "title": "They Don’t Know (radio edit)",
+      "kind": "candidate",
+      "route_method": "librosa-onset-fallback",
+      "grid_artifact_id": "0ad3d4c90e5fc19381368be058cbd27a6527a9b1112026b16fde4341f69a0d3b",
+      "whole_passage_p95_ms": 293.3962987914387,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "source_seconds": 39.69740739655896,
+          "projected_beat_index": 64,
+          "marker_error_ms": -37.407396558961636,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 50.41480483424152,
+            "max_abs_error_ms": 53.666656903061494,
+            "fraction_within_50ms": 0.9411764705882353
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 47.357398023498824,
+            "max_abs_error_ms": 53.666656903061494,
+            "fraction_within_50ms": 0.9696969696969697
+          }
+        },
+        {
+          "bar": 8,
+          "source_seconds": 19.98748147931179,
+          "projected_beat_index": 32,
+          "marker_error_ms": -7.481479311788775,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 18.5037041376411,
+            "max_abs_error_ms": 27.4814793117919,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 298.5333372387755,
+            "max_abs_error_ms": 304.71296594628683,
+            "fraction_within_50ms": 0.8181818181818182
+          }
+        }
+      ]
+    },
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "e651fb83d8404ea99566fcc2722e4351ad4c4c46d15c8805bd789df18ee57d4a",
+      "whole_passage_p95_ms": 188.38416422287307,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 17.877536656891493,
+          "projected_beat_index": 32,
+          "marker_error_ms": 42.46334310850841,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 36.34017595308023,
+            "max_abs_error_ms": 42.46334310850841,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 43.847507331381046,
+            "max_abs_error_ms": 47.40469208211273,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 34.71507331378299,
+          "projected_beat_index": 64,
+          "marker_error_ms": 204.92668621701426,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 212.33431085044145,
+            "max_abs_error_ms": 217.27272727273572,
+            "fraction_within_50ms": 0
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 207.3958944281557,
+            "max_abs_error_ms": 217.27272727273572,
+            "fraction_within_50ms": 0.09090909090909091
+          }
+        }
+      ]
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "1b37f2b06e6e8deabca0e7e5fd923bbe399539daa61d46ddaade98fdaefb3aca",
+      "whole_passage_p95_ms": 19.950146627572703,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 16.43196480938416,
+          "projected_beat_index": 32,
+          "marker_error_ms": 8.03519061584268,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 9.23167155425801,
+            "max_abs_error_ms": 14.01759530791935,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 15.35923753665766,
+            "max_abs_error_ms": 20.876099706744977,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 31.12392961876832,
+          "projected_beat_index": 64,
+          "marker_error_ms": 16.070381231681807,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 24.505865102647554,
+            "max_abs_error_ms": 34.318181818189686,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 21.00146627566701,
+            "max_abs_error_ms": 34.318181818189686,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "6965512d6d238aca138941d7bd365a635b0eb4010eff682034b209d6e75fc034",
+      "whole_passage_p95_ms": 84.02932551319111,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 17.61853372434018,
+          "projected_beat_index": 32,
+          "marker_error_ms": 41.46627565982186,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 55.593841642226494,
+            "max_abs_error_ms": 58.203812316712344,
+            "fraction_within_50ms": 0.8235294117647058
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 53.5513196480899,
+            "max_abs_error_ms": 58.203812316712344,
+            "fraction_within_50ms": 0.9090909090909091
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 32.51706744868036,
+          "projected_beat_index": 64,
+          "marker_error_ms": 82.93255131964372,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 88.21847507330887,
+            "max_abs_error_ms": 90.82844574779614,
+            "fraction_within_50ms": 0
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 86.17595307917298,
+            "max_abs_error_ms": 90.82844574779614,
+            "fraction_within_50ms": 0.06060606060606061
+          }
+        }
+      ]
+    },
+    {
+      "id": "56xTV13Tn2x8vpyaB6Xe0c",
+      "artist": "Mighty Dub Katz",
+      "title": "Magic Carpet Ride 07’ (radio edit)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "1a01455c3558e23fa066843e02fecb54d84711c016aa8665810366e812352026",
+      "whole_passage_p95_ms": 25.8951612903223,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 15.95032258064516,
+          "projected_beat_index": 32,
+          "marker_error_ms": -10.322580645160784,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 24.653225806450862,
+            "max_abs_error_ms": 24.87903225806498,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 26.120967741935175,
+            "max_abs_error_ms": 32.86290322580676,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 30.88064516129032,
+          "projected_beat_index": 64,
+          "marker_error_ms": -20.645161290321568,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 23.14516129032,
+            "max_abs_error_ms": 27.499999999996305,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 22.169354838707278,
+            "max_abs_error_ms": 27.499999999996305,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "d29635359ffdfbeb19b8482afc5e53f839453a23583f9b0dce07a700b90067b8",
+      "whole_passage_p95_ms": 200.0359237536635,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 16.306803519061585,
+          "projected_beat_index": 32,
+          "marker_error_ms": 33.19648093841465,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 34.989002932550044,
+            "max_abs_error_ms": 42.159090909091645,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 36.01686217008773,
+            "max_abs_error_ms": 42.159090909091645,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 30.67360703812317,
+          "projected_beat_index": 64,
+          "marker_error_ms": -213.60703812316828,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 224.38343108504313,
+            "max_abs_error_ms": 224.6444281524944,
+            "fraction_within_50ms": 0
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 217.89149560117306,
+            "max_abs_error_ms": 224.6444281524944,
+            "fraction_within_50ms": 0.09090909090909091
+          }
+        }
+      ]
+    },
+    {
+      "id": "2WJ9MGT6pkbUv5hXiJhkVj",
+      "artist": "Shakedown",
+      "title": "At Night (original edit)",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "4b8d03a50d64ee4887cf398c9138502ef2fc2beb59e1d627481cc29fa36884e4",
+      "whole_passage_p95_ms": 11.838709677421376,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 15.48838709677419,
+          "projected_beat_index": 32,
+          "marker_error_ms": -8.387096774189473,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 11.548387096772217,
+            "max_abs_error_ms": 11.935483870971098,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 11.645161290321937,
+            "max_abs_error_ms": 13.225806451613087,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 30.95677419354838,
+          "projected_beat_index": 64,
+          "marker_error_ms": 3.2258064516206275,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 11.064516129034983,
+            "max_abs_error_ms": 12.741935483866484,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 11.22580645161406,
+            "max_abs_error_ms": 12.741935483866484,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0VoGBmrB4pbgyHHKv4iU16",
+      "artist": "The Future Sound of London",
+      "title": "Papua New Guinea",
+      "kind": "candidate",
+      "route_method": "librosa-onset-fallback",
+      "grid_artifact_id": "ef487a6b7c0dbb4d783d20ad01c6b934f1e76a86791153f98ee97bee54619192",
+      "whole_passage_p95_ms": 247.28561719602504,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "source_seconds": 30.90585448260992,
+          "projected_beat_index": 64,
+          "marker_error_ms": -5.85448260992294,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 18.800675740136793,
+            "max_abs_error_ms": 23.51268956595476,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 22.8101516527623,
+            "max_abs_error_ms": 24.695430978720623,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 8,
+          "source_seconds": 15.621170896521985,
+          "projected_beat_index": 32,
+          "marker_error_ms": -21.170896521985227,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 229.17326550014002,
+            "max_abs_error_ms": 232.93908619574387,
+            "fraction_within_50ms": 0.7647058823529411
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 316.7167517821316,
+            "max_abs_error_ms": 499.98815510921537,
+            "fraction_within_50ms": 0.5757575757575758
+          }
+        }
+      ]
+    },
+    {
+      "id": "28dLudClz8uL7yraekHlvQ",
+      "artist": "Urban Hype",
+      "title": "A Trip to Trumpton",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "6855dd5d8b1f80f54f9d1bf3a09d499a2e8b4b6c5816db31458b4a1085bb8a92",
+      "whole_passage_p95_ms": 18.876832844574665,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 13.949149560117302,
+          "projected_beat_index": 32,
+          "marker_error_ms": -9.149560117302613,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 10.510263929618446,
+            "max_abs_error_ms": 10.718475073314693,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 12.052052785922918,
+            "max_abs_error_ms": 13.464076246334278,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 27.598299120234604,
+          "projected_beat_index": 64,
+          "marker_error_ms": 1.7008797653979002,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 15.844574780059158,
+            "max_abs_error_ms": 20.131964809383618,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 19.661290322580527,
+            "max_abs_error_ms": 24.706744868034036,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "6PFpxHW43D9DDqNxnD5ecV",
+      "artist": "Urban Hype",
+      "title": "Living in a Fantasy",
+      "kind": "candidate",
+      "route_method": "opening-grid-within-16-beats",
+      "grid_artifact_id": "7e83d20a7a82e44a0a36d1a3edc19061c6b56d1b453d197c01cb812b77135796",
+      "whole_passage_p95_ms": 16.811583577711886,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "source_seconds": 16.136187683284458,
+          "projected_beat_index": 32,
+          "marker_error_ms": 3.8123167155426074,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 13.480205278592903,
+            "max_abs_error_ms": 15.861436950146413,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 19.43328445747809,
+            "max_abs_error_ms": 24.79105571847473,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 31.152375366568915,
+          "projected_beat_index": 64,
+          "marker_error_ms": 7.624633431085215,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 15.681818181818128,
+            "max_abs_error_ms": 16.840175953078074,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 15.36803519061607,
+            "max_abs_error_ms": 16.840175953078074,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "6oHEwHqDSmVvVLQitbD1Ag",
+      "artist": "DJ Jean",
+      "title": "The Launch",
+      "kind": "control",
+      "route_method": "current-fitter",
+      "grid_artifact_id": "49ac68ad96dadef3ba3d398d8e6bffd0d4e8384656e8100dba53e18fe501717c",
+      "whole_passage_p95_ms": 28.698569332234655,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "source_seconds": 28.810298017101726,
+          "projected_beat_index": 64,
+          "marker_error_ms": 29.701982898274082,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 24.13286110484591,
+            "max_abs_error_ms": 29.701982898274082,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 40.79138802879072,
+            "max_abs_error_ms": 41.81239369091827,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 8,
+          "source_seconds": 14.745149008550863,
+          "projected_beat_index": 32,
+          "marker_error_ms": -5.149008550862533,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 10.625311647732259,
+            "max_abs_error_ms": 12.110410792645965,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 12.481685578874389,
+            "max_abs_error_ms": 13.966784723788095,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "6nz5kJRZx7MV09QflArHrs",
+      "artist": "Gusto",
+      "title": "Disco’s Revenge (Mole Hole radio edit)",
+      "kind": "control",
+      "route_method": "current-fitter",
+      "grid_artifact_id": "8db07920e4e4dc83c555cb06c441c5cd724ff22baefb22fac1d2eed87bc98ae5",
+      "whole_passage_p95_ms": 42.28401431796236,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "source_seconds": 30.544644707111402,
+          "projected_beat_index": 64,
+          "marker_error_ms": 15.355292888596495,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 31.961660762262763,
+            "max_abs_error_ms": 34.9036019233715,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 38.774484506758,
+            "max_abs_error_ms": 41.355072895681744,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 8,
+          "source_seconds": 15.302322353555702,
+          "projected_beat_index": 32,
+          "marker_error_ms": 37.67764644429761,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 42.92916141519392,
+            "max_abs_error_ms": 44.58080838183953,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 44.30979380270319,
+            "max_abs_error_ms": 47.80654386799643,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7bfhXAe5NRn4ZGopPSY0WZ",
+      "artist": "Robert Miles",
+      "title": "Children",
+      "kind": "control",
+      "route_method": "current-fitter",
+      "grid_artifact_id": "29d67ce3b42b40611a6bdf50a703c08a8ca6060b390f0da0a9d98d8df668c3b1",
+      "whole_passage_p95_ms": 393.4993626434467,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "source_seconds": 42.6,
+          "projected_beat_index": 64,
+          "marker_error_ms": 0,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 48.83374861707921,
+            "max_abs_error_ms": 50.694790514228316,
+            "fraction_within_50ms": 0.9411764705882353
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 170.33250276582908,
+            "max_abs_error_ms": 425.5583241138865,
+            "fraction_within_50ms": 0.9090909090909091
+          }
+        }
+      ]
+    },
+    {
+      "id": "6OYcg2iOqZu1SZNm3TKwBI",
+      "artist": "Rozalla",
+      "title": "Everybody’s Free (To Feel Good)",
+      "kind": "control",
+      "route_method": "current-fitter",
+      "grid_artifact_id": "7b738a1a158a7a1861b787c03c47996e87c405425db53598db223dc1d70dad20",
+      "whole_passage_p95_ms": 36.805240819087366,
+      "cue_markers": [
+        {
+          "bar": 19,
+          "source_seconds": 43.08,
+          "projected_beat_index": 76,
+          "marker_error_ms": 7.105427357601002e-12,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 14.268980583169364,
+            "max_abs_error_ms": 15.38811631518655,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 14.54876451617366,
+            "max_abs_error_ms": 16.37191129041682,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 37.54321296401981,
+          "projected_beat_index": 64,
+          "marker_error_ms": -3.2129640198022003,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 14.133639826390974,
+            "max_abs_error_ms": 16.37191129041682,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 13.678703598021968,
+            "max_abs_error_ms": 16.37191129041682,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 8,
+          "source_seconds": 22.778447534739307,
+          "projected_beat_index": 32,
+          "marker_error_ms": 1.5524652606941913,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 37.22036550887004,
+            "max_abs_error_ms": 43.93517990094331,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 41.16804969004696,
+            "max_abs_error_ms": 52.328697891038445,
+            "fraction_within_50ms": 0.9696969696969697
+          }
+        }
+      ]
+    },
+    {
+      "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "artist": "Urban Cookie Collective",
+      "title": "The Key, the Secret",
+      "kind": "control",
+      "route_method": "current-fitter",
+      "grid_artifact_id": "e7e902f111f26770915d7a47bcd8f699bb4c2202294723d53c02f3bde5e0ac62",
+      "whole_passage_p95_ms": 32.61580945518307,
+      "cue_markers": [
+        {
+          "bar": 12,
+          "source_seconds": 22.4,
+          "projected_beat_index": 48,
+          "marker_error_ms": 0,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 28.896923148864317,
+            "max_abs_error_ms": 30.428382024883405,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 29.199469669674723,
+            "max_abs_error_ms": 30.428382024883405,
+            "fraction_within_50ms": 1
+          }
+        },
+        {
+          "bar": 16,
+          "source_seconds": 29.79062917752037,
+          "projected_beat_index": 64,
+          "marker_error_ms": -10.62917752036796,
+          "trailing_4_bars": {
+            "projected_intervals": 16,
+            "p95_abs_error_ms": 16.46318291720021,
+            "max_abs_error_ms": 21.05755954525179,
+            "fraction_within_50ms": 1
+          },
+          "trailing_8_bars": {
+            "projected_intervals": 32,
+            "p95_abs_error_ms": 27.365464272845227,
+            "max_abs_error_ms": 30.428382024883405,
+            "fraction_within_50ms": 1
+          }
+        }
+      ]
+    }
+  ]
+}

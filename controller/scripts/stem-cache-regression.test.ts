@@ -253,7 +253,7 @@ test('ordinary analysis measures fresh tracks and later backfills stems only for
 test('ordinary analysis caches played, Navidrome-starred and Sub/Beats-prepared non-dance tracks without existing beat evidence', async () => {
   const { updateSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
   updateSubbeatsStemPolicy({enabled:true});
-  updateSubbeatsStemPolicy({track:{id:'manual-rock',include:true}});
+  writeFileSync(join(stateDir,'subbeats','stem-policy.json'),JSON.stringify({enabled:true,regularIds:['manual-rock']}));
   const ids = ['played-rock','starred-rock','subbeats-rock','manual-rock'];
   for (const id of ids) db.upsertTrackMeta(id, {title:id,genres:['Rock'],duration:200});
   db.recordPlay({trackId:ids[0],title:ids[0],artist:'A',album:'B',playedAt:'2000-01-01T00:00:00.000Z',source:'auto',requestedBy:null,showId:null,showName:null});

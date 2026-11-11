@@ -1,8 +1,9 @@
+import { SUBBEATS_BATCH_LIMIT } from '../src/schemas/subbeats.js';
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createTempDir, removeTempDir } from './test-utils/temp-dir.js';
 import { createSubbeatsStore, readSubbeatsQueue, invalidateSubbeatsBundles } from '../src/music/subbeats-store.js';
 import { subbeatsEnqueueSchema } from '../src/schemas/subbeats.js';
@@ -12,6 +13,11 @@ const store = createSubbeatsStore(state);
 const a = { id: 'a', title: 'Driving track', artist: 'Artist', album: 'Album' };
 const b = { ...a, id: 'b' };
 after(() => removeTempDir(state));
+
+test('retired full model cannot be selected for new preparation', () => {
+  assert.equal(subbeatsEnqueueSchema.safeParse({ids:[a.id],method:'small0'}).success,true);
+  assert.equal(subbeatsEnqueueSchema.safeParse({ids:[a.id],method:'final0'}).success,false);
+});
 
 test('cue preparation choice and bounded cue results persist without changing classic admissions', () => {
   const track = {...a,id:'cue-method'};
@@ -121,7 +127,7 @@ test('shared-cache identity is stable and malformed state is preserved', () => {
   assert.throws(() => store.enqueue([a]));
   assert.equal(readFileSync(file, 'utf8'), 'broken');
   assert.equal(subbeatsEnqueueSchema.safeParse({ ids: [] }).success, false);
-  assert.equal(subbeatsEnqueueSchema.safeParse({ ids: Array(101).fill('a') }).success, false);
+  assert.equal(subbeatsEnqueueSchema.safeParse({ ids: Array(SUBBEATS_BATCH_LIMIT+1).fill('a') }).success, false);
 });
 
 
@@ -148,5 +154,17 @@ test('replaced audio invalidates prepared evidence without rewriting the control
     target.event({id:'a',status:'running'}, ['a']);
     target.event({id:'a',status:'prepared',bundleKey:'e'.repeat(64)}, ['a']);
     assert.equal(target.read().jobs[0].status,'prepared');
+  } finally { await removeTempDir(dir); }
+});
+
+
+test('twelve thousand explicit selections fit without creating audio artifacts', async () => {
+  const dir = createTempDir(join(tmpdir(),'subbeats-large-selection-'));
+  try {
+    const selected = createSubbeatsStore(dir);
+    selected.enqueue(Array.from({length:12000},(_,i)=>({id:`selected-${i}`,title:'Track',artist:'Artist',album:''})));
+    assert.equal(selected.read().jobs.length,12000);
+    assert.ok(selected.read().jobs.every(job=>job.status==='queued' && job.bundleKey===null));
+    assert.equal(existsSync(join(dir,'stems')),false);
   } finally { await removeTempDir(dir); }
 });

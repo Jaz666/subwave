@@ -1,0 +1,481 @@
+{
+  "method": "Nearest cached Beat This! beat to every constant-BPM beat projected from the cue grid origin through its last proposed marker.",
+  "interpretation_limit": "This checks internal model-grid agreement only; it does not establish audible beat or phrase truth.",
+  "results": [
+    {
+      "id": "3CZAByVhRxf1wrPPNX1PUG",
+      "artist": "Agnelli & Nelson",
+      "title": "Everyday",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 135.0974355588204,
+      "grid_origin_seconds": 0.1,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 14.311964809384161
+        },
+        {
+          "bar": 16,
+          "seconds": 28.523929618768324
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 29.36290322580479,
+      "max_abs_error_ms": 37.73460410557039,
+      "median_signed_error_first_half_ms": -18.66385630498346,
+      "median_signed_error_second_half_ms": -11.964809384160446
+    },
+    {
+      "id": "0qKLpGNoW7JYrZCSOplfBy",
+      "artist": "Altern 8",
+      "title": "Activ 8 (Come with Me)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 130.13611499809187,
+      "grid_origin_seconds": 0.38,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 15.133782991202343
+        },
+        {
+          "bar": 16,
+          "seconds": 29.887565982404684
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 38.5571847507407,
+      "max_abs_error_ms": 41.93548387097579,
+      "median_signed_error_first_half_ms": 3.636363636365214,
+      "median_signed_error_second_half_ms": 25.102639296193274
+    },
+    {
+      "id": "3DPInMTZpzUiFiMiUTS5qv",
+      "artist": "Bicep",
+      "title": "Glue",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 130.05546108983427,
+      "grid_origin_seconds": 0.06,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 14.822932551319647
+        },
+        {
+          "bar": 16,
+          "seconds": 29.585865102639293
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 31.875366568915805,
+      "max_abs_error_ms": 35.85043988269909,
+      "median_signed_error_first_half_ms": 12.49633431085062,
+      "median_signed_error_second_half_ms": 16.94281524927277
+    },
+    {
+      "id": "6DyC0TGnYEorEtY4jdBgbg",
+      "artist": "Blue Boy",
+      "title": "Remember Me (Sure Is Pure 7\" edit)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 101.14379993697052,
+      "grid_origin_seconds": 2.24,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 21.22287390029325
+        },
+        {
+          "bar": 16,
+          "seconds": 40.20574780058651
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 14.66055718474557,
+      "max_abs_error_ms": 21.0960410557135,
+      "median_signed_error_first_half_ms": 2.6667888563061126,
+      "median_signed_error_second_half_ms": -1.807184750735047
+    },
+    {
+      "id": "01YqBxP7rV2u10PYe2NSne",
+      "artist": "Disciples",
+      "title": "They Don’t Know (radio edit)",
+      "kind": "candidate",
+      "method": "librosa-onset-fallback",
+      "bpm": 97.41284711374306,
+      "grid_origin_seconds": 0.2775555620646255,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "seconds": 39.69740739655896
+        },
+        {
+          "bar": 8,
+          "seconds": 19.98748147931179
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 0.8923076923076924,
+      "p95_abs_error_ms": 293.39629879143877,
+      "max_abs_error_ms": 304.71296594628683,
+      "median_signed_error_first_half_ms": -4.712965946287007,
+      "median_signed_error_second_half_ms": -30.249992677294557
+    },
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 114.03093214435002,
+      "grid_origin_seconds": 1.04,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 17.877536656891493
+        },
+        {
+          "bar": 16,
+          "seconds": 34.71507331378299
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 0.5384615384615384,
+      "p95_abs_error_ms": 188.38416422287307,
+      "max_abs_error_ms": 217.27272727273572,
+      "median_signed_error_first_half_ms": 9.010263929618345,
+      "median_signed_error_second_half_ms": 123.69501466276134
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 130.68367811319854,
+      "grid_origin_seconds": 1.74,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 16.43196480938416
+        },
+        {
+          "bar": 16,
+          "seconds": 31.12392961876832
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 19.9501466275727,
+      "max_abs_error_ms": 34.318181818189686,
+      "median_signed_error_first_half_ms": 3.579545454547528,
+      "median_signed_error_second_half_ms": 8.911290322583199
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 128.87174238248954,
+      "grid_origin_seconds": 2.72,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 17.61853372434018
+        },
+        {
+          "bar": 16,
+          "seconds": 32.51706744868036
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 0.47692307692307695,
+      "p95_abs_error_ms": 84.0293255131911,
+      "max_abs_error_ms": 90.82844574779614,
+      "median_signed_error_first_half_ms": 32.364369501464374,
+      "median_signed_error_second_half_ms": 68.93695014662171
+    },
+    {
+      "id": "56xTV13Tn2x8vpyaB6Xe0c",
+      "artist": "Mighty Dub Katz",
+      "title": "Magic Carpet Ride 07’ (radio edit)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 128.59735545760955,
+      "grid_origin_seconds": 1.02,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 15.95032258064516
+        },
+        {
+          "bar": 16,
+          "seconds": 30.88064516129032
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 25.895161290322296,
+      "max_abs_error_ms": 32.86290322580676,
+      "median_signed_error_first_half_ms": -17.318548387096122,
+      "median_signed_error_second_half_ms": -14.637096774190894
+    },
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 133.6414183887587,
+      "grid_origin_seconds": 1.94,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 16.306803519061585
+        },
+        {
+          "bar": 16,
+          "seconds": 30.67360703812317
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 0.5384615384615384,
+      "p95_abs_error_ms": 200.0359237536635,
+      "max_abs_error_ms": 224.6444281524944,
+      "median_signed_error_first_half_ms": 20.416055718475157,
+      "median_signed_error_second_half_ms": 107.71994134897156
+    },
+    {
+      "id": "2WJ9MGT6pkbUv5hXiJhkVj",
+      "artist": "Shakedown",
+      "title": "At Night (original edit)",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 124.12412412412415,
+      "grid_origin_seconds": 0.02,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 15.48838709677419
+        },
+        {
+          "bar": 16,
+          "seconds": 30.95677419354838
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 11.838709677421376,
+      "max_abs_error_ms": 13.225806451613087,
+      "median_signed_error_first_half_ms": -0.4838709677403852,
+      "median_signed_error_second_half_ms": 0.1612903225876039
+    },
+    {
+      "id": "0VoGBmrB4pbgyHHKv4iU16",
+      "artist": "The Future Sound of London",
+      "title": "Papua New Guinea",
+      "kind": "candidate",
+      "method": "librosa-onset-fallback",
+      "bpm": 125.61594678659733,
+      "grid_origin_seconds": 0.3364873104340482,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "seconds": 30.90585448260992
+        },
+        {
+          "bar": 8,
+          "seconds": 15.621170896521985
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 0.7846153846153846,
+      "p95_abs_error_ms": 247.28561719602504,
+      "max_abs_error_ms": 499.98815510921537,
+      "median_signed_error_first_half_ms": 9.402706848223751,
+      "median_signed_error_second_half_ms": -11.75634478297738
+    },
+    {
+      "id": "28dLudClz8uL7yraekHlvQ",
+      "artist": "Urban Hype",
+      "title": "A Trip to Trumpton",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 140.66810474479843,
+      "grid_origin_seconds": 0.3,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 13.949149560117302
+        },
+        {
+          "bar": 16,
+          "seconds": 27.598299120234604
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 18.876832844574665,
+      "max_abs_error_ms": 24.706744868034036,
+      "median_signed_error_first_half_ms": 0.19611436950150996,
+      "median_signed_error_second_half_ms": 8.236803519061198
+    },
+    {
+      "id": "6PFpxHW43D9DDqNxnD5ecV",
+      "artist": "Urban Hype",
+      "title": "Living in a Fantasy",
+      "kind": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "bpm": 127.86201401420169,
+      "grid_origin_seconds": 1.12,
+      "cue_markers": [
+        {
+          "bar": 8,
+          "seconds": 16.136187683284458
+        },
+        {
+          "bar": 16,
+          "seconds": 31.152375366568915
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 16.811583577711886,
+      "max_abs_error_ms": 24.79105571847473,
+      "median_signed_error_first_half_ms": -0.3262463343105537,
+      "median_signed_error_second_half_ms": -2.7932551319658216
+    },
+    {
+      "id": "6oHEwHqDSmVvVLQitbD1Ag",
+      "artist": "DJ Jean",
+      "title": "The Launch",
+      "kind": "control",
+      "method": "current-fitter",
+      "bpm": 136.50761885513919,
+      "grid_origin_seconds": 0.68,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "seconds": 28.810298017101726
+        },
+        {
+          "bar": 8,
+          "seconds": 14.745149008550863
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 28.698569332234655,
+      "max_abs_error_ms": 41.81239369091827,
+      "median_signed_error_first_half_ms": 0.6961402241782988,
+      "median_signed_error_second_half_ms": 6.45332851877356
+    },
+    {
+      "id": "6nz5kJRZx7MV09QflArHrs",
+      "artist": "Gusto",
+      "title": "Disco’s Revenge (Mole Hole radio edit)",
+      "kind": "control",
+      "method": "current-fitter",
+      "bpm": 125.96505673245427,
+      "grid_origin_seconds": 0.06,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "seconds": 30.544644707111402
+        },
+        {
+          "bar": 8,
+          "seconds": 15.302322353555702
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 42.28401431796236,
+      "max_abs_error_ms": 47.80654386799643,
+      "median_signed_error_first_half_ms": 31.709815801994612,
+      "median_signed_error_second_half_ms": 25.935881277526107
+    },
+    {
+      "id": "7bfhXAe5NRn4ZGopPSY0WZ",
+      "artist": "Robert Miles",
+      "title": "Children",
+      "kind": "control",
+      "method": "current-fitter",
+      "bpm": 137.0884298624686,
+      "grid_origin_seconds": 14.588883351772223,
+      "cue_markers": [
+        {
+          "bar": 16,
+          "seconds": 42.6
+        }
+      ],
+      "projected_beat_count": 64,
+      "fraction_within_50ms_of_cached_beat": 0.640625,
+      "p95_abs_error_ms": 393.4993626434467,
+      "max_abs_error_ms": 425.5583241138865,
+      "median_signed_error_first_half_ms": 47.1743349851117,
+      "median_signed_error_second_half_ms": 35.105464428381694
+    },
+    {
+      "id": "6OYcg2iOqZu1SZNm3TKwBI",
+      "artist": "Rozalla",
+      "title": "Everybody’s Free (To Feel Good)",
+      "kind": "control",
+      "method": "current-fitter",
+      "bpm": 130.0393161812367,
+      "grid_origin_seconds": 8.013682105458805,
+      "cue_markers": [
+        {
+          "bar": 19,
+          "seconds": 43.08
+        },
+        {
+          "bar": 16,
+          "seconds": 37.54321296401981
+        },
+        {
+          "bar": 8,
+          "seconds": 22.778447534739307
+        }
+      ],
+      "projected_beat_count": 77,
+      "fraction_within_50ms_of_cached_beat": 0.987012987012987,
+      "p95_abs_error_ms": 36.805240819087366,
+      "max_abs_error_ms": 52.328697891038445,
+      "median_signed_error_first_half_ms": 27.640041408374394,
+      "median_signed_error_second_half_ms": 2.797839330035856
+    },
+    {
+      "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "artist": "Urban Cookie Collective",
+      "title": "The Key, the Secret",
+      "kind": "control",
+      "method": "current-fitter",
+      "bpm": 129.89421833258444,
+      "grid_origin_seconds": 0.22811246743888702,
+      "cue_markers": [
+        {
+          "bar": 12,
+          "seconds": 22.4
+        },
+        {
+          "bar": 16,
+          "seconds": 29.79062917752037
+        }
+      ],
+      "projected_beat_count": 65,
+      "fraction_within_50ms_of_cached_beat": 1.0,
+      "p95_abs_error_ms": 32.61580945518307,
+      "max_abs_error_ms": 41.51273260404942,
+      "median_signed_error_first_half_ms": -19.69880675676894,
+      "median_signed_error_second_half_ms": -11.485941570136049
+    }
+  ]
+}

@@ -50,33 +50,50 @@ async function main() {
       reportProgress({ phase: 'analyze', label: `${job.task === 'assess' ? 'Assessing suitability' : job.task === 'coverage' ? 'Upgrading cue coverage' : 'Preparing Sub/Beats'}: ${job.artist} — ${job.title}`, done, total: ids.length });
       emit({ id, status: 'running' });
       let localPath: string | null = null;
+      const started = performance.now();
+      const timings:Record<string,number> = {};
+      const timed = async <T>(phase:string, task:()=>Promise<T>):Promise<T> => {
+        const before=performance.now();
+        try { return await task(); }
+        finally { timings[phase]=Math.round(performance.now()-before); }
+      };
       try {
         if (job.task === 'assess' && job.bundleKey) {
           emit({id,...await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot(),job.cuePoints?.algorithmVersion && job.cuePoints.algorithmVersion >= 5 && job.cueCoverage ? {cue_key:job.cuePoints.artifactKey,coverage_key:job.cueCoverage.artifactKey} : undefined)});
           continue;
         }
+        const method = job.preparationMethod;
+        if (method === 'final0') throw new Error('Recheck this track using Beat This! small; the full model has been retired');
+        if (remaining <= 0) {
+          uncertain = false;
+          emit({id,status:'queued',error:'Waiting for cache space: Sub/Beats cache budget reached'});
+          break;
+        }
         if (!await analyzer.subbeatsAvailable()) throw new Error('Update the heavy analyzer to prepare Sub/Beats stems');
         uncertain = true;
-        const source = await analyzer.downloadCapped(id, { maxBytes: 256 * 1024 * 1024, timeoutMs: 5 * 60_000 });
+        const source = await timed('downloadMs',()=>analyzer.downloadCapped(id, { maxBytes: 256 * 1024 * 1024, timeoutMs: 5 * 60_000 }));
         localPath = source.path;
         if (!source.complete) {
           emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
           continue;
         }
-        const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},job.preparationMethod,job.task === 'coverage' && job.bundleKey && job.cuePoints ? {bundle_key:job.bundleKey,cue_key:job.cuePoints.artifactKey} : undefined);
+        const result = await timed('preparationMs',()=>analyzer.prepareSubbeats(localPath!, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},method,job.task === 'coverage' && job.bundleKey && job.cuePoints ? {bundle_key:job.bundleKey,cue_key:job.cuePoints.artifactKey} : undefined));
         remaining = Math.max(0, remaining - result.addedBytes);
         changed ||= result.addedBytes > 0; uncertain = false;
         if (result.status === 'prepared' && result.bundleKey) {
           reportProgress({phase:'analyze',label:`Looking up lyrics: ${job.artist} — ${job.title}`,done,total:ids.length});
-          await refreshPreparedSubbeatsLyrics(id,result.bundleKey);
+          await timed('lyricsMs',()=>refreshPreparedSubbeatsLyrics(id,result.bundleKey!));
         }
         emit({id, ...result});
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        reportEvent({ kind: 'error', text: `${job.artist} — ${job.title}: ${message}` });
-        emit({ id, status: 'failed', error: message.slice(0, 1000) });
+        const budgetBlocked = /cache budget|shared stem-cache budget/i.test(message);
+        if (budgetBlocked) uncertain = false;
+        reportEvent({ kind: budgetBlocked ? 'warning' : 'error', text: `${job.artist} — ${job.title}: ${message}` });
+        emit({ id, status: budgetBlocked ? 'queued' : 'failed', error: (budgetBlocked ? `Waiting for cache space: ${message}` : message).slice(0, 1000) });
         break; // A failed writer may have published partial results; refresh usage before retrying.
       } finally {
+        console.log('[subbeats-timing] '+JSON.stringify({id,method:job.preparationMethod ?? 'classic',...timings,totalMs:Math.round(performance.now()-started)}));
         if (localPath) await rm(localPath, { force: true }).catch(() => {});
         done++;
       }

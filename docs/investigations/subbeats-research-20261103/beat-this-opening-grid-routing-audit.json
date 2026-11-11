@@ -1,0 +1,799 @@
+{
+  "method": "posthoc routing audit: use early-grid proposals if stable within 16 beats and phase-consistent; otherwise use combined fallback output",
+  "early_grid_limit_beats": 16,
+  "targets": 28,
+  "candidate_targets": 14,
+  "unresolved_targets": 14,
+  "controls": 5,
+  "controls_reproducing_saved_markers": 5,
+  "records": [
+    {
+      "id": "5jEsrRrxT0nWc3gfhigyVX",
+      "artist": "Orbital",
+      "title": "Chime (edit)",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "earlier stable Beat This! windows used a different bar phase"
+    },
+    {
+      "id": "6nz5kJRZx7MV09QflArHrs",
+      "artist": "Gusto",
+      "title": "Disco’s Revenge (Mole Hole radio edit)",
+      "target": false,
+      "method": "current-fitter",
+      "status": "control",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.06
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.06
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.06
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.06
+        }
+      ],
+      "saved_markers_reproduced": true
+    },
+    {
+      "id": "0a0iuvZNdaENAs0dBBOytM",
+      "artist": "Fatboy Slim",
+      "title": "Praise You (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 35,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "earlier stable Beat This! windows used a different bar phase"
+    },
+    {
+      "id": "4d6VEhxYYX05WX6zOwSy6i",
+      "artist": "CJ Bolland",
+      "title": "Sugar Is Sweeter (Armand’s Drum ’n’ Bass mix)",
+      "target": true,
+      "expected_beat_seconds": 44,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no sustained onset-supported downbeat"
+    },
+    {
+      "id": "6IHyuK7SpklhZKCubot16i",
+      "artist": "Disclosure & AlunaGeorge",
+      "title": "White Noise (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "earlier stable Beat This! windows used a different bar phase"
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 4,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 16.43196480938416,
+          "bpm": 130.68367811319854,
+          "phraseBars": 8,
+          "phraseStartSeconds": 1.74,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 31.12392961876832,
+          "bpm": 130.68367811319854,
+          "phraseBars": 16,
+          "phraseStartSeconds": 1.74,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "7bfhXAe5NRn4ZGopPSY0WZ",
+      "artist": "Robert Miles",
+      "title": "Children",
+      "target": false,
+      "method": "current-fitter",
+      "status": "control",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 42.6,
+          "bpm": 137.0884298624686,
+          "strength": 0.9977924944812362,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 14.588883351772223
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 42.6,
+          "bpm": 137.0884298624686,
+          "strength": 0.9977924944812362,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 14.588883351772223
+        }
+      ],
+      "saved_markers_reproduced": true
+    },
+    {
+      "id": "2WJ9MGT6pkbUv5hXiJhkVj",
+      "artist": "Shakedown",
+      "title": "At Night (original edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 15.48838709677419,
+          "bpm": 124.12412412412415,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.02,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 30.95677419354838,
+          "bpm": 124.12412412412415,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.02,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "3DPInMTZpzUiFiMiUTS5qv",
+      "artist": "Bicep",
+      "title": "Glue",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 14.822932551319647,
+          "bpm": 130.05546108983427,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.06,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 29.585865102639293,
+          "bpm": 130.05546108983427,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.06,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "01YqBxP7rV2u10PYe2NSne",
+      "artist": "Disciples",
+      "title": "They Don’t Know (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "candidate",
+      "method": "librosa-onset-fallback",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 39.69740739655896,
+          "bpm": 97.41284711374306,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.2775555620646255,
+          "drivingBeatSeconds": 15.06,
+          "onset_support_fraction": 0.9217171717171717,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 19.98748147931179,
+          "bpm": 97.41284711374306,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.2775555620646255,
+          "drivingBeatSeconds": 15.06,
+          "onset_support_fraction": 0.9217171717171717,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 35,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 17.877536656891493,
+          "bpm": 114.03093214435002,
+          "phraseBars": 8,
+          "phraseStartSeconds": 1.04,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 34.71507331378299,
+          "bpm": 114.03093214435002,
+          "phraseBars": 16,
+          "phraseStartSeconds": 1.04,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "56xTV13Tn2x8vpyaB6Xe0c",
+      "artist": "Mighty Dub Katz",
+      "title": "Magic Carpet Ride 07’ (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 15.95032258064516,
+          "bpm": 128.59735545760955,
+          "phraseBars": 8,
+          "phraseStartSeconds": 1.02,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 30.88064516129032,
+          "bpm": 128.59735545760955,
+          "phraseBars": 16,
+          "phraseStartSeconds": 1.02,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "6OYcg2iOqZu1SZNm3TKwBI",
+      "artist": "Rozalla",
+      "title": "Everybody’s Free (To Feel Good)",
+      "target": false,
+      "method": "current-fitter",
+      "status": "control",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 43.08,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 19,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 37.54321296401981,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 22.778447534739307,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 43.08,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 19,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 37.54321296401981,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 22.778447534739307,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 8.013682105458805
+        }
+      ],
+      "saved_markers_reproduced": true
+    },
+    {
+      "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "artist": "Urban Cookie Collective",
+      "title": "The Key, the Secret",
+      "target": false,
+      "method": "current-fitter",
+      "status": "control",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 22.4,
+          "bpm": 129.89421833258444,
+          "strength": 1.0,
+          "reason": "opening",
+          "barNumber": 12,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        },
+        {
+          "sourceSeconds": 29.79062917752037,
+          "bpm": 129.89421833258444,
+          "strength": 1.0,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 22.4,
+          "bpm": 129.89421833258444,
+          "strength": 1,
+          "reason": "opening",
+          "barNumber": 12,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        },
+        {
+          "sourceSeconds": 29.79062917752037,
+          "bpm": 129.89421833258444,
+          "strength": 1,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.22811246743888702
+        }
+      ],
+      "saved_markers_reproduced": true
+    },
+    {
+      "id": "3CZAByVhRxf1wrPPNX1PUG",
+      "artist": "Agnelli & Nelson",
+      "title": "Everyday",
+      "target": true,
+      "expected_beat_seconds": 7,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 14.311964809384161,
+          "bpm": 135.0974355588204,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.1,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 28.523929618768324,
+          "bpm": 135.0974355588204,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.1,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "0VoGBmrB4pbgyHHKv4iU16",
+      "artist": "The Future Sound of London",
+      "title": "Papua New Guinea",
+      "target": true,
+      "expected_beat_seconds": 6,
+      "status": "candidate",
+      "method": "librosa-onset-fallback",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 30.90585448260992,
+          "bpm": 125.61594678659733,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.3364873104340482,
+          "drivingBeatSeconds": 11.8,
+          "onset_support_fraction": 0.9798657718120806,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 15.621170896521985,
+          "bpm": 125.61594678659733,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.3364873104340482,
+          "drivingBeatSeconds": 11.8,
+          "onset_support_fraction": 0.9798657718120806,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "2sudGeoNs0Xj0puMQC1iYZ",
+      "artist": "Serious",
+      "title": "Danger Deeper",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no sustained onset-supported downbeat"
+    },
+    {
+      "id": "0qKLpGNoW7JYrZCSOplfBy",
+      "artist": "Altern 8",
+      "title": "Activ 8 (Come with Me)",
+      "target": true,
+      "expected_beat_seconds": 15,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 15.133782991202343,
+          "bpm": 130.13611499809187,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.38,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 29.887565982404684,
+          "bpm": 130.13611499809187,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.38,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "6JPjEWtZWyeq19X3fWgKcR",
+      "artist": "Freestylers",
+      "title": "B Boy Stance (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 10,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no sustained onset-supported downbeat"
+    },
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "target": true,
+      "expected_beat_seconds": 4,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 16.306803519061585,
+          "bpm": 133.6414183887587,
+          "phraseBars": 8,
+          "phraseStartSeconds": 1.94,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 30.67360703812317,
+          "bpm": 133.6414183887587,
+          "phraseBars": 16,
+          "phraseStartSeconds": 1.94,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "4hLJ5QhL90AQnuLx7t19Uo",
+      "artist": "Sash!",
+      "title": "Ecuador",
+      "target": true,
+      "expected_beat_seconds": 35,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no sustained onset-supported downbeat"
+    },
+    {
+      "id": "3u2wz0pu29wI2WGjGWVtwr",
+      "artist": "Freestylers",
+      "title": "Ruffneck",
+      "target": true,
+      "expected_beat_seconds": 2,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "earlier stable Beat This! windows used a different bar phase"
+    },
+    {
+      "id": "2eJEr2dDz3MIgUljTLr6AM",
+      "artist": "Altern 8",
+      "title": "E Vapor 8",
+      "target": true,
+      "expected_beat_seconds": 20,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no tempo-supported Beat This! grid"
+    },
+    {
+      "id": "6DyC0TGnYEorEtY4jdBgbg",
+      "artist": "Blue Boy",
+      "title": "Remember Me (Sure Is Pure 7\" edit)",
+      "target": true,
+      "expected_beat_seconds": 2,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 21.22287390029325,
+          "bpm": 101.14379993697052,
+          "phraseBars": 8,
+          "phraseStartSeconds": 2.24,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 40.20574780058651,
+          "bpm": 101.14379993697052,
+          "phraseBars": 16,
+          "phraseStartSeconds": 2.24,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "28dLudClz8uL7yraekHlvQ",
+      "artist": "Urban Hype",
+      "title": "A Trip to Trumpton",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 13.949149560117302,
+          "bpm": 140.66810474479843,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.3,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 27.598299120234604,
+          "bpm": 140.66810474479843,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.3,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "6PFpxHW43D9DDqNxnD5ecV",
+      "artist": "Urban Hype",
+      "title": "Living in a Fantasy",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 16.136187683284458,
+          "bpm": 127.86201401420169,
+          "phraseBars": 8,
+          "phraseStartSeconds": 1.12,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 31.152375366568915,
+          "bpm": 127.86201401420169,
+          "phraseBars": 16,
+          "phraseStartSeconds": 1.12,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "2djbF5gzXAmoe4rmSSxFhG",
+      "artist": "Indo",
+      "title": "R U Sleeping (Bump n Flex MIX)",
+      "target": true,
+      "expected_beat_seconds": 60,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no tempo-supported Beat This! grid"
+    },
+    {
+      "id": "7lJyvrKMYL1mczCN3dsNUC",
+      "artist": "Shut Up and Dance",
+      "title": "I Love U",
+      "target": true,
+      "expected_beat_seconds": 20,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no sustained onset-supported downbeat"
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "candidate",
+      "method": "opening-grid-within-16-beats",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 17.61853372434018,
+          "bpm": 128.87174238248954,
+          "phraseBars": 8,
+          "phraseStartSeconds": 2.72,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 32.51706744868036,
+          "bpm": 128.87174238248954,
+          "phraseBars": 16,
+          "phraseStartSeconds": 2.72,
+          "phrase_verified": false
+        }
+      ],
+      "reason": null
+    },
+    {
+      "id": "6oHEwHqDSmVvVLQitbD1Ag",
+      "artist": "DJ Jean",
+      "title": "The Launch",
+      "target": false,
+      "method": "current-fitter",
+      "status": "control",
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 28.810298017101726,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.68
+        },
+        {
+          "sourceSeconds": 14.745149008550863,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.68
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 28.810298017101726,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.68
+        },
+        {
+          "sourceSeconds": 14.745149008550863,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.68
+        }
+      ],
+      "saved_markers_reproduced": true
+    },
+    {
+      "id": "66PHgPURGTlzrxlEI3piCJ",
+      "artist": "Slo Moshun",
+      "title": "Bells of n Y (House 2 House MIX)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no sustained onset-supported downbeat"
+    },
+    {
+      "id": "7rOqNBxyyj4EKpjmUnLt3B",
+      "artist": "Donna Summer",
+      "title": "I Feel Love (Rollo / Sister Bliss Monster mix)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "Beat This! timing fit failed after onset anchoring"
+    },
+    {
+      "id": "7G7P5sw0PRMSGcktzu2WOi",
+      "artist": "Svenson & Gielen",
+      "title": "Beauty of Silence",
+      "target": true,
+      "expected_beat_seconds": 5,
+      "status": "unresolved",
+      "method": "unresolved",
+      "proposed_incoming": [],
+      "reason": "no tempo-supported Beat This! grid"
+    }
+  ],
+  "caveat": "This selects among already-run shadow results; it is not an independent audio analysis or listening validation."
+}

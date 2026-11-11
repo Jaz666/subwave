@@ -9,7 +9,6 @@ process.env.STATE_DIR = state;
 const {createSubbeatsStore} = await import('../src/music/subbeats-store.js');
 const {removeSubbeatsEntry,subbeatsRemovalRunning} = await import('../src/music/subbeats-removal.js');
 const cache = await import('../src/music/stem-cache.js');
-const policy = await import('../src/music/subbeats-stem-policy.js');
 const locks = await import('../src/music/tagger-lock.js');
 const store = createSubbeatsStore(state);
 store.pause(true);
@@ -26,7 +25,7 @@ function prepared(id:string,key='a'.repeat(64)) {
 }
 test('removal deletes extended files and the entry, preserving regular stems, policy and other entries', async () => {
   const extended = prepared('first');prepared('second');
-  policy.updateSubbeatsStemPolicy({track:{id:'first',include:true}});
+  writeFileSync(join(state,'subbeats','stem-policy.json'),JSON.stringify({regularIds:['first']}));
   const beforePolicy = readFileSync(join(state,'subbeats','stem-policy.json'),'utf8');
   const qu = join(root,'.subbeats-quarantine','first');mkdirSync(qu,{recursive:true});writeFileSync(join(qu,'keep'),'quarantine');
   const snapshot = join(state,'stem-cache-usage.json');writeFileSync(snapshot,'{}');
@@ -36,7 +35,7 @@ test('removal deletes extended files and the entry, preserving regular stems, po
   assert.equal(readFileSync(join(qu,'keep'),'utf8'),'quarantine');
   assert.equal(readFileSync(join(state,'subbeats','stem-policy.json'),'utf8'),beforePolicy);
   assert.equal(store.read().jobs.find(job=>job.id==='second')?.status,'prepared');
-  assert.equal(existsSync(snapshot),false);
+  assert.deepEqual(JSON.parse(readFileSync(snapshot,'utf8')),{});
   await removeSubbeatsEntry('first'); // A repeated request is harmless.
 });
 test('legacy bundles shared by another entry survive until the last reference is removed', async () => {

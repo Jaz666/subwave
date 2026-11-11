@@ -1,0 +1,900 @@
+{
+  "method": "current fitted_passages on cached Beat This! grids; Librosa tempo cross-check",
+  "targets": 28,
+  "candidate_targets": 0,
+  "unresolved_targets": 28,
+  "controls": 5,
+  "records": [
+    {
+      "id": "5jEsrRrxT0nWc3gfhigyVX",
+      "artist": "Orbital",
+      "title": "Chime (edit)",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6nz5kJRZx7MV09QflArHrs",
+      "artist": "Gusto",
+      "title": "Disco’s Revenge (Mole Hole radio edit)",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "existing cue list retained as the regression control",
+      "librosa_tempo_match": {
+        "relative_error": 5.886725535519943e-05,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 0.06,
+        "anchorSeconds": 0.06,
+        "drivingBeatSeconds": 0.06,
+        "bpm": 125.96505673245427,
+        "fitFraction": 0.9937759336099585,
+        "p95ErrorSeconds": 0.04783452328187535,
+        "phaseDisagreements": 43,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.06
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.06
+        }
+      ],
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.06
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.06
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.06
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.06
+        }
+      ]
+    },
+    {
+      "id": "0a0iuvZNdaENAs0dBBOytM",
+      "artist": "Fatboy Slim",
+      "title": "Praise You (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 35,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "4d6VEhxYYX05WX6zOwSy6i",
+      "artist": "CJ Bolland",
+      "title": "Sugar Is Sweeter (Armand’s Drum ’n’ Bass mix)",
+      "target": true,
+      "expected_beat_seconds": 44,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6IHyuK7SpklhZKCubot16i",
+      "artist": "Disclosure & AlunaGeorge",
+      "title": "White Noise (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 4,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "7bfhXAe5NRn4ZGopPSY0WZ",
+      "artist": "Robert Miles",
+      "title": "Children",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "existing cue list retained as the regression control",
+      "librosa_tempo_match": {
+        "relative_error": 1.6064946457228224e-05,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 14.588883351772223,
+        "anchorSeconds": 42.6,
+        "drivingBeatSeconds": 42.6,
+        "bpm": 137.0884298624686,
+        "fitFraction": 0.9977924944812362,
+        "p95ErrorSeconds": 0.039720751357469906,
+        "phaseDisagreements": 38,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [
+        {
+          "sourceSeconds": 42.6,
+          "bpm": 137.0884298624686,
+          "strength": 0.9977924944812362,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 14.588883351772223
+        }
+      ],
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 42.6,
+          "bpm": 137.0884298624686,
+          "strength": 0.9977924944812362,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 14.588883351772223
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 42.6,
+          "bpm": 137.0884298624686,
+          "strength": 0.9977924944812362,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 14.588883351772223
+        }
+      ]
+    },
+    {
+      "id": "2WJ9MGT6pkbUv5hXiJhkVj",
+      "artist": "Shakedown",
+      "title": "At Night (original edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "3DPInMTZpzUiFiMiUTS5qv",
+      "artist": "Bicep",
+      "title": "Glue",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "01YqBxP7rV2u10PYe2NSne",
+      "artist": "Disciples",
+      "title": "They Don’t Know (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 35,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "56xTV13Tn2x8vpyaB6Xe0c",
+      "artist": "Mighty Dub Katz",
+      "title": "Magic Carpet Ride 07’ (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6OYcg2iOqZu1SZNm3TKwBI",
+      "artist": "Rozalla",
+      "title": "Everybody’s Free (To Feel Good)",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "existing cue list retained as the regression control",
+      "librosa_tempo_match": {
+        "relative_error": 0.0005541537382117712,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 8.013682105458805,
+        "anchorSeconds": 43.08,
+        "drivingBeatSeconds": 43.08,
+        "bpm": 130.0393161812367,
+        "fitFraction": 0.94750656167979,
+        "p95ErrorSeconds": 0.021228364765391916,
+        "phaseDisagreements": 0,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [
+        {
+          "sourceSeconds": 43.08,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 19,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 37.54321296401981,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 22.778447534739307,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        }
+      ],
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 43.08,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 19,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 37.54321296401981,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 22.778447534739307,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 8.013682105458805
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 43.08,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 19,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 37.54321296401981,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 8.013682105458805
+        },
+        {
+          "sourceSeconds": 22.778447534739307,
+          "bpm": 130.0393161812367,
+          "strength": 0.94750656167979,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 8.013682105458805
+        }
+      ]
+    },
+    {
+      "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "artist": "Urban Cookie Collective",
+      "title": "The Key, the Secret",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "existing cue list retained as the regression control",
+      "librosa_tempo_match": {
+        "relative_error": 0.0001199045096326179,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 0.22811246743888702,
+        "anchorSeconds": 22.4,
+        "drivingBeatSeconds": 22.4,
+        "bpm": 129.89421833258444,
+        "fitFraction": 1.0,
+        "p95ErrorSeconds": 0.024772468374146678,
+        "phaseDisagreements": 1,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [
+        {
+          "sourceSeconds": 22.4,
+          "bpm": 129.89421833258444,
+          "strength": 1.0,
+          "reason": "opening",
+          "barNumber": 12,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        },
+        {
+          "sourceSeconds": 29.79062917752037,
+          "bpm": 129.89421833258444,
+          "strength": 1.0,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        }
+      ],
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 22.4,
+          "bpm": 129.89421833258444,
+          "strength": 1,
+          "reason": "opening",
+          "barNumber": 12,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        },
+        {
+          "sourceSeconds": 29.79062917752037,
+          "bpm": 129.89421833258444,
+          "strength": 1,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.22811246743888702
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 22.4,
+          "bpm": 129.89421833258444,
+          "strength": 1,
+          "reason": "opening",
+          "barNumber": 12,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.22811246743888702
+        },
+        {
+          "sourceSeconds": 29.79062917752037,
+          "bpm": 129.89421833258444,
+          "strength": 1,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.22811246743888702
+        }
+      ]
+    },
+    {
+      "id": "3CZAByVhRxf1wrPPNX1PUG",
+      "artist": "Agnelli & Nelson",
+      "title": "Everyday",
+      "target": true,
+      "expected_beat_seconds": 7,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "0VoGBmrB4pbgyHHKv4iU16",
+      "artist": "The Future Sound of London",
+      "title": "Papua New Guinea",
+      "target": true,
+      "expected_beat_seconds": 6,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "2sudGeoNs0Xj0puMQC1iYZ",
+      "artist": "Serious",
+      "title": "Danger Deeper",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "0qKLpGNoW7JYrZCSOplfBy",
+      "artist": "Altern 8",
+      "title": "Activ 8 (Come with Me)",
+      "target": true,
+      "expected_beat_seconds": 15,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6JPjEWtZWyeq19X3fWgKcR",
+      "artist": "Freestylers",
+      "title": "B Boy Stance (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 10,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "target": true,
+      "expected_beat_seconds": 4,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "4hLJ5QhL90AQnuLx7t19Uo",
+      "artist": "Sash!",
+      "title": "Ecuador",
+      "target": true,
+      "expected_beat_seconds": 35,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "3u2wz0pu29wI2WGjGWVtwr",
+      "artist": "Freestylers",
+      "title": "Ruffneck",
+      "target": true,
+      "expected_beat_seconds": 2,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "2eJEr2dDz3MIgUljTLr6AM",
+      "artist": "Altern 8",
+      "title": "E Vapor 8",
+      "target": true,
+      "expected_beat_seconds": 20,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6DyC0TGnYEorEtY4jdBgbg",
+      "artist": "Blue Boy",
+      "title": "Remember Me (Sure Is Pure 7\" edit)",
+      "target": true,
+      "expected_beat_seconds": 2,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "28dLudClz8uL7yraekHlvQ",
+      "artist": "Urban Hype",
+      "title": "A Trip to Trumpton",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": {
+        "relative_error": 0.00018484980566424447,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 116.27441438798928,
+        "anchorSeconds": 148.68,
+        "drivingBeatSeconds": 148.68,
+        "bpm": 140.71648186200008,
+        "fitFraction": 0.9928571428571429,
+        "p95ErrorSeconds": 0.015304645952309669,
+        "phaseDisagreements": 7,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6PFpxHW43D9DDqNxnD5ecV",
+      "artist": "Urban Hype",
+      "title": "Living in a Fantasy",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "2djbF5gzXAmoe4rmSSxFhG",
+      "artist": "Indo",
+      "title": "R U Sleeping (Bump n Flex MIX)",
+      "target": true,
+      "expected_beat_seconds": 60,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "7lJyvrKMYL1mczCN3dsNUC",
+      "artist": "Shut Up and Dance",
+      "title": "I Love U",
+      "target": true,
+      "expected_beat_seconds": 20,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "target": true,
+      "expected_beat_seconds": 16,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "6oHEwHqDSmVvVLQitbD1Ag",
+      "artist": "DJ Jean",
+      "title": "The Launch",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "existing cue list retained as the regression control",
+      "librosa_tempo_match": {
+        "relative_error": 7.118049243981517e-05,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 0.68,
+        "anchorSeconds": 0.68,
+        "drivingBeatSeconds": 4.2,
+        "bpm": 136.50761885513919,
+        "fitFraction": 0.9324009324009324,
+        "p95ErrorSeconds": 0.03570342754834747,
+        "phaseDisagreements": 11,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [
+        {
+          "sourceSeconds": 28.810298017101726,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.68
+        },
+        {
+          "sourceSeconds": 14.745149008550863,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 0.68
+        }
+      ],
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 28.810298017101726,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.68
+        },
+        {
+          "sourceSeconds": 14.745149008550863,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.68
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 28.810298017101726,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.68
+        },
+        {
+          "sourceSeconds": 14.745149008550863,
+          "bpm": 136.50761885513919,
+          "strength": 0.9324009324009324,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.68
+        }
+      ]
+    },
+    {
+      "id": "66PHgPURGTlzrxlEI3piCJ",
+      "artist": "Slo Moshun",
+      "title": "Bells of n Y (House 2 House MIX)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "7rOqNBxyyj4EKpjmUnLt3B",
+      "artist": "Donna Summer",
+      "title": "I Feel Love (Rollo / Sister Bliss Monster mix)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": {
+        "relative_error": 0.0003023563013717645,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "fitted_grid": {
+        "originSeconds": 190.71189687005568,
+        "anchorSeconds": 224.98,
+        "drivingBeatSeconds": 224.98,
+        "bpm": 126.06475425904385,
+        "fitFraction": 1.0,
+        "p95ErrorSeconds": 0.01787958527266369,
+        "phaseDisagreements": 71,
+        "confidence": "estimated"
+      },
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "7G7P5sw0PRMSGcktzu2WOi",
+      "artist": "Svenson & Gielen",
+      "title": "Beauty of Silence",
+      "target": true,
+      "expected_beat_seconds": 5,
+      "status": "unresolved",
+      "reason": "phrase fitter found no eligible incoming passage",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "fitted_grid": null,
+      "fitted_incoming": [],
+      "proposed_incoming": [],
+      "saved_incoming": []
+    }
+  ],
+  "caveat": "Hypothetical incoming passages only; no prepared cues were changed.",
+  "controls_with_grid_and_librosa_support": 5,
+  "controls_reproducing_saved_markers": 5
+}

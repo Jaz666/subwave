@@ -17,6 +17,7 @@ const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string };
 type JingleMarker = { airedAt: string; durationMs: number };
 type VisualEvents = {
+  preparedSpeech?: boolean;
   jingle?: { airedAt: string; durationMs: number } | null;
   bed?: { airedAt: string; durationMs?: number } | null;
   stemTransition?: {
@@ -320,6 +321,7 @@ export default function NowPlayingWaveform() {
   const [jingle, setJingle] = useState<JingleMarker | null>(null);
   const [bed, setBed] = useState<{ airedAt: string; durationMs?: number } | null>(null);
   const [stemTransition, setStemTransition] = useState<VisualEvents['stemTransition']>(null);
+  const [preparedSpeech, setPreparedSpeech] = useState(false);
   const [observedTransitions, setObservedTransitions] = useState<TransitionMarker[]>([]);
   const [colors, setColors] = useState(DEFAULT_COLORS);
   const [colorPhase, setColorPhase] = useState(false);
@@ -491,9 +493,10 @@ export default function NowPlayingWaveform() {
           setJingle(data.jingle ?? null);
           setBed(data.bed ?? null);
           setStemTransition(data.stemTransition ?? null);
+          setPreparedSpeech(data.preparedSpeech === true);
         }
       } catch {
-        if (!stopped) { setJingle(null); setBed(null); setStemTransition(null); }
+        if (!stopped) { setJingle(null); setBed(null); setStemTransition(null); setPreparedSpeech(false); }
       }
     };
     void poll();
@@ -607,6 +610,7 @@ export default function NowPlayingWaveform() {
         <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
         <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
         <span className="text-ink">Beds</span>
+        {preparedSpeech && <span className={styles.preparedSpeech} title="Prepared speech can still be dropped before it airs." role="status">Speech ready</span>}
         <span className={styles.trackTime} aria-label="Current track time">{formatTime(elapsed)} / {formatTime(currentDuration)}</span>
       </div>
       <div className={styles.eventsViewport} role="img" aria-label="Speech, jingle and bed events">

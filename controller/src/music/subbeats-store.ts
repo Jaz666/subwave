@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { writeFileAtomicSync } from '../util/atomic-file.js';
-import { subbeatsQueueSchema, subbeatsEventSchema, type subbeatsJobSchema } from '../schemas/subbeats.js';
+import { SUBBEATS_QUEUE_LIMIT, subbeatsQueueSchema, subbeatsEventSchema, type subbeatsJobSchema } from '../schemas/subbeats.js';
 
 export type SubbeatsJob = z.infer<typeof subbeatsJobSchema>;
 export type SubbeatsQueue = z.infer<typeof subbeatsQueueSchema>;
@@ -52,7 +52,7 @@ export function createSubbeatsStore(stateDir: string) {
   };
   return {
     read: () => readSubbeatsQueue(stateDir),
-    enqueue(tracks: Array<Pick<SubbeatsJob, 'id' | 'title' | 'artist' | 'album'>>, method: 'classic'|'small0'|'final0' = 'classic') {
+    enqueue(tracks: Array<Pick<SubbeatsJob, 'id' | 'title' | 'artist' | 'album'>>, method: 'classic'|'small0' = 'classic') {
       const state = readSubbeatsQueue(stateDir);
       const jobs = new Map(state.jobs.map(j => [j.id, j]));
       for (const track of tracks) {
@@ -62,6 +62,7 @@ export function createSubbeatsStore(stateDir: string) {
           ...(method === 'classic' ? {} : {preparationMethod:method}),
           bundleKey: null, error: null, updatedAt: new Date().toISOString() });
       }
+      if (jobs.size > SUBBEATS_QUEUE_LIMIT) throw new Error(`The preparation list is full (${SUBBEATS_QUEUE_LIMIT} tracks)`);
       state.jobs = [...jobs.values()];
       save(state);
     },
@@ -78,6 +79,7 @@ export function createSubbeatsStore(stateDir: string) {
       const state = readSubbeatsQueue(stateDir);
       const selected = [...new Set(ids)].map(id => state.jobs.find(job => job.id === id));
       if (selected.some(job => !job?.bundleKey || !job.cuePoints || ['queued','running'].includes(job.status))) throw new Error('Choose completed tracks with saved cue points');
+      if (selected.some(job => job?.cuePoints?.model === 'final0')) throw new Error('Recheck these tracks using Beat This! small before upgrading coverage');
       for (const job of selected) if (job) {
         job.status='queued';job.task='coverage';job.error=null;job.updatedAt=new Date().toISOString();
         job.preparationMethod=job.cuePoints!.model;

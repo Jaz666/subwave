@@ -1,3 +1,4 @@
+import { bulkPassRunning } from './tagger-lock.js';
 import { subbeatsRemovalRunning } from './subbeats-removal.js';
 // Explicit cleanup uses the proven quarantine engine, in its own namespace.
 // Estimates are operator-triggered background walks, never part of a GET/poll.
@@ -41,7 +42,7 @@ async function directoryBytes(dir: string): Promise<number> {
 async function requireCache() {
   if (subbeatsRemovalRunning()) throw new Error('Wait for Sub/Beats entry removal to finish before scanning or cleaning the cache');
   if (!(await cache.stemsRootStatus({readOnly:true})).online) throw new Error('Stem cache is offline. Connect it, then retry.');
-  if ((await cache.storedUsage())?.passRunning) throw new Error('Analysis is writing stems. Wait for it to finish, then retry cleanup.');
+  if (bulkPassRunning() || (await cache.storedUsage())?.passRunning) throw new Error('Analysis is writing stems. Wait for it to finish, then retry cleanup.');
   if (!db.allTrackIdsOrdered().length) throw new Error('The library is empty or unavailable. Cleanup stopped.');
 }
 

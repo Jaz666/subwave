@@ -1,0 +1,344 @@
+{
+  "method": "cached Beat This! grid + Librosa percussion onset anchoring",
+  "records": [
+    {
+      "id": "6nz5kJRZx7MV09QflArHrs",
+      "artist": "Gusto",
+      "title": "Disco’s Revenge (Mole Hole radio edit)",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "inferred markers compared with the saved regression cues",
+      "librosa_tempo_match": {
+        "relative_error": 5.886725535519943e-05,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "phrase": {
+        "grid": {
+          "originSeconds": 0.06,
+          "anchorSeconds": 0.06,
+          "drivingBeatSeconds": 0.06,
+          "bpm": 125.96505673245427,
+          "beat_fit_fraction": 0.9937759336099585,
+          "onset_reference": 10.378875494003296
+        },
+        "incoming": [
+          {
+            "sourceSeconds": 30.544644707111402,
+            "bpm": 125.96505673245427,
+            "phraseBars": 16,
+            "phraseStartSeconds": 0.06,
+            "drivingBeatSeconds": 0.06,
+            "onset_support_fraction": 0.9937759336099585,
+            "phrase_verified": false
+          },
+          {
+            "sourceSeconds": 15.302322353555702,
+            "bpm": 125.96505673245427,
+            "phraseBars": 8,
+            "phraseStartSeconds": 0.06,
+            "drivingBeatSeconds": 0.06,
+            "onset_support_fraction": 0.9937759336099585,
+            "phrase_verified": false
+          }
+        ]
+      },
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.06,
+          "drivingBeatSeconds": 0.06,
+          "onset_support_fraction": 0.9937759336099585,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.06,
+          "drivingBeatSeconds": 0.06,
+          "onset_support_fraction": 0.9937759336099585,
+          "phrase_verified": false
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 30.544644707111402,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.06
+        },
+        {
+          "sourceSeconds": 15.302322353555702,
+          "bpm": 125.96505673245427,
+          "strength": 0.9937759336099585,
+          "reason": "opening",
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.06
+        }
+      ],
+      "saved_markers_reproduced": true
+    },
+    {
+      "id": "4d6VEhxYYX05WX6zOwSy6i",
+      "artist": "CJ Bolland",
+      "title": "Sugar Is Sweeter (Armand’s Drum ’n’ Bass mix)",
+      "target": true,
+      "expected_beat_seconds": 44,
+      "status": "unresolved",
+      "reason": "no sustained onset-supported downbeat",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "phrase": null,
+      "proposed_incoming": [],
+      "saved_incoming": []
+    },
+    {
+      "id": "7bfhXAe5NRn4ZGopPSY0WZ",
+      "artist": "Robert Miles",
+      "title": "Children",
+      "target": false,
+      "expected_beat_seconds": null,
+      "status": "control",
+      "reason": "inferred markers compared with the saved regression cues",
+      "librosa_tempo_match": {
+        "relative_error": 9.833974545947477e-05,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "phrase": {
+        "grid": {
+          "originSeconds": 70.1795357473736,
+          "anchorSeconds": 103.44,
+          "drivingBeatSeconds": 103.44,
+          "bpm": 137.09970989475656,
+          "beat_fit_fraction": 0.9968152866242038,
+          "onset_reference": 8.065443515777588
+        },
+        "incoming": [
+          {
+            "sourceSeconds": 103.44,
+            "bpm": 137.09970989475656,
+            "phraseStartSeconds": 70.1795357473736,
+            "drivingBeatSeconds": 103.44,
+            "onset_support_fraction": 0.9968152866242038,
+            "phrase_verified": false
+          },
+          {
+            "sourceSeconds": 84.18394174847946,
+            "bpm": 137.09970989475656,
+            "phraseBars": 8,
+            "phraseStartSeconds": 70.1795357473736,
+            "drivingBeatSeconds": 103.44,
+            "onset_support_fraction": 0.9968152866242038,
+            "phrase_verified": false
+          }
+        ]
+      },
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 103.44,
+          "bpm": 137.09970989475656,
+          "phraseStartSeconds": 70.1795357473736,
+          "drivingBeatSeconds": 103.44,
+          "onset_support_fraction": 0.9968152866242038,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 84.18394174847946,
+          "bpm": 137.09970989475656,
+          "phraseBars": 8,
+          "phraseStartSeconds": 70.1795357473736,
+          "drivingBeatSeconds": 103.44,
+          "onset_support_fraction": 0.9968152866242038,
+          "phrase_verified": false
+        }
+      ],
+      "saved_incoming": [
+        {
+          "sourceSeconds": 42.6,
+          "bpm": 137.0884298624686,
+          "strength": 0.9977924944812362,
+          "reason": "opening",
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseBars": 16,
+          "phraseStartSeconds": 14.588883351772223
+        }
+      ],
+      "saved_markers_reproduced": false
+    },
+    {
+      "id": "01YqBxP7rV2u10PYe2NSne",
+      "artist": "Disciples",
+      "title": "They Don’t Know (radio edit)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "candidate",
+      "reason": null,
+      "librosa_tempo_match": {
+        "relative_error": 0.001517149593085687,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "phrase": {
+        "grid": {
+          "originSeconds": 0.2775555620646255,
+          "anchorSeconds": 15.06,
+          "drivingBeatSeconds": 15.06,
+          "bpm": 97.41284711374306,
+          "beat_fit_fraction": 0.9217171717171717,
+          "onset_reference": 7.408290863037109
+        },
+        "incoming": [
+          {
+            "sourceSeconds": 39.69740739655896,
+            "bpm": 97.41284711374306,
+            "phraseBars": 16,
+            "phraseStartSeconds": 0.2775555620646255,
+            "drivingBeatSeconds": 15.06,
+            "onset_support_fraction": 0.9217171717171717,
+            "phrase_verified": false
+          },
+          {
+            "sourceSeconds": 19.98748147931179,
+            "bpm": 97.41284711374306,
+            "phraseBars": 8,
+            "phraseStartSeconds": 0.2775555620646255,
+            "drivingBeatSeconds": 15.06,
+            "onset_support_fraction": 0.9217171717171717,
+            "phrase_verified": false
+          }
+        ]
+      },
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 39.69740739655896,
+          "bpm": 97.41284711374306,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.2775555620646255,
+          "drivingBeatSeconds": 15.06,
+          "onset_support_fraction": 0.9217171717171717,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 19.98748147931179,
+          "bpm": 97.41284711374306,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.2775555620646255,
+          "drivingBeatSeconds": 15.06,
+          "onset_support_fraction": 0.9217171717171717,
+          "phrase_verified": false
+        }
+      ],
+      "saved_incoming": []
+    },
+    {
+      "id": "0qKLpGNoW7JYrZCSOplfBy",
+      "artist": "Altern 8",
+      "title": "Activ 8 (Come with Me)",
+      "target": true,
+      "expected_beat_seconds": 15,
+      "status": "candidate",
+      "reason": null,
+      "librosa_tempo_match": {
+        "relative_error": 0.0020371393483540334,
+        "librosa_per_grid_beat": 1.0
+      },
+      "librosa_support_ok": true,
+      "phrase": {
+        "grid": {
+          "originSeconds": 0.3666282959899334,
+          "anchorSeconds": 35.48,
+          "drivingBeatSeconds": 35.48,
+          "bpm": 129.86505649297223,
+          "beat_fit_fraction": 0.9246153846153846,
+          "onset_reference": 6.841265916824341
+        },
+        "incoming": [
+          {
+            "sourceSeconds": 35.48,
+            "bpm": 129.86505649297223,
+            "phraseStartSeconds": 0.3666282959899334,
+            "drivingBeatSeconds": 35.48,
+            "onset_support_fraction": 0.9246153846153846,
+            "phrase_verified": false
+          },
+          {
+            "sourceSeconds": 29.935783415156305,
+            "bpm": 129.86505649297223,
+            "phraseBars": 16,
+            "phraseStartSeconds": 0.3666282959899334,
+            "drivingBeatSeconds": 35.48,
+            "onset_support_fraction": 0.9246153846153846,
+            "phrase_verified": false
+          },
+          {
+            "sourceSeconds": 15.151205855573119,
+            "bpm": 129.86505649297223,
+            "phraseBars": 8,
+            "phraseStartSeconds": 0.3666282959899334,
+            "drivingBeatSeconds": 35.48,
+            "onset_support_fraction": 0.9246153846153846,
+            "phrase_verified": false
+          }
+        ]
+      },
+      "proposed_incoming": [
+        {
+          "sourceSeconds": 35.48,
+          "bpm": 129.86505649297223,
+          "phraseStartSeconds": 0.3666282959899334,
+          "drivingBeatSeconds": 35.48,
+          "onset_support_fraction": 0.9246153846153846,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 29.935783415156305,
+          "bpm": 129.86505649297223,
+          "phraseBars": 16,
+          "phraseStartSeconds": 0.3666282959899334,
+          "drivingBeatSeconds": 35.48,
+          "onset_support_fraction": 0.9246153846153846,
+          "phrase_verified": false
+        },
+        {
+          "sourceSeconds": 15.151205855573119,
+          "bpm": 129.86505649297223,
+          "phraseBars": 8,
+          "phraseStartSeconds": 0.3666282959899334,
+          "drivingBeatSeconds": 35.48,
+          "onset_support_fraction": 0.9246153846153846,
+          "phrase_verified": false
+        }
+      ],
+      "saved_incoming": []
+    },
+    {
+      "id": "7rOqNBxyyj4EKpjmUnLt3B",
+      "artist": "Donna Summer",
+      "title": "I Feel Love (Rollo / Sister Bliss Monster mix)",
+      "target": true,
+      "expected_beat_seconds": 0,
+      "status": "unresolved",
+      "reason": "Beat This! timing fit failed after onset anchoring",
+      "librosa_tempo_match": null,
+      "librosa_support_ok": false,
+      "phrase": null,
+      "proposed_incoming": [],
+      "saved_incoming": []
+    }
+  ],
+  "caveat": "Small selected-set hypothesis test; no cue changes.",
+  "controls": 2,
+  "controls_reproducing_saved_markers": 1
+}

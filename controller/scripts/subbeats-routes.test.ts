@@ -214,7 +214,7 @@ test('annotated preview resolves server-owned points and URLs, rejects unsuitabl
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
 
-test('regular stem policy is opt-in, persists exceptions separately and never edits the preparation queue', async () => {
+test('cleanup policy is opt-in, rejects per-track admission and never edits the preparation queue', async () => {
   const { readSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
   const before = subbeatsStore.read();
   assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:[]});
@@ -226,12 +226,9 @@ test('regular stem policy is opt-in, persists exceptions separately and never ed
   assert.equal((await post('/library/subbeats/cache', {enabled:'true'})).status, 400);
   assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 400, 'old admission consent must not authorise deletion');
   assert.equal((await post('/library/subbeats/cache', {enabled:true,confirmCleanup:true})).status, 200);
-  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
-  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
-  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:true,cleanupEnabled:true,regularIds:['quiet-intro']});
+  assert.equal((await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}})).status,400);
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:true,cleanupEnabled:true,regularIds:[]});
   await post('/library/subbeats/cache', {enabled:false});
-  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:['quiet-intro']});
-  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:false}});
   assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:[]});
   assert.deepEqual(subbeatsStore.read(), before);
   const { subbeatsCacheViewSchema } = await import('../src/schemas/subbeats.js');

@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-05",
+  "scope": "Owner listening feedback on the opening-grid audition pack",
+  "overall": "Overall very good.",
+  "flagged_candidates": [
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "feedback": "well off the eventual beat"
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "feedback": "1 bar too early for the natural release"
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "feedback": "metronome click is slightly too fast"
+    },
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "feedback": "metronome click is slightly too fast"
+    }
+  ],
+  "unflagged_candidate_verdict": "No specific correction was reported for the other candidate clips; do not treat absence of a correction as separate acceptance.",
+  "control_verdict": "The feedback did not separately identify individual control clips."
+}

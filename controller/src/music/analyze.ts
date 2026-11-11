@@ -3,6 +3,8 @@
 // The DSP lives in music/analyzer.ts; with no backend this is a clean no-op.
 
 import { readFile, rm } from 'node:fs/promises';
+import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
+import { readSubbeatsQueue } from './subbeats-store.js';
 import * as db from './library-db.js';
 import * as analyzer from './analyzer.js';
 import * as stemCacheStore from './stem-cache.js';
@@ -900,5 +902,14 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       (vocalAnalyzed > 0 ? `, ${vocalAnalyzed.toLocaleString('en-GB')} vocal` : '') +
       (failed > 0 ? ` · ${failed.toLocaleString('en-GB')} failed` : ''),
   );
+  if (failed === 0 && (passStems || passVocal)) {
+    try {
+      const scope = plan ? new Set(plan.items.map(item => item.id)) : null;
+      const pending = readSubbeatsQueue(config.stateDir).jobs
+        .filter(job => job.status === 'queued' && (!scope || scope.has(job.id)))
+        .slice(0, opts.limit ?? Infinity).map(job => job.id);
+      if (pending.length) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify(pending));
+    } catch { logEvent('warning', 'Sub/Beats selections could not be read; ordinary analysis completed'); }
+  }
   return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed };
 }

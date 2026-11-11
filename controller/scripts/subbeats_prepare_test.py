@@ -332,7 +332,7 @@ class ConversionTests(unittest.TestCase):
             source.write_bytes(b'original source fixture')
             identity = {'source_sha256': cache.digest(source), 'analysis_version': prepare.ANALYSIS_VERSION,
                 'librosa': 'test', 'mode': 'analysis_and_stems', 'head_seconds': 68., 'exit_seconds': 90,
-                'separator': {'model': 'test', 'overlap': .25, 'shifts': 1, 'context_seconds': 4,
+                'separator': {'model': 'test', 'overlap': .25, 'shifts': 0, 'context_seconds': 4,
                     'sample_rate': prepare.STEM_SR, 'subtype': 'PCM_24-or-FLOAT-v1',
                     'demucs': 'test', 'torch': 'test'}}
             def build(stage):
@@ -373,7 +373,7 @@ class ConversionTests(unittest.TestCase):
                 values, _ = read(path / f'head-{stem}.flac')
                 np.testing.assert_allclose(values / gain, level, rtol=1e-6)
             self.assertFalse(convert.convert_bundle(root, key)['converted'])
-            worker = types.SimpleNamespace(DEMUCS_MODEL='test', DEMUCS_OVERLAP=.25)
+            worker = types.SimpleNamespace(DEMUCS_MODEL='test', DEMUCS_OVERLAP=.25, DEMUCS_SHIFTS=0)
             with patch.dict('sys.modules', {'librosa': types.SimpleNamespace(__version__='test'), 'analyze_worker': worker}), \
                     patch.object(prepare.importlib.metadata, 'version', return_value='test'), \
                     patch.object(prepare, 'analyze', side_effect=AssertionError('no re-analysis or separation')):
