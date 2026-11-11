@@ -24,8 +24,8 @@ driven by a user's selection or a separate opt-in demand signal.
   Demucs scan. During that scan, selected tracks keep any regular stems they
   already have, while new regular-stem writes are skipped; Sub/Beats then uses
   the shared stem-cache budget. If preparation fails or the budget blocks it,
-  the track remains queued for a later scan and does not receive regular stems
-  in the meantime.
+  no regular stems are written for that track during this scan. A later scan
+  can process a requeued Sub/Beats request or fill in its regular stems.
 - A future setting may opt into treating a track played on air during the last
   six months as a request to upgrade it to Sub/Beats, but only when it passes
   the technical qualification checks. It should deduplicate by track and
