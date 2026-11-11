@@ -12,8 +12,10 @@ import { isPidAlive, readPidfile } from './tagger-lock.js';
 export const subbeatsStore = createSubbeatsStore(config.stateDir);
 let migrationAttempted = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
+const libraryReady = new Set<string>();
 
-export function kickSubbeats(delayMs = 0): void {
+export function kickSubbeats(delayMs = 0, scanIds: readonly string[] = []): void {
+  for (const id of scanIds) libraryReady.add(id);
   if (delayMs === 0) migrationAttempted = false; // A manual queue/resume also retries a failed migration.
   if (timer) return;
   timer = setTimeout(() => {
@@ -21,7 +23,10 @@ export function kickSubbeats(delayMs = 0): void {
     let admitted: string[] = [];
     try {
       const state = subbeatsStore.read();
-      const ids = state.jobs.filter(j => j.status === 'queued').slice(0, 100).map(j => j.id);
+      const queuedIds = new Set(state.jobs.filter(j => j.status === 'queued').map(j => j.id));
+      for (const id of libraryReady) if (!queuedIds.has(id)) libraryReady.delete(id);
+      const ids = state.jobs.filter(j => j.status === 'queued' && (j.task === 'assess' || libraryReady.has(j.id)))
+        .slice(0, 100).map(j => j.id);
       const migrate = !migrationAttempted && existsSync(join(config.stateDir, 'subbeats', 'v1'));
       if ((state.paused || !ids.length) && !migrate) return;
       const locked = readPidfile();

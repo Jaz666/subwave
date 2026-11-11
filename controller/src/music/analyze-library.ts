@@ -178,12 +178,7 @@ async function main() {
       console.log('[analyze] dry run — nothing analysed');
       process.exit(0);
     }
-    if (plan.items.length === 0) {
-      analyzer.shutdown();
-      console.log('[analyze] nothing planned');
-      process.exit(0);
-    }
-    const stats = await runAnalysisPass({ plan });
+    const stats = await runAnalysisPass({ plan, subbeatsScopeIds: explicitIds(args) ?? undefined });
     analyzer.shutdown();
     console.log('[analyze] stats:', JSON.stringify(stats));
     process.exit(0);
@@ -270,7 +265,7 @@ async function main() {
     }
   }
 
-  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill });
+  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, subbeatsScopeIds: explicitIds(args) ?? undefined });
   analyzer.shutdown();
   console.log('[analyze] stats:', JSON.stringify(stats));
   process.exit(stats.available ? 0 : 0);

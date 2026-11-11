@@ -27,6 +27,9 @@ import { probeListenerCount } from '../broadcast/listeners.js';
 import { sweepKeepLastFromDisk } from '../broadcast/pick-stems.js';
 import { planAcoustics, type AcousticsPlan, type WorkRequest } from './acoustics-plan.js';
 import type { Facet } from './library-db/facets.js';
+import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
+import { readSubbeatsQueue } from './subbeats-store.js';
+import { queuedSubbeatsForScan, suppressRegularStems } from './subbeats-scan-policy.js';
 
 // Status events for the panel, mirrored to the `[analyze] …` console line.
 const logEvent = makeEventLogger('analyze');
@@ -47,6 +50,7 @@ export interface AnalyzeOptions {
   // tracks, each with its own worker flags. reAnalyze and the four widenings
   // are ignored. Absent = today's pass, unchanged.
   plan?: AcousticsPlan;
+  subbeatsScopeIds?: readonly string[];
 }
 
 // Env wins ON, never off; else the admin toggle (settings.audio.embeddings).
@@ -271,6 +275,11 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     return { available: false, backend: 'none', analyzed: 0, failed: 0, scope: 0, audioEmbedded: 0, vocalAnalyzed: 0 };
   }
   const backend = analyzer.backendLabel();
+  // Snapshot before this pass starts. Selections added during the scan wait for
+  // the next one and cannot change its regular-stem admission decisions.
+  let queuedSubbeatsJobs: ReturnType<typeof readSubbeatsQueue>['jobs'] = [];
+  try { queuedSubbeatsJobs = readSubbeatsQueue(config.stateDir).jobs; }
+  catch { logEvent('warning', 'Sub/Beats selections could not be read; regular analysis will continue'); }
   logEvent('info', `Audio engine: ${backend}`);
 
   // Resolved up front so a --re-analyze not redoing vocal preserves existing
@@ -327,6 +336,15 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   }
 
   const cap = opts.limit && opts.limit > 0 ? opts.limit : undefined;
+  const demucsScan = plan
+    ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal')
+    : stemCache || vocalBackfill;
+  const queuedForSubbeats = new Set(demucsScan
+    ? queuedSubbeatsForScan(queuedSubbeatsJobs, opts.subbeatsScopeIds ? new Set(opts.subbeatsScopeIds) : null, opts.limit)
+    : []);
+  const reportSubbeatsReady = () => {
+    if (queuedForSubbeats.size) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify([...queuedForSubbeats]));
+  };
   // A facet plan brings its own scope: skip the legacy scope queries entirely.
   const bpmIds = plan
     ? []
@@ -399,7 +417,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     // The loop spends stemSlotsLeft in ids order and the earlier widenings'
     // tracks run FIRST, draining slots before this slice is reached. Reserve
     // them up front, or the announcement over-promises.
-    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
+    const reserved = ids.filter(id => !queuedForSubbeats.has(id) && !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
     const backfillSlots = Math.max(0, stemSlotsLeft - reserved);
     if (backfillSlots <= 0) {
       console.log(
@@ -417,7 +435,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       // signals it reads are resolved here because library-db must not import
       // the likes store.
       const needing = db.needsStemsIds(undefined, stemSignals)
-        .filter(id => !seen.has(id));
+        .filter(id => !seen.has(id) && !queuedForSubbeats.has(id));
       // Under --limit, only the slots the bpm/CLAP/vocal scopes haven't already
       // spent are available — sizing off the raw cap would log stem tracks a
       // final slice then silently drops, the exact "reads as finished"
@@ -442,7 +460,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // Vocal work applies to every id; stem work only to eligible recordings.
   const fullAnalysisIds = new Set(bpmIds);
   for (const id of ids) {
-    if (vocalBackfill || (stemCache && db.canCacheStems(id, stemSignals))) fullAnalysisIds.add(id);
+    if (vocalBackfill || (stemCache && !queuedForSubbeats.has(id) && db.canCacheStems(id, stemSignals))) fullAnalysisIds.add(id);
   }
 
   // A facet plan replaces everything the widenings above decided: the plan's
@@ -493,7 +511,6 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // Pass-wide flags the tail of the pass reports on (sweep, Demucs warning).
   const passStems = plan ? !planStemsOffline && plan.items.some(i => i.request.stems) : stemCache;
   const passVocal = plan ? plan.items.some(i => i.request.vocal) : vocalBackfill;
-
   // Say what the scope leaves out: "all tracks current" is also true of a
   // library whose files can never be analysed.
   const excludedFailures = db.analysisFailedCount();
@@ -507,6 +524,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
 
   if (ids.length === 0) {
     console.log('[analyze] nothing to analyse — all tracks current');
+    reportSubbeatsReady();
     // Zero-shot scoring can still have work (older vectors, changed vocabulary).
     await scoreAudioMoods();
     return { available: true, backend, analyzed: 0, failed: 0, scope: 0, audioEmbedded: 0, vocalAnalyzed: 0 };
@@ -575,6 +593,9 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   };
 
   const allocateStems = (id: string): string | undefined => {
+    // A queued Sub/Beats request will create the richer bundle after this scan.
+    // Preserve any existing regular stems, but avoid a duplicate new allocation.
+    if (suppressRegularStems(id, queuedForSubbeats)) return undefined;
     const want = planned.get(id);
     // A planned track gets stems only when its plan asks for them.
     if (plan && (!want?.stems || planStemsOffline)) return undefined;
@@ -991,5 +1012,6 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
       (vocalAnalyzed > 0 ? `, ${vocalAnalyzed.toLocaleString('en-GB')} vocal` : '') +
       (failed > 0 ? ` · ${failed.toLocaleString('en-GB')} failed` : ''),
   );
+  reportSubbeatsReady();
   return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed };
 }

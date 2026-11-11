@@ -56,6 +56,9 @@ async function waitUntil(fn: () => boolean, timeout = 30000) {
 
 test('managed preparation preserves new admissions, pauses between tracks and resumes', async () => {
   store.enqueue([track('first'), track('second')]); kickSubbeats();
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(requests, 0, 'new preparation waits for a Library Demucs scan');
+  kickSubbeats(0, ['first', 'second']);
   await waitUntil(() => release !== null);
   assert.equal(store.read().jobs[0].status, 'running');
   store.pause(true);
@@ -65,6 +68,9 @@ test('managed preparation preserves new admissions, pauses between tracks and re
   assert.equal(requests, 1, 'pause must prevent another source/analysis request');
   assert.deepEqual(store.read().jobs.map(j => j.status), ['prepared', 'queued', 'queued']);
   store.pause(false); kickSubbeats();
+  await waitUntil(() => store.read().jobs[1].status === 'prepared' && !tagger.running);
+  assert.deepEqual(store.read().jobs.map(j => j.status), ['prepared', 'prepared', 'queued']);
+  kickSubbeats(0, ['third']);
   await waitUntil(() => store.read().jobs.every(j => j.status === 'prepared') && !tagger.running);
   assert.equal(requests, 3);
   assert.deepEqual(store.read().jobs.map(j => j.attempts), [1, 1, 1]);
@@ -75,6 +81,9 @@ test('managed preparation preserves new admissions, pauses between tracks and re
 test('the existing Stop control pauses queued Sub/Beats work instead of restarting it', async () => {
   release = null;
   store.enqueue([track('fourth'), track('fifth')]); kickSubbeats();
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(requests, 3, 'queued preparation still waits for a successful scan');
+  kickSubbeats(0, ['fourth', 'fifth']);
   await waitUntil(() => requests === 4 && release !== null);
   stopTagger();
   release!();

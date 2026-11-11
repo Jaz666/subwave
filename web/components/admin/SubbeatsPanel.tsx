@@ -548,7 +548,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <div className="mt-3 border-t border-ink/20 pt-3">
             <p className="text-sm tabular-nums" aria-live="polite">{selection.length} selected{selection.length > selectionOnPage ? ` · ${selection.length - selectionOnPage} on other pages or filters` : ''}</p>
             <div className="mb-3">{preparationControl}</div>
-            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Queue up to {SUBBEATS_BATCH_LIMIT} tracks per batch; batches can be added as needed. Prepared audio shares the regular stem-cache budget.</p>
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Queue up to {SUBBEATS_BATCH_LIMIT} tracks per batch; batches can be added as needed. Preparation starts after the next Library Demucs scan. Tracks selected for Sub/Beats skip new regular-stem caching during that scan, and prepared audio shares the regular stem-cache budget.</p>
             <div className="mt-3 flex flex-wrap gap-3">
               <Button className="min-h-11" variant="solid" disabled={!selection.length || enqueue.isPending || !state.data || query.trim() !== q} onClick={() => enqueue.mutate(selection.map(row => row.id))}>
                 <Plus /> {enqueue.isPending ? 'Adding…' : `Queue analysis (${selection.length})`}

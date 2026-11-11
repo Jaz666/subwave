@@ -5746,6 +5746,9 @@ export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
 export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
+export const SUBBEATS_SCAN_PREFIX = '[subbeats-scan] ';
+export const SUBBEATS_QUEUE_LIMIT = 20_000;
+export const subbeatsScanReadySchema = z.array(z.string().min(1).max(200)).max(SUBBEATS_QUEUE_LIMIT);
 export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
 export const subbeatsMixLevelSchema = z.enum(['regular','beat','subbeat']);
 export const subbeatsMeasuredWindowSchema = z.object({
@@ -5832,7 +5835,7 @@ export const subbeatsJobSchema = z.object({
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });
 export const subbeatsQueueSchema = z.object({
-  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema),
+  version: z.literal(1), paused: z.boolean(), jobs: z.array(subbeatsJobSchema).max(SUBBEATS_QUEUE_LIMIT),
 });
 export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT), method:subbeatsPreparationMethodSchema.default('classic') });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });

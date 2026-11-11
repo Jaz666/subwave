@@ -20,6 +20,12 @@ driven by a user's selection or a separate opt-in demand signal.
   the scan is started manually or by the scheduler. This gives it the scan's
   resource and maintenance controls instead of doing cue analysis in the
   playback pick window.
+- Explore queue entries are handed to preparation only after a successful
+  Demucs scan. During that scan, selected tracks keep any regular stems they
+  already have, while new regular-stem writes are skipped; Sub/Beats then uses
+  the shared stem-cache budget. If preparation fails or the budget blocks it,
+  the track remains queued for a later scan and does not receive regular stems
+  in the meantime.
 - A future setting may opt into treating a track played on air during the last
   six months as a request to upgrade it to Sub/Beats, but only when it passes
   the technical qualification checks. It should deduplicate by track and
