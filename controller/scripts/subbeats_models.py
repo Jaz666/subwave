@@ -6,14 +6,13 @@ import urllib.request
 
 MODELS = {
     'small0': '6074be2c4d490c5f6101fcc374a1ec72ae93456e23bb6019783b849f5dc7d47b',
-    'final0': '8c328b45f59d8dd3dff219253ff6a8d6482be57d0133a29140e2febbf8eb8331',
 }
 
 
 def model_path(name):
     import os
     if name not in MODELS:
-        raise ValueError('Choose the small or full Beat This! preparation method')
+        raise ValueError('Choose the small Beat This! preparation method')
     root = os.environ.get('SUBBEATS_BEAT_THIS_MODELS', '').strip() or '/opt/analyzer/beat-this'
     path = Path(root) / f'{name}.ckpt'
     try:

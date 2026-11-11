@@ -63,6 +63,7 @@ async function main() {
           emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
           continue;
         }
+        if (job.preparationMethod === 'final0') throw new Error('Requeue this track using the current Sub/Beats preparation method');
         const result = await analyzer.prepareSubbeats(localPath, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},job.preparationMethod,job.task === 'coverage' && job.bundleKey && job.cuePoints ? {bundle_key:job.bundleKey,cue_key:job.cuePoints.artifactKey} : undefined);
         remaining = Math.max(0, remaining - result.addedBytes);
         changed ||= result.addedBytes > 0; uncertain = false;

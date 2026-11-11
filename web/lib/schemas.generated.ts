@@ -5770,7 +5770,7 @@ export const subbeatsSuitabilitySchema = z.object({
   version:z.literal(1), assessedAt:z.string(),incoming:subbeatsRoleSuitabilitySchema,outgoing:subbeatsRoleSuitabilitySchema,
 });
 export const subbeatsMixFilterSchema = z.enum(['all','unassessed','regular','beat','subbeat']);
-export const subbeatsPreparationMethodSchema = z.enum(['classic','small0','final0']);
+export const subbeatsPreparationMethodSchema = z.enum(['classic','small0']);
 // Sub/Beats experiment evidence; never replaces the library's acoustic ranges.
 export const subbeatsLyricEvidenceSchema = z.object({
   bundleKey:z.string().regex(/^[a-f0-9]{64}$/),
@@ -5827,7 +5827,7 @@ export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
   lyricEvidence:subbeatsLyricEvidenceSchema.optional(),
   task:z.enum(['assess','coverage']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
-  preparationMethod:subbeatsPreparationMethodSchema.optional(),cuePoints:subbeatsCuePointsSchema.optional(),
+  preparationMethod:z.union([subbeatsPreparationMethodSchema,z.literal('final0')]).optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),
 });

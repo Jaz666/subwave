@@ -52,7 +52,7 @@ export function createSubbeatsStore(stateDir: string) {
   };
   return {
     read: () => readSubbeatsQueue(stateDir),
-    enqueue(tracks: Array<Pick<SubbeatsJob, 'id' | 'title' | 'artist' | 'album'>>, method: 'classic'|'small0'|'final0' = 'classic') {
+    enqueue(tracks: Array<Pick<SubbeatsJob, 'id' | 'title' | 'artist' | 'album'>>, method: 'classic'|'small0' = 'classic') {
       const state = readSubbeatsQueue(stateDir);
       const jobs = new Map(state.jobs.map(j => [j.id, j]));
       for (const track of tracks) {

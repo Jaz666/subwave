@@ -1438,7 +1438,7 @@ export async function assessSubbeats(stateDir:string, cacheId:string, trackId:st
   return {...result,addedBytes:0};
 }
 
-export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0'|'final0' = 'classic', upgrade?:{bundle_key:string;cue_key:string}) {
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0' = 'classic', upgrade?:{bundle_key:string;cue_key:string}) {
   if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
   const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared,...(method === 'classic' ? {} : {method}), ...upgrade };
   const timeoutMs = 30 * 60_000;

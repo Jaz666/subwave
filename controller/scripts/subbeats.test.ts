@@ -62,6 +62,7 @@ test('one Sub/Beats admission batch accepts more than 100 tracks', () => {
   assert.equal(SUBBEATS_BATCH_LIMIT, 1000);
   assert.equal(subbeatsEnqueueSchema.parse({ids:Array.from({length:101},(_,i)=>`track-${i}`)}).ids.length,101);
   assert.throws(() => subbeatsEnqueueSchema.parse({ids:Array.from({length:1001},(_,i)=>`track-${i}`)}));
+  assert.equal(subbeatsEnqueueSchema.safeParse({ids:['track-1'],method:'final0'}).success,false);
 });
 
 test('events preserve other admissions and terminal results cannot increment attempts', () => {
