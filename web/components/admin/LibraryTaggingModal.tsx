@@ -57,7 +57,7 @@ export default function LibraryTaggingModal(p: Props) {
   // All on by default EXCEPT the Demucs vocal pass, measured at ~90% of the
   // whole acoustics phase (~10s/track on a 24-thread CPU).
   const [steps, setSteps] = useState<TagSteps>({
-    reconcile: true, enrich: true, tagMoods: true, analyze: true, vocal: false,
+    reconcile: true, enrich: true, tagMoods: true, analyze: true, stems: false, vocal: false,
   });
   const toggleStep = (k: keyof TagSteps) => setSteps(s => ({ ...s, [k]: !s[k] }));
 
@@ -107,8 +107,8 @@ export default function LibraryTaggingModal(p: Props) {
     // Otherwise send false — a harmless --no-vocal the backend ignores.
     vocal: effAnalyze && p.vocalWanted ? steps.vocal : false,
   };
-  const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze;
-  const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
+  const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze || effSteps.stems;
+  const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze && !effSteps.stems;
 
   // Run-tab cost preview. seedEst is the up-front LLM seed budget tag-library.ts
   // spends before propagation carries the rest; the batch-of-25 divisor mirrors
@@ -213,6 +213,11 @@ export default function LibraryTaggingModal(p: Props) {
                   : p.soundsLikeActive
                     ? 'Tempo, key & intro, plus sounds-like fingerprints. The slow step; vocal separation is split out below.'
                     : 'Tempo, key & intro for every track — the slow step. Sounds-like fingerprints are off; enable them on the library page to include them.'} />
+              <Pass on={steps.stems} onClick={() => toggleStep('stems')} disabled={analyzeLocked}
+                name="Cache regular stems (Demucs)" tag="very slow · disk budget"
+                hint={analyzeLocked
+                  ? 'No analysis engine running — start the analyzer sidecar or configure an in-process backend.'
+                  : 'Prepare regular-size Demucs stems for eligible tracks that are missing them, within the configured cache budget. Can run by itself; Sub/Beats-queued tracks are reserved for their queued preparation.'} />
               {p.vocalWanted && (
                 <div className="pl-6">
                   <Pass on={effAnalyze && steps.vocal} onClick={() => toggleStep('vocal')}

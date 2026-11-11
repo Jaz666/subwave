@@ -187,11 +187,13 @@ export function startTagger(
     enrich?: boolean;
     tagMoods?: boolean;
     analyze?: boolean;
+    // Explicitly request the regular stem-cache backfill in the analysis pass.
+    stems?: boolean;
     // Per-run Demucs override; undefined defers to the setting.
     vocal?: boolean;
   } & ReplacedAnswer = {},
 ) {
-  const { limit, reseed, reEnrich, reAnalyze, upgrade, thenTag, reconcile, enrich, tagMoods, analyze, vocal } = opts;
+  const { limit, reseed, reEnrich, reAnalyze, upgrade, thenTag, reconcile, enrich, tagMoods, analyze, stems, vocal } = opts;
   const args = ['src/music/tag-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (reseed) args.push('--reseed');
@@ -210,6 +212,7 @@ export function startTagger(
   if (enrich === false) args.push('--skip-enrich');
   if (tagMoods === false) args.push('--skip-tag');
   if (analyze === false) args.push('--skip-analyze');
+  if (stems === true) args.push('--stems');
   if (reconcile === false) args.push('--no-prune');
   if (analyze !== false && vocal === true) args.push('--vocal');
   if (analyze !== false && vocal === false) args.push('--no-vocal');
@@ -227,6 +230,7 @@ export function startTagger(
     enrich === false ? 'skip-enrich' : null,
     tagMoods === false ? 'skip-tag' : null,
     analyze === false ? 'skip-analyze' : null,
+    stems === true ? 'stems' : null,
     reconcile === false ? 'no-prune' : null,
     analyze !== false && vocal === true ? 'vocal' : null,
     analyze !== false && vocal === false ? 'no-vocal' : null,
