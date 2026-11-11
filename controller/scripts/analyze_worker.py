@@ -1643,6 +1643,72 @@ def write_tail_meta(dest_dir, tail_start_s, duration_s):
         }, f)
 
 
+def load_subbeats_stem_region(spec, name, stem_names, sf):
+    """Load an integrity-checked Sub/Beats head or exit region for a blend.
+
+    The returned start is the region's absolute source offset. Cache corruption,
+    changed identities and partial coverage are ordinary cache misses.
+    """
+    import math
+    import numpy as np
+    from pathlib import Path
+    try:
+        folder = Path(spec["subbeats_bundle_dir"])
+        key = spec["subbeats_bundle_key"]
+        if folder.name != key or not re.fullmatch(r"[a-f0-9]{64}", key):
+            return None
+        track_root = Path(spec["stems_dir"]).resolve(strict=True)
+        bundle = folder.resolve(strict=True)
+        if bundle != track_root / "subbeats" / "v1" / key or any(
+            part.is_symlink() for part in (track_root, track_root / "subbeats", track_root / "subbeats" / "v1", folder)
+        ):
+            return None
+        from subbeats_cache import cache_key, cached_entry
+        record = json.loads((bundle / "manifest.json").read_text())
+        identity = record.get("identity")
+        if (not isinstance(identity, dict) or cache_key(identity) != key
+                or identity.get("mode") != "analysis_and_stems"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(identity.get("source_sha256", "")))
+                or identity.get("separator", {}).get("sample_rate") != DEMUCS_SR
+                or identity.get("separator", {}).get("subtype") != "PCM_24-shared-gain-v1"
+                or cached_entry(bundle, identity) is None):
+            return None
+        region = next((item for item in record["metadata"].get("stem_regions", [])
+                       if item.get("name") == name), None)
+        if (not isinstance(region, dict) or region.get("sample_rate") != DEMUCS_SR
+                or type(region.get("start_sample")) is not int
+                or type(region.get("end_sample")) is not int
+                or region["start_sample"] < 0 or region["end_sample"] <= region["start_sample"]):
+            return None
+        gain = region.get("storage_gain", 1.)
+        if not isinstance(gain, (int, float)) or not math.isfinite(gain) or not 0 < gain <= 1:
+            return None
+        stems = {}
+        expected_frames = region["end_sample"] - region["start_sample"]
+        for stem in stem_names:
+            filename = f"{name}-{stem}.flac"
+            if filename not in record.get("files", {}):
+                return None
+            path = bundle / filename
+            info = sf.info(path)
+            if (info.samplerate, info.channels, info.frames) != (DEMUCS_SR, 2, expected_frames):
+                return None
+            data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+            if sample_rate != DEMUCS_SR or data.shape != (expected_frames, 2) or not np.isfinite(data).all():
+                return None
+            stems[stem] = data / gain
+        duration = json.loads((bundle / "analysis.json").read_text())["duration_seconds"]
+        if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
+            return None
+        start = region["start_sample"] / DEMUCS_SR
+        end = region["end_sample"] / DEMUCS_SR
+        if end > duration + 1 / DEMUCS_SR or (name == "head" and region["start_sample"] != 0):
+            return None
+        return {"stems": stems, "start_sec": start, "end_sec": end, "duration_sec": float(duration)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, ImportError):
+        return None
+
+
 def render_transition(req):
     """Pre-rendered stem-blend transition (feature: stem-blend transitions —
     docs/stem-transitions-research.md Option B). Mixes the OUTGOING track's
@@ -1674,7 +1740,7 @@ def render_transition(req):
 
     stem_names = ("drums", "bass", "other", "vocals")
 
-    def load_window(stems_dir, window):
+    def load_regular_window(stems_dir, window):
         stems = {}
         for name in stem_names:
             p = os.path.join(stems_dir, f"{window}-{name}.flac")
@@ -1684,25 +1750,43 @@ def render_transition(req):
             if sr_f != DEMUCS_SR or data.shape[0] == 0:
                 return None
             stems[name] = data
-        return stems
+        if window == "tail":
+            try:
+                with open(os.path.join(stems_dir, "tail-meta.json")) as f:
+                    meta = json.load(f)
+                start = float(meta["tail_start_sec"])
+                duration = float(meta["duration_sec"])
+                if not math.isfinite(start) or not math.isfinite(duration) or start < 0 or duration <= start:
+                    return None
+            except (OSError, ValueError, KeyError, TypeError):
+                return None
+        else:
+            start, duration = 0., None
+        return {"stems": stems, "start_sec": start, "end_sec": start + len(next(iter(stems.values()))) / DEMUCS_SR,
+                "duration_sec": duration}
 
-    tail = load_window(out_spec["stems_dir"], "tail")
-    head = load_window(in_spec["stems_dir"], "head")
-    if tail is None or head is None:
+    def load_window(spec, window, fallback_region):
+        regular = load_regular_window(spec["stems_dir"], window)
+        if regular is not None:
+            return regular
+        return load_subbeats_stem_region(spec, fallback_region, stem_names, sf)
+
+    tail_source = load_window(out_spec, "tail", "exit")
+    head_source = load_window(in_spec, "head", "head")
+    if tail_source is None or head_source is None:
         return {"ok": False, "error": "stems-missing"}
+    tail = tail_source["stems"]
+    head = head_source["stems"]
 
     sr = DEMUCS_SR
-    # Alignment comes from the meta sidecar written WITH the stems (decoded
-    # duration + the exact tail offset) — never from out_spec's duration_s,
+    # Alignment comes from the regular stem sidecar or verified Sub/Beats
+    # analysis bundle (decoded duration + exact source offset) — never from out_spec's duration_s,
     # which is the library's tagged integer and can sit ~1s off the decoded
     # timeline the bar grid was measured on. Stems without the sidecar (an
     # older cache) are a clean miss; a re-analysis pass refreshes them.
-    try:
-        with open(os.path.join(out_spec["stems_dir"], "tail-meta.json")) as f:
-            tail_meta = json.load(f)
-        tail_start_s = float(tail_meta["tail_start_sec"])
-        dur_s = float(tail_meta["duration_sec"])
-    except Exception:
+    tail_start_s = tail_source["start_sec"]
+    dur_s = tail_source["duration_sec"]
+    if dur_s is None:
         return {"ok": False, "error": "stems-meta-missing"}
     if dur_s <= OUTRO_SECONDS + 1.0 or tail_start_s < 0.0:
         return {"ok": False, "error": "out-track-too-short"}
@@ -1732,6 +1816,8 @@ def render_transition(req):
     blend_start_s = loop_b2        # out cue_out lands on this bar boundary
     i1 = int((loop_b1 - tail_start_s) * sr)
     i2 = int((loop_b2 - tail_start_s) * sr)
+    if i1 < 0 or i2 > len(tail["drums"]) or i2 <= i1:
+        return {"ok": False, "error": "out-bar-outside-cached-coverage"}
     drum_loop = to_stereo(tail["drums"], tail["drums"].shape[0])[i1:i2]
     if drum_loop.shape[0] < sr // 8:
         return {"ok": False, "error": "loop-too-short"}

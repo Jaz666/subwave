@@ -36,11 +36,19 @@ driven by a user's selection or a separate opt-in demand signal.
 
 ### Storage and compatibility
 
-The cache should reuse compatible regular stem coverage when preparing
-Sub/Beats, preserving exact source intervals, model identity and audio integrity.
-Where coverage can be shared safely, store it once; where it cannot, keep the
-artifacts distinct. This is the guiding constraint for maximizing transitions
-between regular-stem and Sub/Beats tracks while limiting disk growth.
+Prepared Sub/Beats stems can supply a regular stem blend directly when the
+required head or exit interval is covered. The renderer reads the verified
+bundle in place, restores its shared storage gain, and uses its exact source
+offset; it does not make a duplicate regular-stem copy. A missing, damaged or
+too-short region remains a cache miss and follows the ordinary transition
+fallback.
+
+Reusing regular stems while preparing a Sub/Beats bundle is still unsafe for
+existing regular-cache entries: they do not record source identity or separator
+model identity. Future sharing can use only regions with that provenance, and
+must preserve exact sample ranges and integrity while storing shared audio
+once. This is the constraint for expanding compatibility without growing disk
+use.
 
 The measured preparation of one 226.586-second track added about 50 MiB and
 took about 47–52 seconds on the tested RTX 3060 system with two CPU cores.

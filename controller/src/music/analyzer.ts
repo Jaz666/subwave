@@ -937,13 +937,17 @@ export async function embedTexts(
 export interface RenderTransitionPayload {
   out: {
     stems_dir: string;
-    duration_s: number; // tagged duration, advisory — tail alignment comes from the stems' tail-meta.json
+    subbeats_bundle_dir?: string;
+    subbeats_bundle_key?: string;
+    duration_s: number; // tagged duration, advisory — source alignment comes from cache metadata
     outro: { start_ms: number; bars: number[]; lufs?: number | null };
     gain_db?: number | null;
     lufs?: number | null;
   };
   in: {
     stems_dir: string;
+    subbeats_bundle_dir?: string;
+    subbeats_bundle_key?: string;
     bars: number[];
     gain_db?: number | null;
     lufs?: number | null;

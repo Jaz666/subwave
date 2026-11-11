@@ -74,6 +74,54 @@ export async function hasWindow(trackId: string, window: StemWindow): Promise<bo
   }
 }
 
+export type RenderStemSource = { stemsDir: string } | { stemsDir: string; subbeatsBundleDir: string; subbeatsBundleKey: string };
+
+// Regular blends may read a verified Sub/Beats region when the ordinary cache
+// window is absent. Pick-time admission and cleanup deliberately keep using
+// hasWindow(), which means only the canonical regular head/tail files.
+export async function renderSource(trackId: string, window: StemWindow): Promise<RenderStemSource | null> {
+  const dir = dirFor(trackId);
+  if (await hasWindow(trackId, window)) return { stemsDir: dir };
+  try {
+    if (!trackId || path.basename(trackId) !== trackId || trackId === '.' || trackId === '..' || trackId.includes('\\')) return null;
+    const job = readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
+    if (!job?.bundleKey || !['prepared', 'unmeasurable'].includes(job.status) || !/^[a-f0-9]{64}$/.test(job.bundleKey)) return null;
+    const trackDir = dir;
+    const bundleDir = path.join(trackDir, 'subbeats', 'v1', job.bundleKey);
+    for (const candidate of [trackDir, path.join(trackDir, 'subbeats'), path.join(trackDir, 'subbeats', 'v1'), bundleDir]) {
+      if ((await lstat(candidate)).isSymbolicLink()) return null;
+    }
+    const manifest = JSON.parse(await readFile(path.join(bundleDir, 'manifest.json'), 'utf8'));
+    const identity = manifest?.identity;
+    const regions = manifest?.metadata?.stem_regions;
+    const name = window === 'head' ? 'head' : 'exit';
+    const region = Array.isArray(regions) ? regions.find((item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null && !Array.isArray(item) && (item as Record<string, unknown>).name === name) : null;
+    const startSample = region?.start_sample;
+    const endSample = region?.end_sample;
+    if (!identity?.source_sha256 || identity?.mode !== 'analysis_and_stems'
+      || identity?.separator?.sample_rate !== 44100 || identity?.separator?.subtype !== 'PCM_24-shared-gain-v1'
+      || !region || region.sample_rate !== 44100 || typeof startSample !== 'number' || !Number.isSafeInteger(startSample)
+      || typeof endSample !== 'number' || !Number.isSafeInteger(endSample) || endSample <= startSample
+      || typeof region.storage_gain !== 'number' || !(region.storage_gain > 0 && region.storage_gain <= 1)) return null;
+    for (const stem of STEM_NAMES) {
+      const file = `${name}-${stem}.flac`;
+      const expected = manifest?.files?.[file]?.bytes;
+      if (!Number.isSafeInteger(expected) || expected <= 0) return null;
+      const info = await lstat(path.join(bundleDir, file));
+      if (!info.isFile() || info.isSymbolicLink() || info.size !== expected) return null;
+    }
+    if (name === 'exit') {
+      const analysis = JSON.parse(await readFile(path.join(bundleDir, 'analysis.json'), 'utf8'));
+      if (!(Number.isFinite(analysis?.duration_seconds) && analysis.duration_seconds > 0
+        && (endSample as number) / 44100 <= analysis.duration_seconds + 1 / 44100)) return null;
+    } else if (startSample !== 0) return null;
+    return { stemsDir: dir, subbeatsBundleDir: bundleDir, subbeatsBundleKey: job.bundleKey };
+  } catch {
+    return null;
+  }
+}
+
 // Stems share marker. A relocated cache usually lives on a network mount
 // (STEMS_DIR), and an unmounted share looks exactly like an empty cache: the
 // mount point is still there, with nothing in it. Read as "empty", that sends
