@@ -1,5 +1,24 @@
 # Sub/Beats live integration plan
 
+## Implementation checkpoint — 11 November: airplay admission and cache visibility
+
+The test-station checkout now contains commit `b38ea49c` on
+`test-station/sleeve-notes-clean-20261014`. Its opt-in queues qualifying aired
+tracks for a later Library Demucs scan, seeds eligible airplay from the
+previous 180 days, and skips regular stem writes for jobs reserved for that
+scan. Dash Queue hover text reports regular head/tail and Sub/Beats head/exit
+coverage. Explore already supports selecting more than 100 tracks in one
+operation.
+
+The station branch was pushed for owner-run testing; images were not rebuilt or
+restarted. Rebuild from `/home/jaz666/Docker/subwave` with
+`docker compose up -d --build analyzer controller web`. The previous station
+source is `d6aad7d2` for rollback. Focused airplay, scan-policy, browse and
+stem-source tests passed. The broader Sub/Beats suite has five existing
+budget/removal/cleanup/route-fixture failures; web typecheck is blocked by
+missing WaveSurfer packages in this checkout. The owner-run station trial
+remains outstanding.
+
 Agreed direction, 9 November 2026. This is an implementation plan, not a
 description of a completed station trial. Preparation, automatic cue-plan search
 and four mixing styles work in browser auditions. The live queue candidate is
