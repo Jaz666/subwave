@@ -39,6 +39,7 @@ after(() => rmSync(stateDir, { recursive: true, force: true }));
 
 test('regular blend source can use a complete prepared Sub/Beats head region', async () => {
   assert.equal(await cache.hasWindow(id, 'head'), false, 'ordinary cache semantics remain unchanged');
+  assert.deepEqual(await cache.subbeatsBundleSource(id, 'head'), { subbeatsBundleDir: bundleDir, subbeatsBundleKey: key });
   assert.deepEqual(await cache.renderSource(id, 'head'), {
     stemsDir: trackDir, subbeatsBundleDir: bundleDir, subbeatsBundleKey: key,
   });

@@ -27,3 +27,23 @@ router.get('/stem-cache/usage', requireAdmin, async (_req, res) => {
     : {};
   res.json({ usage, budgetBytes, ...pickTime });
 });
+
+router.get('/stem-cache/coverage', requireAdmin, async (req, res) => {
+  const ids = typeof req.query.ids === 'string' ? [...new Set(req.query.ids.split(',').filter(Boolean))] : [];
+  if (ids.length > 8 || ids.some(id => id.length > 200)) {
+    res.status(400).json({ error: 'Provide up to 8 track ids' });
+    return;
+  }
+  const coverage: Record<string, { regular: { head: boolean; tail: boolean }; subbeats: { head: boolean; exit: boolean } }> = {};
+  await Promise.all(ids.map(async id => {
+    const [regularHead, regularTail, subbeatsHead, subbeatsExit] = await Promise.all([
+      stemCache.hasWindow(id, 'head'), stemCache.hasWindow(id, 'tail'),
+      stemCache.subbeatsBundleSource(id, 'head'), stemCache.subbeatsBundleSource(id, 'tail'),
+    ]);
+    coverage[id] = {
+      regular: { head: regularHead, tail: regularTail },
+      subbeats: { head: subbeatsHead !== null, exit: subbeatsExit !== null },
+    };
+  }));
+  res.json({ coverage });
+});

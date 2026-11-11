@@ -35,7 +35,7 @@ after(async () => { await new Promise<void>(resolve => server.close(() => resolv
 test('counts and matching selection cover the full result, with bounded pages and no duplicate pages', async () => {
   const first = await browse('scope=dance');
   assert.equal(first.total, 135); assert.equal(first.rows.length, 50); assert.equal(first.hasMore, true);
-  assert.equal(first.selectableCount, 131); assert.equal(first.selectableRows.length, 100);
+  assert.equal(first.selectableCount, 131); assert.equal(first.selectableRows.length, 131, 'bulk selection covers more than 100 matching tracks');
   assert.ok(first.selectableRows.every(row => ['not-started','failed','unavailable'].includes(row.status)));
   const second = await browse('scope=dance&offset=50');
   assert.equal(second.total, 135); assert.equal(second.rows.length, 50);

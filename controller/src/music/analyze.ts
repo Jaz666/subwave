@@ -30,6 +30,7 @@ import type { Facet } from './library-db/facets.js';
 import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import { queuedSubbeatsForScan, suppressRegularStems } from './subbeats-scan-policy.js';
+import { queueRecentAiredTracks } from './subbeats-airplay.js';
 
 // Status events for the panel, mirrored to the `[analyze] …` console line.
 const logEvent = makeEventLogger('analyze');
@@ -339,6 +340,13 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   const demucsScan = plan
     ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal')
     : stemCache || vocalBackfill;
+  // Make the opt-in's existing six-month airplay history eligible in this
+  // scan, before the queued set also suppresses regular-stem duplication.
+  if (demucsScan && settings.get()?.transitions?.subbeatsOnAirCaching === true) {
+    queueRecentAiredTracks();
+    try { queuedSubbeatsJobs = readSubbeatsQueue(config.stateDir).jobs; }
+    catch { logEvent('warning', 'Sub/Beats selections could not be refreshed; regular analysis will continue'); }
+  }
   const queuedForSubbeats = new Set(demucsScan
     ? queuedSubbeatsForScan(queuedSubbeatsJobs, opts.subbeatsScopeIds ? new Set(opts.subbeatsScopeIds) : null, opts.limit)
     : []);

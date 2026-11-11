@@ -745,6 +745,7 @@ export const transitionsPatchSchema = settingsBlockOf({
   pairDrain: settingsBoolLike(),
   stemBlends: settingsBoolLike(),
   subbeatsLive: settingsBoolLike(),
+  subbeatsOnAirCaching: settingsBoolLike(),
   pickTimeStems: settingsBoolLike(),
   equalPowerCrossfade: settingsBoolLike(),
   effects: transitionEffectsPatchSchema,
