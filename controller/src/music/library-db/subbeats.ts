@@ -6,6 +6,22 @@ import { requireDb } from './handle.js';
 import { safeParseArray } from './rows.js';
 import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsBrowseQuerySchema, subbeatsCandidatePageSchema, type subbeatsJobSchema } from '../../schemas/subbeats.js';
 
+export interface SubbeatsTrackRef { id: string; title: string; artist: string; album: string }
+
+// Automatic airplay admission uses the same default dance scope as Explore.
+// A beat grid affects ranking, not whether a track qualifies.
+export function subbeatsEligibleTrack(id: string): SubbeatsTrackRef | null {
+  return (requireDb().prepare(`SELECT id, COALESCE(title,'') title, COALESCE(artist,'') artist, COALESCE(album,'') album
+    FROM tracks WHERE id = ? AND bpm BETWEEN 90 AND 180 AND subbeats_dance_genres(genres) = 1`).get(id) as SubbeatsTrackRef | undefined) ?? null;
+}
+
+export function recentlyPlayedSubbeatsTracks(since: string, limit: number): SubbeatsTrackRef[] {
+  return requireDb().prepare(`SELECT t.id, COALESCE(t.title,'') title, COALESCE(t.artist,'') artist, COALESCE(t.album,'') album
+    FROM tracks t WHERE t.bpm BETWEEN 90 AND 180 AND subbeats_dance_genres(t.genres) = 1
+      AND EXISTS (SELECT 1 FROM plays p WHERE p.track_id=t.id AND p.played_at >= ?)
+    ORDER BY t.id LIMIT ?`).all(since, limit) as SubbeatsTrackRef[];
+}
+
 // Keep list/count reads off the wide track rows and their large beat arrays.
 // SQLite maintains this compact projection whenever track metadata changes.
 const SUBBEATS_GRID_SQL = `CASE WHEN json_valid(beats_json) THEN COALESCE(json_array_length(beats_json),0) >= 16 ELSE 0 END`;

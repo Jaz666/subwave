@@ -116,6 +116,7 @@ import {
 import type { SkipRefusalReason } from '../schemas/dj.js';
 import * as stemBlend from './stem-blend.js';
 import * as subbeats from './subbeats.js';
+import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
 import { subbeatsPlaybackSeconds, subbeatsSourceSeconds, subbeatsEntryMs, type SubbeatsPlayback } from './subbeats-clock.js';
 import { subbeatsPlaybackSchema } from '../schemas/subbeats.js';
 import * as pickStems from './pick-stems.js';
@@ -4534,6 +4535,10 @@ class Queue {
       transitionAsk,
       transitionDrops,
     });
+
+    // Airplay may select eligible Sub/Beats work, but preparation remains in a
+    // later Library Demucs scan and never holds the now-playing watcher.
+    queueSubbeatsFromAirplay(this.current.track.id || null);
 
     // `sourceTrackId` is the id from the music backend (Subsonic/Navidrome, or
     // whatever a router fronts), so a relay can resolve the exact library item

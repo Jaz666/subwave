@@ -76,12 +76,8 @@ export async function hasWindow(trackId: string, window: StemWindow): Promise<bo
 
 export type RenderStemSource = { stemsDir: string } | { stemsDir: string; subbeatsBundleDir: string; subbeatsBundleKey: string };
 
-// Regular blends may read a verified Sub/Beats region when the ordinary cache
-// window is absent. Pick-time admission and cleanup deliberately keep using
-// hasWindow(), which means only the canonical regular head/tail files.
-export async function renderSource(trackId: string, window: StemWindow): Promise<RenderStemSource | null> {
+export async function subbeatsBundleSource(trackId: string, window: StemWindow): Promise<{ subbeatsBundleDir: string; subbeatsBundleKey: string } | null> {
   const dir = dirFor(trackId);
-  if (await hasWindow(trackId, window)) return { stemsDir: dir };
   try {
     if (!trackId || path.basename(trackId) !== trackId || trackId === '.' || trackId === '..' || trackId.includes('\\')) return null;
     const job = readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
@@ -116,10 +112,20 @@ export async function renderSource(trackId: string, window: StemWindow): Promise
       if (!(Number.isFinite(analysis?.duration_seconds) && analysis.duration_seconds > 0
         && (endSample as number) / 44100 <= analysis.duration_seconds + 1 / 44100)) return null;
     } else if (startSample !== 0) return null;
-    return { stemsDir: dir, subbeatsBundleDir: bundleDir, subbeatsBundleKey: job.bundleKey };
+    return { subbeatsBundleDir: bundleDir, subbeatsBundleKey: job.bundleKey };
   } catch {
     return null;
   }
+}
+
+// Regular blends may read a verified Sub/Beats region when the ordinary cache
+// window is absent. Pick-time admission and cleanup deliberately keep using
+// hasWindow(), which means only the canonical regular head/tail files.
+export async function renderSource(trackId: string, window: StemWindow): Promise<RenderStemSource | null> {
+  const dir = dirFor(trackId);
+  if (await hasWindow(trackId, window)) return { stemsDir: dir };
+  const subbeats = await subbeatsBundleSource(trackId, window);
+  return subbeats ? { stemsDir: dir, ...subbeats } : null;
 }
 
 // Stems share marker. A relocated cache usually lives on a network mount

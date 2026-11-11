@@ -577,6 +577,13 @@ export default function DashPanel() {
                   {upcoming.slice(0, 8).map((t, i) => (
                     <QueueItem
                       key={`${t.subsonic_id ?? ''}:${i}`}
+                      title={t.stemCacheCoverage ? `Stem cache — Regular: ${[
+                        t.stemCacheCoverage.regular.head ? 'head' : '',
+                        t.stemCacheCoverage.regular.tail ? 'tail' : '',
+                      ].filter(Boolean).join(' + ') || 'none'}; Sub/Beats: ${[
+                        t.stemCacheCoverage.subbeats.head ? 'head' : '',
+                        t.stemCacheCoverage.subbeats.exit ? 'exit' : '',
+                      ].filter(Boolean).join(' + ') || 'none'}` : undefined}
                       className="rounded-none border-b border-dashed border-separator-strong px-1.5 py-1.5 last:border-b-0 hover:bg-[var(--overlay)]"
                     >
                       <div className="flex items-center gap-2.5">

@@ -5,6 +5,8 @@
 import { readFile, rm } from 'node:fs/promises';
 import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
+import { queueRecentAiredTracks } from './subbeats-airplay.js';
+import { queuedSubbeatsForScan, suppressRegularStems } from './subbeats-scan-policy.js';
 import * as db from './library-db.js';
 import * as analyzer from './analyzer.js';
 import * as stemCacheStore from './stem-cache.js';
@@ -326,6 +328,29 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
     logEvent(analyzer.vocalActivityError() ? 'warning' : 'info', vocalDecision.notice);
   }
 
+  // Airplay demand is turned into Sub/Beats work only when a Library pass that
+  // can run Demucs is already happening. Reserve those jobs before ordinary
+  // stem admission so the pass does not write regular stems it will upgrade.
+  const demucsScan = plan
+    ? plan.items.some(item => item.request.stems || item.request.vocal)
+    : stemCache || vocalBackfill;
+  if (demucsScan && settings.get()?.transitions?.subbeatsOnAirCaching === true) {
+    queueRecentAiredTracks();
+  }
+  const subbeatsScope = plan
+    ? new Set(plan.items.filter(item => item.request.stems || item.request.vocal).map(item => item.id))
+    : null;
+  let queuedSubbeatsIds = new Set<string>();
+  if (demucsScan) {
+    try {
+      queuedSubbeatsIds = new Set(queuedSubbeatsForScan(
+        readSubbeatsQueue(config.stateDir).jobs, subbeatsScope, opts.limit,
+      ));
+    } catch {
+      logEvent('warning', 'Sub/Beats selections could not be refreshed; regular analysis will continue');
+    }
+  }
+
   // Stem backfill: the fourth widening. `stemCache` already carries the Demucs
   // gate; suppressed under a fixed re-scan scope like the others. Capped at what
   // the budget holds, and the cap is ANNOUNCED. That same headroom figure gates
@@ -347,7 +372,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
     // The loop spends stemSlotsLeft in ids order and the earlier widenings'
     // tracks run FIRST, draining slots before this slice is reached. Reserve
     // them up front, or the announcement over-promises.
-    const reserved = ids.filter(id => !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
+    const reserved = ids.filter(id => !suppressRegularStems(id, queuedSubbeatsIds) && !existingStemDirs.has(id) && db.canCacheStems(id, stemSignals)).length;
     const backfillSlots = Math.max(0, stemSlotsLeft - reserved);
     if (backfillSlots <= 0) {
       console.log(
@@ -365,7 +390,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       // signals it reads are resolved here because library-db must not import
       // the likes store.
       const needing = db.needsStemsIds(undefined, stemSignals)
-        .filter(id => !seen.has(id));
+        .filter(id => !seen.has(id) && !suppressRegularStems(id, queuedSubbeatsIds));
       // Under --limit, only the slots the bpm/CLAP/vocal scopes haven't already
       // spent are available — sizing off the raw cap would log stem tracks a
       // final slice then silently drops, the exact "reads as finished"
@@ -514,6 +539,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   };
 
   const allocateStems = (id: string): string | undefined => {
+    if (suppressRegularStems(id, queuedSubbeatsIds)) return undefined;
     const want = planned.get(id);
     // A planned track gets stems only when its plan asks for them.
     if (plan && (!want?.stems || planStemsOffline)) return undefined;
@@ -903,13 +929,8 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       (failed > 0 ? ` · ${failed.toLocaleString('en-GB')} failed` : ''),
   );
   if (failed === 0 && (passStems || passVocal)) {
-    try {
-      const scope = plan ? new Set(plan.items.map(item => item.id)) : null;
-      const pending = readSubbeatsQueue(config.stateDir).jobs
-        .filter(job => job.status === 'queued' && (!scope || scope.has(job.id)))
-        .slice(0, opts.limit ?? Infinity).map(job => job.id);
-      if (pending.length) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify(pending));
-    } catch { logEvent('warning', 'Sub/Beats selections could not be read; ordinary analysis completed'); }
+    const ready = [...queuedSubbeatsIds];
+    if (ready.length) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify(ready));
   }
   return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed };
 }

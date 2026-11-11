@@ -923,6 +923,24 @@ export default function SettingsPanel({ djBrainEnabled = false }: { djBrainEnabl
                   </div>
 
                   <div className="field">
+                    <Label>Queue Sub/Beats preparation from airplay</Label>
+                    <div className="flex items-center gap-2">
+                      <Seg
+                        options={[{ id: 'on', label: 'On' }, { id: 'off', label: 'Off' }]}
+                        value={form.transitions.subbeatsOnAirCaching ? 'on' : 'off'}
+                        onChange={id => setForm(f => f
+                          ? { ...f, transitions: { ...f.transitions, subbeatsOnAirCaching: id === 'on' } } : f)}
+                      />
+                    </div>
+                    <div className="field-hint">
+                      Queues dance tracks (90–180 BPM) that air without completed Sub/Beats preparation.
+                      When enabled, the next Library Demucs scan also picks up eligible tracks played in
+                      the last 180 days. Preparation still waits for that scan and its shared stem-cache
+                      budget; it never runs while a track is on air. Off by default.
+                    </div>
+                  </div>
+
+                  <div className="field">
                     <Label>Separate stems when a track is picked</Label>
                     <div className="flex items-center gap-2">
                       <Seg

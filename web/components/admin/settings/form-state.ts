@@ -50,6 +50,7 @@ export function settingsForm(v: NonNullable<SettingsData['values']>): FormState 
       pairDrain: v.transitions?.pairDrain ?? true,
       stemBlends: v.transitions?.stemBlends ?? false,
       subbeatsLive: v.transitions?.subbeatsLive === true,
+      subbeatsOnAirCaching: v.transitions?.subbeatsOnAirCaching === true,
       pickTimeStems: v.transitions?.pickTimeStems === true,
       equalPowerCrossfade: v.transitions?.equalPowerCrossfade === true,
       // Absent reads as ON, matching the controller's resolver

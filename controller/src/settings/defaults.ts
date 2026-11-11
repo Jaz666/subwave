@@ -715,6 +715,9 @@ export const DEFAULTS = {
     // Prepared-to-prepared Sub/Beats seams. Independent of ordinary Stem Blend;
     // requires DJ mode and pair drain, and falls through to that saved setting.
     subbeatsLive: false,
+    // Airplay can queue eligible, unprepared tracks for a later Library Demucs
+    // scan; preparation never runs while a track is on air.
+    subbeatsOnAirCaching: false,
     // Separate a picked track's missing stem windows while it is held behind
     // the on-air one (broadcast/pick-stems.ts, #2197), so the cache fills with
     // what the station plays instead of waiting for the bulk backfill. Off

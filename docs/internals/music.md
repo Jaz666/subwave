@@ -138,6 +138,17 @@ at incoming entry; source/tempo/loop timing maps queue clocks and lyric lines
 through the native resume. The station trial and wider mixed prepared/regular
 rollout remain outstanding; see the current integration checkpoint.
 
+`transitions.subbeatsOnAirCaching` (off by default) lets a real on-air play
+enqueue an unprepared track when it matches Sub/Beats Explore's default
+qualification (90–180 BPM and a dance-family genre). The next Library Demucs
+scan also seeds eligible tracks played in the previous 180 days. Admission only
+writes the preparation queue; the scan releases those jobs to the managed
+Sub/Beats worker after its own pass. While a queued preparation is reserved for
+that scan, ordinary stem-cache admission skips the track, avoiding a regular
+stem set immediately before the larger Sub/Beats bundle. The shared stem-cache
+budget still governs the Sub/Beats write. A failed or budget-blocked
+preparation remains visible in the Sub/Beats list for operator retry.
+
 **Agentic Musical Leanings.** Discovery and guard re-picks receive no persona
 preferences. A separate review keeps the discovered baseline by default. It can replace it
 only when a supported preference advantage genuinely

@@ -23,4 +23,4 @@ export * from './library-db/stem-scan.js';
 export * from './library-db/facets.js';
 export * from './library-db/lyrics.js';
 
-export { subbeatsCandidates } from './library-db/subbeats.js';
+export { subbeatsCandidates, subbeatsEligibleTrack, recentlyPlayedSubbeatsTracks } from './library-db/subbeats.js';

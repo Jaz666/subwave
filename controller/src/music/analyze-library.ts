@@ -42,6 +42,8 @@ import { reportProgress, makeEventLogger } from './tagger-progress.js';
 import { readFileSync } from 'node:fs';
 import { config } from '../config.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
+import { queueRecentAiredTracks } from './subbeats-airplay.js';
+import { queuedSubbeatsForScan } from './subbeats-scan-policy.js';
 import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { formatPlan, parseFacets, parseWhere, planAcoustics, type AcousticsPlan } from './acoustics-plan.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
@@ -54,8 +56,8 @@ function reportFacetSubbeats(plan:AcousticsPlan,args:string[],limit:number|undef
   try {
     const explicit=explicitIds(args);
     const scope=explicit ? new Set(explicit) : null;
-    const pending=readSubbeatsQueue(config.stateDir).jobs.filter(job=>job.status==='queued' && (!scope || scope.has(job.id)))
-      .slice(0,limit ?? Infinity).map(job=>job.id);
+    queueRecentAiredTracks();
+    const pending=queuedSubbeatsForScan(readSubbeatsQueue(config.stateDir).jobs,scope,limit);
     if (pending.length) console.log(SUBBEATS_SCAN_PREFIX+JSON.stringify(pending));
   } catch {logEvent('warning','Sub/Beats selections could not be read; ordinary analysis completed');}
 }

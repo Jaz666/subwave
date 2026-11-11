@@ -159,6 +159,10 @@ export interface QueueEntry {
   artist?: string;
   album?: string;
   subsonic_id?: string;
+  stemCacheCoverage?: {
+    regular: { head: boolean; tail: boolean };
+    subbeats: { head: boolean; exit: boolean };
+  };
   requestedBy?: string;
   /** ISO timestamp on older payloads; the live controller sends the three
    *  below instead. All are live-edge. */
