@@ -109,6 +109,7 @@ export default function LibraryTaggingModal(p: Props) {
   };
   const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze || effSteps.stems;
   const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze && !effSteps.stems;
+  const stemsOnly = effSteps.stems && !effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
 
   // Run-tab cost preview. seedEst is the up-front LLM seed budget tag-library.ts
   // spends before propagation carries the rest; the batch-of-25 divisor mirrors
@@ -184,8 +185,9 @@ export default function LibraryTaggingModal(p: Props) {
         {tab === 'run' && (
           <>
             <p className="text-[12px] leading-[1.55] text-muted">
-              Process new / untagged tracks. Untick a step to skip it this run — the
-              badge shows what each one costs.
+              {stemsOnly
+                ? 'Prepare regular stems for eligible tracks that are missing them. The limit applies to stem candidates; the cache budget may further reduce how many fit.'
+                : 'Process new / untagged tracks. Untick a step to skip it this run — the badge shows what each one costs.'}
             </p>
             <div className="grid gap-2.5">
               <Pass on={steps.reconcile} onClick={() => toggleStep('reconcile')}
@@ -230,13 +232,15 @@ export default function LibraryTaggingModal(p: Props) {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
               <div className="lib-batch">
-                <label htmlFor="modal-batch">Limit</label>
+                <label htmlFor="modal-batch">{stemsOnly ? 'Stem candidates' : 'Limit'}</label>
                 <select id="modal-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
                   <option value="100">next 100</option>
                   <option value="500">next 500</option>
                   <option value="5000">next 5,000</option>
                   <option value="10000">next 10,000</option>
-                  <option value="all">all{p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining</option>
+                  <option value="all">
+                    {stemsOnly ? 'all eligible tracks' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}
+                  </option>
                 </select>
               </div>
               <div className="flex items-center gap-2.5">
