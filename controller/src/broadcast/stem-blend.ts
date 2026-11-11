@@ -77,11 +77,11 @@ export async function maybeRenderBlend(
   // Tempo gate: near-locked or clean half/double only.
   if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return null;
   // Cache-hit-only: both windows must already be separated.
-  const [haveTail, haveHead] = await Promise.all([
-    stemCache.hasWindow(outTrack.id, 'tail'),
-    stemCache.hasWindow(inTrack.id, 'head'),
+  const [outStems, inStems] = await Promise.all([
+    stemCache.renderSource(outTrack.id, 'tail'),
+    stemCache.renderSource(inTrack.id, 'head'),
   ]);
-  if (!haveTail || !haveHead) return null;
+  if (!outStems || !inStems) return null;
   // A pick-time separation (broadcast/pick-stems.ts) holds a worker for a
   // minute or more. Only a cache hit gets this far, so this costs exactly the
   // seams that would have blended; with one worker the render would lose the
@@ -113,7 +113,11 @@ export async function maybeRenderBlend(
 
   const result = await analyzer.renderTransition({
     out: {
-      stems_dir: stemCache.dirFor(outTrack.id),
+      stems_dir: outStems.stemsDir,
+      ...('subbeatsBundleDir' in outStems ? {
+        subbeats_bundle_dir: outStems.subbeatsBundleDir,
+        subbeats_bundle_key: outStems.subbeatsBundleKey,
+      } : {}),
       // Advisory only: the worker aligns the tail window from the stems' own
       // tail-meta.json, and treats stems without that sidecar as a cache miss.
       duration_s: out.durationSec,
@@ -128,7 +132,11 @@ export async function maybeRenderBlend(
       lufs: out.loudnessLufs ?? null,
     },
     in: {
-      stems_dir: stemCache.dirFor(inTrack.id),
+      stems_dir: inStems.stemsDir,
+      ...('subbeatsBundleDir' in inStems ? {
+        subbeats_bundle_dir: inStems.subbeatsBundleDir,
+        subbeats_bundle_key: inStems.subbeatsBundleKey,
+      } : {}),
       bars: inn.bars,
       gain_db: inGainDb,
       lufs: inn.loudnessLufs ?? null,
