@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SUBBEATS_BATCH_LIMIT = 100;
+export const SUBBEATS_BATCH_LIMIT = 1000;
 export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 

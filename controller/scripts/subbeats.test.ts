@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createTempDir, removeTempDir } from './test-utils/temp-dir.js';
 import { createSubbeatsStore, readSubbeatsQueue, invalidateSubbeatsBundles } from '../src/music/subbeats-store.js';
 import { subbeatsEnqueueSchema } from '../src/schemas/subbeats.js';
+import { SUBBEATS_BATCH_LIMIT } from '../src/schemas/subbeats.js';
 
 const state = createTempDir(join(tmpdir(), 'subwave-subbeats-'));
 const store = createSubbeatsStore(state);
@@ -55,6 +56,12 @@ test('preparation queue persists more than 500 tracks', async () => {
   } finally {
     await removeTempDir(dir);
   }
+});
+
+test('one Sub/Beats admission batch accepts more than 100 tracks', () => {
+  assert.equal(SUBBEATS_BATCH_LIMIT, 1000);
+  assert.equal(subbeatsEnqueueSchema.parse({ids:Array.from({length:101},(_,i)=>`track-${i}`)}).ids.length,101);
+  assert.throws(() => subbeatsEnqueueSchema.parse({ids:Array.from({length:1001},(_,i)=>`track-${i}`)}));
 });
 
 test('events preserve other admissions and terminal results cannot increment attempts', () => {
@@ -121,7 +128,7 @@ test('shared-cache identity is stable and malformed state is preserved', () => {
   assert.throws(() => store.enqueue([a]));
   assert.equal(readFileSync(file, 'utf8'), 'broken');
   assert.equal(subbeatsEnqueueSchema.safeParse({ ids: [] }).success, false);
-  assert.equal(subbeatsEnqueueSchema.safeParse({ ids: Array(101).fill('a') }).success, false);
+  assert.equal(subbeatsEnqueueSchema.safeParse({ ids: Array(101).fill('a') }).success, true);
 });
 
 

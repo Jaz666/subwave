@@ -5741,7 +5741,7 @@ export function quotedSteer(text: string | null | undefined): string {
 
 // ─── from controller/src/schemas/subbeats.ts ─────────────────────────────
 
-export const SUBBEATS_BATCH_LIMIT = 100;
+export const SUBBEATS_BATCH_LIMIT = 1000;
 export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
