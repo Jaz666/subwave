@@ -93,6 +93,12 @@ const validImperativeFixtures = {
   // admin-query-imperative: subbeats-source-audition
   return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
 }\n`,
+  'subbeats/NowPlayingWaveform.tsx': `export async function run(adminFetch, id, side, stem) {
+  // admin-query-imperative: now-playing-stem-audio
+  await adminResponse(adminFetch, \`/now-playing/stem-audio?side=\${side}&stem=\${stem}\`);
+  // admin-query-imperative: now-playing-waveform-audio
+  return adminResponse(adminFetch, \`/now-playing/audio?id=\${id}\`);
+}\n`,
   'skills/SkillEditModal.tsx': `export async function run(adminFetch, id) {
   // admin-query-imperative: skill-export
   return adminResponse(adminFetch, \`/dj/skills/\${id}/export\`);

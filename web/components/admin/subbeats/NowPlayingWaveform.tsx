@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type WaveSurfer from 'wavesurfer.js';
 import { useStationFeed } from '../../../hooks/useStationFeed';
-import { adminResponse } from '../../../lib/admin-query';
+import { adminJson, adminResponse, useAdminQuery } from '../../../lib/admin-query';
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
 import styles from './NowPlayingWaveform.module.css';
@@ -15,7 +15,6 @@ const SNAP_INTERVAL_SECONDS = 30;
 const WAVEFORM_HEIGHT = 44;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string };
-type JingleMarker = { airedAt: string; durationMs: number };
 type VisualEvents = {
   preparedSpeech?: boolean;
   jingle?: { airedAt: string; durationMs: number } | null;
@@ -110,6 +109,7 @@ function ExpandedStemLanes({ transition, adminFetch, colors }: {
         const decoded: Array<readonly [StemName, StemLaneData]> = [];
         for (const stem of STEM_NAMES) {
           const pair = await Promise.all((['outgoing', 'incoming'] as const).map(async side => {
+            // admin-query-imperative: now-playing-stem-audio
             const response = await adminResponse(adminFetch,
               `/now-playing/stem-audio?side=${side}&stem=${stem}`, { signal: abort.signal });
             const buffer = await context!.decodeAudioData(await response.arrayBuffer());
@@ -253,6 +253,7 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
     let objectUrl: string | null = null;
     void (async () => {
       try {
+        // admin-query-imperative: now-playing-waveform-audio
         const response = await adminResponse(adminFetch, `/now-playing/audio?id=${encodeURIComponent(id)}`, { signal: abort.signal });
         const blob = await response.blob();
         if (abort.signal.aborted || !host.current) return;
@@ -318,10 +319,6 @@ export default function NowPlayingWaveform() {
   const [nextDuration, setNextDuration] = useState(0);
   const [bufferedDuration, setBufferedDuration] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [jingle, setJingle] = useState<JingleMarker | null>(null);
-  const [bed, setBed] = useState<{ airedAt: string; durationMs?: number } | null>(null);
-  const [stemTransition, setStemTransition] = useState<VisualEvents['stemTransition']>(null);
-  const [preparedSpeech, setPreparedSpeech] = useState(false);
   const [observedTransitions, setObservedTransitions] = useState<TransitionMarker[]>([]);
   const [colors, setColors] = useState(DEFAULT_COLORS);
   const [colorPhase, setColorPhase] = useState(false);
@@ -330,6 +327,20 @@ export default function NowPlayingWaveform() {
   const [message, setMessage] = useState('');
   const [expanded, setExpanded] = useState(false);
   const currentId = nowPlaying?.subsonic_id;
+  const visualEvents = useAdminQuery<VisualEvents>({
+    key: ['now-playing', 'visual-events', currentId],
+    adminFetch,
+    enabled: !!currentId && hydrated && !needsAuth,
+    staleTime: 0,
+    refetchInterval: 5000,
+    request: (fetcher, signal) => adminJson<VisualEvents>(fetcher,
+      `/now-playing/visual-events?id=${encodeURIComponent(currentId!)}`, undefined, signal),
+  });
+  const events = visualEvents.error ? undefined : visualEvents.data;
+  const jingle = events?.jingle ?? null;
+  const bed = events?.bed ?? null;
+  const stemTransition = events?.stemTransition ?? null;
+  const preparedSpeech = events?.preparedSpeech === true;
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
   // /state leads this listener by its stream buffer. Keep the live queue's
@@ -481,28 +492,6 @@ export default function NowPlayingWaveform() {
 
   useEffect(() => setExpanded(false), [currentId, nextId]);
 
-  useEffect(() => {
-    if (!currentId || !hydrated || needsAuth) return;
-    let stopped = false;
-    const abort = new AbortController();
-    const poll = async () => {
-      try {
-        const response = await adminResponse(adminFetch, `/now-playing/visual-events?id=${encodeURIComponent(currentId)}`, { signal: abort.signal });
-        const data = await response.json() as VisualEvents;
-        if (!stopped) {
-          setJingle(data.jingle ?? null);
-          setBed(data.bed ?? null);
-          setStemTransition(data.stemTransition ?? null);
-          setPreparedSpeech(data.preparedSpeech === true);
-        }
-      } catch {
-        if (!stopped) { setJingle(null); setBed(null); setStemTransition(null); setPreparedSpeech(false); }
-      }
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
-    return () => { stopped = true; abort.abort(); window.clearInterval(timer); };
-  }, [adminFetch, currentId, hydrated, needsAuth]);
 
   useEffect(() => {
     if (!currentDuration) return;
