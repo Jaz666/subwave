@@ -1,5 +1,38 @@
 # Sub/Beats development
 
+## Deferred upstream follow-up: PR #2328 — 12 November 2026
+
+**Owner decision: revisit after [upstream PR #2328](https://github.com/perminder-klair/subwave/pull/2328)
+is merged into `perminder-klair/subwave`. Do not port the open PR now.**
+At the next upstream integration, verify the merge and reassess the final
+implementation before applying it to this fork. The assessment below examined
+head `ecf813f46cdebb6853577ae65194d7807e326254` against station source
+`1db4e4a4`; later upstream revisions may resolve or change these findings.
+
+The regular-stem recording stamps are useful protection against combining one
+recording's head with another's tail. Preserve the following during integration:
+
+- Resolve the reproduced metadata-only edit regression: accepting a changed-size
+  file as **audio unchanged** retains `stems_at`, but the new byte-size check
+  rejects both regular windows. They can remain excluded from blends while the
+  library still considers stems processed. Size-unaware readers can report them
+  cached, so Dashboard coverage must agree with actual render eligibility.
+- Extend the checks through our `renderSource` path while retaining verified
+  Sub/Beats coverage as a source for regular blends. The worker must honour the
+  selected source instead of preferring stale regular files beside that bundle.
+- Preserve deferred Sub/Beats preparation, suppression of regular-stem creation
+  for queued upgrades, source-replacement invalidation, and the shared budget.
+- Retain our orphan/cleanup recognition of managed Sub/Beats subdirectories,
+  coverage sidecars and temporary files when adding `head-meta.json` support.
+- Keep bounded retries specific to regular tails that were proven but failed
+  to land; legacy caches and older analyzer responses must remain compatible.
+
+A PR-only merge simulation found 16 conflicting files, so this needs an adapted
+integration. Assessment verification: 28 focused upstream checks passed in an
+isolated snapshot, plus a separate reproduction of the metadata-only regression.
+No real Demucs or combined-fork runtime was tested. Revalidate those paths and
+mixed regular/Sub/Beats blends against the final merged version before delivery.
+
 ## Earlier incoming loop support — 7 November 2026
 
 Station source commits `7cf715f9` and `29a89048` apply the reviewed PR #10
