@@ -11,6 +11,9 @@ import { jingleCreateBodySchema } from '../schemas/imaging-server.js';
 import type { TtsVoiceSlot } from '../schemas/persona.js';
 import { sendAudioFile } from '../util/audio-response.js';
 import { tagger, startTagger, stopTagger } from '../broadcast/tagger.js';
+import { config } from '../config.js';
+import { readSubbeatsQueue } from '../music/subbeats-store.js';
+import { queuedSubbeatsForScan } from '../music/subbeats-scan-policy.js';
 
 export const router = express.Router();
 
@@ -98,6 +101,17 @@ router.post('/jingles/:filename/play', requireAdmin, async (req, res) => {
 // Kicks off the tagger as a background child; callers poll /settings for progress.
 router.post('/tag-library', requireAdmin, (req, res) => {
   if (tagger.running) return res.status(409).json({ error: 'tagger already running', tagger });
+  // This explicitly selected process includes the saved preparation queue.
+  // Respect Stop/Pause, but refuse an apparently successful no-op start.
+  if (req.body?.stems === true) {
+    const state = readSubbeatsQueue(config.stateDir);
+    if (state.paused && queuedSubbeatsForScan(state.jobs).length > 0) {
+      return res.status(409).json({
+        reason: 'subbeats-paused',
+        error: 'Sub/Beats preparation is paused. Open Library → Sub/Beats → Preparation, click Resume, then start the stems process again.',
+      });
+    }
+  }
   const limit = parseInt(req.body?.limit, 10);
   const reseed = req.body?.reseed === true;
   const reEnrich = req.body?.reEnrich === true;

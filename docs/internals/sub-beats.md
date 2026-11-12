@@ -1144,8 +1144,12 @@ queued jobs. Explore selections and airplay upgrades wait for a manual or
 scheduled Library scan; pick-time caching prepares regular stems only. Resume
 unpauses the list and does not authorise new preparation by itself. Pause finishes
 the current track and leaves the rest queued. The normal Stop control also
-pauses the saved Sub/Beats list. On controller restart an interrupted active
-track becomes a visible failure requiring explicit retry, while queued work
+pauses the saved Sub/Beats list. Starting the explicitly selected Library stems
+process while queued preparation is paused returns a visible message directing
+the operator to Resume, rather than reporting a successful run with no work.
+If preparation is paused during an active Library scan, the log reports the
+hold and its selected IDs remain authorised for Resume. On controller restart an
+interrupted active track becomes a visible failure requiring explicit retry, while queued work
 waits for a subsequent Library scan. Closing the browser does not stop it.
 Sub/Beats completion skips normal catalogue/playlist refreshes and stem sweeps.
 
@@ -1159,7 +1163,7 @@ cache writes and queued Sub/Beats preparation for that manual run. Legacy/manual
 CLI scans and scheduled scans with no override keep their configured defaults.
 
 A stems-only track limit reserves places for queued Sub/Beats selections before
-choosing missing regular stems; **all eligible tracks** removes that track cap,
+choosing missing regular stems; **all pending stem work** removes that track cap,
 while retaining the shared disk budget. Every queued upgrade suppresses duplicate
 regular stem creation, including upgrades beyond the current run's limit.
 Ordinary work runs first, then the managed launcher drains the released Sub/Beats
@@ -1176,6 +1180,16 @@ later Library scan without a retry loop. Machine results use the dedicated
 logs. Failed/interrupted entries require explicit Retry; this audit does not
 change saved failures or launch live preparation.
 
+The Dashboard Queue tooltip reports canonical regular head/tail stems separately
+from Sub/Beats head/exit coverage. Sub/Beats detection includes classic bundles,
+new cue-coverage artifacts and unmigrated legacy bundles. It checks all four
+files against manifest sizes, region alignment and source/cue manifest links;
+a saved prepared status alone does not prove the files are still present.
+Coverage remains visible during a cache-only reassessment. The endpoint reads
+one preparation-list snapshot for the eight visible rows, without walking the
+cache or hashing audio on each poll. This display check does not broaden regular
+blend admission. Six route regressions cover these cases and the admin gate.
+
 The obsolete per-track regular-cache inclusion checkbox and its ignored API
 input have been removed; previously saved exceptions remain protected by the
 cache policy. Explore selection continues to choose the extra Sub/Beats work.
@@ -1187,6 +1201,14 @@ Library (39), query-audit (9) and waveform timing (5) checks, controller/web
 typechecks and scoped lint (existing controller warnings remain). The waveform's
 visual-event polling now belongs to the shared query layer; audio buffers remain
 owned and cancelled by their mounted waveform. The static query audit passes.
+A follow-up managed-launcher regression runs all four numeric limits in sequence
+against 197 queued fixtures plus later additions, checking that each run advances
+the queue without a catalogue walk. A real HTTP check covers the paused-queue
+response for all five limit choices, preserving the saved pause and jobs. The
+follow-up checks pass: managed launcher (11), paused start (1), tooltip coverage
+(6), regular blend sources (3), web Library (39), admin query audit (9), both
+package typechecks and scoped lint. The immediate source rollback for this
+follow-up is `963d5df6`; the broader pre-audit rollback below remains available.
 No production build, live Demucs preparation or verify-stack browser run is part
 of this source audit.
 

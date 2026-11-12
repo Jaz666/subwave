@@ -239,7 +239,7 @@ export default function LibraryTaggingModal(p: Props) {
                   <option value="5000">next 5,000</option>
                   <option value="10000">next 10,000</option>
                   <option value="all">
-                    {stemsOnly ? 'all eligible tracks' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}
+                    {stemsOnly ? 'all pending stem work' : effSteps.stems ? 'all pending work' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}
                   </option>
                 </select>
               </div>

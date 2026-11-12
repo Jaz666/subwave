@@ -362,7 +362,14 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   }
   const reportQueuedSubbeats = () => {
     if (!readySubbeatsIds.length) return;
-    logEvent('info', `${readySubbeatsIds.length.toLocaleString('en-GB')} queued Sub/Beats tracks selected for preparation after this Library pass`);
+    const paused = readSubbeatsQueue(config.stateDir).paused;
+    if (paused) {
+      logEvent('warning', `${readySubbeatsIds.length.toLocaleString('en-GB')} selected Sub/Beats tracks are paused. Resume them from Library → Sub/Beats → Preparation.`, { hold: true });
+    } else {
+      logEvent('info', `${readySubbeatsIds.length.toLocaleString('en-GB')} queued Sub/Beats tracks selected for preparation after this Library pass`);
+    }
+    // Keep this selection authorised if the user paused during the scan; Resume
+    // can continue it, while newly queued work still waits for its own scan.
     console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify(readySubbeatsIds));
   };
 

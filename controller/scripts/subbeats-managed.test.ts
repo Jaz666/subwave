@@ -197,3 +197,25 @@ test('stems can be combined with reconciliation while embeddings are disabled', 
   assert.ok(catalogueWalks > walks, 'the selected reconciliation must still walk Navidrome');
   assert.equal(requests, before + 1);
 });
+
+test('the four numeric Library limits advance the pending queue across consecutive runs', async () => {
+  const db = await import('../src/music/library-db.js');
+  await db.open({ embeddingDim: 768, adoptStoredDim: true });
+  for (const id of db.allTrackIdsOrdered()) db.stampStemsCached(id);
+  db.close();
+  store.pause(false);
+  store.enqueue(Array.from({ length: 197 }, (_, i) => track(`limited-${i}`)));
+  const walks = catalogueWalks;
+  for (const limit of [100, 500, 5000, 10000]) {
+    if (limit >= 5000) store.enqueue(Array.from({ length: 3 }, (_, i) => track(`limited-${limit}-${i}`)));
+    const pending = store.read().jobs.filter(job => job.status === 'queued');
+    const selected = pending.slice(0, limit).map(job => job.id);
+    assert.ok(selected.length > 0, 'each dropdown choice must have real pending work');
+    const before = requests;
+    startTagger({ reconcile: false, enrich: false, tagMoods: false, analyze: false, stems: true, limit });
+    await waitUntil(() => !tagger.running && selected.every(id => store.read().jobs.find(job => job.id === id)?.status === 'prepared'), 60_000);
+    assert.equal(requests - before, selected.length, `limit=${limit}`);
+    assert.equal(store.read().jobs.filter(job => job.status === 'queued').length, pending.length - selected.length);
+    assert.equal(catalogueWalks, walks);
+  }
+});

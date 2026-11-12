@@ -12,6 +12,8 @@ import { requireAdmin } from '../middleware/auth.js';
 import * as settings from '../settings.js';
 import * as stemCache from '../music/stem-cache.js';
 import { designedOvershootBytes } from '../broadcast/pick-stems-policy.js';
+import { config } from '../config.js';
+import { readSubbeatsQueue } from '../music/subbeats-store.js';
 
 export const router = Router();
 
@@ -35,14 +37,15 @@ router.get('/stem-cache/coverage', requireAdmin, async (req, res) => {
     return;
   }
   const coverage: Record<string, { regular: { head: boolean; tail: boolean }; subbeats: { head: boolean; exit: boolean } }> = {};
+  const jobs = new Map(readSubbeatsQueue(config.stateDir).jobs.map(job => [job.id, job]));
   await Promise.all(ids.map(async id => {
-    const [regularHead, regularTail, subbeatsHead, subbeatsExit] = await Promise.all([
+    const [regularHead, regularTail, subbeats] = await Promise.all([
       stemCache.hasWindow(id, 'head'), stemCache.hasWindow(id, 'tail'),
-      stemCache.subbeatsBundleSource(id, 'head'), stemCache.subbeatsBundleSource(id, 'tail'),
+      stemCache.subbeatsCachedCoverage(id, jobs.get(id)),
     ]);
     coverage[id] = {
       regular: { head: regularHead, tail: regularTail },
-      subbeats: { head: subbeatsHead !== null, exit: subbeatsExit !== null },
+      subbeats,
     };
   }));
   res.json({ coverage });
