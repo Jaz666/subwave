@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { subbeatsBrowseStatusSchema, subbeatsMixFilterSchema, subbeatsSortSchema, type subbeatsMixStyleSchema } from '../../../lib/schemas.generated';
 import type { SubbeatsCandidate } from '../library/subbeats-selection';
 
-export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview' | 'cache';
+export type SubbeatsPage = 'explore' | 'preparation' | 'prepared' | 'preview' | 'cache' | 'playlist-export';
 export type SubbeatsCueFilter = 'all' | 'missing-incoming' | 'missing-outgoing' | 'no-cues' | 'unmeasurable';
 export type SubbeatsBrowseState = {
   mixing: z.infer<typeof subbeatsMixFilterSchema>;

@@ -1,5 +1,13 @@
 # Sub/Beats development
 
+## Navidrome playlist export
+
+The Sub/Beats Playlist Export tab creates or replaces a Navidrome playlist from
+the current preparation list. The controller rechecks at save time and includes
+only jobs with `status: prepared`, a saved bundle key, and a track still present
+in the library. Replacing a playlist removes any generated-playlist sync recipe
+for it, so a later recipe sync cannot restore the previous contents.
+
 ## Earlier incoming loop support — 7 November 2026
 
 Station source commits `7cf715f9` and `29a89048` apply the reviewed PR #10
