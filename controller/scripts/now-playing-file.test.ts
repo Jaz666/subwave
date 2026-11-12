@@ -18,7 +18,7 @@ const ADMIN = { authorization: `Basic ${Buffer.from('file-admin:file-admin-pass'
 
 const { fileFormatOf, createFileFormatLookup } = await import('../src/music/file-format.js');
 const { FILE_FORMAT_RETRY_MS } = await import('../src/schemas/file-format.js');
-const { createNowPlayingFileRouter } = await import('../src/routes/now-playing-file.js');
+const { createNowPlayingFileRouter, waveformPeaksFromPcm } = await import('../src/routes/now-playing-file.js');
 const express = (await import('express')).default;
 
 // The shapes production Navidrome 0.64.2 returned on 19 Oct.
@@ -202,5 +202,60 @@ test('audio: missing, stale and unauthorized ids do not reach the audio source',
     assert.equal((await get(s, '/now-playing/audio')).status, 409);
     assert.equal((await get(s, '/now-playing/audio?id=b')).status, 409);
     assert.deepEqual(calls, []);
+  } finally { await s.close(); }
+});
+
+test('waveform peaks: retain either stereo channel in normalized 100 ms bins', () => {
+  const pcm = Buffer.alloc(1600 * 4);
+  pcm.writeInt16LE(16384, 0);
+  pcm.writeInt16LE(-32768, 1599 * 4 + 2);
+  assert.deepEqual(waveformPeaksFromPcm(pcm), { durationSec: 0.2, peaks: [0.5, 1] });
+});
+
+test('waveform peaks: generate on demand once, share concurrent requests, and bound lookup to current/next', async () => {
+  const calls: string[] = [];
+  const result = { durationSec: 1.25, peaks: [0.1, 0.5] };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'wave-peaks-current' }), lookup: async () => null,
+    nextTrackId: () => 'wave-peaks-next',
+    waveformPeaks: async id => {
+      calls.push(id);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return result;
+    },
+  });
+  try {
+    assert.equal((await get(s, '/now-playing/waveform-peaks?id=stale')).status, 409);
+    assert.deepEqual(calls, []);
+    const [first, concurrent] = await Promise.all([
+      get(s, '/now-playing/waveform-peaks?id=wave-peaks-next'),
+      get(s, '/now-playing/waveform-peaks?id=wave-peaks-next'),
+    ]);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), result);
+    assert.deepEqual(await concurrent.json(), result);
+    assert.deepEqual(await (await get(s, '/now-playing/waveform-peaks?id=wave-peaks-next')).json(), result);
+    assert.deepEqual(calls, ['wave-peaks-next']);
+  } finally { await s.close(); }
+});
+
+test('stem waveform peaks: prepare a bounded current transition source on demand', async () => {
+  const calls: string[] = [];
+  const result = { durationSec: 1, peaks: [0.25, 0.75] };
+  const transition = { kind: 'stem-blend' as const, durationSec: 2, incomingAtSec: 1,
+    outgoingUntilSec: 2, outgoingId: 'stem-peaks-out', incomingId: 'stem-peaks-in' };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'stem-peaks-out' }), lookup: async () => null,
+    nextTrackId: () => 'stem-peaks-in', stemTransition: () => transition,
+    stemSource: async () => ({ path: new URL(import.meta.url).pathname, startSec: 12, endSec: 14, storageGain: 0.5 }),
+    stemWaveformPeaks: async source => { calls.push(source.path); return result; },
+  });
+  try {
+    const path = '/now-playing/stem-waveform-peaks?side=outgoing&stem=drums&outgoingId=stem-peaks-out';
+    const first = await get(s, path);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { ...result, startSec: 12, endSec: 14, storageGain: 0.5 });
+    assert.equal((await get(s, path)).status, 200);
+    assert.equal(calls.length, 1);
   } finally { await s.close(); }
 });
