@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { stemDetailVisible, stemPairKey, stemPeaks, stemPhase, stemSourceSeconds, stemStyle, waveformKeys, type StemTransition } from './stem-preview';
+import { stemDetailVisible, stemPairKey, stemPeaks, stemPhase, stemSourceSeconds, stemStyle, stemVolumes, waveformKeys, type StemTransition } from './stem-preview';
 
 const transition: StemTransition = {kind:'subbeats',outgoingId:'out',incomingId:'in',mixStyle:'drums-first',
   durationSec:16,incomingAtSec:2,outgoingUntilSec:10,
@@ -15,6 +15,24 @@ test('stem detail survives the incoming entry but expires with the visible outgo
   assert.equal(stemDetailVisible(transition,'in',history,230_000,30),false);
   assert.equal(stemDetailVisible(transition,'other',history,210_000,30),false);
   assert.equal(stemDetailVisible(transition,'in',[],210_000,30),false);
+});
+
+test('a long active mix retains its charts after outgoing history expires, through tempo return and completion', () => {
+  const long = {...transition,durationSec:61.3,incomingAtSec:4};
+  const window = {startAt:196_000,endAt:257_300};
+  const history = [{id:'out',startedAt:100_000,playedSeconds:100,duration:120}];
+  assert.equal(stemDetailVisible(long,'in',history,230_000,30,window),true,'the 30-second history cutoff cannot end a running mix');
+  assert.equal(stemDetailVisible(long,'in',[],255_000,30,window),true,'native-tempo return still belongs to the mix');
+  assert.equal(stemDetailVisible(long,'in',[],257_299,30,window),true);
+  assert.equal(stemDetailVisible(long,'in',history,257_300,30,window),false,'clear when the whole mix and outgoing history have ended');
+  assert.equal(stemDetailVisible(long,'other',history,240_000,30,window),false,'a retained pair cannot attach to an unrelated track');
+});
+
+test('a shorter completed mix remains available only while its outgoing waveform is visible', () => {
+  const history = [{id:'out',startedAt:100_000,playedSeconds:100,duration:120}];
+  const window = {startAt:198_000,endAt:214_000};
+  assert.equal(stemDetailVisible(transition,'in',history,229_999,30,window),true);
+  assert.equal(stemDetailVisible(transition,'in',history,230_000,30,window),false);
 });
 
 test('expansion and peak-cache identity survive forecasts becoming observed timing', () => {
@@ -63,8 +81,43 @@ test('native-tempo and regular stem detail do not invent a tempo adjustment', ()
   const regular: StemTransition = {...transition,kind:'stem-blend',timing:undefined,durationSec:6,
     incomingAtSec:3,outgoingUntilSec:3.3,sources:{outgoing:{startSec:170,endSec:200,storageGain:1}}};
   assert.equal(stemSourceSeconds(regular,'outgoing',1),195);
-  assert.equal(stemSourceSeconds(regular,'incoming',2.99),null);
-  assert.equal(stemSourceSeconds(regular,'incoming',3),0);
+  assert.equal(stemSourceSeconds(regular,'incoming',0),0,'regular blends carry incoming melody from clip start');
+  assert.equal(stemSourceSeconds(regular,'incoming',3),3);
+});
+
+test('predicted stem volumes follow each Sub/Beats style rather than a generic fade', () => {
+  assert.deepEqual(stemVolumes(transition,'bass',8),{outgoing:.5,incoming:.5});
+  assert.deepEqual(stemVolumes(transition,'bass',9),{outgoing:0,incoming:1});
+  assert.deepEqual(stemVolumes(transition,'other',7),{outgoing:1,incoming:0});
+  assert.deepEqual(stemVolumes(transition,'vocals',7),{outgoing:1,incoming:1});
+  assert.deepEqual(stemVolumes(transition,'drums',5),{outgoing:1,incoming:.5});
+  const long = {...transition,mixStyle:'long-blend' as const};
+  assert.deepEqual(stemVolumes(long,'drums',5),{outgoing:1,incoming:0});
+  assert.deepEqual(stemVolumes(long,'drums',7),{outgoing:1,incoming:.5});
+  assert.deepEqual(stemVolumes(long,'bass',9),{outgoing:1,incoming:1});
+  const swap = {...transition,mixStyle:'bass-swap' as const};
+  assert.deepEqual(stemVolumes(swap,'bass',7.75),{outgoing:1,incoming:0});
+  assert.deepEqual(stemVolumes(swap,'bass',8.25),{outgoing:0,incoming:1});
+  assert.deepEqual(stemVolumes(swap,'other',9),{outgoing:1,incoming:1});
+  const native = {...long,durationSec:12,timing:{...long.timing!,incomingRate:1,releaseEndFrame:1000,clipFrames:1200}};
+  assert.deepEqual(stemVolumes(native,'drums',7),{outgoing:1,incoming:.5},'native-tempo mixes recover the beat from their final bar');
+});
+
+test('volume prediction includes terminal fades, station gain, and the end of playback', () => {
+  assert.ok(Math.abs(stemVolumes(transition,'vocals',9.985).outgoing-.5)<1e-9);
+  const gains: StemTransition = {...transition,gainsDb:[20*Math.log10(.5),20*Math.log10(.25)]};
+  assert.deepEqual(stemVolumes(gains,'drums',8),{outgoing:.5,incoming:.25});
+  assert.deepEqual(stemVolumes(transition,'drums',-1),{outgoing:0,incoming:0});
+  assert.deepEqual(stemVolumes(transition,'drums',16),{outgoing:0,incoming:0});
+  assert.deepEqual(stemVolumes(transition,'drums',12),{outgoing:0,incoming:1});
+});
+
+test('regular blend prediction carries only outgoing drums and drops incoming drums at its estimated handover', () => {
+  const regular: StemTransition = {...transition,kind:'stem-blend',timing:undefined};
+  assert.deepEqual(stemVolumes(regular,'vocals',0),{outgoing:0,incoming:1});
+  assert.deepEqual(stemVolumes(regular,'bass',1),{outgoing:0,incoming:1});
+  assert.deepEqual(stemVolumes(regular,'drums',2),{outgoing:0,incoming:1});
+  assert.ok(stemVolumes(regular,'drums',1.75).outgoing > 0);
 });
 
 test('quiet source detail is retained, storage gain is restored, and silence is never invented', () => {

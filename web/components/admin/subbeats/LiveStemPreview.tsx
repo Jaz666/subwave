@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { adminResponse, useAdminQuery, type AdminFetch } from '../../../lib/admin-query';
-import { STEM_NAMES, stemPeaks, waveformKeys, type StemLanes, type StemTransition } from './stem-preview';
+import { STEM_NAMES, stemPeaks, stemVolumes, waveformKeys, type StemLanes, type StemTransition } from './stem-preview';
 import styles from './NowPlayingWaveform.module.css';
 
 export function LiveStemPreview({transition, startAt, nowMs, adminFetch, colors, outgoing, incoming}: {
@@ -67,8 +67,8 @@ export function LiveStemPreview({transition, startAt, nowMs, adminFetch, colors,
       <span className={styles.expandedDuration}>{position == null ? '' : position < 0 ? 'Prepared · '
         : position >= duration ? 'Completed · ' : `${position.toFixed(0)}s / `}{duration.toFixed(1)}s</span>
     </div>
-    <p className={styles.sourceNote}>Source detail, boosted per stem for visibility · not output levels. Track gains shown above.
-      {!transition.timing && ' Regular blend timing is estimated.'}</p>
+    <p className={styles.sourceNote}>Waveform height follows predicted mix volume and track gain. Detail boosted per stem · not a live level meter.
+      {!transition.timing && ' Regular drum handover timing is estimated.'}</p>
     <div className={styles.stageLegend}>
       {markers.map(stage => <span key={stage.label}>{stage.at.toFixed(1)}s {stage.label}</span>)}
     </div>
@@ -79,20 +79,24 @@ export function LiveStemPreview({transition, startAt, nowMs, adminFetch, colors,
       {STEM_NAMES.map(stem => {
         const data = query.data?.[stem];
         const maximum = data ? Math.max(...data.outgoing,...data.incoming) : 0;
-        const waveform = (values: number[], y: number, side: string | undefined) => <path className={side}
+        const headroom = Math.max(1,10**((transition.gainsDb?.[0] ?? transition.outgoingGainDb ?? 0)/20),
+          10**((transition.gainsDb?.[1] ?? transition.incomingGainDb ?? 0)/20));
+        const waveform = (values: number[], y: number, side: 'outgoing' | 'incoming') => <path
+          className={side === 'outgoing' ? styles.outgoingWave : styles.incomingWave}
           d={values.map((value,index) => {
             const x = (index+.5)/values.length*1000;
-            const amplitude = maximum > 0 ? Math.sqrt(value/maximum)*15 : 0;
+            const volume = stemVolumes(transition,stem,(index+.5)/values.length*duration)[side];
+            const amplitude = maximum > 0 ? Math.sqrt(value/maximum)*15*volume/headroom : 0;
             return amplitude > 0 ? `M${x},${y-amplitude}v${2*amplitude}` : '';
           }).join(' ')} fill="none" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />;
         return <div className={styles.stemDetailRow} key={stem}>
           <div className={styles.stemDetailName}>{stem}</div>
           <div className={styles.stemDetailChart}>
-            <svg viewBox="0 0 1000 76" preserveAspectRatio="none" role="img" aria-label={`${stem}: outgoing above, incoming below; detail boosted, not output levels`}>
+            <svg viewBox="0 0 1000 76" preserveAspectRatio="none" role="img" aria-label={`${stem}: outgoing above, incoming below; height follows predicted volume, not a live meter`}>
               <line x1="0" x2="1000" y1="19" y2="19" className={styles.chartRule} />
               <line x1="0" x2="1000" y1="57" y2="57" className={styles.chartRule} />
-              {data && waveform(data.outgoing,19,styles.outgoingWave)}
-              {data && waveform(data.incoming,57,styles.incomingWave)}
+              {data && waveform(data.outgoing,19,'outgoing')}
+              {data && waveform(data.incoming,57,'incoming')}
               {markers.filter(stage => stage.at > 0 && stage.at < duration).map((stage,index) =>
                 <line key={`${stage.at}-${index}`} x1={stage.at/duration*1000} x2={stage.at/duration*1000}
                   y1="0" y2="76" className={styles.chartMarker} />)}

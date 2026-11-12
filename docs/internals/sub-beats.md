@@ -1266,10 +1266,14 @@ playhead show progress across the four rows.
 The space between Stems and Expand shows the mix type and current saved timing
 stage: lead, incoming entry, handover, solo incoming, tempo return and completion
 where applicable. Style labels/descriptions are shared with the audition page.
-The detailed charts clear when the outgoing track leaves the same 30-second
-visible history as the main waveform. If the rendered mix is still running,
-its compact status and bar continue through completion without retaining the
-old charts. A different pair does not inherit the old expansion choice.
+The detailed charts clear after both the outgoing track's 30-second visible
+history and the complete rendered transition have ended. The initial display
+fix cleared charts at the history cutoff even when a longer mix was still
+running; the owner observed that premature unload. The corrected lifetime
+retains the charts, playhead and cached drawing data through handover, tempo
+return and native-audio resume, using the same listener-adjusted end time as
+the mix bar. Unrelated tracks cannot retain an old pair. A different pair does
+not inherit the old expansion choice.
 
 The main timeline scrolls continuously around a fixed central playhead instead
 of jumping every 30 seconds; reduced-motion mode uses one-second steps. A
@@ -1301,6 +1305,29 @@ source traces on desktop/mobile and light/dark themes. Actual station listening
 and production rebuilds are left to the owner. All 23 focused web tests pass
 (stem display clocks/source mapping, waveform timeline and admin-query audit),
 along with web typechecking, scoped lint and the production admin-query audit.
+The lifetime correction adds regressions for a 61.3-second mix extending past
+the outgoing history cutoff and for a short mix ending before that cutoff.
+
+The owner then requested that waveform height include predicted volume. The
+display now multiplies each trace by its own style-specific stem fader and
+saved track gain. Detail boosting is fixed before those faders, so a fade to
+zero becomes visually silent rather than being normalised back to full height.
+Sub/Beats follows the renderer's four-beat bass/melody exchange, one-beat bass
+swap, gradual drum entry and retained vocal/drum tails. The saved eight-beat
+tempo release (or native-tempo four-beat ending) supplies the beat period to
+sample-rounding precision. Regular Stem Blend shows its drum-carry pattern:
+outgoing drums under incoming melody/vocals, then incoming drums; its internal
+handover time remains explicitly estimated. Incoming regular source detail
+therefore starts at clip zero, rather than at the old estimated midpoint.
+
+These are predicted mix contributions, not live meters: final bus limiting,
+speech ducking and any additional regular-loop peak protection are not measured
+by this view. Source peaks remain reusable across reopening and metadata
+changes. The combined correction passes 19 focused web tests (12 stem display
+and seven waveform clock cases), web typechecking, scoped lint and isolated
+browser checks for the long-mix lifetime, separate fade shapes, cache reuse,
+desktop/mobile layouts and both stem types. The immediate source rollback is
+`a43fc98c`; deployment needs only an owner-run web rebuild.
 
 ## First development increment: local preparation/cache (historical foundation)
 
