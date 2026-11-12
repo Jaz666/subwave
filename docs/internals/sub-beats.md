@@ -1205,6 +1205,45 @@ checks the next compatible pair with the expanded display open. No agent-run
 rebuild or on-air intervention is part of this change. Immediate source rollback
 is `180b21c0`.
 
+## Live admission: speech and analyzer readiness — 12 November 2026
+
+Pending speech and track-tied intros do not veto either regular Stem Blend or
+Sub/Beats. The previous Sub/Beats checks rejected any pending segment, including
+an ident waiting for a suitable vocal opening, and checked it again before
+publication. Station logs showed this rejecting several consecutive pairs even
+after the analyzer was healthy. Those speech checks are removed from both live
+admission stages. The Sub/Beats-only hold on boundary speech is also removed;
+speech uses the existing ducked channel, vocal-runway and track-intro collision
+rules. An option to keep speech away from stem transitions remains a future
+owner decision, with no new setting or suppression policy in this candidate.
+
+Committed stem seams still cannot have a music bed or silence inserted between
+their rendered parts and native continuation. Existing pause-and-talk handling
+therefore falls back to ducked boundary delivery for either stem type. Already
+published silence retains its matching speech and exactly-once recovery. Track
+caps, source trims, show boundaries, pair identity and evidence changes remain
+independent audio/timing checks.
+
+A separate cold-start issue rejected the first pair merely because cached
+analyzer capability was unknown. The live path now checks readiness for up to
+five seconds within the existing render deadline, with cancellation when the
+pair changes. A ready analyzer can render that first pair; unsupported or slow
+backends still fall through to regular Stem Blend. Fallback log records include
+both track IDs and distinguish cuts from incoming silence trims.
+
+Regression checks cover speech at final admission, both stem types arming with
+pending/attached speech, ducked speech delivery on either committed seam, and
+cold/unsupported/slow/cancelled analyzer checks. The focused live/transport suite
+passes all 19 tests; the existing ident/link collision suite passes all 12 and
+pause-and-talk/recovery passes all 18. Controller typechecking and scoped lint
+also pass. Development stays in
+`fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`; the source candidate is
+delivered to `/home/jaz666/Docker/subwave` for the owner to rebuild. Immediate
+rollback is `670979dd`. No build, restart, scan or listening test is run by the
+agent. After rebuilding, check the next prepared compatible pair for attempt,
+rendered and committed messages and confirm the actual transition by listening.
+
 ## First development increment: local preparation/cache (historical foundation)
 
 

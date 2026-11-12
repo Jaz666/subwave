@@ -4,7 +4,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { listen } from './test-utils/http.js';
+import { deferred } from './test-utils/async.js';
 import { createTempDir, removeTempDir } from './test-utils/temp-dir.js';
 import { subbeatsPlaybackSeconds, subbeatsSourceSeconds, subbeatsEntryMs, type SubbeatsTiming, type SubbeatsPlayback } from '../src/broadcast/subbeats-clock.js';
 import { clipSeamCues } from '../src/broadcast/stem-seam.js';
@@ -241,7 +244,7 @@ test('discarding an unpublished handoff restores cues and removes both owned fil
   assert.equal(existsSync(p.clipPath),false);assert.equal(existsSync(p.leadPath!),false);
 });
 
-test('live admission rejects changed evidence, reordered pairs, speech and cuts at the real queue boundary', async () => {
+test('live admission accepts speech but rejects changed evidence, reordered pairs and cuts', async () => {
   await library.load();
   const db = await import('../src/music/library-db.js');
   const { subbeatsPairSnapshot } = await import('../src/music/subbeats-pair.js');
@@ -258,34 +261,155 @@ test('live admission rejects changed evidence, reordered pairs, speech and cuts 
   const b: Item = {track:{id:'in',duration:300},sent:false};
   queue.current={track:{id:'previous',duration:600},startedAt:new Date().toISOString()};queue.upcoming=[a,b];
   assert.equal(queue.subbeatsFitsPair(a,b,p),true);
+  const pending = queue._pendingVoice;
+  try {
+    queue._pendingVoice = { kind: 'station-id', daypart: null, exchange: false, t: Date.now(), clips: [] };
+    for (const kind of ['station-id','handoff','news','dj-speak']) {
+      queue._pendingVoice.kind = kind;
+      assert.equal(queue.subbeatsFitsPair(a,b,p),true,`${kind} must not veto a stem transition`);
+    }
+    queue._pendingVoice.pauseTalk = true;
+    assert.equal(queue.subbeatsFitsPair(a,b,p),true,'a spoken-break request must not veto a stem transition');
+    delete queue._pendingVoice.pauseTalk; queue._pendingVoice.pauseId = 'committed-silence';
+    assert.equal(queue.subbeatsFitsPair(a,b,p),true,'a break elsewhere in the queue must not veto this pair');
+  } finally { queue._pendingVoice = pending; }
   jobs[0].updatedAt='changed';save();assert.equal(queue.subbeatsFitsPair(a,b,p),false,'evidence rechecked immediately before publication');
   p.evidenceFingerprint=subbeatsPairSnapshot('out','in').evidenceFingerprint;
   queue.upcoming=[a,{track:{id:'inserted'}},b];assert.equal(queue.subbeatsFitsPair(a,b,p),false);
-  queue.upcoming=[a,b];b.introScript='A spoken head';assert.equal(queue.subbeatsFitsPair(a,b,p),false);delete b.introScript;
+  queue.upcoming=[a,b];
+  for (const speech of [{introScript:'A spoken head'}, {introWav:join(root,'intro.wav')}, {bedded:true}, {pauseDelaySec:20}]) {
+    Object.assign(b,speech);
+    assert.equal(queue.subbeatsFitsPair(a,b,p),true,'attached speech must not veto a stem transition');
+    delete b.introScript;delete b.introWav;delete b.bedded;delete b.pauseDelaySec;
+  }
   a.stemCueInSec=200;assert.equal(queue.subbeatsFitsPair(a,b,p),false,'a consecutive cut cannot precede the committed resume');delete a.stemCueInSec;
   await settings.update({maxTrackSeconds:120});assert.equal(queue.subbeatsFitsPair(a,b,p),false,'playback cap owns the ending');
   await settings.update({maxTrackSeconds:1200,transitions:{subbeatsLive:false}});
   assert.equal(queue.subbeatsFitsPair(a,b,p),false,'switch-off revokes an unpublished proposal');
 });
 
-test('shared drain publishes Sub/Beats before native continuation and uses ordinary fallback on a miss', async () => {
+test('speech still uses boundary delivery with either kind of committed stem transition', async () => {
+  const saved = {air:queue._airVoice,spoken:queue.onSpoken,pending:queue._pendingVoice,
+    upcoming:queue.upcoming,current:queue.current};
+  const voicePath = join(root,'stem-speech.wav');writeFileSync(voicePath,'fixture');
+  const handed: string[] = [];
+  queue._airVoice = async (file,path) => {
+    assert.equal(file,config.liquidsoap.introFile);handed.push(path);
+    return {voiceId:'stem-speech',clipMs:1000,aired:Promise.resolve(null)};
+  };
+  queue.onSpoken = async () => true;
+  try {
+    for (const subbeats of [false,true]) {
+      const item: Item = {track:{id:'speech-in',title:'Incoming'},stemSeam:true,
+        ...(subbeats ? {subbeatsHandoff:playback()} : {})};
+      queue.current=null;queue.upcoming=[item];
+      queue._pendingVoice = {kind:'news',pauseTalk:true,daypart:null,exchange:false,t:Date.now(),
+        clips:[{text:'A spoken segment',wavPath:voicePath,persona:null,meta:{}}]};
+      assert.equal(await queue.maybePushPauseTalk(item),false,'do not insert silence into a committed stem seam');
+      assert.equal(queue._pendingVoice.pauseTalk,false,'keep the existing ducked boundary placement');
+      await queue.airPendingVoice({subsonic_id:'speech-in',title:'Incoming'});
+      assert.equal(queue._pendingVoice,null,'a stem transition must not hold speech by itself');
+    }
+    assert.deepEqual(handed,[voicePath,voicePath]);
+  } finally {
+    queue._airVoice=saved.air;queue.onSpoken=saved.spoken;queue._pendingVoice=saved.pending;
+    queue.upcoming=saved.upcoming;queue.current=saved.current;
+  }
+});
+
+test('a cold live renderer checks readiness for this pair, with bounded and cancellable waits', async () => {
+  const analyzer = await import('../src/music/analyzer.js');
+  const { maybeRenderSubbeats } = await import('../src/broadcast/subbeats.js');
+  const { createSubbeatsStore } = await import('../src/music/subbeats-store.js');
+  const db = await import('../src/music/library-db.js');
+  await library.load();
+  await settings.update({ transitions: { subbeatsLive: true, pairDrain: true }, loudness: { source: 'measured' },
+    personas: settings.get().personas.map(persona => ({ ...persona, djMode: true })) });
+  const store = createSubbeatsStore(root);
+  store.cacheId();
+  for (const id of ['ready-out','ready-in']) {
+    db.upsertTrackMeta(id, { title: id, artist: 'Fixture', duration: 300 });
+    store.enqueue([{ id, title: id, artist: 'Fixture', album: '' }]);
+    store.event({ id, status: 'running' }, [id]);
+    store.event({ id, status: 'prepared', bundleKey: 'a'.repeat(64),
+      cueCoverage: { version: 1, artifactKey: 'b'.repeat(64), incoming: null, outgoing: null } }, [id]);
+  }
+  let mode: 'ready' | 'unsupported' | 'slow' = 'ready';
+  let posted = 0, valid = true;
+  let healthStarted = deferred(), releaseHealth = deferred();
+  const http = await listen(createServer(async (req,res) => {
+    res.setHeader('Content-Type','application/json');
+    if (req.url === '/health') {
+      if (mode === 'slow') { healthStarted.resolve(); await releaseHealth.promise; }
+      if (!res.destroyed) res.end(JSON.stringify({ ok: true, engines: ['analyze'],
+        analyze_subbeats_capable: mode !== 'unsupported', analyze_subbeats_cache_version: 2,
+        analyze_subbeats_suitability_version: 1 }));
+      return;
+    }
+    assert.equal(req.url, '/render-subbeats-transition');
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const input = JSON.parse(raw); posted++;
+    res.end(JSON.stringify({ version: 1, status: 'unavailable', reason: 'Fixture reached the pair renderer',
+      transitionId: input.transitionId, mixStyle: input.mixStyle, evidenceFingerprint: input.evidenceFingerprint }));
+  }));
+  const saved = { urls: config.analyzer.urls, python: config.analyzer.python };
+  const logs: string[] = [];
+  const render = () => maybeRenderSubbeats({ id: 'ready-out', gainDb: 0 }, { id: 'ready-in', loudnessLufs: -14 }, 180,
+    { valid: () => valid, log: message => { logs.push(message); } });
+  try {
+    config.analyzer.urls = [http.url]; config.analyzer.python = '';
+    analyzer._resetBackendCacheForTests();
+    assert.equal(analyzer.subbeatsCapability(), null);
+    assert.equal(await render(), null);
+    assert.equal(posted, 1, 'the first cold pair reaches rendering instead of being sacrificed to warm-up');
+    assert.match(logs.at(-1)!, /Fixture reached the pair renderer/);
+    mode = 'unsupported'; analyzer._resetBackendCacheForTests();
+    assert.equal(await render(), null); assert.equal(posted, 1);
+    assert.match(logs.at(-1)!, /readiness/);
+    mode = 'slow'; analyzer._resetBackendCacheForTests();
+    const cancelled = render(); await healthStarted.promise; valid = false;
+    assert.equal(await cancelled, null); assert.equal(posted, 1, 'a changed pair cannot continue after its health check');
+    releaseHealth.resolve();
+    // Settle the first probe before changing the fixture's held health request.
+    await new Promise(resolve => setTimeout(resolve, 50));
+    healthStarted = deferred(); releaseHealth = deferred(); valid = true;
+    analyzer._resetBackendCacheForTests();
+    const startedAt = Date.now();
+    assert.equal(await render(), null);
+    assert.ok(Date.now() - startedAt < 6500, 'readiness cannot consume the full render budget');
+    assert.match(logs.at(-1)!, /readiness/); assert.equal(posted, 1);
+  } finally {
+    releaseHealth.resolve(); http.server.closeAllConnections(); await http.close();
+    config.analyzer.urls = saved.urls; config.analyzer.python = saved.python;
+    analyzer._resetBackendCacheForTests(); analyzer.shutdown();
+  }
+});
+
+test('shared drain arms either stem transition with pending and track-tied speech', async () => {
   await settings.update({maxTrackSeconds:1200,maxTrackLengthMode:'cut',loudness:{source:'measured'}});
   const render = queue._renderSubbeats, regular = queue._renderBlend, fits = queue.subbeatsFitsPair;
   const probe = queue._probeCueLanding;
   queue._probeCueLanding = async () => ({ok:false,codec:null,reason:'isolated fixture'});
   const verify = queue.verifyPushResolved;
+  const pending = queue._pendingVoice;
+  queue._pendingVoice = { kind: 'station-id', clips: [], daypart: null, exchange: false, t: Date.now() };
   queue.verifyPushResolved = async () => {};
   queue.subbeatsFitsPair = () => true;
   try {
     for (const available of [true,false]) {
       const p = playback();
       const outgoing: Item = {track:{id:'out',title:'Outgoing',duration:220},sent:false};
-      const incoming: Item = {track:{id:'in',title:'Incoming',duration:300},sent:false};
+      const incoming: Item = {track:{id:'in',title:'Incoming',duration:300},sent:false,
+        introScript:'A spoken head',introWav:join(root,'intro.wav')};
       queue.current=null;queue.upcoming=[outgoing,incoming];
-      let fallback = 0;
-      queue._renderSubbeats=async () => available ? {clipPath:p.clipPath,leadPath:p.leadPath!,subbeats:p,
-        outCueSec:180.3,inCueSec:28.66,clipSec:36} : null;
-      queue._renderBlend=async () => {fallback++;return null;};
+      let fallback = 0, attempted = 0;
+      queue._renderSubbeats=async () => {
+        attempted++;
+        return available ? {clipPath:p.clipPath,leadPath:p.leadPath!,subbeats:p,
+          outCueSec:180.3,inCueSec:28.66,clipSec:36} : null;
+      };
+      queue._renderBlend=async () => {fallback++;return {clipPath:p.clipPath,
+        outCueSec:180.3,inCueSec:28.66,clipSec:36};};
       const uris: string[]=[];
       const poll=setInterval(() => {
         if (existsSync(config.liquidsoap.queueFile)) {
@@ -296,13 +420,15 @@ test('shared drain publishes Sub/Beats before native continuation and uses ordin
         await queue.drainToLiquidsoap(true);
         await new Promise(resolve => setTimeout(resolve,120));
       } finally {clearInterval(poll);rmSync(config.liquidsoap.queueFile,{force:true});}
+      assert.equal(attempted,1,'speech must not prevent a Sub/Beats attempt');
       assert.equal(fallback,available ? 0 : 1);
-      assert.equal(uris.length,available ? 4 : 2);
+      assert.equal(incoming.stemSeam,true,'either stem transition is armed despite speech');
+      assert.equal(uris.length,available ? 4 : 3);
       if (available) {
         assert.match(uris[1],/subwave_part="out"/);assert.match(uris[2],/subwave_part="in"/);
         assert.match(uris[3],/liq_cue_in="28.66"/);
         assert.match(uris[3],/liq_amplify="-3 dB"/,'native continuation keeps the committed render gain');
       }
     }
-  } finally {queue._renderSubbeats=render;queue._renderBlend=regular;queue.subbeatsFitsPair=fits;queue.verifyPushResolved=verify;queue._probeCueLanding=probe;}
+  } finally {queue._renderSubbeats=render;queue._renderBlend=regular;queue.subbeatsFitsPair=fits;queue.verifyPushResolved=verify;queue._probeCueLanding=probe;queue._pendingVoice=pending;}
 });
