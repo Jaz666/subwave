@@ -487,8 +487,8 @@ export default function DashPanel() {
   // armed tooltip names the pair the label describes: the seam out of the on-air
   // track, not out of the queue row it sits above.
   const nextTransitionHint = q.nextTransition
-    ? 'How the on-air track hands over to the first queued track'
-    : 'Not armed yet — the seam is decided when the next track is handed to the mixer';
+    ? 'How the station’s on-air track hands over to the first queued track. The Mixing Desk follows buffered listener playback.'
+    : 'Not armed yet — the seam is decided when the next track is handed to the mixer. The Mixing Desk may still show the preceding mix during buffered listener playback.';
   // `sessionMessages` arrives in air order and is shown newest first. Each turn
   // carries its ORIGINAL index: a display index would shift under every new turn
   // and remount the whole list.
@@ -556,7 +556,7 @@ export default function DashPanel() {
                 title={nextTransitionHint}
                 className="text-[9px] font-bold tracking-[0.18em] text-muted uppercase"
               >
-                Next transition: <span className="text-ink">{nextTransition}</span>
+                Next station transition: <span className="text-ink">{nextTransition}</span>
               </span>
             }
             bodyClass="px-3.5 py-1.5"

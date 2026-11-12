@@ -3,6 +3,7 @@
 import { SubbeatsCache, useSubbeatsCache } from './subbeats/SubbeatsCache';
 import { CueAudition } from './subbeats/CueAudition';
 import { SourceAudioDialog } from './subbeats/SourceAudioDialog';
+import { MIX_STYLE } from './subbeats/stem-preview';
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -37,12 +38,6 @@ const LABEL: Record<Status, string> = {
   unavailable: 'Unavailable', failed: 'Needs retry',
 };
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
-const MIX_STYLE: Record<z.infer<typeof subbeatsMixStyleSchema>, {label:string;description:string}> = {
-  'long-blend': {label:'Long blend',description:'A longer musical overlap for compatible keys and spacious arrangements.'},
-  'short-exchange': {label:'Short exchange',description:'Exchange bass and melody over four beats. A useful choice when keys may clash.'},
-  'bass-swap': {label:'Bass swap',description:'Exchange bass over one beat while melodies blend longer. Try it with compatible keys.'},
-  'drums-first': {label:'Drums first',description:'Build incoming drums gradually, then exchange bass and melody over four beats.'},
-};
 const SELECT_CLASS = 'h-11 w-full min-w-0 rounded-none border border-ink bg-bg px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
 const BROWSE_LABEL = { 'not-started': 'Not started', ...LABEL };
 const PAGES = [

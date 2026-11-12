@@ -94,8 +94,6 @@ const validImperativeFixtures = {
   return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
 }\n`,
   'subbeats/NowPlayingWaveform.tsx': `export async function run(adminFetch, id, side, stem) {
-  // admin-query-imperative: now-playing-stem-audio
-  await adminResponse(adminFetch, \`/now-playing/stem-audio?side=\${side}&stem=\${stem}&outgoingId=\${id}\`);
   // admin-query-imperative: now-playing-waveform-audio
   return adminResponse(adminFetch, \`/now-playing/audio?id=\${id}\`);
 }\n`,
