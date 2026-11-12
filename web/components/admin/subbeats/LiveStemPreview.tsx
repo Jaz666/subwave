@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { adminResponse, useAdminQuery, type AdminFetch } from '../../../lib/admin-query';
-import { STEM_NAMES, stemPeaks, stemVolumes, waveformKeys, type StemLanes, type StemTransition } from './stem-preview';
+import { STEM_NAMES, stemEnvelopePeaks, stemVolumes, waveformKeys, type StemLanes, type StemTransition } from './stem-preview';
 import styles from './NowPlayingWaveform.module.css';
 
 export function LiveStemPreview({transition, startAt, nowMs, adminFetch, colors, outgoing, incoming}: {
@@ -15,23 +15,20 @@ export function LiveStemPreview({transition, startAt, nowMs, adminFetch, colors,
     enabled:!!transition.outgoingId && !!transition.incomingId,
     staleTime:Infinity,
     request:async (fetcher,signal) => {
-      const context = new AudioContext();
-      try {
-        const lanes = {} as StemLanes;
-        for (const stem of STEM_NAMES) {
-          const responses = await Promise.all([
-            adminResponse(fetcher,`/now-playing/stem-audio?side=outgoing&stem=${stem}&outgoingId=${encodeURIComponent(transition.outgoingId!)}`,undefined,signal),
-            adminResponse(fetcher,`/now-playing/stem-audio?side=incoming&stem=${stem}&outgoingId=${encodeURIComponent(transition.outgoingId!)}`,undefined,signal),
-          ]);
-          const [outgoing,incoming] = await Promise.all(responses.map(async (response,index) => {
-            const buffer = await context.decodeAudioData(await response.arrayBuffer());
-            signal.throwIfAborted();
-            return stemPeaks(buffer,transition,index === 0 ? 'outgoing' : 'incoming',240,stem);
-          }));
-          lanes[stem] = {outgoing:outgoing!,incoming:incoming!};
-        }
-        return lanes;
-      } finally { await context.close(); }
+      const lanes = {} as StemLanes;
+      for (const stem of STEM_NAMES) {
+        const responses = await Promise.all([
+          adminResponse(fetcher,`/now-playing/stem-waveform-peaks?side=outgoing&stem=${stem}&outgoingId=${encodeURIComponent(transition.outgoingId!)}`,undefined,signal),
+          adminResponse(fetcher,`/now-playing/stem-waveform-peaks?side=incoming&stem=${stem}&outgoingId=${encodeURIComponent(transition.outgoingId!)}`,undefined,signal),
+        ]);
+        const [outgoing,incoming] = await Promise.all(responses.map(async (response,index) => {
+          const envelope = await response.json() as { peaks:number[]; startSec:number; storageGain:number };
+          signal.throwIfAborted();
+          return stemEnvelopePeaks(envelope,transition,index === 0 ? 'outgoing' : 'incoming',240,stem);
+        }));
+        lanes[stem] = {outgoing:outgoing!,incoming:incoming!};
+      }
+      return lanes;
     },
   });
   const duration = transition.durationSec;

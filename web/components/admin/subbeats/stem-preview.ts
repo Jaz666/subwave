@@ -168,3 +168,18 @@ export function stemPeaks(buffer: Pick<AudioBuffer,'numberOfChannels'|'getChanne
     return peak;
   });
 }
+
+/** Sample cached 100 ms source envelopes without transferring or decoding FLAC in the browser. */
+export function stemEnvelopePeaks(envelope: { peaks: number[]; startSec: number; storageGain: number },
+  transition: StemTransition, side: 'outgoing' | 'incoming', bins = 240, stem: StemName = 'drums'): number[] {
+  return Array.from({length:bins}, (_,bin) => {
+    let peak = 0;
+    for (let sample=0;sample<128;sample++) {
+      const source = stemSourceSeconds(transition,side,(bin+(sample+.5)/128)/bins*transition.durationSec,stem);
+      if (source == null) continue;
+      const index = Math.floor((source-envelope.startSec)*10);
+      if (index >= 0 && index < envelope.peaks.length) peak = Math.max(peak,envelope.peaks[index] ?? 0);
+    }
+    return peak/Math.max(0.000001,envelope.storageGain);
+  });
+}

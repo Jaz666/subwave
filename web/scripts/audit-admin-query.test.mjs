@@ -94,8 +94,12 @@ const validImperativeFixtures = {
   return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
 }\n`,
   'subbeats/NowPlayingWaveform.tsx': `export async function run(adminFetch, id, side, stem) {
-  // admin-query-imperative: now-playing-waveform-audio
-  return adminResponse(adminFetch, \`/now-playing/audio?id=\${id}\`);
+  // admin-query-imperative: now-playing-waveform-peaks
+  return adminResponse(adminFetch, \`/now-playing/waveform-peaks?id=\${id}\`);
+}\n`,
+  'subbeats/wavesurfer-test/MixingDesk.tsx': `export async function run(adminFetch, id) {
+  // admin-query-imperative: now-playing-waveform-peaks
+  return adminResponse(adminFetch, \`/now-playing/waveform-peaks?id=\${id}\`);
 }\n`,
   'skills/SkillEditModal.tsx': `export async function run(adminFetch, id) {
   // admin-query-imperative: skill-export

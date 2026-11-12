@@ -7,12 +7,12 @@ import { adminJson, adminResponse, useAdminQuery } from '../../../lib/admin-quer
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
 import styles from './NowPlayingWaveform.module.css';
-import { queuedTransition, stemTransitionWindow } from './waveform-timeline';
+import { queuedTransition, stemTransitionWindow, waveformSnapPosition } from './waveform-timeline';
 import { LiveStemPreview } from './LiveStemPreview';
 import { stemDetailVisible, stemPairKey, stemPhase, stemStyle, waveformKeys, type StemTransition } from './stem-preview';
 
 const HISTORY_SECONDS = 30;
-const PLAYHEAD_START_SECONDS = HISTORY_SECONDS;
+const PLAYHEAD_START_SECONDS = 15;
 const WAVEFORM_HEIGHT = 44;
 const SYNC_OFFSET_KEY = 'subwave.mixing-desk.sync-offset-ms';
 const SYNC_STEP_MS = 250;
@@ -30,6 +30,7 @@ type VisualEvents = {
 const EMPTY_SPEECH_FORECASTS: NonNullable<VisualEvents['speechForecasts']> = [];
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
 type TransitionMarker = { airedAt: number; label: string };
+type WaveformPeakResponse = { durationSec: number; peaks: number[] };
 
 function formatTime(seconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -84,14 +85,12 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
     if (!host.current) return;
     const abort = new AbortController();
     let instance: WaveSurfer | null = null;
-    let objectUrl: string | null = null;
     void (async () => {
       try {
-        // admin-query-imperative: now-playing-waveform-audio
-        const response = await adminResponse(adminFetch, `/now-playing/audio?id=${encodeURIComponent(id)}`, { signal: abort.signal });
-        const blob = await response.blob();
+        // admin-query-imperative: now-playing-waveform-peaks
+        const response = await adminResponse(adminFetch, `/now-playing/waveform-peaks?id=${encodeURIComponent(id)}`, { signal: abort.signal });
+        const waveform = await response.json() as WaveformPeakResponse;
         if (abort.signal.aborted || !host.current) return;
-        objectUrl = URL.createObjectURL(blob);
         const { default: WaveSurfer } = await import('wavesurfer.js');
         if (abort.signal.aborted || !host.current) return;
         const options = renderOptions.current;
@@ -109,7 +108,8 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
           barRadius: 2,
           interact: false,
           hideScrollbar: true,
-          url: objectUrl,
+          peaks: [Float32Array.from(waveform.peaks)],
+          duration: waveform.durationSec,
         });
         player.current = instance;
         instance.on('redrawcomplete', () => {
@@ -131,7 +131,6 @@ function DeckSegment({ id, adminFetch, color, pxPerSec, expectedDuration, played
       abort.abort();
       if (player.current === instance) player.current = null;
       instance?.destroy();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [adminFetch, id, onDuration, onError]);
 
@@ -368,7 +367,8 @@ export default function NowPlayingWaveform() {
     const tick = () => {
       const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt + syncOffsetMs) / 1000) : 0;
       const displayElapsed = motionPreference.matches ? Math.floor(liveElapsed) : liveElapsed;
-      const scrollLeft = Math.min(sidePadding + (trimmedHistorySeconds + historySeconds + displayElapsed) * pxPerSec, maxScroll);
+      const { snappedSeconds, playheadPercent } = waveformSnapPosition(displayElapsed);
+      const scrollLeft = Math.min(sidePadding + (trimmedHistorySeconds + historySeconds + snappedSeconds) * pxPerSec, maxScroll);
       const transform = `translate3d(${-scrollLeft}px, 0, 0)`;
       if (lastTransform !== transform) {
         waveformTimeline.current?.style.setProperty('transform', transform);
@@ -376,7 +376,7 @@ export default function NowPlayingWaveform() {
         stemsTimeline.current?.style.setProperty('transform', transform);
         lastTransform = transform;
       }
-      playhead.current?.style.setProperty('left', '50%');
+      playhead.current?.style.setProperty('left', `${playheadPercent}%`);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);

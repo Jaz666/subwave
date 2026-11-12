@@ -228,10 +228,13 @@ const allowed = new Map([
   ['subbeats/SourceAudioDialog.tsx', new Map([
     ['subbeats-source-audition', { callee: 'adminResponse', method: 'GET', path: /^\/library\/subbeats\/source-audio\/\$\{\}$/ }],
   ])],
-  // Original audio buffers/object URLs belong to their mounted waveform and
-  // are freed on unmount. Visual-event JSON and stem drawing peaks use Query.
+  // One-shot peak reads belong to their mounted WaveSurfer instance.
+  // Visual-event JSON and expanded stem drawing peaks use Query.
   ['subbeats/NowPlayingWaveform.tsx', new Map([
-    ['now-playing-waveform-audio', { callee: 'adminResponse', method: 'GET', path: /^\/now-playing\/audio\?id=\$\{\}$/ }],
+    ['now-playing-waveform-peaks', { callee: 'adminResponse', method: 'GET', path: /^\/now-playing\/waveform-peaks\?id=\$\{\}$/ }],
+  ])],
+  ['subbeats/wavesurfer-test/MixingDesk.tsx', new Map([
+    ['now-playing-waveform-peaks', { callee: 'adminResponse', method: 'GET', path: /^\/now-playing\/waveform-peaks\?id=\$\{\}$/ }],
   ])],
   ['skills/SkillEditModal.tsx', new Map([
     ['skill-export', { callee: 'adminResponse', method: 'GET', path: /^\/dj\/skills\/\$\{\}\/export$/ }],
