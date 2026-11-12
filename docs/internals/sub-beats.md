@@ -1416,6 +1416,47 @@ browser checks for the long-mix lifetime, separate fade shapes, cache reuse,
 desktop/mobile layouts and both stem types. The immediate source rollback is
 `a43fc98c`; deployment needs only an owner-run web rebuild.
 
+## Clip join volume correction — 12 November 2026
+
+The owner heard a brief stutter or volume dip as the dashboard changed tracks
+during a stem transition. This coincides with the outgoing/incoming split in
+the rendered Sub/Beats WAV. Read-only mixer logs showed the expected 300 ms
+overlap inside a roughly 380–400 ms buffer; the split files themselves share
+identical samples. The mixer nevertheless started its outgoing fade before the
+delayed incoming part, and the two standard fade operators also prepared their
+clocks differently. Isolated Liquidsoap 2.4.6 renders reproduced a 3.5–4.4 dB
+dip on a constant-level test signal across four frame phases.
+
+Aligned clip joins now apply complementary linear weights in `add`, on one
+clock after the incoming delay. The outgoing stays at unity while the incoming
+waits. Both weights sum to one, and their ramp finishes one frame before the
+outgoing buffer ends: otherwise a partial last frame still left a short dip.
+This applies to regular Stem Blend and all three Sub/Beats clip joins, including
+the internal metadata change. The source split, cue alignment, tempo release,
+track gain and speech admission policies stay the same. Ordinary song and
+jingle crossfades retain their existing paths.
+
+`scripts/stem-seam-test.sh split` now uses the production Python splitter and
+lifts the actual mixer implementation. A constant channel checks volume;
+a tone plus seeded noise checks sample continuity across the join. All four
+frame phases preserve the original audio to 16-bit output precision (maximum
+sample error 0.00003368; minimum test level −0.0021 dB from quantisation).
+The command accepts the existing `STEM_SEAM_RADIO_REF` for regression comparisons.
+Eight outer-seam renders also pass (FLAC/MP3, station crossfades 0/6 seconds,
+predecessor trims 0/661 samples): maximum beat error is 0.4 ms, and the return
+to the original incoming track is within one sample. All 27 focused seam,
+recovery, equal-power and gain-override tests pass, together with controller
+typechecking, scoped test lint and a full Liquidsoap 2.4.6 script check in an
+isolated container. The equal-power source contract was updated
+to recognise the clip-only bypass while still requiring both ordinary faders.
+
+Development remains in `fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`. The source candidate
+is delivered to `/home/jaz666/Docker/subwave`; the owner rebuilds **broadcast**.
+No live restart, queue edit or scan is performed by the agent. The immediate
+source rollback is `88b04d24`. Listening confirmation remains an owner check
+after rebuilding; legitimate speech ducking can still occur during a mix.
+
 ## First development increment: local preparation/cache (historical foundation)
 
 
