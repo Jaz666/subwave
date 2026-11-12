@@ -153,6 +153,7 @@ export async function waitForQuiet(gate: QuietGate, progress: { done: number; to
     reportProgress({
       phase: 'analyze',
       label: `Waiting for quiet (${why})`,
+      waitingForQuiet: true,
       done: progress.done,
       total: progress.total,
     });

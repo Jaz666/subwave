@@ -12,7 +12,8 @@ import { z } from 'zod';
 import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
-import { SUBBEATS_BATCH_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
+import type { StationState } from '../../lib/types';
+import { SUBBEATS_BATCH_LIMIT, SUBBEATS_QUEUE_LIMIT, SUBBEATS_PAGE_SIZE, subbeatsCandidatePageSchema, subbeatsViewSchema, subbeatsMixStyleSchema, type subbeatsStatusSchema } from '../../lib/schemas.generated';
 import { V3AlertDialog } from '../ui/alert-dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -20,12 +21,13 @@ import { libraryKeys } from './library/queries';
 import type { PlaylistSummary } from './library/types';
 import { useJoinPreview } from './library/useJoinPreview';
 import { Checkbox } from '../ui/checkbox';
-import { selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './library/subbeats-selection';
+import { liveSubbeatsPair, selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './library/subbeats-selection';
 import { MIX_LABEL, SuitabilityDetails } from './library/subbeats-suitability';
 import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, type SubbeatsPage } from './subbeats/SubbeatsWorkspace';
 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
+  liveStation: ['library', 'subbeats', 'live-station'] as const,
   duration: (id: string) => ['library', 'subbeats', 'duration', id] as const,
   candidates: (q: string, offset: number, scope: string, genre: string, status: string, sort: string, mixing: string, playlistId:string) => ['library', 'subbeats', 'candidates', q, scope, genre, status, sort, mixing, playlistId, offset] as const,
 };
@@ -77,6 +79,11 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     request: async (fetcher, signal) => subbeatsViewSchema.parse(await adminJson(fetcher, '/library/subbeats', undefined, signal)),
   });
   const preview = useJoinPreview(JSON.stringify([outgoing, incoming, ready, outCueIndex, inCueIndex, mixStyle, state.data?.jobs.filter(job => job.id === outgoing || job.id === incoming).map(job => [job.cuePoints?.artifactKey,job.cueCoverage?.artifactKey])]), adminFetch, '/library/subbeats/join-preview');
+  const [liveMessage, setLiveMessage] = useState('');
+  const liveStation = useAdminQuery<StationState>({
+    key: subbeatsKeys.liveStation, adminFetch, enabled: false,
+    request: (fetcher, signal) => adminJson<StationState>(fetcher, '/state', undefined, signal),
+  });
   const candidates = useAdminQuery({
     key: subbeatsKeys.candidates(q, offset, scope, genre, status, sort, mixing,playlistId), adminFetch, enabled: ready && browsing && browseRestored,
     request: async (fetcher, signal) => subbeatsCandidatePageSchema.parse(await adminJson(fetcher,
@@ -170,6 +177,15 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   });
   const actionBusy = upgradeCoverage.isPending || enqueue.isPending || assess.isPending || remove.isPending || batchRemove.isPending;
   const jobs = state.data?.jobs ?? [];
+  const populateFromLive = async () => {
+    const result = await liveStation.refetch();
+    if (result.isError || !result.data) { setLiveMessage('Could not read the live station. Try again.'); return; }
+    const pair = liveSubbeatsPair(result.data, jobs);
+    preview.stop();
+    setOutgoing(pair.outgoing); setIncoming(pair.incoming);
+    setOutCueIndex(0); setInCueIndex(0); setPreviewSearch('');
+    setLiveMessage(pair.message);
+  };
   const byId = new Map(jobs.map(j => [j.id, j]));
   const rows = candidates.data?.rows ?? [];
   const pageOffset = candidates.data?.offset ?? offset;
@@ -281,8 +297,8 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const incomingReady = !!incomingCue && !!outgoingCue;
   const preparationControl = <div className="max-w-md"><label htmlFor="subbeats-preparation-method" className="mb-1 block text-sm font-medium">Preparation method</label>
     <select id="subbeats-preparation-method" className={SELECT_CLASS} value={preparationMethod} disabled={enqueue.isPending} onChange={event => setPreparationMethod(event.target.value as typeof preparationMethod)}>
-      <option value="small0">Beat This! small · cue points</option><option value="final0">Beat This! full · cue points</option>
-    </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation saves musical cues, reusable opening/ending coverage and vocal measurements. Sufficient saved stems are reused. The full model takes longer and may choose different points.</p></div>;
+      <option value="small0">Beat This! small · cue points</option>
+    </select><p className="mt-2 text-xs leading-relaxed text-muted">Cue-point preparation saves musical cues, reusable opening/ending coverage and vocal measurements. Sufficient saved stems are reused.</p></div>;
   const outgoingControl = <div className="min-w-0">
           <label htmlFor="subbeats-outgoing" className="mb-1 block text-sm font-medium">Outgoing track</label>
           <select id="subbeats-outgoing" className={SELECT_CLASS} value={outgoing} onChange={event => { setOutgoing(event.target.value); setOutCueIndex(0); setInCueIndex(0); }}>
@@ -345,7 +361,14 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       </div>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose any two prepared tracks. Find Suitable Transition chooses cue points automatically and uses the live picker’s automatic mixing style; if no Sub/Beat plan fits, it previews the regular Subwave crossfade. Play selected mix uses the markers and style chosen below.</p>
       <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">A Sub/Beat plan may use an 8- or 16-bar mix and can loop incoming drums when that clears a detected vocal clash. Cue markers remain available below for manual listening.</p>
-      {prepared >= 2 && <div className="mt-4 max-w-sm"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find prepared tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>}
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <div className="max-w-sm min-w-48 flex-1"><label htmlFor="subbeats-preview-search" className="mb-1 block text-sm font-medium">Find prepared tracks</label><Input className="min-h-11" id="subbeats-preview-search" type="search" value={previewSearch} onChange={event => setPreviewSearch(event.target.value)} placeholder="Artist, track or album" /></div>
+        <Button className="min-h-11 whitespace-normal" disabled={!ready || !state.data || liveStation.isFetching} onClick={() => void populateFromLive()}>
+          {liveStation.isFetching && <Loader2 className="animate-spin motion-reduce:animate-none" />}
+          {liveStation.isFetching ? 'Loading live station…' : 'Populate from Live Station'}
+        </Button>
+      </div>
+      {liveMessage && <p role="status" className="mt-3 text-sm text-muted">{liveMessage}</p>}
       {prepared > 0 && <section className="mt-4 grid min-w-0 gap-4 border-t border-ink/20 pt-4 sm:grid-cols-2" aria-labelledby="subbeats-preview-pair">
         <h3 id="subbeats-preview-pair" className="font-display text-lg font-bold sm:col-span-2">Choose the tracks to mix</h3>
         {outgoingControl}
@@ -548,7 +571,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           <div className="mt-3 border-t border-ink/20 pt-3">
             <p className="text-sm tabular-nums" aria-live="polite">{selection.length} selected{selection.length > selectionOnPage ? ` · ${selection.length - selectionOnPage} on other pages or filters` : ''}</p>
             <div className="mb-3">{preparationControl}</div>
-            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Queue up to {SUBBEATS_BATCH_LIMIT} tracks per batch; batches can be added as needed. Preparation starts after the next Library Demucs scan. Tracks selected for Sub/Beats skip new regular-stem caching during that scan, and prepared audio shares the regular stem-cache budget.</p>
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-muted">Selections carry across pages and filters. Up to {SUBBEATS_BATCH_LIMIT} tracks per batch; {jobs.length} of {SUBBEATS_QUEUE_LIMIT.toLocaleString()} preparation entries used. Prepared audio shares the regular stem-cache budget.</p>
             <div className="mt-3 flex flex-wrap gap-3">
               <Button className="min-h-11" variant="solid" disabled={!selection.length || enqueue.isPending || !state.data || query.trim() !== q} onClick={() => enqueue.mutate(selection.map(row => row.id))}>
                 <Plus /> {enqueue.isPending ? 'Adding…' : `Queue analysis (${selection.length})`}
@@ -613,7 +636,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           {assess.isError && <p role="alert" className="mt-2 text-sm">Could not queue assessment. {assess.error instanceof Error ? assess.error.message : 'Try again.'}</p>}
           <p className="mt-3 text-sm tabular-nums" aria-live="polite">{state.isLoading ? 'Loading progress…' : `${prepared} prepared · ${pending} remaining`}</p>
           <p className="mt-2 text-sm leading-relaxed break-words text-muted">{state.data?.paused ? 'Paused. Any track already being prepared will finish first.' : state.data?.progress && pending ? state.data.progress : pending ? 'Queued tracks will run when library analysis is available.' : 'Choose tracks to prepare. Saved results are reused.'}</p>
-          <p className="mt-3 text-xs text-muted">Preparation respects your analysis quiet-time setting. Saved results share the regular stem-cache budget.</p>
+          <p className="mt-3 text-xs text-muted">Sub/Beats stem preparation runs during a Library Demucs scan. Regular pick-time stem caching is separate; assessing already-saved stems can run immediately. Preparation respects your analysis quiet-time setting and shared stem-cache budget. The queue holds up to {SUBBEATS_QUEUE_LIMIT.toLocaleString()} entries.</p>
         </div>
         <div className="grid gap-3 border-b border-ink p-4">
           <div><label htmlFor="subbeats-job-search" className="mb-1 block text-sm font-medium">Find preparation entries</label><Input className="min-h-11" id="subbeats-job-search" type="search" value={jobQuery} placeholder="Artist, track or album" onChange={event => { setJobQuery(event.target.value); setJobPage(0); }} /></div>

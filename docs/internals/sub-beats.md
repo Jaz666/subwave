@@ -1582,6 +1582,32 @@ picker, source download, ordinary analysis, settings writes or mixer controls.
 One controller preview request is admitted at a time; client disconnect aborts
 the HTTP wait. A worker already rendering may finish its bounded cached clip.
 
+Preview admission distinguishes a Library worker doing work from one waiting
+between tracks for quiet time. Structured progress reports `waitingForQuiet`
+while the quiet gate holds, and the resumed progress replaces it. Cue previews
+are allowed during that confirmed managed wait without stopping or resuming the
+scan, or changing the saved Sub/Beats pause/jobs. Active Library work and external
+workers with no confirmed pause retain their preparation-slot guard.
+
+The Preview search now has **Populate from Live Station** beside it. Clicking
+reads fresh `/state` data through the admin query layer, selects the current
+track as Outgoing and the first queued track as Incoming, and resets the cue
+selectors and search filter. Each exact library ID must be prepared with a saved
+bundle. A missing/unprepared role is cleared with a readable explanation; no
+later queued track or duplicate rip is silently substituted. Loading the pair
+does not start preview playback or change the station queue. A failed live read
+keeps the existing pair and offers a retry.
+
+Focused checks pass: Sub/Beats routes (20, including a live process lock while
+quiet-paused and refusal after resuming), quiet gate (14), web selection (10),
+admin query audit (9), both package typechecks and scoped lint (nine existing
+controller warnings). The static query audit passes. No production build or
+verify-stack browser run is included; no isolated browser stack was running.
+
+The follow-up uses the same development/station paths as the timing change
+above. Its immediate source rollback is `8bddde5d`. The owner rebuilds controller
+and web; no live preview, scan, queue edit or service restart is run by the agent.
+
 The analyzer's `/subbeats-preview` endpoint dispatches `preview_subbeats` to
 the existing worker. This operation does not request/load GPU models. It reads
 and hash-verifies dedicated cached head/exit stems, restores region storage
