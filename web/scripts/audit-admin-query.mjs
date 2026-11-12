@@ -250,6 +250,12 @@ const allowed = new Map([
   ['subbeats/SourceAudioDialog.tsx', new Map([
     ['subbeats-source-audition', { callee: 'adminResponse', method: 'GET', path: /^\/library\/subbeats\/source-audio\/\$\{\}$/ }],
   ])],
+  // Audio buffers/object URLs belong to their mounted waveform and are freed
+  // on unmount. Visual-event JSON remains owned by Query.
+  ['subbeats/NowPlayingWaveform.tsx', new Map([
+    ['now-playing-stem-audio', { callee: 'adminResponse', method: 'GET', path: /^\/now-playing\/stem-audio\?side=\$\{\}&stem=\$\{\}$/ }],
+    ['now-playing-waveform-audio', { callee: 'adminResponse', method: 'GET', path: /^\/now-playing\/audio\?id=\$\{\}$/ }],
+  ])],
   ['skills/SkillEditModal.tsx', new Map([
     ['skill-export', { callee: 'adminResponse', method: 'GET', path: /^\/dj\/skills\/\$\{\}\/export$/ }],
   ])],
