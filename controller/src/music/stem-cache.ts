@@ -78,7 +78,9 @@ export async function hasWindow(trackId: string, window: StemWindow): Promise<bo
 export type RenderStemSource = { stemsDir: string } | { stemsDir: string; subbeatsBundleDir: string; subbeatsBundleKey: string };
 
 async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: SubbeatsJob | undefined,
-  key: string | undefined | null, legacyFallback = false): Promise<{ subbeatsBundleDir: string; subbeatsBundleKey: string } | null> {
+  key: string | undefined | null, legacyFallback = false): Promise<{
+    subbeatsBundleDir: string; subbeatsBundleKey: string; startSec: number; endSec: number; storageGain: number;
+  } | null> {
   const dir = dirFor(trackId);
   try {
     if (!trackId || path.basename(trackId) !== trackId || trackId === '.' || trackId === '..' || trackId.includes('\\')) return null;
@@ -137,7 +139,8 @@ async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: Sub
       if (!(Number.isFinite(analysis?.duration_seconds) && analysis.duration_seconds > 0
         && (endSample as number) / 44100 <= analysis.duration_seconds + 1 / 44100)) return null;
     } else if (startSample !== 0) return null;
-    return { subbeatsBundleDir: bundleDir, subbeatsBundleKey: key };
+    return { subbeatsBundleDir: bundleDir, subbeatsBundleKey: key,
+      startSec: startSample / 44100, endSec: endSample / 44100, storageGain: region.storage_gain };
   } catch {
     return null;
   }
@@ -146,7 +149,8 @@ async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: Sub
 export async function subbeatsBundleSource(trackId: string, window: StemWindow): Promise<{ subbeatsBundleDir: string; subbeatsBundleKey: string } | null> {
   try {
     const job = readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
-    return await savedSubbeatsRegion(trackId, window, job, job?.bundleKey);
+    const source = await savedSubbeatsRegion(trackId, window, job, job?.bundleKey);
+    return source ? { subbeatsBundleDir: source.subbeatsBundleDir, subbeatsBundleKey: source.subbeatsBundleKey } : null;
   } catch { return null; }
 }
 
@@ -155,12 +159,18 @@ export async function subbeatsBundleSource(trackId: string, window: StemWindow):
 // The route supplies one queue snapshot for all eight rows; never parse the full
 // preparation list separately for each window on every Dashboard poll.
 export async function subbeatsCachedCoverage(trackId: string, job: SubbeatsJob | undefined): Promise<{ head: boolean; exit: boolean }> {
-  const has = async (window: StemWindow) => {
-    if (job?.cueCoverage && await savedSubbeatsRegion(trackId, window, job, job.cueCoverage.artifactKey, true)) return true;
-    return await savedSubbeatsRegion(trackId, window, job, job?.bundleKey, true) !== null;
-  };
-  const [head, exit] = await Promise.all([has('head'), has('tail')]);
-  return { head, exit };
+  const [head, exit] = await Promise.all([
+    subbeatsCachedRegion(trackId, 'head', job), subbeatsCachedRegion(trackId, 'tail', job),
+  ]);
+  return { head: head !== null, exit: exit !== null };
+}
+
+export async function subbeatsCachedRegion(trackId: string, window: StemWindow, job: SubbeatsJob | undefined) {
+  if (job?.cueCoverage) {
+    const region = await savedSubbeatsRegion(trackId, window, job, job.cueCoverage.artifactKey, true);
+    if (region) return region;
+  }
+  return savedSubbeatsRegion(trackId, window, job, job?.bundleKey, true);
 }
 
 // Regular blends may read a verified Sub/Beats region when the ordinary cache

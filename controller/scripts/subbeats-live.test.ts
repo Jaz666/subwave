@@ -60,6 +60,43 @@ test('live-disabled policy does no evidence or render work', async () => {
   }),null);
 });
 
+test('live successor picks reserve selection plus render time without extending the queue', async () => {
+  const { subbeatsPickLeadSeconds } = await import('../src/broadcast/subbeats.js');
+  const { HARD_DEADLINE_SEC } = await import('../src/broadcast/drain-policy.js');
+  assert.equal(subbeatsPickLeadSeconds(120_000), 250);
+  assert.equal(subbeatsPickLeadSeconds(30_000), 160);
+  assert.equal(subbeatsPickLeadSeconds(300_000), 250, 'the live render stays capped at two minutes');
+  const saved = { current: queue.current, upcoming: queue.upcoming, run: queue.runPickCycle,
+    gate: queue.pickGateClosed, busy: queue.pickerBusy, last: queue._deadlinePickAt };
+  const picked: unknown[] = [];
+  try {
+    await settings.update({ transitions: { pairDrain: true, subbeatsLive: false },
+      personas: settings.get().personas.map(p => ({ ...p, djMode: true })) });
+    queue.current = { track: { id: 'air', duration: 300 }, startedAt: new Date(Date.now() - 120_000).toISOString(), source: 'ai' };
+    const held: Item = { track: { id: 'held', duration: 300 }, sent: false };
+    queue.upcoming = [held]; queue.pickerBusy = false; queue._deadlinePickAt = 0;
+    queue.pickGateClosed = () => null;
+    queue.runPickCycle = opts => { picked.push(opts); };
+    queue.maybeDeadlinePick();
+    assert.equal(picked.length, 0, 'ordinary transitions keep the two-minute window');
+    await settings.update({ transitions: { subbeatsLive: true } });
+    queue.maybeDeadlinePick();
+    assert.deepEqual(picked, [{ isAutonomous: true, pickAnchorItem: held }]);
+    queue.maybeDeadlinePick();
+    assert.equal(picked.length, 1, 'the existing retry cooldown still applies');
+    queue._deadlinePickAt = 0; held.sent = true;
+    queue.maybeDeadlinePick();
+    assert.equal(picked.length, 1, 'a sent head does not grow the queue');
+    held.sent = false;
+    queue.current.startedAt = new Date(Date.now() - (300 - HARD_DEADLINE_SEC + 1) * 1000).toISOString();
+    queue.maybeDeadlinePick();
+    assert.equal(picked.length, 1, 'the hard deadline is preserved');
+  } finally {
+    queue.current = saved.current; queue.upcoming = saved.upcoming; queue.runPickCycle = saved.run;
+    queue.pickGateClosed = saved.gate; queue.pickerBusy = saved.busy; queue._deadlinePickAt = saved.last;
+  }
+});
+
 test('Python split, process-group deadlines and sidecar route use the production helpers', () => {
   for (const file of ['subbeats_live_test.py','analyzer_sidecar_contract_test.py']) {
     const run = spawnSync('python3',[fileURLToPath(new URL(`./${file}`,import.meta.url))],{encoding:'utf8',timeout:15000});

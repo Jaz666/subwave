@@ -36,8 +36,8 @@ function seed(id: string, { legacy = false, classic = false } = {}) {
   const target = classic ? base : coverage;
   for (const name of ['head', 'exit']) for (const stem of cache.STEM_NAMES) {
     const file = `${name}-${stem}.flac`;
-    writeFileSync(join(target, file), 'fixture stems');
-    files[file] = { bytes: Buffer.byteLength('fixture stems') };
+    writeFileSync(join(target, file), Buffer.alloc(128, 1));
+    files[file] = { bytes: 128 };
   }
   const parent = JSON.stringify({ identity: { mode: classic ? 'analysis_and_stems' : 'cue-source',
     source_sha256: source, separator }, metadata: { stem_regions: classic ? regions : [] }, files: classic ? files : {} });
@@ -110,4 +110,64 @@ test('existing coverage remains visible while a cache-only assessment is queued'
 test('coverage remains admin-only and limited to eight queue tracks', async () => {
   assert.equal((await fetch(`${http.url}/stem-cache/coverage?ids=cue-track`)).status, 401);
   assert.equal((await fetch(`${http.url}/stem-cache/coverage?ids=${Array.from({ length: 9 }, (_, i) => i).join(',')}`, { headers: auth })).status, 400);
+});
+
+test('expanded live waveforms read cue stems before and throughout the buffered handoff', async () => {
+  const { queue } = await import('../src/broadcast/queue.js');
+  const { createNowPlayingFileRouter, nowPlayingStemTransition } = await import('../src/routes/now-playing-file.js');
+  type Item = NonNullable<typeof queue.current>;
+  seed('wave-out'); seed('wave-in');
+  const sr = 44100;
+  const playback = { version: 1 as const, transitionId: '11111111-1111-4111-8111-111111111111',
+    outgoingId: 'wave-out', incomingId: 'wave-in', evidenceFingerprint: 'e'.repeat(64),
+    mixStyle: 'long-blend' as const, loudnessSettings: '{}', gainsDb: [0, 0] as [number, number],
+    clipPath: join(stateDir, 'in.wav'), leadPath: join(stateDir, 'out.wav'), incomingDurationSeconds: 120,
+    timing: { sampleRate: 44100 as const, outgoingStartSample: 100 * sr, incomingEntryFrame: 4 * sr,
+      handoverFrame: 18 * sr, outgoingEndFrame: 34 * sr, incomingRate: 1, releaseCurve: 'linear-rate' as const,
+      releaseStartFrame: 34 * sr, releaseEndFrame: 37 * sr, clipFrames: 39 * sr, incomingResumeSample: 35 * sr } };
+  const outgoing: Item = { track: { id: 'wave-out', duration: 120 }, sent: true,
+    startedAt: new Date(Date.now() - 10_000).toISOString(),
+    stemBlend: { clipPath: playback.clipPath, clipSec: 39, subbeats: playback, outCueSec: 100.3, inCueSec: 34.7 } };
+  const incoming: Item = { track: { id: 'wave-in', duration: 120 }, stemSeam: true, subbeatsHandoff: playback };
+  const saved = { current: queue.current, upcoming: queue.upcoming, history: queue.history };
+  let onAir = 'wave-out';
+  const app = express();
+  app.use(createNowPlayingFileRouter({ nowPlaying: async () => ({ subsonic_id: onAir }), lookup: async () => null,
+    nextTrackId: () => queue.upcoming[0]?.track.id ?? null, stemTransition: nowPlayingStemTransition }));
+  const live = await listen(app);
+  const get = (path: string) => fetch(live.url + path, { headers: auth });
+  try {
+    queue.current = outgoing; queue.upcoming = [incoming]; queue.history = [];
+    const events = await get('/now-playing/visual-events?id=wave-out');
+    assert.equal(events.status, 200);
+    type Events = { stemTransition: NonNullable<Awaited<ReturnType<typeof nowPlayingStemTransition>>> };
+    const meta = (await events.json() as Events).stemTransition;
+    assert.equal(meta.kind, 'subbeats');
+    assert.equal(meta.incomingAtSec, 4);
+    assert.ok(meta.sources);
+    assert.ok(meta.incomingAiredAt);
+    assert.equal(meta.sources.outgoing.startSec, 100);
+    assert.equal(meta.sources.incoming.startSec, 0);
+    assert.ok(Date.parse(meta.incomingAiredAt) > Date.now() + 90_000, 'the view is available well before the transition');
+    for (const side of ['outgoing', 'incoming']) for (const stem of cache.STEM_NAMES) {
+      const response = await get(`/now-playing/stem-audio?side=${side}&stem=${stem}&outgoingId=wave-out`);
+      assert.equal(response.status, 200);
+      assert.equal((await response.arrayBuffer()).byteLength, 128);
+    }
+    onAir = 'wave-in'; incoming.startedAt = new Date().toISOString();
+    queue.history = [outgoing]; queue.current = incoming; queue.upcoming = [{ track: { id: 'later' } }];
+    for (const id of ['wave-out', 'wave-in']) {
+      const response = await get('/now-playing/visual-events?id=' + id);
+      assert.equal(response.status, 200, 'both sides of the listener buffer retain the active pair');
+      assert.equal((await response.json() as Events).stemTransition.incomingAiredAt, incoming.startedAt);
+    }
+    assert.equal((await get('/now-playing/stem-audio?side=outgoing&stem=drums&outgoingId=wave-out')).status, 200);
+    assert.equal((await get('/now-playing/visual-events?id=unrelated')).status, 409);
+    assert.equal((await get('/now-playing/stem-audio?side=outgoing&stem=drums&outgoingId=unrelated')).status, 409);
+    incoming.startedAt = new Date(Date.now() - 96_000).toISOString();
+    assert.equal((await get('/now-playing/visual-events?id=wave-out')).status, 409, 'expired handoffs cannot expose old tracks');
+  } finally {
+    queue.current = saved.current; queue.upcoming = saved.upcoming; queue.history = saved.history;
+    await live.close();
+  }
 });

@@ -4866,7 +4866,9 @@ class Queue {
     if (this.pickerBusy || this.pickGateClosed()) return;
     if (!this.pairDrainActive()) return;
     const rem = this.remainingSecOnAir();
-    if (!shouldDeadlinePick(rem)) return;
+    const leadSec = settings.get().transitions.subbeatsLive === true
+      ? subbeats.subbeatsPickLeadSeconds(config.analyzer.renderTimeoutMs) : undefined;
+    if (!shouldDeadlinePick(rem, leadSec)) return;
     // Attempt cooldown: the watcher tick re-enters every 1.5s for the whole
     // window, so a FAST-failing pick (LLM host down) would otherwise re-fire
     // dozens of times per window. A success stops matching the conditions
