@@ -15,13 +15,25 @@ import { getRawStreamUrl } from '../music/subsonic.js';
 import { bulkPassRunning } from '../music/tagger-lock.js';
 import { separationInFlight } from './pick-stems.js';
 import { renderStandsDown } from './pick-stems-policy.js';
-import { HARD_DEADLINE_SEC } from './drain-policy.js';
+import { DRAIN_DEADLINE_SEC, HARD_DEADLINE_SEC } from './drain-policy.js';
 import { clipSeamCues, CLIP_SEAM_CROSS_SEC } from './stem-seam.js';
 import type { BlendPlan, BlendTrack } from './stem-blend.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
 
 let busy = false;
 let probing = false;
+
+const MAX_RENDER_MS = 120_000;
+const COMMIT_MARGIN_SEC = 10;
+
+// Keep the ordinary selection allowance, then add the live render's ceiling
+// and commit reserve. A full two-minute render cannot fit inside the ordinary
+// two-minute pick window after selection has already consumed part of it.
+export function subbeatsPickLeadSeconds(renderTimeoutMs: number): number {
+  const selectionSec = DRAIN_DEADLINE_SEC - HARD_DEADLINE_SEC;
+  return Math.max(DRAIN_DEADLINE_SEC,
+    selectionSec + Math.min(MAX_RENDER_MS, renderTimeoutMs) / 1000 + HARD_DEADLINE_SEC + COMMIT_MARGIN_SEC);
+}
 
 export function subbeatsStillCurrent(playback: SubbeatsPlayback): boolean {
   try {
@@ -59,8 +71,8 @@ export async function maybeRenderSubbeats(
     }
     return fallback('The updated Sub/Beats analyzer is unavailable or still starting.');
   }
-  const windowMs = remainingSec == null ? 0 : Math.floor((remainingSec - HARD_DEADLINE_SEC - 10) * 1000);
-  const budgetMs = Math.min(120_000,config.analyzer.renderTimeoutMs,windowMs);
+  const windowMs = remainingSec == null ? 0 : Math.floor((remainingSec - HARD_DEADLINE_SEC - COMMIT_MARGIN_SEC) * 1000);
+  const budgetMs = Math.min(MAX_RENDER_MS,config.analyzer.renderTimeoutMs,windowMs);
   if (budgetMs < 10_000) return fallback('There is insufficient time before the queue deadline.');
   busy = true;
   const deadlineMs = Date.now()+budgetMs;

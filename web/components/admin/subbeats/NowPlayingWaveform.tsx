@@ -7,7 +7,7 @@ import { adminJson, adminResponse, useAdminQuery } from '../../../lib/admin-quer
 import { useAdminAuth } from '../../../lib/adminAuth';
 import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../lib/theme-rgb';
 import styles from './NowPlayingWaveform.module.css';
-import { queuedTransition } from './waveform-timeline';
+import { queuedTransition, stemTransitionWindow } from './waveform-timeline';
 
 const HISTORY_SECONDS = 30;
 const PLAYHEAD_START_SECONDS = 15;
@@ -23,6 +23,7 @@ type VisualEvents = {
     kind: 'stem-blend' | 'subbeats';
     durationSec: number;
     incomingAtSec: number;
+    incomingAiredAt?: string;
     outgoingUntilSec: number;
     outgoingId?: string;
     incomingId?: string;
@@ -111,7 +112,7 @@ function ExpandedStemLanes({ transition, adminFetch, colors }: {
           const pair = await Promise.all((['outgoing', 'incoming'] as const).map(async side => {
             // admin-query-imperative: now-playing-stem-audio
             const response = await adminResponse(adminFetch,
-              `/now-playing/stem-audio?side=${side}&stem=${stem}`, { signal: abort.signal });
+              `/now-playing/stem-audio?side=${side}&stem=${stem}&outgoingId=${encodeURIComponent(transition.outgoingId!)}`, { signal: abort.signal });
             const buffer = await context!.decodeAudioData(await response.arrayBuffer());
             const storageGain = side === 'outgoing' ? outgoingStorageGain : incomingStorageGain;
             return peaksFromBuffer(buffer, bins, storageGain);
@@ -333,10 +334,11 @@ export default function NowPlayingWaveform() {
     enabled: !!currentId && hydrated && !needsAuth,
     staleTime: 0,
     refetchInterval: 5000,
+    placeholderData: previous => previous,
     request: (fetcher, signal) => adminJson<VisualEvents>(fetcher,
       `/now-playing/visual-events?id=${encodeURIComponent(currentId!)}`, undefined, signal),
   });
-  const events = visualEvents.error ? undefined : visualEvents.data;
+  const events = visualEvents.data;
   const jingle = events?.jingle ?? null;
   const bed = events?.bed ?? null;
   const stemTransition = events?.stemTransition ?? null;
@@ -568,10 +570,12 @@ export default function NowPlayingWaveform() {
       }} />;
   });
 
-  const stemBar = transition && stemTransition && transition.armed && currentStartedAt > 0
+  const stemWindow = stemTransition ? stemTransitionWindow(stemTransition, transition?.airedAt, leadMs) : null;
+  const stemBar = stemWindow && stemTransition && currentStartedAt > 0
+    && (currentId === stemTransition.outgoingId || currentId === stemTransition.incomingId)
     ? (() => {
       const duration = stemTransition.durationSec;
-      const startAt = transition.airedAt - duration * 1000;
+      const startAt = stemWindow.startAt;
       const left = timelineOrigin + (trimmedHistorySeconds + historySeconds + (startAt - currentStartedAt) / 1000) * pxPerSec;
       const width = duration * pxPerSec;
       const incomingAt = Math.max(0, Math.min(duration, stemTransition.incomingAtSec));

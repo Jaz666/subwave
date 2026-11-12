@@ -1165,6 +1165,46 @@ analyzer without rewriting existing stem files. Runtime folder permissions are
 applied only when the owner deploys/restarts; this source change does not operate
 the live station.
 
+## Live preparation timing and waveform display — 12 November 2026
+
+Live Sub/Beats successor selection now reserves the ordinary 75-second selection
+allowance, the configured render timeout (capped at 120 seconds), the existing
+45-second handover deadline and 10-second commit margin. On the test station's
+60-second render timeout this starts selection with 190 seconds left, instead
+of 120; a 120-second render ceiling gives 250 seconds. The single held-track
+rule, retry cooldown and hard fallback deadline remain in force. This is pair
+rendering from saved stems; it does not launch new stem separation at pick time.
+
+The expanded waveform now uses the same verified cue-coverage/legacy artifact
+reader as the Queue tooltip, including source offsets and storage gain. Its
+previous base-bundle-only reader incorrectly reported cue-prepared audio as
+unavailable. The display publishes the incoming entry time and positions the
+Sub/Beats bar around that entry frame, instead of ending the entire clip there.
+For the observed 39.48-second clip with a four-second outgoing lead, the bar
+starts four seconds before entry and continues about 35.48 seconds after it.
+
+The active pair remains readable across incoming metadata and the maximum
+60-second listener buffer. Only the current pair or its immediately preceding
+Sub/Beats overlap is admitted; unrelated/expired track requests are refused.
+The shared query retains its previous response while the listener catches up.
+These changes preserve preview availability through the mixed clip; the
+controller's played label alone does not establish what a listener heard.
+
+Focused verification passes: live playback/transport (17), cache and expanded
+waveform HTTP contracts (7), existing file/audio routes (16), drain policy,
+regular stem sources (3), web timeline (7), and admin query audit (9), plus both
+package typechecks and scoped lint. The waveform fixture verifies all eight
+stem responses before the seam, retained access across metadata, refusal of
+unrelated/expired requests, and the incoming-entry timestamp. No real-time
+listening test, production build or browser verification is included.
+
+Development remains in `fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`. The source is delivered
+to `/home/jaz666/Docker/subwave`; the owner rebuilds controller and web and then
+checks the next compatible pair with the expanded display open. No agent-run
+rebuild or on-air intervention is part of this change. Immediate source rollback
+is `180b21c0`.
+
 ## First development increment: local preparation/cache (historical foundation)
 
 

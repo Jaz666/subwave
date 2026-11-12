@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { StationState } from '../../../lib/types';
-import { queuedTransition } from './waveform-timeline';
+import { queuedTransition, stemTransitionWindow } from './waveform-timeline';
 
 const forecast = '2026-11-10T16:00:00Z';
 const queue = (patch: Partial<StationState> = {}): StationState => ({
@@ -9,6 +9,22 @@ const queue = (patch: Partial<StationState> = {}): StationState => ({
   upcoming: [{ subsonic_id: 'in', airsAt: forecast }],
   history: [],
   ...patch,
+});
+
+test('the Sub/Beats bar straddles incoming entry instead of ending there', () => {
+  const meta = { kind: 'subbeats' as const, durationSec: 39, incomingAtSec: 4, incomingAiredAt: forecast };
+  const entryAt = Date.parse(forecast) + 22_000;
+  assert.deepEqual(stemTransitionWindow(meta, undefined, 22_000), {
+    startAt: entryAt - 4000, endAt: entryAt + 35_000,
+  });
+  assert.deepEqual(stemTransitionWindow(meta, entryAt + 500_000, 22_000),
+    stemTransitionWindow(meta, undefined, 22_000), 'actual clip timing survives a change to the next queued forecast');
+});
+
+test('ordinary stem estimates retain their native-resume forecast and unknown timing stays unknown', () => {
+  const meta = { kind: 'stem-blend' as const, durationSec: 30, incomingAtSec: 15 };
+  assert.deepEqual(stemTransitionWindow(meta, 100_000, 22_000), { startAt: 70_000, endAt: 100_000 });
+  assert.equal(stemTransitionWindow(meta, undefined, 0), null);
 });
 
 test('transition forecast uses listener time and the controller-armed type', () => {
