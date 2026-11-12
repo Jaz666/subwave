@@ -2247,15 +2247,13 @@ class Queue {
     await subbeats.discardSubbeatsClips(clips);
   }
 
-  // Re-read live queue/trim/show policy before changing linked cues. The
-  // transition is optional; an existing bed, spoken head or boundary wins.
+  // Re-read live queue/trim/show policy before changing linked cues. Speech
+  // uses its own mixer channel and does not veto either rendered stem seam.
   subbeatsFitsPair(item: QueueItem, successor: QueueItem, playback: SubbeatsPlayback): boolean {
     if (!subbeats.subbeatsStillCurrent(playback) || !this.upcoming.includes(item)
       || this.upcoming[this.upcoming.indexOf(item)+1] !== successor || successor.sent
       || item.track.id !== playback.outgoingId || successor.track.id !== playback.incomingId
-      || this.automaticIneligible(item) || this.automaticIneligible(successor)
-      || successor.introScript || successor.introWav || successor.bedded || successor.pauseDelaySec
-      || this._pendingVoice) return false;
+      || this.automaticIneligible(item) || this.automaticIneligible(successor)) return false;
     const outTrim = silenceTrim.resolveSilenceTrim(item.track), inTrim = silenceTrim.resolveSilenceTrim(successor.track);
     if (inTrim.cueInSec != null) return false;
     const timing = playback.timing, first = timing.outgoingStartSample/44100;
@@ -2602,7 +2600,6 @@ class Queue {
                 && !selectedSuccessor.sent && !this.automaticIneligible(item) && !this.automaticIneligible(selectedSuccessor);
               let blend = await this._renderSubbeats(item.track,successor.track,this.remainingUntilItemAirs(item), {
                 ...pairOptions,outCueInSec:item.stemCueInSec ?? item.cueInSec,
-                incomingHasSpeech:!!(successor.introScript || successor.introWav || successor.bedded || successor.pauseDelaySec || this._pendingVoice),
                 valid:adjacent,log:(message,meta) => this.log('mix',message,meta),
               });
               if (!adjacent()) {
@@ -3760,10 +3757,6 @@ class Queue {
     // silent, so holding for it would trade one voice for none. Both checks are
     // synchronous, keeping the decision ahead of this function's first await.
     const incoming = this.upcoming[this.matchUpcomingIndex(np)] || null;
-    if (incoming?.subbeatsHandoff) {
-      this.log('scheduler',`Holding ${p.kind} — a Sub/Beats handoff owns this opening`);
-      return;
-    }
     if (boundaryCarriesTrackVoice(incoming, this.current?.track || null, {
       voiceAllowed: autoVoiceAllowed(),
       wavExists: path => existsSync(path),

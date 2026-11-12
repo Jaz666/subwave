@@ -21,10 +21,10 @@ import type { BlendPlan, BlendTrack } from './stem-blend.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
 
 let busy = false;
-let probing = false;
 
 const MAX_RENDER_MS = 120_000;
 const COMMIT_MARGIN_SEC = 10;
+const READINESS_CHECK_MS = 5000;
 
 // Keep the ordinary selection allowance, then add the live render's ceiling
 // and commit reserve. A full two-minute render cannot fit inside the ordinary
@@ -52,25 +52,19 @@ export async function discardSubbeatsClips(blend: Pick<BlendPlan,'clipPath'|'lea
 export async function maybeRenderSubbeats(
   outTrack: BlendTrack, inTrack: BlendTrack, remainingSec: number | null,
   opts: { outCapped?: boolean; outTrimEndSec?: number | null; inHeadTrimmed?: boolean;
-    outCueInSec?: number; incomingHasSpeech?: boolean; valid: () => boolean;
+    outCueInSec?: number; valid: () => boolean;
     log: (message: string, meta?: Record<string, unknown>) => void },
 ): Promise<BlendPlan | null> {
   if (settings.get().transitions.subbeatsLive !== true) return null;
-  const fallback = (reason: string) => { opts.log(`Sub/Beats fallback: ${reason}`, {subbeats:'fallback',reason}); return null; };
+  const fallback = (reason: string) => { opts.log(`Sub/Beats fallback: ${reason}`, {
+    subbeats:'fallback',reason,outgoingId:outTrack.id,incomingId:inTrack.id,
+  }); return null; };
   if (!outTrack.id || !inTrack.id || outTrack.id === inTrack.id) return fallback('The pair needs two library tracks.');
   if (settings.get().transitions.pairDrain === false || !settings.getEffectivePersona()?.djMode) return fallback('DJ mode and pair-aware transitions are required.');
-  if (opts.outCapped || opts.inHeadTrimmed || opts.incomingHasSpeech) return fallback('A trim, boundary or spoken handoff owns this seam.');
+  if (opts.outCapped) return fallback('A track-length cap or show boundary owns this transition.');
+  if (opts.inHeadTrimmed) return fallback('The incoming track has a silence trim.');
   if (busy || bulkPassRunning() || renderStandsDown({separating:separationInFlight(),backend:analyzer.backendLabel(),
     concurrency:config.analyzer.concurrency})) return fallback('Analysis is busy.');
-  if (analyzer.subbeatsCapability() !== true) {
-    // Cold/previously offline backends warm outside the sender's deadline.
-    // The current pair falls through; a later pair can use the ready backend.
-    if (!probing) {
-      probing = true;
-      void analyzer.subbeatsAvailable().catch(() => false).finally(() => {probing=false;});
-    }
-    return fallback('The updated Sub/Beats analyzer is unavailable or still starting.');
-  }
   const windowMs = remainingSec == null ? 0 : Math.floor((remainingSec - HARD_DEADLINE_SEC - COMMIT_MARGIN_SEC) * 1000);
   const budgetMs = Math.min(MAX_RENDER_MS,config.analyzer.renderTimeoutMs,windowMs);
   if (budgetMs < 10_000) return fallback('There is insufficient time before the queue deadline.');
@@ -85,6 +79,7 @@ export async function maybeRenderSubbeats(
   let result: BlendPlan | null = null;
   let keep = false;
   let rejectAbort: (() => void) | undefined;
+  let readinessTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     const before = subbeatsPairSnapshot(outTrack.id,inTrack.id);
     if (before.jobs.length !== 2 || before.jobs.some(job => job.status !== 'prepared' || !job.bundleKey || !job.cueCoverage)) {
@@ -95,6 +90,18 @@ export async function maybeRenderSubbeats(
       rejectAbort = () => reject(new Error('The handoff was cancelled or exceeded its budget.'));
       abort.signal.addEventListener('abort',rejectAbort,{once:true});
     });
+    if (analyzer.subbeatsCapability() !== true) {
+      // Probe inside the existing commitment budget, so a healthy cold
+      // controller can use this pair. The whole wait remains cancellable;
+      // readiness cannot consume more than five seconds of render time.
+      const ready = await Promise.race([
+        analyzer.subbeatsAvailable().catch(() => false),
+        new Promise<false>(resolve => { readinessTimer = setTimeout(() => resolve(false), READINESS_CHECK_MS); }),
+        interrupted,
+      ]);
+      clearTimeout(readinessTimer);
+      if (!ready) return fallback('The Sub/Beats analyzer could not confirm readiness within its check window.');
+    }
     const gains = await Promise.race([Promise.all([
       typeof outTrack.gainDb === 'number' ? outTrack.gainDb : loudness.resolveGainDb(outTrack),
       loudness.resolveGainDb(inTrack),
@@ -135,7 +142,7 @@ export async function maybeRenderSubbeats(
     return result;
   } catch { return fallback('The handoff was unavailable, cancelled or exceeded its time budget.'); }
   finally {
-    clearTimeout(timer);clearInterval(check);
+    clearTimeout(timer);clearTimeout(readinessTimer);clearInterval(check);
     if (rejectAbort) abort.signal.removeEventListener('abort',rejectAbort);
     if (result && !keep) await discardSubbeatsClips(result);
     busy = false;
