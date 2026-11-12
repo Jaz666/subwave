@@ -1331,6 +1331,64 @@ rollback is `670979dd`. No build, restart, scan or listening test is run by the
 agent. After rebuilding, check the next prepared compatible pair for attempt,
 rendered and committed messages and confirm the actual transition by listening.
 
+## Live stem display fixes and speech follow-up — 12 November 2026
+
+The Mixing Desk keeps an expanded stem pair open across queue changes and
+incoming metadata. Source stems are decoded into small peak arrays through the
+authenticated admin Query cache; closing/reopening reuses those arrays, while
+audio buffers and the decoder context are released. The cache is keyed by the
+pair, selected timing and source coverage, rather than a changing air-time
+forecast. It remains isolated by the existing authenticated Query provider.
+
+Outgoing/incoming source detail now occupies separate, full-width traces for
+each stem. The display restores storage gain, selects the actual outgoing
+source offset, and maps incoming samples through the saved tempo release and
+drum repetitions. Inserted drum-only sections show silence in the other stems.
+Per-stem visual boosting makes quiet traces readable and is explicitly labelled
+as detail, not an output level meter. Approximate gain-envelope drawings have
+been removed; the header still reports the saved station gains. HTML marker
+labels replace the overlapping, dark SVG text. A shared seconds ruler and live
+playhead show progress across the four rows.
+
+The space between Stems and Expand shows the mix type and current saved timing
+stage: lead, incoming entry, handover, solo incoming, tempo return and completion
+where applicable. Style labels/descriptions are shared with the audition page.
+The detailed charts clear when the outgoing track leaves the same 30-second
+visible history as the main waveform. If the rendered mix is still running,
+its compact status and bar continue through completion without retaining the
+old charts. A different pair does not inherit the old expansion choice.
+
+The main timeline scrolls continuously around a fixed central playhead instead
+of jumping every 30 seconds; reduced-motion mode uses one-second steps. A
+Sub/Beats outgoing waveform is clipped to its planned incoming entry, keeping
+the next waveform aligned before metadata changes. Playback elapsed time and
+decoded source length are labelled separately, so a planned early exit no
+longer silently changes the recording's apparent duration. The Queue says
+“Next station transition” and explains its live station clock, whereas the
+Mixing Desk applies the listener buffer. Sonos may have its own additional
+delay; the owner's screen recordings intentionally contain no audio.
+
+**Follow-up after the stem display fixes: advance notice for speech.** The
+current speech marker is based on confirmed air time and can arrive only as
+speech begins. Investigate exposing prepared/pending segments with an estimated
+start and duration, distinguishing forecast markers from confirmed air markers
+and updating or removing them when placement changes or speech is cancelled.
+Preserve the existing speech collision, handoff and actual-air bookkeeping;
+forecast speech must not veto either stem transition. This follow-up does not
+introduce a speech-avoidance setting or claim to predict an external speaker's
+buffer delay.
+
+Development remains in `fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`, delivered to
+`/home/jaz666/Docker/subwave` for an owner-run web rebuild. Rollback is
+`0c9b1035`; controller/analyzer audio behaviour is unchanged. Isolated browser
+fixtures exercise both stem types, eight one-time stem reads, reopen/metadata
+cache reuse, visible-history expiry, completion, full chart width and very quiet
+source traces on desktop/mobile and light/dark themes. Actual station listening
+and production rebuilds are left to the owner. All 23 focused web tests pass
+(stem display clocks/source mapping, waveform timeline and admin-query audit),
+along with web typechecking, scoped lint and the production admin-query audit.
+
 ## First development increment: local preparation/cache (historical foundation)
 
 

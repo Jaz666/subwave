@@ -67,15 +67,38 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
 }
 
+.stemDescription {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 12px;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: center;
+}
+
+.stemDescription span { color: var(--muted); }
+
 .expandButton {
-  margin-top: 4px;
+  min-height: 32px;
+  padding-inline: 4px;
   color: var(--accent);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.expandButton:focus-visible,
+.expandedStatus button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
 }
 
 .expandedLanes {
@@ -86,10 +109,30 @@
 
 .expandedLegend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   margin-bottom: 5px;
-  font-size: 10px;
+  font-size: 12px;
+}
+
+.outgoingLegend { color: var(--outgoing-color); }
+.incomingLegend { color: var(--incoming-color); }
+
+.sourceNote {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.stageLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-block: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .expandedDuration {
@@ -101,35 +144,74 @@
 .expandedStatus {
   padding-block: 12px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.expandedStatus button {
+  min-height: 32px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .expandedPlot {
-  overflow-x: auto;
+  --stem-progress: 0%;
+}
+
+.stemRuler {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 64px;
+  padding-block: 4px;
+  color: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .stemDetailRow {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   align-items: center;
   border-top: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
 }
 
 .stemDetailName {
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--ink);
+  font-size: 12px;
   text-transform: capitalize;
 }
 
 .stemDetailChart {
-  min-width: 320px;
+  position: relative;
+  min-width: 0;
+  overflow: clip;
 }
 
 .stemDetailChart svg {
   display: block;
   width: 100%;
-  overflow: visible;
+  height: 76px;
 }
+
+.outgoingWave { stroke: var(--outgoing-color); }
+.incomingWave { stroke: var(--incoming-color); }
+
+@media (max-width: 640px) {
+  .outgoingWave,
+  .incomingWave { stroke-width: 1; }
+}
+
+.stemLivePlayhead {
+  display: none;
+  position: absolute;
+  inset-block: 0;
+  left: var(--stem-progress);
+  width: 2px;
+  background: var(--ink);
+  box-shadow: 1px 0 0 var(--bg);
+  pointer-events: none;
+}
+
+.expandedPlot[data-active="true"] .stemLivePlayhead { display: block; }
 
 .chartRule {
   stroke: color-mix(in oklab, var(--ink) 12%, transparent);
@@ -140,16 +222,6 @@
   stroke: color-mix(in oklab, var(--ink) 65%, transparent);
   stroke-dasharray: 3 3;
   stroke-width: 1;
-}
-
-.chartArrival {
-  stroke: var(--ink);
-  stroke-width: 1;
-}
-
-.chartLabel {
-  color: var(--muted);
-  font-size: 8px;
 }
 
 .trackTime {
@@ -218,7 +290,7 @@
   position: absolute;
   z-index: 3;
   inset-block: 0;
-  left: 25%;
+  left: 50%;
   width: 5px;
   transform: translateX(-50%);
   pointer-events: none;
