@@ -439,7 +439,8 @@ export default function NowPlayingWaveform() {
   const pairKey = stemTransition ? stemPairKey(stemTransition) : null;
   const mixPosition = currentStartedAt > 0 && stemWindow ? (clockMs-stemWindow.startAt)/1000 : null;
   const mixActive = mixPosition != null && mixPosition >= 0 && mixPosition < (stemTransition?.durationSec ?? 0);
-  const expanded = detailVisible && (expandedPair === pairKey || (autoPreview && mixActive));
+  const autoPreviewVisible = autoPreview && mixPosition != null && mixPosition < (stemTransition?.durationSec ?? 0);
+  const expanded = detailVisible && (expandedPair === pairKey || autoPreviewVisible);
   const showMix = detailVisible || mixActive;
   const pairTracks = [state.current,...state.history,...state.upcoming];
   const trackLabel = (id: string | undefined) => {
