@@ -88,6 +88,8 @@ export function createNowPlayingFileRouter(deps: {
   latestBed?: () => { filename?: string; startedAt?: number; durationSec?: number | string } | null;
   stemTransition?: (currentId: string) => VisualTransition | null | Promise<VisualTransition | null>;
   preparedSpeech?: () => boolean;
+  speechPreparing?: () => boolean;
+  speechForecasts?: () => Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }>;
   stemSource?: (id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean) => StemSource | null | Promise<StemSource | null>;
   crossfadeSeconds?: () => number;
 }): Router {
@@ -248,7 +250,13 @@ export function createNowPlayingFileRouter(deps: {
     let preparedSpeech = false;
     try { preparedSpeech = deps.preparedSpeech?.() ?? false; }
     catch { /* no prepared-speech indicator */ }
-    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition, preparedSpeech });
+    let speechPreparing = false;
+    try { speechPreparing = deps.speechPreparing?.() ?? false; }
+    catch { /* no speech-preparing indicator */ }
+    let speechForecasts: Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }> = [];
+    try { speechForecasts = deps.speechForecasts?.() ?? []; }
+    catch { /* no speech forecasts */ }
+    res.set('Cache-Control', 'no-store').json({ jingle, bed, stemTransition, preparedSpeech, speechPreparing, speechForecasts });
   });
   return router;
 }
@@ -321,6 +329,8 @@ export const router = createNowPlayingFileRouter({
   }),
   nextTrackId: () => queue.upcoming[0]?.track?.id || null,
   preparedSpeech: () => queue.hasPreparedSpeech(),
+  speechPreparing: () => queue.speechPreparing(),
+  speechForecasts: () => queue.speechForecasts(),
   latestJingle: () => {
     try { return JSON.parse(readFileSync(config.liquidsoap.jinglePlayingFile, 'utf8')); }
     catch { return null; }

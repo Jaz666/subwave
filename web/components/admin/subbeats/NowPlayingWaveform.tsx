@@ -14,14 +14,20 @@ import { stemDetailVisible, stemPairKey, stemPhase, stemStyle, waveformKeys, typ
 const HISTORY_SECONDS = 30;
 const PLAYHEAD_START_SECONDS = HISTORY_SECONDS;
 const WAVEFORM_HEIGHT = 44;
+const SYNC_OFFSET_KEY = 'subwave.mixing-desk.sync-offset-ms';
+const SYNC_STEP_MS = 250;
+const MAX_SYNC_OFFSET_MS = 10_000;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
-type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string };
+type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string; voiceId?: string; estimated?: boolean };
 type VisualEvents = {
   preparedSpeech?: boolean;
+  speechPreparing?: boolean;
+  speechForecasts?: Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }>;
   jingle?: { airedAt: string; durationMs: number } | null;
   bed?: { airedAt: string; durationMs?: number } | null;
   stemTransition?: StemTransition | null;
 };
+const EMPTY_SPEECH_FORECASTS: NonNullable<VisualEvents['speechForecasts']> = [];
 type DeckTrack = { id: string; duration: number; startedAt: number; colorRole: 'accent' | 'accent2'; playedSeconds?: number };
 type TransitionMarker = { airedAt: number; label: string };
 
@@ -155,13 +161,16 @@ export default function NowPlayingWaveform() {
   const [trimmedHistorySeconds, setTrimmedHistorySeconds] = useState(0);
   const [message, setMessage] = useState('');
   const [expandedPair, setExpandedPair] = useState<string | null>(null);
+  const [autoPreview, setAutoPreview] = useState(false);
+  const [syncOffsetMs, setSyncOffsetMs] = useState(0);
+  const [syncReady, setSyncReady] = useState(false);
   const currentId = nowPlaying?.subsonic_id;
   const visualEvents = useAdminQuery<VisualEvents>({
     key: waveformKeys.events(currentId),
     adminFetch,
     enabled: !!currentId && hydrated && !needsAuth,
     staleTime: 0,
-    refetchInterval: 5000,
+    refetchInterval: 1000,
     placeholderData: previous => previous,
     request: (fetcher, signal) => adminJson<VisualEvents>(fetcher,
       `/now-playing/visual-events?id=${encodeURIComponent(currentId!)}`, undefined, signal),
@@ -171,6 +180,8 @@ export default function NowPlayingWaveform() {
   const bed = events?.bed ?? null;
   const stemTransition = events?.stemTransition ?? null;
   const preparedSpeech = events?.preparedSpeech === true;
+  const speechPreparing = events?.speechPreparing === true;
+  const speechForecasts = events?.speechForecasts ?? EMPTY_SPEECH_FORECASTS;
   const next = state.upcoming[0];
   const nextId = next?.subsonic_id && next.subsonic_id !== currentId ? next.subsonic_id : undefined;
   // /state leads this listener by its stream buffer. Keep the live queue's
@@ -178,6 +189,19 @@ export default function NowPlayingWaveform() {
   const queuedCurrent = currentId && state.current?.subsonic_id !== currentId ? state.current : null;
   const bufferedId = queuedCurrent?.subsonic_id;
   const currentStartedAt = trackStartedAt ?? 0;
+
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(SYNC_OFFSET_KEY));
+      if (Number.isFinite(saved)) setSyncOffsetMs(Math.max(-MAX_SYNC_OFFSET_MS, Math.min(MAX_SYNC_OFFSET_MS, saved)));
+    } catch { /* sync stays session-local when storage is unavailable */ }
+    setSyncReady(true);
+  }, []);
+  useEffect(() => {
+    if (!syncReady) return;
+    try { window.localStorage.setItem(SYNC_OFFSET_KEY, String(syncOffsetMs)); }
+    catch { /* the control still works until this page closes */ }
+  }, [syncOffsetMs, syncReady]);
   const transition = queuedTransition(state, currentId, leadMs);
   const stemWindow = stemTransition ? stemTransitionWindow(stemTransition, transition?.airedAt, leadMs) : null;
   const currentPlaybackSpan = currentStartedAt > 0 && stemTransition?.kind === 'subbeats' && stemTransition.outgoingId === currentId && stemWindow
@@ -342,7 +366,7 @@ export default function NowPlayingWaveform() {
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     let lastTransform = '';
     const tick = () => {
-      const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt) / 1000) : 0;
+      const liveElapsed = currentStartedAt ? Math.max(0, (Date.now() - currentStartedAt + syncOffsetMs) / 1000) : 0;
       const displayElapsed = motionPreference.matches ? Math.floor(liveElapsed) : liveElapsed;
       const scrollLeft = Math.min(sidePadding + (trimmedHistorySeconds + historySeconds + displayElapsed) * pxPerSec, maxScroll);
       const transform = `translate3d(${-scrollLeft}px, 0, 0)`;
@@ -357,7 +381,7 @@ export default function NowPlayingWaveform() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [currentStartedAt, viewportWidth, timelineWidth, pxPerSec, sidePadding, trimmedHistorySeconds, historySeconds]);
+  }, [currentStartedAt, viewportWidth, timelineWidth, pxPerSec, sidePadding, trimmedHistorySeconds, historySeconds, syncOffsetMs]);
 
   const markers = useMemo(() => {
     if (!currentStartedAt || !currentDuration) return [];
@@ -366,8 +390,15 @@ export default function NowPlayingWaveform() {
       const airedAt = typeof turn.meta?.airedAt === 'string' ? Date.parse(turn.meta.airedAt) + leadMs : NaN;
       const durationMs = Number(turn.meta?.durationMs);
       return Number.isFinite(airedAt) && Number.isFinite(durationMs) && durationMs > 0
-        ? [{ kind: 'speech', airedAt, durationMs, label: turn.text || 'Speech' }]
+        ? [{ kind: 'speech', airedAt, durationMs, label: turn.text || 'Speech', voiceId: typeof turn.meta?.voiceId === 'string' ? turn.meta.voiceId : undefined }]
         : [];
+    });
+    const airedVoiceIds = new Set(speech.flatMap(marker => marker.voiceId ? [marker.voiceId] : []));
+    const forecasts: TimedMarker[] = speechForecasts.flatMap(forecast => {
+      const airedAt = Date.parse(forecast.expectedAt) + leadMs;
+      return airedVoiceIds.has(forecast.voiceId) || !Number.isFinite(airedAt) || forecast.durationMs <= 0
+        ? []
+        : [{ kind: 'speech', airedAt, durationMs: forecast.durationMs, label: forecast.text || 'Speech', voiceId: forecast.voiceId, estimated: true }];
     });
     const jingles: TimedMarker[] = jingle
       ? [{ kind: 'jingle', airedAt: Date.parse(jingle.airedAt) + leadMs, durationMs: jingle.durationMs, label: 'Jingle' }]
@@ -375,8 +406,8 @@ export default function NowPlayingWaveform() {
     const beds: TimedMarker[] = bed
       ? [{ kind: 'bed', airedAt: Date.parse(bed.airedAt) + leadMs, durationMs: bed.durationMs ?? 0, label: 'Bed' }]
       : [];
-    return [...speech, ...jingles, ...beds].filter(marker => Number.isFinite(marker.airedAt) && (marker.kind === 'bed' || marker.durationMs > 0));
-  }, [bed, currentDuration, currentStartedAt, jingle, leadMs, session.messages]);
+    return [...speech, ...forecasts, ...jingles, ...beds].filter(marker => Number.isFinite(marker.airedAt) && (marker.kind === 'bed' || marker.durationMs > 0));
+  }, [bed, currentDuration, currentStartedAt, jingle, leadMs, session.messages, speechForecasts]);
 
   const eventMarkers = markers.map((marker, index) => {
     const timelineStart = currentStartedAt - (trimmedHistorySeconds + historySeconds) * 1000;
@@ -389,23 +420,26 @@ export default function NowPlayingWaveform() {
     const width = marker.kind === 'bed' && marker.durationMs <= 0
       ? 2
       : Math.max(2, ((end - start) / 1000) * pxPerSec);
-    const label = marker.kind === 'speech' ? 'Speech' : marker.kind === 'jingle' ? 'Jingle' : 'Bed';
-    return <span key={`${marker.kind}-${marker.airedAt}-${index}`} title={`${label}: ${marker.label}`}
-      className={styles.eventMarker} data-event-kind={marker.kind}
+    const label = marker.kind === 'speech' ? (marker.estimated ? 'Estimated speech' : 'Speech') : marker.kind === 'jingle' ? 'Jingle' : 'Bed';
+    return <span key={`${marker.kind}-${marker.voiceId ?? marker.airedAt}-${index}`} title={`${label}: ${marker.label}${marker.estimated ? ' · timing may change' : ''}`}
+      className={`${styles.eventMarker} ${marker.estimated ? styles.estimatedSpeechMarker : ''}`} data-event-kind={marker.kind} data-estimated={marker.estimated || undefined}
       ref={element => {
         if (!element) return;
         element.style.left = `${left}px`;
         element.style.width = `${width}px`;
-        element.style.backgroundColor = marker.kind === 'speech' ? colors.current : marker.kind === 'jingle' ? colors.next : 'var(--ink)';
+        const color = marker.kind === 'speech' ? colors.current : marker.kind === 'jingle' ? colors.next : 'var(--ink)';
+        element.style.setProperty('--marker-color', color);
+        if (marker.estimated) element.style.removeProperty('background-color');
+        else element.style.backgroundColor = color;
       }} />;
   });
 
-  const clockMs = currentStartedAt + elapsed * 1000;
+  const clockMs = currentStartedAt + elapsed * 1000 + syncOffsetMs;
   const detailVisible = !!stemTransition && stemDetailVisible(stemTransition,currentId,visibleHistoryTracks,clockMs,HISTORY_SECONDS,stemWindow);
   const pairKey = stemTransition ? stemPairKey(stemTransition) : null;
-  const expanded = detailVisible && expandedPair === pairKey;
   const mixPosition = currentStartedAt > 0 && stemWindow ? (clockMs-stemWindow.startAt)/1000 : null;
   const mixActive = mixPosition != null && mixPosition >= 0 && mixPosition < (stemTransition?.durationSec ?? 0);
+  const expanded = detailVisible && (expandedPair === pairKey || (autoPreview && mixActive));
   const showMix = detailVisible || mixActive;
   const pairTracks = [state.current,...state.history,...state.upcoming];
   const trackLabel = (id: string | undefined) => {
@@ -447,7 +481,11 @@ export default function NowPlayingWaveform() {
         <span ref={element => { if (element) element.style.color = colors.current; }}>Speech</span>
         <span ref={element => { if (element) element.style.color = colors.next; }}>Jingles</span>
         <span className="text-ink">Beds</span>
+        <span className={styles.estimatedLegend}><i aria-hidden="true" ref={element => {
+          if (element) element.style.setProperty('--marker-color', colors.current);
+        }} />Estimated speech</span>
         {preparedSpeech && <span className={styles.preparedSpeech} title="Prepared speech can still be dropped before it airs." role="status">Speech ready</span>}
+        {speechPreparing && <span className={styles.preparedSpeech} role="status">Speech preparing</span>}
         <span className={styles.trackTime} aria-label="Listener playback time"
           title="Playback includes the station’s listener buffer. The Queue shows station time.">
           Playback {formatTime(elapsed)}{sourceDurations.current.has(currentId ?? '') && ` · Source ${formatTime(currentDuration)}`}
@@ -499,8 +537,27 @@ export default function NowPlayingWaveform() {
         {showMix && stemTransition && <div className={styles.stemDescription} role="status">
           <strong>{stemStyle(stemTransition)}</strong><span>{stemPhase(stemTransition,mixPosition)}</span>
         </div>}
-        {detailVisible && stemTransition?.outgoingId && stemTransition.incomingId && <button type="button" className={styles.expandButton}
-          aria-expanded={expanded} onClick={() => setExpandedPair(expanded ? null : pairKey)}>{expanded ? 'Collapse' : 'Expand'}</button>}
+        <div className={styles.stemActions}>
+          <button type="button" className={`${styles.expandButton} ${autoPreview ? styles.autoEnabled : ''}`}
+            aria-pressed={autoPreview} title="Automatically show the live stem preview during each transition"
+            onClick={() => setAutoPreview(value => !value)}>Auto</button>
+          {detailVisible && stemTransition?.outgoingId && stemTransition.incomingId && <button type="button" className={styles.expandButton} aria-expanded={expanded}
+            onClick={() => {
+              if (expanded) { setExpandedPair(null); if (autoPreview) setAutoPreview(false); }
+              else setExpandedPair(pairKey);
+            }}>{expanded ? 'Collapse' : 'Expand'}</button>}
+        </div>
+      </div>
+      <div className={styles.syncControls} role="group" aria-label="Timeline audio sync">
+        <span>Timeline sync</span>
+        <button type="button" aria-label="Move timeline earlier by 0.25 seconds"
+          disabled={syncOffsetMs <= -MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.max(-MAX_SYNC_OFFSET_MS, value - SYNC_STEP_MS))}>−</button>
+        <output aria-live="polite" aria-label={`Timeline offset ${syncOffsetMs >= 0 ? 'later' : 'earlier'} by ${Math.abs(syncOffsetMs / 1000).toFixed(2)} seconds`}>
+          {syncOffsetMs >= 0 ? '+' : '−'}{Math.abs(syncOffsetMs / 1000).toFixed(2)} s
+        </output>
+        <button type="button" aria-label="Move timeline later by 0.25 seconds"
+          disabled={syncOffsetMs >= MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.min(MAX_SYNC_OFFSET_MS, value + SYNC_STEP_MS))}>+</button>
+        <button type="button" className={styles.syncReset} disabled={syncOffsetMs === 0} onClick={() => setSyncOffsetMs(0)}>Reset</button>
       </div>
       {expanded && stemTransition && <LiveStemPreview key={pairKey}
         transition={stemTransition} startAt={stemWindow?.startAt ?? null} nowMs={clockMs} adminFetch={adminFetch} colors={stemColors}

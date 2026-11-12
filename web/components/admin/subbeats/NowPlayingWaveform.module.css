@@ -48,6 +48,13 @@
   border-radius: 2px;
 }
 
+.estimatedSpeechMarker {
+  background-color: color-mix(in oklab, var(--marker-color) 24%, transparent);
+  background-image: repeating-linear-gradient(135deg,
+    transparent 0 3px,
+    color-mix(in oklab, var(--marker-color) 92%, transparent) 3px 5px);
+}
+
 .eventLegend {
   display: flex;
   align-items: center;
@@ -233,6 +240,65 @@
 .preparedSpeech {
   color: var(--muted);
   font-size: 10px;
+}
+
+.estimatedLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.estimatedLegend i {
+  width: 10px;
+  height: 8px;
+  border-radius: 2px;
+  background-color: color-mix(in oklab, var(--marker-color) 24%, transparent);
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in oklab, var(--marker-color) 92%, transparent) 3px 5px);
+}
+
+.stemActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.autoEnabled { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
+
+.syncControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.syncControls button {
+  min-width: 28px;
+  min-height: 28px;
+  padding-inline: 5px;
+  color: var(--ink);
+  border: 1px solid color-mix(in oklab, var(--ink) 18%, transparent);
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.syncControls button:disabled { opacity: .45; }
+.syncControls output { min-width: 48px; text-align: center; color: var(--ink); }
+.syncControls .syncReset { min-width: 40px; color: var(--accent); }
+
+.syncControls button:focus-visible,
+.expandButton:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .eventLegend { flex-wrap: wrap; gap: 5px 10px; }
+  .syncControls { justify-content: flex-start; }
 }
 
 .transitionMarker {
