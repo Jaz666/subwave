@@ -1,5 +1,26 @@
 # Sub/Beats development
 
+## Navidrome playlist export
+
+The Sub/Beats Playlist Export tab creates or replaces a Navidrome playlist from
+the current preparation list. The controller rechecks at save time and includes
+only jobs with `status: prepared`, a saved bundle key, and a track still present
+in the library. Replacing a playlist removes any generated-playlist sync recipe
+for it, so a later recipe sync cannot restore the previous contents.
+
+## Earlier incoming loop support — 7 November 2026
+
+Station source commits `7cf715f9` and `29a89048` apply the reviewed PR #10
+loop-timing and preview-cache fix on top of `9dd2b326`. When a two-bar incoming
+drum loop resolves vocal overlap, preview selects the earliest safe grid-aligned
+section in the intro and starts the incoming rhythm there; it retries later
+sections if audio or remeasurement rejects an earlier choice. Preview cache
+version 14 invalidates version-13 renders, so the updated renderer runs without
+manual cache clearing or rescanning prepared tracks. This is preview-only.
+Running containers remain unchanged until the owner rebuilds. Roll back the loop
+timing with `git revert 7cf715f9` (or return to `9dd2b326` before later station
+commits).
+
 ## Cue preparation and 1.30.0 source candidate — 3 November 2026
 
 See the [cue-point preparation and preview guide](subbeats-cue-methods.md) for the new optional methods. This candidate incorporates upstream release `v1.30.0` through `03a48c21` and preserves station-specific Sub/Flow, Sub/Shows and Sleeve Notes behaviour. Beat This! for normal Stem Blend remains an unmerged upstream draft; these methods are separate auditions.

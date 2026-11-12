@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useDebounceValue } from 'usehooks-ts';
 import { z } from 'zod';
-import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Plus, RefreshCw, Square, Loader2, Search, ListMusic, Music, HardDrive, Download } from 'lucide-react';
 import { useAdminAuth } from '../../lib/adminAuth';
 import { AdminResponseError, adminJson, useAdminMutation, useAdminQuery } from '../../lib/admin-query';
 import type { StationState } from '../../lib/types';
@@ -25,6 +25,7 @@ import { Checkbox } from '../ui/checkbox';
 import { liveSubbeatsPair, selectPreparationIds, selectSubbeatsRows, subbeatsCanSelect, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './library/subbeats-selection';
 import { MIX_LABEL, SuitabilityDetails } from './library/subbeats-suitability';
 import { subbeatsInitialBrowse, useSubbeatsWorkspace, type SubbeatsBrowseState, type SubbeatsPage } from './subbeats/SubbeatsWorkspace';
+import { SubbeatsPlaylistExport } from './subbeats/PlaylistExport';
 
 const subbeatsKeys = {
   state: ['library', 'subbeats', 'state'] as const,
@@ -46,6 +47,7 @@ const PAGES = [
   { id: 'prepared', href: '/admin/library/subbeats/prepared', label: 'Prepared tracks', sub: 'choose a pair', Icon: Music },
   { id: 'preview', href: '/admin/library/subbeats/preview', label: 'Preview', sub: 'listen & compare', Icon: Play },
   { id: 'cache', href: '/admin/library/subbeats/cache', label: 'Cache', sub: 'space & policy', Icon: HardDrive },
+  { id: 'playlist-export', href: '/admin/library/subbeats/playlist-export', label: 'Playlist Export', sub: 'send prepared tracks', Icon: Download },
 ] as const;
 
 export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPage }) {
@@ -319,6 +321,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
           : page === 'preparation' ? 'Monitor preparation, pause queued work and manage tracks in batches. Work continues when you leave this page.'
             : page === 'prepared' ? 'Find prepared recordings and choose an outgoing and incoming track to audition.'
               : page === 'cache' ? 'Manage regular stem caching and check the space available.'
+                : page === 'playlist-export' ? 'Create or replace a Navidrome playlist using prepared Sub/Beats tracks.'
               : 'Audition a prepared pair. Station playback continues using your existing transitions.'
       }</p>
     </header>
@@ -348,6 +351,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
       description={bulkRemoving ? `Delete the extended Sub/Beats files for ${bulkRemoving.length} selected tracks? Library tracks and regular stems stay unchanged. Files needed by another entry are kept. The batch stops if an entry cannot be removed; remaining entries stay selected.` : ''}
       onConfirm={() => { if (bulkRemoving) batchRemove.mutate(bulkRemoving); }} />
     {page === 'cache' && <SubbeatsCache cache={cache} />}
+    {page === 'playlist-export' && <SubbeatsPlaylistExport preparedCount={jobs.filter(job => job.status === 'prepared' && !!job.bundleKey).length} loading={state.isLoading} />}
 
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <div className="flex flex-wrap items-center justify-between gap-3">

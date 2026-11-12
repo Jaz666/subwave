@@ -9,9 +9,11 @@ import { resolveGainDb } from '../../music/loudness.js';
 import * as blocklist from '../../music/blocklist.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
-import { subbeatsPairPlanRequestSchema, subbeatsCueMatchQuerySchema, subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
+import { subbeatsPairPlanRequestSchema, subbeatsCueMatchQuerySchema, subbeatsMatchQuerySchema, subbeatsStemPolicyPatchSchema, subbeatsBrowseQuerySchema, subbeatsEnqueueSchema, subbeatsPauseSchema, subbeatsPlaylistExportSchema, subbeatsPreviewSchema } from '../../schemas/subbeats.js';
 import * as db from '../../music/library-db.js';
 import * as library from '../../music/library.js';
+import * as recipes from '../../music/playlist-recipes.js';
+import { queue } from '../../broadcast/queue.js';
 import { subbeatsStore, kickSubbeats } from '../../music/subbeats-manager.js';
 import { matchSubbeatsCues, matchSubbeats, previewSubbeats, subbeatsCapability } from '../../music/analyzer.js';
 import { tagger } from '../../broadcast/tagger.js';
@@ -146,6 +148,34 @@ router.post('/library/subbeats/pause', requireAdmin, validateBody(subbeatsPauseS
     if (!req.body.paused) kickSubbeats();
     res.json(view());
   } catch { res.status(503).json({ error: 'The preparation list could not be saved' }); }
+});
+
+router.post('/library/subbeats/playlist-export', requireAdmin, validateBody(subbeatsPlaylistExportSchema), async (req, res) => {
+  try {
+    await library.load();
+    const ids = subbeatsStore.read().jobs
+      .filter(job => job.status === 'prepared' && !!job.bundleKey && !!db.getTrack(job.id))
+      .map(job => job.id);
+    if (!ids.length) return res.status(409).json({ error: 'There are no prepared Sub/Beats tracks to export.' });
+
+    const { name, playlistId } = req.body;
+    if (playlistId) {
+      const existing = await subsonic.getPlaylists();
+      if (!existing.some(playlist => String(playlist.id) === playlistId)) {
+        return res.status(404).json({ error: 'That Navidrome playlist no longer exists. Refresh the page and try again.' });
+      }
+    }
+    const playlist = await subsonic.createPlaylist(name, ids, { playlistId });
+    const id = playlist?.id || playlistId;
+    if (playlistId) await subsonic.updatePlaylistMeta(playlistId, { name, public: true });
+    if (id) recipes.remove(id);
+    queue.log('info', `Sub/Beats playlist "${name}" ${playlistId ? 'overwritten' : 'created'} (${ids.length} prepared tracks)`);
+    res.json({ playlistId: id ?? null, name, added: ids.length });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    queue.log('error', `Sub/Beats playlist export failed: ${message}`);
+    res.status(500).json({ error: message || 'The Navidrome playlist could not be saved.' });
+  }
 });
 
 let previewBusy = false;

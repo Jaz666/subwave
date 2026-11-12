@@ -5840,6 +5840,10 @@ export const subbeatsQueueSchema = z.object({
 });
 export const subbeatsEnqueueSchema = z.object({ ids: z.array(z.string().trim().min(1).max(200)).min(1).max(SUBBEATS_BATCH_LIMIT), method:subbeatsPreparationMethodSchema.default('classic') });
 export const subbeatsPauseSchema = z.object({ paused: z.boolean() });
+export const subbeatsPlaylistExportSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  playlistId: z.string().trim().min(1).optional(),
+});
 export const subbeatsEventSchema = z.object({
   cueCoverage:subbeatsCueCoverageSchema.optional(),
   cuePoints:subbeatsCuePointsSchema.optional(),
