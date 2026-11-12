@@ -1,5 +1,12 @@
 import type { StationState } from '../../../lib/types';
 
+/** Keep the waveform still while the marker travels from 25% to 75% of its 60-second view. */
+export function waveformSnapPosition(elapsedSeconds: number) {
+  const elapsed = Math.max(0, elapsedSeconds);
+  const snappedSeconds = Math.floor(elapsed / 30) * 30;
+  return { snappedSeconds, playheadPercent: 25 + (elapsed - snappedSeconds) / 30 * 50 };
+}
+
 /** Sub/Beats metadata changes at incoming entry, inside the rendered clip. */
 export function stemTransitionWindow(
   stem: { kind: 'subbeats' | 'stem-blend'; durationSec: number; incomingAtSec: number; incomingAiredAt?: string },

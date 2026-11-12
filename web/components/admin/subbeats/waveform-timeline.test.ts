@@ -1,7 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { StationState } from '../../../lib/types';
-import { queuedTransition, stemTransitionWindow } from './waveform-timeline';
+import { queuedTransition, stemTransitionWindow, waveformSnapPosition } from './waveform-timeline';
+
+test('waveform stays still as the marker travels from 25% to 75%, then snaps every 30 seconds', () => {
+  assert.deepEqual(waveformSnapPosition(0), { snappedSeconds: 0, playheadPercent: 25 });
+  assert.deepEqual(waveformSnapPosition(15), { snappedSeconds: 0, playheadPercent: 50 });
+  assert.ok(waveformSnapPosition(29.999).playheadPercent > 74.99);
+  assert.equal(waveformSnapPosition(29.999).snappedSeconds, 0);
+  assert.deepEqual(waveformSnapPosition(30), { snappedSeconds: 30, playheadPercent: 25 });
+  assert.deepEqual(waveformSnapPosition(45), { snappedSeconds: 30, playheadPercent: 50 });
+  assert.deepEqual(waveformSnapPosition(60), { snappedSeconds: 60, playheadPercent: 25 });
+  assert.deepEqual(waveformSnapPosition(-0.25), { snappedSeconds: 0, playheadPercent: 25 });
+});
+
+test('snapping keeps the marker on the source waveform across screen sizes, history, and sync offsets', () => {
+  for (const width of [360, 768, 1440]) {
+    const pxPerSec = width / 60;
+    const padding = width / 2;
+    const origin = padding + 15 * pxPerSec;
+    for (const history of [0, 285.2]) {
+      for (const elapsed of [0, 15, 29.75, 30, 59.75, 60, 240.25]) {
+        for (const syncOffset of [-0.25, 0, 0.25]) {
+          const displayed = Math.max(0, elapsed + syncOffset);
+          const { snappedSeconds, playheadPercent } = waveformSnapPosition(displayed);
+          const scroll = padding + (history + snappedSeconds) * pxPerSec;
+          const sourcePosition = origin + (history + displayed) * pxPerSec - scroll;
+          assert.ok(Math.abs(sourcePosition - width * playheadPercent / 100) < 1e-8);
+        }
+      }
+    }
+  }
+});
 
 const forecast = '2026-11-10T16:00:00Z';
 const queue = (patch: Partial<StationState> = {}): StationState => ({

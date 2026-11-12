@@ -1,12 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { stemDetailVisible, stemPairKey, stemPeaks, stemPhase, stemSourceSeconds, stemStyle, stemVolumes, waveformKeys, type StemTransition } from './stem-preview';
+import { stemDetailVisible, stemEnvelopePeaks, stemPairKey, stemPeaks, stemPhase, stemSourceSeconds, stemStyle, stemVolumes, waveformKeys, type StemTransition } from './stem-preview';
 
 const transition: StemTransition = {kind:'subbeats',outgoingId:'out',incomingId:'in',mixStyle:'drums-first',
   durationSec:16,incomingAtSec:2,outgoingUntilSec:10,
   timing:{sampleRate:100,outgoingStartSample:10000,incomingEntryFrame:200,handoverFrame:800,
     outgoingEndFrame:1000,clipFrames:1600,incomingRate:1.04,releaseStartFrame:1000,releaseEndFrame:1400},
   sources:{outgoing:{startSec:98,endSec:112,storageGain:.5},incoming:{startSec:0,endSec:20,storageGain:1}}};
+
+test('server envelopes preserve source offsets, storage gain, silence, and repeated drum sections', () => {
+  const outgoing = stemEnvelopePeaks({peaks:Array(140).fill(.25),startSec:98,storageGain:.5},transition,'outgoing',16);
+  assert.deepEqual(outgoing.slice(0,10),Array(10).fill(.5));
+  assert.deepEqual(outgoing.slice(10),Array(6).fill(0));
+  const looped = {...transition,timing:{...transition.timing!,loop:{startSample:100,lengthSamples:100,repeats:2}}};
+  const envelope = {peaks:Array(200).fill(.75),startSec:0,storageGain:1};
+  const drums = stemEnvelopePeaks(envelope,looped,'incoming',16,'drums');
+  const vocals = stemEnvelopePeaks(envelope,looped,'incoming',16,'vocals');
+  assert.deepEqual(drums.slice(0,2),[0,0]);
+  assert.equal(drums[4],.75);
+  assert.equal(vocals[4],0,'the inserted loop only repeats drums');
+});
 
 test('stem detail survives the incoming entry but expires with the visible outgoing history', () => {
   const history = [{id:'out',startedAt:100_000,playedSeconds:100,duration:120}];
