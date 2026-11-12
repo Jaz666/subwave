@@ -16,7 +16,10 @@ let writeWindow: 'head' | 'tail' = 'head';
 let writeBytes = 0;
 let cacheExpected = true;
 let starredIds: string[] = [];
-const requestSchema = z.object({ stems_dir: z.string().optional() });
+let facetsCapable = false;
+let failAnalysis = false;
+const requestSchema = z.object({ stems_dir: z.string().optional(), facets: z.array(z.string()).optional() });
+let analysisRequests: z.infer<typeof requestSchema>[] = [];
 const snapshotSchema = z.object({
   bytes: z.number(), dirs: z.number(),
   pending: z.object({ pid: z.number(), since: z.string() }).optional(),
@@ -42,6 +45,7 @@ const fixture = createServer(async (req, res) => {
     res.end(JSON.stringify({
       ok: true, engines: ['analyze'], analyze_vocal_capable: true,
       analyze_audio_capable: false, analyze_text_capable: false,
+      analyze_facets_capable: facetsCapable,
     }));
     return;
   }
@@ -49,11 +53,15 @@ const fixture = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = requestSchema.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    analysisRequests.push(body);
+    if (failAnalysis) { res.writeHead(422, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ detail: 'Fixture: corrupt ordinary recording' })); return; }
     if (cacheExpected) assert.ok(body.stems_dir, 'eligible analysis must allocate a stem directory');
     else assert.equal(body.stems_dir, undefined, 'ineligible analysis must not allocate cache space');
     if (body.stems_dir) payload(body.stems_dir, writeWindow, writeBytes);
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, bpm: 120, key: 'Am', bars: [0,2000,4000], stems_cached: body.stems_dir ? true : null }));
+    res.end(JSON.stringify(body.facets
+      ? { ok: true, facets: { stems: { status: 'ok', data: { stems_cached: true } } }, source: { kind: 'path', complete: true } }
+      : { ok: true, bpm: 120, key: 'Am', bars: [0,2000,4000], stems_cached: body.stems_dir ? true : null }));
     return;
   }
   res.setHeader('Content-Type', 'audio/mpeg');
@@ -85,6 +93,10 @@ before(async () => {
 beforeEach(async () => {
   cacheExpected = true;
   starredIds = [];
+  facetsCapable = false;
+  failAnalysis = false;
+  analysisRequests = [];
+  analyzer._resetBackendCacheForTests();
   await settings.update({ audio: { stemCache: true, stemCacheGb: 1, analyzeQuietOnly: false } });
   await db.open({ embeddingDim: 768, adoptStoredDim: true });
 });
@@ -108,6 +120,74 @@ const addTrack = (id: string) => {
   db.getDb()!.prepare('UPDATE tracks SET bpm=120,bars_json=? WHERE id=?').run('[0,2000,4000]',id);
 };
 const runPass = () => runAnalysisPass({ audioBackfill: false, vocalBackfill: false });
+
+async function captureReleased(task: () => Promise<unknown>): Promise<string[][]> {
+  const log = console.log;
+  const released: string[][] = [];
+  console.log = (...args: unknown[]) => {
+    const line = String(args[0]);
+    if (line.startsWith('[subbeats-scan] ')) released.push(JSON.parse(line.slice('[subbeats-scan] '.length)));
+    else log(...args);
+  };
+  try { await task(); } finally { console.log = log; }
+  return released;
+}
+
+async function queueUpgrade(id: string): Promise<void> {
+  const { createSubbeatsStore } = await import('../src/music/subbeats-store.js');
+  createSubbeatsStore(stateDir).enqueue([{ id, title: id, artist: 'A', album: 'B' }]);
+}
+
+test('a current library releases queued Sub/Beats work even with no ordinary analysis to do', async () => {
+  addTrack('upgrade');
+  db.upsertTrackAnalysis('upgrade', { bpm: 120, bars: [0, 2000, 4000] });
+  await queueUpgrade('upgrade');
+  assert.deepEqual(await captureReleased(runPass), [['upgrade']]);
+  assert.equal(analysisRequests.length, 0, 'the queued upgrade must not first create regular stems');
+});
+
+test('an explicitly unchecked stems process prevents automatic caching and queue release', async () => {
+  await queueUpgrade('upgrade');
+  assert.deepEqual(await captureReleased(() => runAnalysisPass({ stemBackfill: false, vocalBackfill: true, audioBackfill: false })), []);
+  assert.equal(analysisRequests.length, 0);
+});
+
+test('an empty facet plan releases queued preparation within the explicit scope', async () => {
+  await queueUpgrade('selected');
+  await queueUpgrade('outside');
+  const plan = { where: { kind: 'needs' as const }, facets: ['stems' as const], items: [], inScope: 1, byFacet: [], rideAlong: [], warnings: [] };
+  assert.deepEqual(await captureReleased(() => runAnalysisPass({ plan, subbeatsScope: ['selected'] })), [['selected']]);
+});
+
+test('a stems-only limit prioritises queued upgrades and leaves the remainder queued', async () => {
+  for (const id of ['upgrade-1', 'upgrade-2', 'ordinary']) addTrack(id);
+  await queueUpgrade('upgrade-1');
+  await queueUpgrade('upgrade-2');
+  assert.deepEqual(await captureReleased(() => runAnalysisPass({ stemBackfill: true, stemOnly: true, limit: 1 })), [['upgrade-1']]);
+  assert.equal(analysisRequests.length, 0, 'neither regular stems nor upgrades beyond the limit may be prepared');
+});
+
+test('one bad ordinary recording cannot strand unrelated queued upgrades', async () => {
+  addTrack('bad-recording');
+  await queueUpgrade('upgrade');
+  failAnalysis = true;
+  assert.deepEqual(await captureReleased(runPass), [['upgrade']]);
+  assert.equal(analysisRequests.length, 1);
+});
+
+test('stems-only uses the facet protocol and preserves existing acoustic measurements', async () => {
+  facetsCapable = true;
+  addTrack('regular');
+  db.upsertTrackAnalysis('regular', { bpm: 137, musicalKey: 'F#m', loudnessLufs: -8, vocalRanges: [] });
+  writeBytes = 100;
+  assert.equal((await runAnalysisPass({ stemBackfill: true, stemOnly: true })).analyzed, 1);
+  assert.deepEqual(analysisRequests.map(body => body.facets), [['stems']]);
+  assert.equal(db.getTrack('regular')?.bpm, 137);
+  assert.equal(db.getTrack('regular')?.musicalKey, 'F#m');
+  assert.equal(db.getTrack('regular')?.loudnessLufs, -8);
+  assert.deepEqual(db.getTrack('regular')?.vocalRanges, []);
+  assert.ok(db.getDb()!.prepare('SELECT stems_at FROM tracks WHERE id=?').pluck().get('regular'));
+});
 
 test('reanalysis completes a partial stem dir and evicts its growth above budget', async () => {
   addTrack('partial');

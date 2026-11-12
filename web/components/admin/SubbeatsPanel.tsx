@@ -55,7 +55,6 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
   const { adminFetch, hydrated, needsAuth } = useAdminAuth();
   const ready = hydrated && !needsAuth;
   const cache = useSubbeatsCache();
-  const regularIds = new Set(cache.query.data?.policy.regularIds ?? []);
   const { preparationMethod, setPreparationMethod, mixStyle, setMixStyle, outCueIndex, setOutCueIndex, inCueIndex, setInCueIndex, browseRestored, jobSelected, setJobSelected, selected, setSelected, browse, setBrowse, jobQuery, setJobQuery, jobStatus, setJobStatus,
     jobCueFilter, setJobCueFilter, jobSort, setJobSort, jobPage, setJobPage, previewSearch, setPreviewSearch, outgoing, setOutgoing, incoming, setIncoming } = useSubbeatsWorkspace();
   const browsePage = page === 'prepared' ? 'prepared' : 'explore';
@@ -460,7 +459,6 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         <div className="border-b border-ink p-4">
           <h2 id="subbeats-candidates" className="font-display text-xl font-bold">{page === 'prepared' ? 'Prepared tracks' : 'Tracks to explore'}</h2>
           <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">{page === 'prepared' ? 'Prepared means the files are saved. Choose an outgoing and incoming track, then open Preview to find and listen to the best transition. Remove an entry to delete its extended files.' : 'Suggestions focus on dance-music genres, ranked using existing tempo and beat data. Deeper analysis checks the recording; genre alone does not confirm a driving beat.'}</p>
-          <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Regular stem inclusion is separate from deeper Sub/Beats preparation. It bypasses selective cache criteria, with the normal priority and space budget.</p>
           {page === 'prepared' ? <>
             <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">Readiness is counted per track using its strongest role. A track with Sub/Beat support may be ready only as an incoming or outgoing track; this does not guarantee a compatible pairing. The row shows both roles, and Find Suitable Transition checks the selected pair’s cue fit and vocal overlap, with a safe drum-loop option.</p>
             <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">If no Sub/Beat plan fits, this preview uses the configured crossfade; Picker integration will delegate that case to Subwave’s regular transition selector. Listen for musical fit.</p>
@@ -565,8 +563,6 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
         {candidates.isLoading && <p role="status" className="p-4 text-sm text-muted">Finding tracks…</p>}
         {candidates.isError && <div role="alert" className="flex flex-wrap items-center gap-3 p-4 text-sm">Could not load tracks.<Button className="min-h-11" onClick={() => void candidates.refetch()}>Retry</Button></div>}
         {!candidates.isLoading && !candidates.isError && !rows.length && <p className="p-6 text-sm text-muted">{page === 'explore' && scope === 'playlist' && !playlistId ? 'Choose a playlist to see its tracks.' : page === 'prepared' ? 'No prepared tracks match. Clear the search or choose another genre.' : 'No tracks match these filters. Try another genre or status, clear the search, or choose Entire library.'}{page === 'prepared' && <Link href="/admin/library/subbeats" className="mt-2 flex min-h-11 items-center underline underline-offset-4">Explore tracks to prepare more</Link>}</p>}
-        {cache.update.isError && <p role="alert" className="p-4 text-sm">Could not save regular stem inclusion. Your previous choice is still shown. Try again.</p>}
-        {cache.query.isError && <p role="alert" className="p-4 text-sm">Regular stem choices are unavailable. <button className="min-h-11 underline underline-offset-4" onClick={() => void cache.query.refetch()}>Retry</button></p>}
         {pagination}
         <ul className="divide-y divide-ink/20">
           {rows.map(row => {
@@ -583,12 +579,6 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
                 <p className="mt-2 text-xs text-muted lg:mt-0">{BROWSE_LABEL[job?.status ?? row.status]} · {row.hasBeatGrid ? 'Beat data available' : row.bpm ? 'Tempo estimate only' : 'No tempo data'}</p>
                 {job?.cuePoints && <p className="mt-1 text-xs text-muted lg:col-span-3">{job.cueCoverage ? 'Matching coverage and vocal measurements saved · check each pair for compatibility.' : 'Cues detected · upgrade cue coverage for saved vocal matching.'}</p>}
                 <SuitabilityDetails value={job ? job.suitability : row.suitability} cueBased={(job?.cuePoints?.algorithmVersion ?? 0) >= 5} />
-                <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs lg:col-span-3">
-                  <Checkbox aria-label={`Include ${row.title} by ${row.artist} in regular stem caching`} checked={regularIds.has(row.id)}
-                    disabled={!cache.query.data || cache.query.isError || cache.update.isPending}
-                    onCheckedChange={checked => cache.update.mutate({ track: { id: row.id, include: checked === true } })} />
-                  Include in regular stem caching
-                </label>
                 {page === 'prepared' && <div className="mt-3 flex flex-wrap gap-2 lg:col-span-3">
                   <Button className="min-h-11" aria-pressed={outgoing === row.id} disabled={incoming === row.id} onClick={() => { setOutgoing(row.id); }}>{outgoing === row.id ? 'Outgoing selected' : 'Use as outgoing'}</Button>
                   <Button className="min-h-11" aria-pressed={incoming === row.id} disabled={outgoing === row.id} onClick={() => { setIncoming(row.id); }}>{incoming === row.id ? 'Incoming selected' : 'Use as incoming'}</Button>

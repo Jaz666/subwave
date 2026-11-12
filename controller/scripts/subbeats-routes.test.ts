@@ -386,7 +386,9 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
   globalThis.fetch=(async (url,init) => {
     if (String(url).startsWith('http://127.0.0.1:9/')) {
       if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
-      rendered=JSON.parse(String(init?.body));return new Response(audio,{headers:{'Content-Type':'audio/wav'}});
+      rendered=JSON.parse(String(init?.body));
+      const timeline={duration:30,events:[{at:0,label:'Fixture preview'}],mixStyle:rendered?.mix_style ?? 'long-blend'};
+      return new Response(audio,{headers:{'Content-Type':'audio/wav','x-subbeats-timeline':JSON.stringify(timeline)}});
     }
     return realFetch(url,init);
   }) as typeof fetch;
@@ -409,7 +411,7 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
     subbeatsStore.event({id:fallbackId,status:'running'},[fallbackId]);
     subbeatsStore.event({id:fallbackId,status:'prepared',bundleKey:'e'.repeat(64)},[fallbackId]);
     const automatic=await post('/library/subbeats/join-preview',{trackIds:[fallbackId,ids[1]],method:'cue-points',autoPlan:true});
-    assert.equal(automatic.status,200);await automatic.arrayBuffer();
+    assert.equal(automatic.status,200,automatic.status === 200 ? undefined : await automatic.text());await automatic.arrayBuffer();
     assert.equal(rendered?.auto_plan,true);
     assert.deepEqual(rendered?.cue_keys,[null,'d'.repeat(64)]);
     assert.equal(rendered?.crossfade_seconds,10);

@@ -1,10 +1,12 @@
+import { SUBBEATS_BATCH_LIMIT } from '../schemas/subbeats.js';
+
 type QueuedJob = { id: string; status: string; task?: string };
 
 /** Preparation runs after a Library Demucs scan; read-only assessments stay immediate. */
 export function runnableSubbeatsJobs(
   jobs: readonly QueuedJob[],
   libraryReady: ReadonlySet<string>,
-  limit = 100,
+  limit = SUBBEATS_BATCH_LIMIT,
 ): string[] {
   return jobs.filter(job => job.status === 'queued'
     && (job.task === 'assess' || libraryReady.has(job.id)))

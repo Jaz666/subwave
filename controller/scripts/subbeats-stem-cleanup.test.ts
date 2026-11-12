@@ -82,7 +82,7 @@ test('an unprotected quarantine is deleted only after seven days, with actual fr
   assert.equal(existsSync(qu('rock')),false);
 });
 
-test('a pass interrupted after quarantine deletion leaves live usage unchanged', async () => {
+test('a pass interrupted after quarantine deletion marks live usage stale', async () => {
   const dir = qu('aged-abort');mkdirSync(dir,{recursive:true});
   writeFileSync(join(dir,'head-drums.flac'),'audio');
   writeFileSync(join(dir,'.orphaned-at'),String(now - 10*day));
@@ -93,7 +93,7 @@ test('a pass interrupted after quarantine deletion leaves live usage unchanged',
     beforeMutations:async () => { if (++phases === 2) throw new Error('choices changed'); },
   }),/choices changed/);
   assert.equal(existsSync(dir),false);
-  assert.deepEqual(JSON.parse(readFileSync(snapshot,'utf8')),{});
+  assert.equal(JSON.parse(readFileSync(snapshot,'utf8')).stale,true);
 });
 
 test('corrupt operator-heart data blocks the real strict signal loader', async () => {

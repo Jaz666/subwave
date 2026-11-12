@@ -21,6 +21,12 @@ test('regular pick-time caching does not start queued Sub/Beats preparation', ()
   assert.deepEqual(runnableSubbeatsJobs(jobs, new Set(['selected-a', 'selected-b']), 1), ['selected-a']);
 });
 
+test('a Library scan can release more than 100 selected tracks in one worker batch', () => {
+  const jobs = Array.from({ length: 197 }, (_, i) => ({ id: `selected-${i}`, status: 'queued' }));
+  const ready = new Set(queuedSubbeatsForScan(jobs));
+  assert.equal(runnableSubbeatsJobs(jobs, ready).length, 197);
+});
+
 test('queued Sub/Beats tracks suppress only their own regular stem writes', () => {
   const queued = new Set(['selected-a']);
   assert.equal(suppressRegularStems('selected-a', queued), true);

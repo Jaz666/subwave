@@ -1133,18 +1133,70 @@ The controller alone owns `state/subbeats/queue.json`, saving admissions, pause
 state, per-track attempts and results atomically. Managed children read that file
 and report outcomes on the existing stdio/progress channel; they never overwrite
 it. This preserves tracks added or paused while another is processing. The saved
-list has at most 500 tracks and each admission accepts at most 100 IDs. Only
+list has at most 20,000 tracks and each admission accepts at most 1,000 IDs. Only
 known library IDs can be admitted. Duplicate queued/running tracks are ignored;
 explicit Recheck/Retry can refresh terminal results without automatic retry loops.
 
 Sub/Beats uses the normal tagger/analyzer single-flight process slot, pidfile,
 process-group Stop/restart handling, run logs, and quiet-time policy. Preparation
-runs one track at a time and waits behind ordinary maintenance. Pause finishes
+runs one track at a time after a Library stems/Demucs pass releases the selected
+queued jobs. Explore selections and airplay upgrades wait for a manual or
+scheduled Library scan; pick-time caching prepares regular stems only. Resume
+unpauses the list and does not authorise new preparation by itself. Pause finishes
 the current track and leaves the rest queued. The normal Stop control also
 pauses the saved Sub/Beats list. On controller restart an interrupted active
 track becomes a visible failure requiring explicit retry, while queued work
-resumes after normal maintenance recovery. Closing the browser does not stop it.
+waits for a subsequent Library scan. Closing the browser does not stop it.
 Sub/Beats completion skips normal catalogue/playlist refreshes and stem sweeps.
+
+The Library Run dialog exposes **Prepare stems (regular + Sub/Beats)** as an
+independent process. Selecting only this process uses the standalone analyzer
+against the existing catalogue, with no Navidrome walk or embedding-provider
+preflight. Regular stems use the analyzer's stems facet when supported, preserving
+existing acoustic measurements. A combined run without mood tagging also avoids
+embedding/LLM preflights. Explicitly unchecking stems suppresses both regular
+cache writes and queued Sub/Beats preparation for that manual run. Legacy/manual
+CLI scans and scheduled scans with no override keep their configured defaults.
+
+A stems-only track limit reserves places for queued Sub/Beats selections before
+choosing missing regular stems; **all eligible tracks** removes that track cap,
+while retaining the shared disk budget. Every queued upgrade suppresses duplicate
+regular stem creation, including upgrades beyond the current run's limit.
+Ordinary work runs first, then the managed launcher drains the released Sub/Beats
+selection. No ordinary work is required: an already-current library still releases
+the queue, and a bad ordinary recording does not block unrelated selections. A
+fatal or stopped Library process does not release the queue. The manager uses up
+to 1,000 jobs per child (the supported admission batch size), rather than the old
+100; additional authorised jobs continue automatically. Its progress total is
+the current child batch, not the entire remaining queue.
+
+Budget-blocked work returns to `queued` with a readable reason and waits for a
+later Library scan without a retry loop. Machine results use the dedicated
+`[subbeats-event]` prefix so ordinary `[subbeats]` diagnostics remain visible as
+logs. Failed/interrupted entries require explicit Retry; this audit does not
+change saved failures or launch live preparation.
+
+The obsolete per-track regular-cache inclusion checkbox and its ignored API
+input have been removed; previously saved exceptions remain protected by the
+cache policy. Explore selection continues to choose the extra Sub/Beats work.
+
+The 12 November 2026 audit pins these paths with the real managed launcher and
+fixture analyzer, replacing the earlier flag-parser-only check. Registered
+Sub/Beats (97), stem/cache (216) and tagger (54) checks pass, alongside the web
+Library (39), query-audit (9) and waveform timing (5) checks, controller/web
+typechecks and scoped lint (existing controller warnings remain). The waveform's
+visual-event polling now belongs to the shared query layer; audio buffers remain
+owned and cancelled by their mounted waveform. The static query audit passes.
+No production build, live Demucs preparation or verify-stack browser run is part
+of this source audit.
+
+Source candidate: `fix/library-stems-queue-20261112`, developed in
+`/home/jaz666/codex/subwave-library-stems-audit-20261112` and delivered to the
+test-station integration branch at `/home/jaz666/Docker/subwave`. The pre-audit
+source rollback is `136d085b`. Services are left running their existing images;
+the owner applies the candidate with `docker compose up -d --build controller web`
+from the station checkout, then checks `docker compose ps controller web` and
+runs Library → Prepare stems with the required track limit.
 
 The existing analyzer worker and sidecar accept the optional `prepare_subbeats`
 operation / `/prepare-subbeats` endpoint. Only an explicitly capable heavy

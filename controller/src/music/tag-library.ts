@@ -14,6 +14,7 @@
 //   --re-enrich           null out enrichment cache and re-fetch from Navidrome
 //   --skip-enrich         embed using metadata only (debug)
 //   --skip-analyze        skip the acoustic bpm/key pass (Phase 5)
+//   --stems / --no-stems  override the Library stem process independently
 //   --skip-tag            skip embed + mood tagging (phases 1-4); walk/enrich/
 //                         analyze still run per their flags
 //   --no-prune            walk Navidrome but don't drop orphaned rows
@@ -100,24 +101,27 @@ async function main() {
     return;
   }
 
-  if (!embeddings.isAvailable()) {
-    logEvent('error', 'Embeddings not available — set settings.embedding.enabled / provider');
-    process.exit(1);
+  const plan = planRun(flags);
+  const needsEmbeddings = plan.forwardTag || plan.reEmbed || plan.reDecide || flags.reseed;
+  let embeddingDim = embeddings.resolveEmbeddingDim();
+  // Maintenance without tagging must also work with embeddings disabled or a
+  // provider offline. Only vector-writing phases probe its model/dimension.
+  if (needsEmbeddings) {
+    if (!embeddings.isAvailable()) {
+      logEvent('error', 'Embeddings not available — set settings.embedding.enabled / provider');
+      process.exit(1);
+    }
+    const probe = await embeddings.ensureReady();
+    if (probe.code !== 'ok') {
+      logEvent('error', `Embedding preflight failed (${probe.code}): ${probe.message}`);
+      process.exit(1);
+    }
+    embeddingDim = probe.dim ?? embeddingDim;
   }
-
-  // Preflight before opening the DB or walking Navidrome (#174, #319). The probe
-  // reports the dimension measured from a real vector, which beats the name→dim
-  // guess, so an arbitrarily-named embedding model works.
-  const probe = await embeddings.ensureReady();
-  if (probe.code !== 'ok') {
-    logEvent('error', `Embedding preflight failed (${probe.code}): ${probe.message}`);
-    process.exit(1);
-  }
-  const embeddingDim = probe.dim ?? embeddings.resolveEmbeddingDim();
 
   // reseed lets open() recover from a model/dim swap instead of throwing the
   // dim-mismatch before the --reseed logic below runs (#307). Same-dim: no-op.
-  await db.open({ embeddingDim, reseed: flags.reseed });
+  await db.open({ embeddingDim, reseed: flags.reseed, adoptStoredDim: !needsEmbeddings });
 
   // Task-prefix mode this run embeds documents in. A reseed re-embeds
   // everything so it adopts the active model's preferred mode; otherwise stay
@@ -131,8 +135,8 @@ async function main() {
   const textFormat = embeddings.resolveIndexTextFormat(
     db.getEmbeddingMeta()?.textFormat, db.vectorCount(), flags.reseed,
   );
-  db.setEmbeddingMeta(embeddings.activeModelLabel(), embeddingDim, textMode, textFormat);
-  if (textMode === 'plain' && embeddings.preferredTextMode() === 'prefixed') {
+  if (needsEmbeddings) db.setEmbeddingMeta(embeddings.activeModelLabel(), embeddingDim, textMode, textFormat);
+  if (needsEmbeddings && textMode === 'plain' && embeddings.preferredTextMode() === 'prefixed') {
     logEvent(
       'info',
       `${embeddings.activeModelLabel()} retrieves better with task prefixes — run ` +
@@ -202,8 +206,8 @@ async function main() {
   };
 
   logEvent('info', `Starting up — ${db.allTaggedIds().length.toLocaleString('en-GB')} tracks already tagged`);
-  logEvent('info', `Tagging model — ${activeModelLabel()}`);
-  logEvent('info', `Embedding model — ${embeddings.activeModelLabel()} (dim=${embeddingDim})`);
+  if (plan.forwardTag || plan.reDecide) logEvent('info', `Tagging model — ${activeModelLabel()}`);
+  if (needsEmbeddings) logEvent('info', `Embedding model — ${embeddings.activeModelLabel()} (dim=${embeddingDim})`);
   console.log(
     `[tag] batch=${tagBatchSize} maxRounds=${maxRounds} knnK=${knnK} ` +
       `moodVote=${moodVoteThreshold} confidence=${confidenceThreshold} ` +
@@ -241,7 +245,7 @@ async function main() {
 
   // Single- vs dual-LLM tagging: probed once here, not per phase, so the banner
   // prints once.
-  const tagConsumers = await resolveTagConsumers();
+  const tagConsumers = plan.forwardTag || plan.reDecide ? await resolveTagConsumers() : [];
   const byLeg: Record<string, number> = {};
   const mergeByLeg = (m: Record<string, number>) => {
     for (const [k, v] of Object.entries(m)) byLeg[k] = (byLeg[k] || 0) + v;
@@ -272,9 +276,6 @@ async function main() {
     reportCatalogueReady(walked);
   }
   lap('walk');
-
-  // Which phases run this pass (pure; pinned by rescan-scope.test.ts).
-  const plan = planRun(flags);
 
   // Forward scope: the untagged tracks this run discovers and tags, capped by
   // --limit. A re-scan's forward scope is empty — each re-* pass below redoes
@@ -551,12 +552,9 @@ async function main() {
         reAnalyze: flags.reAnalyze,
         rescan: flags.rescan,
         // Tri-state; undefined defers to settings.audio.vocalActivity / env.
-        vocalBackfill: flags.stems && flags.skipAnalyze
-          ? false
-          : flags.vocal ? true : flags.noVocal ? false : undefined,
-        stemBackfill: flags.stems ? true : undefined,
+        vocalBackfill: flags.vocal ? true : flags.noVocal ? false : undefined,
+        stemBackfill: flags.noStems ? false : flags.stems ? true : undefined,
         stemOnly: flags.stems && flags.skipAnalyze,
-        ...(flags.stems && flags.skipAnalyze ? { audioBackfill: false } : {}),
       });
     } catch (err: any) {
       logEvent('warning', `Acoustic analysis phase failed (non-fatal): ${err?.message || err}`);

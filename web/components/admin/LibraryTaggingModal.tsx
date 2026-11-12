@@ -54,8 +54,7 @@ const TABS: { key: Tab; label: string }[] = [
 export default function LibraryTaggingModal(p: Props) {
   const [tab, setTab] = useState<Tab>('run');
 
-  // All on by default EXCEPT the Demucs vocal pass, measured at ~90% of the
-  // whole acoustics phase (~10s/track on a 24-thread CPU).
+  // Expensive Demucs vocal/stem work is an explicit choice for a manual run.
   const [steps, setSteps] = useState<TagSteps>({
     reconcile: true, enrich: true, tagMoods: true, analyze: true, stems: false, vocal: false,
   });
@@ -104,6 +103,7 @@ export default function LibraryTaggingModal(p: Props) {
   const effSteps: TagSteps = {
     ...steps,
     analyze: effAnalyze,
+    stems: !analyzeLocked && steps.stems,
     // Otherwise send false — a harmless --no-vocal the backend ignores.
     vocal: effAnalyze && p.vocalWanted ? steps.vocal : false,
   };
@@ -186,7 +186,7 @@ export default function LibraryTaggingModal(p: Props) {
           <>
             <p className="text-[12px] leading-[1.55] text-muted">
               {stemsOnly
-                ? 'Prepare regular stems for eligible tracks that are missing them. The limit applies to stem candidates; the cache budget may further reduce how many fit.'
+                ? 'Process queued Sub/Beats selections and missing regular stems. Queued selections take priority within the track limit; the shared cache budget also applies.'
                 : 'Process new / untagged tracks. Untick a step to skip it this run — the badge shows what each one costs.'}
             </p>
             <div className="grid gap-2.5">
@@ -215,11 +215,6 @@ export default function LibraryTaggingModal(p: Props) {
                   : p.soundsLikeActive
                     ? 'Tempo, key & intro, plus sounds-like fingerprints. The slow step; vocal separation is split out below.'
                     : 'Tempo, key & intro for every track — the slow step. Sounds-like fingerprints are off; enable them on the library page to include them.'} />
-              <Pass on={steps.stems} onClick={() => toggleStep('stems')} disabled={analyzeLocked}
-                name="Cache regular stems (Demucs)" tag="very slow · disk budget"
-                hint={analyzeLocked
-                  ? 'No analysis engine running — start the analyzer sidecar or configure an in-process backend.'
-                  : 'Prepare regular-size Demucs stems for eligible tracks that are missing them, within the configured cache budget. Can run by itself; Sub/Beats-queued tracks are reserved for their queued preparation.'} />
               {p.vocalWanted && (
                 <div className="pl-6">
                   <Pass on={effAnalyze && steps.vocal} onClick={() => toggleStep('vocal')}
@@ -229,10 +224,15 @@ export default function LibraryTaggingModal(p: Props) {
                       : 'Source-separate each track to detect instrumental vs vocal. Very heavy on CPU (~10-30s/track) — untick to do bpm/key + sounds-like without it.'} />
                 </div>
               )}
+              <Pass on={effSteps.stems} onClick={() => toggleStep('stems')} disabled={analyzeLocked}
+                name="Prepare stems (regular + Sub/Beats)" tag="very slow · disk budget"
+                hint={analyzeLocked
+                  ? 'No analysis engine running — start the analyzer sidecar or configure an in-process backend.'
+                  : 'Cache missing regular stems for eligible tracks, then process queued Sub/Beats selections. Can run on its own. Tracks awaiting Sub/Beats skip regular stem creation. Requires the heavy Demucs analyzer; the shared disk budget applies.'} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
               <div className="lib-batch">
-                <label htmlFor="modal-batch">{stemsOnly ? 'Stem candidates' : 'Limit'}</label>
+                <label htmlFor="modal-batch">{stemsOnly ? 'Stem track limit' : 'Limit'}</label>
                 <select id="modal-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
                   <option value="100">next 100</option>
                   <option value="500">next 500</option>

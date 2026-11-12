@@ -51,7 +51,7 @@ let childScript = CHILD;
 
 const spawn = cp.spawn;
 cp.spawn = ((command: string, args: readonly string[], opts: cp.SpawnOptions) => {
-  if (command === 'npx' && opts?.cwd === '/app') {
+  if (command === 'npx' && args[0] === 'tsx' && args[1]?.startsWith('src/music/')) {
     return spawn(process.execPath, ['-e', childScript], { ...opts, cwd: STATE });
   }
   return spawn(command, args, opts);

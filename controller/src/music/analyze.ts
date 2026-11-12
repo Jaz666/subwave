@@ -29,7 +29,7 @@ import {
 } from './analyze-capability.js';
 import { probeListenerCount } from '../broadcast/listeners.js';
 import { sweepKeepLastFromDisk } from '../broadcast/pick-stems.js';
-import type { AcousticsPlan, WorkRequest } from './acoustics-plan.js';
+import { requestFor, type AcousticsPlan, type WorkRequest } from './acoustics-plan.js';
 import type { Facet } from './library-db/facets.js';
 
 // Status events for the panel, mirrored to the `[analyze] …` console line.
@@ -51,6 +51,9 @@ export interface AnalyzeOptions {
   stemBackfill?: boolean;
   // Restrict this pass to eligible tracks needing stem cache data.
   stemOnly?: boolean;
+  // Facet CLI callers can release queued preparation even when the requested
+  // facets are already measured. null means the whole catalogue.
+  subbeatsScope?: readonly string[] | null;
   // A facet plan (music/acoustics-plan.ts) REPLACES the scope: exactly its
   // tracks, each with its own worker flags. reAnalyze and the four widenings
   // are ignored. Absent = today's pass, unchanged.
@@ -271,7 +274,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   const stemSignals = stemCache || plan?.items.some(item => item.request.stems)
     ? await stemCacheStore.admissionSignals() : {};
   if (plan && opts.reAnalyze) console.log('[analyze] facet plan given — ignoring --re-analyze');
-  if (opts.reAnalyze && !plan) {
+  if (opts.reAnalyze && !plan && !opts.stemOnly) {
     if (opts.rescan) reAnalyzeScope = db.analysedIds();
     db.clearAnalysis({ keepVocal: !vocalBackfill, clearStems: stemCache });
     console.log(
@@ -335,25 +338,33 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   // Airplay demand is turned into Sub/Beats work only when a Library pass that
   // can run Demucs is already happening. Reserve those jobs before ordinary
   // stem admission so the pass does not write regular stems it will upgrade.
-  const demucsScan = plan
-    ? plan.items.some(item => item.request.stems || item.request.vocal)
-    : stemCache || vocalBackfill;
+  const demucsScan = opts.stemBackfill !== false && (plan
+    ? plan.facets.some(facet => facet === 'stems' || facet === 'vocal') && analyzer.vocalActivityAvailable() !== false
+    : stemCache || vocalBackfill);
   if (demucsScan && settings.get()?.transitions?.subbeatsOnAirCaching === true) {
     queueRecentAiredTracks();
   }
-  const subbeatsScope = plan
-    ? new Set(plan.items.filter(item => item.request.stems || item.request.vocal).map(item => item.id))
-    : null;
+  const subbeatsScope = opts.subbeatsScope === null ? null
+    : opts.subbeatsScope ? new Set(opts.subbeatsScope)
+    : plan ? new Set(plan.items.filter(item => item.request.stems || item.request.vocal).map(item => item.id)) : null;
   let queuedSubbeatsIds = new Set<string>();
+  let readySubbeatsIds: string[] = [];
   if (demucsScan) {
     try {
-      queuedSubbeatsIds = new Set(queuedSubbeatsForScan(
-        readSubbeatsQueue(config.stateDir).jobs, subbeatsScope, opts.limit,
-      ));
+      const jobs = readSubbeatsQueue(config.stateDir).jobs;
+      // Every queued upgrade suppresses a duplicate regular write, including
+      // upgrades beyond this run's limit. Only the selected scope is released.
+      queuedSubbeatsIds = new Set(queuedSubbeatsForScan(jobs));
+      readySubbeatsIds = queuedSubbeatsForScan(jobs, subbeatsScope, opts.limit);
     } catch {
       logEvent('warning', 'Sub/Beats selections could not be refreshed; regular analysis will continue');
     }
   }
+  const reportQueuedSubbeats = () => {
+    if (!readySubbeatsIds.length) return;
+    logEvent('info', `${readySubbeatsIds.length.toLocaleString('en-GB')} queued Sub/Beats tracks selected for preparation after this Library pass`);
+    console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify(readySubbeatsIds));
+  };
 
   // Stem backfill: the fourth widening. `stemCache` already carries the Demucs
   // gate; suppressed under a fixed re-scan scope like the others. Capped at what
@@ -399,7 +410,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       // spent are available — sizing off the raw cap would log stem tracks a
       // final slice then silently drops, the exact "reads as finished"
       // truncation the announcement exists to avoid.
-      const room = cap ? Math.min(Math.max(0, cap - ids.length), backfillSlots) : backfillSlots;
+      const room = cap ? Math.min(Math.max(0, cap - ids.length - (opts.stemOnly ? readySubbeatsIds.length : 0)), backfillSlots) : backfillSlots;
       const stemIds = needing.slice(0, room);
       if (stemIds.length > 0) {
         ids = [...ids, ...stemIds];
@@ -455,10 +466,16 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       }
     }
   }
+  if (opts.stemOnly && !plan) {
+    for (const id of ids) {
+      planned.set(id, requestFor(['stems']));
+      plannedFacets.set(id, ['stems']);
+    }
+  }
   // A facet plan on a backend that speaks the facet protocol asks for exactly
   // the planned facets; an older backend gets the flat request (flags above).
-  const useFacets = !!plan && (await analyzer.facetsAvailable()) === true;
-  if (plan) {
+  const useFacets = !!(plan || opts.stemOnly) && (await analyzer.facetsAvailable()) === true;
+  if (plan || opts.stemOnly) {
     logEvent(
       'info',
       useFacets
@@ -483,14 +500,18 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   }
 
   if (ids.length === 0) {
-    console.log('[analyze] nothing to analyse — all tracks current');
+    console.log(readySubbeatsIds.length
+      ? '[analyze] no ordinary analysis needed; queued Sub/Beats preparation will follow'
+      : '[analyze] no ordinary analysis selected for this pass');
     // Zero-shot scoring can still have work (older vectors, changed vocabulary).
-    await scoreAudioMoods();
+    if (!opts.stemOnly) await scoreAudioMoods();
+    reportQueuedSubbeats();
     return { available: true, backend, analyzed: 0, failed: 0, scope: 0, audioEmbedded: 0, vocalAnalyzed: 0 };
   }
   if (passStems) await stemCacheStore.markPassPending();
-  logEvent('info', `Analysing audio for ${ids.length.toLocaleString('en-GB')} tracks…`);
-  reportProgress({ phase: 'analyze', label: 'Analysing audio', done: 0, total: ids.length });
+  const progressLabel = opts.stemOnly ? 'Caching regular stems' : 'Analysing audio';
+  logEvent('info', `${progressLabel} for ${ids.length.toLocaleString('en-GB')} tracks…`);
+  reportProgress({ phase: 'analyze', label: progressLabel, done: 0, total: ids.length });
 
   let analyzed = 0;
   let failed = 0;
@@ -820,7 +841,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
       console.log(`[analyze] ${done}/${ids.length} (ok=${analyzed} fail=${failed})`);
       reportProgress({
         phase: 'analyze',
-        label: 'Analysing audio',
+        label: progressLabel,
         done,
         total: ids.length,
         errors: failed || undefined,
@@ -914,7 +935,7 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
   // Zero-shot audio moods and sound descriptors over the vectors this and past
   // passes wrote; no-op when there is nothing new or the backend has no text
   // tower.
-  await scoreAudioMoods();
+  if (!opts.stemOnly) await scoreAudioMoods();
 
   // The worker degrades silently when Demucs fails to load: every track reads
   // "ok" with vocal_ranges omitted, re-targeting the same tracks forever (#996).
@@ -927,14 +948,13 @@ export async function runAnalysisPass(opts: AnalyzeOptions = {}): Promise<Analyz
 
   logEvent(
     'success',
-    `Audio analysed — ${analyzed.toLocaleString('en-GB')} tracks` +
+    `${opts.stemOnly ? 'Regular stem pass finished' : 'Audio analysed'} — ${analyzed.toLocaleString('en-GB')} tracks` +
       (audioEmbedded > 0 ? `, ${audioEmbedded.toLocaleString('en-GB')} sounds-like` : '') +
       (vocalAnalyzed > 0 ? `, ${vocalAnalyzed.toLocaleString('en-GB')} vocal` : '') +
       (failed > 0 ? ` · ${failed.toLocaleString('en-GB')} failed` : ''),
   );
-  if (failed === 0 && (passStems || passVocal)) {
-    const ready = [...queuedSubbeatsIds];
-    if (ready.length) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify(ready));
-  }
+  // A bad ordinary recording must not hold up unrelated queued selections.
+  // Fatal pass errors still prevent the managed launcher from releasing work.
+  reportQueuedSubbeats();
   return { available: true, backend, analyzed, failed, scope: ids.length, audioEmbedded, vocalAnalyzed };
 }

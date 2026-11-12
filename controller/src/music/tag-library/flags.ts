@@ -39,6 +39,7 @@ interface CliFlags {
   upgrade: boolean;
   skipAnalyze: boolean;
   stems: boolean;
+  noStems: boolean;
   reAnalyze: boolean;
   reconcileOnly: boolean;
   // Skip embed + mood tagging (phases 1-4); walk, enrich and analyze still run
@@ -78,6 +79,7 @@ export function parseFlags(): CliFlags {
     upgrade: args.includes('--upgrade'),
     skipAnalyze: args.includes('--skip-analyze'),
     stems: args.includes('--stems'),
+    noStems: args.includes('--no-stems'),
     reAnalyze: args.includes('--re-analyze'),
     // Walk Navidrome, prune rows for tracks it no longer contains, then exit —
     // no embeddings, no LLM.

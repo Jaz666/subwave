@@ -5,7 +5,8 @@ export const SUBBEATS_QUEUE_LIMIT = 20000;
 export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
-export const SUBBEATS_EVENT_PREFIX = '[subbeats] ';
+// Dedicated machine-event prefix; human diagnostics use "[subbeats]" too.
+export const SUBBEATS_EVENT_PREFIX = '[subbeats-event] ';
 export const SUBBEATS_SCAN_PREFIX = '[subbeats-scan] ';
 export const subbeatsScanReadySchema = z.array(z.string().min(1).max(200)).max(SUBBEATS_QUEUE_LIMIT);
 export const subbeatsStatusSchema = z.enum(['queued', 'running', 'prepared', 'unmeasurable', 'unavailable', 'failed']);
@@ -102,7 +103,7 @@ export const subbeatsEventSchema = z.object({
   cueCoverage:subbeatsCueCoverageSchema.optional(),
   cuePoints:subbeatsCuePointsSchema.optional(),
   id: z.string().min(1).max(200),
-  status: subbeatsStatusSchema.exclude(['queued']),
+  status: subbeatsStatusSchema,
   suitability:subbeatsSuitabilitySchema.optional(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
   error: z.string().max(1000).nullable().default(null),
@@ -294,8 +295,7 @@ export const subbeatsStemPolicySchema = z.object({
 export const subbeatsStemPolicyPatchSchema = z.object({
   enabled: z.boolean().optional(),
   confirmCleanup: z.boolean().optional(),
-  track: z.object({ id: z.string().min(1).max(200), include: z.boolean() }).optional(),
-}).strict().refine(value => value.enabled !== undefined || value.track !== undefined, 'Choose a cache policy change');
+}).strict().refine(value => value.enabled !== undefined, 'Choose a cache policy change');
 export const subbeatsCacheViewSchema = z.object({
   policy: subbeatsStemPolicySchema,
   budgetBytes: z.number().nonnegative(),

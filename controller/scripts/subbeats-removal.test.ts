@@ -35,7 +35,7 @@ test('removal deletes extended files and the entry, preserving regular stems, po
   assert.equal(readFileSync(join(qu,'keep'),'utf8'),'quarantine');
   assert.equal(readFileSync(join(state,'subbeats','stem-policy.json'),'utf8'),beforePolicy);
   assert.equal(store.read().jobs.find(job=>job.id==='second')?.status,'prepared');
-  assert.deepEqual(JSON.parse(readFileSync(snapshot,'utf8')),{});
+  assert.equal(existsSync(snapshot),false,'deleting cached audio must invalidate its old byte snapshot');
   await removeSubbeatsEntry('first'); // A repeated request is harmless.
 });
 test('legacy bundles shared by another entry survive until the last reference is removed', async () => {

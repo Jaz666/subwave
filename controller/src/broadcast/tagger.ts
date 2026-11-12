@@ -194,6 +194,14 @@ export function startTagger(
   } & ReplacedAnswer = {},
 ) {
   const { limit, reseed, reEnrich, reAnalyze, upgrade, thenTag, reconcile, enrich, tagMoods, analyze, stems, vocal } = opts;
+  // A process selected on its own uses the existing analysis CLI: no full
+  // Navidrome walk, embedding-provider preflight or mood-tagging setup.
+  if (!reseed && !reEnrich && !reAnalyze && !upgrade
+    && reconcile === false && enrich === false && tagMoods === false
+    && (analyze !== false || stems === true)) {
+    startAnalyzer({ limit, vocal, stems, stemsOnly: analyze === false && stems === true });
+    return;
+  }
   const args = ['src/music/tag-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (reseed) args.push('--reseed');
@@ -213,6 +221,7 @@ export function startTagger(
   if (tagMoods === false) args.push('--skip-tag');
   if (analyze === false) args.push('--skip-analyze');
   if (stems === true) args.push('--stems');
+  if (stems === false) args.push('--no-stems');
   if (reconcile === false) args.push('--no-prune');
   if (analyze !== false && vocal === true) args.push('--vocal');
   if (analyze !== false && vocal === false) args.push('--no-vocal');
@@ -231,6 +240,7 @@ export function startTagger(
     tagMoods === false ? 'skip-tag' : null,
     analyze === false ? 'skip-analyze' : null,
     stems === true ? 'stems' : null,
+    stems === false ? 'no-stems' : null,
     reconcile === false ? 'no-prune' : null,
     analyze !== false && vocal === true ? 'vocal' : null,
     analyze !== false && vocal === false ? 'no-vocal' : null,
@@ -244,16 +254,23 @@ export function startTagger(
 // Standalone analysis pass (bpm/key/intro + CLAP audio embeddings). `audio` and
 // `vocal` force backfill scopes that re-target rows missing an audio vector /
 // vocal_ranges_json. Same single-flight slot; caller rejects when tagger.running.
-export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: boolean } = {}) {
-  const { limit, audio, vocal } = opts;
+export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: boolean; stems?: boolean; stemsOnly?: boolean } = {}) {
+  const { limit, audio, vocal, stems, stemsOnly } = opts;
   const args = ['src/music/analyze-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (audio) args.push('--audio');
   if (vocal) args.push('--vocal');
+  if (vocal === false) args.push('--no-vocal');
+  if (stems === true) args.push('--stems');
+  if (stems === false) args.push('--no-stems');
+  if (stemsOnly) args.push('--stems-only', '--skip-walk');
   const detail = [
     Number.isFinite(limit) && (limit as number) > 0 ? `limit=${limit}` : null,
     audio ? 'audio' : null,
     vocal ? 'vocal' : null,
+    vocal === false ? 'no-vocal' : null,
+    stems === true ? 'stems' : stems === false ? 'no-stems' : null,
+    stemsOnly ? 'stems-only' : null,
   ]
     .filter(Boolean)
     .join(', ');
@@ -293,7 +310,7 @@ function spawnChild(
   // killing it orphans the real worker. Keep the stdio pipes and never unref().
   // MANAGED_ENV tells the CLI we own the pidfile written below.
   const child = spawn(opts.subbeats ? 'nice' : 'npx', opts.subbeats ? ['-n', '10', 'npx', 'tsx', ...args] : ['tsx', ...args], {
-    cwd: opts.subbeats ? fileURLToPath(new URL('../..', import.meta.url)) : '/app',
+    cwd: fileURLToPath(new URL('../..', import.meta.url)),
     detached: true,
     env: { ...process.env, [MANAGED_ENV]: '1' },
   });
@@ -336,7 +353,7 @@ function spawnChild(
 
   // A never-counted library nulls every panel percentage for the whole run. Guarded
   // on hasCount() so it fires at most once per install, not on every run.
-  if (!opts.subbeats && !coverage.hasCount()) coverage.refresh().catch(() => {});
+  if (mode !== 'analyze' && !coverage.hasCount()) coverage.refresh().catch(() => {});
 
   // Per-stream line buffering: a `data` chunk can end mid-line, so each stream keeps
   // its own remainder. [progress] and [event] sentinels are kept out of the raw log.
@@ -467,7 +484,7 @@ function spawnChild(
       queue.log('scheduler', `Sub/Beats finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
       return;
     }
-    coverage.refresh().catch(() => {});
+    if (mode !== 'analyze') coverage.refresh().catch(() => {});
     // Apply even after Stop/failure: adoption may already have committed.
     // Recipes must be migrated before sync can classify a playlist as missing.
     // Await an early build before the exit fallback; otherwise an older build

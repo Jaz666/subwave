@@ -255,7 +255,6 @@ router.get('/library/subbeats/cache', requireAdmin, async (_req, res) => {
 router.post('/library/subbeats/cache', requireAdmin, validateBody(subbeatsStemPolicyPatchSchema), async (req, res) => {
   if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish before changing cache choices'});
   await library.load();
-  if (req.body.track?.include && !db.getTrack(req.body.track.id)) return res.status(400).json({ error: 'Track is no longer in the library' });
   if (req.body.enabled === true && req.body.confirmCleanup !== true) return res.status(400).json({error:'Confirm the seven-day stem cleanup before enabling it'});
   try {
     const policy = updateSubbeatsStemPolicy(req.body);

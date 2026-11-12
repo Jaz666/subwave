@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { SUBBEATS_BATCH_LIMIT } from '../../../lib/schemas.generated';
 import { selectPreparationIds, selectSubbeatsRows, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './subbeats-selection';
 const row = (id: string): SubbeatsCandidate => ({ id, title:id, artist:'Artist', album:'', bpm:138, hasBeatGrid:true, genres:['House'], status:'not-started' });
 
@@ -13,10 +14,11 @@ test('outgoing choices keep their original indices and allow the second-half sea
 
 test('selection accumulates across pages/filters, deduplicates and stops at the batch limit', () => {
   const first = Array.from({length:50}, (_,i) => row(`first-${i}`));
-  const second = Array.from({length:60}, (_,i) => row(`second-${i}`));
+  const second = Array.from({length:SUBBEATS_BATCH_LIMIT + 10}, (_,i) => row(`second-${i}`));
   const selected = selectSubbeatsRows(first, [...first, ...second], []);
-  assert.equal(selected.length, 100); assert.deepEqual(selected.slice(0,50), first);
-  assert.equal(new Set(selected.map(item => item.id)).size, 100);
+  assert.equal(selected.length, SUBBEATS_BATCH_LIMIT); assert.deepEqual(selected.slice(0,50), first);
+  assert.equal(new Set(selected.map(item => item.id)).size, SUBBEATS_BATCH_LIMIT);
+  assert.equal(selectSubbeatsRows([], second.slice(0,197), []).length,197,'the reported 197-track selection must fit in one batch');
 });
 
 test('more than 500 saved entries do not block another batch or retries', () => {
@@ -38,10 +40,11 @@ test('preparation selection spans pages, deduplicates and excludes active or rem
   assert.deepEqual(selectPreparationIds(['prepared','failed'], [], [...jobs.filter(job=>job.id!=='prepared')]), ['failed']);
 });
 
-test('preparation batches stop at 100 entries without dropping prior selections', () => {
-  const jobs = Array.from({length:120},(_,i)=>({id:String(i),status:'prepared' as const}));
-  const selected = selectPreparationIds(['119'],jobs.map(job=>job.id),jobs);
-  assert.equal(selected.length,100); assert.equal(selected[0],'119'); assert.equal(new Set(selected).size,100);
+test('preparation batches respect the admission limit without dropping prior selections', () => {
+  const jobs = Array.from({length:SUBBEATS_BATCH_LIMIT + 20},(_,i)=>({id:String(i),status:'prepared' as const}));
+  const first = jobs.at(-1)!.id;
+  const selected = selectPreparationIds([first],jobs.map(job=>job.id),jobs);
+  assert.equal(selected.length,SUBBEATS_BATCH_LIMIT); assert.equal(selected[0],first); assert.equal(new Set(selected).size,SUBBEATS_BATCH_LIMIT);
 });
 
 

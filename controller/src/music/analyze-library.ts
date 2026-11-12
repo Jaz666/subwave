@@ -10,6 +10,8 @@
 //                  music/prune-policy.ts lets it remove on its own
 //   --audio        backfill CLAP vectors on analysed tracks (implied by ANALYZE_AUDIO_EMBEDDING)
 //   --vocal        backfill Demucs vocal ranges (implied by ANALYZE_VOCAL_ACTIVITY)
+//   --stems / --no-stems   override automatic stem caching for this run
+//   --stems-only   cache stems and release queued Sub/Beats without other analysis
 //
 // The walk otherwise runs only on an empty catalogue (first-run bootstrap).
 //
@@ -40,27 +42,11 @@ import { adoptAndPrune } from './id-rotation.js';
 import * as analyzer from './analyzer.js';
 import { reportProgress, makeEventLogger } from './tagger-progress.js';
 import { readFileSync } from 'node:fs';
-import { config } from '../config.js';
-import { readSubbeatsQueue } from './subbeats-store.js';
-import { queueRecentAiredTracks } from './subbeats-airplay.js';
-import { queuedSubbeatsForScan } from './subbeats-scan-policy.js';
-import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { formatPlan, parseFacets, parseWhere, planAcoustics, type AcousticsPlan } from './acoustics-plan.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 import { walkFileInfo } from './tag-library/flags.js';
 
 const logEvent = makeEventLogger('analyze');
-
-function reportFacetSubbeats(plan:AcousticsPlan,args:string[],limit:number|undefined) {
-  if (!plan.facets.some(f=>f==='vocal' || f==='stems') || analyzer.vocalActivityAvailable() !== true) return;
-  try {
-    const explicit=explicitIds(args);
-    const scope=explicit ? new Set(explicit) : null;
-    queueRecentAiredTracks();
-    const pending=queuedSubbeatsForScan(readSubbeatsQueue(config.stateDir).jobs,scope,limit);
-    if (pending.length) console.log(SUBBEATS_SCAN_PREFIX+JSON.stringify(pending));
-  } catch {logEvent('warning','Sub/Beats selections could not be read; ordinary analysis completed');}
-}
 
 // TRUNCATE-checkpoint the library DB on every exit path, else this bulk writer
 // leaves a huge WAL sidecar (#786). db.close() is synchronous, so 'exit' is safe.
@@ -169,7 +155,9 @@ async function main() {
   // undefined → runAnalysisPass falls back to the ANALYZE_AUDIO_EMBEDDING env.
   const audioBackfill = args.includes('--audio') ? true : undefined;
   // undefined → falls back to ANALYZE_VOCAL_ACTIVITY / settings.audio.vocalActivity.
-  const vocalBackfill = args.includes('--vocal') ? true : undefined;
+  const vocalBackfill = args.includes('--no-vocal') ? false : args.includes('--vocal') ? true : undefined;
+  const stemOnly = args.includes('--stems-only');
+  const stemBackfill = args.includes('--no-stems') ? false : args.includes('--stems') || stemOnly ? true : undefined;
 
   await applyWizardOverlay();
   await settings.load();
@@ -192,13 +180,7 @@ async function main() {
       console.log('[analyze] dry run — nothing analysed');
       process.exit(0);
     }
-    if (plan.items.length === 0) {
-      reportFacetSubbeats(plan,args,limit);
-      analyzer.shutdown();
-      console.log('[analyze] nothing planned');
-      process.exit(0);
-    }
-    const stats = await runAnalysisPass({ plan });
+    const stats = await runAnalysisPass({ plan, limit, subbeatsScope: explicitIds(args) });
     analyzer.shutdown();
     console.log('[analyze] stats:', JSON.stringify(stats));
     process.exit(0);
@@ -285,7 +267,7 @@ async function main() {
     }
   }
 
-  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill });
+  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, stemBackfill, stemOnly });
   analyzer.shutdown();
   console.log('[analyze] stats:', JSON.stringify(stats));
   process.exit(stats.available ? 0 : 0);
