@@ -401,7 +401,7 @@ export default function NowPlayingWaveform() {
   });
 
   const clockMs = currentStartedAt + elapsed * 1000;
-  const detailVisible = !!stemTransition && stemDetailVisible(stemTransition,currentId,visibleHistoryTracks,clockMs,HISTORY_SECONDS);
+  const detailVisible = !!stemTransition && stemDetailVisible(stemTransition,currentId,visibleHistoryTracks,clockMs,HISTORY_SECONDS,stemWindow);
   const pairKey = stemTransition ? stemPairKey(stemTransition) : null;
   const expanded = detailVisible && expandedPair === pairKey;
   const mixPosition = currentStartedAt > 0 && stemWindow ? (clockMs-stemWindow.startAt)/1000 : null;

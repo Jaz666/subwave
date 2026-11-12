@@ -1,5 +1,6 @@
 // Display clocks follow broadcast/subbeats-clock.ts. These are source-detail
-// waveforms, not output meters: separation, fades and summing happen elsewhere.
+// waveforms with predicted faders, not live output meters. Summing and limiting
+// still happen in the renderer/mixer, not in this display.
 export const STEM_NAMES = ['vocals', 'drums', 'bass', 'other'] as const;
 export type StemName = typeof STEM_NAMES[number];
 export type StemLanes = Record<StemName, { outgoing: number[]; incoming: number[] }>;
@@ -63,12 +64,58 @@ export function stemPhase(transition: StemTransition, seconds: number | null): s
   return stemStages(transition).reduce((label, stage) => seconds >= stage.at ? stage.label : label, 'Outgoing lead');
 }
 
-/** A cached pair may outlive its displayed outgoing recording. */
+/** Predict the renderer's stem faders, then apply the saved station gains. */
+export function stemVolumes(transition: StemTransition, stem: StemName, seconds: number) {
+  const clamp = (value: number) => Math.max(0,Math.min(1,value));
+  let outgoing = 0, incoming = 0;
+  if (seconds >= 0 && seconds < transition.durationSec) {
+    const timing = transition.timing;
+    if (timing) {
+      const sr = timing.sampleRate;
+      const arrival = timing.handoverFrame/sr;
+      // The handoff has an eight-beat release, or (at native tempo) a final
+      // four-beat bar. Saved cues are 60–190 BPM, so its one-second minimum
+      // never clips that native bar. This recovers the renderer's beat period
+      // to sample-rounding precision without inventing a generic crossfade.
+      const release = timing.releaseEndFrame-timing.releaseStartFrame;
+      const period = release > 0 ? release/sr/8 : (timing.clipFrames-timing.releaseEndFrame)/sr/4;
+      let rhythmStart = Math.max(transition.incomingAtSec,arrival-(transition.mixStyle === 'drums-first' ? 32 : 4)*period);
+      if (timing.loop) rhythmStart = Math.min(rhythmStart,
+        transition.incomingAtSec+timing.loop.startSample/sr/timing.incomingRate);
+      const rhythm = clamp((seconds-rhythmStart)/Math.max(1/sr,arrival-rhythmStart));
+      const exchangeHalf = (transition.mixStyle === 'bass-swap' ? .5 : 2)*period;
+      const exchange = clamp((seconds-arrival+exchangeHalf)/Math.max(1/sr,exchangeHalf*2));
+      outgoing = seconds < transition.outgoingUntilSec ? 1 : 0;
+      if (stem === 'vocals' || stem === 'other') outgoing *= clamp((transition.outgoingUntilSec-seconds)/.03);
+      incoming = seconds < transition.incomingAtSec ? 0 : stem === 'drums' || stem === 'bass' ? rhythm : 1;
+      if ((['short-exchange','drums-first'].includes(transition.mixStyle ?? '') && (stem === 'bass' || stem === 'other'))
+        || (transition.mixStyle === 'bass-swap' && stem === 'bass')) {
+        outgoing *= 1-exchange;
+        incoming = seconds < transition.incomingAtSec ? 0 : exchange;
+      }
+    } else {
+      // Regular Stem Blend carries outgoing DRUMS under incoming bass/melody/
+      // vocals, then drops in incoming drums. Its internal bar timing is not
+      // published, so retain an explicitly estimated drum handover only.
+      const drop = transition.incomingAtSec;
+      outgoing = stem === 'drums' ? clamp((drop-seconds)/Math.max(.03,drop/4)) : 0;
+      incoming = stem === 'drums' ? Number(seconds >= drop) : 1;
+      outgoing *= 10 ** (-3/20); // borrowed groove sits below the incoming track
+    }
+  }
+  return {
+    outgoing:outgoing*10**((transition.gainsDb?.[0] ?? transition.outgoingGainDb ?? 0)/20),
+    incoming:incoming*10**((transition.gainsDb?.[1] ?? transition.incomingGainDb ?? 0)/20),
+  };
+}
+
+/** Keep an active mix through its native-tempo return, then expire its history. */
 export function stemDetailVisible(transition: StemTransition, currentId: string | undefined,
   history: readonly {id: string; startedAt: number; playedSeconds?: number; duration: number}[],
-  nowMs: number, historySeconds: number): boolean {
+  nowMs: number, historySeconds: number, window?: {startAt: number; endAt: number} | null): boolean {
   if (transition.outgoingId === currentId) return true;
   if (transition.incomingId !== currentId) return false;
+  if (window && nowMs >= window.startAt && nowMs < window.endAt) return true;
   return history.some(track => track.id === transition.outgoingId
     && track.startedAt + (track.playedSeconds ?? track.duration) * 1000 > nowMs - historySeconds * 1000);
 }
@@ -77,12 +124,12 @@ export function stemDetailVisible(transition: StemTransition, currentId: string 
 export function stemSourceSeconds(transition: StemTransition, side: 'outgoing' | 'incoming', seconds: number, stem: StemName = 'drums'): number | null {
   if (seconds < 0 || seconds >= transition.durationSec) return null;
   if (side === 'outgoing' && seconds >= transition.outgoingUntilSec) return null;
-  if (side === 'incoming' && seconds < transition.incomingAtSec) return null;
+  if (side === 'incoming' && transition.timing && seconds < transition.incomingAtSec) return null;
   const timing = transition.timing;
   const region = transition.sources?.[side];
   if (!timing) {
     const start = side === 'outgoing' ? (region?.endSec ?? transition.durationSec) - transition.durationSec : 0;
-    return start + seconds - (side === 'incoming' ? transition.incomingAtSec : 0);
+    return start + seconds;
   }
   if (side === 'outgoing') return timing.outgoingStartSample / timing.sampleRate + seconds;
   const frame = (seconds - transition.incomingAtSec) * timing.sampleRate;
