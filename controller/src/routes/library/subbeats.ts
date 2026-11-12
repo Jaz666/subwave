@@ -162,7 +162,8 @@ router.post('/library/subbeats/join-preview', requireAdmin, async (req, res) => 
   const parsed = subbeatsPreviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose two prepared tracks.' });
   if (subbeatsRemovalRunning()) return res.status(409).json({error:'Wait for entry removal to finish before preparing a preview'});
-  if (parsed.data.method === 'cue-points' && (tagger.running || bulkPassRunning())) return res.status(409).json({error:'Wait for library preparation to finish before preparing this cue preview.'});
+  const waitingForQuiet = tagger.running && tagger.progress?.waitingForQuiet === true;
+  if (parsed.data.method === 'cue-points' && !waitingForQuiet && (tagger.running || bulkPassRunning())) return res.status(409).json({error:'Wait for library preparation to finish or pause for quiet time before preparing this cue preview.'});
   if (previewBusy) return res.status(409).json({ error: 'Another transition preview is being prepared. Try again shortly.' });
   const abort = new AbortController();
   const cancel = () => abort.abort();

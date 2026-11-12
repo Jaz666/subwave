@@ -1,8 +1,40 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SUBBEATS_BATCH_LIMIT } from '../../../lib/schemas.generated';
-import { selectPreparationIds, selectSubbeatsRows, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './subbeats-selection';
+import { liveSubbeatsPair, selectPreparationIds, selectSubbeatsRows, subbeatsOutgoingCues, subbeatsIncomingCues, type SubbeatsCandidate } from './subbeats-selection';
 const row = (id: string): SubbeatsCandidate => ({ id, title:id, artist:'Artist', album:'', bpm:138, hasBeatGrid:true, genres:['House'], status:'not-started' });
+
+const liveJobs = ['out', 'in'].map(id => ({ id, status: 'prepared' as const, bundleKey: 'a'.repeat(64) }));
+const liveStation = { current: { subsonic_id: 'out', title: 'On air' }, upcoming: [
+  { subsonic_id: 'in', title: 'Next' }, { subsonic_id: 'later', title: 'Later' },
+] };
+
+test('live population uses exact prepared ids for the current track and first queued track', () => {
+  const pair = liveSubbeatsPair(liveStation, liveJobs);
+  assert.equal(pair.outgoing, 'out'); assert.equal(pair.incoming, 'in');
+  assert.match(pair.message, /loaded/);
+});
+
+test('unprepared live slots are cleared independently, without substituting later queued tracks', () => {
+  for (const status of ['queued', 'running', 'failed'] as const) {
+    const pair = liveSubbeatsPair(liveStation, [liveJobs[0]!, { ...liveJobs[1]!, status }, { ...liveJobs[1]!, id: 'later' }]);
+    assert.equal(pair.outgoing, 'out'); assert.equal(pair.incoming, '');
+    assert.match(pair.message, /Incoming.*not in the prepared list: Next/);
+  }
+  const pair = liveSubbeatsPair(liveStation, [liveJobs[1]!]);
+  assert.equal(pair.outgoing, ''); assert.equal(pair.incoming, 'in');
+  assert.match(pair.message, /Outgoing.*not in the prepared list: On air/);
+});
+
+test('empty live queues, duplicate tracks and missing bundles never reuse an unrelated preview selection', () => {
+  assert.deepEqual(liveSubbeatsPair({ upcoming: [] }, liveJobs), {
+    outgoing: '', incoming: '', message: 'No track is currently on air. No track is queued.',
+  });
+  const duplicate = liveSubbeatsPair({ ...liveStation, upcoming: [liveStation.current] }, liveJobs);
+  assert.equal(duplicate.outgoing, 'out'); assert.equal(duplicate.incoming, '');
+  assert.match(duplicate.message, /same/);
+  assert.equal(liveSubbeatsPair(liveStation, [{ ...liveJobs[0]!, bundleKey: null }]).outgoing, '');
+});
 
 test('outgoing choices keep their original indices and allow the second-half search window', () => {
   const cues = [44,111,161,160,213.6].map(sourceSeconds => ({sourceSeconds,bpm:130,strength:1,reason:'arrangement' as const}));

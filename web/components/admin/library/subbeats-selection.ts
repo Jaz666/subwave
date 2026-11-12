@@ -1,8 +1,33 @@
 import type { z } from 'zod';
+import type { StationState } from '../../../lib/types';
 import { SUBBEATS_BATCH_LIMIT, type subbeatsCandidateSchema, type subbeatsJobSchema, type subbeatsCuePointSchema } from '../../../lib/schemas.generated';
 
 export type SubbeatsCandidate = z.infer<typeof subbeatsCandidateSchema>;
 type Job = Pick<z.infer<typeof subbeatsJobSchema>, 'id' | 'status'>;
+
+export function liveSubbeatsPair(station: Pick<StationState, 'current' | 'upcoming'>,
+  jobs: readonly (Job & { bundleKey?: string | null })[]) {
+  const prepared = new Set(jobs.filter(job => job.status === 'prepared' && job.bundleKey).map(job => job.id));
+  const messages: string[] = [];
+  const select = (track: StationState['current'], role: 'Outgoing' | 'Incoming') => {
+    if (!track?.subsonic_id) {
+      messages.push(role === 'Outgoing' ? 'No track is currently on air.' : 'No track is queued.');
+      return '';
+    }
+    if (!prepared.has(track.subsonic_id)) {
+      messages.push(`${role} is not in the prepared list: ${track.title || track.subsonic_id}.`);
+      return '';
+    }
+    return track.subsonic_id;
+  };
+  const outgoing = select(station.current, 'Outgoing');
+  let incoming = select(station.upcoming[0], 'Incoming');
+  if (outgoing && incoming === outgoing) {
+    incoming = '';
+    messages.push('The current and queued tracks are the same. Choose a different incoming track.');
+  }
+  return { outgoing, incoming, message: messages.join(' ') || 'Live station tracks loaded. Choose a preview to listen.' };
+}
 
 export const subbeatsCanSelect = (status: string) => ['not-started', 'failed', 'unavailable'].includes(status);
 

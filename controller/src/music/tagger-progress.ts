@@ -17,6 +17,8 @@ export interface TaggerProgress {
   phase: TaggerPhase;
   // Authored here so the UI needs no phase->label map.
   label: string;
+  // The worker is between tracks, waiting for the quiet-times gate.
+  waitingForQuiet?: boolean;
   done?: number;
   // Absent total = indeterminate (the Navidrome walk reports no count up front).
   total?: number;

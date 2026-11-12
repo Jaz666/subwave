@@ -365,7 +365,7 @@ test('matched preview resolves fresh server-owned windows and passes them to ren
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
 
-test('cue preview forwards only server-owned artifacts and rejects conflicting options', async () => {
+test('cue preview validates saved artifacts and allows quiet-paused Library analysis', async () => {
   const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
   const ids=['cue-route-out','cue-route-in'];
   const point={sourceSeconds:30,bpm:120,strength:1,phraseBars:8,phraseEndSeconds:46,reason:'repetition'};
@@ -416,6 +416,27 @@ test('cue preview forwards only server-owned artifacts and rejects conflicting o
     assert.deepEqual(rendered?.cue_keys,[null,'d'.repeat(64)]);
     assert.equal(rendered?.crossfade_seconds,10);
     assert.ok((rendered?.source_urls as string[]).every(url=>url.includes(fallbackId) || url.includes(ids[1])));
+    const { tagger } = await import('../src/broadcast/tagger.js');
+    const { writePidfile, clearPidfile, bulkPassRunning } = await import('../src/music/tagger-lock.js');
+    const saved = { running: tagger.running, progress: tagger.progress };
+    const before = subbeatsStore.read();
+    try {
+      writePidfile({ pid: process.pid, mode: 'analyze', startedAt: new Date().toISOString(), args: [] });
+      tagger.running = true;
+      tagger.progress = { phase: 'analyze', label: 'Waiting for quiet (1 listening)', waitingForQuiet: true, updatedAt: new Date().toISOString() };
+      assert.equal(bulkPassRunning(), true, 'the paused Library worker still owns its live process lock');
+      const paused = await post('/library/subbeats/join-preview', { trackIds: ids, method: 'cue-points', cueIndices: [0, 0] });
+      assert.equal(paused.status, 200, 'a quiet-time wait must not block prepared previews');
+      await paused.arrayBuffer();
+      assert.deepEqual(subbeatsStore.read(), before, 'preview leaves the preparation pause and jobs unchanged');
+      assert.equal(tagger.progress.waitingForQuiet, true, 'preview does not resume the Library scan');
+      tagger.progress = { ...tagger.progress, waitingForQuiet: false, label: 'Analysing audio' };
+      assert.equal((await post('/library/subbeats/join-preview', { trackIds: ids, method: 'cue-points' })).status, 409, 'active analysis still holds its slot');
+      tagger.running = false;
+      assert.equal((await post('/library/subbeats/join-preview', { trackIds: ids, method: 'cue-points' })).status, 409, 'an external worker with no confirmed pause remains protected');
+    } finally {
+      tagger.running = saved.running; tagger.progress = saved.progress; clearPidfile();
+    }
   } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
 });
 
