@@ -554,10 +554,10 @@ music = fallback(
 # outgoing at full level while the incoming ramps: +6 dB, audible doubling. To
 # vary the blend, vary the cross BUFFER, never the fade inside it. Two measured
 # exceptions in dj_transition: the chop's incoming fade (the outgoing is already
-# gone), and a stem-blend clip seam, where both sides fade over the cue lead
-# inside a slightly longer buffer (CLIP SEAM ALIGNMENT). The delayed side is
-# silent until it enters, so both fades share one window and the +6 dB hazard
-# can't arise.
+# gone), and a stem-blend clip seam, where complementary weights share the
+# cue-lead window inside a slightly longer buffer (CLIP SEAM ALIGNMENT). The
+# outgoing stays at unity until the incoming enters; their weights then sum
+# to one, reaching the incoming alone one frame before the outgoing ends.
 #
 # Low-level `cross`, NOT the `crossfade` wrapper: crossfade(smart=false) routes
 # through its internal simple_transition and ignores a custom callback. `a`/`b`
@@ -695,8 +695,8 @@ def dj_transition(a, b) =
   # starts `d` before its end, the incoming side waits `d - lead`, and both
   # reach the same instant of the music whatever whole number of frames
   # `cross` buffered. Without it each clip seam was off by the frame cross
-  # dropped (~20ms flam, scripts/stem-seam-test.sh). Both fades run over the
-  # lead, from the clip's entry, so they end together and sum to unity.
+  # dropped (~20ms flam, scripts/stem-seam-test.sh). Complementary clip weights
+  # below hold unity while the incoming waits and throughout the overlap.
   # The delay is a blank(), which is sample-accurate on 2.4.6 only: on 2.4.5 a
   # transition that starts mid-frame counts its partial first frame whole, so
   # the clip arrives up to one frame early (savonet/liquidsoap#5296's family).
@@ -802,13 +802,28 @@ def dj_transition(a, b) =
   # stab at full level. Loop takes NO fader here: it captures the raw outgoing
   # bar and applies its own complementary ride after the cascade; the hot fade
   # made every loop transition jump in level at its start.
-  # A delayed clip seam (b_delay > 0) fades the outgoing side over the lead
-  # too, so both fades start where the clip enters and sum to unity; over the
-  # full d it was already down to (d - b_delay)/d when the clip came in (0.75,
-  # -2.5 dB, at the 0.4s/0.3s clip seam; arithmetic for linear fades).
+  # Aligned clip seams use complementary weights on ONE clock in add below.
+  # Independent fade.out/fade.in clocks dipped 3.5-4.4 dB on split WAVs:
+  # fade.out started before the delayed incoming part, and its first-frame
+  # preparation also shifted the ramp. Keep both branches dry until add.
+  clip_fading = b_delay > 0. and not jingle_in and not jingle_out
+  clip_clock_start = ref(-1.)
+  def clip_gain(~rising) =
+    now = source.time(a.source)
+    if clip_clock_start() < 0. then clip_clock_start := now end
+    # Gain getters run per frame. Finish one frame before the outgoing buffer
+    # ends, so an end mid-frame cannot leave the incoming below unity for the
+    # rest of that frame. The weights still sum to one throughout.
+    span = max(frame.duration(), d - b_delay - frame.duration())
+    x = (now - clip_clock_start() - b_delay) / span
+    x = if x < 0. then 0. elsif x > 1. then 1. else x end
+    if rising then x else 1. - x end
+  end
   a_fade = d - b_delay
   a_source =
-    if washing then
+    if clip_fading then
+      a.source
+    elsif washing then
       fade.out(duration=a_fade, type="exp", initial_metadata=a.metadata, a.source)
     elsif sweeping or chopping then
       fade.out(duration=a_fade, type="log", initial_metadata=a.metadata, a.source)
@@ -1311,13 +1326,14 @@ def dj_transition(a, b) =
   # outgoing still up when the incoming arrives; here it is already gone. For
   # d <= 10, chop_dd == d and the render is byte-identical.
   b_fade = if chopping then chop_dd else d end
-  # A clip seam's incoming side waits b_delay (CLIP SEAM ALIGNMENT above) and
-  # fades over the lead, so both fades still end together. b_delay > 0 only on
-  # a clip seam, which equal_power_seam never takes, so the equal-power branch
-  # always spans the full d.
+  # An aligned clip seam bypasses these independent fades: add applies its
+  # common-clock weights after the incoming delay. Keep the old span for a
+  # clip interrupted by a jingle; equal-power always spans the full d.
   b_fade = if b_delay > 0. then d - b_delay else b_fade end
   b_source =
-    if equal_power_seam then
+    if clip_fading then
+      b.source
+    elsif equal_power_seam then
       equal_power_fade(span=b_fade, rising=true, b.source)
     else
       fade.in(duration=b_fade, initial_metadata=b.metadata, b.source)
@@ -1415,6 +1431,8 @@ def dj_transition(a, b) =
   seam =
     if jingle_in or jingle_out then
       (sequence([(if jingle_out then a.source else a_source end), b.source]) : source)
+    elsif clip_fading then
+      add(normalize=false, weights=[{clip_gain(rising=false)}, {clip_gain(rising=true)}], [a_source, b_source])
     else
       add(normalize=false, [a_source, b_source])
     end
