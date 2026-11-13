@@ -6,6 +6,11 @@ Stem Blend analysis and broadcast selection are unchanged. The current
 cue-point preview is the single browser method; the old 16-bar exchange controls
 have been removed.
 
+The [13 November ONNX assessment](../investigations/2026-11-13-subbeats-onnx-assessment.md)
+compares our current `small0` runtime with upstream PR #2244 and records the
+recommended shared-engine route for Sub/Beats and regular Stem Blend grids.
+It is an assessment; the production predictor remains the current PyTorch path.
+
 ## Intended destination in Subwave
 
 Owner decision, 3 November 2026: preparation and browser preview are the development
