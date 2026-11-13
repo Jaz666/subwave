@@ -49,9 +49,15 @@
 //   pass off the week only ends at the next manual pass.
 // - Delete failures are counted and reported, never thrown — a purge that
 //   cannot delete on a squashed share must keep running and keep saying so.
-// - Any mutation marks the usage snapshot stale (stem-cache's cached walk
-//   totals), so the next sweep re-measures instead of trusting those bytes,
-//   while the budget field keeps a flagged figure and its confirm.
+// - The moves keep the usage snapshot (stem-cache's cached walk totals) true:
+//   each moved dir is measured, and the totals move by exactly that
+//   (stemCache.adjustUsage), so the next read needs no walk of the cache. The
+//   delta applies only to the measurement the pass started from: a walk that
+//   lands during the moves marks the snapshot stale instead (usageBase).
+//   Deletes from the quarantine change nothing there, since the quarantine is
+//   outside the total. A move that cannot be measured marks the snapshot stale
+//   instead, so the next sweep re-measures, while the budget field keeps a
+//   flagged figure and its confirm.
 // - One confirmed pass at a time (the cron, a manual confirm): a second one
 //   is refused while the first runs, so two never interleave their moves and
 //   each report is what its own pass did. A release that lands on a live slot
@@ -408,11 +414,14 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   report.mismatchedCount = qplan.mismatched.length;
 
   if (opts.confirm) {
+    const usage = await stemCache.UsageTally.begin();
+    let cacheChanged = false;
     await opts.beforeMutations?.();
     try {
       // 1. Releases first: an id that is both known now and sitting in the
       //    quarantine gets its copy back rather than being re-quarantined below.
       for (const name of toRelease) {
+
         try {
           await rename(path.join(qu, name), path.join(root, name));
         } catch { report.failed += 1; continue; }
@@ -420,6 +429,8 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
         // along into a later quarantine.
         await rm(path.join(root, name, ORPHANED_AT), { force: true }).catch(() => {});
         await stampReleasedStems(name);
+        usage.count(+1, await stemCache.measuredDirBytes(path.join(root, name)));
+        cacheChanged = true;
         report.released.push(name);
       }
       // The ceiling reads as a half-loaded library, and on that reading a release
@@ -442,7 +453,6 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
         const names = opts.resolveNames && plan.quarantine.length
           ? await opts.resolveNames(plan.quarantine.map(q => q.name))
           : undefined;
-        await opts.beforeMutations?.();
         for (const { name } of plan.quarantine) {
           if (keepTrack(name)) continue;
           const from = path.join(root, name);
@@ -463,19 +473,23 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
           }
           try {
             // Stamp before moving: a refused write must leave the live copy alone.
+            const leaving = await stemCache.measuredDirBytes(from);
             await stampQuarantine(from, now);
             if (keepTrack(name)) continue;
             await rename(from, to);
+            usage.count(-1, leaving);
+            cacheChanged = true;
           } catch { report.failed += 1; continue; }
           await writeNameSidecar(to, names?.get(name), now);
           report.quarantined += 1;
         }
       }
     } finally {
-      if (report.quarantined || report.deletedCount || report.released.length || report.freedBytes) {
-        await stemCache.markUsageStale();
-      }
+      // The quarantine is outside the measured cache. Releases and moves are
+      // measured individually so the snapshot stays exact without a full walk.
+      if (cacheChanged) await usage.settle();
     }
+
   } else {
     // Dry run: every count, zero mutations.
     report.quarantined = plan.quarantine.length;

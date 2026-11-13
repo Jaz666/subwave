@@ -3,7 +3,7 @@ Energy gates cannot prove words/phrases or musical bar starts. No mixing changes
 """
 import math
 import numpy as np
-from analyze_worker import VOCAL_MIX_FLOOR, VOCAL_STEM_REL, vocal_ranges_from_rms
+from analyze_worker import TAIL_VOCAL_MIX_FLOOR, VOCAL_STEM_REL, vocal_ranges_from_rms
 
 
 def measure_vocals(parts, sample_rate, start_seconds=0.):
@@ -26,10 +26,12 @@ def measure_vocals(parts, sample_rate, start_seconds=0.):
     mix = rms(sum(parts.values()))
     # Sparse passages must not disappear when over 90% of the stem is silent.
     reference = vocal[vocal > 0]
-    core = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,loud_reference=reference)
+    core = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,TAIL_VOCAL_MIX_FLOOR,loud_reference=reference)
     # Lower thresholds extend observed passages through quieter releases; they
     # cannot create a passage without evidence from the normal vocal gate.
-    tails = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,stem_rel=VOCAL_STEM_REL*.2,mix_floor=VOCAL_MIX_FLOOR*.2,loud_reference=reference)
+    tails = vocal_ranges_from_rms(vocal,mix,sample_rate,hop,TAIL_VOCAL_MIX_FLOOR*.2,
+                                  stem_rel=VOCAL_STEM_REL*.2,
+                                  loud_reference=reference)
     passages = []
     for tail in tails:
         active = [run for run in core if run['startMs'] < tail['endMs'] and run['endMs'] > tail['startMs']]
