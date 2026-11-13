@@ -16,6 +16,8 @@ import { reportProgress, reportEvent } from './tagger-progress.js';
 import { SUBBEATS_EVENT_PREFIX, subbeatsEnqueueSchema } from '../schemas/subbeats.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 import { refreshPreparedSubbeatsLyrics } from './subbeats-lyric-refresh.js';
+import { prepareSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
+import type { SubbeatsJob } from './subbeats-store.js';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -52,7 +54,12 @@ async function main() {
       let localPath: string | null = null;
       try {
         if (job.task === 'assess' && job.bundleKey) {
-          emit({id,...await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot(),job.cuePoints?.algorithmVersion && job.cuePoints.algorithmVersion >= 5 && job.cueCoverage ? {cue_key:job.cuePoints.artifactKey,coverage_key:job.cueCoverage.artifactKey} : undefined)});
+          const result = await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot(),job.cuePoints?.algorithmVersion && job.cuePoints.algorithmVersion >= 5 && job.cueCoverage ? {cue_key:job.cuePoints.artifactKey,coverage_key:job.cueCoverage.artifactKey} : undefined);
+          if (result.bundleKey && ['prepared', 'unmeasurable'].includes(result.status)) {
+            try { await prepareSubbeatsStemWaveforms(id, { ...job, ...result, id } as SubbeatsJob); }
+            catch (error) { console.warn(`[subbeats] preview waveforms failed for ${id}: ${error instanceof Error ? error.message : String(error)}`); }
+          }
+          emit({id,...result});
           continue;
         }
         if (!await analyzer.subbeatsAvailable()) throw new Error('Update the heavy analyzer to prepare Sub/Beats stems');
@@ -70,6 +77,11 @@ async function main() {
         if (result.status === 'prepared' && result.bundleKey) {
           reportProgress({phase:'analyze',label:`Looking up lyrics: ${job.artist} — ${job.title}`,done,total:ids.length});
           await refreshPreparedSubbeatsLyrics(id,result.bundleKey);
+        }
+        if (result.bundleKey && ['prepared', 'unmeasurable'].includes(result.status)) {
+          reportProgress({phase:'analyze',label:`Preparing stem preview waveforms: ${job.artist} — ${job.title}`,done,total:ids.length});
+          try { await prepareSubbeatsStemWaveforms(id, { ...job, ...result, id } as SubbeatsJob); }
+          catch (error) { console.warn(`[subbeats] preview waveforms failed for ${id}: ${error instanceof Error ? error.message : String(error)}`); }
         }
         emit({id, ...result});
       } catch (error) {

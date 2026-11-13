@@ -36,12 +36,13 @@ import * as stemCache from '../music/stem-cache.js';
 import { readSubbeatsQueue } from '../music/subbeats-store.js';
 import type { SubbeatsTiming } from '../broadcast/subbeats-clock.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
+import { subbeatsStemWaveform, subbeatsStemWaveformPath, type StemWaveformName } from '../music/stem-waveform-peaks.js';
 
 type NowPlaying = { subsonic_id?: string | null; [k: string]: unknown } | null | undefined;
 const VISUAL_STEMS = ['vocals', 'drums', 'bass', 'other'] as const;
 type VisualStem = typeof VISUAL_STEMS[number];
 type VisualStemSide = 'outgoing' | 'incoming';
-type StemSource = { path: string; startSec: number; endSec: number | null; storageGain: number };
+type StemSource = { path: string; startSec: number; endSec: number | null; storageGain: number; peaksCachePath?: string };
 type VisualTransition = {
   kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
   incomingAiredAt?: string;
@@ -176,6 +177,7 @@ async function stemSource(id: string, side: VisualStemSide, stem: VisualStem, su
     if (region) return {
       path: path.join(region.subbeatsBundleDir, `${window === 'tail' ? 'exit' : 'head'}-${stem}.flac`),
       startSec: region.startSec, endSec: region.endSec, storageGain: region.storageGain,
+      peaksCachePath: subbeatsStemWaveformPath(id, region.subbeatsBundleKey, window, stem as StemWaveformName),
     };
   }
   return regularStemSource(id, side, stem);
@@ -380,9 +382,11 @@ export function createNowPlayingFileRouter(deps: {
       const cacheKey = `stem:${source.path}:${stat.size}:${stat.mtimeMs}`;
       const abort = new AbortController();
       try {
-        const peaks = await cachedWaveformPeaks(cacheKey, () => deps.stemWaveformPeaks
-          ? deps.stemWaveformPeaks(source, abort.signal)
-          : decodeWaveformPeaks(createReadStream(source.path), abort.signal, 64 * 1024 * 1024));
+        const peaks = source.peaksCachePath
+          ? await subbeatsStemWaveform(source.path, source.peaksCachePath, abort.signal)
+          : await cachedWaveformPeaks(cacheKey, () => deps.stemWaveformPeaks
+            ? deps.stemWaveformPeaks(source, abort.signal)
+            : decodeWaveformPeaks(createReadStream(source.path), abort.signal, 64 * 1024 * 1024));
         if (!res.destroyed) res.set('Cache-Control', 'no-store').json({ ...peaks, startSec: source.startSec,
           endSec: source.endSec, storageGain: source.storageGain });
       } finally {
