@@ -15,6 +15,7 @@ import { describeFetchError, fetchWithTimeout } from '../util/fetch-timeout.js';
 import { envInt } from '../util/env.js';
 import { parseWholeLoudnessCurve, type WholeLoudnessCurve } from './whole-loudness-curve.js';
 import { getDb, trackFileSize } from './library-db.js';
+import { STEM_UPGRADE_CUTOFF } from './stem-provenance.js';
 
 // A structural span over the track, in ms. Contiguous over the analysed
 // window; the first is the intro/leading section.
@@ -260,6 +261,7 @@ interface WorkerMessage {
   // Facet protocol (version signal): {"facets": [...]} requests. Absent on
   // workers that predate it.
   facets_capable?: boolean;
+  stem_generation_date?: string;
   // Whole-file facets (loudness v2, edges): the worker has ffmpeg. Absent on
   // workers that predate them.
   whole_file_capable?: boolean;
@@ -325,6 +327,7 @@ let _localAudioCapable: boolean | null = null;
 let _localVocalCapable: boolean | null = null;
 let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
+let _localStemGenerationDate: string | null = null;
 let _localWholeFileCapable: boolean | null = null;
 let _localLoudnessCurveCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
@@ -387,6 +390,7 @@ function startWorker(): Promise<void> {
           if (typeof msg.tail_vocal_capable === 'boolean' && _localVocalError === null) _localTailVocalCapable = msg.tail_vocal_capable;
           if (typeof msg.text_embedding_capable === 'boolean' && _localAudioError === null) _localTextCapable = msg.text_embedding_capable;
           _localFacetsCapable = msg.facets_capable === true;
+          _localStemGenerationDate = typeof msg.stem_generation_date === 'string' ? msg.stem_generation_date : null;
           _localWholeFileCapable = typeof msg.whole_file_capable === 'boolean' ? msg.whole_file_capable : null;
           _localLoudnessCurveCapable = typeof msg.loudness_curve_capable === 'boolean' ? msg.loudness_curve_capable : null;
         }
@@ -574,6 +578,7 @@ let _sidecarVocalCapable: boolean | null = null;
 let _sidecarTailVocalCapable: boolean | null = null;
 // Facet protocol (version signal; null on old sidecars).
 let _sidecarFacetsCapable: boolean | null = null;
+let _sidecarStemGenerationDate: string | null = null;
 let _sidecarWholeFileCapable: boolean | null = null;
 let _sidecarLoudnessCurveCapable: boolean | null = null;
 let _sidecarWholeFileConcurrency: number | null = null;
@@ -603,6 +608,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_tail_vocal_capable?: boolean | null;
       analyze_text_capable?: boolean | null;
       analyze_facets_capable?: boolean | null;
+      analyze_stem_generation_date?: string | null;
       analyze_whole_file_capable?: boolean | null;
       analyze_loudness_curve_capable?: boolean | null;
       analyze_whole_file_concurrency?: number | null;
@@ -617,6 +623,8 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarVocalCapable = typeof body.analyze_vocal_capable === 'boolean' ? body.analyze_vocal_capable : null;
       _sidecarTailVocalCapable = typeof body.analyze_tail_vocal_capable === 'boolean' ? body.analyze_tail_vocal_capable : null;
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
+      _sidecarStemGenerationDate = typeof body.analyze_stem_generation_date === 'string'
+        ? body.analyze_stem_generation_date : null;
       _sidecarWholeFileCapable = typeof body.analyze_whole_file_capable === 'boolean' ? body.analyze_whole_file_capable : null;
       _sidecarLoudnessCurveCapable = typeof body.analyze_loudness_curve_capable === 'boolean' ? body.analyze_loudness_curve_capable : null;
       _sidecarWholeFileConcurrency = Number.isInteger(body.analyze_whole_file_concurrency) && (body.analyze_whole_file_concurrency as number) > 0
@@ -761,6 +769,13 @@ export function vocalActivityAvailable(): boolean | null {
   if (_backend === 'sidecar') return _sidecarVocalCapable;
   if (_backend === 'local') return _localVocalCapable;
   return null;
+}
+
+// Null means the analyzer hasn't advertised a generation date.
+export function stemUpgradeAvailable(): boolean | null {
+  const date = _backend === 'sidecar' ? _sidecarStemGenerationDate : _backend === 'local'
+    ? _localStemGenerationDate : null;
+  return date == null ? null : date >= STEM_UPGRADE_CUTOFF;
 }
 
 // Why the CLAP capability is false, when the cause is a model that failed to

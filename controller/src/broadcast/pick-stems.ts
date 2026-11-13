@@ -172,6 +172,7 @@ async function separate(id: string, title: string, opts: PickStemsOpts): Promise
   const facets = await analyzer.facetsAvailable();
   const capability = policy.analyzerVeto({ facets, demucs: analyzer.vocalActivityAvailable() });
   if (capability) return veto(capability);
+  const upgradeStems = settings.get()?.transitions?.pickTimeStemsUpgrade === true;
 
   const row = db.isOpen() ? db.getTrack(id) : null;
   if (!row) return veto('no-grid');
@@ -182,13 +183,27 @@ async function separate(id: string, title: string, opts: PickStemsOpts): Promise
     stemCache.hasWindow(id, 'head'),
     stemCache.hasWindow(id, 'tail'),
   ]);
+  const [headNeedsUpgrade, tailNeedsUpgrade] = upgradeStems
+    ? await Promise.all([
+      hasHead ? stemCache.windowNeedsUpgrade(id, 'head') : false,
+      hasTail ? stemCache.windowNeedsUpgrade(id, 'tail') : false,
+    ])
+    : [false, false];
   const need = policy.trackNeed({
     hasHeadGrid: !!row.bars?.length,
     hasTailGrid: !!row.outro?.bars?.length && !!row.durationSec,
     hasHead,
     hasTail,
+    headNeedsUpgrade,
+    tailNeedsUpgrade,
+    upgradeStems,
   });
   if (typeof need === 'string') return veto(need);
+  const refreshesOldWindow = (need.head && hasHead && headNeedsUpgrade)
+    || (need.tail && hasTail && tailNeedsUpgrade);
+  if (upgradeStems && refreshesOldWindow && analyzer.stemUpgradeAvailable() !== true) {
+    return veto('old-analyzer');
+  }
 
   // Never write to an unmounted share as if it were the cache. `prepare`, as
   // the pass does before its first write: a new empty cache gets its marker.
@@ -225,7 +240,7 @@ async function separate(id: string, title: string, opts: PickStemsOpts): Promise
     if (again) return veto(again);
 
     const before = await stemCache.beginTrackWrite(id);
-    const what = policy.describeNeed(need);
+    const what = policy.describeNeed(need) + (upgradeStems ? ' (upgrade)' : '');
     const t0 = Date.now();
     opts.log('mix', `pick-time stems: separating "${title}" (${what}) while it waits`);
     let res: analyzer.FacetAnalysis;
@@ -236,7 +251,8 @@ async function separate(id: string, title: string, opts: PickStemsOpts): Promise
         {
           facets: ['stems'],
           stems_dir: dir,
-          stems_windows: policy.stemsWindowsFor(need),
+          stems_windows: policy.stemsWindowsFor(need, upgradeStems),
+          tailWindow: analyzer.tailWindowFor(row),
           complete: staged.complete,
           timeoutMs: requestDeadlineMs(),
         },

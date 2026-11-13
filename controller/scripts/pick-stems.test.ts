@@ -55,7 +55,7 @@ let sparseStemBytes = 0;
 // What the fake reports on /health (analyzer.refreshCapabilities re-reads it).
 // `concurrency` is the sidecar's pool size (`analyze_concurrency`); null leaves
 // the field out, as a sidecar that predates it does.
-const health = { facets: true, vocal: true, concurrency: null as number | null };
+const health = { facets: true, vocal: true, concurrency: null as number | null, stemDate: '2026-11-13' as string | null };
 
 async function readJson(req: IncomingMessage): Promise<AnalyzeBody> {
   const chunks: Buffer[] = [];
@@ -84,6 +84,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     res.end(JSON.stringify({
       ok: true, engines: ['analyze'], analyze_facets_capable: health.facets, analyze_vocal_capable: health.vocal,
       ...(health.concurrency === null ? {} : { analyze_concurrency: health.concurrency }),
+      ...(health.stemDate === null ? {} : { analyze_stem_generation_date: health.stemDate }),
     }));
     return;
   }
@@ -154,7 +155,9 @@ delete process.env.ANALYZE_QUIET_ONLY;
 const settings = await import('../src/settings.js');
 const { config } = await import('../src/config.js');
 const db = await import('../src/music/library-db.js');
+const library = await import('../src/music/library.js');
 const stemCache = await import('../src/music/stem-cache.js');
+const stemProvenance = await import('../src/music/stem-provenance.js');
 const analyzer = await import('../src/music/analyzer.js');
 const pickStems = await import('../src/broadcast/pick-stems.js');
 const policy = await import('../src/broadcast/pick-stems-policy.js');
@@ -248,6 +251,23 @@ test('a track whose windows are on disk is not separated again', async () => {
   const before = seen.analyze.length;
   assert.deepEqual(await run('p1').outcome, { ran: false, veto: 'cached' });
   assert.equal(seen.analyze.length, before);
+});
+
+test('an old analyzer does not block ordinary cached stems when no upgrade is needed', async () => {
+  const dir = stemCache.dirFor('p1');
+  writeFileSync(path.join(dir, 'head-meta.json'), JSON.stringify({ stem_generation_date: stemProvenance.STEM_UPGRADE_CUTOFF }));
+  writeFileSync(path.join(dir, 'tail-meta.json'), JSON.stringify({ stem_generation_date: stemProvenance.STEM_UPGRADE_CUTOFF }));
+  const date = health.stemDate;
+  health.stemDate = null;
+  await analyzer.refreshCapabilities();
+  await settings.update({ transitions: { pickTimeStemsUpgrade: true } });
+  try {
+    assert.deepEqual(await run('p1').outcome, { ran: false, veto: 'cached' });
+  } finally {
+    health.stemDate = date;
+    await analyzer.refreshCapabilities();
+    await settings.update({ transitions: { pickTimeStemsUpgrade: false } });
+  }
 });
 
 test('only the tail missing on a truncated download: no worker call, staging removed', async () => {
@@ -835,4 +855,20 @@ test('vetoes: nothing reaches the worker or Navidrome', async () => {
   assert.equal(settings.get().transitions.pickTimeStems, cur.transitions.pickTimeStems);
   // And with the gates open again it runs.
   assert.equal((await run('v1').outcome).ran, true);
+});
+
+test('with Pick Time off, a played track with old cached stems enters Library Analysis', async () => {
+  const dir = stemCache.dirFor('p1');
+  mkdirSync(dir, { recursive: true });
+  writeStems(dir, 'head');
+  writeStems(dir, 'tail');
+  writeFileSync(path.join(dir, 'head-meta.json'), JSON.stringify({ stem_generation_date: '2020-01-01' }));
+  writeFileSync(path.join(dir, 'tail-meta.json'), JSON.stringify({ stem_generation_date: '2020-01-01' }));
+  await settings.update({ transitions: { pickTimeStems: false, pickTimeStemsUpgrade: true } });
+  assert.equal(db.needsStemsIds().includes('p1'), false);
+  await library.recordPlay({
+    trackId: 'p1', title: 'Song p1', artist: 'A', album: 'B', playedAt: new Date().toISOString(),
+    source: 'ai', requestedBy: null, showId: null, showName: null,
+  });
+  assert.equal(db.needsStemsIds().includes('p1'), true, 'only this played track is re-queued');
 });

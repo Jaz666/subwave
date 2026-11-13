@@ -50,6 +50,7 @@ export function settingsForm(v: NonNullable<SettingsData['values']>): FormState 
       pairDrain: v.transitions?.pairDrain ?? true,
       stemBlends: v.transitions?.stemBlends ?? false,
       pickTimeStems: v.transitions?.pickTimeStems === true,
+      pickTimeStemsUpgrade: v.transitions?.pickTimeStemsUpgrade === true,
       equalPowerCrossfade: v.transitions?.equalPowerCrossfade === true,
       // Absent reads as ON, matching the controller's resolver
       // (settings/transition-effects.ts) — a station that has never saved

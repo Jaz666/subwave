@@ -26,6 +26,10 @@
 export const HEAD_META = 'head-meta.json';
 export const TAIL_META = 'tail-meta.json';
 
+// Move this ISO date when a material Demucs or cached-window placement change
+// should refresh existing audio. The analyzer mirrors it in analyze_worker.py.
+export const STEM_UPGRADE_CUTOFF = '2026-11-13';
+
 // Two readings of one file's decoded duration (a header probe, the placed
 // tail's whole-file decode) agree well inside this. The same 2 s as the orphan
 // purge's SAME_AUDIO_TOLERANCE_SEC, and analyze_worker.py's

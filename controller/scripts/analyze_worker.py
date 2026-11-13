@@ -1823,6 +1823,11 @@ def write_stems(stems, window, dest_dir):
             sf.write(tmp, data.T, DEMUCS_SR, subtype="PCM_16", format="FLAC")
 
 
+# Mirror controller/src/music/stem-provenance.ts. Advance both dates when a
+# material separation or cached-window placement change should refresh stems.
+STEM_GENERATION_DATE = "2026-11-13"
+
+
 def write_tail_meta(dest_dir, tail_start_s, duration_s, file_size=None):
     """Alignment sidecar for the cached tail stems. The tail window was cut at
     DECODED duration - OUTRO_SECONDS; render_transition must slice the bar
@@ -1838,6 +1843,7 @@ def write_tail_meta(dest_dir, tail_start_s, duration_s, file_size=None):
             "tail_start_sec": round(float(tail_start_s), 3),
             "duration_sec": round(float(duration_s), 3),
             "file_size": _positive_int(file_size),
+            "stem_generation_date": STEM_GENERATION_DATE,
         }, f)
 
 
@@ -1960,6 +1966,7 @@ def write_head_meta(dest_dir, stamp):
         json.dump({
             "file_size": _positive_int(stamp.get("file_size")),
             "duration_sec": _positive_float(stamp.get("duration_sec")),
+            "stem_generation_date": STEM_GENERATION_DATE,
         }, f)
 
 
@@ -4093,6 +4100,7 @@ def main():
         # Older workers never emit the key; the controller re-plans a v2
         # figure stored without a curve only on `=== true`.
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
+        "stem_generation_date": STEM_GENERATION_DATE,
     })
 
     for line in sys.stdin:

@@ -945,6 +945,29 @@ export default function SettingsPanel({ djBrainEnabled = false, hosted = false }
                         Quiet-only analysis is on (Library), so nothing is separated at pick time.
                       </div>
                     )}
+                    <div className="field">
+                      <Label>Upgrade older stems</Label>
+                      <div className="flex items-center gap-2">
+                        <Seg
+                          options={[
+                            { id: 'on', label: 'On' },
+                            { id: 'off', label: 'Off' },
+                          ]}
+                          value={form.transitions.pickTimeStemsUpgrade ? 'on' : 'off'}
+                          onChange={id =>
+                            setForm(f =>
+                              f ? { ...f, transitions: { ...f.transitions, pickTimeStemsUpgrade: id === 'on' } } : f,
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="field-hint">
+                        {form.transitions.pickTimeStems
+                          ? 'Re-separates only cached windows from an older stem-generation version, one picked track at a time.'
+                          : 'When a track with older cached stems plays, adds that track to the next Library Analysis stem pass.'}{' '}
+                        Existing stems remain usable until replaced; this does not rescan the library. Needs a current analyzer image.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </Card>

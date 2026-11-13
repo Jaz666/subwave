@@ -10,6 +10,9 @@ import { DEEP_CUT_DAYS, EMPTY_AIRED_INDEX, type AiredIndex } from './airing.js';
 import { artistRootKey, setKnownActsProvider, trackKey, type CandidateLike } from './recency.js';
 import { isInstrumental } from './lyric-vocal.js';
 import { clearWalk } from './library-walk.js';
+import * as settings from '../settings.js';
+import * as analyzer from './analyzer.js';
+import * as stemCache from './stem-cache.js';
 
 let loaded = false;
 
@@ -67,6 +70,38 @@ export async function recordPlay(p: db.PlayWrite): Promise<void> {
   try {
     await load();
     db.recordPlay(p);
+    const id = p.trackId ? String(p.trackId) : '';
+    const transitions = settings.get()?.transitions;
+    if (
+      id && transitions?.pickTimeStems !== true && transitions?.pickTimeStemsUpgrade === true
+      && settings.get()?.audio?.stemCache === true
+    ) {
+      // Pick Time is optional: when it is off, a played track with an older
+      // cached window goes back into the normal, resumable Library Analysis
+      // stem scope. No library walk or all-track re-analysis is started here.
+      try {
+        const [hasHead, hasTail] = await Promise.all([
+          stemCache.hasWindow(id, 'head'),
+          stemCache.hasWindow(id, 'tail'),
+        ]);
+        const old = await Promise.all([
+          hasHead ? stemCache.windowNeedsUpgrade(id, 'head') : false,
+          hasTail ? stemCache.windowNeedsUpgrade(id, 'tail') : false,
+        ]);
+        if (old.some(Boolean)) {
+          // Do not queue work for an analyzer that would write another
+          // unversioned window and make the same track look old on every play.
+          let current = analyzer.stemUpgradeAvailable();
+          if (current === null) {
+            await analyzer.facetsAvailable();
+            current = analyzer.stemUpgradeAvailable();
+          }
+          if (current === true) db.queueStemUpgrade(id);
+        }
+      } catch (err) {
+        console.log(`[library] stem upgrade queue failed: ${(err as Error).message}`);
+      }
+    }
   } catch (err) {
     console.log(`[library] recordPlay failed: ${(err as Error).message}`);
   }

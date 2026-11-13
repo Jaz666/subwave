@@ -127,6 +127,10 @@ def meta(d, window):
         return json.load(f)
 
 
+def stamped(fields):
+    return {**fields, "stem_generation_date": aw.STEM_GENERATION_DATE}
+
+
 OLD_TAIL = {"tail_start_sec": 170.0, "duration_sec": 200.0, "file_size": 5_000_000}
 NEW = {"file_size": 6_000_000, "duration_sec": 260.0}
 
@@ -171,7 +175,7 @@ def t_head_rewrite_drops_another_recordings_tail():
     assert window_tags(d, "head") == {"NEW:head"}, window_tags(d, "head")
     assert window_tags(d, "tail") == {None}, window_tags(d, "tail")
     assert meta(d, "tail") is None
-    assert meta(d, "head") == NEW, meta(d, "head")
+    assert meta(d, "head") == stamped(NEW), meta(d, "head")
 
 
 def t_head_rewrite_keeps_the_same_recordings_tail():
@@ -197,7 +201,7 @@ def t_head_rewrite_with_an_unknown_stamp_clears_nothing():
     d = new_dir(seed=(None, OLD_TAIL))
     aw.demucs_head(Detector("NEW"), load, None, d, stamp=aw.source_stamp(None, False, 0))
     assert window_tags(d, "tail") == {"OLD:tail"}
-    assert meta(d, "head") == {"file_size": None, "duration_sec": None}
+    assert meta(d, "head") == stamped({"file_size": None, "duration_sec": None})
 
 
 def t_unreadable_other_meta_is_dropped():
@@ -253,7 +257,7 @@ def t_tail_rewrite_stamps_and_reports():
                    file_size=NEW["file_size"], report=report)
     assert report == {"tail_stems_landed": True}
     assert window_tags(d, "tail") == {"NEW:tail"}
-    assert meta(d, "tail") == {"tail_start_sec": 240.0, "duration_sec": 260.0, "file_size": 6_000_000}, meta(d, "tail")
+    assert meta(d, "tail") == stamped({"tail_start_sec": 240.0, "duration_sec": 260.0, "file_size": 6_000_000}), meta(d, "tail")
 
 
 def t_tail_rewrite_drops_a_stale_head():
@@ -315,7 +319,7 @@ def t_flat_reports_tail_stems():
     result, d = _flat({"startMs": 230000})
     assert result["stems_cached"] is True and result["tail_stems_landed"] is True, result
     assert list(result)[-2:] == ["stems_cached", "tail_stems_landed"], list(result)
-    assert meta(d, "head") == {"file_size": NEW["file_size"], "duration_sec": 260.0}, meta(d, "head")
+    assert meta(d, "head") == stamped({"file_size": NEW["file_size"], "duration_sec": 260.0}), meta(d, "head")
     assert meta(d, "tail")["file_size"] == NEW["file_size"]
 
     result, d = _flat({"startMs": 230000}, tail_fails=True)
@@ -336,11 +340,11 @@ def t_capped_head_stamped_with_the_row_size():
     # row size stamps the head, and another recording's tail goes.
     result, d = _flat(None, complete=False, source_size=NEW["file_size"])
     assert result["stems_cached"] is True, result
-    assert meta(d, "head") == {"file_size": NEW["file_size"], "duration_sec": None}, meta(d, "head")
+    assert meta(d, "head") == stamped({"file_size": NEW["file_size"], "duration_sec": None}), meta(d, "head")
     assert window_tags(d, "tail") == {None}, window_tags(d, "tail")
     # Without a row size it still cannot tell, and keeps (unknown = match).
     result, d = _flat(None, complete=False)
-    assert meta(d, "head") == {"file_size": None, "duration_sec": None}, meta(d, "head")
+    assert meta(d, "head") == stamped({"file_size": None, "duration_sec": None}), meta(d, "head")
     assert window_tags(d, "tail") == {"OLD:tail"}
 
 
