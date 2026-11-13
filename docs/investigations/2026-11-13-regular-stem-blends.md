@@ -36,6 +36,49 @@ instrumented production function with observation disabled. The Jim Bob loop is
 restarts/truncates that loop rather than stretching it. This is an additional
 listening concern, distinct from its near-silent drum content.
 
+## Further auditions: preserve the outgoing musical ending
+
+The owner identified premature removal of the outgoing song as a common defect,
+including transitions whose loop levels are healthy. Renderer parity and clip
+length establish execution, not whether a closing passage has finished.
+
+The Wildhearts — Vanilla Radio → Monster Magnet — Look to Your Orb for the
+Warning (edit) matched the uploaded 32.039-second complete audition exactly.
+Its clip lasts 20.039 seconds, with incoming drums at 13.444 seconds. The first
+three outgoing drum bars sit −0.27, +0.27 and −1.19 dB relative to the incoming
+contribution; there is no additional peak reduction. This establishes a healthy
+drum contribution, not proof that the outgoing song's ending was respected.
+
+Santigold — Disparate Youth → Joan as Police Woman — Oh Joan also matched the
+uploaded complete audition sample for sample. The file is 21.590 seconds long,
+with six seconds of context before its 9.590-second clip. At approximately six
+seconds in the file, the renderer starts replacing Santigold's actual tail:
+
+- The chosen source bar is 276.080–277.612 seconds. Replacement begins at
+  277.612 seconds; the short joining fade ends at 277.912 seconds.
+- The cached recording ends at 284.400 seconds, with measured wind-down at
+  281.142 seconds. Replacement starts 3.530 seconds before wind-down and
+  6.788 seconds before decoded EOF. The remaining passage is not just silence:
+  bass/other material continues at substantial level up to the wind-down.
+- Saved vocal evidence spans 277.542–278.158 seconds, crossing both the start
+  and end of the short joining fade. The cached vocal stem also has substantial
+  energy at the cutoff. This supports the owner's report of an unfinished exit;
+  it does not independently identify the end of a lyrical phrase.
+- Only the copied drums remain as the outgoing contribution. Their source RMS
+  is −58.16 dBFS; the first three mixed bars are 47–50 dB below incoming music.
+  No additional peak reduction was applied.
+
+The selection rule takes the last available bar before wind-down and immediately
+uses its end as the replacement point. It does not find a completed musical
+ending, preserve the rest of the real outgoing passage, or check the outgoing
+vocal boundary. Sparse grids can move the cut even further before wind-down.
+
+The next audio experiment must prioritise preserving the outgoing closing
+passage, including vocal and instrumental resolution, while introducing the
+incoming stems around it. A louder borrowed loop alone cannot restore the
+removed ending. Compare that experiment against this unchanged upstream baseline;
+live Mixing Desk fixes remain deferred.
+
 ## Browser harness
 
 Open **Sub/Beats → Preview → Regular Stem Blend test**, or
