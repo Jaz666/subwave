@@ -40,6 +40,7 @@ import { summariseEval, formatEvalSummary } from './propagation-eval.js';
 import { activeModelLabel } from '../llm/provider.js';
 import { setRawDebugStderrMirror } from '../llm/log.js';
 import { runAnalysisPass } from './analyze.js';
+import { backfillSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
 import { adoptAndPrune } from './id-rotation.js';
 import { reportProgress, reportCatalogueReady, formatPhaseBreakdown, sortedPhaseTimings } from './tagger-progress.js';
 import { planRun } from './rescan-scope.js';
@@ -576,15 +577,20 @@ async function main() {
   // Phase 5: ANALYZE (acoustic bpm/key/intro), the same pass as `npm run
   // analyze`. No-ops when no analysis backend is reachable, so it never blocks
   // a tag run.
-  if (plan.analyze) {
+  if (plan.analyze || flags.stemWaveforms) {
     try {
-      await runAnalysisPass({
-        limit: flags.limit === Infinity ? undefined : flags.limit,
-        reAnalyze: flags.reAnalyze,
-        rescan: flags.rescan,
-        // Tri-state; undefined defers to settings.audio.vocalActivity / env.
-        vocalBackfill: flags.vocal ? true : flags.noVocal ? false : undefined,
-      });
+      if (plan.analyze) {
+        await runAnalysisPass({
+          limit: flags.limit === Infinity ? undefined : flags.limit,
+          reAnalyze: flags.reAnalyze,
+          rescan: flags.rescan,
+          // Tri-state; undefined defers to settings.audio.vocalActivity / env.
+          vocalBackfill: flags.vocal ? true : flags.noVocal ? false : undefined,
+        });
+      }
+      if (flags.stemWaveforms) {
+        await backfillSubbeatsStemWaveforms(flags.limit === Infinity ? undefined : flags.limit);
+      }
     } catch (err: any) {
       logEvent('warning', `Acoustic analysis phase failed (non-fatal): ${err?.message || err}`);
     }

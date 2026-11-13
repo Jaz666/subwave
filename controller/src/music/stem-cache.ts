@@ -2,6 +2,7 @@
 // paths and evicts by the same priority the backfill uses.
 
 import { access, constants, readdir, stat, lstat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
@@ -13,6 +14,7 @@ import { invalidateSubbeatsBundles, readSubbeatsQueue } from './subbeats-store.j
 import { evictQueuedLast, stemEvictionOrder, UNKNOWN_TRACK_PRIORITY } from './stem-priority.js';
 import { mapPool } from '../util/async-pool.js';
 import type { StemScanOpts } from './library-db.js';
+import type { SubbeatsJob } from './subbeats-store.js';
 import { writeFileAtomic } from '../util/atomic-file.js';
 
 export const STEM_NAMES = ['drums', 'bass', 'other', 'vocals'] as const;
@@ -77,19 +79,51 @@ export async function hasWindow(trackId: string, window: StemWindow): Promise<bo
 export type RenderStemSource = { stemsDir: string } | { stemsDir: string; subbeatsBundleDir: string; subbeatsBundleKey: string };
 
 async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: SubbeatsJob | undefined,
-  key: string | undefined | null, legacyFallback = false): Promise<{
+  key: string | undefined | null): Promise<{
     subbeatsBundleDir: string; subbeatsBundleKey: string; startSec: number; endSec: number; storageGain: number;
   } | null> {
   const dir = dirFor(trackId);
   try {
     if (!trackId || path.basename(trackId) !== trackId || trackId === '.' || trackId === '..' || trackId.includes('\\')) return null;
-    const job = readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
-    if (!job?.bundleKey || !['prepared', 'unmeasurable'].includes(job.status) || !/^[a-f0-9]{64}$/.test(job.bundleKey)) return null;
-    const bundleDir = path.join(dir, 'subbeats', 'v1', job.bundleKey);
-    for (const candidate of [dir, path.join(dir, 'subbeats'), path.join(dir, 'subbeats', 'v1'), bundleDir]) {
-      if ((await lstat(candidate)).isSymbolicLink()) return null;
+    const preparedJob = job ?? readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
+    if (!key || !preparedJob?.bundleKey
+      || !/^[a-f0-9]{64}$/.test(key) || (key !== preparedJob.bundleKey && key !== preparedJob.cueCoverage?.artifactKey)) return null;
+    const parentDir = path.join(dir, 'subbeats', 'v1');
+    let baseDir = path.join(parentDir, preparedJob.bundleKey);
+    let bundleDir = path.join(parentDir, key);
+    let bundleRoot = parentDir;
+    if (!(await stat(baseDir).then(() => true, () => false))) {
+      const legacyRoot = path.join(config.stateDir, 'subbeats', 'v1');
+      const legacyBase = path.join(legacyRoot, preparedJob.bundleKey);
+      if (await stat(legacyBase).then(() => true, () => false)) {
+        bundleRoot = legacyRoot;
+        baseDir = legacyBase;
+        bundleDir = path.join(bundleRoot, key);
+      }
     }
-    const manifest = JSON.parse(await readFile(path.join(bundleDir, 'manifest.json'), 'utf8'));
+    for (const candidate of [dir, path.join(dir, 'subbeats'), parentDir, bundleRoot, baseDir, bundleDir]) {
+      if ((await lstat(candidate).catch(() => null))?.isSymbolicLink()) return null;
+    }
+    const baseManifestText = await readFile(path.join(baseDir, 'manifest.json'), 'utf8');
+    const baseManifest = JSON.parse(baseManifestText);
+    let manifest = baseManifest;
+    if (key !== preparedJob.bundleKey) {
+      const cueKey = preparedJob.cuePoints?.artifactKey;
+      if (!cueKey || !/^[a-f0-9]{64}$/.test(cueKey)) return null;
+      const cueDir = path.join(bundleRoot, cueKey);
+      for (const candidate of [cueDir, path.join(bundleRoot, key)]) {
+        if ((await lstat(candidate).catch(() => null))?.isSymbolicLink()) return null;
+      }
+      const cueText = await readFile(path.join(cueDir, 'manifest.json'), 'utf8');
+      const cueCoverageText = await readFile(path.join(bundleDir, 'manifest.json'), 'utf8');
+      manifest = JSON.parse(cueCoverageText);
+      const identity = manifest?.identity;
+      if (identity?.mode !== 'cue-coverage' || identity?.version !== 2
+        || identity.source_sha256 !== baseManifest?.identity?.source_sha256
+        || identity.bundle_sha256 !== createHash('sha256').update(baseManifestText).digest('hex')
+        || identity.cue_sha256 !== createHash('sha256').update(cueText).digest('hex')
+        || JSON.stringify(identity.separator) !== JSON.stringify(baseManifest?.identity?.separator)) return null;
+    }
     const identity = manifest?.identity;
     const regions = manifest?.metadata?.stem_regions;
     const name = window === 'head' ? 'head' : 'exit';
@@ -97,7 +131,9 @@ async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: Sub
       typeof item === 'object' && item !== null && !Array.isArray(item) && (item as Record<string, unknown>).name === name) : null;
     const startSample = region?.start_sample;
     const endSample = region?.end_sample;
-    if (!identity?.source_sha256 || identity?.mode !== 'analysis_and_stems'
+    if (!identity?.source_sha256 || identity.source_sha256 !== baseManifest?.identity?.source_sha256
+      || (key === preparedJob.bundleKey && identity.mode !== 'analysis_and_stems')
+      || (key !== preparedJob.bundleKey && identity.mode !== 'cue-coverage')
       || identity?.separator?.sample_rate !== 44100 || identity?.separator?.subtype !== 'PCM_24-shared-gain-v1'
       || !region || region.sample_rate !== 44100 || typeof startSample !== 'number' || !Number.isSafeInteger(startSample)
       || typeof endSample !== 'number' || !Number.isSafeInteger(endSample) || endSample <= startSample
@@ -110,7 +146,7 @@ async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: Sub
       if (!info.isFile() || info.isSymbolicLink() || info.size !== expected) return null;
     }
     if (name === 'exit') {
-      const analysis = JSON.parse(await readFile(path.join(bundleDir, 'analysis.json'), 'utf8'));
+      const analysis = JSON.parse(await readFile(path.join(baseDir, 'analysis.json'), 'utf8'));
       if (!(Number.isFinite(analysis?.duration_seconds) && analysis.duration_seconds > 0
         && (endSample as number) / 44100 <= analysis.duration_seconds + 1 / 44100)) return null;
     } else if (startSample !== 0) return null;
@@ -142,10 +178,10 @@ export async function subbeatsCachedCoverage(trackId: string, job: SubbeatsJob |
 
 export async function subbeatsCachedRegion(trackId: string, window: StemWindow, job: SubbeatsJob | undefined) {
   if (job?.cueCoverage) {
-    const region = await savedSubbeatsRegion(trackId, window, job, job.cueCoverage.artifactKey, true);
+    const region = await savedSubbeatsRegion(trackId, window, job, job.cueCoverage.artifactKey);
     if (region) return region;
   }
-  return savedSubbeatsRegion(trackId, window, job, job?.bundleKey, true);
+  return savedSubbeatsRegion(trackId, window, job, job?.bundleKey);
 }
 // Regular blends may read a verified Sub/Beats region when the ordinary cache
 // window is absent. Pick-time admission and cleanup deliberately keep using

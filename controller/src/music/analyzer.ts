@@ -1554,7 +1554,7 @@ export async function previewSubbeats(outKey: string, inKey: string, stateDir: s
       throw new Error('The analyzer did not return the requested complete handoff. Update the analyzer and retry.');
     }
     if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
-    if (shared?.method === 'cue-points' && timeline?.kind !== 'regular-fallback'
+    if (shared?.method === 'cue-points' && timeline && timeline.kind !== 'regular-fallback'
       && (timeline?.mixStyle ?? 'long-blend') !== (shared.mix_style ?? 'long-blend')) {
       throw new Error('Update the analyzer to enable the selected Sub/Beats mixing style.');
     }

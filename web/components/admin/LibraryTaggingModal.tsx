@@ -58,7 +58,7 @@ export default function LibraryTaggingModal(p: Props) {
   // All on by default EXCEPT the Demucs vocal pass, measured at ~90% of the
   // whole acoustics phase (~10s/track on a 24-thread CPU).
   const [steps, setSteps] = useState<TagSteps>({
-    reconcile: true, enrich: true, tagMoods: true, analyze: true, vocal: false,
+    reconcile: true, enrich: true, tagMoods: true, analyze: true, stemWaveforms: false, vocal: false,
   });
   const toggleStep = (k: keyof TagSteps) => setSteps(s => ({ ...s, [k]: !s[k] }));
 
@@ -114,8 +114,9 @@ export default function LibraryTaggingModal(p: Props) {
     // Otherwise send false — a harmless --no-vocal the backend ignores.
     vocal: effAnalyze && p.vocalWanted ? steps.vocal : false,
   };
-  const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze;
-  const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
+  const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze || effSteps.stemWaveforms;
+  const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze && !effSteps.stemWaveforms;
+  const waveformsOnly = effSteps.stemWaveforms && !effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
 
   // Run-tab cost preview. seedEst is the up-front LLM seed budget tag-library.ts
   // spends before propagation carries the rest; the batch-of-25 divisor mirrors
@@ -221,6 +222,9 @@ export default function LibraryTaggingModal(p: Props) {
                   : p.soundsLikeActive
                     ? 'Tempo, key & intro, plus sounds-like fingerprints. The slow step; vocal separation is split out below.'
                     : 'Tempo, key & intro for every track — the slow step. Sounds-like fingerprints are off; enable them on the library page to include them.'} />
+              <Pass on={effSteps.stemWaveforms} onClick={() => toggleStep('stemWaveforms')}
+                name="Prepare Sub/Beats stem waveforms" tag="light · prepared stems"
+                hint="Save compact waveform data for already prepared Sub/Beats stems. No audio separation; this can run on its own." />
               {p.vocalWanted && (
                 <div className="pl-6">
                   <Pass on={effAnalyze && steps.vocal} onClick={() => toggleStep('vocal')}
@@ -233,13 +237,13 @@ export default function LibraryTaggingModal(p: Props) {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
               <div className="lib-batch">
-                <label htmlFor="modal-batch">Limit</label>
+                <label htmlFor="modal-batch">{waveformsOnly ? 'Track limit' : 'Limit'}</label>
                 <select id="modal-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
                   <option value="100">next 100</option>
                   <option value="500">next 500</option>
                   <option value="5000">next 5,000</option>
                   <option value="10000">next 10,000</option>
-                  <option value="all">all{p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining</option>
+                  <option value="all">{waveformsOnly ? 'all prepared Sub/Beats tracks' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}</option>
                 </select>
               </div>
               <div className="flex items-center gap-2.5">

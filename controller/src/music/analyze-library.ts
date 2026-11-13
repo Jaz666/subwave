@@ -43,6 +43,7 @@ import { readFileSync } from 'node:fs';
 import { formatPlan, parseFacets, parseWhere, planAcoustics, type AcousticsPlan } from './acoustics-plan.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 import { walkFileInfo } from './tag-library/flags.js';
+import { backfillSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
 
 const logEvent = makeEventLogger('analyze');
 
@@ -164,6 +165,13 @@ async function main() {
   // touches vectors (#319).
   await db.open({ embeddingDim, adoptStoredDim: true });
 
+  const stemWaveformsOnly = args.includes('--stem-waveforms-only');
+  const stemWaveforms = stemWaveformsOnly || args.includes('--stem-waveforms');
+  if (stemWaveformsOnly) {
+    const result = await backfillSubbeatsStemWaveforms(limit);
+    process.exit(result.failed ? 1 : 0);
+  }
+
   if (facetMode) {
     let plan: AcousticsPlan;
     try {
@@ -266,6 +274,7 @@ async function main() {
   }
 
   const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, subbeatsScopeIds: explicitIds(args) ?? undefined });
+  if (stemWaveforms) await backfillSubbeatsStemWaveforms(limit);
   analyzer.shutdown();
   console.log('[analyze] stats:', JSON.stringify(stats));
   process.exit(stats.available ? 0 : 0);

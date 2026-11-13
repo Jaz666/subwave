@@ -1,7 +1,3 @@
-import { notebookRendered, notebookVoiceId, notebookCanPublish, notebookAir, cancelNotebookClip, type RecoveredNotebookSpeech } from '../skills/notebook.js';
-import { lookAheadStampsCurrent } from '../skills/look-ahead.js';
-import { fitsSpeechDeadline, type SpeechDeadline } from './speech-budget.js';
-import { recordSleeveNotesSegmentAir, releaseSleeveNotesSegment } from '../sleeve-notes/segment-ledger.js';
 import { prepareEpisodeContext } from './show-preparation.js';
 // Queue class and public singleton; helper implementations live in queue/.
 
@@ -10,10 +6,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { basename } from 'node:path';
 import { config } from '../config.js';
-import { createSerialFileWriter, writeFileAtomic } from '../util/atomic-file.js';
+import { writeFileAtomic } from '../util/atomic-file.js';
 import * as subsonic from '../music/subsonic.js';
-import { flowSelectionFits } from '../music/sub-flow-selection.js';
-import { discardFlow, expectFlowPlayback, flowPlaybackUri, sweepFlowAudio, type FlowPlayback } from '../music/sub-flow-playback.js';
 import * as mix from '../music/mix.js';
 import * as library from '../music/library.js';
 import * as lyricsSources from '../music/lyrics-sources.js';
@@ -61,7 +55,7 @@ import type { MixDropReason } from '../schemas/transitions.js';
 import { logEvent } from '../observability/events.js';
 import { recordPlaybackFailure } from '../observability/playback-failures.js';
 import { djCallsAllowed, presentListeners } from './listeners.js';
-import { autoVoiceAllowed } from './voice-policy.js';
+import { trackLineVoiceAllowed } from './voice-policy.js';
 import { speakClockAllowed, stationIdDaypartDrifted, stationIdDaypartStamp } from './clock-policy.js';
 import { standInToken } from './stand-in-policy.js';
 import {
@@ -89,8 +83,6 @@ import {
 } from './queue/pause-voice-delivery.js';
 import * as webhooks from './webhooks.js';
 import * as scrobble from './scrobble.js';
-import { admitSleeveNotesEncounter } from '../sleeve-notes/admission.js';
-import { recordExtendedSleeveNoteAired, releaseExtendedSleeveNoteReservation } from '../sleeve-notes/link-selection.js';
 import * as liquidsoapControl from './liquidsoap-control.js';
 import {
   cueProbeBudgetMs,
@@ -128,6 +120,7 @@ import type {
   RecentPlay,
   Track,
 } from './queue/types.js';
+import { STEER_ONCE_KEY } from './queue/types.js';
 import {
   BACKFILL_DEDUP_MAX_GAP_MS,
   EMPTY_DJ_QUEUE_CLEAR_THRESHOLD,
@@ -169,7 +162,6 @@ import type { PendingTalk } from './queue/kinds.js';
 import {
   BED_MARKER_FRESH_MS,
   VOICE_LEADIN_MS,
-  SpeechPublicationCancelled,
   HANDOFF_TO_AIR_MS,
   VOICE_HOLD_MAX_MS,
   airVoice,
@@ -191,48 +183,6 @@ import { notifyQueued, notifySpoken } from './voice-events.js';
 import { createHandoverEdge, notifyCoastHandover, type HandoverReason } from './coast-handover.js';
 import { picksAllowed } from './dj-budget.js';
 
-// Both queueing and confirmed playback are admission points. Deferring this
-// tiny local write keeps the queue mutation and watcher tick entirely free of
-// Sleeve Notes work. The new admission path records an encounter and one
-// durable MusicBrainz match task; it never contacts a provider here.
-function admitSleeveNotesLater(
-  track: {
-    id?: string | null;
-    title?: string | null;
-    artist?: string | null;
-    album?: string | null;
-  },
-  source: 'queue' | 'played',
-  priority = 0,
-): void {
-  // Capture at the confirmed track event, before the deferred write or a roster change.
-  const encounteredAt = new Date().toISOString();
-  const host = source === 'played' ? settings.getOnAirRoster().host : null;
-  const playbackHost = host ? { id: host.id, name: host.name } : null;
-  setTimeout(() => {
-    try {
-      admitSleeveNotesEncounter(
-        {
-          localTrackId: track.id,
-          title: track.title,
-          artist: track.artist,
-          releaseTitle: track.album,
-          encounteredAt,
-          host: playbackHost,
-        },
-        source,
-        priority,
-      );
-    } catch {}
-  }, 0).unref();
-}
-
-function releaseSleeveNoteUse(useId: string | null | undefined): void {
-  if (!useId) return;
-  try {
-    releaseExtendedSleeveNoteReservation(useId);
-  } catch {}
-}
 const NOW_PLAYING_POLL_MS = 1500;
 // Two watcher ticks, so a song's opening always gets at least one offer.
 const OVERLAY_HEAD_WINDOW_MS = NOW_PLAYING_POLL_MS * 2;
@@ -254,10 +204,6 @@ interface SegmentDesc {
   logText?: string | null;
   /** Whether this segment also fires the legacy dj.say/dj.link event. */
   legacy?: boolean;
-  /** Track the segment accompanies, captured before the asynchronous air wait. */
-  track?: Track | null;
-  /** Sleeve Notes claim use tied to this link, if any. */
-  sleeveClaimUseId?: string | null;
   /** A multi-line handoff becomes aired only when its final line reaches the
    * live edge. Single-line handoffs omit this and settle as before. */
   settlesHandoff?: boolean;
@@ -272,7 +218,6 @@ interface PendingVoice {
     wavPath: string;
     persona: Persona | null;
     meta: TurnMeta;
-    sleeveClaimUseId?: string | null;
     settlesHandoff?: boolean;
   }[];
   /** Daypart the model was allowed to claim, or null. stationIdDaypartDrifted
@@ -468,12 +413,13 @@ const HANDOFF_BOUNDARY_WAIT_MS = 2 * 60_000;
 
 const STEM_BLEND_EXIT_KEYS = ['washout', 'washoutAuto', 'washoutDelay', 'loop', 'loopBar', 'crossSec'] as const;
 
-// transitions far more often — a working DJ talks across most of them.
-function flowHandoffPresent(occurrence: string) {
-  try { return readFileSync(config.liquidsoap.queueFile, 'utf8').includes(`subwave_flow=${JSON.stringify(occurrence)}`); }
-  catch { return false; }
-}
+// What "start now" on a steer clears: the DJ's own queued picks. Listener
+// requests, operator queueing and a steer's own tracks stay.
+const startNowDrops = (i: QueueItem) => !!i.aiPicked && !i.requestedBy && !i.steer;
+// What is still ahead once it has: one the mixer has already taken plays out.
+const startNowKeeps = (i: QueueItem) => i.sent || !startNowDrops(i);
 
+// transitions far more often — a working DJ talks across most of them.
 class Queue {
   upcoming: QueueItem[] = [];  // request items pushed by listeners, not yet playing
   current: QueueItem | null = null;    // what's broadcasting right now (request or auto)
@@ -549,7 +495,6 @@ class Queue {
     const render = this._introRenders.start(item, () => this._speak(expected.script!, {
       kind,
       persona: expected.persona,
-      sleeveClaimUseId: item.sleeveClaimUseId ?? null,
     }));
     void render.then(result => {
       if (result.status === 'rendered') {
@@ -598,9 +543,7 @@ class Queue {
       if (item.sent || item.confirmedInLiquidsoap || item.introAired || item.bedded) continue;
       if (!shouldDropObsoleteHostSpeech(item, live)) continue;
       this._introRenders.invalidate(item);
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
       item.introScript = null;
-      item.sleeveClaimUseId = null;
       item.introKind = undefined;
       item.introWav = null;
       item.introPersona = null;
@@ -720,30 +663,22 @@ class Queue {
     this._persistTimer = setTimeout(async () => {
       this._persistTimer = null;
       try {
-        await this.persistNow();
+        await writeFileAtomic(config.queue.file, JSON.stringify({
+          upcoming: this.upcoming,
+          current: this.current,
+          history: this.history,
+          pendingHandoff: pendingHandoffSnapshot(this._pendingVoice),
+          // Persist the absolute rotate count so controller restarts do not reset the jingle interval.
+          // #1619.
+          tracksSinceJingle: this._tracksSinceJingle,
+          tracksSinceOverlay: this._tracksSinceOverlay,
+          lastRotateJingle: this._lastRotateJingle,
+          savedAt: new Date().toISOString(),
+        }, null, 2));
       } catch (err) {
         console.error('[queue] persist failed:', (err as Error).message);
       }
     }, 500);
-  }
-
-  _writeQueue = createSerialFileWriter(config.queue.file);
-  _flowAdmission = false;
-  persistNow() {
-    if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
-    const payload = JSON.stringify({
-      upcoming: this.upcoming,
-      current: this.current,
-      history: this.history,
-      pendingHandoff: pendingHandoffSnapshot(this._pendingVoice),
-      // Persist the absolute rotate count so controller restarts do not reset the jingle interval.
-      // #1619.
-      tracksSinceJingle: this._tracksSinceJingle,
-      tracksSinceOverlay: this._tracksSinceOverlay,
-      lastRotateJingle: this._lastRotateJingle,
-      savedAt: new Date().toISOString(),
-    }, null, 2);
-    return this._writeQueue(payload);
   }
 
   // Write the rolling recent-plays sidecar. Separate from `persist()` because
@@ -772,9 +707,8 @@ class Queue {
       // resurrecting tracks as permanent "Up next" zombies.
       const cutoff = Date.now() - 2 * 60 * 60 * 1000;
       this.upcoming = (Array.isArray(stored.upcoming) ? stored.upcoming : [])
-        .filter((i: QueueItem) => i?.track?.title && (i.flow ? existsSync(i.flow.path) : new Date(i.queuedAt || 0).getTime() > cutoff));
+        .filter((i: QueueItem) => i?.track?.title && new Date(i.queuedAt || 0).getTime() > cutoff);
       this.current = stored.current || null;
-      expectFlowPlayback(!!this.current?.flow || this.upcoming.some(item => item.flow));
       this.history = Array.isArray(stored.history) ? stored.history : [];
       // Older snapshots named the outgoing cue blendStartSec. It was already
       // the stamped cue, so migrate the name without adding another overlap.
@@ -835,8 +769,6 @@ class Queue {
     // or track transition.
     this.armHandoffGenerationFallback();
     this.recoverPauseTalk();
-    void sweepFlowAudio([...this.upcoming, ...(this.current ? [this.current] : [])]
-      .flatMap(item => item.flow ? [item.flow.path] : [])).catch(() => {});
     if (existsSync(config.queue.recentPlaysFile)) {
       try {
         const arr = JSON.parse(readFileSync(config.queue.recentPlaysFile, 'utf8'));
@@ -1070,18 +1002,19 @@ class Queue {
   // `onStandInDropped` fires when the intro is a stand-in and the track will
   // play without it. The gate lives here, so this is how a caller that records
   // its own copy of the line learns it was never said.
-  async push({ track, requestedBy = null, operator = false, block = null, intent = null, introScript = null, introLabelChecked = false, introKind = 'dj-speak', introPersona = null, introHostSpeech = null, sleeveClaimUseId = null, aiPicked = false, allowDuplicate = false, linkPrev = null, linkClockAt = null, selectionShowAt = null, onStandInDropped }: {
+  async push({ track, requestedBy = null, operator = false, block = null, steer = null, introByOperator = false, intent = null, introScript = null, introLabelChecked = false, introKind = 'dj-speak', introPersona = null, introHostSpeech = null, aiPicked = false, allowDuplicate = false, linkPrev = null, linkClockAt = null, selectionShowAt = null, onStandInDropped }: {
     track: Track;
     requestedBy?: string | null;
     operator?: boolean;
     block?: QueueItem['block'] | null;
+    steer?: string | null;
+    introByOperator?: boolean;
     intent?: string | null;
     introScript?: string | null;
     introLabelChecked?: boolean;
     introKind?: string;
     introPersona?: Persona | null;
     introHostSpeech?: HostSpeechStamp | null;
-    sleeveClaimUseId?: string | null;
     aiPicked?: boolean;
     allowDuplicate?: boolean;
     linkPrev?: { id?: string | null; title?: string | null; artist?: string | null } | null;
@@ -1133,8 +1066,6 @@ class Queue {
       introScript = null;
       introPersona = null;
       introHostSpeech = null;
-      releaseSleeveNoteUse(sleeveClaimUseId);
-      sleeveClaimUseId = null;
     }
     // A pick's link and a request intro are model-written too: a stand-in goes,
     // and the track plays without a link. A checked script arrives in its
@@ -1146,8 +1077,6 @@ class Queue {
         : stripSpeakerLabel(introScript, speaker?.name ? [speaker.name] : []);
       const spoken = this.speakable(written, introKind);
       if (!spoken) {
-        releaseSleeveNoteUse(sleeveClaimUseId);
-        sleeveClaimUseId = null;
         if (written.trim()) onStandInDropped?.();
         introScript = null;
         introPersona = null;
@@ -1158,7 +1087,6 @@ class Queue {
     }
     const item = {
       track, requestedBy, operator, intent, introScript, introLabelChecked: true, introKind, introPersona, introHostSpeech,
-      sleeveClaimUseId: introScript && introKind === 'link' ? sleeveClaimUseId : null,
       // Links are editorially scoped to the session that wrote them. Preserve
       // the key alongside the persona: persona alone cannot distinguish two
       // adjacent shows hosted by the same DJ.
@@ -1169,6 +1097,8 @@ class Queue {
       selectionShowAt: Number.isFinite(selectionAt) ? selectionAt : null,
       showKey: showKeyAt(typeof selectionAt === 'number' && Number.isFinite(selectionAt) ? selectionAt : Date.now()),
       block: block ?? undefined,
+      steer: steer ?? undefined,
+      introByOperator: (introByOperator && introScript) ? true : undefined,
       // Only stamp a back-announce target when there's actually an intro/link to
       // air against it; a bare track carries no claim about what preceded it.
       linkPrev: (introScript && linkPrev)
@@ -1196,80 +1126,12 @@ class Queue {
     }
     this.warnIfSwallowedByCrossfade(item);
     this.persist();
-    // Candidate admission is deferred out of the queue mutation. It is never
-    // awaited and makes no provider request while the feature is off.
-    admitSleeveNotesLater(track, 'queue');
     this.drainToLiquidsoap();  // fire-and-forget
     // LRCLIB synced-lyrics fallback (music/lyrics-sources.ts): asked now, while
     // the track waits its turn, so a refused lookup has minutes to clear before
     // the on-air hook tries again. Fire-and-forget, gated inside.
     lyricsSources.onTrackQueued(track.id || null);
     return this.upcoming.length;
-  }
-
-  async queueFlow(flow: FlowPlayback, options: { automatic?: boolean } & Partial<Pick<QueueItem,
-    'intent' | 'introScript' | 'introLabelChecked' | 'introKind' | 'introPersona' | 'introHostSpeech' | 'sleeveClaimUseId' | 'linkPrev' | 'linkClockAt'>> & { selectionShowAt?: Date | number | null } = {}) {
-    if ((flow.protectBeforeSec ?? 5) !== 5 || (flow.protectAfterSec ?? 5) !== 5) {
-      const status = await liquidsoapControl.flowPlaybackStatus();
-      if (status.version < 2) throw new Error('Rebuild the broadcast service to use custom Flow protection times.');
-    }
-    // One prepared occurrence at a time. Members are
-    // committed together, before the sender can see any of them.
-    if (this.current?.flow || this.upcoming.some(item => item.flow)) throw new Error('A Flow is already queued or playing.');
-    if (flow.members.some(track => blocklist.hitOf(track))) throw new Error('A Flow track is now blocked.');
-    const queued = this.queuedIds();
-    if (flow.members.some(track => queued.has(track.id) || this.current?.track.id === track.id)) throw new Error('A Flow track is already queued or playing.');
-    const at = options.selectionShowAt instanceof Date ? options.selectionShowAt.getTime() : options.selectionShowAt;
-    const show = settings.resolveActiveShow(new Date(Math.max(Date.now(), at ?? 0)));
-    if (options.automatic) {
-      const rejection = this.automaticFlowRejection(flow, show, this.flowQueueStartMs());
-      if (rejection) throw new Error(rejection);
-    }
-    const items: QueueItem[] = flow.members.map((track, index) => ({
-      track: { ...track, crossSec: index < flow.members.length - 1 ? 0 : undefined },
-      ...(index === 0 ? {
-        intent: options.intent, introScript: options.introScript, introKind: options.introKind,
-        introLabelChecked: options.introLabelChecked, introPersona: options.introPersona,
-        introHostSpeech: options.introHostSpeech, sleeveClaimUseId: options.sleeveClaimUseId,
-        linkPrev: options.linkPrev,
-        linkClockAt: options.linkClockAt == null ? null : new Date(options.linkClockAt).getTime(),
-        introSessionKey: options.introScript ? session.getSession()?.key ?? null : null,
-      } : {}),
-      requestedBy: options.automatic ? null : 'studio', operator: !options.automatic,
-      aiPicked: !!options.automatic, showKey: showKeyAt(at ?? Date.now()),
-      selectionShowAt: at ?? null,
-      queuedAt: new Date().toISOString(), sent: false,
-      flow: { ...flow, index },
-    }));
-    this._flowAdmission = true;
-    expectFlowPlayback(true);
-    this.upcoming.push(...items);
-    try { await this.persistNow(); }
-    catch (error) { this.upcoming = this.upcoming.filter(item => !items.includes(item)); expectFlowPlayback(false); throw error; }
-    finally { this._flowAdmission = false; }
-    this.log('queued', `Sub/Flow “${flow.label}” — ${items.length} tracks, protected joins`);
-    void this.drainToLiquidsoap();
-    return this.upcoming.length;
-  }
-
-  flowQueueStartMs(): number | null {
-    let seconds = this.current ? this.remainingSecOnAir() : 0;
-    if (seconds == null) return null;
-    for (const item of this.upcoming) {
-      const duration = Number(item.track.duration);
-      if (!(duration > 0)) return null;
-      seconds += duration + (item.bedDelaySec ?? 0) + (item.pauseDelaySec ?? 0);
-    }
-    return Date.now() + seconds * 1000;
-  }
-
-  automaticFlowRejection(flow: FlowPlayback, show: ReturnType<typeof settings.resolveActiveShow>, startMs: number | null): string | null {
-    const allow = show?.flowAllowAboveMax ?? settings.get().picker.flowAllowAboveMax;
-    const max = settings.effectiveMaxTrackSec(show);
-    if (!allow && max && flow.members.some(track => track.duration > max)) return 'A Flow member exceeds the maximum track length.';
-    if (startMs == null && settings.effectiveFadeAtShowEnd(show)) return 'The Flow start time is unknown at a firm show boundary.';
-    if (startMs != null && !flowSelectionFits(flow.members.reduce((sum, track) => sum + track.duration, 0), startMs)) return 'The complete Flow does not fit before the show boundary.';
-    return null;
   }
 
   // A request the MIXER will silently eat (#1594). Log only — nothing is
@@ -1337,9 +1199,6 @@ class Queue {
     const keep = this.upcoming.filter(i => i.sent || !blocklist.isBlocked(i.track));
     const dropped = this.upcoming.length - keep.length;
     if (dropped > 0) {
-      for (const item of this.upcoming) {
-        if (!item.sent && blocklist.isBlocked(item.track)) releaseSleeveNoteUse(item.sleeveClaimUseId);
-      }
       this.upcoming = keep;
       this.log('blocked', `purged ${dropped} upcoming track${dropped === 1 ? '' : 's'} now blocked by the never-play blocklist`);
       this.persist();
@@ -2190,7 +2049,7 @@ class Queue {
   }
 
   aboveAutomaticCeiling(item: QueueItem, preparing = false): boolean {
-    return !item.flow && this.droppableAutomatic(item, preparing)
+    return this.droppableAutomatic(item, preparing)
       && aboveKnownTrackCeiling(item.track, this.selectionMaxSecFor(item));
   }
 
@@ -2248,8 +2107,8 @@ class Queue {
     await subbeats.discardSubbeatsClips(clips);
   }
 
-  // Re-read live queue/trim/show policy before changing linked cues. Speech
-  // uses its own mixer channel and does not veto either rendered stem seam.
+  // Re-read live queue/trim/show policy before changing linked cues. The
+  // transition is optional; an existing bed, spoken head or boundary wins.
   subbeatsFitsPair(item: QueueItem, successor: QueueItem, playback: SubbeatsPlayback): boolean {
     if (!subbeats.subbeatsStillCurrent(playback) || !this.upcoming.includes(item)
       || this.upcoming[this.upcoming.indexOf(item)+1] !== successor || successor.sent
@@ -2345,7 +2204,6 @@ class Queue {
   }
 
   async drainToLiquidsoap(force = false) {
-    if (this._flowAdmission) return;
     this.invalidateObsoleteHostSpeech();
     if (this.senderBusy) {
       // A forced drain (the clip-as-track recovery) must not vanish into a
@@ -2367,10 +2225,6 @@ class Queue {
         if (successor) await this.publishSubbeatsParts(owner,successor,true);
       }
       while (true) {
-        // Do not overwrite the Flow handoff with its successor while the mixer
-        // waits for existing speech to finish and starts the first member.
-        const pendingFlow = this.upcoming.find(candidate => candidate.flow && candidate.sent);
-        if (pendingFlow?.flow && this.current?.flow?.occurrenceId !== pendingFlow.flow.occurrenceId) break;
         // A successor also contributes audio to a rendered seam. Validate the
         // entire unsent queue, not only its head, before preparing linked work.
         for (const queued of [...this.upcoming]) await this.dropAboveCeiling(queued);
@@ -2379,61 +2233,6 @@ class Queue {
         if (await this.dropAboveCeiling(item)) continue;
 
         const idx = this.upcoming.indexOf(item);
-        if (item.flow) {
-          try {
-            // Publish near the entry boundary, so waiting speech is not held for
-            // minutes while unrelated queued music plays ahead of the Flow.
-            if (idx !== 0) break;
-            const mixer = await liquidsoapControl.flowPlaybackStatus().catch(() => null);
-            if (!mixer) break;
-            if (mixer.pending === item.flow.occurrenceId || mixer.playing === item.flow.occurrenceId
-                || (item.flow.deliveryStartedAt && flowHandoffPresent(item.flow.occurrenceId))) {
-              this.upcoming.filter(member => member.flow?.occurrenceId === item.flow!.occurrenceId)
-                .forEach(member => { member.sent = true; member.flow!.handedAt = Date.now(); });
-              await this.persistNow();
-              continue;
-            }
-            if (item.flow.deliveryStartedAt) {
-              // Delivery intent was durable before the handoff. If both mixer
-              // and controller restarted, absence is ambiguous: never replay.
-              const lost = item.flow;
-              this.upcoming = this.upcoming.filter(member => member.flow?.occurrenceId !== lost.occurrenceId);
-              expectFlowPlayback(!!this.current?.flow);
-              await this.persistNow();
-              await discardFlow(lost);
-              this.log('error', `Sub/Flow “${lost.label}” delivery could not be confirmed; cancelled without replaying it.`);
-              continue;
-            }
-            const remaining = this.remainingUntilItemAirs(item);
-            if (!force && remaining != null && remaining > Number(settings.get().crossfadeDuration || 10) + 10) break;
-            const members = this.upcoming.filter(candidate => candidate.flow?.occurrenceId === item.flow!.occurrenceId);
-            const show = settings.resolveActiveShow(new Date(Date.now() + (remaining ?? 0) * 1000));
-            const rejected = item.aiPicked ? this.automaticFlowRejection(item.flow, show, remaining == null ? null : Date.now() + (remaining + this.hiddenDelayBeforeItemAirs(item)) * 1000) : null;
-            if (rejected) this.log('picker', `Flow “${item.flow.label}” refused at delivery: ${rejected}`);
-            if (rejected || members.length !== item.flow.members.length || item.flow.index !== 0 || !existsSync(item.flow.path)
-                || members.some(member => blocklist.hitOf(member.track))) {
-              this.upcoming = this.upcoming.filter(candidate => !members.includes(candidate));
-              this.log('error', `Sub/Flow “${item.flow.label}” could not be delivered intact; cancelled the whole occurrence.`);
-              expectFlowPlayback(!!this.current?.flow);
-              await discardFlow(item.flow);
-              this.persist();
-              continue;
-            }
-            const uri = flowPlaybackUri(item.flow, Number(settings.get().crossfadeDuration) || 0);
-            members.forEach(member => { member.flow!.deliveryStartedAt = Date.now(); });
-            await this.persistNow();
-            const written = await writeHandoff(config.liquidsoap.queueFile, uri, {
-              maxWaitMs: 5000, beforeWrite: () => members.every(member => this.upcoming.includes(member)),
-            });
-            if (!written) continue;
-            members.forEach(member => { member.sent = true; member.flow!.handedAt = Date.now(); });
-            await this.persistNow();
-            continue;
-          } catch (error) {
-            this.log('error', `Sub/Flow delivery failed: ${error instanceof Error ? error.message : String(error)}`);
-            break;
-          }
-        }
         const hasSuccessor = idx >= 0 && idx + 1 < this.upcoming.length;
         // The clock that governs THIS item's drain is the end of the track it
         // will FOLLOW — the on-air track extended past any sent-but-unaired
@@ -2477,7 +2276,7 @@ class Queue {
         // over the song's intro under the light duck (pre-bed behaviour). That
         // is the accepted price of the trade: a naked link is a garnish lost,
         // a missed seam is the wrong track on air.
-        if (item.introScript && !item.introWav && autoVoiceAllowed()) {
+        if (item.introScript && !item.introWav && trackLineVoiceAllowed(item)) {
           const budgetSec = introRenderBudgetSec(this.remainingUntilItemAirs(item));
           if (budgetSec === 0) {
             this.log('mix', `Intro render deferred to air time — "${item.track.title}" airs too soon to render ahead`);
@@ -2566,7 +2365,7 @@ class Queue {
         let successor: QueueItem | null = null;
         if (action === 'send-pair') {
           successor = this.upcoming[this.upcoming.indexOf(item) + 1] ?? null;
-          if (successor && !successor.flow) {
+          if (successor) {
             const previousPairCross = item.track.crossSec;
             this.applyPairStamps(item, successor);
             // Stem-blend seam (feature: stem-blend transitions): with the
@@ -2882,9 +2681,7 @@ class Queue {
   // THIS track is the operator's intent — and the caller reports the miss
   // honestly. Never throws: a skip must not fail on its safety net.
   async commitBeforeSkip(): Promise<{ pending: boolean; committed: boolean; waitedMs: number }> {
-    const playingFlow = this.current?.flow?.occurrenceId;
-    const successor = () => this.upcoming.find(item => !playingFlow || item.flow?.occurrenceId !== playingFlow);
-    if (skipPrepAction(successor() ? 1 : 0) === 'skip-now') {
+    if (skipPrepAction(this.upcoming.length) === 'skip-now') {
       return { pending: false, committed: false, waitedMs: 0 };
     }
     const t0 = Date.now();
@@ -2894,7 +2691,7 @@ class Queue {
     let headSentAt: number | null = null;
     const deadline = t0 + SKIP_COMMIT_WAIT_MS;
     while (true) {
-      const head = successor();
+      const head = this.upcoming[0];
       if (!head) {
         // Everything aired or was cancelled while waiting — nothing left to
         // protect, the skip falls through honestly.
@@ -2965,27 +2762,9 @@ class Queue {
   async announce(
     text,
     kind = 'announcement',
-    {
-      persona = null,
-      meta = {},
-      pauseTalkEligible = false,
-      sfx: selectedSfx = null,
-      hostSpeech = null,
-      sleeveClaimUseId = null,
-      speechDeadline = null,
-    }: {
-      persona?: Persona | null;
-      meta?: TurnMeta;
-      pauseTalkEligible?: boolean;
-      sfx?: string | null;
-      hostSpeech?: HostSpeechStamp | null;
-      sleeveClaimUseId?: string | null;
-      speechDeadline?: SpeechDeadline | null;
-    } = {},
+    { persona = null, meta = {}, pauseTalkEligible = false, sfx: selectedSfx = null, hostSpeech = null }:
+      { persona?: Persona | null; meta?: TurnMeta; pauseTalkEligible?: boolean; sfx?: string | null; hostSpeech?: HostSpeechStamp | null } = {},
   ): Promise<AnnounceOutcome> {
-    // A time-sensitive schedule tease must not reserve a committed silence:
-    // its speech can be discarded if the upcoming programming changes.
-    if (meta.lookAheadStamps !== undefined) pauseTalkEligible = false;
     // Single-voice paths leak the label too — a styled POST /dj/say came back as
     // "Iris : Bonsoir…" with one persona and one voice (#1707).
     //
@@ -3000,23 +2779,16 @@ class Queue {
     const verbatim = meta?.verbatim === true;
     const safeText = this.speakable(written, kind, { verbatim });
     if (!safeText) {
-      releaseSleeveNoteUse(sleeveClaimUseId);
       return {
         accepted: false, deferred: false, completed: Promise.resolve(false),
         ...(!verbatim && written.trim() ? { reason: 'stand-in' as const } : {}),
       };
     }
     if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) {
-      releaseSleeveNoteUse(sleeveClaimUseId);
       return { accepted: false, deferred: false, completed: Promise.resolve(false) };
     }
     if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
       this.log('scheduler', `Dropped ${kind} — the show handoff has already claimed this boundary`);
-      releaseSleeveNoteUse(sleeveClaimUseId);
-      return { accepted: false, deferred: false, completed: Promise.resolve(false) };
-    }
-    if (kind === 'sleeve-notes' && !settings.get().djBehaviour.extendedSleeveNotes) {
-      releaseSleeveNoteUse(sleeveClaimUseId);
       return { accepted: false, deferred: false, completed: Promise.resolve(false) };
     }
     // Until its handoff the clip is invisible to the overlay's song reservation
@@ -3025,18 +2797,12 @@ class Queue {
     const inFlight = currentTalkAir() === 'immediate';
     if (inFlight) this._talkInFlight++;
     try {
-      const wavPath = await this._speak(safeText, { kind, persona, sleeveClaimUseId });
-      if (kind === 'sleeve-notes' && !settings.get().djBehaviour.extendedSleeveNotes) {
-        releaseSleeveNoteUse(sleeveClaimUseId);
-        return { accepted: false, deferred: false, completed: Promise.resolve(false) };
-      }
+      const wavPath = await this._speak(safeText, { kind, persona });
       if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) {
-        releaseSleeveNoteUse(sleeveClaimUseId);
         return { accepted: false, deferred: false, completed: Promise.resolve(false) };
       }
       if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
         this.log('scheduler', `Dropped ${kind} — the show handoff completed while it rendered`);
-        releaseSleeveNoteUse(sleeveClaimUseId);
         return { accepted: false, deferred: false, completed: Promise.resolve(false) };
       }
       const show = settings.resolveActiveShow();
@@ -3052,69 +2818,32 @@ class Queue {
       const placement = resolveTalkPlacement({ pauseTalk, talkAir: currentTalkAir() });
       if (placement !== 'immediate') {
         let settle!: (aired: boolean) => void;
-        const completed = new Promise<boolean>(resolve => {
-          settle = resolve;
+        const completed = new Promise<boolean>(resolve => { settle = resolve; });
+        const accepted = this.holdForNextTrack(kind, [{ text: safeText, wavPath, persona, meta }], {
+          exchange: false,
+          pauseTalk: placement === 'pause-talk',
+          sfx: selectedSfx,
+          onCompleted: settle,
+          notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null,
+          hostSpeech,
         });
-        const accepted = this.holdForNextTrack(
-          kind,
-          [{ text: safeText, wavPath, persona, meta, sleeveClaimUseId }],
-          {
-            exchange: false,
-            pauseTalk: placement === 'pause-talk',
-            sfx: selectedSfx,
-            onCompleted: settle,
-            notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null,
-            hostSpeech,
-          },
-        );
-        if (!accepted) {
-          releaseSleeveNoteUse(sleeveClaimUseId);
-          settle(false);
-        }
+        if (!accepted) settle(false);
         if (accepted && placement === 'pause-talk') void this.drainToLiquidsoap();
         return { accepted, deferred: true, completed };
-      }
-      if (
-        speechDeadline &&
-        !fitsSpeechDeadline(speechDeadline, this.current, speechDurationMs(wavPath, safeText))
-      ) {
-        this.log('scheduler', `Dropped ${kind} — rendered speech no longer fits this track`);
-        releaseSleeveNoteUse(sleeveClaimUseId);
-        return { accepted: false, deferred: false, completed: Promise.resolve(false) };
       }
       // No bed here by construction — announce() speaks without queueing a
       // track, so there is nothing for maybePushBed to have bedded.
       const channel = voiceChannelFor(kind);
-      const targetFile =
-        channel === 'intro' ? config.liquidsoap.introFile : config.liquidsoap.sayFile;
-
-      const seg: SegmentDesc = {
-        kind,
-        channel,
-        text: safeText,
-        meta,
-        persona,
-        track: this.current?.track ?? null,
-        sleeveClaimUseId,
-      };
+      const targetFile = channel === 'intro'
+        ? config.liquidsoap.introFile
+        : config.liquidsoap.sayFile;
+      const seg: SegmentDesc = { kind, channel, text: safeText, meta, persona };
       if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) {
-        releaseSleeveNoteUse(sleeveClaimUseId);
         return { accepted: false, deferred: false, completed: Promise.resolve(false) };
       }
-      const handoff = await this._airVoice(
-        targetFile,
-        wavPath,
-        safeText,
-        voiceGainDb(kind, persona),
-        {
-          onQueued: q => this.onQueued(q, seg),
-          beforeWrite: () => lookAheadStampsCurrent(meta.lookAheadStamps)
-            && (!speechDeadline || fitsSpeechDeadline(speechDeadline, this.current, speechDurationMs(wavPath, safeText)))
-            && (!hostSpeech || session.isHostSpeechCurrent(hostSpeech))
-            && (kind !== 'sleeve-notes' || (session.isHostSpeechCurrent(hostSpeech)
-              && settings.get().djBehaviour.extendedSleeveNotes && !session.handoffInProgress())),
-        },
-      );
+      const handoff = await this._airVoice(targetFile, wavPath, safeText, voiceGainDb(kind, persona), {
+        onQueued: q => this.onQueued(q, seg),
+      });
       // Bookkeeping runs when the words reach the stream, not at handoff
       // (#1382). A mixer that writes no marker resolves immediately with a null
       // stamp, which is the old timing byte for byte.
@@ -3122,8 +2851,7 @@ class Queue {
       if (selectedSfx) await this.playSfx(selectedSfx, { underVoice: true });
       return { accepted: true, deferred: false, completed };
     } catch (err) {
-      releaseSleeveNoteUse(sleeveClaimUseId);
-      this.log(err instanceof SpeechPublicationCancelled ? 'scheduler' : 'error', `Announce failed: ${(err as Error).message}`);
+      this.log('error', `Announce failed: ${(err as Error).message}`);
       return { accepted: false, deferred: false, completed: Promise.resolve(false) };
     } finally {
       if (inFlight) this._talkInFlight--;
@@ -3194,20 +2922,12 @@ class Queue {
 
   async onSpoken(handoff: VoiceHandoff, {
     kind, channel, text, meta = {}, persona = null, logText = null, legacy = true,
-    settlesHandoff = true, track: _track = null, sleeveClaimUseId = null,
+    settlesHandoff = true,
   }: SegmentDesc): Promise<boolean> {
     const airedAt = await handoff.aired;
     this._speechAwaitingAir.delete(handoff.voiceId);
     this._speechForecasts.delete(handoff.voiceId);
-    try { notebookAir(meta, handoff.voiceId, airedAt); }
-    catch (error) { this.log('error', `Notebook air commit failed: ${(error as Error).message}`); }
     try {
-      if (kind === 'sleeve-notes') {
-        try { recordSleeveNotesSegmentAir(meta, normalizeForDisplay(text), airedAt); } catch {}
-      }
-      if (kind === 'link' && sleeveClaimUseId && airedAt != null) {
-        try { recordExtendedSleeveNoteAired(sleeveClaimUseId, airedAt); } catch {}
-      }
       const safeText = normalizeForDisplay(text);
       const safeLogText = logText == null ? safeText : normalizeForDisplay(logText);
       this.log(kind, safeLogText);
@@ -3229,7 +2949,6 @@ class Queue {
         // (#1114). Absent when unmeasured, never zeroed.
         meta: {
           ...meta,
-          voiceId: handoff.voiceId,
           ...(airedAt != null ? { airedAt: new Date(airedAt).toISOString() } : {}),
           ...(durationMs != null ? { durationMs } : {}),
         },
@@ -3265,23 +2984,12 @@ class Queue {
   // makes the two-voice persona handoff play cleanly). Each line is booth-
   // logged speaker-prefixed and appended to the session tagged with its
   // speaker, so windowMessages names a guest's words as theirs.
-  async announceExchange(
-    lines: { persona: Persona; text: string; meta?: TurnMeta }[],
-    kind = 'banter',
-    { castNames = [], speechDeadline = null, hostSpeech = null }: {
-      castNames?: readonly string[];
-      speechDeadline?: SpeechDeadline | null;
-      hostSpeech?: HostSpeechStamp | null;
-    } = {},
-  ) {
-    const rejectExchange = () => { for (const line of lines) cancelNotebookClip(line.meta); return false; };
-    if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) return rejectExchange();
-    if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return rejectExchange();
+  async announceExchange(lines: { persona: Persona; text: string }[], kind = 'banter', { castNames = [] }: { castNames?: readonly string[] } = {}) {
     if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
       this.log('scheduler', `Dropped ${kind} exchange — the show handoff has already claimed this boundary`);
-      return rejectExchange();
+      return false;
     }
-    const rendered: { persona: Persona; text: string; wavPath: string; meta?: TurnMeta }[] = [];
+    const rendered: { persona: Persona; text: string; wavPath: string }[] = [];
     // The whole cast, not just the line's own speaker: a model that prefixes a
     // label picks any name on the call sheet, including the one it is replying to.
     const knownNames = [...castNames, ...lines.map(l => l.persona?.name).filter(Boolean) as string[]];
@@ -3289,19 +2997,16 @@ class Queue {
       // Each clip owns its speaker's gain, attribution and live-edge marker.
       // Conversational batching must preserve those before it can air here.
       for (const l of lines) {
-        if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) return rejectExchange();
         const text = this.speakable(stripSpeakerLabel(l.text || '', knownNames), kind);
         if (!text) continue;
         const wavPath = await this._speak(text, { kind, persona: l.persona });
-        notebookRendered(l.meta, wavPath, text);
         rendered.push({ ...l, text, wavPath });
       }
     } catch (err) {
       this.log('error', `Exchange render failed: ${(err as Error).message}`);
-      return rejectExchange();
+      return false;
     }
-    if (!rendered.length || (lines.some(line => notebookVoiceId(line.meta)) && rendered.length !== lines.length)
-      || (hostSpeech && !session.isHostSpeechCurrent(hostSpeech))) return rejectExchange();
+    if (!rendered.length) return false;
     // Deferred as one segment, not as N: the exchange keeps its order and its
     // all-or-nothing rendering, and the boundary hears the whole conversation.
     if (currentTalkAir() === 'next-track') {
@@ -3311,42 +3016,28 @@ class Queue {
           text: l.text,
           wavPath: l.wavPath,
           persona: l.persona,
-          meta: l.meta ?? {},
+          meta: {},
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
         })),
-        { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null, hostSpeech },
+        { exchange: true, notBefore: kind === 'handoff' ? session.handoffBoundaryAt() : null },
       );
     }
-    if(speechDeadline&&!fitsSpeechDeadline(speechDeadline,this.current,rendered.reduce((sum,line)=>sum+speechDurationMs(line.wavPath,line.text),0))) {
-      this.log('scheduler',`Dropped ${kind} exchange — rendered speech no longer fits this track`);
-      return rejectExchange();
-    }
     for (const [index, l] of rendered.entries()) {
-      if (hostSpeech && !session.isHostSpeechCurrent(hostSpeech)) return rejectExchange();
-      if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes)return rejectExchange();
       if (suppressScheduledSpeechDuringHandoff(kind, session.handoffInProgress())) {
         this.log('scheduler', `Dropped ${kind} exchange — the show handoff completed while it rendered`);
-        return rejectExchange();
+        return false;
       }
       try {
         const seg: SegmentDesc = {
           ...exchangeSegment(l, kind),
-          meta: { ...exchangeSegment(l,kind).meta, ...l.meta },
           settlesHandoff: kind === 'handoff' ? index === rendered.length - 1 : undefined,
         };
         const handoff = await this._airVoice(config.liquidsoap.sayFile, l.wavPath, l.text, voiceGainDb(kind, l.persona), {
-          voiceId: notebookVoiceId(l.meta),
           onQueued: q => this.onQueued(q, seg),
-          beforeWrite: () => lookAheadStampsCurrent(l.meta?.lookAheadStamps)
-            && (kind !== 'sleeve-notes' || (session.isHostSpeechCurrent(hostSpeech)
-              && settings.get().djBehaviour.extendedSleeveNotes && !session.handoffInProgress()))
-            && notebookCanPublish(l.meta),
         });
         this.onSpoken(handoff, seg);
       } catch (err) {
-        if (kind==='sleeve-notes') releaseSleeveNotesSegment(l.meta ?? {});
-        this.log(err instanceof SpeechPublicationCancelled ? 'scheduler' : 'error', `Exchange line failed to air: ${(err as Error).message}`);
-        if (kind === 'sleeve-notes' || notebookVoiceId(l.meta)) return rejectExchange();
+        this.log('error', `Exchange line failed to air: ${(err as Error).message}`);
       }
     }
     // One webhook for the whole exchange — per-line events would read as five
@@ -3356,21 +3047,6 @@ class Queue {
       kind,
     });
     return true;
-  }
-
-  restoreNotebookSpeech(groups: RecoveredNotebookSpeech[]) {
-    const next = () => {
-      if (!groups.length) return;
-      if (this._pendingVoice) {
-        const previous = this._pendingVoice.onCompleted;
-        this._pendingVoice.onCompleted = aired => { previous?.(aired); next(); };
-        return;
-      }
-      const group = groups.shift()!;
-      this.holdForNextTrack(group.kind, group.clips, { exchange: true, daypart: null,
-        notBefore: group.notBefore, onCompleted: next });
-    };
-    next();
   }
 
   // Defer a spoken segment to the NEXT track boundary. Used for station idents:
@@ -3458,11 +3134,6 @@ class Queue {
     } = {},
   ): boolean {
     if (!clips.length) return false;
-    if(kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes){
-      for(const clip of clips)releaseSleeveNotesSegment(clip.meta);
-      onCompleted?.(false);
-      return false;
-    }
     const superseded = this._pendingVoice;
     // Once the silence handoff has an id it is a committed music-timeline
     // request, not a cancellable forecast. Replacing it would leave a real gap
@@ -3474,7 +3145,6 @@ class Queue {
     // limit the break disarms and this offer is taken normally.
     if (superseded?.pauseId && !pauseTalkArmExpired(superseded.pauseArmedAt, Date.now())) {
       this.log('scheduler', `Declined ${kind} — a pause-and-talk break is committed to this boundary`);
-      for (const clip of clips) cancelNotebookClip(clip.meta);
       return false;
     }
     this._pendingVoice = {
@@ -3494,7 +3164,6 @@ class Queue {
     }
     if (kind === 'handoff' || superseded?.kind === 'handoff') this.persist();
     if (superseded) {
-      for (const clip of superseded.clips) cancelNotebookClip(clip.meta);
       superseded.onCompleted?.(false);
       this.log('scheduler',
         `Dropped pending ${superseded.kind} — a ${kind} took the next track boundary instead`);
@@ -3522,11 +3191,7 @@ class Queue {
       this.log('scheduler', `Pause-and-talk ${p.kind} falling back to ducked boundary speech — ${item.requestedBy ? 'listener request' : 'stem blend'} owns this seam`);
       return false;
     }
-    const clips = p.clips.filter(c => {
-      const exists=existsSync(c.wavPath);
-      if (!exists && p.kind==='sleeve-notes') releaseSleeveNotesSegment(c.meta);
-      return exists;
-    });
+    const clips = p.clips.filter(c => existsSync(c.wavPath));
     if (!clips.length) {
       this.dropPendingVoice('its pause-and-talk clip was reaped before the boundary');
       return false;
@@ -3621,13 +3286,6 @@ class Queue {
   // ident: sign-off + greeting name the station, the outgoing show and the
   // incoming one, so an ident in front of it is three spoken segments in a row
   // saying overlapping things. The next cron fire schedules a fresh ident.
-  /** Yield research to active drains, picks, speech rendering and handoffs.
-   * A rendered clip waiting for a vocal-safe boundary is idle, not busy. */
-  playbackCriticalBusy(): boolean {
-    return this.senderBusy || this.pickerBusy || this._introRenders.busy()
-      || session.handoffInProgress();
-  }
-
   dropPendingVoice(reason: string) {
     const p = this._pendingVoice;
     if (!p) return;
@@ -3641,11 +3299,6 @@ class Queue {
       return;
     }
     this._pendingVoice = null;
-    for (const clip of p.clips) {
-      cancelNotebookClip(clip.meta);
-      releaseSleeveNoteUse(clip.sleeveClaimUseId);
-      if (p.kind==='sleeve-notes') releaseSleeveNotesSegment(clip.meta);
-    }
     if (p.kind === 'handoff') {
       if (this._handoffBoundaryTimer) clearTimeout(this._handoffBoundaryTimer);
       this._handoffBoundaryTimer = null;
@@ -3717,10 +3370,6 @@ class Queue {
     // Bounded so a silence that never reaches the mixer cannot pin the one
     // pending slot: past the arm limit the break disarms and the clip falls
     // through to ordinary ducked delivery below.
-    if(this._pendingVoice?.kind==='sleeve-notes'&&!settings.get().djBehaviour.extendedSleeveNotes){
-      this.dropPendingVoice('Extended Sleeve Notes was disabled');
-      if(!this._pendingVoice)return;
-    }
     const committed = this._pendingVoice;
     if (committed?.pauseId) {
       if (!pauseTalkArmExpired(committed.pauseArmedAt, Date.now())) return;
@@ -3739,10 +3388,6 @@ class Queue {
     }
     const p = this._pendingVoice;
     if (!p) return;
-    if (p.clips.some(clip => !lookAheadStampsCurrent(clip.meta.lookAheadStamps))) {
-      this.dropPendingVoice('the upcoming schedule changed before air');
-      return;
-    }
     if (p.hostSpeech && !session.isHostSpeechCurrent(p.hostSpeech)) {
       this.dropPendingVoice('the active show host changed before air');
       return;
@@ -3777,7 +3422,7 @@ class Queue {
     // synchronous, keeping the decision ahead of this function's first await.
     const incoming = this.upcoming[this.matchUpcomingIndex(np)] || null;
     if (boundaryCarriesTrackVoice(incoming, this.current?.track || null, {
-      voiceAllowed: autoVoiceAllowed(),
+      voiceAllowed: trackLineVoiceAllowed(incoming),
       wavExists: path => existsSync(path),
       nowMs: Date.now(),
     })) {
@@ -3830,15 +3475,7 @@ class Queue {
     // nothing left to air. A partially reaped exchange airs what survives
     // rather than nothing — the alternative is silence on a boundary the
     // planner already spent a slot on.
-    if (p.clips.some(clip => notebookVoiceId(clip.meta) && !existsSync(clip.wavPath))) {
-      for (const clip of p.clips) cancelNotebookClip(clip.meta);
-      p.onCompleted?.(false); return;
-    }
-    const clips = p.clips.filter(c => {
-      const exists=existsSync(c.wavPath);
-      if (!exists && p.kind==='sleeve-notes') releaseSleeveNotesSegment(c.meta);
-      return exists;
-    });
+    const clips = p.clips.filter(c => existsSync(c.wavPath));
     if (!clips.length) {
       if (p.kind === 'handoff') session.markHandoffAired();
       p.onCompleted?.(false);
@@ -3857,20 +3494,12 @@ class Queue {
         const seg: SegmentDesc = p.exchange
           ? {
               ...exchangeSegment(clip, p.kind),
-              meta: { ...exchangeSegment(clip,p.kind).meta, ...clip.meta },
               channel: 'intro',
               settlesHandoff: clip.settlesHandoff,
-              track: this.current?.track ?? null,
             }
-          : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona,
-              track: this.current?.track ?? null, sleeveClaimUseId: clip.sleeveClaimUseId };
+          : { kind: p.kind, channel: 'intro', text: clip.text, meta: clip.meta, persona: clip.persona };
         const handoff = await this._airVoice(config.liquidsoap.introFile, clip.wavPath, clip.text, voiceGainDb(p.kind, clip.persona), {
-          voiceId: notebookVoiceId(clip.meta),
           onQueued: q => this.onQueued(q, seg),
-          beforeWrite: () => lookAheadStampsCurrent(clip.meta.lookAheadStamps)
-            && (p.kind !== 'sleeve-notes' || (session.isHostSpeechCurrent(p.hostSpeech)
-              && settings.get().djBehaviour.extendedSleeveNotes && !session.handoffInProgress()))
-            && notebookCanPublish(clip.meta),
         });
         completions.push(this.onSpoken(handoff, seg));
         if (!sfxHanded && p.sfx) {
@@ -3878,9 +3507,7 @@ class Queue {
           await this.playSfx(p.sfx, { underVoice: true });
         }
       } catch (err) {
-        cancelNotebookClip(clip.meta);
-        if (p.kind === 'sleeve-notes') releaseSleeveNotesSegment(clip.meta);
-        this.log(err instanceof SpeechPublicationCancelled ? 'scheduler' : 'error', `Air pending voice failed: ${(err as Error).message}`);
+        this.log('error', `Air pending voice failed: ${(err as Error).message}`);
       }
     }
     void Promise.all(completions).then(results => p.onCompleted?.(results.some(Boolean)));
@@ -3935,19 +3562,13 @@ class Queue {
     // Station voice off (settings.tts.enabled). The generation sites already
     // skip writing intros, so this only catches an item queued BEFORE the
     // switch was flipped — it must not air its script now. Backstop, not the
-    // policy: nothing here spends tokens, so a plain drop is the whole job.
+    // policy: nothing here spends tokens, so a plain drop is the whole job. A
+    // line the operator asked for by hand airs anyway (a manual trigger).
+    if (!trackLineVoiceAllowed(item)) return;
     if (!item || item.introAired) return;
-    if (!autoVoiceAllowed()) {
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
-      return;
-    }
-    if (!item.introWav && !item.introScript) {
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
-      return;
-    }
+    if (!item.introWav && !item.introScript) return;
     const liveSessionKey = session.getSession()?.key ?? null;
     if (shouldDropCrossSessionLink(item, liveSessionKey)) {
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
       item.introAired = true;
       this.log('link-skip', `Dropped link speech before "${item.track?.title}" — it belongs to ${item.introSessionKey}, not the live ${liveSessionKey}`);
       this.persist();
@@ -3963,7 +3584,6 @@ class Queue {
     // drop it — silence on this one hand-off beats airing a wrong name. A
     // forward-looking line that doesn't name the previous track airs regardless.
     if (shouldDropStaleLink(item, predecessor)) {
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
       this.log('link-skip',
         `Dropped stale link before "${item.track?.title}" — it named "${item.linkPrev!.title}" but "${predecessor?.title || 'another track'}" actually played first`);
       this.persist();
@@ -3976,7 +3596,6 @@ class Queue {
     // instead — the line names a time that has been and gone. The audio is
     // already cut, so drop it.
     if (linkClockDrifted(item.linkClockAt, Date.now())) {
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
       const driftSec = Math.round((Date.now() - item.linkClockAt!) / 1000);
       this.log('link-skip',
         `Dropped link before "${item.track?.title}" — written to air at ${new Date(item.linkClockAt!).toISOString()}, `
@@ -3992,10 +3611,7 @@ class Queue {
     // script is still on the item either way, so render it now — introAired is
     // set above, so this can't double-air.
     if (!item.introWav || !existsSync(item.introWav)) {
-      if (!item.introScript) {
-        releaseSleeveNoteUse(item.sleeveClaimUseId);
-        return;
-      }
+      if (!item.introScript) return;
       // The drain may have stopped WAITING for this pre-render to protect the
       // music seam. Reuse that one TTS job at air time: local workers process
       // requests serially, so starting it again would queue a duplicate behind
@@ -4007,10 +3623,7 @@ class Queue {
       }
     }
     if (!item.introWav || !existsSync(item.introWav)) {
-      if (!item.introScript) {
-        releaseSleeveNoteUse(item.sleeveClaimUseId);
-        return;
-      }
+      if (!item.introScript) return;
       try {
         this.cleanUnrenderedIntro(item);
         if (!item.introScript) return;
@@ -4021,10 +3634,8 @@ class Queue {
           // voice when this render lands the other side of a show boundary
           // (the drain-time render pins it for exactly that reason).
           persona: item.introPersona || null,
-          sleeveClaimUseId: item.sleeveClaimUseId ?? null,
         });
       } catch (err) {
-        releaseSleeveNoteUse(item.sleeveClaimUseId);
         this.log('error', `Intro WAV render at air time failed: ${(err as Error).message}`);
         return;
       }
@@ -4054,19 +3665,15 @@ class Queue {
         meta: item.introPersona
           ? { personaId: item.introPersona.id, personaName: item.introPersona.name }
           : {},
-        track: item.track,
-        sleeveClaimUseId: item.sleeveClaimUseId ?? null,
       };
       const handoff = await this._airVoice(targetFile, item.introWav, item.introScript || '', voiceGainDb(kind, item.introPersona || undefined), {
         onQueued: q => this.onQueued(q, seg),
-        beforeWrite: () => !item.flow || (this.current?.flow?.occurrenceId === item.flow.occurrenceId && this.current?.flow?.index === 0),
       });
       // Not deferred: introAired is already set and the queue state has to reach
       // disk whether or not the words are audible yet.
       this.persist();
       this.onSpoken(handoff, seg);
     } catch (err) {
-      releaseSleeveNoteUse(item.sleeveClaimUseId);
       this.log('error', `Air intro failed: ${(err as Error).message}`);
     }
   }
@@ -4343,9 +3950,6 @@ class Queue {
       return;
     }
     this.lastSeenKey = key;
-    // Covers tracks that were already queued before collection was enabled,
-    // plus untracked auto-playlist music. This is deliberately not awaited.
-    admitSleeveNotesLater({ id: np.subsonic_id, title: np.title, artist: np.artist, album: np.album }, 'played', 1);
     // The rotate's own clock (#1619). Only real MUSIC boundaries reach here —
     // a bed branches before now-playing.json's title gate and a jingle is
     // captured outside music_meta entirely — so this counts the same thing
@@ -4477,15 +4081,6 @@ class Queue {
       this.log('playing', `${np.title} — ${np.artist}`, { source: 'auto' });
     }
 
-    const outgoingFlow = this.history[0]?.flow;
-    if (outgoingFlow && outgoingFlow.occurrenceId !== this.current?.flow?.occurrenceId) {
-      const interrupted = this.upcoming.some(item => item.flow?.occurrenceId === outgoingFlow.occurrenceId);
-      this.upcoming = this.upcoming.filter(item => item.flow?.occurrenceId !== outgoingFlow.occurrenceId);
-      if (interrupted) this.log('scheduler', `Sub/Flow “${outgoingFlow.label}” was interrupted; cancelled its remaining members.`);
-      setTimeout(() => { void discardFlow(outgoingFlow).catch(() => {}); }, 30_000).unref();
-    }
-    expectFlowPlayback(!!this.current?.flow || this.upcoming.some(item => item.flow));
-
     // Every real music start can confirm an overdue handoff, including an
     // untracked auto-playlist fallback. The runner waits for a tracked intro's
     // complete publication before taking the voice chain behind it.
@@ -4547,9 +4142,8 @@ class Queue {
       transitionAsk,
       transitionDrops,
     });
-
-    // Airplay may select eligible Sub/Beats work, but preparation remains in a
-    // later Library Demucs scan and never holds the now-playing watcher.
+    // Airplay can select eligible Sub/Beats work, but all preparation remains
+    // in a later Library Demucs scan and never holds the now-playing watcher.
     queueSubbeatsFromAirplay(this.current.track.id || null);
 
     // `sourceTrackId` is the id from the music backend (Subsonic/Navidrome, or
@@ -4695,7 +4289,6 @@ class Queue {
   // show, requests exempt), so the pick look-ahead and the drain agree on how
   // long the anchor plays. Null when its length is unknown.
   heldPlayableSec(item: QueueItem): number | null {
-    if (item.flow) return Number(item.track.duration) || null;
     const trim = silenceTrim.resolveSilenceTrim(item.track);
     return heldAnchorPlayableSec({
       durationSec: knownDurationSec(item.track),
@@ -5008,9 +4601,7 @@ class Queue {
   // next poll (up to 1s after writeHandoff). An empty dj_queue is handled
   // separately — see the consecutive-empty-reads guard below.
   async reconcileWithDjQueue() {
-    // All companion rows are represented by one mixer request. Never treat
-    // their absence from dj_queue as independent failed handoffs.
-    const sentItems = this.upcoming.filter(i => i.sent && !i.flow);
+    const sentItems = this.upcoming.filter(i => i.sent);
     if (sentItems.length === 0) {
       this._emptyDjQueueStreak = 0;
       return;
@@ -5033,7 +4624,7 @@ class Queue {
         this._emptyDjQueueStreak++;
         if (this._emptyDjQueueStreak >= EMPTY_DJ_QUEUE_CLEAR_THRESHOLD) {
           const cleared = sentItems.length;
-          this.upcoming = this.upcoming.filter(i => !i.sent || i.flow);
+          this.upcoming = this.upcoming.filter(i => !i.sent);
           this._emptyDjQueueStreak = 0;
           this.log('scheduler',
             `Cleared ${cleared} stale queue item(s) — dj_queue reported empty for ${EMPTY_DJ_QUEUE_CLEAR_THRESHOLD} consecutive checks (Liquidsoap restarted or queue desynced)`);
@@ -5055,7 +4646,6 @@ class Queue {
       // Pass 2: drop only items that were confirmed-present and are now gone.
       const beforeCount = this.upcoming.length;
       this.upcoming = this.upcoming.filter(item => {
-        if (item.flow) return true;
         if (!item.sent) return true;
         if (!item.confirmedInLiquidsoap) return true;  // grace period — keep
         const id = item.track?.id;
@@ -5072,29 +4662,6 @@ class Queue {
     } catch (err) {
       this.log('error', `reconcileWithDjQueue failed: ${(err as Error).message}`);
     }
-  }
-
-  _flowReconciling = false;
-  async reconcileFlowPlayback() {
-    if (this._flowReconciling) return;
-    const item = this.upcoming.find(candidate => candidate.flow && candidate.sent)
-      ?? (this.current?.flow ? this.current : null);
-    const flow = item?.flow;
-    if (!flow || !flow.handedAt || Date.now() - flow.handedAt < 8000) return;
-    this._flowReconciling = true;
-    try {
-      const status = await liquidsoapControl.flowPlaybackStatus();
-      if (status.pending === flow.occurrenceId || status.playing === flow.occurrenceId || flowHandoffPresent(flow.occurrenceId)) return;
-      // A mixer restart or failed prepared request never replays completed
-      // members. Cancel its remainder and let the ordinary fallback cover it.
-      this.upcoming = this.upcoming.filter(candidate => candidate.flow?.occurrenceId !== flow.occurrenceId);
-      if (this.current?.flow?.occurrenceId === flow.occurrenceId) delete this.current.flow;
-      expectFlowPlayback(false);
-      await this.persistNow();
-      await discardFlow(flow);
-      this.log('error', `Sub/Flow “${flow.label}” is no longer in the mixer; cancelled without replaying its members.`);
-    } catch { /* An unavailable status is not evidence that playback stopped. */ }
-    finally { this._flowReconciling = false; }
   }
 
   // Remove a not-yet-aired track from the upcoming queue (operator cancel).
@@ -5185,24 +4752,6 @@ class Queue {
   // both stem cascades stay here, in one place, for both callers.
   async removeUpcomingItem(item: QueueItem, reason = 'operator'): Promise<{ ok: true } | { ok: false; reason: 'not-queued' | 'already-playing' }> {
     if (!this.upcoming.includes(item)) return { ok: false, reason: 'not-queued' };
-    if (item.flow) {
-      const flow = item.flow;
-      if (this.current?.flow?.occurrenceId === flow.occurrenceId) return { ok: false, reason: 'already-playing' };
-      if (item.sent) {
-        const waiting = await liquidsoapControl.sendCommand(`subflow.cancel ${flow.occurrenceId}`).catch(() => '');
-        if (waiting.trim() !== 'OK') {
-        const { rid } = await liquidsoapControl.resolveDjQueueRidWithBed(flow.members[0]!.id);
-        if (!rid || !await liquidsoapControl.removeFromDjQueue(rid)) return { ok: false, reason: 'already-playing' };
-        }
-      }
-      this.upcoming = this.upcoming.filter(candidate => candidate.flow?.occurrenceId !== flow.occurrenceId);
-      expectFlowPlayback(!!this.current?.flow);
-      await this.persistNow();
-      await discardFlow(flow);
-      this.log('scheduler', `${reason} cancelled Sub/Flow “${flow.label}” as a whole`);
-      void this.drainToLiquidsoap();
-      return { ok: true };
-    }
     const trackId = item.track?.id || '';
     await this.discardUnpublishedBlend(item);
 
@@ -5280,10 +4829,82 @@ class Queue {
 
     const idx = this.upcoming.indexOf(item);
     if (idx !== -1) this.upcoming.splice(idx, 1);
-    releaseSleeveNoteUse(item.sleeveClaimUseId);
     this.log('scheduler', `${reason} removed from queue: ${item.track.title} — ${item.track.artist}`);
     this.persist();
     return { ok: true };
+  }
+
+  // Drop the picks the DJ has queued so a change the operator just made applies
+  // now, not after them ("start now" on a steer). Listener requests and operator
+  // queueing stay. A pick Liquidsoap has already taken plays out, as with a
+  // block cancel, and a pick still running lands after this returns: the caller
+  // is told so. Then the same empty-slot gate onTrackStarted asks, since the
+  // queue may now be empty: closed, the coast takes over (#1975).
+  async dropQueuedPicks(reason = 'operator'): Promise<{ dropped: number; kept: number; pickInFlight: boolean }> {
+    let dropped = 0;
+    let kept = 0;
+    for (const item of this.upcoming.filter(startNowDrops)) {
+      const result = await this.removeUpcomingItem(item, reason);
+      if (result.ok) dropped++;
+      else kept++;
+    }
+    const pickInFlight = this.pickerBusy;
+    if (this.upcoming.length === 0 && !this.pickerBusy) {
+      const closed = this.pickGateClosed();
+      if (closed) this.handOverToCoast(closed);
+      else this.runPickCycle({ isAutonomous: true });
+    }
+    return { dropped, kept, pickInFlight };
+  }
+
+  // The track a steer's first opening track will follow: the queued tail, less
+  // what "start now" is about to drop, else the track on air. A pick the mixer
+  // has already taken cannot be dropped and plays first.
+  tailTrack(startNow: boolean) {
+    const kept = startNow ? this.upcoming.filter(startNowKeeps) : this.upcoming;
+    return kept.at(-1)?.track ?? this.current?.track ?? null;
+  }
+
+  // Seconds until a track queued now would start: behind the track on air and
+  // everything queued, less what "start now" is about to drop. Null when a
+  // length ahead of it is unknown; 0 with nothing on air or queued.
+  secondsUntilQueuedTail(startNow: boolean): number | null {
+    let sec = this.current ? this.remainingSecOnAir() : 0;
+    if (sec == null) return null;
+    for (const item of startNow ? this.upcoming.filter(startNowKeeps) : this.upcoming) {
+      const playable = this.playableSecOf(item);
+      if (playable == null) return null;
+      sec += playable + this.ownHiddenDelaySec(item);
+    }
+    return sec;
+  }
+
+  // A steer's opening tracks that have not aired, for the dashboard.
+  steerQueued(key: string): QueueItem[] {
+    return this.upcoming.filter(i => i.steer === key);
+  }
+
+  // Opening tracks whose steer is no longer the one in force: a steer that ran
+  // out across a restart, or one replaced while its tracks were being queued.
+  async removeOrphanSteerQueued(activeKey: string | null): Promise<number> {
+    let removed = 0;
+    for (const item of this.upcoming.filter(i => i.steer && i.steer !== STEER_ONCE_KEY && i.steer !== activeKey)) {
+      if ((await this.removeUpcomingItem(item, 'steer ended —')).ok) removed++;
+    }
+    return removed;
+  }
+
+  // Take a steer's un-aired opening tracks with it when it is cleared, runs out
+  // or is replaced. One already handed to the mixer plays out, as with a block.
+  async removeSteerQueued(key: string): Promise<{ removed: number; kept: number }> {
+    let removed = 0;
+    let kept = 0;
+    for (const item of this.steerQueued(key)) {
+      const result = await this.removeUpcomingItem(item, 'steer ended —');
+      if (result.ok) removed++;
+      else kept++;
+    }
+    return { removed, kept };
   }
 
   // Cancel what remains of an operator block (#1622 FR 4) — the inverse of the
@@ -5750,11 +5371,7 @@ class Queue {
       : BED_MARKER_FRESH_MS;
     if (!Number.isFinite(startedMs) || markerAgeMs < 0 || markerAgeMs > markerWindowMs) return;
     p.pauseReleasing = true;
-    const clips = p.clips.filter(c => {
-      const exists=existsSync(c.wavPath);
-      if (!exists && p.kind==='sleeve-notes') releaseSleeveNotesSegment(c.meta);
-      return exists;
-    });
+    const clips = p.clips.filter(c => existsSync(c.wavPath));
     if (!clips.length) {
       this._pendingVoice = null;
       p.onCompleted?.(false);
@@ -5821,7 +5438,6 @@ class Queue {
             {
               voiceId: deliveryId,
               pauseDeliveryId: deliveryId,
-              beforeWrite: () => lookAheadStampsCurrent(clip.meta.lookAheadStamps),
               airMarkerPromise: started,
               onQueued: q => this.onQueued(q, seg),
             },
@@ -5878,7 +5494,6 @@ class Queue {
       this._nowPlaying = await this.readNowPlayingFromDisk();
       this._nowPlayingFresh = true;
       this.onTrackStarted(this._nowPlaying);
-      void this.reconcileFlowPlayback();
       // Beds ride the same tick rather than a poller of their own — a bed's
       // start is a track-boundary event like any other, and the 1.5s cadence is
       // already inside the head budget bed-policy sizes the bed with.
@@ -5916,7 +5531,6 @@ class Queue {
       // its own index/size rather than being counted here, so a block half
       // played still reads "9 of 11" instead of shrinking with the queue.
       block: i.block || undefined,
-      flow: i.flow ? { id: i.flow.occurrenceId, label: i.flow.label, index: i.flow.index, size: i.flow.members.length } : undefined,
       // The track arrives via a pre-rendered stem blend rather than a plain
       // crossfade (#1257 — the admin queue badges the seam type). Stamped at
       // pair drain, cleared if the clip is pulled with a cancel, so it's
@@ -6001,9 +5615,6 @@ export const queue = new Queue();
 settings.onCacheChange(() => {
   session.refreshHost();
   queue.invalidateObsoleteHostSpeech();
-  if(!settings.get().djBehaviour.extendedSleeveNotes&&queue.pendingVoiceTalk()?.kind==='sleeve-notes'){
-    queue.dropPendingVoice('Extended Sleeve Notes was disabled');
-  }
 });
 
 // Handing the rotate to the controller starts a clean N-track cycle (#1619).
