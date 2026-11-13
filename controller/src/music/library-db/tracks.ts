@@ -36,6 +36,18 @@ export function trackExists(id: string): boolean {
   return requireDb().prepare('SELECT 1 FROM tracks WHERE id = ?').get(id) !== undefined;
 }
 
+// Put one played track back into the existing stem-analysis scope. The cache
+// layer decides whether it actually has an old window; this write only resets
+// the attempt marker that needsStemsIds() uses for resumable backfill.
+export function queueStemUpgrade(id: string): boolean {
+  return requireDb()
+    .prepare(`UPDATE tracks
+                 SET stems_at = NULL, stems_tail_misses = NULL,
+                     analyze_error = NULL, analyze_failed_at = NULL, analyze_fail_count = NULL
+               WHERE id = ? AND stems_at IS NOT NULL`)
+    .run(id).changes > 0;
+}
+
 // Every track's name fields and length, for matching a stored snapshot back to
 // its row after a file comes back under a new id (music/heart-follow.ts). A full
 // scan, about a second on a 70k-track library: run it only when something is

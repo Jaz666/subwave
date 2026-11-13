@@ -214,6 +214,21 @@ async def test_capability_aggregation_is_conservative():
     assert pool.capability("audio_embedding_capable", "audio_embedding") is False
 
 
+async def test_stem_generation_date_requires_every_ready_worker():
+    first = FakeWorker("first")
+    second = FakeWorker("second")
+    first.ready_meta["stem_generation_date"] = "2026-11-13"
+    second.ready_meta["stem_generation_date"] = "2026-11-12"
+    pool = server.AnalyzerWorkerPool([first, second])
+    assert pool.generation_date("stem_generation_date") == "2026-11-12"
+    second.ready_meta.pop("stem_generation_date")
+    assert pool.generation_date("stem_generation_date") is None
+    second.ready = False
+    assert pool.generation_date("stem_generation_date") == "2026-11-13"
+    first.ready = False
+    assert pool.generation_date("stem_generation_date") is None
+
+
 async def test_latched_capability_error_does_not_fan_out():
     healthy = FakeWorker("healthy")
     unlucky = FakeWorker("unlucky")
@@ -581,6 +596,7 @@ async def main():
     await test_lean_request_starts_the_recycle_clock()
     await test_no_worker_ready_and_none_recycling_fails_fast()
     await test_capability_aggregation_is_conservative()
+    await test_stem_generation_date_requires_every_ready_worker()
     await test_latched_capability_error_does_not_fan_out()
     await test_path_contract()
     await test_facet_contract()

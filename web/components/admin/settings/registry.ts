@@ -48,7 +48,7 @@ export const LLM_PROVIDER_FORM_KEYS = [
 // stem cache under transitions; it saves to `audio.*`). One list, read by the
 // section's dirty check and its SaveBar's error scope.
 export const STEM_FORM_KEYS = [
-  'transitions.pairDrain', 'transitions.stemBlends', 'transitions.pickTimeStems',
+  'transitions.pairDrain', 'transitions.stemBlends', 'transitions.pickTimeStems', 'transitions.pickTimeStemsUpgrade',
   'transitions.stemCache', 'transitions.stemCacheGb',
 ] as const;
 

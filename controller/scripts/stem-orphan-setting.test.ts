@@ -44,3 +44,11 @@ test('a malformed stored value reads as off, never as on', async () => {
     assert.equal(cold.audio.stemOrphanPurgeEnabled, false, JSON.stringify(bad));
   }
 });
+
+test('the older-stem upgrade opt-in stays enabled across a controller restart', async () => {
+  await coldLoadSettings({});
+  await settings.update({ transitions: { pickTimeStemsUpgrade: true } });
+  setCache(null);
+  await settings.load();
+  assert.equal(settings.get().transitions.pickTimeStemsUpgrade, true);
+});

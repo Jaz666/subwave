@@ -23,6 +23,7 @@ export type PickStemsVeto =
   // Analyzer
   | 'no-facets'      // the backend predates the facet protocol (or is unknown)
   | 'no-demucs'      // the light image, or Demucs failed to load
+  | 'old-analyzer'   // enabled upgrades need the current stem-generation worker
   // Track
   | 'no-grid'        // no bar grid on either side: a blend would reject its stems
   | 'cached'         // every window its grids can use is already on disk
@@ -80,6 +81,9 @@ export interface PickStemsTrackFacts {
   // What the cache already holds (stemCache.hasWindow).
   hasHead: boolean;
   hasTail: boolean;
+  headNeedsUpgrade?: boolean;
+  tailNeedsUpgrade?: boolean;
+  upgradeStems?: boolean;
 }
 
 export interface PickStemsNeed {
@@ -92,7 +96,10 @@ export interface PickStemsNeed {
 // analysed: this never measures a track at pick time, it only separates.
 export function trackNeed(t: PickStemsTrackFacts): PickStemsNeed | PickStemsVeto {
   if (seamSides(t) === 0) return 'no-grid';
-  const need = { head: t.hasHeadGrid && !t.hasHead, tail: t.hasTailGrid && !t.hasTail };
+  const need = {
+    head: t.hasHeadGrid && (!t.hasHead || (t.upgradeStems === true && t.headNeedsUpgrade === true)),
+    tail: t.hasTailGrid && (!t.hasTail || (t.upgradeStems === true && t.tailNeedsUpgrade === true)),
+  };
   return need.head || need.tail ? need : 'cached';
 }
 
@@ -111,7 +118,8 @@ export function afterDownload(need: PickStemsNeed, complete: boolean): PickStems
 // about half the request's Demucs time, spent rewriting stems on disk. A head
 // to fill asks for both, as before (undefined: the field is not sent), since
 // the worker only ever reaches this with a window it can use missing.
-export function stemsWindowsFor(need: PickStemsNeed): ['tail'] | undefined {
+export function stemsWindowsFor(need: PickStemsNeed, upgradeStems = false): ['head'] | ['tail'] | ['head', 'tail'] | undefined {
+  if (upgradeStems) return need.head && need.tail ? ['head', 'tail'] : need.head ? ['head'] : ['tail'];
   return !need.head && need.tail ? ['tail'] : undefined;
 }
 
@@ -281,7 +289,7 @@ export function renderStandsDown(r: {
 // saved setting). One booth-log line when one first applies or changes, never
 // one per pick. A separation that reaches the worker, or the feature switched
 // off, clears it, so the next onset is reported again.
-export type PickStemsNotice = 'budget-full' | 'no-demucs' | 'no-facets' | 'quiet-only-env';
+export type PickStemsNotice = 'budget-full' | 'no-demucs' | 'no-facets' | 'quiet-only-env' | 'old-analyzer';
 
 export const NOTICE_MESSAGES: Record<PickStemsNotice, string> = {
   'budget-full': 'pick-time stems: the stem cache is past its budget plus the pick-time allowance, '
@@ -292,6 +300,8 @@ export const NOTICE_MESSAGES: Record<PickStemsNotice, string> = {
   // protocol and for no analyzer answering at all, so name both.
   'no-facets': 'pick-time stems: on, but the analyzer is not answering or predates per-facet requests, '
     + 'so nothing is separated; check that it is running and up to date',
+  'old-analyzer': 'pick-time stem upgrades are on, but the analyzer does not report the current stem-generation version, '
+    + 'so cached stems are left alone; update the analyzer image',
   'quiet-only-env': 'pick-time stems: on, but ANALYZE_QUIET_ONLY is set, and quiet-only analysis switches '
     + 'pick-time separation off',
 };
@@ -305,6 +315,7 @@ function noticeOf(step: Extract<PickStemsStep, { ran: false }>): PickStemsNotice
     case 'budget-full': return 'budget-full';
     case 'no-demucs': return 'no-demucs';
     case 'no-facets': return 'no-facets';
+    case 'old-analyzer': return 'old-analyzer';
     case 'quiet-only': return step.quietOnlyFromEnv ? 'quiet-only-env' : null;
     default: return null;
   }

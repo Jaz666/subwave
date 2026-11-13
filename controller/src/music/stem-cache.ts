@@ -8,7 +8,9 @@ import * as settings from '../settings.js';
 import * as db from './library-db.js';
 import * as likes from '../broadcast/likes.js';
 import { evictQueuedLast, stemEvictionOrder, UNKNOWN_TRACK_PRIORITY } from './stem-priority.js';
-import { HEAD_META, TAIL_META, UNKNOWN_STAMP, parseStemStamp, windowUsable, type StemStamp } from './stem-provenance.js';
+import {
+  HEAD_META, STEM_UPGRADE_CUTOFF, TAIL_META, UNKNOWN_STAMP, parseStemStamp, windowUsable, type StemStamp,
+} from './stem-provenance.js';
 import { mapPool } from '../util/async-pool.js';
 import type { StemScanOpts } from './library-db.js';
 import { writeFileAtomic } from '../util/atomic-file.js';
@@ -113,6 +115,20 @@ async function readStemStamp(trackId: string, window: StemWindow): Promise<StemS
     return parseStemStamp(JSON.parse(text)) ?? 'unreadable';
   } catch {
     return 'unreadable';
+  }
+}
+
+// Old audio stays valid for normal playback. Pick Time uses this only when the
+// operator opts into gradual upgrades; a missing/old version then means the
+// window is eligible for replacement when that track is picked.
+export async function windowNeedsUpgrade(trackId: string, window: StemWindow): Promise<boolean> {
+  try {
+    const raw = JSON.parse(await readFile(
+      path.join(dirFor(trackId), window === 'head' ? HEAD_META : TAIL_META), 'utf8',
+    )) as Record<string, unknown>;
+    return typeof raw.stem_generation_date !== 'string' || raw.stem_generation_date < STEM_UPGRADE_CUTOFF;
+  } catch {
+    return true;
   }
 }
 

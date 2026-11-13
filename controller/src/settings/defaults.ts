@@ -718,6 +718,9 @@ export const DEFAULTS = {
     // until its load on the mixer has been measured: it runs Demucs during
     // the broadcast, on the same worker as the blend render.
     pickTimeStems: false,
+    // Refresh stem windows written by an older separator/windowing version
+    // as those tracks are picked; never widens the library backfill.
+    pickTimeStemsUpgrade: false,
     // Fade curve for PLAIN song-to-song crossfades: false = linear (two
     // different songs dip ~3 dB mid-fade), true = equal-power (cos out, sin^1.5
     // in, level held within 0.7 dB). Effects, stem-blend clip seams, jingles

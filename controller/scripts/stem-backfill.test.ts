@@ -62,6 +62,14 @@ await test('a pass that cached stems drops the track from the scope', () => {
   assert.equal(db.stemsCachedCount(), 1);
 });
 
+await test('an upgrade request returns one attempted track to the existing stem scope', () => {
+  assert.equal(db.queueStemUpgrade('t1'), true);
+  assert.deepEqual(scope(), ['t1', 't2', 't3']);
+  assert.equal(db.queueStemUpgrade('t1'), false, 'already queued rows are left alone');
+  db.upsertTrackAnalysis('t1', { bpm: 120, musicalKey: 'Am', stemsAttempted: true });
+  assert.deepEqual(scope(), ['t2', 't3']);
+});
+
 await test('a MISS is stamped too, so an unstemmable track never churns', () => {
   // The worker reached the stem-writing step and failed for this track
   // (analyze.ts passes stemsAttempted for stemsCached === false as well).

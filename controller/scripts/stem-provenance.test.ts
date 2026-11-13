@@ -14,7 +14,7 @@
 // Run: `npm test -- stem-provenance`.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test, { after } from 'node:test';
@@ -98,6 +98,27 @@ test('hasWindow: a dir from before the stamps reads as it always did', async () 
   const noMeta = trackDir({});
   assert.equal(await stemCache.hasWindow(noMeta, 'tail'), false);
   assert.equal(await stemCache.hasWindow(noMeta, 'head'), true);
+});
+
+test('windowNeedsUpgrade: legacy and pre-cutoff windows are old; current-generation windows are not', async () => {
+  const old = trackDir({
+    head: { ...headMeta(5_000_000), stem_generation_date: '2020-01-01' },
+    tail: { ...tailMeta(5_000_000), stem_generation_date: '2020-01-01' },
+  });
+  assert.equal(await stemCache.windowNeedsUpgrade(old, 'head'), true);
+  assert.equal(await stemCache.windowNeedsUpgrade(old, 'tail'), true);
+  const current = trackDir({
+    head: { ...headMeta(5_000_000), stem_generation_date: provenance.STEM_UPGRADE_CUTOFF },
+    tail: { ...tailMeta(5_000_000), stem_generation_date: provenance.STEM_UPGRADE_CUTOFF },
+  });
+  assert.equal(await stemCache.windowNeedsUpgrade(current, 'head'), false);
+  assert.equal(await stemCache.windowNeedsUpgrade(current, 'tail'), false);
+  assert.equal(await stemCache.windowNeedsUpgrade(trackDir({}), 'head'), true, 'legacy stamps are eligible');
+});
+
+test('the analyzer generation date mirrors the controller cutoff', () => {
+  const worker = readFileSync(new URL('../scripts/analyze_worker.py', import.meta.url), 'utf8');
+  assert.match(worker, new RegExp(`^STEM_GENERATION_DATE = "${provenance.STEM_UPGRADE_CUTOFF}"$`, 'm'));
 });
 
 test('hasWindow: one recording\'s head beside another\'s tail is a miss both ways (#2238)', async () => {

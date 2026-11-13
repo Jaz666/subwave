@@ -88,7 +88,8 @@ def t_tail_meta():
     p = os.path.join(d, "tail-meta.json")
     assert mode(p) == 0o666, oct(mode(p))
     with open(p) as f:
-        assert json.load(f) == {"tail_start_sec": 181.25, "duration_sec": 200.0, "file_size": None}
+        assert json.load(f) == {"tail_start_sec": 181.25, "duration_sec": 200.0, "file_size": None,
+                                "stem_generation_date": aw.STEM_GENERATION_DATE}
 
 
 def t_head_meta():
@@ -99,7 +100,8 @@ def t_head_meta():
     p = os.path.join(d, "head-meta.json")
     assert mode(p) == 0o666, oct(mode(p))
     with open(p) as f:
-        assert json.load(f) == {"file_size": 1234, "duration_sec": 200.0}
+        assert json.load(f) == {"file_size": 1234, "duration_sec": 200.0,
+                                "stem_generation_date": aw.STEM_GENERATION_DATE}
 
 
 def t_existing_dir_reopened():

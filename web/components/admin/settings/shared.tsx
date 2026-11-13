@@ -308,6 +308,7 @@ export interface TransitionsForm {
   pairDrain: boolean;   // hold picks until the successor is known (#749 fix)
   stemBlends: boolean;  // pre-rendered stem-blend seams (needs pairDrain + stem cache)
   pickTimeStems: boolean;  // separate a held pick's missing stems while it waits (#2197)
+  pickTimeStemsUpgrade: boolean;  // replace older stem windows as tracks are picked
   equalPowerCrossfade: boolean;  // plain crossfade curve: false = linear, true = equal-power (mixer restart)
   stemCache: boolean;   // settings.audio.stemCache — persist Demucs stems during analysis
   stemCacheGb: string;  // settings.audio.stemCacheGb — byte budget the LRU sweep enforces
@@ -453,6 +454,7 @@ export interface SettingsData {
       pairDrain?: boolean;
       stemBlends?: boolean;
       pickTimeStems?: boolean;
+      pickTimeStemsUpgrade?: boolean;
       equalPowerCrossfade?: boolean;
       effects?: Partial<Record<TransitionEffect, boolean>>;
     };

@@ -547,6 +547,16 @@ class AnalyzerWorkerPool:
         ]
         return errors[0] if errors else None
 
+    def generation_date(self, meta_key: str) -> str | None:
+        """Oldest ready-worker generation date, or unknown if any member is old."""
+        ready = self.ready_workers
+        if not ready:
+            return None
+        dates = [worker.ready_meta.get(meta_key) for worker in ready]
+        if any(not isinstance(v, str) or len(v) != 10 for v in dates):
+            return None
+        return min(dates)
+
     async def _acquire_worker(self) -> StdioWorker:
         """Reserve one selectable member, waiting while the pool can recover.
 
@@ -736,6 +746,9 @@ async def health():
         # older workers never emit the key, so this stays None and the
         # controller keeps sending flat requests to them.
         "analyze_facets_capable": analyzer_pool.capability("facets_capable", "facets"),
+        # Require every selectable member to report its stem generation date:
+        # mixed or old pools must not repeatedly rewrite windows without stamping them.
+        "analyze_stem_generation_date": analyzer_pool.generation_date("stem_generation_date"),
         # Whole-file facets (loudness v2 over the whole file, silence edges and
         # the decoded length): needs ffmpeg in the worker image. None on older
         # workers, which never emit the key.
