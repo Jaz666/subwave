@@ -19,13 +19,27 @@ is a runtime change, not an improvement to Sub/Beats detection accuracy.
 The owner accepted the measured additional memory as a reasonable tradeoff for
 faster processing. Production adoption still needs complete preparation/reuse
 and first-use latency checks. No runtime code or station configuration changed
-in this assessment. The owner has asked to weigh the upstream routes before
-choosing one; the recommendation below is not an agreed contribution decision.
+in this assessment. The owner subsequently chose to contribute the regular-stem
+foundation to #2244 first, so it can merge independently and provide learned
+library grids before the larger Sub/Beats feature. Adapting full Sub/Beats
+preparation to that shared engine remains the next stage.
 
 Keep #2244 open while this route is pursued. Absorbing its work into the eventual
 Sub/Beats contribution is a viable fallback, but proposing closure as superseded
 would be accurate only after regular-stem grids and the PR's deployment,
 fallback, evaluation and compatibility work are actually covered there.
+
+## Contribution status
+
+The agreed first stage is now proposed in upstream
+[PR #2341](https://github.com/perminder-klair/subwave/pull/2341), targeting
+#2244's feature branch. It implements the shared ONNX engine, independent tail
+grid inference and persisted model/source/window provenance discussed below,
+with local Librosa/interval evidence used only as diagnostics. Its real-model,
+legacy-output, persistence and regression checks are recorded in that contribution.
+The assessment and route comparison below retain their original findings;
+full Sub/Beats ONNX adaptation and complete preparation/cache validation remain
+the next stage. This contribution does not replace or close #2244.
 
 ## Local experiment
 
@@ -225,7 +239,7 @@ The current implementation has not yet reached that point. A long feature PR
 would otherwise delay a useful standalone regular-stem fix and duplicate its
 inference engine.
 
-### Upstream route comparison — decision pending
+### Upstream route comparison
 
 | Consideration | Contribute to #2244 | Include the regular-grid feature in the eventual Sub/Beats PR |
 | --- | --- | --- |
