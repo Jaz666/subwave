@@ -79,6 +79,40 @@ incoming stems around it. A louder borrowed loop alone cannot restore the
 removed ending. Compare that experiment against this unchanged upstream baseline;
 live Mixing Desk fixes remain deferred.
 
+### Known-positive Sub/Beats pair rejected as a regular blend
+
+The owner tested Binary Finary — 1998 (Matt Darey mix) → Push — Universal
+Nation (Ferry Corsten 99 remix) and judged the regular Stem Blend “Terrible”.
+The same recordings had accepted sustained-rhythm Sub/Beats references at
+16 and 32 bars. Do not treat that earlier approval as approval of this renderer
+or assume that it establishes suitability of a different incoming source window.
+
+The uploaded 24.190-second complete audition matched the regular harness sample
+for sample at inferred/verified station gains −4.3 / −5.1 dB. Its transition clip
+lasts 12.190 seconds, following six seconds of outgoing context:
+
+- Replacement begins at outgoing source 230.825 seconds, 2.120 seconds before
+  decoded EOF (232.945 seconds), and removes the real melodic/bass ending over
+  the 0.3-second joining fade.
+- The borrowed loop does not begin until incoming grid zero at 1.927 seconds.
+  After the joining fade, approximately 1.627 seconds remain without either
+  outgoing drums or incoming drums in the mix. Incoming bass/other/vocals are
+  present; this is a gap in the intended drum carry, not digital silence.
+- The loop itself is healthy: source RMS −14.05 dBFS, with its first three
+  mixed bars approximately +0.5 dB relative to the incoming non-drum music.
+  No extra peak reduction is applied. The existing harness reports no warnings,
+  so its quiet-loop checks alone cannot identify this musical failure.
+- Incoming drums enter at source 8.777 seconds. The accepted annotated
+  Sub/Beats reference instead plans around the later 68-second incoming release,
+  sustaining outgoing rhythm through that opening. These are different musical
+  windows as well as different envelopes.
+
+This comparison exposes a structural continuity fault even with audible borrowed
+drums. The next experiment needs continuous rhythm through the incoming pickup
+and preservation of the real outgoing ending, alongside musical entry planning.
+No renderer, station settings, track qualification or live-display changes were
+made in response to this listening result.
+
 ## Browser harness
 
 Open **Sub/Beats → Preview → Regular Stem Blend test**, or
