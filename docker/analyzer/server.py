@@ -1092,6 +1092,36 @@ async def render_transition(req: RenderTransitionRequest):
     }
 
 
+class StemBlendPreviewRequest(BaseModel):
+    out: dict[str, Any]
+    in_: dict[str, Any] = Field(alias="in")
+    state_dir: str
+    mode: Literal['mix', 'clip', 'outgoing', 'incoming'] = 'mix'
+
+    model_config = {"populate_by_name": True}
+
+
+@app.post("/stem-blend-preview")
+async def stem_blend_preview(req: StemBlendPreviewRequest):
+    from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
+    import shutil
+    from pathlib import Path
+
+    msg = await analyzer_pool.request({"id": "1", "op": "preview_stem_blend",
+                                       **req.model_dump(by_alias=True)})
+    if not msg.get('ok'):
+        raise HTTPException(422, msg.get('error') or 'The Stem Blend audition could not be prepared.')
+    path = Path(msg['stem_blend_preview'])
+    root = Path(req.state_dir) / 'stem-blend-previews'
+    if path.parent.parent != root or not path.parent.name.startswith('audition-') or path.name != 'preview.wav':
+        raise HTTPException(502, 'The analyzer returned an invalid audition path.')
+    return FileResponse(path, media_type='audio/wav',
+                        headers={'Cache-Control': 'no-store',
+                                 'X-Stem-Blend-Report': json.dumps(msg['stem_blend_report'], separators=(',', ':'))},
+                        background=BackgroundTask(shutil.rmtree, path.parent, ignore_errors=True))
+
+
 class EmbedTextRequest(BaseModel):
     # 1-64 non-empty strings (the worker enforces the same envelope). One
     # request = one worker round-trip, so mood-vocabulary batches go in one call.

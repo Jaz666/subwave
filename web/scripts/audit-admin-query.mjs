@@ -24,6 +24,7 @@ const defaultOwnershipRegistry = [
       { callee: 'adminJson', method: 'GET', path: '/now-playing', signal: 'signal' },
       { callee: 'adminJson', method: 'GET', path: '/state', signal: 'signal' },
       { callee: 'adminJson', method: 'GET', path: '/session', signal: 'signal' },
+      { callee: 'adminJson', method: 'GET', path: '/stem-cache/coverage?ids=${}', signal: 'signal' },
     ],
     consumers: [{ file: 'DashPanel.tsx', owner: 'useAdminQuery', property: 'request', count: 1 }],
   },
@@ -229,6 +230,10 @@ const allowed = new Map([
   ])],
   ['settings/shared.tsx', new Map([
     ['protected-audio-preview', { callee: 'adminResponse', method: 'GET', path: /^path$/ }],
+  ])],
+  // Operator-rendered audition audio, not retained server-state reads.
+  ['subbeats/StemBlendTest.tsx', new Map([
+    ['stem-blend-audition', { callee: 'adminResponse', method: 'POST', path: /^\/stems\/blend-preview$/ }],
   ])],
   // One-shot original audio, fetched only when Listen is pressed.
   ['subbeats/CueAudition.tsx', new Map([

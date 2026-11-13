@@ -220,7 +220,7 @@ test('the Stems save and the Broadcast save post disjoint fields, so neither com
   const form = settingsForm({});
   const stems = stemsSavePayload(form).patch;
   const danger = dangerSavePayload(form).patch;
-  assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'pickTimeStems', 'stemBlends', 'subbeatsLive']);
+  assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'pickTimeStems', 'stemBlends', 'subbeatsLive', 'subbeatsOnAirCaching']);
   assert.deepEqual(Object.keys(stems.audio).sort(), ['stemCache', 'stemCacheGb']);
   assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects', 'equalPowerCrossfade']);
   assert.equal('audio' in danger, false);

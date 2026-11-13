@@ -356,6 +356,7 @@ export default function SubbeatsPanel({ page = 'explore' }: { page?: SubbeatsPag
     {page === 'preview' && <section className="min-w-0 border border-ink p-4" aria-labelledby="subbeats-preview">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="subbeats-preview" className="font-display text-xl font-bold">Preview a transition</h2>
+        <Link href="/admin/library/stem-blend-test" className="inline-flex min-h-11 items-center border border-ink px-3 py-2 text-sm underline underline-offset-4">Regular Stem Blend test</Link>
         <Link href="/admin/library/subbeats/wavesurfer-test" className="border border-ink px-3 py-2 text-[10px] font-bold tracking-[0.15em] uppercase hover:bg-ink/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">WaveSurfer test</Link>
       </div>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">Choose any two prepared tracks. Find Suitable Transition chooses cue points automatically and uses the live picker’s automatic mixing style; if no Sub/Beat plan fits, it previews the regular Subwave crossfade. Play selected mix uses the markers and style chosen below.</p>

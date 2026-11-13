@@ -28,6 +28,7 @@ const SUITES = [
   'subbeats_structure_test.py', // full-recording structural candidate evidence and independent cache
   'subbeats_preview_test.py', // isolated preview planning, coverage and cached-level restoration
   'subbeats_prepare_test.py', // isolated Sub/Beats publication, reuse, budget and source coverage
+  'stem_blend_preview_test.py', // upstream audio baseline, gain diagnostics and isolated auditions
   'analyzer_subbeats_stem_blend_test.py', // verified Sub/Beats coverage can feed regular blends
   'analyzer_sidecar_contract_test.py', // typed missing-path response for URL fallback (#1331)
   'analyzer_embedding_test.py', // batched CLAP + embedding-only backfills (#1426)

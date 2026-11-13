@@ -27,7 +27,6 @@ import {
 import { probeListenerCount } from '../broadcast/listeners.js';
 import { sweepKeepLastFromDisk } from '../broadcast/pick-stems.js';
 import { planAcoustics, type AcousticsPlan, type WorkRequest } from './acoustics-plan.js';
-import type { Facet } from './library-db/facets.js';
 import { SUBBEATS_SCAN_PREFIX } from '../schemas/subbeats.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import { queuedSubbeatsForScan, suppressRegularStems } from './subbeats-scan-policy.js';

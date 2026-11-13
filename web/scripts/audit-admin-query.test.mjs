@@ -89,6 +89,10 @@ const validImperativeFixtures = {
   // admin-query-imperative: protected-audio-preview
   return adminResponse(adminFetch, path);
 }\n`,
+  'subbeats/StemBlendTest.tsx': `export async function run(adminFetch) {
+  // admin-query-imperative: stem-blend-audition
+  return adminResponse(adminFetch, '/stems/blend-preview', { method: 'POST' });
+}\n`,
   'subbeats/CueAudition.tsx': `export async function run(adminFetch, id) {
   // admin-query-imperative: subbeats-source-audition
   return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);

@@ -16,6 +16,7 @@ import { describeFetchError, fetchWithTimeout } from '../util/fetch-timeout.js';
 import { envInt } from '../util/env.js';
 import { dirname, join } from 'node:path';
 import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
+import { stemBlendPreviewReportSchema, type stemBlendPreviewModeSchema } from '../schemas/stem-blend-preview.js';
 import { parseWholeLoudnessCurve, type WholeLoudnessCurve } from './whole-loudness-curve.js';
 import { getDb, trackFileSize } from './library-db.js';
 
@@ -249,6 +250,8 @@ function localConfigured(): boolean {
 // A line of JSON from the stdio worker, or the sidecar's /analyze body — same
 // payload; ready/fatal/id are worker-only.
 interface WorkerMessage {
+  stem_blend_preview?: string;
+  stem_blend_report?: unknown;
   subbeats_preview?: string;
   subbeats_timeline?: unknown;
   id?: string;
@@ -1056,6 +1059,39 @@ export async function renderTransition(
   } catch {
     return null;
   }
+}
+
+// Operator-only baseline audition. Uses the regular renderer, not Sub/Beats
+// planning or live queue gates. Files are temporary and never enter transitions/.
+export async function previewStemBlend(payload: Omit<RenderTransitionPayload, 'out_dir' | 'clip_name'>,
+  stateDir: string, mode: ReturnType<typeof stemBlendPreviewModeSchema.parse>, signal: AbortSignal) {
+  const backend = await resolveBackend();
+  if (!backend) throw new Error('Configure an analyzer before auditioning regular Stem Blends.');
+  const body = { ...payload, state_dir: stateDir, mode };
+  const timeoutMs = 60_000;
+  signal.throwIfAborted();
+  if (backend === 'sidecar') {
+    const response = await fetchWithTimeout(`${_sidecarBase}/stem-blend-preview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), timeoutMs, bodyDeadline: true, signal,
+    });
+    if (response.status === 404) throw new Error('Update the analyzer to enable the Stem Blend test.');
+    if (!response.ok) await sidecarFailure(response);
+    if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('The analyzer returned invalid audition audio.');
+    const report = stemBlendPreviewReportSchema.parse(JSON.parse(response.headers.get('x-stem-blend-report') ?? 'null'));
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (audio.length > 48 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned invalid audition audio.');
+    return { audio, report };
+  }
+  const answer = await localRequestRaw({ op: 'preview_stem_blend', ...body }, timeoutMs);
+  const file = answer.stem_blend_preview;
+  const root = join(stateDir, 'stem-blend-previews');
+  if (typeof file !== 'string' || !file.startsWith(`${root}/audition-`) || file.includes('..')
+    || !/^audition-[\w-]+\/preview\.wav$/.test(file.slice(root.length + 1))) throw new Error('The analyzer returned an invalid audition path.');
+  try {
+    signal.throwIfAborted();
+    return { audio: readFileSync(file), report: stemBlendPreviewReportSchema.parse(answer.stem_blend_report) };
+  } finally { await rm(dirname(file), { recursive: true, force: true }); }
 }
 
 function coerceRenderResult(msg: WorkerMessage & { ok?: boolean }): RenderTransitionResult | null {

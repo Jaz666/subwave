@@ -25,3 +25,5 @@ export * from './library-db/lyrics.js';
 
 export { subbeatsCandidates, subbeatsEligibleTrack, recentlyPlayedSubbeatsTracks } from './library-db/subbeats.js';
 export type { SubbeatsTrackRef } from './library-db/subbeats.js';
+
+export { stemBlendPreviewTracks } from './library-db/stem-blend-preview.js';

@@ -2036,7 +2036,7 @@ def load_subbeats_stem_region(spec, name, stem_names, sf):
         return None
 
 
-def render_transition(req):
+def render_transition(req, *, observe=None):
     """Pre-rendered stem-blend transition (feature: stem-blend transitions —
     docs/stem-transitions-research.md Option B). Mixes the OUTGOING track's
     cached tail stems with the INCOMING track's cached head stems into one
@@ -2248,14 +2248,19 @@ def render_transition(req):
                 else:
                     lo = midpoint
             duck = lo
+    # Audition-only observation: retain the two contributions without changing
+    # the upstream mix arithmetic or allocating this copy during live renders.
+    observed_incoming = mix_buf.copy() if observe is not None else None
     mix_buf += loop_buf * duck
 
     # Backstop: whatever the duck settled on, never hand the encoder a sample
     # that clips in 16-bit. Between the ceiling and here is ~1 dB of real
     # headroom, so this engages only when the duck floor wasn't enough.
     final_peak = float(np.max(np.abs(mix_buf)))
+    final_scale = 1.0
     if final_peak > 0.995:
-        mix_buf *= 0.995 / final_peak
+        final_scale = 0.995 / final_peak
+        mix_buf *= final_scale
 
     # 10ms edge declicks (the clip meets its neighbours through ~0.3s
     # crossfades, but a hard first/last sample still clicks through them).
@@ -2263,6 +2268,18 @@ def render_transition(req):
     ramp = np.linspace(0.0, 1.0, e, dtype=np.float32)[:, None]
     mix_buf[:e] *= ramp
     mix_buf[-e:] *= ramp[::-1]
+
+    if observe is not None:
+        observe({
+            "incoming": observed_incoming * final_scale,
+            "outgoing": loop_buf * duck * final_scale,
+            "head": head, "tail": tail, "tail_start": tail_start_s,
+            "loop_start": loop_b1, "loop_end": loop_b2,
+            "bars": in_bars[:CARRY_BARS + TAIL_FULL_BARS + 1],
+            "incoming_drums": carry_end_s, "loop_duck": duck,
+            "whole_scale": min(1.0, ceiling / max(head_peak, 1e-15)) * final_scale,
+            "gains_db": [20.0 * math.log10(gain_for(out_spec)), 20.0 * math.log10(g_in)],
+        })
 
     make_shared_dir(out_dir)
     out_path = os.path.join(out_dir, os.path.basename(clip_name))
@@ -4250,6 +4267,13 @@ def main():
             try:
                 from subbeats_prepare import prepare_request
                 emit({"id": rid, **prepare_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "preview_stem_blend":
+            try:
+                from stem_blend_preview import render_preview
+                emit({"id": rid, **render_preview(req)})
             except Exception as error:
                 emit({"id": rid, "ok": False, "error": str(error)})
             continue
