@@ -11,6 +11,7 @@
 // reported verbatim. requireAdmin, like every operator surface.
 
 import { Router } from 'express';
+import { router as stemBlendPreviewRouter } from './stem-blend-preview.js';
 import { queue } from '../broadcast/queue.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { allTrackIdsOrdered } from '../music/library-db.js';
@@ -19,6 +20,7 @@ import { resolveOrphanNames } from '../music/orphan-names.js';
 import * as settings from '../settings.js';
 
 export const router = Router();
+router.use(stemBlendPreviewRouter);
 
 router.get('/stems/orphans', requireAdmin, async (_req, res) => {
   try {

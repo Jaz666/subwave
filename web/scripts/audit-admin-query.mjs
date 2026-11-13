@@ -244,6 +244,9 @@ const allowed = new Map([
     ['protected-audio-preview', { callee: 'adminResponse', method: 'GET', path: /^path$/ }],
   ])],
   // One-shot original audio, fetched only when Listen is pressed.
+  ['subbeats/StemBlendTest.tsx', new Map([
+    ['stem-blend-audition', { callee: 'adminResponse', method: 'POST', path: /^\/stems\/blend-preview$/ }],
+  ])],
   ['subbeats/CueAudition.tsx', new Map([
     ['subbeats-source-audition', { callee: 'adminResponse', method: 'GET', path: /^\/library\/subbeats\/source-audio\/\$\{\}$/ }],
   ])],
