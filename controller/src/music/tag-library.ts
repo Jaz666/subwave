@@ -577,15 +577,17 @@ async function main() {
   // Phase 5: ANALYZE (acoustic bpm/key/intro), the same pass as `npm run
   // analyze`. No-ops when no analysis backend is reachable, so it never blocks
   // a tag run.
-  if (plan.analyze || flags.stemWaveforms) {
+  if (plan.analyze || flags.stems || flags.stemWaveforms) {
     try {
-      if (plan.analyze) {
+      if (plan.analyze || flags.stems) {
         await runAnalysisPass({
           limit: flags.limit === Infinity ? undefined : flags.limit,
           reAnalyze: flags.reAnalyze,
           rescan: flags.rescan,
           // Tri-state; undefined defers to settings.audio.vocalActivity / env.
           vocalBackfill: flags.vocal ? true : flags.noVocal ? false : undefined,
+          stemBackfill: flags.noStems ? false : flags.stems ? true : undefined,
+          stemOnly: flags.stems && !plan.analyze,
         });
       }
       if (flags.stemWaveforms) {

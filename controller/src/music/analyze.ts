@@ -47,6 +47,10 @@ export interface AnalyzeOptions {
   // Widen to tracks with vocal_ranges_json NULL. Demucs is expensive and opt-in;
   // defaults from ANALYZE_VOCAL_ACTIVITY / settings.audio.vocalActivity.
   vocalBackfill?: boolean;
+  // A Library Demucs selection can force the stem pass independently of its setting.
+  stemBackfill?: boolean;
+  // Run only stem caching and the queued Sub/Beats work; skip BPM/key/audio/vocal scopes.
+  stemOnly?: boolean;
   // A facet plan (music/acoustics-plan.ts) REPLACES the scope: exactly its
   // tracks, each with its own worker flags. reAnalyze and the four widenings
   // are ignored. Absent = today's pass, unchanged.
@@ -286,7 +290,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
 
   // Resolved up front so a --re-analyze not redoing vocal preserves existing
   // vocal_ranges rather than wiping what it won't rebuild.
-  const vocalWanted = opts.vocalBackfill ?? vocalBackfillDefault();
+  const vocalWanted = opts.stemOnly ? false : opts.vocalBackfill ?? vocalBackfillDefault();
   const vocalDecision = backfillDecision({
     dimension: 'vocal',
     wanted: vocalWanted,
@@ -299,7 +303,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // disk, LRU-swept below. Same three-way capability question as audio/vocal.
   const stemDecision = backfillDecision({
     dimension: 'stem',
-    wanted: settings.get()?.audio?.stemCache === true,
+    wanted: opts.stemBackfill ?? settings.get()?.audio?.stemCache === true,
     capable: analyzer.vocalActivityAvailable(),
     error: analyzer.vocalActivityError(),
     backend,
@@ -355,7 +359,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
     if (queuedForSubbeats.size) console.log(SUBBEATS_SCAN_PREFIX + JSON.stringify([...queuedForSubbeats]));
   };
   // A facet plan brings its own scope: skip the legacy scope queries entirely.
-  const bpmIds = plan
+  const bpmIds = opts.stemOnly ? [] : plan
     ? []
     : reAnalyzeScope
       ? (cap ? reAnalyzeScope.slice(0, cap) : reAnalyzeScope)
@@ -366,7 +370,7 @@ async function runAnalysisPassOnce(opts: AnalyzeOptions = {}): Promise<AnalyzeSt
   // embeddings fill in without a full --re-analyze. Two gates: never under a
   // fixed re-scan scope, and only when the backend can emit CLAP vectors
   // (`null`, meaning unknown, still widens).
-  const audioWanted = opts.audioBackfill ?? audioBackfillDefault();
+  const audioWanted = opts.stemOnly ? false : opts.audioBackfill ?? audioBackfillDefault();
   const audioDecision = backfillDecision({
     dimension: 'audio',
     wanted: audioWanted,

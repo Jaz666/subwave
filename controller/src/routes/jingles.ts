@@ -127,6 +127,7 @@ router.post('/tag-library', requireAdmin, (req, res) => {
     enrich: stepBool(req.body?.enrich),
     tagMoods: stepBool(req.body?.tagMoods),
     analyze: stepBool(req.body?.analyze),
+    stems: stepBool(req.body?.stems),
     stemWaveforms: stepBool(req.body?.stemWaveforms),
     vocal: stepBool(req.body?.vocal),
     confirmReplaced: req.body?.confirmReplaced === true,

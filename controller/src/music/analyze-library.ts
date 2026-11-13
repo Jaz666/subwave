@@ -157,6 +157,8 @@ async function main() {
   const audioBackfill = args.includes('--audio') ? true : undefined;
   // undefined → falls back to ANALYZE_VOCAL_ACTIVITY / settings.audio.vocalActivity.
   const vocalBackfill = args.includes('--vocal') ? true : undefined;
+  const stemOnly = args.includes('--stems-only');
+  const stemBackfill = args.includes('--stems') || stemOnly ? true : args.includes('--no-stems') ? false : undefined;
 
   await applyWizardOverlay();
   await settings.load();
@@ -273,7 +275,8 @@ async function main() {
     }
   }
 
-  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, subbeatsScopeIds: explicitIds(args) ?? undefined });
+  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, stemBackfill, stemOnly,
+    subbeatsScopeIds: explicitIds(args) ?? undefined });
   if (stemWaveforms) await backfillSubbeatsStemWaveforms(limit);
   analyzer.shutdown();
   console.log('[analyze] stats:', JSON.stringify(stats));

@@ -249,16 +249,18 @@ export function startTagger(
     enrich?: boolean;
     tagMoods?: boolean;
     analyze?: boolean;
+    stems?: boolean;
     stemWaveforms?: boolean;
     // Per-run Demucs override; undefined defers to the setting.
     vocal?: boolean;
     onExit?: OnExit;
   } & ReplacedAnswer = {},
 ) {
-  const { limit, reseed, reEnrich, reAnalyze, upgrade, upgradeBlind, thenTag, reconcile, enrich, tagMoods, analyze, stemWaveforms, vocal } = opts;
+  const { limit, reseed, reEnrich, reAnalyze, upgrade, upgradeBlind, thenTag, reconcile, enrich, tagMoods, analyze, stems, stemWaveforms, vocal } = opts;
   if (!reseed && !reEnrich && !reAnalyze && !upgrade && reconcile === false && enrich === false
-    && tagMoods === false && (analyze !== false || stemWaveforms === true)) {
-    startAnalyzer({ limit, vocal, stemWaveforms, stemWaveformsOnly: analyze === false && stemWaveforms === true });
+    && tagMoods === false && (analyze !== false || stems === true || stemWaveforms === true)) {
+    startAnalyzer({ limit, vocal, stems, stemsOnly: analyze === false && stems === true,
+      stemWaveforms, stemWaveformsOnly: analyze === false && stems !== true && stemWaveforms === true });
     return;
   }
   const args = ['src/music/tag-library.ts'];
@@ -280,6 +282,8 @@ export function startTagger(
   if (enrich === false) args.push('--skip-enrich');
   if (tagMoods === false) args.push('--skip-tag');
   if (analyze === false) args.push('--skip-analyze');
+  if (stems === true) args.push('--stems');
+  if (stems === false) args.push('--no-stems');
   if (stemWaveforms === true) args.push('--stem-waveforms');
   if (reconcile === false) args.push('--no-prune');
   if (analyze !== false && vocal === true) args.push('--vocal');
@@ -312,14 +316,16 @@ export function startTagger(
 // Standalone analysis pass (bpm/key/intro + CLAP audio embeddings). `audio` and
 // `vocal` force backfill scopes that re-target rows missing an audio vector /
 // vocal_ranges_json. Same single-flight slot; caller rejects when tagger.running.
-export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: boolean; stemWaveforms?: boolean; stemWaveformsOnly?: boolean } = {}) {
-  const { limit, audio, vocal, stemWaveforms, stemWaveformsOnly } = opts;
+export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: boolean; stems?: boolean; stemsOnly?: boolean; stemWaveforms?: boolean; stemWaveformsOnly?: boolean } = {}) {
+  const { limit, audio, vocal, stems, stemsOnly, stemWaveforms, stemWaveformsOnly } = opts;
   const args = ['src/music/analyze-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (audio) args.push('--audio');
   if (vocal) args.push('--vocal');
   if (stemWaveformsOnly) args.push('--stem-waveforms-only', '--skip-walk');
-  else if (stemWaveforms) args.push('--stem-waveforms');
+  else if (stemsOnly) args.push('--stems-only', '--skip-walk');
+  else if (stems) args.push('--stems');
+  if (stemWaveforms && !stemWaveformsOnly) args.push('--stem-waveforms');
   const detail = [
     Number.isFinite(limit) && (limit as number) > 0 ? `limit=${limit}` : null,
     audio ? 'audio' : null,
