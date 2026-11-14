@@ -34,7 +34,7 @@ import { createFileFormatLookup, type FileFormat } from '../music/file-format.js
 import * as settings from '../settings.js';
 import * as stemCache from '../music/stem-cache.js';
 import { readSubbeatsQueue } from '../music/subbeats-store.js';
-import type { SubbeatsTiming } from '../broadcast/subbeats-clock.js';
+import { subbeatsSourceSeconds, type SubbeatsTiming } from '../broadcast/subbeats-clock.js';
 import { fetchWithTimeout } from '../util/fetch-timeout.js';
 import { subbeatsStemWaveform, subbeatsStemWaveformPath, type StemWaveformName } from '../music/stem-waveform-peaks.js';
 
@@ -60,6 +60,7 @@ const PEAK_CACHE_MAX = 128;
 const PEAK_PCM_MAX_BYTES = 64 * 1024 * 1024;
 const STEM_PEAK_TIMEOUT_MS = 12_000; // leave room inside the browser's per-source 15 s deadline
 type WaveformPeaks = { durationSec: number; peaks: number[] };
+type WaveformPlayback = { durationSec: number; sourceSecondsAt: (playbackSeconds: number) => number };
 const waveformPeakCache = new Map<string, WaveformPeaks>();
 const waveformPeakPending = new Map<string, Promise<WaveformPeaks>>();
 
@@ -77,6 +78,19 @@ export function waveformPeaksFromPcm(pcm: Buffer): WaveformPeaks {
     peaks.push(peak);
   }
   return { durationSec: sampleCount / PEAK_SAMPLE_RATE, peaks };
+}
+
+export function waveformPeaksForPlayback(source: WaveformPeaks, playback: WaveformPlayback): WaveformPeaks {
+  if (!(source.durationSec > 0) || !(playback.durationSec > 0) || !source.peaks.length) return source;
+  const count = Math.ceil(playback.durationSec * PEAK_SAMPLE_RATE / PEAK_BIN_SAMPLES);
+  const peaks = Array.from({ length: count }, (_, i) => {
+    const sourceSeconds = playback.sourceSecondsAt(i * PEAK_BIN_SAMPLES / PEAK_SAMPLE_RATE);
+    if (!Number.isFinite(sourceSeconds)) return 0;
+    const index = Math.min(source.peaks.length - 1,
+      Math.max(0, Math.floor(sourceSeconds / source.durationSec * source.peaks.length)));
+    return source.peaks[index]!;
+  });
+  return { durationSec: playback.durationSec, peaks };
 }
 
 async function decodeWaveformPeaks(body: AsyncIterable<Uint8Array>, signal: AbortSignal, maxInputBytes: number): Promise<WaveformPeaks> {
@@ -197,6 +211,7 @@ export function createNowPlayingFileRouter(deps: {
   speechForecasts?: () => Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }>;
   stemSource?: (id: string, side: VisualStemSide, stem: VisualStem, subbeats: boolean) => StemSource | null | Promise<StemSource | null>;
   waveformPeaks?: (id: string, signal: AbortSignal) => Promise<WaveformPeaks>;
+  waveformPlayback?: (id: string) => WaveformPlayback | null;
   stemWaveformPeaks?: (source: StemSource, signal: AbortSignal) => Promise<WaveformPeaks>;
   crossfadeSeconds?: () => number;
 }): Router {
@@ -288,10 +303,12 @@ export function createNowPlayingFileRouter(deps: {
     }
     const abort = new AbortController();
     try {
-      const peaks = await cachedWaveformPeaks(asked, () => deps.waveformPeaks
+      const sourcePeaks = await cachedWaveformPeaks(asked, () => deps.waveformPeaks
         ? deps.waveformPeaks!(asked, abort.signal)
         : deps.streamAudio ? makeWaveformPeaks(asked, abort.signal, deps.streamAudio)
           : Promise.reject(new Error('On-air audio is unavailable.')));
+      const playback = deps.waveformPlayback?.(asked);
+      const peaks = playback ? waveformPeaksForPlayback(sourcePeaks, playback) : sourcePeaks;
       if (!res.destroyed) res.set('Cache-Control', 'no-store').json(peaks);
     } catch {
       if (!abort.signal.aborted && !res.headersSent) res.status(502).json({ error: 'Could not prepare the waveform.' });
@@ -531,6 +548,20 @@ export const router = createNowPlayingFileRouter({
     timeoutMs: 5 * 60_000, bodyDeadline: true, signal,
   }),
   nextTrackId: () => queue.upcoming[0]?.track?.id || null,
+  waveformPlayback: id => {
+    const item = [queue.current, ...queue.history, ...queue.upcoming]
+      .find(candidate => candidate?.track?.id === id);
+    if (!item) return null;
+    const durationSec = queue.playableSecOf(item);
+    if (!(durationSec && durationSec > 0)) return null;
+    if (item.subbeatsHandoff) {
+      const { timing } = item.subbeatsHandoff;
+      return { durationSec, sourceSecondsAt: seconds => subbeatsSourceSeconds(timing, seconds) };
+    }
+    if (item.stemSeam || item.stemBlend) return null;
+    const cueInSec = item.cueInSec ?? item.stemCueInSec ?? 0;
+    return { durationSec, sourceSecondsAt: seconds => cueInSec + seconds };
+  },
   preparedSpeech: () => queue.hasPreparedSpeech(),
   speechPreparing: () => queue.speechPreparing(),
   speechForecasts: () => queue.speechForecasts(),

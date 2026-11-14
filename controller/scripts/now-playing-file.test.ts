@@ -18,7 +18,7 @@ const ADMIN = { authorization: `Basic ${Buffer.from('file-admin:file-admin-pass'
 
 const { fileFormatOf, createFileFormatLookup } = await import('../src/music/file-format.js');
 const { FILE_FORMAT_RETRY_MS } = await import('../src/schemas/file-format.js');
-const { createNowPlayingFileRouter, waveformPeaksFromPcm } = await import('../src/routes/now-playing-file.js');
+const { createNowPlayingFileRouter, waveformPeaksForPlayback, waveformPeaksFromPcm } = await import('../src/routes/now-playing-file.js');
 const express = (await import('express')).default;
 
 // The shapes production Navidrome 0.64.2 returned on 19 Oct.
@@ -210,6 +210,32 @@ test('waveform peaks: retain either stereo channel in normalized 100 ms bins', (
   pcm.writeInt16LE(16384, 0);
   pcm.writeInt16LE(-32768, 1599 * 4 + 2);
   assert.deepEqual(waveformPeaksFromPcm(pcm), { durationSec: 0.2, peaks: [0.5, 1] });
+});
+
+test('waveform peaks: map playback time through the track cue and tempo clock', () => {
+  const source = { durationSec: 1, peaks: Array.from({ length: 10 }, (_, i) => i) };
+  assert.deepEqual(waveformPeaksForPlayback(source, {
+    durationSec: 0.3,
+    sourceSecondsAt: playbackSeconds => 0.5 + playbackSeconds,
+  }), { durationSec: 0.3, peaks: [5, 6, 7] });
+  assert.deepEqual(waveformPeaksForPlayback(source, {
+    durationSec: 0.4,
+    sourceSecondsAt: playbackSeconds => playbackSeconds / 2,
+  }), { durationSec: 0.4, peaks: [0, 0, 1, 1] });
+});
+
+test('waveform peaks: return the cue-aligned playback shape while caching raw source peaks', async () => {
+  const result = { durationSec: 1, peaks: Array.from({ length: 10 }, (_, i) => i) };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'wave-aligned-current' }), lookup: async () => null,
+    waveformPeaks: async () => result,
+    waveformPlayback: () => ({ durationSec: 0.3, sourceSecondsAt: seconds => 0.5 + seconds }),
+  });
+  try {
+    const response = await get(s, '/now-playing/waveform-peaks?id=wave-aligned-current');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { durationSec: 0.3, peaks: [5, 6, 7] });
+  } finally { await s.close(); }
 });
 
 test('waveform peaks: generate on demand once, share concurrent requests, and bound lookup to current/next', async () => {
