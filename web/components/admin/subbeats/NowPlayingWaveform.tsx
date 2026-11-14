@@ -15,7 +15,7 @@ const HISTORY_SECONDS = 30;
 const PLAYHEAD_START_SECONDS = 15;
 const WAVEFORM_HEIGHT = 44;
 const SYNC_OFFSET_KEY = 'subwave.mixing-desk.sync-offset-ms';
-const SYNC_STEP_MS = 250;
+const SYNC_STEP_MS = 100;
 const MAX_SYNC_OFFSET_MS = 10_000;
 const DEFAULT_COLORS = { current: '#d94b2a', next: '#d94b2a' };
 type TimedMarker = { kind: 'speech' | 'jingle' | 'bed'; airedAt: number; durationMs: number; label: string; voiceId?: string; estimated?: boolean };
@@ -203,6 +203,8 @@ export default function NowPlayingWaveform() {
   }, [syncOffsetMs, syncReady]);
   const transition = queuedTransition(state, currentId, leadMs);
   const stemWindow = stemTransition ? stemTransitionWindow(stemTransition, transition?.airedAt, leadMs) : null;
+  const stemStartConfirmed = Number.isFinite(Date.parse(stemTransition?.incomingAiredAt ?? ''));
+  const confirmedStemStartAt = stemStartConfirmed ? stemWindow?.startAt ?? null : null;
   const currentPlaybackSpan = currentStartedAt > 0 && stemTransition?.kind === 'subbeats' && stemTransition.outgoingId === currentId && stemWindow
     ? Math.max(0,(stemWindow.startAt+stemTransition.incomingAtSec*1000-currentStartedAt)/1000) : currentDuration;
   const previousPlayback = useRef({ currentId, nextId, transition });
@@ -437,7 +439,7 @@ export default function NowPlayingWaveform() {
   const clockMs = currentStartedAt + elapsed * 1000 + syncOffsetMs;
   const detailVisible = !!stemTransition && stemDetailVisible(stemTransition,currentId,visibleHistoryTracks,clockMs,HISTORY_SECONDS,stemWindow);
   const pairKey = stemTransition ? stemPairKey(stemTransition) : null;
-  const mixPosition = currentStartedAt > 0 && stemWindow ? (clockMs-stemWindow.startAt)/1000 : null;
+  const mixPosition = currentStartedAt > 0 && confirmedStemStartAt != null ? (clockMs-confirmedStemStartAt)/1000 : null;
   const mixActive = mixPosition != null && mixPosition >= 0 && mixPosition < (stemTransition?.durationSec ?? 0);
   const autoPreviewVisible = autoPreview && mixPosition != null && mixPosition < (stemTransition?.durationSec ?? 0);
   const expanded = detailVisible && (expandedPair === pairKey || autoPreviewVisible);
@@ -536,7 +538,7 @@ export default function NowPlayingWaveform() {
       <div className={styles.stemFooter}>
         <div className={styles.laneLabel}>Stems</div>
         {showMix && stemTransition && <div className={styles.stemDescription} role="status">
-          <strong>{stemStyle(stemTransition)}</strong><span>{stemPhase(stemTransition,mixPosition)}</span>
+          <strong>{stemStyle(stemTransition)}</strong><span>{stemStartConfirmed ? stemPhase(stemTransition,mixPosition) : 'Planned · awaiting mixer start'}</span>
         </div>}
         <div className={styles.stemActions}>
           <button type="button" className={`${styles.expandButton} ${autoPreview ? styles.autoEnabled : ''}`}
@@ -551,17 +553,17 @@ export default function NowPlayingWaveform() {
       </div>
       <div className={styles.syncControls} role="group" aria-label="Timeline audio sync">
         <span>Timeline sync</span>
-        <button type="button" aria-label="Move timeline earlier by 0.25 seconds"
+        <button type="button" aria-label="Move timeline earlier by 0.10 seconds"
           disabled={syncOffsetMs <= -MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.max(-MAX_SYNC_OFFSET_MS, value - SYNC_STEP_MS))}>−</button>
         <output aria-live="polite" aria-label={`Timeline offset ${syncOffsetMs >= 0 ? 'later' : 'earlier'} by ${Math.abs(syncOffsetMs / 1000).toFixed(2)} seconds`}>
           {syncOffsetMs >= 0 ? '+' : '−'}{Math.abs(syncOffsetMs / 1000).toFixed(2)} s
         </output>
-        <button type="button" aria-label="Move timeline later by 0.25 seconds"
+        <button type="button" aria-label="Move timeline later by 0.10 seconds"
           disabled={syncOffsetMs >= MAX_SYNC_OFFSET_MS} onClick={() => setSyncOffsetMs(value => Math.min(MAX_SYNC_OFFSET_MS, value + SYNC_STEP_MS))}>+</button>
         <button type="button" className={styles.syncReset} disabled={syncOffsetMs === 0} onClick={() => setSyncOffsetMs(0)}>Reset</button>
       </div>
       {expanded && stemTransition && <LiveStemPreview key={pairKey}
-        transition={stemTransition} startAt={stemWindow?.startAt ?? null} nowMs={clockMs} adminFetch={adminFetch} colors={stemColors}
+        transition={stemTransition} startAt={confirmedStemStartAt} nowMs={clockMs} adminFetch={adminFetch} colors={stemColors}
         outgoing={trackLabel(stemTransition.outgoingId)} incoming={trackLabel(stemTransition.incomingId)} />}
     </div>
     {message && <p className="text-xs text-muted" role="status">{message}</p>}

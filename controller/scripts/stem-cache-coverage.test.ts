@@ -145,10 +145,9 @@ test('expanded live waveforms read cue stems before and throughout the buffered 
     assert.equal(meta.kind, 'subbeats');
     assert.equal(meta.incomingAtSec, 4);
     assert.ok(meta.sources);
-    assert.ok(meta.incomingAiredAt);
+    assert.equal(meta.incomingAiredAt, undefined, 'a queue estimate is not confirmed playback time');
     assert.equal(meta.sources.outgoing.startSec, 100);
     assert.equal(meta.sources.incoming.startSec, 0);
-    assert.ok(Date.parse(meta.incomingAiredAt) > Date.now() + 90_000, 'the view is available well before the transition');
     for (const side of ['outgoing', 'incoming']) for (const stem of cache.STEM_NAMES) {
       const response = await get(`/now-playing/stem-audio?side=${side}&stem=${stem}&outgoingId=wave-out`);
       assert.equal(response.status, 200);

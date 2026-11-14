@@ -45,6 +45,7 @@ type VisualStemSide = 'outgoing' | 'incoming';
 type StemSource = { path: string; startSec: number; endSec: number | null; storageGain: number; peaksCachePath?: string };
 type VisualTransition = {
   kind: 'stem-blend' | 'subbeats'; durationSec: number; incomingAtSec: number; outgoingUntilSec: number;
+  /** Present only after incoming playback is observed; forecasts come from /state. */
   incomingAiredAt?: string;
   outgoingId?: string; incomingId?: string;
   mixStyle?: 'long-blend' | 'short-exchange' | 'bass-swap' | 'drums-first';
@@ -477,8 +478,7 @@ export function createNowPlayingFileRouter(deps: {
 export async function nowPlayingStemTransition(currentId: string): Promise<VisualTransition | null> {
   let outgoing = queue.current;
   let incoming = queue.upcoming[0];
-  const remaining = queue.remainingSecOnAir();
-  let incomingAtMs = remaining == null ? NaN : Date.now() + remaining * 1000;
+  let incomingAtMs = NaN;
   // The incoming metadata arrives while the mixed clip still has audio left.
   // Retain that one adjacent pair through the maximum 60-second listener buffer.
   const previous = queue.history[0];
@@ -518,6 +518,8 @@ export async function nowPlayingStemTransition(currentId: string): Promise<Visua
   if (timing) {
     return {
       kind: 'subbeats',
+      // This field is observed playback time only. Before the incoming track
+      // starts, the client uses /state's explicitly estimated queue timing.
       ...(Number.isFinite(incomingAtMs) ? { incomingAiredAt: new Date(incomingAtMs).toISOString() } : {}),
       durationSec,
       incomingAtSec: timing.incomingEntryFrame / timing.sampleRate,
