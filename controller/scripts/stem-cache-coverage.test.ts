@@ -171,3 +171,26 @@ test('expanded live waveforms read cue stems before and throughout the buffered 
     await live.close();
   }
 });
+
+test('regular blend preview source remains addressable only for the bounded previous pair', async () => {
+  const { queue } = await import('../src/broadcast/queue.js');
+  const { nowPlayingStemTransition } = await import('../src/routes/now-playing-file.js');
+  type Item = NonNullable<typeof queue.current>;
+  const outgoing: Item = { track: { id: 'regular-previous', duration: 120 },
+    stemBlend: { clipPath: '/fixture.wav', clipSec: 12, outCueSec: 110, inCueSec: 12 } };
+  const incoming: Item = { track: { id: 'regular-current', duration: 120 },
+    startedAt: new Date().toISOString(), stemSeam: true };
+  const saved = { current: queue.current, upcoming: queue.upcoming, history: queue.history };
+  try {
+    queue.current = incoming; queue.history = [outgoing]; queue.upcoming = [{ track: { id: 'regular-next' } }];
+    assert.equal((await nowPlayingStemTransition('regular-previous'))?.outgoingId, 'regular-previous');
+    assert.equal(await nowPlayingStemTransition('regular-current'), null, 'a new current-track read must not select old regular history');
+    assert.equal(await nowPlayingStemTransition('unrelated'), null);
+    incoming.startedAt = new Date(Date.now() - 61_000).toISOString();
+    assert.equal(await nowPlayingStemTransition('regular-previous'), null, 'the previous-pair permission expires');
+    incoming.startedAt = new Date().toISOString(); incoming.stemSeam = false;
+    assert.equal(await nowPlayingStemTransition('regular-previous'), null, 'an unrelated previous song is not enough');
+  } finally {
+    queue.current = saved.current; queue.upcoming = saved.upcoming; queue.history = saved.history;
+  }
+});

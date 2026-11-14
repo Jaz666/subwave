@@ -58,6 +58,7 @@ const PEAK_BIN_SAMPLES = 800; // one peak per 100 ms
 const PEAK_FRAME_BYTES = 4; // two 16-bit channels; retain the louder channel, as WaveSurfer does
 const PEAK_CACHE_MAX = 128;
 const PEAK_PCM_MAX_BYTES = 64 * 1024 * 1024;
+const STEM_PEAK_TIMEOUT_MS = 12_000; // leave room inside the browser's per-source 15 s deadline
 type WaveformPeaks = { durationSec: number; peaks: number[] };
 const waveformPeakCache = new Map<string, WaveformPeaks>();
 const waveformPeakPending = new Map<string, Promise<WaveformPeaks>>();
@@ -319,7 +320,7 @@ export function createNowPlayingFileRouter(deps: {
     const nextId = deps.nextTrackId?.() ?? null;
     const expectedId = side === 'outgoing' ? transition?.outgoingId : transition?.incomingId;
     const currentPair = transition?.outgoingId === currentId && transition?.incomingId === nextId;
-    const activePair = transition?.incomingId === currentId && transition?.kind === 'subbeats';
+    const activePair = transition?.incomingId === currentId;
     if (!transition || !expectedId || (!currentPair && !activePair) || askedOutgoing !== transition.outgoingId) {
       res.status(409).json({ error: 'The stem transition is no longer current.' });
       return;
@@ -363,7 +364,7 @@ export function createNowPlayingFileRouter(deps: {
     const nextId = deps.nextTrackId?.() ?? null;
     const expectedId = side === 'outgoing' ? transition?.outgoingId : transition?.incomingId;
     const currentPair = transition?.outgoingId === currentId && transition?.incomingId === nextId;
-    const activePair = transition?.incomingId === currentId && transition?.kind === 'subbeats';
+    const activePair = transition?.incomingId === currentId;
     if (!transition || !expectedId || (!currentPair && !activePair) || askedOutgoing !== transition.outgoingId) {
       res.status(409).json({ error: 'The stem transition is no longer current.' });
       return;
@@ -381,6 +382,7 @@ export function createNowPlayingFileRouter(deps: {
       }
       const cacheKey = `stem:${source.path}:${stat.size}:${stat.mtimeMs}`;
       const abort = new AbortController();
+      const deadline = setTimeout(() => abort.abort(new Error('Stem waveform decoding timed out.')), STEM_PEAK_TIMEOUT_MS);
       try {
         const peaks = source.peaksCachePath
           ? await subbeatsStemWaveform(source.path, source.peaksCachePath, abort.signal)
@@ -390,9 +392,11 @@ export function createNowPlayingFileRouter(deps: {
         if (!res.destroyed) res.set('Cache-Control', 'no-store').json({ ...peaks, startSec: source.startSec,
           endSec: source.endSec, storageGain: source.storageGain });
       } finally {
+        clearTimeout(deadline);
         abort.abort();
       }
-    } catch {
+    } catch (error) {
+      console.warn(`[waveform] ${side} ${stem} peaks failed for ${expectedId}: ${error instanceof Error ? error.message : String(error)}`);
       if (!res.headersSent) res.status(502).json({ error: 'Could not prepare the stem waveform.' });
       else if (!res.destroyed) res.destroy();
     }
@@ -463,8 +467,15 @@ export async function nowPlayingStemTransition(currentId: string): Promise<Visua
   const previous = queue.history[0];
   const active = previous?.stemBlend?.subbeats;
   const entryMs = Date.parse(queue.current?.startedAt ?? '');
-  if (active && queue.current?.subbeatsHandoff?.transitionId === active.transitionId
-    && Date.now() < entryMs + ((active.timing.clipFrames - active.timing.incomingEntryFrame) / active.timing.sampleRate + 60) * 1000) {
+  const retainedSubbeats = active && queue.current?.subbeatsHandoff?.transitionId === active.transitionId
+    && Date.now() < entryMs + ((active.timing.clipFrames - active.timing.incomingEntryFrame) / active.timing.sampleRate + 60) * 1000;
+  // A slow browser may still be fetching the previous regular blend when the
+  // incoming original becomes current. Only explicit reads of that outgoing
+  // track may retain it, for the same bounded listener-buffer window. Reads
+  // of the current track must still discover its next planned transition.
+  const retainedRegular = !active && currentId === previous?.track?.id && !!previous?.stemBlend
+    && !!queue.current?.stemSeam && Date.now() < entryMs + 60_000;
+  if ((retainedSubbeats || retainedRegular) && queue.current) {
     outgoing = previous;
     incoming = queue.current;
     incomingAtMs = entryMs;
