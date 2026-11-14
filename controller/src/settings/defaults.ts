@@ -712,6 +712,12 @@ export const DEFAULTS = {
     pairDrain: true,
     // Needs pairDrain plus the heavy analyzer with a warmed stem cache.
     stemBlends: false,
+    // Prepared-to-prepared Sub/Beats seams. Independent of ordinary Stem Blend;
+    // requires DJ mode and pair drain, and falls through to that saved setting.
+    subbeatsLive: false,
+    // Actual airplay can queue eligible, unprepared tracks for the next
+    // Library Demucs scan; the controller never runs preparation on-air.
+    subbeatsOnAirCaching: false,
     // Separate a picked track's missing stem windows while it is held behind
     // the on-air one (broadcast/pick-stems.ts, #2197), so the cache fills with
     // what the station plays instead of waiting for the bulk backfill. Off

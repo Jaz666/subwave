@@ -4,7 +4,7 @@
 // lightweight and isolated from the analyzer runtime (no torch / demucs /
 // librosa / audio), with one exception: vocal_gate_test.py's case 6 needs
 // torch, so it skips here and runs only inside the subwave-analyzer-heavy
-// image. Three numerical suites use NumPy; when it is unavailable,
+// image. Several numerical suites use NumPy; when it is unavailable,
 // this shim installs the pinned test-only wheel into a temporary directory, so
 // a clean checkout's `npm test` is reproducible without modifying the user's
 // Python environment. A box without python3 still skips cleanly (exit 0).
@@ -19,6 +19,17 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
+  'subbeats_coverage_test.py', // persistent cue coverage, budget/source binding and cache/model reuse
+  'subbeats_cues_test.py', // cue evidence, integrity, source-prefix and vocal-tail preservation
+  'subbeats_vocal_plan_test.py', // provisional complete-passage handovers; rendering unchanged
+  'subbeats_suitability_test.py', // cached role capability, preview coverage and no-model reassessment
+  'subbeats_reference_preview_test.py', // sustained rhythm, source verification and credential-free preview cache
+  'subbeats_reference_test.py', // human-timed windows, tempo aliases and read-only coverage audit
+  'subbeats_structure_test.py', // full-recording structural candidate evidence and independent cache
+  'subbeats_preview_test.py', // isolated preview planning, coverage and cached-level restoration
+  'subbeats_prepare_test.py', // isolated Sub/Beats publication, reuse, budget and source coverage
+  'stem_blend_preview_test.py', // upstream audio baseline, gain diagnostics and isolated auditions
+  'analyzer_subbeats_stem_blend_test.py', // verified Sub/Beats coverage can feed regular blends
   'analyzer_sidecar_contract_test.py', // typed missing-path response for URL fallback (#1331)
   'analyzer_embedding_test.py', // batched CLAP + embedding-only backfills (#1426)
   'analyzer_decode_test.py', // incomplete FLAC prefix recovery (#1670)

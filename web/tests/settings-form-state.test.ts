@@ -63,6 +63,16 @@ test('voice levelling hydrates OFF for older stations and preserves the explicit
   assert.equal(restorePaths(enabled, baseline, ['tts']).tts.voiceLevelling, false);
 });
 
+test('Live Sub/Beats hydrates off and saves independently of ordinary Stem Blend', () => {
+  const baseline=settingsForm({});
+  assert.equal(baseline.transitions.subbeatsLive,false);
+  const selected=settingsForm({transitions:{subbeatsLive:true,stemBlends:false}});
+  const patch=stemsSavePayload(selected).patch;
+  assert.equal(patch.transitions.subbeatsLive,true);
+  assert.equal(patch.transitions.stemBlends,false);
+  assert.ok(dirtyPaths(selected,baseline,sectionById('stems')!.formKeys).includes('transitions.subbeatsLive'));
+});
+
 test('whole-block saves refuse blank numbers and preserve explicit zero and decimal coercion', () => {
   const form = settingsForm({ crossfadeDuration: 10 });
   form.stream.bufferSeconds = ' ';
@@ -210,7 +220,7 @@ test('the Stems save and the Broadcast save post disjoint fields, so neither com
   const form = settingsForm({});
   const stems = stemsSavePayload(form).patch;
   const danger = dangerSavePayload(form).patch;
-  assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'pickTimeStems', 'stemBlends']);
+  assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'pickTimeStems', 'stemBlends', 'subbeatsLive', 'subbeatsOnAirCaching']);
   assert.deepEqual(Object.keys(stems.audio).sort(), ['stemCache', 'stemCacheGb']);
   assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects', 'equalPowerCrossfade']);
   assert.equal('audio' in danger, false);

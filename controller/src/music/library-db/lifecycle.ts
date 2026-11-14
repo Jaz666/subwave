@@ -2,6 +2,8 @@
 // of the handle in handle.ts.
 
 import Database from 'better-sqlite3';
+import { stemCacheEligible } from '../stem-eligibility.js';
+import { subbeatsDanceGenresFromJson } from '../subbeats-eligibility.js';
 import { instrumentalFromJson } from '../lyric-vocal.js';
 import * as sqliteVec from 'sqlite-vec';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +13,7 @@ import { DB_PATH, getDb, getEmbeddingDim, requireDb, setHandle } from './handle.
 import { ensureStatsIndexes, invalidateStats } from './stats.js';
 import { migrate } from './schema.js';
 import { maybeMigrateFromMoodsJson } from './legacy.js';
+import { ensureSubbeatsIndex } from './subbeats.js';
 import { registerSearchSql } from '../../util/search-pattern.js';
 
 // `reseed`: on an embedding-dim mismatch, drop the stale-dim vectors and rebuild
@@ -48,6 +51,9 @@ export async function open(opts: {
   db.function('is_instrumental', { deterministic: true },
     (head: string | null, tail: string | null) => instrumentalFromJson(head, tail));
 
+  db.function('stem_cache_eligible', { deterministic: true }, stemCacheEligible);
+  db.function('subbeats_dance_genres', { deterministic: true }, subbeatsDanceGenresFromJson);
+
   // migrate() may adopt the stored dim; trust its return as the live schema dim.
   setHandle({
     embeddingDim: await migrate(
@@ -56,6 +62,7 @@ export async function open(opts: {
       opts.adoptStoredDim === true,
     ),
   });
+  ensureSubbeatsIndex(db);
   await maybeMigrateFromMoodsJson();
   ensureStatsIndexes();
 }

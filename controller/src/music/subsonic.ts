@@ -536,9 +536,12 @@ export async function getSonicSimilarTracks(id, { count = 20 } = {}) {
   return rejectArchive(sonicSimilarSongs(r));
 }
 
-export async function getStarred() {
+export async function getStarred({ strict = false } = {}): Promise<ReturnType<typeof rejectArchive>> {
   const r = await call('getStarred2', {}, RETRY_FAST_TRANSPORT);
-  return rejectArchive(r.starred2?.song || []);
+  if (strict && (!r.starred2 || typeof r.starred2 !== 'object' || (r.starred2.song !== undefined && !Array.isArray(r.starred2.song)))) throw new Error('Navidrome stars could not be verified; cleanup stopped');
+  const songs = r.starred2?.song || [];
+  if (strict && songs.some(song => typeof song?.id !== 'string' || !song.id)) throw new Error('Navidrome stars could not be verified; cleanup stopped');
+  return strict ? songs : rejectArchive(songs);
 }
 
 // Star write-back for the listener like feature (#991) — mirrors the player
@@ -1266,7 +1269,8 @@ export function getAnnotatedUri(song, opts: { maxDurationSec?: number | null; cu
 // and the controller's lastSeenKey dedup swallows the identical second fire at
 // cue-in. `subwave_clip="1"` stops the telnet rid helpers
 // (liquidsoap-control.ts) mistaking the clip for the track itself.
-export function getClipUri(song, clipPath: string, crossSec: number) {
+export function getClipUri(song, clipPath: string, crossSec: number,
+  handoff?: {transitionId:string;part:string;incomingId:string}) {
   const fields = [
     `title="${escAnnotate(song.title)}"`,
     `artist="${escAnnotate(song.artist)}"`,
@@ -1278,6 +1282,8 @@ export function getClipUri(song, clipPath: string, crossSec: number) {
     // radio.liq aligns the clip on it rather than on what `cross` buffered.
     `liq_clip_lead="${escAnnotate(crossSec)}"`,
   ];
+  if (handoff) fields.push(`subwave_transition="${escAnnotate(handoff.transitionId)}"`,
+    `subwave_part="${escAnnotate(handoff.part)}"`,`subwave_clip_for="${escAnnotate(handoff.incomingId)}"`);
   // No liq_amplify: the render already gain-matched both sources, so a stamp
   // here would double-apply.
   return `annotate:${fields.join(',')}:${clipPath}`;

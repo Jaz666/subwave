@@ -142,8 +142,9 @@ async function dirBytes(dir: string): Promise<number> {
 
 // Delete a dir and say what really went: a delete refused part-way (a squashed
 // share) leaves files behind, and those are not reclaimed space.
-async function deleteDir(dir: string): Promise<{ gone: boolean; freedBytes: number }> {
+async function deleteDir(dir: string, allowed = () => true): Promise<{ gone: boolean; freedBytes: number }> {
   const before = await dirBytes(dir);
+  if (!allowed()) return { gone: false, freedBytes: 0 };
   let removed = true;
   try {
     await rm(dir, { recursive: true, force: true });
@@ -226,12 +227,12 @@ async function readsAsStems(dir: string): Promise<boolean> {
  * dirs, in parallel, which keeps a 76k-dir share from costing one round trip
  * per track. Throws when the root cannot be read.
  */
-async function walkCacheRoot(root: string, known: ReadonlySet<string>, now: number, inFlightMs: number) {
+async function walkCacheRoot(root: string, known: ReadonlySet<string>, now: number, inFlightMs: number, keepTrack = (id: string) => known.has(id)) {
   const names = (await readdir(root, { withFileTypes: true }))
     .filter(e => e.isDirectory() && !e.name.startsWith('.'))
     .map(e => e.name);
-  const kept = names.filter(name => known.has(name));
-  const unknown = names.filter(name => !known.has(name));
+  const kept = names.filter(name => keepTrack(name));
+  const unknown = names.filter(name => !keepTrack(name));
   const verdicts = await mapPool(unknown, stemCache.SCAN_CONCURRENCY, async (name) => {
     const mtimeMs = await stat(path.join(root, name)).then(st => st.mtimeMs, () => null);
     if (mtimeMs == null) return 'gone'; // vanished mid-walk
@@ -279,9 +280,15 @@ export async function runOrphanPurge(opts: {
   resolveNames?: (ids: string[]) => Promise<ReadonlyMap<string, OrphanTrackName>>;
   /** The automatic pass: refuse a plan above AUTO_MAX_SHARE of the cache. */
   automatic?: boolean;
+  /** Selective Sub/Beats cleanup uses the same engine with separate consent. */
+  keepTrack?: (id: string) => boolean;
+  beforeMutations?: () => Promise<void>;
+  allowDeletion?: () => boolean;
+  skipCollisions?: boolean;
   /** The duration in seconds of the library row with this id, for a release's
    *  sameAudio check. The library DB by default; tests inject it. */
   rowDurationSec?: (id: string) => number | null;
+
 }): Promise<PurgeReport> {
   if (!opts.confirm) return purgePass(opts);
   if (confirmedPassRunning) {
@@ -336,6 +343,7 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   }
   const rotating = db.pendingIdRotations();
   const known = libraryIds(opts.knownIds, rotating);
+  const keepTrack = (id: string) => rotating.has(id) || (opts.keepTrack?.(id) ?? known.has(id));
   const inFlightMs = opts.inFlightMs ?? IN_FLIGHT_MS;
   const report: PurgeReport = { ...empty };
 
@@ -343,7 +351,7 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   const cacheEntries: Array<{ name: string; known: boolean }> = [];
   if (rootStatus.online) {
     try {
-      const walk = await walkCacheRoot(root, known, now, inFlightMs);
+      const walk = await walkCacheRoot(root, known, now, inFlightMs, keepTrack);
       report.inFlight = walk.inFlight;
       cacheEntries.push(
         ...walk.kept.map(name => ({ name, known: true })),
@@ -381,7 +389,7 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
       if (opts.confirm) await stampQuarantine(entryDir, now).catch(() => {});
       ageMs = 0;
     }
-    const isKnown = known.has(name);
+    const isKnown = keepTrack(name);
     // Only a release asks whether the audio is the same, so only an entry that
     // could be released reads its evidence. An old id still rotating has no row
     // of its own: adoption moved it to the new id first, and that row is the
@@ -406,87 +414,82 @@ async function purgePass(opts: Parameters<typeof runOrphanPurge>[0]): Promise<Pu
   report.mismatchedCount = qplan.mismatched.length;
 
   if (opts.confirm) {
-    // What the moves add to or take off the cache total, measured the way its
-    // walk measures (the quarantine is outside that total, so a delete from
-    // it changes nothing there). A move that cannot be measured leaves the
-    // stored size to a walk.
-    // Begun before the first move: a sweep or walk that lands during them
-    // rewrites the totals from what it found, which may already hold some of
-    // them (usageBase).
     const usage = await stemCache.UsageTally.begin();
-    // 1. Releases first: an id that is both known now and sitting in the
-    //    quarantine gets its copy back rather than being re-quarantined below.
-    for (const name of toRelease) {
-      try {
-        await rename(path.join(qu, name), path.join(root, name));
-      } catch { report.failed += 1; continue; }
-      // Back in the cache it is not quarantined: a stale stamp must not ride
-      // along into a later quarantine.
-      await rm(path.join(root, name, ORPHANED_AT), { force: true }).catch(() => {});
-      usage.count(+1, await stemCache.measuredDirBytes(path.join(root, name)));
-      await stampReleasedStems(name);
-      report.released.push(name);
-    }
-    // The ceiling reads as a half-loaded library, and on that reading a release
-    // is safe while a delete is the one step nothing undoes, so a held pass
-    // stops here and leaves the deletes and the moves to an operator's confirm.
-    if (held) {
-      report.refused = true;
-      report.reason = ceilingReason;
-    } else {
-      // 2. Aged (and superseded-with-fresh-copy) quarantines: delete for good.
-      for (const { name } of toDelete) {
-        const { gone, freedBytes } = await deleteDir(path.join(qu, name));
-        report.freedBytes += freedBytes;
-        if (gone) report.deletedCount += 1;
-        else report.failed += 1;
-      }
-      // 3. Orphans: move into quarantine (same-filesystem rename; no merge).
-      await mkdirSafe(qu);
-      const names = opts.resolveNames && plan.quarantine.length
-        ? await opts.resolveNames(plan.quarantine.map(q => q.name))
-        : undefined;
-      for (const { name } of plan.quarantine) {
-        const from = path.join(root, name);
-        const to = path.join(qu, name);
-        if (await stat(to).then(() => true, () => false)) {
-          // This id is quarantined already: it came back, a fresh analysis took
-          // the live slot, and it left again. The live copy is the newer one, so
-          // it replaces the stale copy and starts a whole grace of its own. Never
-          // the reverse: dropping the live copy would delete the only fresh stems
-          // on the spot, and leave what remains to age out on the old stamp.
-          // Deleting, so it reads the dir first, like the aged delete: an entry
-          // that is not stems is left alone, and the live copy with it.
-          if (!(await readsAsStems(to))) { report.failed += 1; continue; }
-          const stale = await deleteDir(to);
-          report.freedBytes += stale.freedBytes;
-          if (!stale.gone) { report.failed += 1; continue; }
-        }
-        const leaving = await stemCache.measuredDirBytes(from);
+    let cacheChanged = false;
+    await opts.beforeMutations?.();
+    try {
+      // 1. Releases first: an id that is both known now and sitting in the
+      //    quarantine gets its copy back rather than being re-quarantined below.
+      for (const name of toRelease) {
+
         try {
-          await rename(from, to);
+          await rename(path.join(qu, name), path.join(root, name));
         } catch { report.failed += 1; continue; }
-        try {
-          await stampQuarantine(to, now);
-        } catch {
-          // Unstamped, the quarantine would have no age to keep it 7 days: undo
-          // the move and leave the dir in the cache for the next pass.
-          const undone = await rename(to, from).then(() => true, () => false);
-          // Stuck in the quarantine unstamped, it has left the cache total.
-          if (!undone) usage.count(-1, leaving);
-          report.failed += 1;
-          continue;
-        }
-        usage.count(-1, leaving);
-        await writeNameSidecar(to, names?.get(name), now);
-        report.quarantined += 1;
+        // Back in the cache it is not quarantined: a stale stamp must not ride
+        // along into a later quarantine.
+        await rm(path.join(root, name, ORPHANED_AT), { force: true }).catch(() => {});
+        await stampReleasedStems(name);
+        usage.count(+1, await stemCache.measuredDirBytes(path.join(root, name)));
+        cacheChanged = true;
+        report.released.push(name);
       }
+      // The ceiling reads as a half-loaded library, and on that reading a release
+      // is safe while a delete is the one step nothing undoes, so a held pass
+      // stops here and leaves the deletes and the moves to an operator's confirm.
+      if (held) {
+        report.refused = true;
+        report.reason = ceilingReason;
+      } else {
+        // 2. Aged (and superseded-with-fresh-copy) quarantines: delete for good.
+        for (const { name } of toDelete) {
+          if (opts.allowDeletion && (!opts.allowDeletion() || keepTrack(name))) continue;
+          const { gone, freedBytes } = await deleteDir(path.join(qu, name), () => !opts.allowDeletion || (opts.allowDeletion() && !keepTrack(name)));
+          report.freedBytes += freedBytes;
+          if (gone) report.deletedCount += 1;
+          else report.failed += 1;
+        }
+        // 3. Orphans: move into quarantine (same-filesystem rename; no merge).
+        await mkdirSafe(qu);
+        const names = opts.resolveNames && plan.quarantine.length
+          ? await opts.resolveNames(plan.quarantine.map(q => q.name))
+          : undefined;
+        for (const { name } of plan.quarantine) {
+          if (keepTrack(name)) continue;
+          const from = path.join(root, name);
+          const to = path.join(qu, name);
+          if (await stat(to).then(() => true, () => false)) {
+            // This id is quarantined already: it came back, a fresh analysis took
+            // the live slot, and it left again. The live copy is the newer one, so
+            // it replaces the stale copy and starts a whole grace of its own. Never
+            // the reverse: dropping the live copy would delete the only fresh stems
+            // on the spot, and leave what remains to age out on the old stamp.
+            // Deleting, so it reads the dir first, like the aged delete: an entry
+            // that is not stems is left alone, and the live copy with it.
+            if (opts.skipCollisions) continue;
+            if (!(await readsAsStems(to))) { report.failed += 1; continue; }
+            const stale = await deleteDir(to);
+            report.freedBytes += stale.freedBytes;
+            if (!stale.gone) { report.failed += 1; continue; }
+          }
+          try {
+            // Stamp before moving: a refused write must leave the live copy alone.
+            const leaving = await stemCache.measuredDirBytes(from);
+            await stampQuarantine(from, now);
+            if (keepTrack(name)) continue;
+            await rename(from, to);
+            usage.count(-1, leaving);
+            cacheChanged = true;
+          } catch { report.failed += 1; continue; }
+          await writeNameSidecar(to, names?.get(name), now);
+          report.quarantined += 1;
+        }
+      }
+    } finally {
+      // The quarantine is outside the measured cache. Releases and moves are
+      // measured individually so the snapshot stays exact without a full walk.
+      if (cacheChanged) await usage.settle();
     }
-    // The usage snapshot cached the pre-purge totals. The moves were measured,
-    // so the totals move by exactly that and the next read needs no walk; only
-    // a move that could not be measured marks them stale (stem-cache.ts,
-    // usage snapshot). Deleting aged quarantines alone touches nothing.
-    await usage.settle();
+
   } else {
     // Dry run: every count, zero mutations.
     report.quarantined = plan.quarantine.length;

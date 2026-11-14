@@ -102,6 +102,7 @@ import {
   type SteerData,
 } from './dash/queries';
 import { useCardHashJump } from '../../hooks/useCardHashJump';
+import NowPlayingWaveform from './subbeats/NowPlayingWaveform';
 
 // Listeners-table header cells. `sticky top-0` resolves against the ScrollArea
 // viewport, and the opaque card-bg stops rows showing through. The rule is an
@@ -486,8 +487,8 @@ export default function DashPanel() {
   // armed tooltip names the pair the label describes: the seam out of the on-air
   // track, not out of the queue row it sits above.
   const nextTransitionHint = q.nextTransition
-    ? 'How the on-air track hands over to the first queued track'
-    : 'Not armed yet — the seam is decided when the next track is handed to the mixer';
+    ? 'How the station’s on-air track hands over to the first queued track. The Mixing Desk follows buffered listener playback.'
+    : 'Not armed yet — the seam is decided when the next track is handed to the mixer. The Mixing Desk may still show the preceding mix during buffered listener playback.';
   // `sessionMessages` arrives in air order and is shown newest first. Each turn
   // carries its ORIGINAL index: a display index would shift under every new turn
   // and remount the whole list.
@@ -541,6 +542,10 @@ export default function DashPanel() {
 
       {err && <ErrorState error={err} />}
 
+      <Card title="Mixing Desk">
+        <NowPlayingWaveform />
+      </Card>
+
       <div className="stack-mobile grid grid-cols-[1.4fr_1fr] gap-4">
         <div className="grid grid-rows-[auto_1fr] gap-4">
           <Card
@@ -551,7 +556,7 @@ export default function DashPanel() {
                 title={nextTransitionHint}
                 className="text-[9px] font-bold tracking-[0.18em] text-muted uppercase"
               >
-                Next transition: <span className="text-ink">{nextTransition}</span>
+                Next station transition: <span className="text-ink">{nextTransition}</span>
               </span>
             }
             bodyClass="px-3.5 py-1.5"
@@ -565,6 +570,13 @@ export default function DashPanel() {
                   {upcoming.slice(0, 8).map((t, i) => (
                     <QueueItem
                       key={`${t.subsonic_id ?? ''}:${i}`}
+                      title={t.stemCacheCoverage ? `Stem cache — Regular: ${[
+                        t.stemCacheCoverage.regular.head ? 'head' : '',
+                        t.stemCacheCoverage.regular.tail ? 'tail' : '',
+                      ].filter(Boolean).join(' + ') || 'none'}; Sub/Beats: ${[
+                        t.stemCacheCoverage.subbeats.head ? 'head' : '',
+                        t.stemCacheCoverage.subbeats.exit ? 'exit' : '',
+                      ].filter(Boolean).join(' + ') || 'none'}` : undefined}
                       className="rounded-none border-b border-dashed border-separator-strong px-1.5 py-1.5 last:border-b-0 hover:bg-[var(--overlay)]"
                     >
                       <div className="flex items-center gap-2.5">
@@ -582,13 +594,20 @@ export default function DashPanel() {
                         <QueueItemContent className="text-[12px] text-ink">
                           {t.title} <span className="text-muted">— {t.artist}</span>
                         </QueueItemContent>
-                        {/* stemSeam belongs to the successor track. */}
-                        {t.stemSeam ? (
+                        {/* Stem seam labels belong to the successor track. */}
+                        {t.flow ? (
                           <span
-                            title="Arrives via a rendered blend mixed from cached stems"
+                            title={`${t.flow.label} · track ${t.flow.index + 1} of ${t.flow.size} · protected joins`}
                             className="shrink-0 text-[8px] font-bold tracking-[0.14em] whitespace-nowrap text-vermilion/80 uppercase"
                           >
-                            Stem blend
+                            Flow
+                          </span>
+                        ) : t.stemSeam ? (
+                          <span
+                            title={t.subbeats ? 'Arrives via a rendered Sub/Beats transition' : 'Arrives via a rendered blend mixed from cached stems'}
+                            className="shrink-0 text-[8px] font-bold tracking-[0.14em] whitespace-nowrap text-vermilion/80 uppercase"
+                          >
+                            {t.subbeats ? 'Sub/Beats' : 'Stem blend'}
                           </span>
                         ) : null}
                         {t.block && upcoming.findIndex(u => u.block?.id === t.block!.id) === i ? (

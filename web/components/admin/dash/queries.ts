@@ -52,7 +52,21 @@ export async function fetchDashStatus(fetcher: AdminFetch, signal: AbortSignal):
     degradedJson(adminJson<QueueState>(fetcher, '/state', undefined, signal)),
     degradedJson(adminJson<{ messages?: SessionTurn[] }>(fetcher, '/session', undefined, signal)),
   ]);
-  return { ...nowPlaying, queue: state ?? {}, sessionMessages: session?.messages ?? [] };
+  const ids = [...new Set((state?.upcoming ?? []).slice(0, 8).map(item => item.subsonic_id).filter((id): id is string => !!id))];
+  let coverage: Record<string, NonNullable<import('../../../lib/types').QueueEntry['stemCacheCoverage']>> = {};
+  if (ids.length) {
+    try {
+      const query = encodeURIComponent(ids.join(','));
+      coverage = (await adminJson<{ coverage?: typeof coverage }>(fetcher, `/stem-cache/coverage?ids=${query}`, undefined, signal)).coverage ?? {};
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
+  }
+  const upcoming = state?.upcoming?.map(item => ({
+    ...item,
+    ...(item.subsonic_id && coverage[item.subsonic_id] ? { stemCacheCoverage: coverage[item.subsonic_id] } : {}),
+  }));
+  return { ...nowPlaying, queue: { ...(state ?? {}), ...(upcoming ? { upcoming } : {}) }, sessionMessages: session?.messages ?? [] };
 }
 
 /**

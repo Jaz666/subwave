@@ -47,19 +47,20 @@ export const NAME_SIDECAR = '.track-meta.json';
 // (the windows' provenance stamps, #2238), each through a .tmp a crash can
 // leave behind. The stem is the model's own source name, not a fixed four: a
 // non-default DEMUCS_MODEL writes guitar and piano too.
-const STEM_FILE = /^(?:(?:head|tail)-[a-z0-9_]+\.flac|(?:head|tail)-meta\.json)(?:\.tmp)?$/;
+const STEM_FILE = /^(?:(?:head|tail)-[a-z0-9_]+\.flac|(?:head|tail)-meta\.json)(?:(?:\.[a-f0-9]{8})?\.tmp)?$/;
 
 /**
  * Pure: do these directory entries read as a track's stem dir? "Not a known id"
  * alone is not an orphan, because a share holds things SUB/WAVE never wrote
  * (`lost+found`, `@eaDir`, `#recycle`, an operator's folder) and a purge only
  * deletes what it can name as its own. So: at least one stem file, nothing but
- * stem files and the purge's sidecars, and no subdirectory. An empty dir does
+ * stem files and the purge's sidecars, and no subdirectory except the managed Sub/Beats subtree. An empty dir does
  * not qualify, because `lost+found` usually is one.
  */
 export function isStemDirListing(entries: ReadonlyArray<{ name: string; isDirectory: boolean }>): boolean {
   let stemFiles = 0;
   for (const e of entries) {
+    if (e.isDirectory && e.name === 'subbeats') continue;
     if (e.isDirectory) return false;
     if (STEM_FILE.test(e.name)) stemFiles += 1;
     else if (e.name !== ORPHANED_AT && e.name !== NAME_SIDECAR) return false;

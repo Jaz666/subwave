@@ -1,0 +1,298 @@
+{
+  "tracks": 109,
+  "roleConfidence": {
+    "head": {
+      "high": 16,
+      "low": 70,
+      "medium": 22,
+      "unknown": 1
+    },
+    "tail": {
+      "low": 86,
+      "medium": 22,
+      "unknown": 1
+    }
+  },
+  "pairCounts": {
+    "low": 7374,
+    "medium": 499
+  },
+  "candidatePairCount": 7873,
+  "shortlist": [
+    {
+      "case": "medium confidence, short overlap",
+      "outgoingId": "0KUsUv7L4BrgKe6WC2EXrM",
+      "outgoing": "Sash! — Encore une fois (Future Breeze edit)",
+      "incomingId": "0mmLLJ4Yi2ugzsKaGvSN43",
+      "incoming": "Steve Angello & Laidback Luke feat. Robin S — Show Me Love",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "estimated",
+        "reason": "Estimated 1.43s vocal overlap (longest 1.43s); medium confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "medium",
+        "overlapSeconds": 1.4326161949611844,
+        "longestOverlapSeconds": 1.4326161949611844,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "high",
+          "reason": "Boundary reviewed against this prepared recording; activity duration remains an estimate.",
+          "firstSeconds": 9,
+          "lastSeconds": 15.166918981490541,
+          "activeSeconds": 6.06691898149054,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 9.13
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 203.87383397343606,
+          "lastSeconds": 214.31,
+          "activeSeconds": 10.086166026563944,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 212.38
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      }
+    },
+    {
+      "case": "medium confidence, longer overlap",
+      "outgoingId": "3AZOHWF8DUl5La3yypEqii",
+      "outgoing": "Solardo x Eli Brown — XTC (radio edit)",
+      "incomingId": "4BWTA4c9JnZ5pGCxDi1h9G",
+      "incoming": "Chris Malinchak — So Good to Me (radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 5.01s vocal overlap (longest 5.01s); medium confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "medium",
+        "overlapSeconds": 5.010411874020917,
+        "longestOverlapSeconds": 5.010411874020917,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "high",
+          "reason": "Boundary reviewed against this prepared recording; activity duration remains an estimate.",
+          "firstSeconds": 11.3,
+          "lastSeconds": 16.599999999999998,
+          "activeSeconds": 5.299999999999997,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 11.29
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 135.02587731805784,
+          "lastSeconds": 154.24340136054423,
+          "activeSeconds": 19.21752404248639,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 151.78
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      }
+    },
+    {
+      "case": "reviewed head with automatic tail",
+      "outgoingId": "28dLudClz8uL7yraekHlvQ",
+      "outgoing": "Urban Hype — A Trip to Trumpton",
+      "incomingId": "6wckYgzaDkE8maAGaQo4OC",
+      "incoming": "Lonyo — Summer of Love (radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 0,
+      "vocal": {
+        "status": "estimated",
+        "reason": "Estimated 1.43s vocal overlap (longest 1.43s); medium confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "medium",
+        "overlapSeconds": 1.426283871752048,
+        "longestOverlapSeconds": 1.426283871752048,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "high",
+          "reason": "Boundary reviewed against this prepared recording; activity duration remains an estimate.",
+          "firstSeconds": 18.4,
+          "lastSeconds": 21.564673184024475,
+          "activeSeconds": 2.3646731840244755,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 18.45
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 194.4765306122449,
+          "lastSeconds": 209.9265306122449,
+          "activeSeconds": 12.75,
+          "boundaryVocal": "likely",
+          "lyricAnchorSeconds": 207.18
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      }
+    },
+    {
+      "case": "low confidence, short overlap",
+      "outgoingId": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "outgoing": "Urban Cookie Collective — The Key, the Secret",
+      "incomingId": "2bMGqIxYFp3CnUZhMdjlMz",
+      "incoming": "Faithless — Insomnia (radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 2,
+      "vocal": {
+        "status": "coverage",
+        "reason": "Estimated 1.50s vocal overlap (longest 1.50s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 1.4978138930696616,
+        "longestOverlapSeconds": 1.4978138930696616,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Plausible lyric versions disagree on this boundary by more than two seconds.",
+          "firstSeconds": 30.45,
+          "lastSeconds": 38.71643432974499,
+          "activeSeconds": 8.266434329744992,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 30.63
+        },
+        "tail": {
+          "confidence": "low",
+          "reason": "Stem coverage is incomplete or includes an unseparated original-mix lead-in.",
+          "firstSeconds": 184.9938321995465,
+          "lastSeconds": 215.94383219954648,
+          "activeSeconds": 30.94999999999999,
+          "boundaryVocal": "unknown",
+          "lyricAnchorSeconds": 219.25
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      }
+    },
+    {
+      "case": "low confidence, longer overlap",
+      "outgoingId": "6OYcg2iOqZu1SZNm3TKwBI",
+      "outgoing": "Rozalla — Everybody’s Free (To Feel Good)",
+      "incomingId": "0m0nKleIHadas4LDgo9V17",
+      "incoming": "De’Lacy — Hideaway (Deep Dish radio edit)",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 5.00s vocal overlap (longest 3.52s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 5.001081461082208,
+        "longestOverlapSeconds": 3.5178024401972436,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "A nearby-duration lyric version was found, but album or full title differs.",
+          "firstSeconds": 16.8,
+          "lastSeconds": 31.5243180076177,
+          "activeSeconds": 14.224318007617697,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 17.36
+        },
+        "tail": {
+          "confidence": "medium",
+          "reason": "Lyric timing and stem activity support this boundary; the words remain unverified.",
+          "firstSeconds": 184.02764724993293,
+          "lastSeconds": 204.97609977324265,
+          "activeSeconds": 20.948452523309726,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": 198.69
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      }
+    },
+    {
+      "case": "original Agnelli & Nelson comparison",
+      "outgoingId": "75cQfewXIS03M3D1qiDnO8",
+      "outgoing": "Agnelli & Nelson — El Nino",
+      "incomingId": "3CZAByVhRxf1wrPPNX1PUG",
+      "incoming": "Agnelli & Nelson — Everyday",
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 0,
+      "vocal": {
+        "status": "uncertain",
+        "reason": "Estimated 16.52s vocal overlap (longest 16.52s); low confidence. Short overlaps are allowed; uncertain passages remain available to audition.",
+        "confidence": "low",
+        "overlapSeconds": 16.52468651043131,
+        "longestOverlapSeconds": 16.52468651043131,
+        "allowanceSeconds": 2.0,
+        "head": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 0.0,
+          "lastSeconds": 19.349999999999998,
+          "activeSeconds": 19.349999999999998,
+          "boundaryVocal": "likely",
+          "lyricAnchorSeconds": null
+        },
+        "tail": {
+          "confidence": "low",
+          "reason": "Stem activity estimates possible voice; words are unverified.",
+          "firstSeconds": 206.32828401111064,
+          "lastSeconds": 222.85297052154195,
+          "activeSeconds": 16.52468651043131,
+          "boundaryVocal": "unlikely",
+          "lyricAnchorSeconds": null
+        }
+      },
+      "transition": {
+        "method": "standard"
+      },
+      "auditionReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "result": "acceptable",
+        "scope": "vocal-overlap exercise only; harmonic suitability unreviewed"
+      }
+    }
+  ],
+  "auditionReview": {
+    "date": "2026-11-09",
+    "reviewer": "owner",
+    "acceptableCount": 6,
+    "totalCount": 6,
+    "scope": "vocal-overlap audition exercise; harmonic suitability not confirmed",
+    "comment": "All 6 audition pairs sound fine",
+    "exactVocalTimingsConfirmed": false,
+    "harmonicSuitabilityConfirmed": false,
+    "clarification": "The owner clarified that the earlier acceptance may have applied to the vocal-overlap exercise; the pairs need another listen for harmonic mixing."
+  }
+}

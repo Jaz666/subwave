@@ -298,7 +298,15 @@ test('forgetStems drops the replaced tracks\' stem dirs, and never an offline ro
   mkdirSync(join(root, 'kept'), { recursive: true });
   // No marker, dirs on disk: an existing cache, adopted read-only = online.
   writeFileSync(join(root, stems.STEMS_MARKER), '');
+  const { createSubbeatsStore } = await import('../src/music/subbeats-store.js');
+  const prepared = createSubbeatsStore(dir);
+  prepared.enqueue([{id:'swap',title:'Swap',artist:'Artist',album:'Album'}]);
+  prepared.event({id:'swap',status:'running'}, ['swap']);
+  prepared.event({id:'swap',status:'prepared',bundleKey:'f'.repeat(64)}, ['swap']);
+  mkdirSync(join(root,'swap','subbeats','v1','f'.repeat(64)),{recursive:true});
   const r = await stems.forgetStems(['swap', 'absent']);
+  assert.equal(prepared.read().jobs[0].status,'failed');
+  assert.equal(prepared.read().jobs[0].bundleKey,null);
   assert.deepEqual([r.removed, r.failed], [1, 0]);
   assert.equal(existsSync(join(root, 'swap')), false);
   assert.equal(existsSync(join(root, 'kept')), true, 'only the named tracks');

@@ -281,7 +281,7 @@ export function planAcoustics(input: PlanInput): AcousticsPlan {
     );
   }
   if (facets.includes('stems')) {
-    warnings.push('stems: the stem-cache byte budget is enforced at run time, so fewer than planned may be written');
+    warnings.push('stems: the byte budget and any opted-in Sub/Beats selective admission policy are enforced at run time, so fewer than planned may be written; played, starred, prepared and manually included tracks bypass the selective criteria');
   }
   const whole = WHOLE_FILE_FACETS.filter((f) => facets.includes(f));
   if (whole.length) {

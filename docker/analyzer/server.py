@@ -23,9 +23,9 @@ import math
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable
+from typing import Any, Literal, Awaitable, Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 ANALYZE_PYTHON = os.environ.get("ANALYZE_PYTHON", "/opt/analyzer/venv/bin/python")
@@ -384,6 +384,10 @@ class StdioWorker:
         flags opt every request in."""
         if payload.get("texts") is not None:
             return True
+        if payload.get("op") == "preview_subbeats" and payload.get("method") == "cue-points":
+            return not bool(payload.get('handoff'))
+        if payload.get("op") == "prepare_subbeats":
+            return True
         if payload.get("op"):
             return False
         facets = payload.get("facets")
@@ -399,6 +403,8 @@ class StdioWorker:
     def _used_models(msg: dict[str, Any]) -> bool:
         """Whether a response proves model use (flat or facet shape)."""
         if any(k in msg for k in ("audio_embedding", "vocal_ranges", "stems_cached")):
+            return True
+        if msg.get("subbeats_used_models") is True:
             return True
         facets = msg.get("facets")
         if isinstance(facets, dict):
@@ -644,6 +650,28 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="subwave-analyzer", lifespan=lifespan)
 
 
+class SubbeatsLiveRequest(BaseModel):
+    version: Literal[1]
+    transitionId: str = Field(pattern=r'^[a-f0-9-]{36}$')
+    deadlineMs: int = Field(gt=0)
+    stateDir: str
+    cacheId: str = Field(min_length=16, max_length=100)
+    stemsRoot: str
+    outgoingId: str
+    incomingId: str
+    jobs: list[dict[str, Any]] = Field(min_length=2, max_length=2)
+    sourceUrls: list[str] = Field(min_length=2, max_length=2)
+    gainsDb: list[float] = Field(min_length=2, max_length=2)
+    mixStyle: Literal['long-blend', 'short-exchange', 'bass-swap', 'drums-first']
+    evidenceFingerprint: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+@app.post('/render-subbeats-transition')
+async def render_subbeats_transition(req: SubbeatsLiveRequest, request: Request):
+    from subbeats_live_service import render_live_request
+    return await render_live_request(req.model_dump(), request, ANALYZE_PYTHON, ANALYZE_WORKER)
+
+
 # Created lazily inside the running loop (an asyncio primitive must not be
 # bound to an import-time loop).
 _whole_file_sem: asyncio.Semaphore | None = None
@@ -745,6 +773,9 @@ async def health():
         "analyze_loudness_curve_capable": analyzer_pool.capability("loudness_curve_capable", "whole_file"),
         # How many whole-file requests this host runs at once (its own lane).
         "analyze_whole_file_concurrency": WHOLE_FILE_CONCURRENCY,
+        "analyze_subbeats_suitability_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_suitability_version") == 1 for w in analyzer_pool.ready_workers) else None),
+        "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
+        "analyze_subbeats_cache_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_cache_version") == 2 for w in analyzer_pool.ready_workers) else None),
         # How many analysis workers this pool holds (ANALYZE_CONCURRENCY). The
         # controller's blend render reads it to tell whether a spare member can
         # serve it while a pick-time separation holds one (#2253), and uses the
@@ -904,6 +935,119 @@ async def analyze(req: AnalyzeRequest):
     return out
 
 
+class SubbeatsCacheRequest(BaseModel):
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    remaining_bytes: int = Field(ge=0, strict=True)
+
+
+@app.post("/migrate-subbeats")
+async def migrate_subbeats(req: SubbeatsCacheRequest):
+    msg = await analyzer_pool.request({"id": "1", "op": "migrate_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Sub/Beats migration failed")
+    return msg
+
+
+class SubbeatsPrepareRequest(SubbeatsCacheRequest):
+    bundle_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
+    cue_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
+    method: str = Field(default='classic',pattern=r'^(classic|small0|final0)$')
+    path: str
+    track_id: str
+    complete: bool
+
+
+@app.post("/prepare-subbeats")
+async def prepare_subbeats(req: SubbeatsPrepareRequest):
+    payload = {"id": "1", "op": "prepare_subbeats", **req.model_dump()}
+    msg = await analyzer_pool.request(payload)
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Sub/Beats preparation failed")
+    return {"ok": True, "subbeats_result": msg.get("subbeats_result"), "cache_added_bytes": msg.get("cache_added_bytes")}
+
+
+class SubbeatsMatchRequest(BaseModel):
+    method: Literal['stems', 'cue-points', 'live-pair'] = 'stems'
+    incoming_id: str | None = Field(default=None, min_length=1, max_length=200)
+    mix_style: Literal['long-blend', 'short-exchange', 'bass-swap', 'drums-first'] = 'long-blend'
+    outgoing_cue_index: int = Field(default=0, ge=0, le=7)
+    jobs: list[dict[str, Any]] = Field(max_length=500)
+    outgoing_id: str
+    bar_shift: int = Field(default=0, ge=-2, le=2)
+
+
+@app.post("/match-subbeats")
+async def match_subbeats(req: SubbeatsMatchRequest):
+    if req.method == 'live-pair' and (not req.incoming_id or req.incoming_id == req.outgoing_id):
+        raise HTTPException(422, 'Choose two different tracks for live pair planning')
+    msg = await analyzer_pool.request({"id":"1","op":"match_subbeats",**req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422,msg.get("error") or "Match search failed")
+    return {"ok":True,"subbeats_matches":msg.get("subbeats_matches")}
+
+
+class SubbeatsAssessRequest(BaseModel):
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    track_id: str
+    bundle_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    cue_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    coverage_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+@app.post("/assess-subbeats")
+async def assess_subbeats(req: SubbeatsAssessRequest):
+    msg = await analyzer_pool.request({"id":"1", "op":"assess_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Suitability assessment failed")
+    return {"ok":True, "subbeats_result":msg.get("subbeats_result"), "cache_added_bytes":0}
+
+
+class SubbeatsReferencePreview(BaseModel):
+    out_seconds: float = Field(gt=0, lt=1200, allow_inf_nan=False)
+    in_resolve: float = Field(gt=0, lt=1200, allow_inf_nan=False)
+    bars: int = Field(ge=4, le=32, strict=True)
+    out_url: str
+    in_url: str
+
+
+class SubbeatsPreviewRequest(BaseModel):
+    handoff: dict[str, Any] | None = None
+    mix_style: str = Field(default='long-blend', pattern=r'^(long-blend|short-exchange|bass-swap|drums-first)$')
+    lyric_evidence: list[dict[str, Any] | None] | None = Field(default=None, min_length=2, max_length=2)
+    coverage_keys: list[str | None] | None = Field(default=None, min_length=2, max_length=2)
+    source_urls: list[str] | None = Field(default=None,min_length=2,max_length=2)
+    method: str = Field(default='stems',pattern=r'^(stems|cue-points)$')
+    auto_plan: bool = False
+    cue_keys: list[str | None] | None = Field(default=None,min_length=2,max_length=2)
+    cue_indices: list[int] | None = Field(default=None,min_length=2,max_length=2)
+    crossfade_seconds: float = Field(default=10, ge=0, le=30, allow_inf_nan=False)
+    equal_power_crossfade: bool = False
+    window_plan: dict[str, float] | None = None
+    bar_shift: int = Field(default=0, ge=-2, le=2, strict=True)
+    out_gain_db: float = Field(default=0, ge=-120, le=40)
+    in_gain_db: float = Field(default=0, ge=-120, le=40)
+    state_dir: str
+    cache_id: str = Field(min_length=16, max_length=100)
+    stems_root: str
+    track_ids: list[str] = Field(min_length=2, max_length=2)
+    out_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    in_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reference: SubbeatsReferencePreview | None = None
+
+
+@app.post("/subbeats-preview")
+async def subbeats_preview(req: SubbeatsPreviewRequest):
+    from fastapi.responses import FileResponse
+    msg = await analyzer_pool.request({"id": "1", "op": "preview_subbeats", **req.model_dump()})
+    if not msg.get("ok"):
+        raise HTTPException(422, msg.get("error") or "Preview could not be prepared")
+    return FileResponse(msg["subbeats_preview"], media_type="audio/wav", headers={"Cache-Control": "no-store", "X-Subbeats-Timeline": json.dumps(msg.get("subbeats_timeline"), separators=(",", ":"))})
+
+
 class RenderTransitionRequest(BaseModel):
     # Stem-blend transition render. The controller supplies per-track
     # alignment data straight from library.db — the worker never re-detects.
@@ -946,6 +1090,36 @@ async def render_transition(req: RenderTransitionRequest):
         "in_cue_sec": msg.get("in_cue_sec"),
         "clip_sec": msg.get("clip_sec"),
     }
+
+
+class StemBlendPreviewRequest(BaseModel):
+    out: dict[str, Any]
+    in_: dict[str, Any] = Field(alias="in")
+    state_dir: str
+    mode: Literal['mix', 'clip', 'outgoing', 'incoming'] = 'mix'
+
+    model_config = {"populate_by_name": True}
+
+
+@app.post("/stem-blend-preview")
+async def stem_blend_preview(req: StemBlendPreviewRequest):
+    from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
+    import shutil
+    from pathlib import Path
+
+    msg = await analyzer_pool.request({"id": "1", "op": "preview_stem_blend",
+                                       **req.model_dump(by_alias=True)})
+    if not msg.get('ok'):
+        raise HTTPException(422, msg.get('error') or 'The Stem Blend audition could not be prepared.')
+    path = Path(msg['stem_blend_preview'])
+    root = Path(req.state_dir) / 'stem-blend-previews'
+    if path.parent.parent != root or not path.parent.name.startswith('audition-') or path.name != 'preview.wav':
+        raise HTTPException(502, 'The analyzer returned an invalid audition path.')
+    return FileResponse(path, media_type='audio/wav',
+                        headers={'Cache-Control': 'no-store',
+                                 'X-Stem-Blend-Report': json.dumps(msg['stem_blend_report'], separators=(',', ':'))},
+                        background=BackgroundTask(shutil.rmtree, path.parent, ignore_errors=True))
 
 
 class EmbedTextRequest(BaseModel):

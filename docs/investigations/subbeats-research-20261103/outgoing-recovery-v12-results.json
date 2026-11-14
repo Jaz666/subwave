@@ -1,0 +1,2392 @@
+{
+  "algorithmVersion": 12,
+  "method": "Replay saved small0 predictions against hash-verified original recordings. New closing fallback only; no new neural inference or stem separation.",
+  "hashVerifiedSources": 106,
+  "preparedLibraryTracks": 109,
+  "missingBefore": 36,
+  "recovered": 26,
+  "missingAfter": 10,
+  "existingOutgoingControls": 70,
+  "existingOutgoingControlsUnchanged": true,
+  "incomingCoreResultsUnchanged": 106,
+  "ownerListeningApproved": false,
+  "stationRescan": {
+    "date": "2026-11-06",
+    "preparedTracks": 109,
+    "missingOutgoing": 10,
+    "matchesReplayRemaining": true,
+    "tracks": [
+      {"id": "5jEsrRrxT0nWc3gfhigyVX", "artist": "Orbital", "title": "Chime (edit)"},
+      {"id": "45oFaJbVctpHboLPchY5Zh", "artist": "Ninetoes", "title": "Finder (radio edit)"},
+      {"id": "3nmJqjvGdgMw05MeQQzRaH", "artist": "The MD X‐Spress", "title": "God Made Me Phunky"},
+      {"id": "0a0iuvZNdaENAs0dBBOytM", "artist": "Fatboy Slim", "title": "Praise You (radio edit)"},
+      {"id": "6U8RnjhAramrIRV8j7K3nA", "artist": "N‐Joi", "title": "Anthem"},
+      {"id": "6GtVK0BrkaxBPctdMaFEi1", "artist": "Junior Jack", "title": "Stupidisco (radio edit)"},
+      {"id": "6wckYgzaDkE8maAGaQo4OC", "artist": "Lonyo", "title": "Summer of Love (radio edit)"},
+      {"id": "0jYhwGvjnixsQ7CVNZr96s", "artist": "The Chemical Brothers", "title": "Hey Boy Hey Girl"},
+      {"id": "3DPInMTZpzUiFiMiUTS5qv", "artist": "Bicep", "title": "Glue"},
+      {"id": "0KUsUv7L4BrgKe6WC2EXrM", "artist": "Sash!", "title": "Encore une fois (Future Breeze edit)"}
+    ]
+  },
+  "cases": [
+    {
+      "id": "5jEsrRrxT0nWc3gfhigyVX",
+      "artist": "Orbital",
+      "title": "Chime (edit)",
+      "sourceSha256": "0a6cb78a1c98c18e2f507781dcf56c8fe866cd38bd1eac57769f6b2dfbc49bb7",
+      "durationSeconds": 194.7700680272109,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 184.58566844919775,
+          "period": 0.495808823529411,
+          "support": 1.0,
+          "p95": 0.012949197861036052,
+          "width": 8,
+          "barSupport": 0.7777777777777778,
+          "distance": 6.127800938557357
+        },
+        "phase": {
+          "validated": false,
+          "reason": "Insufficient independent closing-beat coverage"
+        },
+        "bodyEndSeconds": 190.7134693877551,
+        "audibleEndSeconds": 191.6130612244898,
+        "reason": "Independent closing timing is uncertain"
+      }
+    },
+    {
+      "id": "45oFaJbVctpHboLPchY5Zh",
+      "artist": "Ninetoes",
+      "title": "Finder (radio edit)",
+      "sourceSha256": "b96c41cfbb9ef48242e4aec18b0cc8dd98db2e259a9e8a002f2e2a3a48bb11b1",
+      "durationSeconds": 206.3682993197279,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "reason": "No measured ending decay"
+      }
+    },
+    {
+      "id": "3nmJqjvGdgMw05MeQQzRaH",
+      "artist": "The MD X\u2010Spress",
+      "title": "God Made Me Phunky",
+      "sourceSha256": "cfb3f3ff022e545b9dd0adef6847acc358728c11d839ca167329f6757ddb3d1b",
+      "durationSeconds": 396.814149659864,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "reason": "No measured ending decay"
+      }
+    },
+    {
+      "id": "0a0iuvZNdaENAs0dBBOytM",
+      "artist": "Fatboy Slim",
+      "title": "Praise You (radio edit)",
+      "sourceSha256": "67baa5110eda371087eadf8e23f71c52284f4d740769feeb5b30a37fd6c4d48b",
+      "durationSeconds": 227.97333333333333,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 223.1936223776222,
+          "period": 0.5467718531468502,
+          "support": 1.0,
+          "p95": 0.012236538461422695,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 1.6043821575251798
+        },
+        "phase": {
+          "validated": false,
+          "supportFraction": 0.36538461538461536,
+          "p95ErrorSeconds": 0.185662047872826,
+          "toleranceSeconds": 0.08,
+          "lane": "bass",
+          "startSeconds": 188.2002237762238,
+          "endSeconds": 216.1162811791383
+        },
+        "bodyEndSeconds": 224.79800453514738,
+        "audibleEndSeconds": 225.89750566893423,
+        "reason": "Independent closing timing is uncertain"
+      }
+    },
+    {
+      "id": "4d6VEhxYYX05WX6zOwSy6i",
+      "artist": "CJ Bolland",
+      "title": "Sugar Is Sweeter (Armand\u2019s Drum \u2019n\u2019 Bass mix)",
+      "sourceSha256": "99d27c957a077c3bcd85c6983b1a9d4086de3e1e235fe08da1133731a6bab4c2",
+      "durationSeconds": 303.02149659863943,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 257.47552447552454,
+          "bpm": 93.05024225055828,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 298.7435524475523,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 278.1095384615384,
+          "bpm": 93.05024225055828,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 298.7435524475523,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 298.7435524475523,
+        "audibleEndSeconds": 302.01297052154194,
+        "tailSeconds": 4.277944151087127,
+        "bodyEndSeconds": 301.3132879818594,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 298.7435524475523,
+          "period": 0.644812937062934,
+          "support": 1.0,
+          "p95": 0.01520979020984896,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 2.5697355343070853
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.03833954478060093,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 260.6995891608392,
+          "endSeconds": 280.68879020979017
+        },
+        "bodyEndSeconds": 301.3132879818594,
+        "audibleEndSeconds": 302.01297052154194,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "6IHyuK7SpklhZKCubot16i",
+      "artist": "Disclosure & AlunaGeorge",
+      "title": "White Noise (radio edit)",
+      "sourceSha256": "b2c1b1422c751308a1a151e3acfd90b449a309d6cb82a7ff39d65d636f75ac0e",
+      "durationSeconds": 277.6879365079365,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 240.2786853146853,
+          "bpm": 119.99937063267222,
+          "strength": 0.9375,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 272.27885314685295,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 256.2787692307691,
+          "bpm": 119.99937063267222,
+          "strength": 0.9375,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 272.27885314685295,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 272.27885314685295,
+        "audibleEndSeconds": 273.7757823129252,
+        "tailSeconds": 5.40908336108356,
+        "bodyEndSeconds": 272.72625850340137,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 272.27885314685295,
+          "period": 0.5000026223776194,
+          "support": 1.0,
+          "p95": 0.015210664335665975,
+          "width": 16,
+          "barSupport": 0.7647058823529411,
+          "distance": 0.4474053565484155
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9375,
+          "p95ErrorSeconds": 0.058762933891468014,
+          "toleranceSeconds": 0.08,
+          "lane": "bass",
+          "startSeconds": 240.77868793706293,
+          "endSeconds": 256.2787692307691
+        },
+        "bodyEndSeconds": 272.72625850340137,
+        "audibleEndSeconds": 273.7757823129252,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "6U8RnjhAramrIRV8j7K3nA",
+      "artist": "N\u2010Joi",
+      "title": "Anthem",
+      "sourceSha256": "f5a7e32a6268cff2f62f7dee2aa6139f97135730b9b477850c1648bf6d45eaf3",
+      "durationSeconds": 198.2,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "reason": "No measured ending decay"
+      }
+    },
+    {
+      "id": "6GtVK0BrkaxBPctdMaFEi1",
+      "artist": "Junior Jack",
+      "title": "Stupidisco (radio edit)",
+      "sourceSha256": "423eac4eb10a69288bb058ba0abebce2107311f541c13093761fb1705dc6484e",
+      "durationSeconds": 307.6,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "reason": "No measured ending decay"
+      }
+    },
+    {
+      "id": "0mmLLJ4Yi2ugzsKaGvSN43",
+      "artist": "Steve Angello & Laidback Luke feat. Robin S",
+      "title": "Show Me Love",
+      "sourceSha256": "97611953cb0dff79d5c87ee2f394728973abe581f4d37c5228df375d1193430a",
+      "durationSeconds": 184.84616780045351,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 152.2311608391608,
+          "bpm": 130.03866680054517,
+          "strength": 0.9375,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 181.76083916083905,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 166.99599999999992,
+          "bpm": 130.03866680054517,
+          "strength": 0.9375,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 181.76083916083905,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 181.76083916083905,
+        "audibleEndSeconds": 183.0669387755102,
+        "tailSeconds": 3.0853286396144597,
+        "bodyEndSeconds": 181.86748299319729,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 181.76083916083905,
+          "period": 0.46140122377622267,
+          "support": 1.0,
+          "p95": 0.012531118881088332,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.10664383235823038
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9375,
+          "p95ErrorSeconds": 0.07974489161622814,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 165.61179632867126,
+          "endSeconds": 179.91523426573417
+        },
+        "bodyEndSeconds": 181.86748299319729,
+        "audibleEndSeconds": 183.0669387755102,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "6wckYgzaDkE8maAGaQo4OC",
+      "artist": "Lonyo",
+      "title": "Summer of Love (radio edit)",
+      "sourceSha256": "6ec7c904a435d97e14af1c4bfcb2424bf1e38c979f7ea676cd2b8b7bd5dcd0a0",
+      "durationSeconds": 234.00598639455782,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "reason": "No supported closing span",
+        "bodyEndSeconds": 223.49859410430838,
+        "audibleEndSeconds": 230.19555555555556
+      }
+    },
+    {
+      "id": "2WJ9MGT6pkbUv5hXiJhkVj",
+      "artist": "Shakedown",
+      "title": "At Night (original edit)",
+      "sourceSha256": "994587efc920f91194c95f0a0bfaace77f85795541fff5535dd68598bb68cbaa",
+      "durationSeconds": 255.88,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 216.57714685314687,
+          "bpm": 124.14631323069875,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 247.50839160839143,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 232.04276923076915,
+          "bpm": 124.14631323069875,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 247.50839160839143,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 247.50839160839143,
+        "audibleEndSeconds": 250.48634920634922,
+        "tailSeconds": 8.37160839160856,
+        "bodyEndSeconds": 247.58766439909297,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 247.50839160839143,
+          "period": 0.48330069930069636,
+          "support": 1.0,
+          "p95": 0.01057342657350091,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.07927279070153759
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 1.0,
+          "p95ErrorSeconds": 0.030496195867689833,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 216.57714685314687,
+          "endSeconds": 247.05315192743763
+        },
+        "bodyEndSeconds": 247.58766439909297,
+        "audibleEndSeconds": 250.48634920634922,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "0jYhwGvjnixsQ7CVNZr96s",
+      "artist": "The Chemical Brothers",
+      "title": "Hey Boy Hey Girl",
+      "sourceSha256": "a00d9ee0280992c5a571e6ca99fdfb820bf3b7233fbb7d2f832e543ce8bdfa20",
+      "durationSeconds": 290.49333333333334,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "reason": "No measured ending decay"
+      }
+    },
+    {
+      "id": "3DPInMTZpzUiFiMiUTS5qv",
+      "artist": "Bicep",
+      "title": "Glue",
+      "sourceSha256": "32b71986e45756c7697927f519dcdc8a81b1073065c185f0c6e212efd1a02b2c",
+      "durationSeconds": 269.14997732426303,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 265.93947084548114,
+          "period": 0.4616137026239109,
+          "support": 0.9846153846153847,
+          "p95": 0.03534635568526596,
+          "width": 16,
+          "barSupport": 0.8823529411764706,
+          "distance": 0.16006041464214604
+        },
+        "phase": {
+          "validated": false,
+          "reason": "Insufficient independent closing-beat coverage"
+        },
+        "bodyEndSeconds": 265.779410430839,
+        "audibleEndSeconds": 268.02839002267575,
+        "reason": "Independent closing timing is uncertain"
+      }
+    },
+    {
+      "id": "01YqBxP7rV2u10PYe2NSne",
+      "artist": "Disciples",
+      "title": "They Don\u2019t Know (radio edit)",
+      "sourceSha256": "89fe7832e1f9be19d58992125aa062710274c469001fbbb39cdf824cd5f8aaf4",
+      "durationSeconds": 262.0484353741497,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 217.15138461538464,
+          "bpm": 97.68774363229394,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 256.4603076923075,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 236.80584615384606,
+          "bpm": 97.68774363229394,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 256.4603076923075,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 256.4603076923075,
+        "audibleEndSeconds": 260.28190476190474,
+        "tailSeconds": 5.588127681842195,
+        "bodyEndSeconds": 259.23238095238094,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 256.4603076923075,
+          "period": 0.6142019230769191,
+          "support": 1.0,
+          "p95": 0.017630769230646593,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 2.772073260073455
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9846153846153847,
+          "p95ErrorSeconds": 0.030559122623458276,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 217.15138461538464,
+          "endSeconds": 256.4603076923075
+        },
+        "bodyEndSeconds": 259.23238095238094,
+        "audibleEndSeconds": 260.28190476190474,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "3zyBz3oQt9FRTgonfRrZ47",
+      "artist": "Justice",
+      "title": "D.A.N.C.E. (radio edit)",
+      "sourceSha256": "d70cef6f18205ecde547168a512c03fd78f1a73cd20205cebcd367de68c1e2b7",
+      "durationSeconds": 211.88,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 170.87745454545455,
+          "bpm": 113.03882415908498,
+          "strength": 0.984375,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 204.84808391608374,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 187.86276923076915,
+          "bpm": 113.03882415908498,
+          "strength": 0.984375,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 204.84808391608374,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 204.84808391608374,
+        "audibleEndSeconds": 208.65532879818593,
+        "tailSeconds": 7.031916083916258,
+        "bodyEndSeconds": 204.857052154195,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 204.84808391608374,
+          "period": 0.530791083916081,
+          "support": 1.0,
+          "p95": 0.018825349650376206,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.008968238111265237
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.984375,
+          "p95ErrorSeconds": 0.04108328625757451,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 170.87745454545455,
+          "endSeconds": 204.34185941043083
+        },
+        "bodyEndSeconds": 204.857052154195,
+        "audibleEndSeconds": 208.65532879818593,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "56xTV13Tn2x8vpyaB6Xe0c",
+      "artist": "Mighty Dub Katz",
+      "title": "Magic Carpet Ride 07\u2019 (radio edit)",
+      "sourceSha256": "d48ea9b2e9a14b8c2fd7fa2cc7f003e1a14f445a6d2be0079be63b6af2cc7033",
+      "durationSeconds": 193.01986394557824,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 157.80942657342663,
+          "bpm": 128.24369291016487,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 187.75241958041946,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 172.78092307692305,
+          "bpm": 128.24369291016487,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 187.75241958041946,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 187.75241958041946,
+        "audibleEndSeconds": 188.7643537414966,
+        "tailSeconds": 5.267444365158781,
+        "bodyEndSeconds": 188.41451247165534,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 187.75241958041946,
+          "period": 0.4678592657342627,
+          "support": 1.0,
+          "p95": 0.029069230769289328,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.6620928912358863
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.06378168250404172,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 163.89159702797207,
+          "endSeconds": 178.3952342657342
+        },
+        "bodyEndSeconds": 188.41451247165534,
+        "audibleEndSeconds": 188.7643537414966,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "4BWTA4c9JnZ5pGCxDi1h9G",
+      "artist": "Chris Malinchak",
+      "title": "So Good to Me (radio edit)",
+      "sourceSha256": "b7e684250323d88d702beb38ae2ae0c241834caa5ad878f10d9de898e31cc3ec",
+      "durationSeconds": 158.69496598639455,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 124.9775944055944,
+          "bpm": 121.0150880991255,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 156.70917482517473,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 140.84338461538456,
+          "bpm": 121.0150880991255,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 156.70917482517473,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 156.70917482517473,
+        "audibleEndSeconds": 158.12825396825397,
+        "tailSeconds": 1.9857911612198222,
+        "bodyEndSeconds": 157.17868480725625,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 156.70917482517473,
+          "period": 0.4958059440559427,
+          "support": 1.0,
+          "p95": 0.011006643356711263,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.46950998208151873
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 1.0,
+          "p95ErrorSeconds": 0.023398054326668208,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 124.9775944055944,
+          "endSeconds": 156.23038548752834
+        },
+        "bodyEndSeconds": 157.17868480725625,
+        "audibleEndSeconds": 158.12825396825397,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "3INJfopPy8a8lEQ65wYhtI",
+      "artist": "Paul Woolford & Diplo feat. Kareen Lomax",
+      "title": "Looking for Me",
+      "sourceSha256": "b148f35b0ba0f716c3a181245d3a9390f805499320b971265ebe9bbc67825d68",
+      "durationSeconds": 211.45242630385488,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 172.64030769230766,
+          "bpm": 121.07571112577166,
+          "strength": 0.9538461538461539,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 204.35599999999985,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 188.49815384615374,
+          "bpm": 121.07571112577166,
+          "strength": 0.9538461538461539,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 204.35599999999985,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 204.35599999999985,
+        "audibleEndSeconds": 207.35591836734693,
+        "tailSeconds": 7.096426303855026,
+        "bodyEndSeconds": 205.30684807256236,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 204.35599999999985,
+          "period": 0.4955576923076907,
+          "support": 1.0,
+          "p95": 0.015176923077012816,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.9508480725625077
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9538461538461539,
+          "p95ErrorSeconds": 0.04454563055999179,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 172.64030769230766,
+          "endSeconds": 204.35599999999985
+        },
+        "bodyEndSeconds": 205.30684807256236,
+        "audibleEndSeconds": 207.35591836734693,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "3CZAByVhRxf1wrPPNX1PUG",
+      "artist": "Agnelli & Nelson",
+      "title": "Everyday",
+      "sourceSha256": "59d3542a7b8e79a8826f3b62fdf94b0738d9d3fce8c6dcfe3b27d33b397a701a",
+      "durationSeconds": 222.36,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 184.96595804195798,
+          "bpm": 135.06015135237274,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 213.39773426573413,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 199.18184615384607,
+          "bpm": 135.06015135237274,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 213.39773426573413,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 213.39773426573413,
+        "audibleEndSeconds": 219.00063492063492,
+        "tailSeconds": 8.962265734265884,
+        "bodyEndSeconds": 215.4522448979592,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 213.39773426573413,
+          "period": 0.44424650349650235,
+          "support": 1.0,
+          "p95": 0.04247692307684474,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 2.0545106322250604
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9846153846153847,
+          "p95ErrorSeconds": 0.061699672549792695,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 184.96595804195798,
+          "endSeconds": 213.39773426573413
+        },
+        "bodyEndSeconds": 215.4522448979592,
+        "audibleEndSeconds": 219.00063492063492,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "0VoGBmrB4pbgyHHKv4iU16",
+      "artist": "The Future Sound of London",
+      "title": "Papua New Guinea",
+      "sourceSha256": "e467a04611e5333cdc43092cbfb5a7b429ae44384b9318f2ec11a18877a43699",
+      "durationSeconds": 229.16,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 191.3955524475524,
+          "bpm": 125.4033038947376,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 222.0167552447551,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 206.70615384615374,
+          "bpm": 125.4033038947376,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 222.0167552447551,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 222.0167552447551,
+        "audibleEndSeconds": 226.7471201814059,
+        "tailSeconds": 7.143244755244893,
+        "bodyEndSeconds": 225.64761904761906,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 222.0167552447551,
+          "period": 0.4784562937062923,
+          "support": 1.0,
+          "p95": 0.019476923077007758,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 3.6308638028639564
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 1.0,
+          "p95ErrorSeconds": 0.03200213100398627,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 191.3955524475524,
+          "endSeconds": 215.80526077097505
+        },
+        "bodyEndSeconds": 225.64761904761906,
+        "audibleEndSeconds": 226.7471201814059,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "2sudGeoNs0Xj0puMQC1iYZ",
+      "artist": "Serious",
+      "title": "Danger Deeper",
+      "sourceSha256": "f64b5cc1da3f0f0e22910332077aa9dd78d80398ca77e5570a98ceb2fd289436",
+      "durationSeconds": 238.02666666666667,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 202.5842797202797,
+          "bpm": 133.97719420837558,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 231.24587412587402,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 216.91507692307687,
+          "bpm": 133.97719420837558,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 231.24587412587402,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 231.24587412587402,
+        "audibleEndSeconds": 234.94340136054421,
+        "tailSeconds": 6.780792540792646,
+        "bodyEndSeconds": 231.34503401360544,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 231.24587412587402,
+          "period": 0.4478374125874111,
+          "support": 1.0,
+          "p95": 0.010797552447615998,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.09915988773141748
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9846153846153847,
+          "p95ErrorSeconds": 0.04996896991900144,
+          "toleranceSeconds": 0.08,
+          "lane": "bass",
+          "startSeconds": 202.5842797202797,
+          "endSeconds": 231.24587412587402
+        },
+        "bodyEndSeconds": 231.34503401360544,
+        "audibleEndSeconds": 234.94340136054421,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "0qKLpGNoW7JYrZCSOplfBy",
+      "artist": "Altern 8",
+      "title": "Activ 8 (Come with Me)",
+      "sourceSha256": "9344a88618fb1c0294cad99333cc03bb0c74b6a2244294a3efcf9798e433b942",
+      "durationSeconds": 333.5466666666667,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 299.7747692307692,
+          "bpm": 129.8620216020484,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 329.3446153846152,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 314.5596923076922,
+          "bpm": 129.8620216020484,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 329.3446153846152,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 329.3446153846152,
+        "audibleEndSeconds": 331.899410430839,
+        "tailSeconds": 4.202051282051457,
+        "bodyEndSeconds": 329.50049886621315,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 329.3446153846152,
+          "period": 0.46202884615384415,
+          "support": 1.0,
+          "p95": 0.016096153846012838,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.1558834815979253
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.06884508437977388,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 313.1736057692307,
+          "endSeconds": 327.49649999999986
+        },
+        "bodyEndSeconds": 329.50049886621315,
+        "audibleEndSeconds": 331.899410430839,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "6JPjEWtZWyeq19X3fWgKcR",
+      "artist": "Freestylers",
+      "title": "B Boy Stance (radio edit)",
+      "sourceSha256": "90421cf038d4df6207c036d8d64ff4119d73c575c99e471bc3f3d9330f6bf694",
+      "durationSeconds": 261.44,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 216.64492307692313,
+          "bpm": 106.00526628726831,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 252.86953846153824,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 234.7572307692307,
+          "bpm": 106.00526628726831,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 252.86953846153824,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 252.86953846153824,
+        "audibleEndSeconds": 258.58267573696145,
+        "tailSeconds": 8.570461538461757,
+        "bodyEndSeconds": 254.3346031746032,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 252.86953846153824,
+          "period": 0.5660096153846109,
+          "support": 1.0,
+          "p95": 0.01636538461546024,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 1.4650647130649475
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.055717539900683725,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 224.00304807692308,
+          "endSeconds": 241.54934615384602
+        },
+        "bodyEndSeconds": 254.3346031746032,
+        "audibleEndSeconds": 258.58267573696145,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "0KUsUv7L4BrgKe6WC2EXrM",
+      "artist": "Sash!",
+      "title": "Encore une fois (Future Breeze edit)",
+      "sourceSha256": "661990ea32dd0cc8731dc0325583fe8cd81af882c4afef427a6b87fc48403740",
+      "durationSeconds": 218.88,
+      "previousStatus": "prepared",
+      "outgoing": [],
+      "ending": null,
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 214.21902097902083,
+          "period": 0.45657517482517324,
+          "support": 1.0,
+          "p95": 0.03177307692301383,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.4335867307297292
+        },
+        "phase": {
+          "validated": false,
+          "reason": "Insufficient independent closing-beat coverage"
+        },
+        "bodyEndSeconds": 214.65260770975055,
+        "audibleEndSeconds": 215.75210884353743,
+        "reason": "Independent closing timing is uncertain"
+      }
+    },
+    {
+      "id": "4hLJ5QhL90AQnuLx7t19Uo",
+      "artist": "Sash!",
+      "title": "Ecuador",
+      "sourceSha256": "0522d3dcfa38f5006715db383238bef15ab2011f7ce65fc3b6253f434a821a57",
+      "durationSeconds": 213.17333333333335,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 179.80310489510487,
+          "bpm": 132.93308802169156,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 208.68981818181797,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 194.24646153846143,
+          "bpm": 132.93308802169156,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 208.68981818181797,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 208.68981818181797,
+        "audibleEndSeconds": 210.10467120181406,
+        "tailSeconds": 4.483515151515377,
+        "bodyEndSeconds": 209.15510204081633,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 208.68981818181797,
+          "period": 0.4513548951048922,
+          "support": 1.0,
+          "p95": 0.022673076923223328,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.46528385899836167
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 1.0,
+          "p95ErrorSeconds": 0.05270927881659298,
+          "toleranceSeconds": 0.08,
+          "lane": "bass",
+          "startSeconds": 179.80310489510487,
+          "endSeconds": 205.11274376417234
+        },
+        "bodyEndSeconds": 209.15510204081633,
+        "audibleEndSeconds": 210.10467120181406,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "3u2wz0pu29wI2WGjGWVtwr",
+      "artist": "Freestylers",
+      "title": "Ruffneck",
+      "sourceSha256": "90ecd2414fc10d7cd7218bd0a65803ef5417343d68b98b30dd1fce6c08f1f281",
+      "durationSeconds": 249.41333333333333,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 211.6408951048951,
+          "bpm": 125.90267855013883,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 242.14064335664318,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 226.89076923076914,
+          "bpm": 125.90267855013883,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 242.14064335664318,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 242.14064335664318,
+        "audibleEndSeconds": 245.5385941043084,
+        "tailSeconds": 7.272689976690145,
+        "bodyEndSeconds": 242.24009070294784,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 242.14064335664318,
+          "period": 0.4765585664335641,
+          "support": 1.0,
+          "p95": 0.0131996503497362,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.09944734630465746
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.04607992959431897,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 227.3673277972027,
+          "endSeconds": 242.14064335664318
+        },
+        "bodyEndSeconds": 242.24009070294784,
+        "audibleEndSeconds": 245.5385941043084,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "2eJEr2dDz3MIgUljTLr6AM",
+      "artist": "Altern 8",
+      "title": "E Vapor 8",
+      "sourceSha256": "333895eb5c94a399a4555a4446e89ae21cf374175fb30a36ac40878cb78399a2",
+      "durationSeconds": 320.4266666666667,
+      "previousStatus": "unmeasurable",
+      "outgoing": [
+        {
+          "sourceSeconds": 288.06461538461525,
+          "bpm": 128.8643826280902,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 317.8633846153844,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 302.9639999999998,
+          "bpm": 128.8643826280902,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 317.8633846153844,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 317.8633846153844,
+        "audibleEndSeconds": 318.8053514739229,
+        "tailSeconds": 2.563282051282272,
+        "bodyEndSeconds": 318.1056689342404,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 317.8633846153844,
+          "period": 0.46560576923076835,
+          "support": 1.0,
+          "p95": 0.021332692307851172,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.24228431885597956
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.037032775161534914,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 288.530221153846,
+          "endSeconds": 302.9639999999998
+        },
+        "bodyEndSeconds": 318.1056689342404,
+        "audibleEndSeconds": 318.8053514739229,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "6DyC0TGnYEorEtY4jdBgbg",
+      "artist": "Blue Boy",
+      "title": "Remember Me (Sure Is Pure 7\" edit)",
+      "sourceSha256": "afa7302f00d3070964674923fba2236afcc28ed96e22bb1ef32f6bfac6187178",
+      "durationSeconds": 227.96,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 182.64000000000004,
+          "bpm": 101.10011179339337,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 220.62215384615368,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 201.63107692307685,
+          "bpm": 101.10011179339337,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 220.62215384615368,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 220.62215384615368,
+        "audibleEndSeconds": 224.89795918367346,
+        "tailSeconds": 7.337846153846328,
+        "bodyEndSeconds": 221.24961451247165,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 220.62215384615368,
+          "period": 0.5934711538461508,
+          "support": 1.0,
+          "p95": 0.010646153846113292,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.6274606663179725
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9846153846153847,
+          "p95ErrorSeconds": 0.02872598988313939,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 182.64000000000004,
+          "endSeconds": 220.62215384615368
+        },
+        "bodyEndSeconds": 221.24961451247165,
+        "audibleEndSeconds": 224.89795918367346,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "28dLudClz8uL7yraekHlvQ",
+      "artist": "Urban Hype",
+      "title": "A Trip to Trumpton",
+      "sourceSha256": "84fba0520fe8d436698aaff84b5f5ecd998946d076cdaf9796203eb934caff11",
+      "durationSeconds": 211.44,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 179.37653146853157,
+          "bpm": 140.68225977028595,
+          "strength": 0.9692307692307692,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 206.67208391608375,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 193.02430769230767,
+          "bpm": 140.68225977028595,
+          "strength": 0.9692307692307692,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 206.67208391608375,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 206.67208391608375,
+        "audibleEndSeconds": 209.75482993197278,
+        "tailSeconds": 4.767916083916248,
+        "bodyEndSeconds": 209.30503401360545,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 206.67208391608375,
+          "period": 0.4264930069930028,
+          "support": 1.0,
+          "p95": 0.014111888111824554,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 2.6329500975217
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9692307692307692,
+          "p95ErrorSeconds": 0.05302423608151226,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 179.37653146853157,
+          "endSeconds": 206.67208391608375
+        },
+        "bodyEndSeconds": 209.30503401360545,
+        "audibleEndSeconds": 209.75482993197278,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "6PFpxHW43D9DDqNxnD5ecV",
+      "artist": "Urban Hype",
+      "title": "Living in a Fantasy",
+      "sourceSha256": "659de726f6943a6c6f0674a6f52116100e20c2534adf603ac5f551fc2127120c",
+      "durationSeconds": 297.2133333333333,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 261.9806433566434,
+          "bpm": 127.86909066522196,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 292.01135664335646,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 276.9959999999999,
+          "bpm": 127.86909066522196,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 292.01135664335646,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 292.01135664335646,
+        "audibleEndSeconds": 294.56634920634923,
+        "tailSeconds": 5.201976689976846,
+        "bodyEndSeconds": 293.7167346938775,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 292.01135664335646,
+          "period": 0.4692298951048918,
+          "support": 1.0,
+          "p95": 0.012691783216791916,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 1.7053780505210625
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 1.0,
+          "p95ErrorSeconds": 0.032114965590042746,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 261.9806433566434,
+          "endSeconds": 289.67519274376417
+        },
+        "bodyEndSeconds": 293.7167346938775,
+        "audibleEndSeconds": 294.56634920634923,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "2djbF5gzXAmoe4rmSSxFhG",
+      "artist": "Indo",
+      "title": "R U Sleeping (Bump n Flex MIX)",
+      "sourceSha256": "12cdc62ce1986ae836f014f214e3ae80703a9f33991ac9e53f40c96ef7184c4a",
+      "durationSeconds": 243.14666666666668,
+      "previousStatus": "unmeasurable",
+      "outgoing": [
+        {
+          "sourceSeconds": 203.98987412587417,
+          "bpm": 127.05934619229289,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 234.21197202797185,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 219.100923076923,
+          "bpm": 127.05934619229289,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 234.21197202797185,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 234.21197202797185,
+        "audibleEndSeconds": 239.94113378684807,
+        "tailSeconds": 8.934694638694822,
+        "bodyEndSeconds": 235.14331065759637,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 234.21197202797185,
+          "period": 0.4722202797202765,
+          "support": 1.0,
+          "p95": 0.012980419580344458,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.9313386296245199
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.07760828060816749,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 212.01761888111886,
+          "endSeconds": 226.65644755244742
+        },
+        "bodyEndSeconds": 235.14331065759637,
+        "audibleEndSeconds": 239.94113378684807,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "7lJyvrKMYL1mczCN3dsNUC",
+      "artist": "Shut Up and Dance",
+      "title": "I Love U",
+      "sourceSha256": "7e58a5808946f8dc16b9399f756a93073a1477faf16d1843b166ef7531a18a25",
+      "durationSeconds": 220.4,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 193.70495104895105,
+          "bpm": 175.16817573982172,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 215.62674125874105,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 204.66584615384605,
+          "bpm": 175.16817573982172,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 215.62674125874105,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 215.62674125874105,
+        "audibleEndSeconds": 218.55083900226757,
+        "tailSeconds": 4.773258741258957,
+        "bodyEndSeconds": 216.35183673469388,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 215.62674125874105,
+          "period": 0.3425279720279689,
+          "support": 1.0,
+          "p95": 0.029500699300763242,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.725095475952827
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9846153846153847,
+          "p95ErrorSeconds": 0.04611867180447007,
+          "toleranceSeconds": 0.06850559440559378,
+          "lane": "broadband",
+          "startSeconds": 193.70495104895105,
+          "endSeconds": 215.62674125874105
+        },
+        "bodyEndSeconds": 216.35183673469388,
+        "audibleEndSeconds": 218.55083900226757,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "4uQNaRzdfCCZ68Tz7EoSCB",
+      "artist": "Lovestation",
+      "title": "Teardrops",
+      "sourceSha256": "395b2327b981700d49140486a141bacd76e78fa4984051dbde307bc6f6c9f125",
+      "durationSeconds": 226.05333333333334,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 189.39197202797192,
+          "bpm": 128.59061760589924,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 219.25418181818165,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 204.32307692307677,
+          "bpm": 128.59061760589924,
+          "strength": 0.9846153846153847,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 219.25418181818165,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 219.25418181818165,
+        "audibleEndSeconds": 223.0987755102041,
+        "tailSeconds": 6.799151515151692,
+        "bodyEndSeconds": 219.3504761904762,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 219.25418181818165,
+          "period": 0.46659702797202707,
+          "support": 1.0,
+          "p95": 0.011287062937219615,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.09629437229455107
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9846153846153847,
+          "p95ErrorSeconds": 0.02868784786654714,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 189.39197202797192,
+          "endSeconds": 219.25418181818165
+        },
+        "bodyEndSeconds": 219.3504761904762,
+        "audibleEndSeconds": 223.0987755102041,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "2w6xrbPUZ3ukEA7KqsPf5k",
+      "artist": "Camisra",
+      "title": "Let Me Show You",
+      "sourceSha256": "6238146212e7aff5c8de54cc012886192f89166d8eacabbe39f7bf64846810d0",
+      "durationSeconds": 206.93333333333334,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 167.33127272727268,
+          "bpm": 136.03258123012034,
+          "strength": 0.9375,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 195.55980419580405,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 181.44553846153838,
+          "bpm": 136.03258123012034,
+          "strength": 0.9375,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 195.55980419580405,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 195.55980419580405,
+        "audibleEndSeconds": 201.65850340136055,
+        "tailSeconds": 11.373529137529289,
+        "bodyEndSeconds": 196.1609977324263,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 195.55980419580405,
+          "period": 0.44107080419580247,
+          "support": 1.0,
+          "p95": 0.02319405594417958,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 0.6011935366222474
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9375,
+          "p95ErrorSeconds": 0.07444118480732981,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 176.59375961538456,
+          "endSeconds": 190.2669545454544
+        },
+        "bodyEndSeconds": 196.1609977324263,
+        "audibleEndSeconds": 201.65850340136055,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "66PHgPURGTlzrxlEI3piCJ",
+      "artist": "Slo Moshun",
+      "title": "Bells of n Y (House 2 House MIX)",
+      "sourceSha256": "db1b8386d2ec6cf364b177403af77e9cee2b1edbc695b8a386d899cec29498c3",
+      "durationSeconds": 137.38666666666666,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 93.91327631853977,
+          "bpm": 127.78562978267367,
+          "strength": 0.9692307692307692,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 123.96360362475352,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 108.93843997164664,
+          "bpm": 127.78562978267367,
+          "strength": 0.9692307692307692,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 123.96360362475352,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 123.96360362475352,
+        "audibleEndSeconds": 132.68979591836734,
+        "tailSeconds": 13.423063041913139,
+        "bodyEndSeconds": 128.24181405895692,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 123.96360362475352,
+          "period": 0.4695363641595899,
+          "support": 0.9692307692307692,
+          "p95": 0.03952183303594262,
+          "width": 16,
+          "barSupport": 1.0,
+          "distance": 4.278210434203402
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.9692307692307692,
+          "p95ErrorSeconds": 0.050368921846640546,
+          "toleranceSeconds": 0.08,
+          "lane": "broadband",
+          "startSeconds": 93.91327631853977,
+          "endSeconds": 123.96360362475352
+        },
+        "bodyEndSeconds": 128.24181405895692,
+        "audibleEndSeconds": 132.68979591836734,
+        "reason": "Measured closing span"
+      }
+    },
+    {
+      "id": "7G7P5sw0PRMSGcktzu2WOi",
+      "artist": "Svenson & Gielen",
+      "title": "Beauty of Silence",
+      "sourceSha256": "45904dac142f18c35ad9470f214ecba203b1b1da3e73e610270afbbbc931b76b",
+      "durationSeconds": 182.465306122449,
+      "previousStatus": "prepared",
+      "outgoing": [
+        {
+          "sourceSeconds": 150.1309431431924,
+          "bpm": 139.93345652256073,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 16,
+          "phraseEndSeconds": 177.57255786083428,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 163.85175050201335,
+          "bpm": 139.93345652256073,
+          "strength": 0.96875,
+          "reason": "ending",
+          "phraseBars": 8,
+          "phraseEndSeconds": 177.57255786083428,
+          "timingSource": "fitted-grid",
+          "timingValidated": true
+        }
+      ],
+      "ending": {
+        "phraseEndSeconds": 177.57255786083428,
+        "audibleEndSeconds": 179.9683446712018,
+        "tailSeconds": 4.892748261614713,
+        "bodyEndSeconds": 178.41904761904763,
+        "confidence": "estimated"
+      },
+      "decision": {
+        "route": "closing-grid",
+        "fit": {
+          "endpoint": 177.57255786083428,
+          "period": 0.4287752299631541,
+          "support": 0.9846153846153847,
+          "p95": 0.015422065762811596,
+          "width": 16,
+          "barSupport": 0.8235294117647058,
+          "distance": 0.8464897582133517
+        },
+        "phase": {
+          "validated": true,
+          "supportFraction": 0.96875,
+          "p95ErrorSeconds": 0.03539840238899359,
+          "toleranceSeconds": 0.08,
+          "lane": "bass",
+          "startSeconds": 160.85032389227126,
+          "endSeconds": 174.14235602112905
+        },
+        "bodyEndSeconds": 178.41904761904763,
+        "audibleEndSeconds": 179.9683446712018,
+        "reason": "Measured closing span"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "28mHjUXiWoQcbfm9MHBSMZ",
+      "artist": "Hot Natured",
+      "title": "Benediction (radio edit)",
+      "sourceSha256": "fad4492dad798e2afc0962a1b96d74d7c30b8af469762b9e147406db11a31663",
+      "durationSeconds": 197.9831292517007,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "51HUObKsDacPy791RtrzCc",
+      "artist": "Sasha",
+      "title": "Xpander (edit)",
+      "sourceSha256": "0ca8b57f0cd3b7941214e23ac6ca142c2535b62f2f10394045eb90be9dea4a5d",
+      "durationSeconds": 202.0321088435374,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6nz5kJRZx7MV09QflArHrs",
+      "artist": "Gusto",
+      "title": "Disco\u2019s Revenge (Mole Hole radio edit)",
+      "sourceSha256": "2a1b142700d54bd9bf70b35939baf32361b5f62a5b4579b4fdea949a1677203c",
+      "durationSeconds": 231.69333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2yRchK9g4Z8a2dfAOQUuLd",
+      "artist": "Storm Queen",
+      "title": "Look Right Through (MK vocal edit)",
+      "sourceSha256": "554f7370175eafaa5e939c4938ba433945fcef00a8afc7eaaa05399b974556d2",
+      "durationSeconds": 148.38857142857142,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4lTqLFHeO8kawraowgZNAo",
+      "artist": "Maceo Plex",
+      "title": "When the Lights Are Out (garage mix)",
+      "sourceSha256": "c6ad25a8ea9d10e4bdf08fcd1e0b29531d26c81a67ebd5c86cc79448abaa0fd5",
+      "durationSeconds": 444.16108843537415,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0jrtC2Zc8IwQK3g8srcqjf",
+      "artist": "Gorgon City feat. MNEK",
+      "title": "Ready for Your Love",
+      "sourceSha256": "838704ed1141825c21277771030a4167436b91702dcf91504a75ac314ab367a1",
+      "durationSeconds": 198.8805442176871,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2ptZ3ddvz2qRGW1K0Z7jkS",
+      "artist": "Roger Sanchez",
+      "title": "Another Chance (radio edit)",
+      "sourceSha256": "61e728b9c3c0ff2c4c3a35977bca3bd652050d0365ae1f6d895b43e0366724ac",
+      "durationSeconds": 207.3861224489796,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3qN409t95sgWkSMH59sRoq",
+      "artist": "Dusky",
+      "title": "Careless (edit)",
+      "sourceSha256": "6a512d22532ba6b3ec8d555b692f208acdc281e2b5907d444dcd5e86806f889e",
+      "durationSeconds": 391.70721088435374,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3iHsPWlvefecmw8ZPImGCT",
+      "artist": "Route 94 feat. Jess Glynne",
+      "title": "My Love",
+      "sourceSha256": "0a187c0909d328be38336939b0e39d2ea568e3ea06ecad736d2e11337cb2f109",
+      "durationSeconds": 259.6533333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "1Urcb46oXyakaxYrW4cmxw",
+      "artist": "Mr. Oizo",
+      "title": "Flat Beat (radio edit)",
+      "sourceSha256": "1231cd24012fc5ad1d80fdc2c8567310b2fd9772e4697d069f1d00b069a4a4a9",
+      "durationSeconds": 237.26666666666668,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2SYyMXeGJCAzQfV6iYgjBT",
+      "artist": "Nightcrawlers",
+      "title": "Push the Feeling On (MK Dub Revisited edit)",
+      "sourceSha256": "170a9d9284c091026f45a8f6397fccfb997ca348e525265bf119925a27de13d0",
+      "durationSeconds": 241.86884353741496,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2nwflXDDUauoyb9pjz9zlR",
+      "artist": "Peggy Gou",
+      "title": "Starry Night (edit)",
+      "sourceSha256": "1616b0b7039c49896f0e2f8cccb6f597f75b86feb9ffd63f261f5aa8a33de042",
+      "durationSeconds": 233.97891156462586,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "7iRCMwY3uowhy2Zsqbyone",
+      "artist": "Groove Armada",
+      "title": "Superstylin\u2019 (G.A. 7\" remix)",
+      "sourceSha256": "a900a142135340a5a792afa4277b43e39aa0df6f483d9f7d7d18c376f407fd66",
+      "durationSeconds": 361.36,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2bMGqIxYFp3CnUZhMdjlMz",
+      "artist": "Faithless",
+      "title": "Insomnia (radio edit)",
+      "sourceSha256": "6246175e77f1ebe3b5f44faf3105c914e5b9fd787b6787a770e7e378acd6096c",
+      "durationSeconds": 213.45333333333335,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "7bfhXAe5NRn4ZGopPSY0WZ",
+      "artist": "Robert Miles",
+      "title": "Children",
+      "sourceSha256": "3904b492af33b2ef18f4e50cb5a677599acfdff4d7fc43acea6f889edb7f9cba",
+      "durationSeconds": 246.70666666666668,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "376E7MZkpAtwxmLcK2Jy6t",
+      "artist": "FELIX",
+      "title": "Don\u2019t You Want Me (Hooj mix edit)",
+      "sourceSha256": "7d9637b7fdf37d8c43245300462617c80d10fc6964c1cb094a07d5e4f318baff",
+      "durationSeconds": 188.86666666666667,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6h7AgX2eZ8sY0eWhI36PnR",
+      "artist": "Wankelmut & Emma Louise",
+      "title": "My Head Is a Jungle (MK remix) (radio edit)",
+      "sourceSha256": "a83d65b5f5ddde8151f971d4c7342f998409f1e8f28209d9b7ce8df69c3b429e",
+      "durationSeconds": 205.16131519274376,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "776cOb4pKEzlkL9XOLlIT5",
+      "artist": "Sandy B",
+      "title": "Make the World Go Around (Deep Dish radio edit)",
+      "sourceSha256": "fbc5a839efe3cab867dd0eae51a361402ce5bb551309992086550de4e1b32cad",
+      "durationSeconds": 226.90068027210884,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3zG1MXoVH7wsAJ3E4cWtWN",
+      "artist": "Tensnake",
+      "title": "Coma Cat (radio edit)",
+      "sourceSha256": "a3b54c6521b9a352b843329bad3819b4ffab5eaca665364b627dae7df802d9ba",
+      "durationSeconds": 177.63374149659865,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0m0nKleIHadas4LDgo9V17",
+      "artist": "De\u2019Lacy",
+      "title": "Hideaway (Deep Dish radio edit)",
+      "sourceSha256": "69b87569ad92d65975bd0b152ca89564336735a72998923f47736e5251efac5d",
+      "durationSeconds": 208.04027210884354,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3HzbPMXG2wWDU8LgmBb96L",
+      "artist": "CamelPhat & Elderbrook",
+      "title": "Cola (radio edit)",
+      "sourceSha256": "e488dbe7104ee18bedfd1f20889bfd28ff0860b8d4185f59159d9b97bfd775b6",
+      "durationSeconds": 223.86938775510205,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3AzdoX92fLb68XVdppkE9H",
+      "artist": "The Supermen Lovers feat. Mani Hoffman",
+      "title": "Starlight",
+      "sourceSha256": "e3ac3359681931464324e464f756cba34203071bae2d827513960ab1651c0f38",
+      "durationSeconds": 234.4,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0WoXy8bLTBS3uX80rEoVqX",
+      "artist": "Hardrive",
+      "title": "Deep Inside (edit)",
+      "sourceSha256": "05f9896735edb6e428c2431138fa1abe9b7339dc0d1934a3496fdf73612a32b6",
+      "durationSeconds": 390.56,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4VVS8RmsbZjAtiiHKr0QrW",
+      "artist": "Armand van Helden",
+      "title": "My My My",
+      "sourceSha256": "f7fb132598262665675e154f12bbca3ca33b5b702b77e0e934f6de0b21220013",
+      "durationSeconds": 378.25414965986397,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4Xq7hJn4Y4ZINIxaDikMZf",
+      "artist": "Eric Prydz",
+      "title": "Pjanoo (radio edit)",
+      "sourceSha256": "30a9624f6175d82f0d08742d185e68daaefe3f9a3dcc45d17432684c19fc01dc",
+      "durationSeconds": 157.43201814058958,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0st56LbjBFC6awyLK1wxwk",
+      "artist": "The Shapeshifters",
+      "title": "Lola's Theme",
+      "sourceSha256": "f175be1a33f055070596f614d48de2fec51bf67135355be5b23df9535680f332",
+      "durationSeconds": 207.06666666666666,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0YDAsSE8ZCwfKHHoGtKwRZ",
+      "artist": "Riton feat. Kah\u2010Lo",
+      "title": "Rinse & Repeat (radio edit)",
+      "sourceSha256": "67c82f81f8d8074f255daa5308fca59bae55f9c7b13e39b82e63c8f1ffb90fad",
+      "durationSeconds": 151.2295238095238,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "20vmtlyzTGna3VJLlDCGSb",
+      "artist": "Michael Gray",
+      "title": "The Weekend (radio edit)",
+      "sourceSha256": "bf88545283e995faed2c98756c69123068b620be88548ffdadc73bcde6efc070",
+      "durationSeconds": 192.17333333333335,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "1Qijtv80C19zSAmEwV9sC9",
+      "artist": "M&S presents\u2026 The Girl Next Door",
+      "title": "Salsoul Nugget (If U Wanna)",
+      "sourceSha256": "d5fbfafe1136ce40de3bd8991675a7c9bee9ac01cd74ceca68d13512e593d82c",
+      "durationSeconds": 207.55374149659863,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "40f0Gk1pR7DCHUw8wQhydx",
+      "artist": "Fish Go Deep feat. Tracey K",
+      "title": "The Cure & The Cause (radio edit)",
+      "sourceSha256": "49205882901cf650e83a71a10e6ef6e3a936134ec045f373f831d1f80b6d3fa1",
+      "durationSeconds": 157.0742857142857,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4qQE8A7PICdlaU78ASI9gq",
+      "artist": "KH",
+      "title": "Only Human (radio edit)",
+      "sourceSha256": "4ea7e1869dbca3a434ba320f4abda402cf6693c572709e43b5ec0e283e8fb696",
+      "durationSeconds": 201.27455782312924,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3AZOHWF8DUl5La3yypEqii",
+      "artist": "Solardo x Eli Brown",
+      "title": "XTC (radio edit)",
+      "sourceSha256": "129dd6e1fac836e03c4fe20613358f53b9034e708af34fe7974fc3e3c7e4c221",
+      "durationSeconds": 156.63020408163266,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0dA6lP7F8ADdw7ETjOAtYb",
+      "artist": "Three Drives",
+      "title": "Greece 2000",
+      "sourceSha256": "b5251ec2ad561c4a4ac19fd0e333f9232c26337f0b917aabc243e3f2f14e853a",
+      "durationSeconds": 483.71809523809526,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0h7z87C3iiJUpMuURZ1tU2",
+      "artist": "Eddie Amador",
+      "title": "House Magic (Message mix edit)",
+      "sourceSha256": "40cdfc4ed2a28f5018ad756394964a953d0bc4189d560ffa43969cc4444f5c59",
+      "durationSeconds": 485.01659863945576,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "08wLTKsFUAeHJpNqdrpmwF",
+      "artist": "MK",
+      "title": "17",
+      "sourceSha256": "0f4629a4bffde30818772f828d709042f37ca0d9b21bdf76d490148241c5e7f6",
+      "durationSeconds": 196.48938775510203,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2ywmnWrgqqMVLDf5W20lVO",
+      "artist": "Gusto",
+      "title": "Disco\u2019s Revenge Mole Hole (dirty MIX)",
+      "sourceSha256": "946967d65738fb6279f163d07a7f1c0e307d64981abb3e188b61e2bca8f1fa45",
+      "durationSeconds": 380.93333333333334,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6OYcg2iOqZu1SZNm3TKwBI",
+      "artist": "Rozalla",
+      "title": "Everybody\u2019s Free (To Feel Good)",
+      "sourceSha256": "0361d84927462004952db64b2d44acbd1af9b3e5a7325d65ab86029278971d74",
+      "durationSeconds": 213.6,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6V75E06veG9CYjW2Sg5gMf",
+      "artist": "Undercover",
+      "title": "Never Let Her Slip Away",
+      "sourceSha256": "188c13892dfed7574fa4ae54391ecd67f357b105645503bf7878a786facef2a6",
+      "durationSeconds": 210.4,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+      "artist": "Urban Cookie Collective",
+      "title": "The Key, the Secret",
+      "sourceSha256": "3d68dd0dbbd466efa54caff332d5f716cc56684d8cd5159f21a1f9be19d9eb7c",
+      "durationSeconds": 222.53333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2SQev9UjuI5EQjLoEF9hXH",
+      "artist": "Blood",
+      "title": "Just Say It (Mj Cole MIX)",
+      "sourceSha256": "7e05b1d49e8a0d2a4a97660f4f758e91e48caf7e74c7b6ac35083450704d0edb",
+      "durationSeconds": 452.4266666666667,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "1t0FeU3ddpFaB54xTjP1rG",
+      "artist": "Urban Cookie Collective",
+      "title": "Feels Like Heaven",
+      "sourceSha256": "6fc027a260a807d5ddb34ca762eee8f7efc72937c0ed7ace803756b0ccf4ed2d",
+      "durationSeconds": 210.37333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "5yoSwATCsoH3CDmgQWSbXz",
+      "artist": "Airscape",
+      "title": "Pacific Melody",
+      "sourceSha256": "6a2fa0d8f3a6cd31185226a08dee70075e3571cfec7ed6765b54614651953a28",
+      "durationSeconds": 442.4,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3p0SzXYDZ9nbWn6O4TvJRc",
+      "artist": "Rhythm on the Loose",
+      "title": "Break of Dawn",
+      "sourceSha256": "c84f3ae8f8d32d91cf44c531a913eb664b4a0557c368eb7cfa5bbb4b8cde7701",
+      "durationSeconds": 309.76,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0KOXDbq2kthMiuVlRmGhJo",
+      "artist": "Phats & Small",
+      "title": "Feel Good",
+      "sourceSha256": "2ad278570a24953223003b355f60336c00bc83a19790aa62af5d9a6311a7591a",
+      "durationSeconds": 206.12,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "0OMud65LQxWYQpfY5uW6nn",
+      "artist": "Pianoman",
+      "title": "Blurred (Pianoman club MIX)",
+      "sourceSha256": "ccbf8546dbe5c4da7121118c5bdfcf68a1a506ec7aa91e0bac8ba9b0a1f0421c",
+      "durationSeconds": 308.18666666666667,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4wXjZp3T2WY0KExn5y1L62",
+      "artist": "Undercover",
+      "title": "Baker Street",
+      "sourceSha256": "adad9546fbea7c84725d3788592728a98847788bcc777afb5123be6ce1c8755a",
+      "durationSeconds": 247.48,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "7HFXLEqZAExjaTpel28zAQ",
+      "artist": "The Original",
+      "title": "I Luv U Baby",
+      "sourceSha256": "fc8083efd060aebff018fbe902aeb9d40c9f64e2cbb3ccfea786a14ec8d02f8e",
+      "durationSeconds": 213.09333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3Jtmag9tqSgfwUyI0EX3qT",
+      "artist": "Armand van Helden",
+      "title": "The Funk Phenomena",
+      "sourceSha256": "ceb7196643b2f4bad0ed463a849f41ab8790737ce9284a08e97e54ea3367a257",
+      "durationSeconds": 244.4,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3s2Rr3KlgHuP9B8SKIaJq2",
+      "artist": "The Beloved",
+      "title": "The Sun Rising",
+      "sourceSha256": "6176c2eb63e705f65dce860edb80fa86c80c4c795b0e7e7e64697607018e9276",
+      "durationSeconds": 300.48,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6OvFn27PHvpNa0p7ngzcDd",
+      "artist": "Gusto",
+      "title": "Let\u2019s All Chant",
+      "sourceSha256": "ffa89935660806905e094722abbc9bd5483f65a45f2af1873c8eb223e8e1fbfa",
+      "durationSeconds": 219.30666666666667,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "2LOTha3JUDVio2M9I3VHSC",
+      "artist": "The Ethics",
+      "title": "To the Beat of the Drum (La Luna)",
+      "sourceSha256": "d0f8e2335c14cb30781beaa7f8ddd018ae4f2fdae06bd147ec24e1f69f7dad07",
+      "durationSeconds": 220.41333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "1HaHhIAde6isbUf9XopBS0",
+      "artist": "U*S*A *Sexual",
+      "title": "Open Your Mind",
+      "sourceSha256": "322b392846b43d582c5f332c62bb44e4e1826c703b29d0065a8a0a114b99b84c",
+      "durationSeconds": 218.58666666666667,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3JFi5oAkY3Mxn84It5fImf",
+      "artist": "Rage",
+      "title": "House of the Rising Sun (7\" edit)",
+      "sourceSha256": "5eef5490b2c5d681fe8ca0524ca6adaa8d522a1c755061eb617d7275d038657f",
+      "durationSeconds": 220.38666666666666,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "47CJ3KLAETWbDeTR7vkQ29",
+      "artist": "Rage",
+      "title": "Run to You",
+      "sourceSha256": "748030c28803cf85386469bfdea36673fac990f58a9cddaf8b7251d981c89543",
+      "durationSeconds": 221.49333333333334,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "5X9ylVNFny94XkjIqRObL7",
+      "artist": "Strike",
+      "title": "Inspiration (Guest List radio MIX)",
+      "sourceSha256": "bf6a15947ba9bc49b0ba93d72e1a70254d384db6a8a8372cda7808f2f3d3103a",
+      "durationSeconds": 265.3066666666667,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "75cQfewXIS03M3D1qiDnO8",
+      "artist": "Agnelli & Nelson",
+      "title": "El Nino",
+      "sourceSha256": "d5d5342fa7a8b4c24637d2c1dc4c3f6f2ed4648456eb73e5fe5d3121518361af",
+      "durationSeconds": 226.54666666666665,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "7gf4oxKSxQHjtzu5FF9aGg",
+      "artist": "Kadoc",
+      "title": "The Nighttrain",
+      "sourceSha256": "75f1031470ae9cd2df9175ae72580985f633a8c767c25b449cf7cbf2d3253636",
+      "durationSeconds": 196.25333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3YanjcqwvVgWavQwDxy0N1",
+      "artist": "De\u2019Lacy",
+      "title": "Hideaway",
+      "sourceSha256": "5bb608f702a54f7d865b502c6fb95a5e805cc697b45e051997463529efc61fdf",
+      "durationSeconds": 207.61333333333334,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "1AaeDMYxvNMTq41bh855kN",
+      "artist": "Ruffneck",
+      "title": "Everybody Be Somebody (radio edit)",
+      "sourceSha256": "3d03792e5fbb05d7c543b30fc5a9c9a57f1791287f7a5411690fdbd97d14ce59",
+      "durationSeconds": 222.97333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "20tOotaQxA3uHgNTcThznw",
+      "artist": "Phats & Small",
+      "title": "Tonite",
+      "sourceSha256": "2c55f4d29379710becef30b261552f8013660933a3a19f3c6b3e128d98d50c9d",
+      "durationSeconds": 226.2,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "59hvHRBNMCMRM0Ubu8rKM7",
+      "artist": "Shut Up and Dance",
+      "title": "Save It Till the Mourning After",
+      "sourceSha256": "802de56c2c9ad77202b8c619f08cf5e7364e2ff2eb2511668a26f5dda14510fa",
+      "durationSeconds": 213.29333333333332,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "3miGZAF7MDYhsaLOHszM22",
+      "artist": "Blue Boy",
+      "title": "Sandman (original 7\")",
+      "sourceSha256": "d7d8f91ad77b25e1a56a1515c697a6f332e5a9cbbd66b9fd364225b2a7500b53",
+      "durationSeconds": 231.37333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6Y5nEiUmO6C8ZW4mjpQf7b",
+      "artist": "Degrees of Motion",
+      "title": "Shine On",
+      "sourceSha256": "886650eb3e9fbf3e8aa3a8d107f38078376aa67b2c2a9840877d1860d6a86dd5",
+      "durationSeconds": 302,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6dYWTa3fwFlNkvNY4D0KQn",
+      "artist": "The Tamperer featuring Maya",
+      "title": "Feel It",
+      "sourceSha256": "e0747e0f68a21d48cae41dc24a7c859c03122cbd2351d1fc37539e9e09c462c2",
+      "durationSeconds": 178.68,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "5Tnws9TQBjzxSl8YFRd6yE",
+      "artist": "Madison Avenue",
+      "title": "Don\u2019t Call Me Baby",
+      "sourceSha256": "e60dc5fea2f111d7cb2ae553bf9b4c9c5a2fd634da14db0a751553d8b2ef4e1a",
+      "durationSeconds": 228.81333333333333,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "5fvSAYLdDHvCH0GxW5qEXl",
+      "artist": "Fabulous Baker Boys",
+      "title": "Oh Boy Rafmat (radio edit)",
+      "sourceSha256": "7512f69e37a2664483a800b819bc3f32e3660fd3c24ff5e2eca82c69332e2177",
+      "durationSeconds": 244.21333333333334,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6oHEwHqDSmVvVLQitbD1Ag",
+      "artist": "DJ Jean",
+      "title": "The Launch",
+      "sourceSha256": "2074950c1936f5a44ac6819c7d800c55e6507af52c6a379a88bbb68363fc528b",
+      "durationSeconds": 193.26666666666668,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "06qavZVrZjkbotRCr0i2zg",
+      "artist": "Dario G",
+      "title": "Sunchyme",
+      "sourceSha256": "90fc9df86441cc89a0c8947d94afb4c07499606d71ebd2a2fe2df0d3b738088d",
+      "durationSeconds": 234.29333333333332,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "6IUe797On4iPAo04UQfnPR",
+      "artist": "Dario G",
+      "title": "Sunchyme",
+      "sourceSha256": "f0005cac780452723abcb8bb4001cf674cda97030f04171d2cb531693ab89381",
+      "durationSeconds": 233.2995918367347,
+      "outgoingUnchanged": true
+    },
+    {
+      "id": "4LsNSDHlFlIFze07UJYG3z",
+      "artist": "Bel Amour",
+      "title": "Bel Amour",
+      "sourceSha256": "8533bc0d340b8dd5bf369c6c0e997efd5172029dd4bca3142382f85e6fa05f05",
+      "durationSeconds": 180.58448979591836,
+      "outgoingUnchanged": true
+    }
+  ],
+  "verification": {
+    "cuePythonCases": 35,
+    "registeredAnalyzerPythonSuites": "passed",
+    "controllerSubbeatsCases": 63,
+    "controllerTypecheck": "passed",
+    "scopedEslint": "passed",
+    "schemaMirror": "regenerated",
+    "newNeuralInference": false,
+    "stemSeparation": false
+  }
+}

@@ -249,6 +249,9 @@ VOCAL_STEM_REL = _env_float("VOCAL_STEM_REL", 0.15)  # x 90th-pct of vocal-stem 
 # before the split keeps that value on both windows unless they also set
 # VOCAL_HEAD_MIX_FLOOR, because it was their explicit choice for both.
 TAIL_VOCAL_MIX_FLOOR = _env_float("VOCAL_MIX_FLOOR", 0.06)
+# Sub/Beats passage scoring historically uses the tail gate as its shared
+# baseline; keep this name for its independent energy-based assessment.
+VOCAL_MIX_FLOOR = TAIL_VOCAL_MIX_FLOOR
 HEAD_VOCAL_MIX_FLOOR = _env_float(
     "VOCAL_HEAD_MIX_FLOOR",
     TAIL_VOCAL_MIX_FLOOR if (os.environ.get("VOCAL_MIX_FLOOR") or "").strip() else 0.15,
@@ -1504,16 +1507,20 @@ def get_embedder(force=False):
 # doesn't split a phrase); sub-300ms blips are dropped as separation artefacts.
 # `mix_floor` is the window's own fraction (HEAD_ or TAIL_VOCAL_MIX_FLOOR):
 # required, so no caller can fall back to the other window's value.
-def vocal_ranges_from_rms(rms, mix_rms, sr, hop, mix_floor):
+def vocal_ranges_from_rms(rms, mix_rms, sr, hop, mix_floor, *, stem_rel=None, loud_reference=None):
     import numpy as np
 
     if rms.size == 0:
         return []
-    loud = float(np.percentile(rms, 90))
+    reference = rms if loud_reference is None else loud_reference
+    if reference.size == 0:
+        return []
+    loud = float(np.percentile(reference, 90))
     if loud <= 0:
         return []
     mix_loud = float(np.percentile(mix_rms, 90)) if mix_rms.size else 0.0
-    thr = max(VOCAL_STEM_REL * loud, mix_floor * mix_loud)
+    rel = VOCAL_STEM_REL if stem_rel is None else stem_rel
+    thr = max(rel * loud, mix_floor * mix_loud)
     # frames → seconds; librosa.frames_to_time's default is frames * hop / sr.
     times = np.arange(rms.size) * (hop / float(sr))
     active = rms >= thr
@@ -1963,7 +1970,73 @@ def write_head_meta(dest_dir, stamp):
         }, f)
 
 
-def render_transition(req):
+def load_subbeats_stem_region(spec, name, stem_names, sf):
+    """Load an integrity-checked Sub/Beats head or exit region for a blend.
+
+    The returned start is the region's absolute source offset. Cache corruption,
+    changed identities and partial coverage are ordinary cache misses.
+    """
+    import math
+    import numpy as np
+    from pathlib import Path
+    try:
+        folder = Path(spec["subbeats_bundle_dir"])
+        key = spec["subbeats_bundle_key"]
+        if folder.name != key or not re.fullmatch(r"[a-f0-9]{64}", key):
+            return None
+        track_root = Path(spec["stems_dir"]).resolve(strict=True)
+        bundle = folder.resolve(strict=True)
+        if bundle != track_root / "subbeats" / "v1" / key or any(
+            part.is_symlink() for part in (track_root, track_root / "subbeats", track_root / "subbeats" / "v1", folder)
+        ):
+            return None
+        from subbeats_cache import cache_key, cached_entry
+        record = json.loads((bundle / "manifest.json").read_text())
+        identity = record.get("identity")
+        if (not isinstance(identity, dict) or cache_key(identity) != key
+                or identity.get("mode") != "analysis_and_stems"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(identity.get("source_sha256", "")))
+                or identity.get("separator", {}).get("sample_rate") != DEMUCS_SR
+                or identity.get("separator", {}).get("subtype") != "PCM_24-shared-gain-v1"
+                or cached_entry(bundle, identity) is None):
+            return None
+        region = next((item for item in record["metadata"].get("stem_regions", [])
+                       if item.get("name") == name), None)
+        if (not isinstance(region, dict) or region.get("sample_rate") != DEMUCS_SR
+                or type(region.get("start_sample")) is not int
+                or type(region.get("end_sample")) is not int
+                or region["start_sample"] < 0 or region["end_sample"] <= region["start_sample"]):
+            return None
+        gain = region.get("storage_gain", 1.)
+        if not isinstance(gain, (int, float)) or not math.isfinite(gain) or not 0 < gain <= 1:
+            return None
+        stems = {}
+        expected_frames = region["end_sample"] - region["start_sample"]
+        for stem in stem_names:
+            filename = f"{name}-{stem}.flac"
+            if filename not in record.get("files", {}):
+                return None
+            path = bundle / filename
+            info = sf.info(path)
+            if (info.samplerate, info.channels, info.frames) != (DEMUCS_SR, 2, expected_frames):
+                return None
+            data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+            if sample_rate != DEMUCS_SR or data.shape != (expected_frames, 2) or not np.isfinite(data).all():
+                return None
+            stems[stem] = data / gain
+        duration = json.loads((bundle / "analysis.json").read_text())["duration_seconds"]
+        if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
+            return None
+        start = region["start_sample"] / DEMUCS_SR
+        end = region["end_sample"] / DEMUCS_SR
+        if end > duration + 1 / DEMUCS_SR or (name == "head" and region["start_sample"] != 0):
+            return None
+        return {"stems": stems, "start_sec": start, "end_sec": end, "duration_sec": float(duration)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, ImportError):
+        return None
+
+
+def render_transition(req, *, observe=None):
     """Pre-rendered stem-blend transition (feature: stem-blend transitions —
     docs/stem-transitions-research.md Option B). Mixes the OUTGOING track's
     cached tail stems with the INCOMING track's cached head stems into one
@@ -1994,7 +2067,7 @@ def render_transition(req):
 
     stem_names = ("drums", "bass", "other", "vocals")
 
-    def load_window(stems_dir, window):
+    def load_regular_window(stems_dir, window):
         stems = {}
         for name in stem_names:
             p = os.path.join(stems_dir, f"{window}-{name}.flac")
@@ -2004,25 +2077,43 @@ def render_transition(req):
             if sr_f != DEMUCS_SR or data.shape[0] == 0:
                 return None
             stems[name] = data
-        return stems
+        if window == "tail":
+            try:
+                with open(os.path.join(stems_dir, "tail-meta.json")) as f:
+                    meta = json.load(f)
+                start = float(meta["tail_start_sec"])
+                duration = float(meta["duration_sec"])
+                if not math.isfinite(start) or not math.isfinite(duration) or start < 0 or duration <= start:
+                    return None
+            except (OSError, ValueError, KeyError, TypeError):
+                return None
+        else:
+            start, duration = 0., None
+        return {"stems": stems, "start_sec": start, "end_sec": start + len(next(iter(stems.values()))) / DEMUCS_SR,
+                "duration_sec": duration}
 
-    tail = load_window(out_spec["stems_dir"], "tail")
-    head = load_window(in_spec["stems_dir"], "head")
-    if tail is None or head is None:
+    def load_window(spec, window, fallback_region):
+        regular = load_regular_window(spec["stems_dir"], window)
+        if regular is not None:
+            return regular
+        return load_subbeats_stem_region(spec, fallback_region, stem_names, sf)
+
+    tail_source = load_window(out_spec, "tail", "exit")
+    head_source = load_window(in_spec, "head", "head")
+    if tail_source is None or head_source is None:
         return {"ok": False, "error": "stems-missing"}
+    tail = tail_source["stems"]
+    head = head_source["stems"]
 
     sr = DEMUCS_SR
-    # Alignment comes from the meta sidecar written WITH the stems (decoded
-    # duration + the exact tail offset) — never from out_spec's duration_s,
+    # Alignment comes from the regular stem sidecar or verified Sub/Beats
+    # analysis bundle (decoded duration + exact source offset) — never from out_spec's duration_s,
     # which is the library's tagged integer and can sit ~1s off the decoded
     # timeline the bar grid was measured on. Stems without the sidecar (an
     # older cache) are a clean miss; a re-analysis pass refreshes them.
-    try:
-        with open(os.path.join(out_spec["stems_dir"], "tail-meta.json")) as f:
-            tail_meta = json.load(f)
-        tail_start_s = float(tail_meta["tail_start_sec"])
-        dur_s = float(tail_meta["duration_sec"])
-    except Exception:
+    tail_start_s = tail_source["start_sec"]
+    dur_s = tail_source["duration_sec"]
+    if dur_s is None:
         return {"ok": False, "error": "stems-meta-missing"}
     if dur_s <= OUTRO_SECONDS + 1.0 or tail_start_s < 0.0:
         return {"ok": False, "error": "out-track-too-short"}
@@ -2052,6 +2143,8 @@ def render_transition(req):
     blend_start_s = loop_b2        # out cue_out lands on this bar boundary
     i1 = int((loop_b1 - tail_start_s) * sr)
     i2 = int((loop_b2 - tail_start_s) * sr)
+    if i1 < 0 or i2 > len(tail["drums"]) or i2 <= i1:
+        return {"ok": False, "error": "out-bar-outside-cached-coverage"}
     drum_loop = to_stereo(tail["drums"], tail["drums"].shape[0])[i1:i2]
     if drum_loop.shape[0] < sr // 8:
         return {"ok": False, "error": "loop-too-short"}
@@ -2155,14 +2248,19 @@ def render_transition(req):
                 else:
                     lo = midpoint
             duck = lo
+    # Audition-only observation: retain the two contributions without changing
+    # the upstream mix arithmetic or allocating this copy during live renders.
+    observed_incoming = mix_buf.copy() if observe is not None else None
     mix_buf += loop_buf * duck
 
     # Backstop: whatever the duck settled on, never hand the encoder a sample
     # that clips in 16-bit. Between the ceiling and here is ~1 dB of real
     # headroom, so this engages only when the duck floor wasn't enough.
     final_peak = float(np.max(np.abs(mix_buf)))
+    final_scale = 1.0
     if final_peak > 0.995:
-        mix_buf *= 0.995 / final_peak
+        final_scale = 0.995 / final_peak
+        mix_buf *= final_scale
 
     # 10ms edge declicks (the clip meets its neighbours through ~0.3s
     # crossfades, but a hard first/last sample still clicks through them).
@@ -2170,6 +2268,18 @@ def render_transition(req):
     ramp = np.linspace(0.0, 1.0, e, dtype=np.float32)[:, None]
     mix_buf[:e] *= ramp
     mix_buf[-e:] *= ramp[::-1]
+
+    if observe is not None:
+        observe({
+            "incoming": observed_incoming * final_scale,
+            "outgoing": loop_buf * duck * final_scale,
+            "head": head, "tail": tail, "tail_start": tail_start_s,
+            "loop_start": loop_b1, "loop_end": loop_b2,
+            "bars": in_bars[:CARRY_BARS + TAIL_FULL_BARS + 1],
+            "incoming_drums": carry_end_s, "loop_duck": duck,
+            "whole_scale": min(1.0, ceiling / max(head_peak, 1e-15)) * final_scale,
+            "gains_db": [20.0 * math.log10(gain_for(out_spec)), 20.0 * math.log10(g_in)],
+        })
 
     make_shared_dir(out_dir)
     out_path = os.path.join(out_dir, os.path.basename(clip_name))
@@ -2184,10 +2294,13 @@ def render_transition(req):
     }
 
 
-def fetch_audio(url):
+def fetch_audio(url, max_bytes=None):
     """Download (capped) to a temp file. Returns (path, complete) — `complete`
     is False when the byte cap truncated the download, which vetoes outro
     analysis (the file's "tail" would be mid-song audio)."""
+    max_bytes = ANALYZE_MAX_BYTES if max_bytes is None else max_bytes
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError('Invalid audio download limit')
     suffix = ".audio"
     fd, path = tempfile.mkstemp(suffix=suffix, prefix="swanalyze_")
     try:
@@ -2201,9 +2314,9 @@ def fetch_audio(url):
                         break
                     out.write(chunk)
                     read += len(chunk)
-                    if read >= ANALYZE_MAX_BYTES:
+                    if read >= max_bytes:
                         break
-        return path, read < ANALYZE_MAX_BYTES
+        return path, read < max_bytes
     except BaseException:
         try:
             os.remove(path)
@@ -4093,6 +4206,10 @@ def main():
         # Older workers never emit the key; the controller re-plans a v2
         # figure stored without a curve only on `=== true`.
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
+
+        "subbeats_capable": vocal_capable,
+        "subbeats_cache_version": 2,
+        "subbeats_suitability_version": 1,
     })
 
     for line in sys.stdin:
@@ -4105,6 +4222,61 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "match_subbeats":
+            try:
+                from subbeats_matching import find_matches
+                if req.get('method') == 'live-pair':
+                    from subbeats_cue_matching import plan_live_pair
+                    matches = plan_live_pair(req['jobs'], req['outgoing_id'], req['incoming_id'], req['mix_style'])
+                elif req.get('method') == 'cue-points':
+                    from subbeats_cue_matching import find_cue_matches
+                    matches = find_cue_matches(req['jobs'],req['outgoing_id'],req.get('outgoing_cue_index',0))
+                else:
+                    matches = find_matches(req['jobs'],req['outgoing_id'],req.get('bar_shift',0))
+                emit({"id":rid,"ok":True,"subbeats_matches":matches})
+            except Exception as error:
+                emit({"id":rid,"ok":False,"error":str(error)})
+            continue
+        if req.get("op") == "assess_subbeats":
+            try:
+                from subbeats_suitability import assess_request
+                emit({"id": rid, **assess_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "migrate_subbeats":
+            try:
+                from subbeats_cache import shared_context, migrate_shared
+                from subbeats_prepare import require_shared_cache
+                require_shared_cache(req['state_dir'], req['cache_id'])
+                allowance = shared_context(req)
+                moved = migrate_shared(req['state_dir'], req['stems_root'], allowance)
+                emit({"id": rid, "ok": True, "migrated": moved,
+                      "cache_added_bytes": req['remaining_bytes'] - allowance['bytes']})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "preview_subbeats":
+            try:
+                from subbeats_preview import render_preview
+                emit({"id": rid, **render_preview(req, fetch_source=fetch_audio)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "prepare_subbeats":
+            try:
+                from subbeats_prepare import prepare_request
+                emit({"id": rid, **prepare_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "preview_stem_blend":
+            try:
+                from stem_blend_preview import render_preview
+                emit({"id": rid, **render_preview(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         # Transition render (feature: stem-blend transitions) — dispatched by
         # op key; a pure mix of cached stems, seconds of CPU, no model.
         if req.get("op") == "render_transition":

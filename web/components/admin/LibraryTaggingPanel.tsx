@@ -168,6 +168,8 @@ export type TagSteps = {
   enrich: boolean;
   tagMoods: boolean;
   analyze: boolean;
+  stems: boolean;
+  stemWaveforms: boolean;
   // Only honoured when analyze is on and vocal is enabled in settings.
   vocal: boolean;
 };

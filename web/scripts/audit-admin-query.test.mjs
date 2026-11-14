@@ -89,6 +89,26 @@ const validImperativeFixtures = {
   // admin-query-imperative: protected-audio-preview
   return adminResponse(adminFetch, path);
 }\n`,
+  'subbeats/StemBlendTest.tsx': `export async function run(adminFetch) {
+  // admin-query-imperative: stem-blend-audition
+  return adminResponse(adminFetch, '/stems/blend-preview', { method: 'POST' });
+}\n`,
+  'subbeats/CueAudition.tsx': `export async function run(adminFetch, id) {
+  // admin-query-imperative: subbeats-source-audition
+  return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
+}\n`,
+  'subbeats/SourceAudioDialog.tsx': `export async function run(adminFetch, id) {
+  // admin-query-imperative: subbeats-source-audition
+  return adminResponse(adminFetch, \`/library/subbeats/source-audio/\${id}\`);
+}\n`,
+  'subbeats/NowPlayingWaveform.tsx': `export async function run(adminFetch, id, side, stem) {
+  // admin-query-imperative: now-playing-waveform-peaks
+  return adminResponse(adminFetch, \`/now-playing/waveform-peaks?id=\${id}\`);
+}\n`,
+  'subbeats/wavesurfer-test/MixingDesk.tsx': `export async function run(adminFetch, id) {
+  // admin-query-imperative: now-playing-waveform-peaks
+  return adminResponse(adminFetch, \`/now-playing/waveform-peaks?id=\${id}\`);
+}\n`,
   'skills/SkillEditModal.tsx': `export async function run(adminFetch, id) {
   // admin-query-imperative: skill-export
   return adminResponse(adminFetch, \`/dj/skills/\${id}/export\`);

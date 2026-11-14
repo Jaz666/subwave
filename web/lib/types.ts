@@ -159,6 +159,10 @@ export interface QueueEntry {
   artist?: string;
   album?: string;
   subsonic_id?: string;
+  stemCacheCoverage?: {
+    regular: { head: boolean; tail: boolean };
+    subbeats: { head: boolean; exit: boolean };
+  };
   requestedBy?: string;
   /** ISO timestamp on older payloads; the live controller sends the three
    *  below instead. All are live-edge. */
@@ -174,6 +178,9 @@ export interface QueueEntry {
    *  crossfade. Stamped once the seam's clip is queued, so it's definitive,
    *  not a prediction (#1257). */
   stemSeam?: boolean;
+  /** True when the rendered stem seam uses a prepared Sub/Beats handoff. */
+  subbeats?: boolean;
+  flow?: { id: string; label: string; index: number; size: number };
   /** The operator block this row was queued as part of (#1622 FR 4) — a whole
    *  album, or a run of tracks for an artist show. Identity only: nothing on
    *  the air path branches on it. `index`/`size` are stamped from the plan, so
@@ -214,8 +221,11 @@ export interface RequestResult {
 /** `/state` response. The booth log (`djLog`) is operator diagnostics and is
  *  not part of this public read; older controllers still send it. */
 export interface StationState {
+  current?: QueueEntry | null;
   upcoming: QueueEntry[];
   history: QueueEntry[];
+  /** Mixer-armed handoff from current to upcoming[0]; null while undecided. */
+  nextTransition?: string | null;
   timezone?: string;
   locale?: StationLocale;
   /** Operator player defaults. `skin` indexes components/skins;

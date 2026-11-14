@@ -160,6 +160,7 @@ const NAV_SECTIONS: NavSection[] = [
         label: 'Library',
         icon: Disc3,
         children: [
+          { href: '/admin/library/subbeats', id: 'subbeats', label: 'Sub/Beats', icon: AudioLines },
           { href: '/admin/playlists', id: 'playlists', label: 'Playlists', icon: ListMusic },
           { href: '/observatory', id: 'observatory', label: 'Observatory', icon: Telescope },
         ],
@@ -252,6 +253,13 @@ const FOOTER_LINKS: { href: string; label: string; icon: NavIcon; pill: string }
 // Playlists, DJ Doc and Stations aren't sidebar items, so they're resolved
 // explicitly; their crumb sections mirror where the rail stays lit.
 function resolveCrumb(pathname: string | null): { section?: string; page: string } {
+  if (pathname?.startsWith('/admin/library/subbeats')) {
+    const page = pathname.startsWith('/admin/library/subbeats/preparation') ? 'Preparation'
+      : pathname.startsWith('/admin/library/subbeats/prepared') ? 'Prepared tracks'
+        : pathname.startsWith('/admin/library/subbeats/preview') ? 'Preview'
+          : pathname.startsWith('/admin/library/subbeats/cache') ? 'Cache' : 'Explore';
+    return { section: 'Library', page: `Sub/Beats · ${page}` };
+  }
   if (pathname?.startsWith('/admin/playlists')) return { section: 'Programming', page: 'Playlists' };
   if (pathname?.startsWith('/admin/shows/schedule')) return { section: 'Programming', page: 'Schedule' };
   if (pathname?.startsWith('/admin/doctor')) return { section: 'Monitor', page: 'DJ Doc' };
@@ -347,7 +355,9 @@ export default function AdminShell({ children, defaultOpen = true }: AdminShellP
             >
               <AnimatePresence mode="wait" initial={false}>
                 <m.div
-                  key={pathname}
+                  // Keep the nested Sub/Beats layout alive across its own pages,
+                  // just as Library tabs retain their feature state.
+                  key={pathname?.startsWith('/admin/library/subbeats') ? '/admin/library/subbeats' : pathname}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}

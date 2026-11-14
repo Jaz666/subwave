@@ -1,16 +1,21 @@
 // The analyzer writes cached head/tail stems on the shared volume. The controller manages
 // paths and evicts by the same priority the backfill uses.
 
-import { access, constants, readdir, stat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
+import { access, constants, readdir, stat, lstat, rm, readFile, mkdir, chmod, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
 import * as db from './library-db.js';
 import * as likes from '../broadcast/likes.js';
+import * as subsonic from './subsonic.js';
+import { readSubbeatsStemPolicy } from './subbeats-stem-policy.js';
+import { invalidateSubbeatsBundles, readSubbeatsQueue } from './subbeats-store.js';
 import { evictQueuedLast, stemEvictionOrder, UNKNOWN_TRACK_PRIORITY } from './stem-priority.js';
 import { HEAD_META, TAIL_META, UNKNOWN_STAMP, parseStemStamp, windowUsable, type StemStamp } from './stem-provenance.js';
 import { mapPool } from '../util/async-pool.js';
 import type { StemScanOpts } from './library-db.js';
+import type { SubbeatsJob } from './subbeats-store.js';
 import { writeFileAtomic } from '../util/atomic-file.js';
 import { randomUUID } from 'node:crypto';
 
@@ -96,6 +101,123 @@ export async function hasWindow(
   }
 }
 
+export type RenderStemSource = { stemsDir: string } | { stemsDir: string; subbeatsBundleDir: string; subbeatsBundleKey: string };
+
+async function savedSubbeatsRegion(trackId: string, window: StemWindow, job: SubbeatsJob | undefined,
+  key: string | undefined | null): Promise<{
+    subbeatsBundleDir: string; subbeatsBundleKey: string; startSec: number; endSec: number; storageGain: number;
+  } | null> {
+  const dir = dirFor(trackId);
+  try {
+    if (!trackId || path.basename(trackId) !== trackId || trackId === '.' || trackId === '..' || trackId.includes('\\')) return null;
+    const preparedJob = job ?? readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
+    if (!key || !preparedJob?.bundleKey
+      || !/^[a-f0-9]{64}$/.test(key) || (key !== preparedJob.bundleKey && key !== preparedJob.cueCoverage?.artifactKey)) return null;
+    const parentDir = path.join(dir, 'subbeats', 'v1');
+    let baseDir = path.join(parentDir, preparedJob.bundleKey);
+    let bundleDir = path.join(parentDir, key);
+    let bundleRoot = parentDir;
+    if (!(await stat(baseDir).then(() => true, () => false))) {
+      const legacyRoot = path.join(config.stateDir, 'subbeats', 'v1');
+      const legacyBase = path.join(legacyRoot, preparedJob.bundleKey);
+      if (await stat(legacyBase).then(() => true, () => false)) {
+        bundleRoot = legacyRoot;
+        baseDir = legacyBase;
+        bundleDir = path.join(bundleRoot, key);
+      }
+    }
+    for (const candidate of [dir, path.join(dir, 'subbeats'), parentDir, bundleRoot, baseDir, bundleDir]) {
+      if ((await lstat(candidate).catch(() => null))?.isSymbolicLink()) return null;
+    }
+    const baseManifestText = await readFile(path.join(baseDir, 'manifest.json'), 'utf8');
+    const baseManifest = JSON.parse(baseManifestText);
+    let manifest = baseManifest;
+    if (key !== preparedJob.bundleKey) {
+      const cueKey = preparedJob.cuePoints?.artifactKey;
+      if (!cueKey || !/^[a-f0-9]{64}$/.test(cueKey)) return null;
+      const cueDir = path.join(bundleRoot, cueKey);
+      for (const candidate of [cueDir, path.join(bundleRoot, key)]) {
+        if ((await lstat(candidate).catch(() => null))?.isSymbolicLink()) return null;
+      }
+      const cueText = await readFile(path.join(cueDir, 'manifest.json'), 'utf8');
+      const cueCoverageText = await readFile(path.join(bundleDir, 'manifest.json'), 'utf8');
+      manifest = JSON.parse(cueCoverageText);
+      const identity = manifest?.identity;
+      if (identity?.mode !== 'cue-coverage' || identity?.version !== 2
+        || identity.source_sha256 !== baseManifest?.identity?.source_sha256
+        || identity.bundle_sha256 !== createHash('sha256').update(baseManifestText).digest('hex')
+        || identity.cue_sha256 !== createHash('sha256').update(cueText).digest('hex')
+        || JSON.stringify(identity.separator) !== JSON.stringify(baseManifest?.identity?.separator)) return null;
+    }
+    const identity = manifest?.identity;
+    const regions = manifest?.metadata?.stem_regions;
+    const name = window === 'head' ? 'head' : 'exit';
+    const region = Array.isArray(regions) ? regions.find((item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null && !Array.isArray(item) && (item as Record<string, unknown>).name === name) : null;
+    const startSample = region?.start_sample;
+    const endSample = region?.end_sample;
+    if (!identity?.source_sha256 || identity.source_sha256 !== baseManifest?.identity?.source_sha256
+      || (key === preparedJob.bundleKey && identity.mode !== 'analysis_and_stems')
+      || (key !== preparedJob.bundleKey && identity.mode !== 'cue-coverage')
+      || identity?.separator?.sample_rate !== 44100 || identity?.separator?.subtype !== 'PCM_24-shared-gain-v1'
+      || !region || region.sample_rate !== 44100 || typeof startSample !== 'number' || !Number.isSafeInteger(startSample)
+      || typeof endSample !== 'number' || !Number.isSafeInteger(endSample) || endSample <= startSample
+      || typeof region.storage_gain !== 'number' || !(region.storage_gain > 0 && region.storage_gain <= 1)) return null;
+    for (const stem of STEM_NAMES) {
+      const file = `${name}-${stem}.flac`;
+      const expected = manifest?.files?.[file]?.bytes;
+      if (!Number.isSafeInteger(expected) || expected <= 0) return null;
+      const info = await lstat(path.join(bundleDir, file));
+      if (!info.isFile() || info.isSymbolicLink() || info.size !== expected) return null;
+    }
+    if (name === 'exit') {
+      const analysis = JSON.parse(await readFile(path.join(baseDir, 'analysis.json'), 'utf8'));
+      if (!(Number.isFinite(analysis?.duration_seconds) && analysis.duration_seconds > 0
+        && (endSample as number) / 44100 <= analysis.duration_seconds + 1 / 44100)) return null;
+    } else if (startSample !== 0) return null;
+    return { subbeatsBundleDir: bundleDir, subbeatsBundleKey: key,
+      startSec: startSample / 44100, endSec: endSample / 44100, storageGain: region.storage_gain };
+  } catch {
+    return null;
+  }
+}
+
+export async function subbeatsBundleSource(trackId: string, window: StemWindow): Promise<{ subbeatsBundleDir: string; subbeatsBundleKey: string } | null> {
+  try {
+    const job = readSubbeatsQueue(config.stateDir).jobs.find(item => item.id === trackId);
+    const source = await savedSubbeatsRegion(trackId, window, job, job?.bundleKey);
+    return source ? { subbeatsBundleDir: source.subbeatsBundleDir, subbeatsBundleKey: source.subbeatsBundleKey } : null;
+  } catch { return null; }
+}
+
+// Dashboard coverage includes cue artifacts and unmigrated bundles. It describes
+// cached passages, not whether their timing can serve a particular regular blend.
+// The route supplies one queue snapshot for all eight rows; never parse the full
+// preparation list separately for each window on every Dashboard poll.
+export async function subbeatsCachedCoverage(trackId: string, job: SubbeatsJob | undefined): Promise<{ head: boolean; exit: boolean }> {
+  const [head, exit] = await Promise.all([
+    subbeatsCachedRegion(trackId, 'head', job), subbeatsCachedRegion(trackId, 'tail', job),
+  ]);
+  return { head: head !== null, exit: exit !== null };
+}
+
+export async function subbeatsCachedRegion(trackId: string, window: StemWindow, job: SubbeatsJob | undefined) {
+  if (job?.cueCoverage) {
+    const region = await savedSubbeatsRegion(trackId, window, job, job.cueCoverage.artifactKey);
+    if (region) return region;
+  }
+  return savedSubbeatsRegion(trackId, window, job, job?.bundleKey);
+}
+// Regular blends may read a verified Sub/Beats region when the ordinary cache
+// window is absent. Pick-time admission and cleanup deliberately keep using
+// hasWindow(), which means only the canonical regular head/tail files.
+export async function renderSource(trackId: string, window: StemWindow): Promise<RenderStemSource | null> {
+  const dir = dirFor(trackId);
+  if (await hasWindow(trackId, window)) return { stemsDir: dir };
+  const subbeats = await subbeatsBundleSource(trackId, window);
+  return subbeats ? { stemsDir: dir, ...subbeats } : null;
+}
+
 function rowFileSize(trackId: string): number | null {
   return db.getDb() ? db.trackFileSize(trackId) : null;
 }
@@ -115,6 +237,7 @@ async function readStemStamp(trackId: string, window: StemWindow): Promise<StemS
     return 'unreadable';
   }
 }
+
 
 // Stems share marker. A relocated cache usually lives on a network mount
 // (STEMS_DIR), and an unmounted share looks exactly like an empty cache: the
@@ -303,14 +426,17 @@ async function measureDir(dir: string): Promise<{ dir: string; bytes: number; mt
     const st = await stat(dir);
     if (!st.isDirectory()) return null;
     const files = await readdir(dir);
-    const stats = await Promise.all(
-      files.map(f => stat(path.join(dir, f)).catch(() => null)), // file vanished mid-scan
-    );
+    const stats = await Promise.all(files.map(async f => {
+      const target = path.join(dir, f);
+      const st = await lstat(target).catch(() => null);
+      if (!st || st.isSymbolicLink()) return null;
+      return st.isDirectory() ? measureDir(target) : {bytes:st.size, mtimeMs:st.mtimeMs};
+    }));
     let bytes = 0;
     let mtimeMs = 0;
     for (const fst of stats) {
       if (!fst) continue;
-      bytes += fst.size;
+      bytes += fst.bytes;
       if (fst.mtimeMs > mtimeMs) mtimeMs = fst.mtimeMs;
     }
     return { dir, bytes, mtimeMs };
@@ -786,15 +912,12 @@ export async function markPassPending(): Promise<boolean> {
 
 // Bytes on disk under one track dir (one readdir + a stat per file).
 async function dirBytes(dir: string): Promise<number | null> {
-  try {
-    let bytes = 0;
-    for (const f of await readdir(dir)) {
-      try { bytes += (await stat(path.join(dir, f))).size; } catch { /* vanished */ }
-    }
-    return bytes;
-  } catch {
-    return null; // never written (failed separation, or offline)
-  }
+  return (await measureDir(dir))?.bytes ?? null;
+}
+
+export async function invalidateUsageSnapshot(): Promise<void> {
+  snapshotUntrusted = true;
+  await rm(snapshotPath(), {force:true});
 }
 
 // End of an analysis pass: add the NET-NEW dirs it allocated to the snapshot
@@ -901,6 +1024,35 @@ export function likeSignals(): StemScanOpts {
   }
 }
 
+// The maintenance child only reads likes; it must never mint a second secret.
+export async function admissionSignals({ strict = false } = {}): Promise<StemScanOpts> {
+  await likes.load({ readOnly: true });
+  const signals: StemScanOpts = likeSignals();
+  try {
+    const policy = readSubbeatsStemPolicy();
+    signals.selectiveStems = policy.enabled;
+    signals.regularStemIds = policy.regularIds;
+  } catch (error) {
+    if (strict) throw error;
+    console.warn('[stems] Could not read Sub/Beats cache policy; preserving original admission');
+  }
+  if (!signals.selectiveStems && !strict) return signals;
+  if (strict) signals.operatorLikedIds = await likes.operatorHeartsForCleanup();
+  try {
+    signals.starredIds = (await subsonic.getStarred({ strict })).flatMap(track => track?.id ? [String(track.id)] : []);
+  } catch (error) {
+    if (strict) throw error;
+    console.warn('[stems] Could not refresh Navidrome stars; local operator hearts still qualify');
+  }
+  try {
+    signals.subbeatsIds = readSubbeatsQueue(config.stateDir).jobs.filter(job => job.status === 'prepared' || (!!job.task && !!job.bundleKey)).map(job => job.id);
+  } catch (error) {
+    if (strict) throw error;
+    console.warn('[stems] Could not read Sub/Beats preparation; keeping the saved list unchanged');
+  }
+  return signals;
+}
+
 // If priority lookup fails, return null for every dir and use mtime eviction. Dirs for tracks
 // absent from the catalogue evict first. #1622.
 function withPriorities(
@@ -926,6 +1078,8 @@ function withPriorities(
 // cleared stamp has the backfill separate the track again either way.
 export async function forgetStems(trackIds: readonly string[]): Promise<{ removed: number; failed: number; offline?: string }> {
   if (trackIds.length === 0) return { removed: 0, failed: 0 };
+  // Invalidate even when the cache is offline or deletion is refused.
+  invalidateSubbeatsBundles(config.stateDir, trackIds);
   const root = await stemsRootStatus({ readOnly: true });
   if (!root.online) return { removed: 0, failed: 0, offline: root.message };
   let removed = 0;

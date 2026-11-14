@@ -200,3 +200,12 @@ test('a successful download keeps its file for the caller to hand on', async () 
   assert.equal(statSync(path).size, 2048);
   assert.equal(complete, true, 'a body under the byte cap is a complete file');
 });
+
+test('explicit full-recording jobs can raise their cap without changing ordinary analysis', async () => {
+  const full = await analyzer.downloadCapped('over-cap', { maxBytes: MAX_BYTES * 32, timeoutMs: 5000 });
+  assert.equal(full.complete, true);
+  assert.equal(statSync(full.path).size, MAX_BYTES * 16);
+  const normal = await analyzer.downloadCapped('over-cap');
+  assert.equal(normal.complete, false, 'the next ordinary job retains its original cap');
+  await assert.rejects(analyzer.downloadCapped('ok', { maxBytes: -1 }), /Invalid analysis download limit/);
+});

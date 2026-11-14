@@ -80,13 +80,14 @@ RUN dpkg-deb --fsys-tarfile /tmp/deb-multimedia-keyring.deb \
         > /etc/apt/preferences.d/dmo-icecast-kh
 
 # icecast2 + sudo/openssl/curl: broadcast pair. espeak-ng/libsndfile1: Kokoro.
-# ffmpeg: jingle/SFX import transcode. python3/venv + wget/tar/xz-utils: the
+# ffmpeg: jingle/SFX import. rubberband-cli: mapped-tempo handoff auditions.
+# python3/venv + wget/tar/xz-utils: the
 # TTS/analyzer venvs and model pulls. iputils-ping: in-container debugging.
 RUN apt-get update -qq \
  && apt-get install -y --no-install-recommends \
         icecast2 sudo openssl curl ca-certificates \
         iputils-ping \
-        espeak-ng libsndfile1 ffmpeg \
+        espeak-ng libsndfile1 ffmpeg rubberband-cli \
         python3 python3-venv \
         wget tar xz-utils \
  && icecast2 -v 2>&1 | grep -q -- '-kh' \
@@ -182,6 +183,8 @@ ARG WITH_CLAP=0
 ARG WITH_DEMUCS=0
 ARG WITH_CUDA=0
 ARG TORCH_CUDA=cu128
+
+COPY controller/scripts/subbeats_models.py /tmp/subbeats_models.py
 RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
     TORCH_VER=2.7.1 && \
     if [ "$WITH_CUDA" = "1" ]; then \
@@ -213,6 +216,8 @@ RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
         --extra-index-url https://pypi.org/simple \
         torch==$TORCH_VER torchaudio==$TORCH_VER demucs==4.0.1 diffq==0.2.4 && \
       /opt/analyzer/venv/bin/python -c "import torch, torchaudio, demucs, diffq" && \
+      /opt/analyzer/venv/bin/pip install --no-cache-dir beat-this==1.1.0 && \
+      /opt/analyzer/venv/bin/python /tmp/subbeats_models.py /opt/analyzer/beat-this && \
       apt-get purge -y gcc libc6-dev python3-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* ; \
     fi && \
     find /opt/analyzer/venv -depth -type d -name __pycache__ -exec rm -rf {} +

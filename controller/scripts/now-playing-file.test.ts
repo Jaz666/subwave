@@ -18,7 +18,7 @@ const ADMIN = { authorization: `Basic ${Buffer.from('file-admin:file-admin-pass'
 
 const { fileFormatOf, createFileFormatLookup } = await import('../src/music/file-format.js');
 const { FILE_FORMAT_RETRY_MS } = await import('../src/schemas/file-format.js');
-const { createNowPlayingFileRouter } = await import('../src/routes/now-playing-file.js');
+const { createNowPlayingFileRouter, waveformPeaksForPlayback, waveformPeaksFromPcm } = await import('../src/routes/now-playing-file.js');
 const express = (await import('express')).default;
 
 // The shapes production Navidrome 0.64.2 returned on 19 Oct.
@@ -165,4 +165,175 @@ test('route: an unreachable Navidrome is a null format, not an error', async () 
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { id: 'gone', format: null });
   await s.close();
+});
+
+test('audio: current and next each stream their own recording', async () => {
+  const calls: string[] = [];
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'a' }), lookup: async () => null,
+    nextTrackId: () => 'b',
+    streamAudio: async id => {
+      calls.push(id);
+      return new Response(`recording-${id}`, { headers: { 'content-type': 'audio/wav' } });
+    },
+  });
+  try {
+    for (const id of ['a', 'b']) {
+      const response = await get(s, `/now-playing/audio?id=${id}`);
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), `recording-${id}`);
+    }
+    assert.deepEqual(calls, ['a', 'b']);
+  } finally { await s.close(); }
+});
+
+test('audio: missing, stale and unauthorized ids do not reach the audio source', async () => {
+  const calls: string[] = [];
+  let nextId: string | null = 'b';
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'a' }), lookup: async () => null,
+    nextTrackId: () => nextId,
+    streamAudio: async id => { calls.push(id); return new Response('audio'); },
+  });
+  try {
+    assert.equal((await get(s, '/now-playing/audio?id=a', {})).status, 401);
+    for (const id of ['', 'stale']) assert.equal((await get(s, `/now-playing/audio?id=${id}`)).status, 409);
+    nextId = null;
+    assert.equal((await get(s, '/now-playing/audio')).status, 409);
+    assert.equal((await get(s, '/now-playing/audio?id=b')).status, 409);
+    assert.deepEqual(calls, []);
+  } finally { await s.close(); }
+});
+
+test('waveform peaks: retain either stereo channel in normalized 100 ms bins', () => {
+  const pcm = Buffer.alloc(1600 * 4);
+  pcm.writeInt16LE(16384, 0);
+  pcm.writeInt16LE(-32768, 1599 * 4 + 2);
+  assert.deepEqual(waveformPeaksFromPcm(pcm), { durationSec: 0.2, peaks: [0.5, 1] });
+});
+
+test('waveform peaks: map playback time through the track cue and tempo clock', () => {
+  const source = { durationSec: 1, peaks: Array.from({ length: 10 }, (_, i) => i) };
+  assert.deepEqual(waveformPeaksForPlayback(source, {
+    durationSec: 0.3,
+    sourceSecondsAt: playbackSeconds => 0.5 + playbackSeconds,
+  }), { durationSec: 0.3, peaks: [5, 6, 7] });
+  assert.deepEqual(waveformPeaksForPlayback(source, {
+    durationSec: 0.4,
+    sourceSecondsAt: playbackSeconds => playbackSeconds / 2,
+  }), { durationSec: 0.4, peaks: [0, 0, 1, 1] });
+});
+
+test('waveform peaks: return the cue-aligned playback shape while caching raw source peaks', async () => {
+  const result = { durationSec: 1, peaks: Array.from({ length: 10 }, (_, i) => i) };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'wave-aligned-current' }), lookup: async () => null,
+    waveformPeaks: async () => result,
+    waveformPlayback: () => ({ durationSec: 0.3, sourceSecondsAt: seconds => 0.5 + seconds }),
+  });
+  try {
+    const response = await get(s, '/now-playing/waveform-peaks?id=wave-aligned-current');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { durationSec: 0.3, peaks: [5, 6, 7] });
+  } finally { await s.close(); }
+});
+
+test('waveform peaks: generate on demand once, share concurrent requests, and bound lookup to current/next', async () => {
+  const calls: string[] = [];
+  const result = { durationSec: 1.25, peaks: [0.1, 0.5] };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'wave-peaks-current' }), lookup: async () => null,
+    nextTrackId: () => 'wave-peaks-next',
+    waveformPeaks: async id => {
+      calls.push(id);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return result;
+    },
+  });
+  try {
+    assert.equal((await get(s, '/now-playing/waveform-peaks?id=stale')).status, 409);
+    assert.deepEqual(calls, []);
+    const [first, concurrent] = await Promise.all([
+      get(s, '/now-playing/waveform-peaks?id=wave-peaks-next'),
+      get(s, '/now-playing/waveform-peaks?id=wave-peaks-next'),
+    ]);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), result);
+    assert.deepEqual(await concurrent.json(), result);
+    assert.deepEqual(await (await get(s, '/now-playing/waveform-peaks?id=wave-peaks-next')).json(), result);
+    assert.deepEqual(calls, ['wave-peaks-next']);
+  } finally { await s.close(); }
+});
+
+test('stem waveform peaks: prepare a bounded current transition source on demand', async () => {
+  const calls: string[] = [];
+  const result = { durationSec: 1, peaks: [0.25, 0.75] };
+  const transition = { kind: 'stem-blend' as const, durationSec: 2, incomingAtSec: 1,
+    outgoingUntilSec: 2, outgoingId: 'stem-peaks-out', incomingId: 'stem-peaks-in' };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'stem-peaks-out' }), lookup: async () => null,
+    nextTrackId: () => 'stem-peaks-in', stemTransition: () => transition,
+    stemSource: async () => ({ path: new URL(import.meta.url).pathname, startSec: 12, endSec: 14, storageGain: 0.5 }),
+    stemWaveformPeaks: async source => { calls.push(source.path); return result; },
+  });
+  try {
+    const path = '/now-playing/stem-waveform-peaks?side=outgoing&stem=drums&outgoingId=stem-peaks-out';
+    const first = await get(s, path);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { ...result, startSec: 12, endSec: 14, storageGain: 0.5 });
+    assert.equal((await get(s, path)).status, 200);
+    assert.equal(calls.length, 1);
+  } finally { await s.close(); }
+});
+
+test('stem waveform peaks: retries survive the regular incoming track becoming current, but refuse unrelated tracks', async () => {
+  let onAir = 'retry-out';
+  const result = { durationSec: 1, peaks: [.5] };
+  const transition = { kind: 'stem-blend' as const, durationSec: 12, incomingAtSec: 6,
+    outgoingUntilSec: 6.3, outgoingId: 'retry-out', incomingId: 'retry-in' };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: onAir }), lookup: async () => null,
+    nextTrackId: () => onAir === 'retry-out' ? 'retry-in' : 'later', stemTransition: () => transition,
+    stemSource: async () => ({ path: new URL(import.meta.url).pathname, startSec: 0, endSec: 1, storageGain: 1 }),
+    stemWaveformPeaks: async () => result,
+  });
+  try {
+    onAir = 'retry-in';
+    for (const side of ['outgoing', 'incoming']) {
+      assert.equal((await get(s, `/now-playing/stem-waveform-peaks?side=${side}&stem=bass&outgoingId=retry-out`)).status, 200);
+    }
+    onAir = 'unrelated';
+    assert.equal((await get(s, '/now-playing/stem-waveform-peaks?side=outgoing&stem=bass&outgoingId=retry-out')).status, 409);
+  } finally { await s.close(); }
+});
+
+test('stem waveform peaks: a stalled decoder is aborted and the next retry starts new work', async t => {
+  let began!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  let calls = 0;
+  const transition = { kind: 'stem-blend' as const, durationSec: 10, incomingAtSec: 5,
+    outgoingUntilSec: 5.3, outgoingId: 'timeout-out', incomingId: 'timeout-in' };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'timeout-out' }), lookup: async () => null,
+    nextTrackId: () => 'timeout-in', stemTransition: () => transition,
+    stemSource: async () => ({ path: new URL('../src/routes/now-playing-file.ts', import.meta.url).pathname, startSec: 0, endSec: 1, storageGain: 1 }),
+    stemWaveformPeaks: async (_source, signal) => {
+      if (++calls > 1) return { durationSec: 1, peaks: [.25] };
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        began();
+      });
+    },
+  });
+  const path = '/now-playing/stem-waveform-peaks?side=outgoing&stem=other&outgoingId=timeout-out';
+  try {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const first = get(s, path);
+    await started;
+    t.mock.timers.tick(12_000);
+    t.mock.timers.reset();
+    assert.equal((await first).status, 502);
+    assert.equal((await get(s, path)).status, 200);
+    assert.equal(calls, 2);
+  } finally { t.mock.timers.reset(); await s.close(); }
 });
