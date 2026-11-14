@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { StationState } from '../../../lib/types';
-import { queuedTransition, stemTransitionWindow, waveformSnapPosition } from './waveform-timeline';
+import { queuedTransition, shouldAutoExpandStemPreview, stemTransitionWindow, waveformSnapPosition } from './waveform-timeline';
+
+test('Auto preview opens 20 seconds before the planned window and closes after it ends', () => {
+  assert.equal(shouldAutoExpandStemPreview(80_000, 100_000, 30), true);
+  assert.equal(shouldAutoExpandStemPreview(79_999, 100_000, 30), false);
+  assert.equal(shouldAutoExpandStemPreview(130_000, 100_000, 30), false);
+  assert.equal(shouldAutoExpandStemPreview(80_000, undefined, 30), false);
+});
 
 test('waveform stays still as the marker travels from 25% to 75%, then snaps every 30 seconds', () => {
   assert.deepEqual(waveformSnapPosition(0), { snappedSeconds: 0, playheadPercent: 25 });

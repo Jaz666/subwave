@@ -1,5 +1,14 @@
 import type { StationState } from '../../../lib/types';
 
+const STEM_PREVIEW_LEAD_SECONDS = 20;
+
+/** Open Auto preview early enough for the stem waveform requests to finish. */
+export function shouldAutoExpandStemPreview(nowMs: number, startAt: number | undefined, durationSec: number) {
+  if (startAt == null || !Number.isFinite(startAt) || !(durationSec > 0)) return false;
+  const position = (nowMs - startAt) / 1000;
+  return position >= -STEM_PREVIEW_LEAD_SECONDS && position < durationSec;
+}
+
 /** Keep the waveform still while the marker travels from 25% to 75% of its 60-second view. */
 export function waveformSnapPosition(elapsedSeconds: number) {
   const elapsed = Math.max(0, elapsedSeconds);

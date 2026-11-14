@@ -7,7 +7,7 @@ import { adminJson, adminResponse, useAdminQuery } from '../../../../lib/admin-q
 import { useAdminAuth } from '../../../../lib/adminAuth';
 import { createColorProbe, mix, readThemeRgb, watchTheme } from '../../../../lib/theme-rgb';
 import styles from './MixingDesk.module.css';
-import { queuedTransition, stemTransitionWindow } from './waveform-timeline';
+import { queuedTransition, shouldAutoExpandStemPreview, stemTransitionWindow } from '../waveform-timeline';
 import { LiveStemPreview } from './StemPreview';
 import { stemDetailVisible, stemPairKey, stemPhase, stemStyle, waveformKeys, type StemTransition } from './stem-preview';
 
@@ -440,7 +440,7 @@ export default function NowPlayingWaveform() {
   const pairKey = stemTransition ? stemPairKey(stemTransition) : null;
   const mixPosition = currentStartedAt > 0 && confirmedStemStartAt != null ? (clockMs-confirmedStemStartAt)/1000 : null;
   const mixActive = mixPosition != null && mixPosition >= 0 && mixPosition < (stemTransition?.durationSec ?? 0);
-  const autoPreviewVisible = autoPreview && mixPosition != null && mixPosition < (stemTransition?.durationSec ?? 0);
+  const autoPreviewVisible = autoPreview && shouldAutoExpandStemPreview(clockMs, stemWindow?.startAt, stemTransition?.durationSec ?? 0);
   const expanded = detailVisible && (expandedPair === pairKey || autoPreviewVisible);
   const showMix = detailVisible || mixActive;
   const pairTracks = [state.current,...state.history,...state.upcoming];
