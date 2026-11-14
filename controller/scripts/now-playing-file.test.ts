@@ -259,3 +259,55 @@ test('stem waveform peaks: prepare a bounded current transition source on demand
     assert.equal(calls.length, 1);
   } finally { await s.close(); }
 });
+
+test('stem waveform peaks: retries survive the regular incoming track becoming current, but refuse unrelated tracks', async () => {
+  let onAir = 'retry-out';
+  const result = { durationSec: 1, peaks: [.5] };
+  const transition = { kind: 'stem-blend' as const, durationSec: 12, incomingAtSec: 6,
+    outgoingUntilSec: 6.3, outgoingId: 'retry-out', incomingId: 'retry-in' };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: onAir }), lookup: async () => null,
+    nextTrackId: () => onAir === 'retry-out' ? 'retry-in' : 'later', stemTransition: () => transition,
+    stemSource: async () => ({ path: new URL(import.meta.url).pathname, startSec: 0, endSec: 1, storageGain: 1 }),
+    stemWaveformPeaks: async () => result,
+  });
+  try {
+    onAir = 'retry-in';
+    for (const side of ['outgoing', 'incoming']) {
+      assert.equal((await get(s, `/now-playing/stem-waveform-peaks?side=${side}&stem=bass&outgoingId=retry-out`)).status, 200);
+    }
+    onAir = 'unrelated';
+    assert.equal((await get(s, '/now-playing/stem-waveform-peaks?side=outgoing&stem=bass&outgoingId=retry-out')).status, 409);
+  } finally { await s.close(); }
+});
+
+test('stem waveform peaks: a stalled decoder is aborted and the next retry starts new work', async t => {
+  let began!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  let calls = 0;
+  const transition = { kind: 'stem-blend' as const, durationSec: 10, incomingAtSec: 5,
+    outgoingUntilSec: 5.3, outgoingId: 'timeout-out', incomingId: 'timeout-in' };
+  const s = await serve({
+    nowPlaying: async () => ({ subsonic_id: 'timeout-out' }), lookup: async () => null,
+    nextTrackId: () => 'timeout-in', stemTransition: () => transition,
+    stemSource: async () => ({ path: new URL('../src/routes/now-playing-file.ts', import.meta.url).pathname, startSec: 0, endSec: 1, storageGain: 1 }),
+    stemWaveformPeaks: async (_source, signal) => {
+      if (++calls > 1) return { durationSec: 1, peaks: [.25] };
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        began();
+      });
+    },
+  });
+  const path = '/now-playing/stem-waveform-peaks?side=outgoing&stem=other&outgoingId=timeout-out';
+  try {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const first = get(s, path);
+    await started;
+    t.mock.timers.tick(12_000);
+    t.mock.timers.reset();
+    assert.equal((await first).status, 502);
+    assert.equal((await get(s, path)).status, 200);
+    assert.equal(calls, 2);
+  } finally { t.mock.timers.reset(); await s.close(); }
+});
