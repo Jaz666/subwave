@@ -20,6 +20,9 @@ export interface NowPlayingTrack {
   year?: number;
   duration?: number;
   subsonic_id?: string;
+  /** Epoch ms at the final shared Liquidsoap mix boundary; listener surfaces
+   *  add their stream buffer, and the admin waveform adds its saved correction. */
+  outputStartedAt?: number;
   // Merged in from the library DB. A not-yet-tagged track omits all of these.
   genre?: string | null;
   bpm?: number | null;

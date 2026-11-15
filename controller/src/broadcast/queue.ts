@@ -41,6 +41,7 @@ import * as jingles from './jingles.js';
 import { jinglePlacement, pickRotateJingle, onJingleRotateOwnerChange } from './jingle-rotate.js';
 import { overlayDue, overlayEnabled, overlayOffer, overlayOpening, overlayFits, overlayMixerStatus } from './jingle-overlay.js';
 import * as beds from './beds.js';
+import { outputStartedAt } from './output-timeline.js';
 import * as bedPolicy from './bed-policy.js';
 import { vocalRunwayMs, segmentFitsRunway } from './vocal-runway.js';
 import * as session from './session.js';
@@ -5729,7 +5730,16 @@ class Queue {
   async readNowPlayingFromDisk() {
     try {
       const raw = await readFile(config.liquidsoap.nowPlayingFile, 'utf8');
-      return JSON.parse(raw);
+      const nowPlaying = JSON.parse(raw);
+      if (typeof nowPlaying?.subsonic_id !== 'string') return nowPlaying;
+      try {
+        const output = JSON.parse(await readFile(config.liquidsoap.streamClockFile, 'utf8'));
+        // A previous play of the same song can leave the sidecar behind; only
+        // attach an output mark belonging to this just-published boundary.
+        const startedAtMs = outputStartedAt(nowPlaying, output);
+        if (startedAtMs != null) nowPlaying.outputStartedAt = startedAtMs;
+      } catch { /* older mixers have no final-mix clock; keep the feed timestamp */ }
+      return nowPlaying;
     } catch {
       return null;
     }

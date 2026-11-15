@@ -81,6 +81,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 
 **Liquidsoap → Controller.** Marker files written by `radio.liq` (the rules are in `liquidsoap/CLAUDE.md`):
 - `now-playing.json`: the live track, from `music_meta`, the pre-cross handle.
+- `stream-clock.json`: the song's track mark on the final shared mix, just before the Icecast mounts encode it; the controller joins it to `now-playing.json` only for the same track and same boundary.
 - `jingle-playing.json`: a jingle is on air, so `airVoice` holds speech until its window passes.
 - `bed-playing.json`: an instrumental bed started. Beds never reach `now-playing.json`, so this is the only signal that airs the link over one.
 - `voice-playing.json`: a spoken clip started, which is what makes air-time stamps real (#1382).

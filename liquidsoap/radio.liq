@@ -40,6 +40,7 @@ def ensure_tmp_dir(p) =
 end
 
 np_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/now-playing")
+stream_clock_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/stream-clock")
 jingle_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/jingle")
 bed_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/bed")
 pause_talk_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-talk")
@@ -59,6 +60,8 @@ music_starved = ref(false)
 idle_mode = ref(false)
 stream_on = ref(false)
 overlay_music_timestamp = ref(0)
+stream_clock_track_id = ref("")
+stream_clock_started_at = ref(0.)
 
 # Live safety gates shared by on-demand jingles and the automatic rotate.
 # Declared before the queue sources; on_meta and voice_marker update them.
@@ -1543,7 +1546,11 @@ music = switch(
   ]
 )
 # A jingle on air also means the playlist has moved past its last track.
-music.on_track(synchronous=true, fun (m) -> if m["subwave_jingle"] == "true" then auto_on_air := false end)
+music.on_track(synchronous=true, fun (m) ->
+  if m["subwave_jingle"] == "true" then
+    auto_on_air := false
+  end
+)
 # Holds the rotate's gate open for the clip on air (see the rotate). Set where a
 # clip is chosen, never on the playlist, which starts its next clip as this one
 # ends. Every other track releases it, a press included.
@@ -2322,7 +2329,41 @@ end
 # on_metadata rather than on_track, because on_track gets swallowed by source
 # switches (request queue -> auto playlist). synchronous=false: on_meta does
 # file I/O, so it runs on the task queue, not the streaming thread.
+music_meta.on_metadata(synchronous=true, fun (m) ->
+  if m["subwave_kind"] == "pause-talk" or m["subwave_kind"] == "bed" then
+    stream_clock_track_id := ""
+  elsif m["title"] != "" or m["artist"] != "" then
+    stream_clock_track_id := m["subsonic_id"]
+  else
+    stream_clock_track_id := ""
+  end
+)
 music_meta.on_metadata(synchronous=false, on_meta)
+
+# Record the track mark on the final shared mix, after transitions, beds and
+# ducking have been composed. This is the station-side output boundary shared
+# by every Icecast mount, before per-mount encoding and network buffering. The
+# public player applies its listener buffer to this same anchor; the Admin
+# applies that buffer plus its saved manual correction. Capture the wall time
+# synchronously at the final metadata boundary, then write the marker from the
+# asynchronous track callback so disk I/O never blocks the streaming thread.
+radio.on_metadata(synchronous=true, fun (_) ->
+  if stream_clock_track_id() != "" then stream_clock_started_at := time() end
+)
+radio.on_track(synchronous=false, fun (_) -> begin
+  track_id = stream_clock_track_id()
+  if track_id != "" then
+    file.write(
+      data=json.stringify(compact=true, {
+        subsonic_id = track_id,
+        startedAtMs = int_of_float(stream_clock_started_at() * 1000.)
+      }),
+      atomic=true,
+      temp_dir=stream_clock_tmp_dir,
+      "#{state_dir}/stream-clock.json"
+    )
+  end
+end)
 
 # OUTPUT — broadcast to Icecast.
 #
