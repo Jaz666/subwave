@@ -132,6 +132,7 @@ COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py c
 ADD --chmod=644 --checksum=sha256:5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf \
     https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx \
     /opt/analyzer/models/beat_this-small0.onnx
+COPY controller/scripts/beat_this_grid.py /app/workers/beat_this_grid.py
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.

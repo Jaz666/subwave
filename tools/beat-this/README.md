@@ -1,11 +1,12 @@
 # beat-this
 
 The analyzer's optional downbeat tracker: [Beat This!](https://github.com/CPJKU/beat_this)
-(Foscarin, Schlüter and Widmer, ISMIR 2024) exported to ONNX, so the lean
-analyzer image can run it with onnxruntime and no torch. With
+(Foscarin, Schlüter and Widmer, ISMIR 2024) exported to ONNX, so the analyzer
+runs it with onnxruntime and no torch. It ships in the heavy analyzer images
+only, where stem blends, the grid's only audible consumer, can run. With
 `ANALYZE_DOWNBEATS=beat-this` the worker (`controller/scripts/analyze_worker.py`,
 `DownbeatTracker`) takes the bar grid from it instead of librosa's every-4th-beat
-guess. The images download the model from this repo's GitHub releases
+guess. The heavy images download the model from this repo's GitHub releases
 ([Hosting the model](#hosting-the-model)); these scripts are how that file is
 made, rebuilt or audited, and how the switch was judged. Nothing here runs on
 a station or in an image build.
@@ -97,12 +98,12 @@ Two exports on the same machine were byte-identical, an export inside a
 the hash, because a different CPU or torch build may fold constants into
 different bits. So an audit that gets a different hash should run
 `parity.py` on both files before suspecting the asset. The image build's gate
-is the hash: `ADD --checksum` fails on any other bytes.
+is the hash: `sha256sum -c` fails on any other bytes.
 
 ## Parity with upstream
 
-`parity.py` runs upstream's `File2Beats(dbn=False)` and the worker's
-`DownbeatTracker` on the same files and compares beat and downbeat times.
+`parity.py` runs upstream's `File2Beats(dbn=False)` and the shared
+`beat_this_grid.DownbeatTracker` on the same files and compares beat and downbeat times.
 
 On 34 files, 22050 Hz PCM so both sides read identical samples (30 GTZAN
 clips, three per genre; 12, 20 and 40 s cuts, covering one short chunk and two
@@ -178,33 +179,39 @@ including the front end and postprocessing.
 librosa's `beat_track` takes 0.05 s on the same 40 s window. Disabling
 onnxruntime's CPU arena raised `small0`'s peak to +394 MB (glibc keeps the
 freed blocks), so the worker keeps the arena, and the memory stays held until
-the idle release. onnxruntime adds 53 MiB to the lean venv on amd64 and
-46 MiB on arm64 (onnxruntime, protobuf, flatbuffers); 1.27.0 resolves for
-cp311 and cp313 on both.
+the idle release. onnxruntime adds 53 MiB to a librosa-only venv on amd64
+and 46 MiB on arm64 (onnxruntime, protobuf, flatbuffers); 1.27.0 resolves
+for cp311 and cp313 on both. That cost, for a grid only stem blends can
+hear, is why the lean images carry neither onnxruntime nor the model.
 
 ## Hosting the model
 
 What ships is a GitHub release asset on this repo: the `small0` export above,
-uploaded once to the non-latest prerelease `beat-this-small0-v1`. Both
-`docker/Dockerfile.analyzer` and `docker/Dockerfile.aio` fetch it with
+uploaded once to the non-latest prerelease `beat-this-small0-v1`. The heavy
+(`WITH_DEMUCS=1`) builds of `docker/Dockerfile.analyzer` and
+`docker/Dockerfile.aio` fetch it with
 
 ```dockerfile
-ADD --chmod=644 --checksum=sha256:5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf \
-    https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx \
-    /opt/analyzer/models/beat_this-small0.onnx
+RUN if [ "$WITH_DEMUCS" = "1" ]; then \
+      mkdir -p /opt/analyzer/models && \
+      curl -fsSL --retry 3 -o /opt/analyzer/models/beat_this-small0.onnx \
+        https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx && \
+      echo "5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf  /opt/analyzer/models/beat_this-small0.onnx" | sha256sum -c - && \
+      chmod 644 /opt/analyzer/models/beat_this-small0.onnx ; \
+    fi
 ```
 
-so an image build reaches only GitHub for the model (no PyTorch index, no
-`f0k.de`, no torch in any stage), and fails on any other bytes. `--checksum`
-needs Dockerfile frontend 1.6 or newer. Both files start with
-`# syntax=docker/dockerfile:1`, which fetches a current 1.x frontend whatever
-the local BuildKit has built in. `--chmod` matters because `ADD` gives a
-downloaded file mode 600 and the analyzer runs as uid 10001. The file is the
-same on every architecture.
+so a heavy build reaches only GitHub for the model (no `f0k.de`, no torch
+export in any stage) and fails on any other bytes, and a lean build never
+fetches it. `ADD --checksum` would pin it as well, but an `ADD` cannot be
+skipped by a build arg. `WITH_DEMUCS` is the gate because stems are what make
+the grid audible; onnxruntime installs with either heavy flag, so a
+Demucs-only build still gets a working tracker. The file is the same on
+every architecture.
 
 | Role | How | Build depends on |
 | --- | --- | --- |
-| What ships | the release asset, `ADD`ed by URL and sha256 | GitHub, which the build already needs |
+| What ships | the release asset, fetched by URL and checked by sha256 in heavy builds | GitHub, which the build already needs |
 | How to rebuild or audit it | `export.py` with the pins above (and `parity.py` against upstream) | f0k.de, the PyTorch wheel index and GitHub, on your machine only |
 
 The alternatives that were weighed:
@@ -237,10 +244,11 @@ This is the one place the steps are written down.
 
    Never replace the file in an existing release: every commit that pins the
    old hash would stop building.
-3. **Bump the URL and the `--checksum` in both Dockerfiles**, in lockstep,
-   and the "Shipped model" pin above. If the file name changes, the worker's
+3. **Bump the URL and the sha256 in both Dockerfiles**, in lockstep, and
+   the "Shipped model" pin above. If the file name changes, the worker's
    default `BEAT_THIS_MODEL` (`controller/scripts/analyze_worker.py`) and the
-   `ADD` destination change with it. Build an image and run
+   download destination change with it. Build a heavy image
+   (`WITH_CLAP=1 WITH_DEMUCS=1`) and run
    `controller/scripts/analyzer_downbeat_test.py` inside it; its real-model
    case uses the baked file.
 
@@ -251,3 +259,35 @@ said commercial use and redistribution are fine (upstream #21). The training
 data includes commercial recordings, and the question of what that means for
 the weights is still open upstream (#18). Read both before turning this on by
 default anywhere; nothing here is a licence clearance.
+
+
+## Shared inference and window provenance
+
+`controller/scripts/beat_this_grid.py` contains the torch-free inference engine:
+preprocessing, chunking, postprocessing and timestamp sanity checks. Its tracker
+accepts a mono window or a complete recording and raises on inference failure.
+The worker retains the opt-in flag, session lifetime and regular-grid fallback.
+The sidecar copies both sibling modules; AIO already copies the scripts directory.
+Offline installations must keep `beat_this_grid.py` beside `analyze_worker.py`.
+The numerical pipeline remains the same; no model re-export is needed.
+
+Both head and tail attempt a learned grid even when their Librosa tempo pass
+fails. BPM remains Librosa's, and all current stem qualification rules stay as
+they were. Local interval stability and Librosa beat agreement are recorded as
+evidence only. They do not reject grids, and agreement on beats does not establish
+bar phase. Full Sub/Beats passage fitting still needs its longer audio, onset,
+energy and phase checks; it is not implemented by this regular-window change.
+
+For learned grids only, `grid_provenance` (head) and `gridProvenance` (outro)
+record version 1, the actual ONNX SHA-256, preprocessing version, absolute window,
+and optional staged-source SHA-256/byte count/completeness. The controller persists
+these through both analysis protocols. Existing arrays keep their shape; existing
+rows without metadata remain unknown. Off and fallback responses carry no learned
+provenance. A later refresh clears stale head labels when replacing arrays, and
+reset/replaced-file paths clear them together. No automatic re-grid or extra stem
+cache is introduced. See `docs/internals/infrastructure.md` for the exact contract
+and the checks required before any future cross-feature grid reuse.
+
+When updating the shipped export, update `SMALL0_SHA256` in the shared module
+alongside both Dockerfile checksums. If numerical preprocessing/postprocessing
+changes, increment `PREPROCESSING_VERSION` so recorded grids remain distinguishable.

@@ -815,6 +815,9 @@ function vecCount(d: Database.Database): number {
 //   - `stems_tail_misses`: stem passes in a row whose proven tail did not land
 //     (#2238, music/stem-stamp-policy.ts). Such a pass leaves stems_at unset so
 //     the backfill tries again, up to a bound. NULL = none; reset with stems_at.
+//   - `grid_provenance_json`, the model, preprocessing, source and window
+//     identity for learned beats/bars. Existing rows stay NULL until a learned
+//     grid is measured; library analysis freshness remains independent.
 //
 // Several processes open this DB, and two can both find a column missing on the
 // first open after an upgrade, so the ALTERs re-read under the write lock. The
@@ -833,6 +836,7 @@ function ensureNamedColumns(d: Database.Database): void {
     ['untaggable_key', 'TEXT'], ['tagged_measured', 'INTEGER'],
     ['era_reason', 'TEXT'], ['album_artist', 'TEXT'], ['album_kind', 'TEXT'], ['era_forced_from', 'TEXT'],
     ['stems_tail_misses', 'INTEGER'],
+    ['grid_provenance_json', 'TEXT'],
   ];
   const missing = () => {
     const have = new Set((d.pragma('table_info(tracks)') as Array<{ name: string }>).map((c) => c.name));
