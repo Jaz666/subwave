@@ -3,8 +3,9 @@
 The analyzer's optional downbeat tracker: [Beat This!](https://github.com/CPJKU/beat_this)
 (Foscarin, Schlüter and Widmer, ISMIR 2024) exported to ONNX, so the analyzer
 runs it with onnxruntime and no torch. It ships in the heavy analyzer images
-only, where stem blends, the grid's only audible consumer, can run. With
-`ANALYZE_DOWNBEATS=beat-this` the worker (`controller/scripts/analyze_worker.py`,
+only. Stem blends and Sub/Beats cue preparation use the shared tracker; the
+library worker enables it with `ANALYZE_DOWNBEATS=beat-this`
+(`controller/scripts/analyze_worker.py`,
 `DownbeatTracker`) takes the bar grid from it instead of librosa's every-4th-beat
 guess. The heavy images download the model from this repo's GitHub releases
 ([Hosting the model](#hosting-the-model)); these scripts are how that file is
@@ -181,8 +182,8 @@ onnxruntime's CPU arena raised `small0`'s peak to +394 MB (glibc keeps the
 freed blocks), so the worker keeps the arena, and the memory stays held until
 the idle release. onnxruntime adds 53 MiB to a librosa-only venv on amd64
 and 46 MiB on arm64 (onnxruntime, protobuf, flatbuffers); 1.27.0 resolves
-for cp311 and cp313 on both. That cost, for a grid only stem blends can
-hear, is why the lean images carry neither onnxruntime nor the model.
+for cp311 and cp313 on both. That cost is why the lean images carry neither
+onnxruntime nor the model.
 
 ## Hosting the model
 
@@ -275,8 +276,8 @@ Both head and tail attempt a learned grid even when their Librosa tempo pass
 fails. BPM remains Librosa's, and all current stem qualification rules stay as
 they were. Local interval stability and Librosa beat agreement are recorded as
 evidence only. They do not reject grids, and agreement on beats does not establish
-bar phase. Full Sub/Beats passage fitting still needs its longer audio, onset,
-energy and phase checks; it is not implemented by this regular-window change.
+bar phase. Sub/Beats uses the same inference engine on a complete track, then
+applies its separate passage, onset, energy and phase checks.
 
 For learned grids only, `grid_provenance` (head) and `gridProvenance` (outro)
 record version 1, the actual ONNX SHA-256, preprocessing version, absolute window,

@@ -1,0 +1,29 @@
+{
+  "method": "Complete-track Sub/Beats cue preparation, old Beat This small0 PyTorch versus the shared small0 ONNX tracker; two CPU threads; isolated temporary cache; no stem separation or station writes.",
+  "tracks": [
+    {
+      "track": "Urban Cookie Collective — The Key, The Secret",
+      "sourceSha256": "4d58b14ac75b247b9fd18da757bceda67dfbce6167e23f2ecc79cc1215b37cf8",
+      "previousStemSourceSha256": "3d68dd0dbbd466efa54caff332d5f716cc56684d8cd5159f21a1f9be19d9eb7c",
+      "sameCueResults": true,
+      "bpm": 129.89421833258444,
+      "incomingSeconds": [22.4, 29.79062917752037],
+      "outgoingSeconds": [184.99384190544816, 199.7751002604889],
+      "endingSeconds": 214.55635861552963
+    },
+    {
+      "track": "Gusto — Disco’s Revenge",
+      "sourceSha256": "23e6e73c55f52d53b8efbbc55a90c89c85cb935b7d21150238bef84911510109",
+      "previousStemSourceSha256": "2a1b142700d54bd9bf70b35939baf32361b5f62a5b4579b4fdea949a1677203c",
+      "sameCueResults": true,
+      "bpm": 125.96505673245427,
+      "incomingSeconds": [30.544644707111402, 15.302322353555702],
+      "outgoingSeconds": [198.21019059622412, 213.45251294977984],
+      "endingSeconds": 228.69483530333554
+    }
+  ],
+  "limitations": [
+    "Current source files do not match the recordings used to create the saved stem bundles, so no saved-stem preview or render comparison was attempted.",
+    "This compares cue computations only; it does not establish transition quality or listening acceptance."
+  ]
+}

@@ -20,9 +20,9 @@
 #
 # One small model IS baked, into the WITH_DEMUCS=1 flavours only: the Beat
 # This! downbeat tracker (ANALYZE_DOWNBEATS=beat-this, off by default), ~10 MB
-# of ONNX fetched checksum-pinned below. The bar grid it improves is read only
-# by stem blends and the stem cache, which need Demucs stems, so the lean
-# image ships neither it nor onnxruntime.
+# of ONNX fetched checksum-pinned below. Stem blends, the stem cache, and
+# Sub/Beats cue preparation use the shared grid; they all run with the heavy
+# analyzer, so the lean image ships neither it nor onnxruntime.
 
 FROM python:3.11-slim-bookworm
 
@@ -49,7 +49,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG WITH_CLAP=0
 ARG WITH_DEMUCS=0
 ARG WITH_CUDA=0
-COPY controller/scripts/subbeats_models.py /tmp/subbeats_models.py
 ENV ANALYZER_HF_HOME=/opt/analyzer/hf-cache
 RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
     if [ "$WITH_CUDA" = "1" ]; then TORCH_INDEX="https://download.pytorch.org/whl/cu128"; fi && \
@@ -82,8 +81,6 @@ RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
         --extra-index-url https://pypi.org/simple \
         torch==2.7.1 torchaudio==2.7.1 demucs==4.0.1 diffq==0.2.4 && \
       /opt/analyzer/venv/bin/python -c "import torch, torchaudio, demucs, diffq" && \
-      /opt/analyzer/venv/bin/pip install --no-cache-dir beat-this==1.1.0 && \
-      /opt/analyzer/venv/bin/python /tmp/subbeats_models.py /opt/analyzer/beat-this && \
       apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* ; \
     fi && \
     find /opt/analyzer/venv -depth -type d -name __pycache__ -exec rm -rf {} +
@@ -121,7 +118,7 @@ COPY docker/analyzer/subbeats_live_service.py /app/subbeats_live_service.py
 COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
 COPY controller/scripts/subbeats_live.py /app/workers/subbeats_live.py
 COPY controller/scripts/stem_blend_preview.py /app/workers/stem_blend_preview.py
-COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_handoff.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
+COPY controller/scripts/beat_this_grid.py controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_handoff.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
 # The Beat This! downbeat model at the worker's default BEAT_THIS_MODEL:
 # tools/beat-this/export.py's small0 export, published as a prerelease asset
 # on this repo. --checksum fails the build on any other bytes, and --chmod
@@ -132,7 +129,6 @@ COPY controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py c
 ADD --chmod=644 --checksum=sha256:5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf \
     https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx \
     /opt/analyzer/models/beat_this-small0.onnx
-COPY controller/scripts/beat_this_grid.py /app/workers/beat_this_grid.py
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.

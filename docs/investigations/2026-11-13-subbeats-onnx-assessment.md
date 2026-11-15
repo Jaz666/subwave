@@ -41,6 +41,21 @@ The assessment and route comparison below retain their original findings;
 full Sub/Beats ONNX adaptation and complete preparation/cache validation remain
 the next stage. This contribution does not replace or close #2244.
 
+### 15 November offline integration update
+
+On branch `codex/subbeats-shared-grid-offline-20261115`, the shared tracker is
+now wired into Sub/Beats cue preparation. Both use the same pinned small0 ONNX
+model and preprocessing; the cue identity records the model hash and
+preprocessing version. Existing cue artifacts remain readable and existing
+prepared stems remain reusable. Analyzer/AIO Dockerfile syntax checks and an
+isolated model-backed cue smoke test pass. A complete cue-preparation comparison
+on the current Urban and Gusto source files produced exactly equal results for
+old PyTorch and shared ONNX inference, including candidate times and ending
+evidence ([results](2026-11-15-subbeats-shared-grid-cues.json)). Those source
+hashes differ from the saved stem manifests, so no saved-stem pair render was
+attempted. Image builds and listening checks remain outstanding; this work does
+not change the recommendation to keep #2244 and #2341 independent upstream.
+
 ## Local experiment
 
 One offline container at a time, limited to two CPU cores and 3 GiB RAM, with

@@ -4,7 +4,6 @@ Retain source-zero introductions and natural ending tails. Historical local
 arrangement scoring remains for offline comparisons, not new phrase selection.
 Cue evidence is for preview, never automatic pair or phrase approval.
 """
-import importlib.metadata
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -838,21 +837,21 @@ def closing_grid_passages(y, sr, beats, downbeats, librosa, grid=None):
     return dict(outgoing=outgoing, ending=ending), dict(**decision, reason='Measured closing span')
 
 
-def predict(y, sr, model):
+_cue_tracker = None
+
+
+def predict(y, sr, model, librosa=None):
+    """Use the library analyzer's shared ONNX downbeat implementation."""
+    global _cue_tracker
+    from beat_this_grid import DownbeatTracker
     from subbeats_models import model_path
     path = model_path(model)
-    try:
-        import torch
-        from beat_this.inference import Audio2Beats
-    except ImportError as error:
-        raise ValueError('Beat This! preparation needs an updated heavy analyzer. Choose current preparation until it is rebuilt.') from error
-    threads = torch.get_num_threads()
-    try:
-        torch.set_num_threads(2)
-        tracker = Audio2Beats(checkpoint_path=str(path), device='cpu', dbn=False)
-        return tracker(y, sr)
-    finally:
-        torch.set_num_threads(threads)
+    if _cue_tracker is None or _cue_tracker.model_path != str(path):
+        _cue_tracker = DownbeatTracker(str(path), threads=2)
+        _cue_tracker.load()
+    if librosa is None:
+        import librosa
+    return _cue_tracker.track(y, sr, librosa)
 
 
 def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowance, expected_cache_id):
@@ -862,16 +861,15 @@ def prepare_cues(path, state_dir, folder, record, model, *, cache_root, allowanc
     from subbeats_prepare import SR, analyze, decode, require_shared_cache
     if model not in MODELS:
         raise ValueError('Unknown cue preparation method')
+    from beat_this_grid import PREPROCESSING_VERSION
     identity = dict(mode='cue-points',version=ALGORITHM_VERSION,model=model,model_sha256=MODELS[model],
-                    beat_this='1.1.0',librosa=librosa.__version__,
+                    preprocessing_version=PREPROCESSING_VERSION,librosa=librosa.__version__,
                     source_sha256=record['identity']['source_sha256'],bundle_sha256=digest(Path(folder)/'manifest.json'))
     def build(stage):
         if digest(Path(path)) != identity['source_sha256']:
             raise ValueError('Cue source no longer matches the prepared stems')
-        if importlib.metadata.version('beat-this') != identity['beat_this']:
-            raise ValueError('Rebuild the heavy analyzer for the supported Beat This! version')
         y = decode(path,SR,1)[0]
-        beats, downbeats = predict(y,SR,model)
+        beats, downbeats = predict(y,SR,model,librosa)
         if (not np.isfinite(beats).all() or np.any(beats < 0) or np.any(beats >= len(y)/SR)):
             raise ValueError('Learned grid is outside the decoded recording')
         duration = len(y)/SR

@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import subbeats_cache as cache
@@ -16,6 +16,22 @@ from subbeats_models import model_path
 
 
 class CueTests(unittest.TestCase):
+    def test_prediction_uses_and_reuses_shared_grid_tracker(self):
+        original = cues._cue_tracker
+        tracker = SimpleNamespace(model_path='/model.onnx', load=Mock(),
+                                  track=Mock(return_value=('beats', 'bars')))
+        with patch('subbeats_models.model_path', return_value=Path('/model.onnx')) as model_path, \
+             patch('beat_this_grid.DownbeatTracker', return_value=tracker) as tracker_factory:
+            cues._cue_tracker = None
+            try:
+                self.assertEqual(cues.predict(np.zeros(8), 22050, 'small0', object()), ('beats', 'bars'))
+                self.assertEqual(cues.predict(np.zeros(8), 22050, 'small0', object()), ('beats', 'bars'))
+            finally:
+                cues._cue_tracker = original
+        self.assertEqual(model_path.call_count, 2)
+        tracker_factory.assert_called_once_with('/model.onnx', threads=2)
+        tracker.load.assert_called_once_with()
+
     def test_pair_planner_ranks_prepared_bar_combinations_by_fit(self):
         outgoing=[dict(sourceSeconds=160,phraseEndSeconds=192,phraseBars=16,bpm=120),
                   dict(sourceSeconds=168,phraseEndSeconds=184,phraseBars=8,bpm=120)]

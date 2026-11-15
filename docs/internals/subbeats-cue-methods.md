@@ -450,12 +450,14 @@ Existing short-window library analysis is not rewritten. The result adds
 An older analyzer cannot silently report successful cue preparation without
 returning the new data. Assess suitability remains a saved-stems-only action.
 
-`subbeats_cues.py` uses official Beat This! 1.1.0 on the original complete mix,
-CPU float32, no DBN, two Torch threads during inference. The previous thread
-count is restored afterward. Each candidate needs continuous four-beat bars
+`subbeats_cues.py` uses the shared checksum-pinned Beat This! small0 ONNX
+tracker on the original complete mix, CPU float32, no DBN, two inference
+threads. Library grid analysis and cue preparation therefore use the same
+preprocessing and model. Each candidate needs continuous four-beat bars
 and a local linear beat fit; gaps and changing bar counts are not projected
-through. Tempo comes from the local accepted beat sequence. Small/full choices
-can produce different positions and tempos.
+through. Tempo comes from the local accepted beat sequence. A future model
+change may produce different positions and tempos; its model hash separates
+the saved cue artifact.
 
 Within the prepared incoming head and the original recording’s second half
 for outgoing cues, the existing energy, mel and chroma features describe
@@ -468,9 +470,9 @@ segmentation or source-zero phrase origin is added.
 
 Cue artifacts are immutable integrity-checked bundles beside existing stem
 and structure artifacts in the shared track cache. Their identity includes
-source hash, stem-manifest hash, algorithm/model/version and pinned checkpoint
-hash. Their byte growth uses the existing shared allowance, writer lock and
-atomic-publication path. Switching models adds a small analysis artifact,
+source hash, stem-manifest hash, algorithm/model/preprocessing version and
+pinned ONNX model hash. Their byte growth uses the existing shared allowance,
+writer lock and atomic-publication path. Switching models adds a small analysis artifact,
 not another stem separation. Preview loads the saved artifact and checks that
 it still belongs to the selected stem manifest. A replaced source invalidates
 queue cue evidence along with its stem bundle.
@@ -606,12 +608,12 @@ possible later methods, rather than controls that pretend to work today.
 
 ## Build and rollback
 
-Heavy analyzer/AIO builds install `beat-this==1.1.0` alongside the existing
-Torch/Torchaudio stack. A fixed-source build helper downloads both official
-checkpoints and verifies their pinned SHA-256 hashes. Runtime preparation never
-downloads weights. Lean images do not gain Torch/models. The advanced local
-runtime override is `SUBBEATS_BEAT_THIS_MODELS`, a directory containing
-`small0.ckpt` and `final0.ckpt`; hashes are still required. Missing/invalid
+Heavy analyzer/AIO builds reuse the checksum-pinned `small0` ONNX model already
+used by library beat-grid analysis. Cue preparation calls the same
+`DownbeatTracker` implementation, and its cache identity includes the model
+hash and preprocessing version. Runtime preparation never downloads weights;
+lean images do not gain ONNX Runtime or the model. `BEAT_THIS_MODEL` is the
+shared analyzer override and must point to the pinned model. Missing or invalid
 weights instruct the operator to rebuild the heavy analyzer or use current
 preparation. Code and released weights are attributed in `CREDITS.md`.
 
