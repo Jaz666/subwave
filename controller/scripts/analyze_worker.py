@@ -4527,6 +4527,7 @@ def main():
         # figure stored without a curve only on `=== true`.
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
 
+        "regular_stems_version": 1,
         "subbeats_capable": vocal_capable,
         "subbeats_cache_version": 2,
         "subbeats_suitability_version": 1,

@@ -288,6 +288,7 @@ interface WorkerMessage {
   edge_tail_ms?: unknown;
   decoded_duration_ms?: unknown;
   tail_window?: unknown;
+  regular_stems_version?: number;
   // Facet-shape answer.
   facets?: Record<string, { status?: string; reason?: string; data?: WorkerMessage }>;
   source?: Record<string, unknown>;
@@ -323,6 +324,7 @@ interface WorkerMessage {
   subbeats_result?: unknown;
   tail_stems_landed?: boolean;
   text_embeddings?: unknown;
+  regular_window?: unknown;
   // render_transition op fields
   path?: string;
   blend_start_sec?: number;
@@ -348,7 +350,7 @@ let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
 let _localWholeFileCapable: boolean | null = null;
 let _localLoudnessCurveCapable: boolean | null = null;
-
+let _localRegularStems = false;
 let _localSubbeatsSuitability = false;
 let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
@@ -414,7 +416,7 @@ function startWorker(): Promise<void> {
           _localFacetsCapable = msg.facets_capable === true;
           _localWholeFileCapable = typeof msg.whole_file_capable === 'boolean' ? msg.whole_file_capable : null;
           _localLoudnessCurveCapable = typeof msg.loudness_curve_capable === 'boolean' ? msg.loudness_curve_capable : null;
-
+          _localRegularStems = msg.regular_stems_version === 1;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
           _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
@@ -607,6 +609,7 @@ let _sidecarFacetsCapable: boolean | null = null;
 let _sidecarWholeFileCapable: boolean | null = null;
 let _sidecarLoudnessCurveCapable: boolean | null = null;
 let _sidecarWholeFileConcurrency: number | null = null;
+let _sidecarRegularStems = false;
 let _sidecarSubbeatsSuitability = false;
 let _sidecarSubbeatsShared = false;
 let _sidecarSubbeatsCapable: boolean | null = null;
@@ -639,6 +642,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_whole_file_capable?: boolean | null;
       analyze_loudness_curve_capable?: boolean | null;
       analyze_whole_file_concurrency?: number | null;
+      analyze_regular_stems_version?: number | null;
       analyze_subbeats_capable?: boolean | null;
       analyze_subbeats_cache_version?: number;
       analyze_subbeats_suitability_version?:number;
@@ -657,6 +661,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarLoudnessCurveCapable = typeof body.analyze_loudness_curve_capable === 'boolean' ? body.analyze_loudness_curve_capable : null;
       _sidecarWholeFileConcurrency = Number.isInteger(body.analyze_whole_file_concurrency) && (body.analyze_whole_file_concurrency as number) > 0
         ? (body.analyze_whole_file_concurrency as number) : null;
+      _sidecarRegularStems = body.analyze_regular_stems_version === 1;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
       _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
       _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
@@ -1436,7 +1441,34 @@ async function facetRequest(
     msg = await localRequestRaw(body, timeoutMs);
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
+  if (body.stems_device === 'cpu' && msg.source?.stems_device !== 'cpu') throw new Error('analyzer did not acknowledge CPU stem processing');
+  if (body.regular_stem_window) {
+    const wanted = body.regular_stem_window as NonNullable<FacetRequestOpts['regular_stem_window']>;
+    const evidence = msg.facets?.stems?.data?.regular_window as Record<string, unknown> | undefined;
+    if (msg.facets?.stems?.status !== 'ok' || !evidence || evidence.device !== 'cpu'
+        || Object.entries(wanted).some(([key, value]) => evidence[key] !== value)
+        || evidence.sample_rate !== 44100 || typeof evidence.samples !== 'number'
+        || !Number.isSafeInteger(evidence.samples) || evidence.samples <= 0
+        || Math.abs(evidence.samples - Math.round((wanted.end_ms - wanted.start_ms) * 44.1)) > 2) {
+      throw new Error('analyzer returned mismatched regular stem coverage');
+    }
+  }
   return parseFacetAnswer(msg);
+}
+
+// A version signal, not a promise that a separation will succeed. Probe before
+// downloading or submitting expensive regular work; old/mixed pools fail closed.
+export async function regularStemsAvailable(): Promise<boolean> {
+  const backend = await resolveBackend();
+  if (backend === 'sidecar') {
+    if (!await sidecarReachable()) return false;
+    return _sidecarRegularStems;
+  }
+  if (backend === 'local') {
+    if (!ready) await startWorker();
+    return _localRegularStems;
+  }
+  return false;
 }
 
 // Facet request for one track. A pre-fetched `localPath` is preferred, with
@@ -1454,6 +1486,7 @@ export async function analyzeFacets(
     facets: opts.facets,
     ...(opts.stems_device ? { stems_device: opts.stems_device } : {}),
   };
+  if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 1');
   if (opts.tailVocals) body.tail_vocals = true;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };
@@ -1479,7 +1512,7 @@ export async function analyzeFacets(
       ...stems,
     }, timeoutMs);
   } catch (err) {
-    if (!(err instanceof AnalyzerPathUnavailableError)) throw err;
+    if (!(err instanceof AnalyzerPathUnavailableError) || opts.regular_stem_window) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
     return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)
