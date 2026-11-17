@@ -17,6 +17,7 @@ import { renderStandsDown } from './pick-stems-policy.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
+import { regularStemPairDecision } from './regular-stem-policy.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
 // lives with it in broadcast/stem-seam.ts.
@@ -100,6 +101,12 @@ export async function maybeRenderBlend(
   const out = db.getTrack(outTrack.id);
   const inn = db.getTrack(inTrack.id);
   if (!out || !inn) return miss('track analysis row is missing');
+  const admission = regularStemPairDecision(
+    { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(outTrack.id) },
+    { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(inTrack.id) },
+  );
+  if (!admission.eligible) return miss(admission.reason);
+
   // Alignment data both sides. The render re-checks all of it; these gates only
   // avoid pointless round-trips.
   if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return miss('beat grid or track duration is missing');

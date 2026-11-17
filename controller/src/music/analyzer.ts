@@ -245,6 +245,7 @@ interface WorkerMessage {
   // Facet protocol (version signal): {"facets": [...]} requests. Absent on
   // workers that predate it.
   facets_capable?: boolean;
+  regular_stems_version?: number;
   // Facet-shape answer.
   facets?: Record<string, { status?: string; reason?: string; data?: WorkerMessage }>;
   source?: Record<string, unknown>;
@@ -280,6 +281,7 @@ interface WorkerMessage {
   subbeats_matches?:unknown;
   subbeats_result?: unknown;
   text_embeddings?: unknown;
+  regular_window?: unknown;
   // render_transition op fields
   path?: string;
   blend_start_sec?: number;
@@ -303,6 +305,7 @@ let _localAudioCapable: boolean | null = null;
 let _localVocalCapable: boolean | null = null;
 let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
+let _localRegularStems = false;
 let _localSubbeatsSuitability = false;
 let _localSubbeatsTimingRefresh = false;
 let _localSubbeatsShared = false;
@@ -367,6 +370,7 @@ function startWorker(): Promise<void> {
           if (typeof msg.tail_vocal_capable === 'boolean' && _localVocalError === null) _localTailVocalCapable = msg.tail_vocal_capable;
           if (typeof msg.text_embedding_capable === 'boolean' && _localAudioError === null) _localTextCapable = msg.text_embedding_capable;
           _localFacetsCapable = msg.facets_capable === true;
+          _localRegularStems = msg.regular_stems_version === 1;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
           _localSubbeatsTimingRefresh = msg.subbeats_timing_refresh_version === 1;
@@ -528,6 +532,7 @@ let _sidecarVocalCapable: boolean | null = null;
 let _sidecarTailVocalCapable: boolean | null = null;
 // Facet protocol (version signal; null on old sidecars).
 let _sidecarFacetsCapable: boolean | null = null;
+let _sidecarRegularStems = false;
 let _sidecarSubbeatsSuitability = false;
 let _sidecarSubbeatsTimingRefresh = false;
 let _sidecarSubbeatsShared = false;
@@ -555,6 +560,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_tail_vocal_capable?: boolean | null;
       analyze_text_capable?: boolean | null;
       analyze_facets_capable?: boolean | null;
+      analyze_regular_stems_version?: number | null;
       analyze_subbeats_capable?: boolean | null;
       analyze_subbeats_cache_version?: number;
       analyze_subbeats_suitability_version?:number;
@@ -569,6 +575,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarVocalCapable = typeof body.analyze_vocal_capable === 'boolean' ? body.analyze_vocal_capable : null;
       _sidecarTailVocalCapable = typeof body.analyze_tail_vocal_capable === 'boolean' ? body.analyze_tail_vocal_capable : null;
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
+      _sidecarRegularStems = body.analyze_regular_stems_version === 1;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
       _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
       _sidecarSubbeatsTimingRefresh = body.analyze_subbeats_timing_refresh_version === 1;
@@ -1243,7 +1250,33 @@ async function facetRequest(
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
   if (body.stems_device === 'cpu' && msg.source?.stems_device !== 'cpu') throw new Error('analyzer did not acknowledge CPU stem processing');
+  if (body.regular_stem_window) {
+    const wanted = body.regular_stem_window as NonNullable<FacetRequestOpts['regular_stem_window']>;
+    const evidence = msg.facets?.stems?.data?.regular_window as Record<string, unknown> | undefined;
+    if (msg.facets?.stems?.status !== 'ok' || !evidence || evidence.device !== 'cpu'
+        || Object.entries(wanted).some(([key, value]) => evidence[key] !== value)
+        || evidence.sample_rate !== 44100 || typeof evidence.samples !== 'number'
+        || !Number.isSafeInteger(evidence.samples) || evidence.samples <= 0
+        || Math.abs(evidence.samples - Math.round((wanted.end_ms - wanted.start_ms) * 44.1)) > 2) {
+      throw new Error('analyzer returned mismatched regular stem coverage');
+    }
+  }
   return parseFacetAnswer(msg);
+}
+
+// A version signal, not a promise that a separation will succeed. Probe before
+// downloading or submitting expensive regular work; old/mixed pools fail closed.
+export async function regularStemsAvailable(): Promise<boolean> {
+  const backend = await resolveBackend();
+  if (backend === 'sidecar') {
+    if (!await sidecarReachable()) return false;
+    return _sidecarRegularStems;
+  }
+  if (backend === 'local') {
+    if (!ready) await startWorker();
+    return _localRegularStems;
+  }
+  return false;
 }
 
 // Facet request for one track. A pre-fetched `localPath` is preferred, with
@@ -1256,6 +1289,7 @@ export async function analyzeFacets(
   opts: FacetRequestOpts,
   localPath?: string,
 ): Promise<FacetAnalysis> {
+  if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 1');
   const body: Record<string, unknown> = { ...(opts.regular_stem_window ? { regular_stem_window: opts.regular_stem_window } : {}), facets: opts.facets, ...(opts.stems_device ? { stems_device: opts.stems_device } : {}) };
   if (opts.tailVocals) body.tail_vocals = true;
   const stems = opts.stems_dir ? { stems_dir: opts.stems_dir, stems_require_marker: true } : {};
@@ -1270,7 +1304,7 @@ export async function analyzeFacets(
       ...stems,
     }, timeoutMs);
   } catch (err) {
-    if (!(err instanceof AnalyzerPathUnavailableError)) throw err;
+    if (!(err instanceof AnalyzerPathUnavailableError) || opts.regular_stem_window) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
     return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)

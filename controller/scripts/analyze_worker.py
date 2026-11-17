@@ -3275,6 +3275,7 @@ def main():
         "text_embedding_capable": text_capable,
         # Version signal: this worker understands {"facets": [...]} requests.
         "facets_capable": True,
+        "regular_stems_version": 1,
         "subbeats_capable": vocal_capable,
         "subbeats_cache_version": 2,
         "subbeats_suitability_version": 1,

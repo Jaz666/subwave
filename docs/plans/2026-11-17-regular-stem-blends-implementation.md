@@ -237,3 +237,38 @@ and preview handling, queue admission/order/cancellation/completion wakeups,
 deadline-safe render integration and legacy settings/backfill migration. The
 retention class must receive only the dedicated regular working root; its leases
 are process-local and startup must reconcile mixer-owned artifacts before sweep.
+
+
+### Preparation scheduling and analyzer compatibility
+
+Added a single-flight asynchronous preparation lane with ordered queue needs and
+absolute deadlines. It re-reads the latest desired order after each job instead
+of allowing later additions to overtake the nearest incoming head. Removing a
+need or reaching its deadline suppresses its completion callback. Failed jobs
+settle without an immediate retry loop; removing/reintroducing the need permits
+a retry. This lane is tested independently; Queue has not yet been connected to
+it, so its callbacks cannot arm or alter live seams yet.
+
+The analyzer now advertises regular-stems contract version one through both
+local readiness and sidecar health (all ready pool workers must support it).
+Regular extraction refuses unsupported workers before submitting work. Responses
+must acknowledge CPU, the identity key, requested side/bounds/version, sample
+rate and sample count. A missing shared path fails explicitly rather than
+returning an empty successful facet response. Tests include worker replacement
+with an older version, incorrect keys/coverage/device and unavailable paths.
+
+The existing regular renderer now consumes the authoritative Sub/Beats admission
+query, independently of prepared coverage. Regular/Sub/Beats crossover and
+Sub/Beats-to-Sub/Beats fallback cannot enter the regular renderer. A database-backed
+test verifies both directions with qualifying but unprepared tracks.
+
+Validation: 241 stem-related assertions pass, including the new scheduling,
+reservation and request tests; the analyzer Python suites and controller lint/type
+check pass (1,919 existing warnings, no errors). This remains a
+development-only change, with no station deployment, cache removal or migration.
+
+Next: build the queue's actual desired-window snapshots and runner with recording
+and model provenance, attach the lane/cache to queue lifecycle and existing hard
+deadlines, then switch regular render input to verified working windows and
+suspend legacy preparation/backfill. Do not activate the isolated components
+before those consumers and restart/mixer ownership handling are complete.

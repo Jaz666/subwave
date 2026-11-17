@@ -689,6 +689,7 @@ async def health():
         # older workers never emit the key, so this stays None and the
         # controller keeps sending flat requests to them.
         "analyze_facets_capable": analyzer_pool.capability("facets_capable", "facets"),
+        "analyze_regular_stems_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("regular_stems_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_suitability_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_suitability_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_timing_refresh_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_timing_refresh_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
