@@ -12,6 +12,14 @@ from subbeats_cache import prepare_cached,digest
 
 
 class CoverageTests(unittest.TestCase):
+    def test_sample_rounding_and_end_tolerance(self):
+        from subbeats_cache import covers_region
+        region=dict(start_sample=14200,end_sample=18000)
+        self.assertTrue(covers_region(region,142.00000000001,180.02,100))
+        self.assertFalse(covers_region(region,141.99,180,100))
+        self.assertFalse(covers_region(region,142,180.03,100))
+        self.assertFalse(covers_region(None,142,180,100))
+
     def test_bounds_and_persistent_reuse_source_budget_and_parent_binding(self):
         from subbeats_cue_preview import passage_plan
         self.assertEqual(coverage.coverage_regions({},300),[])
@@ -60,6 +68,20 @@ class CoverageTests(unittest.TestCase):
                 self.assertEqual(first['outgoing']['coverageEndSeconds'],180)
                 left=allowance['bytes'];again,used=prepare()
                 self.assertEqual(again,first);self.assertFalse(used);self.assertEqual(allowance['bytes'],left);self.assertEqual(detector.call_count,1)
+                # A cue refresh can reuse verified coverage without Demucs.
+                next_cue=prepare_cached(state,dict(mode='cue-points',revision=2),cue_build,cache_root=artifacts)
+                refreshed_cues={**cues,'artifactKey':Path(next_cue['directory']).name}
+                refreshed,used=coverage.prepare_coverage(source,state,folder,parent,refreshed_cues,
+                    cache_root=artifacts,allowance=allowance,expected_cache_id='shared-cache-identity',reuse_key=first['artifactKey'])
+                self.assertFalse(used)
+                self.assertEqual(separator.call_count,1)
+                self.assertNotEqual(refreshed['artifactKey'],first['artifactKey'])
+                with self.assertRaisesRegex(ValueError,'Invalid previous coverage key'):
+                    coverage.prepare_coverage(source,state,folder,parent,refreshed_cues,
+                        cache_root=artifacts,allowance=allowance,expected_cache_id='shared-cache-identity',reuse_key='../other')
+                with self.assertRaisesRegex(ValueError,'does not match'):
+                    coverage.prepare_coverage(source,state,folder,parent,refreshed_cues,
+                        cache_root=artifacts,allowance=allowance,expected_cache_id='shared-cache-identity',reuse_key=folder.name)
                 coverage.load_coverage(state,root,'track',first['artifactKey'],folder,cues['artifactKey'])
                 self.assertEqual((folder/'manifest.json').read_bytes(),before)
                 import subbeats_prepare

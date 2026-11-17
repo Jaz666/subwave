@@ -8,7 +8,7 @@ follow-through. Older immutable base/cue bundles stay intact.
 import json
 from pathlib import Path
 
-from subbeats_cache import prepare_cached, cached_entry, digest, bundle_folder
+from subbeats_cache import prepare_cached, cached_entry, digest, bundle_folder, covers_region
 from subbeats_cues import TAIL_SECONDS
 from subbeats_prepare import STEM_SR, separate_regions, write_flac_region, require_shared_cache
 
@@ -33,7 +33,7 @@ def coverage_regions(cues, duration):
     return regions
 
 
-def prepare_coverage(path,state,folder,parent,cues,*,cache_root,allowance,expected_cache_id):
+def prepare_coverage(path,state,folder,parent,cues,*,cache_root,allowance,expected_cache_id,reuse_key=None):
     from subbeats_preview import load_region
     from subbeats_vocals import measure_vocals
     import analyze_worker as worker
@@ -45,13 +45,34 @@ def prepare_coverage(path,state,folder,parent,cues,*,cache_root,allowance,expect
         bundle_sha256=digest(folder/'manifest.json'),cue_sha256=digest(cue_folder/'manifest.json'),
         separator=parent['identity'].get('separator'))
     duration = json.loads((folder/'analysis.json').read_text())['duration_seconds']
+    sources = [(folder,parent)]
+    if reuse_key is not None:
+        import re
+        if not isinstance(reuse_key,str) or not re.fullmatch('[a-f0-9]{64}',reuse_key):
+            raise ValueError('Invalid previous coverage key')
+        previous_folder = Path(cache_root)/reuse_key
+        try:
+            previous_identity = json.loads((previous_folder/'manifest.json').read_text())['identity']
+            previous = cached_entry(previous_folder,previous_identity)
+        except (OSError,ValueError,KeyError,TypeError):
+            previous = None
+        if (previous is None or previous_identity.get('mode')!='cue-coverage'
+                or previous_identity.get('version') not in (1,VERSION)
+                or previous_identity.get('source_sha256')!=identity['source_sha256']
+                or previous_identity.get('bundle_sha256')!=identity['bundle_sha256']
+                or previous_identity.get('separator')!=identity['separator']):
+            raise ValueError('Previous coverage does not match the source and prepared base')
+        sources.append((previous_folder,previous))
     def build(stage):
         regions = coverage_regions(cues,duration)
         coverage,missing = [],[]
         for name,start,end in regions:
-            previous = next((r for r in parent['metadata']['stem_regions'] if r['name']==name),None)
-            if previous and previous['start_sample']/STEM_SR<=start and previous['end_sample']/STEM_SR+2/STEM_SR>=end:
-                parts,_ = load_region(folder,parent,name,limit_seconds=130,start_seconds=start,end_seconds=end,require_tempo=False)
+            available = next(((source_folder,source) for source_folder,source in sources
+                if any(r['name']==name and covers_region(r,start,end,STEM_SR)
+                    for r in source['metadata']['stem_regions'])),None)
+            if available:
+                source_folder,source = available
+                parts,_ = load_region(source_folder,source,name,limit_seconds=130,start_seconds=start,end_seconds=end,require_tempo=False)
                 gain,_ = write_flac_region(stage,name,parts)
                 coverage.append(dict(name=name,start_sample=round(start*STEM_SR),end_sample=round(start*STEM_SR)+parts['vocals'].shape[1],sample_rate=STEM_SR,storage_gain=gain))
             else:

@@ -330,6 +330,32 @@ def t_vocal_and_stems_share_one_separation_and_shift_tail_ranges():
     assert out["stems"] == {"status": "ok", "data": {"stems_cached": True, "tail_stems": True}}, out
 
 
+def t_cpu_override_does_not_leak():
+    devices = []
+
+    class Detector:
+        def separate(self, y, *, device=None):
+            devices.append(device)
+            return {"vocals": y}
+
+        def detect(self, *_args, **_kwargs):
+            return []
+
+    detector = Detector()
+    y = np.concatenate([tone(12.0), silence(8.0)])
+    with Patched(get_vocal_detector=lambda force=False: detector, measure_loudness=fixed_loudness,
+                 write_stems=lambda *_args: None, write_tail_meta=lambda *_args: None):
+        aw.analyze_facets(FakeLibrosa, FakeSource(tail=(y, SR, 180.0)), ["stems"], stems_dir="/x", stems_device="cpu")
+        aw.analyze_facets(FakeLibrosa, FakeSource(tail=(y, SR, 180.0)), ["stems"], stems_dir="/x")
+    assert devices == ["cpu", "cpu", None, None], devices
+    try:
+        aw.analyze_facet_request(None, {"facets": ["stems"], "stems_device": "cuda"})
+    except aw.FacetRequestError:
+        pass
+    else:
+        raise AssertionError("unsupported device request accepted")
+
+
 def t_tail_only_request_can_carry_tail_vocals():
     calls = []
 
@@ -573,6 +599,8 @@ test("stems facet, marked root: stems written", t_stems_facet_marked_root_writes
 test("stems facet, unmarked root: unavailable, nothing written, vocal still ok",
      t_stems_facet_unmarked_root_is_unavailable_and_writes_nothing)
 test("stems facet, share lost mid-pass: unavailable, no further writes", t_stems_facet_mount_lost_mid_pass_is_unavailable)
+
+test("request-scoped CPU stems do not change subsequent analysis", t_cpu_override_does_not_leak)
 
 if failures:
     print(f"✗ analyzer_facets_test.py: {failures} failure(s)")

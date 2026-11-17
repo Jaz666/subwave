@@ -384,6 +384,10 @@ async def test_facet_contract():
         )
     assert worker_calls == [{"id": "1", "path": audio.name, "complete": False, "facets": ["tail"]}], worker_calls
     assert result == {"ok": True, "facets": facet_answer["facets"], "source": facet_answer["source"]}, result
+    with tempfile.NamedTemporaryFile() as audio:
+        await server.analyze(server.AnalyzeRequest(path=audio.name, facets=["stems"], stems_device="cpu"))
+    assert worker_calls[-1]["stems_device"] == "cpu", worker_calls
+    assert "stems_device" not in worker_calls[0], worker_calls
 
     # Model bookkeeping follows the facets named, not the env defaults.
     assert server.StdioWorker._wants_models({"facets": ["head", "tail"]}) is False
@@ -523,7 +527,35 @@ async def test_live_subbeats_route_uses_the_bounded_lane():
             sys.modules['subbeats_live_service'] = previous
 
 
+async def test_regular_transition_style_round_trips():
+    worker_calls = []
+
+    async def worker_request(payload):
+        worker_calls.append(payload)
+        return {
+            "ok": True, "path": "/state/transitions/test.wav",
+            "blend_start_sec": 10.0, "in_cue_sec": 12.0, "clip_sec": 2.0,
+            "regular_style": "drums-late",
+        }
+
+    saved_request = server.analyzer_pool.request
+    server.analyzer_pool.request = worker_request
+    try:
+        req = server.RenderTransitionRequest(
+            out={"stems_dir": "/state/stems/out"},
+            in_={"stems_dir": "/state/stems/in"},
+            out_dir="/state/transitions", clip_name="test.wav",
+            regular_style="drums-late",
+        )
+        result = await server.render_transition(req)
+    finally:
+        server.analyzer_pool.request = saved_request
+    assert worker_calls[0]["regular_style"] == "drums-late", worker_calls
+    assert result["regular_style"] == "drums-late", result
+
+
 async def main():
+    await test_regular_transition_style_round_trips()
     test_concurrency_env_validation()
     await test_pool_concurrency()
     await test_waiter_uses_worker_that_becomes_ready()

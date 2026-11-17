@@ -10,6 +10,7 @@ import tempfile
 
 from subbeats_cues import TAIL_SECONDS
 from subbeats_preview import STEM_SR, STEMS, load_region
+from subbeats_cache import covers_region
 
 MIX_STYLE_LABELS = {'long-blend':'Long blend','short-exchange':'Short exchange',
                     'bass-swap':'Bass swap','drums-first':'Drums first'}
@@ -50,7 +51,7 @@ def passage_plan(outgoing, incoming, out_duration, in_duration):
 
 def cue_region(req, index, folder, record, name, start, end, fetch_source):
     region = next((r for r in record['metadata']['stem_regions'] if r['name']==name),None)
-    if region and region['start_sample']/STEM_SR<=start and region['end_sample']/STEM_SR+2/STEM_SR>=end:
+    if covers_region(region,start,end,STEM_SR):
         parts,_=load_region(folder,record,name,limit_seconds=130,start_seconds=start,end_seconds=end,require_tempo=False)
         return parts,False
     urls = req.get('source_urls')

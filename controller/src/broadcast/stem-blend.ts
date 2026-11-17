@@ -26,6 +26,28 @@ export { CLIP_SEAM_CROSS_SEC };
 // only near-locked (or clean half/double) tempos read as intentional.
 const BPM_COMPAT_MIN = 0.7;
 
+export type RegularStemBlendStyle = 'drums-late' | 'rhythm-late' | 'vocals-late';
+const REGULAR_TEST_STYLES: RegularStemBlendStyle[] = ['drums-late', 'rhythm-late', 'vocals-late'];
+
+interface RegularStemTestPair { out: string; in: string }
+
+function regularStemTestPairs(): RegularStemTestPair[] {
+  try {
+    const parsed: unknown = JSON.parse(process.env.SUBWAVE_REGULAR_STEM_TEST_PAIRS ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((pair): pair is RegularStemTestPair =>
+      !!pair && typeof pair.out === 'string' && !!pair.out
+      && typeof pair.in === 'string' && !!pair.in);
+  } catch {
+    return [];
+  }
+}
+
+export function regularStemTestStyle(outId: string, inId: string): RegularStemBlendStyle | null {
+  const index = regularStemTestPairs().findIndex((pair) => pair.out === outId && pair.in === inId);
+  return index < 0 ? null : REGULAR_TEST_STYLES[index % REGULAR_TEST_STYLES.length];
+}
+
 // Only identity fields and loudness inputs are read here.
 export type BlendTrack = loudness.LoudnessTrack & {
   title?: string | null;
@@ -49,39 +71,49 @@ export async function maybeRenderBlend(
   outTrack: BlendTrack,
   inTrack: BlendTrack,
   remainingSec: number | null,
-  opts: { outCapped?: boolean; outTrimEndSec?: number | null; inHeadTrimmed?: boolean } = {},
+  opts: {
+    outCapped?: boolean;
+    outTrimEndSec?: number | null;
+    inHeadTrimmed?: boolean;
+    regularStyle?: RegularStemBlendStyle;
+    log?: (kind: 'warn', message: string) => void;
+  } = {},
 ): Promise<BlendPlan | null> {
   const s = settings.get();
-  if (s?.transitions?.stemBlends !== true) return null;
-  if (s?.transitions?.pairDrain === false) return null; // blends ride pair drains
-  if (!settings.getEffectivePersona()?.djMode) return null;
-  if (!outTrack?.id || !inTrack?.id) return null;
-  if (opts.outCapped) return null;      // a capped exit already owns that ending
+  const miss = (reason: string) => {
+    if (opts.regularStyle) opts.log?.('warn', `regular stem test: ${outTrack?.title || outTrack?.id} ✕ ${inTrack?.title || inTrack?.id} render skipped: ${reason}`);
+    return null;
+  };
+  if (s?.transitions?.stemBlends !== true) return miss('stem blends are disabled');
+  if (s?.transitions?.pairDrain === false) return miss('pair drain is disabled'); // blends ride pair drains
+  if (!settings.getEffectivePersona()?.djMode) return miss('active persona is not in DJ mode');
+  if (!outTrack?.id || !inTrack?.id) return miss('track id is missing');
+  if (opts.outCapped) return miss('outgoing track has a capped exit'); // a capped exit already owns that ending
   // Dead-air trim veto (music/silence-trim.ts). The incoming head is
   // unconditional: the clip is rendered from the successor's head window starting
   // at zero, so a trimmed leading blank would be baked into the seam.
-  if (opts.inHeadTrimmed) return null;
+  if (opts.inHeadTrimmed) return miss('incoming head is silence-trimmed');
   // A bulk pass holds the single-flight analyzer worker for minutes; a render would
   // only time out behind it. The pidfile is that pass's own lock.
-  if (bulkPassRunning()) return null;
+  if (bulkPassRunning()) return miss('library analysis is using the analyzer');
 
   const out = db.getTrack(outTrack.id);
   const inn = db.getTrack(inTrack.id);
-  if (!out || !inn) return null;
+  if (!out || !inn) return miss('track analysis row is missing');
   // Alignment data both sides. The render re-checks all of it; these gates only
   // avoid pointless round-trips.
-  if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return null;
+  if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return miss('beat grid or track duration is missing');
   // A blend always starts at or after the outro wind-down, so a trimmed end
   // at/before it can only cut the clip's source region. Exact test post-render.
-  if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return null;
+  if (opts.outTrimEndSec != null && opts.outTrimEndSec <= (out.outro.startMs ?? 0) / 1000) return miss('outgoing trim cuts into its stem window');
   // Tempo gate: near-locked or clean half/double only.
-  if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return null;
+  if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return miss('track tempos are not compatible');
   // Cache-hit-only: both windows must already be separated.
   const [outStems, inStems] = await Promise.all([
     stemCache.renderSource(outTrack.id, 'tail'),
     stemCache.renderSource(inTrack.id, 'head'),
   ]);
-  if (!outStems || !inStems) return null;
+  if (!outStems || !inStems) return miss(`stem windows are missing (tail ${outStems ? 'ready' : 'missing'}, head ${inStems ? 'ready' : 'missing'})`);
   // A pick-time separation (broadcast/pick-stems.ts) holds a worker for a
   // minute or more. Only a cache hit gets this far, so this costs exactly the
   // seams that would have blended; with one worker the render would lose the
@@ -91,14 +123,14 @@ export async function maybeRenderBlend(
     separating: separationInFlight(),
     backend: analyzer.backendLabel(),
     concurrency: config.analyzer.concurrency,
-  })) return null;
+  })) return miss('analyzer is busy separating stems');
 
   // The render must lose the race to the drain's hard fallback, so it gets the
   // window to the hard deadline minus a write/stamp margin, capped by the render
   // budget. An unknown clock vetoes outright: the sender is blocked while it runs.
-  if (remainingSec == null) return null;
+  if (remainingSec == null) return miss('time until the pair airs is unknown');
   const windowMs = Math.floor((remainingSec - HARD_DEADLINE_SEC - 5) * 1000);
-  if (windowMs < 3000) return null; // too late to even try
+  if (windowMs < 3000) return miss('too close to the drain deadline to render'); // too late to even try
   const timeoutMs = Math.min(config.analyzer.renderTimeoutMs, windowMs);
 
   // Level match (#1240). The clip carries no liq_amplify of its own, so the render
@@ -143,20 +175,24 @@ export async function maybeRenderBlend(
     },
     out_dir: transitionsDir(),
     clip_name: `${path.basename(String(outTrack.id))}-${path.basename(String(inTrack.id))}.wav`,
+    ...(opts.regularStyle ? { regular_style: opts.regularStyle } : {}),
     target_lufs: s?.loudness?.targetLufs ?? -14,
-  }, { timeoutMs });
-  if (!result) return null;
+  }, {
+    timeoutMs,
+    ...(opts.regularStyle ? { onMiss: (reason: string) => { miss(`renderer rejected pair: ${reason}`); } } : {}),
+  });
+  if (!result) return miss('renderer returned no blend');
 
   // The worker's points are where the clip starts and ends; the stamped cues
   // sit one seam overlap outside them so each crossfade mixes the same instant
   // of the music on both sides (broadcast/stem-seam.ts).
   const cues = clipSeamCues(result);
   // Cue points must sit inside their tracks and leave real audio either side.
-  if (!(result.blendStartSec > 10 && cues.outCueSec < out.durationSec)) return null;
-  if (!(result.inCueSec > 1 && result.clipSec > 2)) return null;
+  if (!(result.blendStartSec > 10 && cues.outCueSec < out.durationSec)) return miss('rendered cue falls outside outgoing track');
+  if (!(result.inCueSec > 1 && result.clipSec > 2)) return miss('rendered cue or clip is too short');
   // cue_outs arbitrate as earliest-wins, so a trimmed end before the extended
   // cue would cut X before the seam overlap (or the clip's source region) plays.
-  if (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec) return null;
+  if (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec) return miss('outgoing silence trim would cut the rendered seam');
   return {
     clipPath: result.path,
     ...cues,

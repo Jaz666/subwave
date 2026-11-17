@@ -16,6 +16,8 @@ import { reportProgress, reportEvent } from './tagger-progress.js';
 import { SUBBEATS_EVENT_PREFIX, subbeatsEnqueueSchema } from '../schemas/subbeats.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 import { refreshPreparedSubbeatsLyrics } from './subbeats-lyric-refresh.js';
+import { prepareSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
+import type { SubbeatsJob } from './subbeats-store.js';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -47,7 +49,7 @@ async function main() {
       const job = state.jobs.find(j => j.id === id);
       if (job?.status !== 'queued') continue;
       if (!await waitForQuiet(gate, { done, total: ids.length }, () => readSubbeatsQueue(config.stateDir).paused)) break;
-      reportProgress({ phase: 'analyze', label: `${job.task === 'assess' ? 'Assessing suitability' : job.task === 'coverage' ? 'Upgrading cue coverage' : 'Preparing Sub/Beats'}: ${job.artist} — ${job.title}`, done, total: ids.length });
+      reportProgress({ phase: 'analyze', label: `${job.task === 'assess' ? 'Assessing suitability' : job.task === 'coverage' ? 'Upgrading cue coverage' : job.task === 'timing' ? 'Refreshing timing' : 'Preparing Sub/Beats'}: ${job.artist} — ${job.title}`, done, total: ids.length });
       emit({ id, status: 'running' });
       let localPath: string | null = null;
       const started = performance.now();
@@ -59,12 +61,17 @@ async function main() {
       };
       try {
         if (job.task === 'assess' && job.bundleKey) {
-          emit({id,...await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot(),job.cuePoints?.algorithmVersion && job.cuePoints.algorithmVersion >= 5 && job.cueCoverage ? {cue_key:job.cuePoints.artifactKey,coverage_key:job.cueCoverage.artifactKey} : undefined)});
+          const result = await analyzer.assessSubbeats(config.stateDir,cacheId,id,job.bundleKey,stemCache.stemsRoot(),job.cuePoints?.algorithmVersion && job.cuePoints.algorithmVersion >= 5 && job.cueCoverage ? {cue_key:job.cuePoints.artifactKey,coverage_key:job.cueCoverage.artifactKey} : undefined);
+          if (result.bundleKey && ['prepared', 'unmeasurable'].includes(result.status)) {
+            try { await prepareSubbeatsStemWaveforms(id, { ...job, ...result, id } as SubbeatsJob); }
+            catch (error) { console.warn(`[subbeats] preview waveforms failed for ${id}: ${error instanceof Error ? error.message : String(error)}`); }
+          }
+          emit({id,...result});
           continue;
         }
         const method = job.preparationMethod;
         if (method === 'final0') throw new Error('Recheck this track using Beat This! small; the full model has been retired');
-        if (remaining <= 0) {
+        if (job.task !== 'timing' && remaining <= 0) {
           uncertain = false;
           emit({id,status:'queued',error:'Waiting for cache space: Sub/Beats cache budget reached'});
           break;
@@ -77,12 +84,22 @@ async function main() {
           emit({ id, status: 'unavailable', error: 'The complete recording exceeds the Sub/Beats download limit (256 MB)' });
           continue;
         }
-        const result = await timed('preparationMs',()=>analyzer.prepareSubbeats(localPath!, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},method,job.task === 'coverage' && job.bundleKey && job.cuePoints ? {bundle_key:job.bundleKey,cue_key:job.cuePoints.artifactKey} : undefined));
+        if (job.preparationMethod === 'final0') throw new Error('Requeue this track using the current Sub/Beats preparation method');
+        const upgrade = (job.task === 'coverage' || job.task === 'timing') && job.bundleKey && job.cuePoints
+          ? { bundle_key:job.bundleKey, cue_key:job.cuePoints.artifactKey,
+              ...(job.task === 'timing' ? { refresh_cues:true, ...(job.cueCoverage ? { reuse_coverage_key:job.cueCoverage.artifactKey } : {}) } : {}) }
+          : undefined;
+        const result = await timed('preparationMs',()=>analyzer.prepareSubbeats(localPath!, config.stateDir, cacheId, id, {stems_root:stemCache.stemsRoot(), remaining_bytes:remaining},method,upgrade));
         remaining = Math.max(0, remaining - result.addedBytes);
         changed ||= result.addedBytes > 0; uncertain = false;
         if (result.status === 'prepared' && result.bundleKey) {
           reportProgress({phase:'analyze',label:`Looking up lyrics: ${job.artist} — ${job.title}`,done,total:ids.length});
           await timed('lyricsMs',()=>refreshPreparedSubbeatsLyrics(id,result.bundleKey!));
+        }
+        if (result.bundleKey && ['prepared', 'unmeasurable'].includes(result.status)) {
+          reportProgress({phase:'analyze',label:`Preparing stem preview waveforms: ${job.artist} — ${job.title}`,done,total:ids.length});
+          try { await timed('waveformsMs',()=>prepareSubbeatsStemWaveforms(id, { ...job, ...result, id } as SubbeatsJob)); }
+          catch (error) { console.warn(`[subbeats] preview waveforms failed for ${id}: ${error instanceof Error ? error.message : String(error)}`); }
         }
         emit({id, ...result});
       } catch (error) {

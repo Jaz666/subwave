@@ -2595,6 +2595,16 @@ class Queue {
                   outTrimEndSec: trim.cueOutSec,
                   inHeadTrimmed: inTrim.cueInSec != null,
               };
+              const regularStyle = item.track.id && successor.track.id
+                ? stemBlend.regularStemTestStyle(String(item.track.id), String(successor.track.id))
+                : null;
+              const regularPairOptions = regularStyle
+                ? {
+                  ...pairOptions,
+                  regularStyle,
+                  log: (kind: 'warn', message: string) => this.log(kind, message),
+                }
+                : pairOptions;
               const selectedSuccessor = successor;
               const adjacent = () => this.upcoming.includes(item)
                 && this.upcoming[this.upcoming.indexOf(item)+1] === selectedSuccessor
@@ -2614,7 +2624,7 @@ class Queue {
                 this.log('mix','Sub/Beats fallback: the rendered handoff conflicts with the live queue boundary.',{subbeats:'fallback'});
               }
               if (!blend && adjacent()) blend = await this._renderBlend(
-                item.track,successor.track,this.remainingUntilItemAirs(item),pairOptions);
+                item.track,successor.track,this.remainingUntilItemAirs(item),regularPairOptions);
               if (blend && adjacent()) {
                 const previousBlend = item.stemBlend;
                 // A recovered proposal already stripped this track's exit.

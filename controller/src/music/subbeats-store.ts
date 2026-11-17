@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { writeFileAtomicSync } from '../util/atomic-file.js';
 import { SUBBEATS_QUEUE_LIMIT, subbeatsQueueSchema, subbeatsEventSchema, type subbeatsJobSchema } from '../schemas/subbeats.js';
+import { subbeatsTimingCurrent } from './subbeats-refresh-policy.js';
 
 export type SubbeatsJob = z.infer<typeof subbeatsJobSchema>;
 export type SubbeatsQueue = z.infer<typeof subbeatsQueueSchema>;
@@ -26,6 +27,7 @@ export function readSubbeatsQueue(stateDir: string): SubbeatsQueue {
       delete job.cuePoints;
       delete job.cueCoverage;
       delete job.task;
+      delete job.refreshFrom;
     }
   }
   return state;
@@ -85,6 +87,20 @@ export function createSubbeatsStore(stateDir: string) {
         job.preparationMethod=job.cuePoints!.model;
       }
       save(state);
+    },
+    refreshTiming(ids: readonly string[]) {
+      const state = readSubbeatsQueue(stateDir);
+      const selected = [...new Set(ids)].map(id => state.jobs.find(job => job.id === id));
+      if (selected.some(job => !job?.bundleKey || !job.cuePoints)) throw new Error('Choose entries with saved source and cue evidence');
+      const queued: string[] = [];
+      for (const job of selected) if (job && !['queued','running'].includes(job.status) && !subbeatsTimingCurrent(job)) {
+        if (job.status === 'prepared' || job.status === 'unmeasurable') job.refreshFrom = job.status;
+        job.status = 'queued'; job.task = 'timing'; job.preparationMethod = 'small0';
+        job.error = null; job.updatedAt = new Date().toISOString();
+        queued.push(job.id);
+      }
+      if (queued.length) save(state);
+      return queued;
     },
     remove(id: string) {
       const state = readSubbeatsQueue(stateDir);

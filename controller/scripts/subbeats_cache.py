@@ -43,6 +43,13 @@ def cached_entry(dest, identity):
         return None
 
 
+
+def covers_region(region, start_seconds, end_seconds, sample_rate):
+    """Use the same rounded sample boundaries as load_region, with its end tolerance."""
+    return (region is not None and region['start_sample'] <= round(start_seconds * sample_rate)
+            and region['end_sample'] + 2 >= round(end_seconds * sample_rate))
+
+
 def prepare_cached(state_dir, identity, build, budget=DEFAULT_BUDGET, *, cache_root=None, allowance=None):
     """One job at a time; publish the whole bundle only after successful checks.
 

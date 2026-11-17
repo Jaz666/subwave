@@ -323,6 +323,9 @@ def prepare_request(req):
     if method not in ('classic','small0'):
         raise ValueError('Unknown preparation method')
     upgrading = req.get('bundle_key') is not None
+    refreshing = req.get('refresh_cues') is True
+    if refreshing and (not upgrading or method != 'small0'):
+        raise ValueError('Timing refresh requires a saved source bundle and small0')
     if upgrading:
         if method == 'classic':
             raise ValueError('Coverage upgrades require a saved cue-point method')
@@ -354,14 +357,15 @@ def prepare_request(req):
     coverage_used_models = False
     if method != 'classic':
         from subbeats_cues import prepare_cues
-        cues['cuePoints'] = cue_points if upgrading else prepare_cues(req['path'],state_dir,result['directory'],result,method,
+        cues['cuePoints'] = cue_points if upgrading and not refreshing else prepare_cues(req['path'],state_dir,result['directory'],result,method,
             cache_root=cache_root,allowance=allowance,expected_cache_id=expected)
         from subbeats_coverage import prepare_coverage
         cues['cueCoverage'],coverage_used_models = prepare_coverage(req['path'],state_dir,result['directory'],result,cues['cuePoints'],
-            cache_root=cache_root,allowance=allowance,expected_cache_id=expected)
+            cache_root=cache_root,allowance=allowance,expected_cache_id=expected,
+            **({'reuse_key':req['reuse_coverage_key']} if req.get('reuse_coverage_key') is not None else {}))
     if method != 'classic':
         suitability = cue_suitability(cues['cuePoints'],cues['cueCoverage'])
-    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': coverage_used_models or (method != 'classic' and not upgrading) or (not result.get('cache_hit', False) and bool(result['metadata']['stem_regions'])), 'subbeats_result': {
+    return {'cache_added_bytes': req['remaining_bytes'] - allowance['bytes'], 'ok': True, 'subbeats_used_models': coverage_used_models or (method != 'classic' and (not upgrading or refreshing)) or (not result.get('cache_hit', False) and bool(result['metadata']['stem_regions'])), 'subbeats_result': {
         'status': ('prepared' if result['metadata']['stem_regions'] or (cues and (cues['cuePoints']['incoming'] or cues['cuePoints']['outgoing'])) else 'unmeasurable'),
         'bundleKey': Path(result['directory']).name, 'suitability':suitability, **cues,
         'error': None,

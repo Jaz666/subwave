@@ -1,5 +1,5 @@
 import { stemBlendPreviewReportSchema, type stemBlendPreviewModeSchema } from '../schemas/stem-blend-preview.js';
-import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsPairPlanSchema, subbeatsTimelineSchema, type subbeatsHandoffInputSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
+import { SUBBEATS_CUE_ALGORITHM_VERSION, subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsPairPlanSchema, subbeatsTimelineSchema, type subbeatsHandoffInputSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -16,6 +16,7 @@ import { fetchWithTimeout } from '../util/fetch-timeout.js';
 import { envInt } from '../util/env.js';
 import { dirname, join } from 'node:path';
 import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
+import { parseBeatGridProvenance, type BeatGridProvenance } from '../schemas/beat-grid.js';
 
 // A structural span over the track, in ms. Contiguous over the analysed
 // window; the first is the intro/leading section.
@@ -58,6 +59,7 @@ export interface AnalysisResult {
   // Beat and downbeat (bar) timestamps in ms.
   beats: number[] | null;
   bars: number[] | null;
+  gridProvenance?: BeatGridProvenance | null;
   // Per-region key; the scalar musicalKey stays the back-compat dominant key.
   keyRanges: KeyRange[] | null;
   // Integrated loudness (LUFS, BS.1770) + peak (dBFS); needs pyloudnorm. null
@@ -91,6 +93,7 @@ export interface OutroInfo {
   bpm: number | null;          // tail tempo (outros drift/ritard vs the lead)
   beats: number[] | null;
   bars: number[] | null;
+  gridProvenance?: BeatGridProvenance | null;
   // Tail vocal spans. [] = analysed instrumental tail; the key must be OMITTED
   // (not null) when detection didn't run — outro_json is the JSON.stringify of
   // this object and the vocal backfill probes the raw text for '"vocalRanges"'.
@@ -182,6 +185,7 @@ function parseOutro(v: unknown): OutroInfo | null {
   // Omit the key when not computed, so outro_json never carries a bare
   // "vocalRanges" for the backfill probe.
   const vocalRanges = parseVocalRanges(o?.vocalRanges);
+  const gridProvenance = parseBeatGridProvenance(o?.gridProvenance);
   return {
     startMs: Math.round(startMs),
     ending,
@@ -190,6 +194,7 @@ function parseOutro(v: unknown): OutroInfo | null {
     beats: parseMsList(o?.beats),
     bars: parseMsList(o?.bars),
     ...(vocalRanges !== null ? { vocalRanges } : {}),
+    ...(gridProvenance ? { gridProvenance } : {}),
   };
 }
 
@@ -223,6 +228,7 @@ function localConfigured(): boolean {
 interface WorkerMessage {
   stem_blend_preview?: string;
   stem_blend_report?: unknown;
+  regular_style?: string;
   subbeats_preview?: string;
   subbeats_timeline?: unknown;
   id?: string;
@@ -257,6 +263,7 @@ interface WorkerMessage {
   pace_curve?: unknown;
   beats?: unknown;
   bars?: unknown;
+  grid_provenance?: unknown;
   key_ranges?: unknown;
   audio_embedding?: unknown;
   outro?: unknown;
@@ -267,6 +274,7 @@ interface WorkerMessage {
   subbeats_capable?: boolean;
   subbeats_cache_version?: number;
   subbeats_suitability_version?:number;
+  subbeats_timing_refresh_version?:number;
   cache_added_bytes?: number;
   migrated?: number;
   subbeats_matches?:unknown;
@@ -296,6 +304,7 @@ let _localVocalCapable: boolean | null = null;
 let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
 let _localSubbeatsSuitability = false;
+let _localSubbeatsTimingRefresh = false;
 let _localSubbeatsShared = false;
 let _localSubbeatsCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
@@ -360,6 +369,7 @@ function startWorker(): Promise<void> {
           _localFacetsCapable = msg.facets_capable === true;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
+          _localSubbeatsTimingRefresh = msg.subbeats_timing_refresh_version === 1;
           _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
         }
         // After the ready assignments, so a reported loss always wins.
@@ -430,6 +440,7 @@ function toAnalysisResult(msg: WorkerMessage): AnalysisResult {
           paceCurve: parsePaceCurve(msg.pace_curve),
           beats: parseMsList(msg.beats),
           bars: parseMsList(msg.bars),
+          gridProvenance: parseBeatGridProvenance(msg.grid_provenance),
           keyRanges: parseKeyRanges(msg.key_ranges),
           audioEmbedding: parseAudioEmbedding(msg.audio_embedding),
           outro: parseOutro(msg.outro),
@@ -518,6 +529,7 @@ let _sidecarTailVocalCapable: boolean | null = null;
 // Facet protocol (version signal; null on old sidecars).
 let _sidecarFacetsCapable: boolean | null = null;
 let _sidecarSubbeatsSuitability = false;
+let _sidecarSubbeatsTimingRefresh = false;
 let _sidecarSubbeatsShared = false;
 let _sidecarSubbeatsCapable: boolean | null = null;
 // The CLAP TEXT tower (embed-text).
@@ -546,6 +558,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_subbeats_capable?: boolean | null;
       analyze_subbeats_cache_version?: number;
       analyze_subbeats_suitability_version?:number;
+      analyze_subbeats_timing_refresh_version?:number;
       analyze_audio_error?: string | null;
       analyze_vocal_error?: string | null;
     };
@@ -558,6 +571,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarFacetsCapable = typeof body.analyze_facets_capable === 'boolean' ? body.analyze_facets_capable : null;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
       _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
+      _sidecarSubbeatsTimingRefresh = body.analyze_subbeats_timing_refresh_version === 1;
       _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
       _sidecarTextCapable = typeof body.analyze_text_capable === 'boolean' ? body.analyze_text_capable : null;
       _sidecarAudioError = typeof body.analyze_audio_error === 'string' ? body.analyze_audio_error : null;
@@ -619,26 +633,7 @@ async function sidecarRequest(body: ({ url: string } | { path: string }) & Analy
   if (!res.ok) return sidecarFailure(res);
   const resBody = (await res.json()) as WorkerMessage;
   if (!resBody.ok) throw new Error(resBody.error || 'analysis failed');
-  return {
-    bpm: resBody.bpm ?? null,
-    musicalKey: resBody.key ?? null,
-    introMs: resBody.intro_ms ?? null,
-    confidence: resBody.confidence ?? null,
-    loudnessLufs: parseFinite(resBody.loudness_lufs),
-    peakDb: parseFinite(resBody.peak_db),
-    sections: parseSections(resBody.sections),
-    vocalRanges: parseVocalRanges(resBody.vocal_ranges),
-    paceCurve: parsePaceCurve(resBody.pace_curve),
-    beats: parseMsList(resBody.beats),
-    bars: parseMsList(resBody.bars),
-    keyRanges: parseKeyRanges(resBody.key_ranges),
-    audioEmbedding: parseAudioEmbedding(resBody.audio_embedding),
-    outro: parseOutro(resBody.outro),
-    leadSilenceMs: parseSilenceMs(resBody.lead_silence_ms),
-    tailSilenceMs: parseSilenceMs(resBody.tail_silence_ms),
-    tailStartMs: parseSilenceMs(resBody.tail_start_ms),
-    stemsCached: typeof resBody.stems_cached === 'boolean' ? resBody.stems_cached : null,
-  };
+  return toAnalysisResult(resBody);
 }
 
 function analyzeViaSidecar(url: string, opts: AnalyzeRequestOpts = {}): Promise<AnalysisResult> {
@@ -863,6 +858,7 @@ export interface RenderTransitionPayload {
   };
   out_dir: string;
   clip_name: string;
+  regular_style?: 'drums-late' | 'rhythm-late' | 'vocals-late';
   target_lufs?: number | null;
 }
 
@@ -881,11 +877,21 @@ export interface RenderTransitionResult {
 // as a heavy backend cached the stems earlier.
 export async function renderTransition(
   payload: RenderTransitionPayload,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; onMiss?: (reason: string) => void } = {},
 ): Promise<RenderTransitionResult | null> {
   const timeoutMs = opts.timeoutMs ?? config.analyzer.renderTimeoutMs;
-  const backend = await resolveBackend();
-  if (!backend) return null;
+  const miss = (reason: string) => opts.onMiss?.(reason);
+  let backend: 'sidecar' | 'local' | null;
+  try {
+    backend = await resolveBackend();
+  } catch (err) {
+    miss((err as Error).message || 'analyzer backend probe failed');
+    return null;
+  }
+  if (!backend) {
+    miss('analyzer unavailable');
+    return null;
+  }
   if (backend === 'sidecar') {
     try {
       const res = await fetchWithTimeout(`${_sidecarBase}/render-transition`, {
@@ -895,17 +901,28 @@ export async function renderTransition(
         timeoutMs,
         bodyDeadline: true,
       });
-      if (!res.ok) return null; // 404 = pre-render sidecar — silently no blend
+      if (!res.ok) {
+        miss(res.status === 404 ? 'analyzer has no render-transition endpoint' : `analyzer returned HTTP ${res.status}`);
+        return null;
+      }
       const body = (await res.json()) as WorkerMessage & { ok?: boolean };
-      return coerceRenderResult(body);
-    } catch {
+      if (!body.ok) {
+        miss(body.error || 'renderer rejected the pair');
+        return null;
+      }
+      const result = coerceRenderResult(body, payload.regular_style);
+      if (!result) miss('renderer returned an incomplete or mismatched result');
+      return result;
+    } catch (err) {
+      miss((err as Error).message || 'render request failed');
       return null;
     }
   }
   try {
     if (!ready) await startWorker();
     return await localRenderTransition(payload, timeoutMs);
-  } catch {
+  } catch (err) {
+    miss((err as Error).message || 'local render failed');
     return null;
   }
 }
@@ -944,8 +961,12 @@ export async function previewStemBlend(payload: Omit<RenderTransitionPayload, 'o
 }
 
 
-function coerceRenderResult(msg: WorkerMessage & { ok?: boolean }): RenderTransitionResult | null {
+function coerceRenderResult(
+  msg: WorkerMessage & { ok?: boolean },
+  expectedStyle?: RenderTransitionPayload['regular_style'],
+): RenderTransitionResult | null {
   if (!msg?.ok || typeof msg.path !== 'string') return null;
+  if (expectedStyle && msg.regular_style !== expectedStyle) return null;
   const blendStartSec = parseFinite(msg.blend_start_sec);
   const inCueSec = parseFinite(msg.in_cue_sec);
   const clipSec = parseFinite(msg.clip_sec);
@@ -961,7 +982,7 @@ function localRenderTransition(payload: RenderTransitionPayload, timeoutMs: numb
       reject(new Error('render-transition request timed out'));
     }, timeoutMs);
     pending.set(id, {
-      resolve: (msg: WorkerMessage) => resolve(coerceRenderResult({ ...msg, ok: true })),
+      resolve: (msg: WorkerMessage) => resolve(coerceRenderResult({ ...msg, ok: true }, payload.regular_style)),
       reject, // a worker {ok:false} rejects here — caller maps to null
       timer,
     });
@@ -1146,6 +1167,7 @@ export interface FacetAnalysis {
 }
 
 export interface FacetRequestOpts {
+  stems_device?: 'cpu';
   facets: FacetName[];
   // Tail facet also carries the outro's vocal ranges (Demucs on the tail only).
   tailVocals?: boolean;
@@ -1219,6 +1241,7 @@ async function facetRequest(
     msg = await localRequestRaw(body, timeoutMs);
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
+  if (body.stems_device === 'cpu' && msg.source?.stems_device !== 'cpu') throw new Error('analyzer did not acknowledge CPU stem processing');
   return parseFacetAnswer(msg);
 }
 
@@ -1232,7 +1255,7 @@ export async function analyzeFacets(
   opts: FacetRequestOpts,
   localPath?: string,
 ): Promise<FacetAnalysis> {
-  const body: Record<string, unknown> = { facets: opts.facets };
+  const body: Record<string, unknown> = { facets: opts.facets, ...(opts.stems_device ? { stems_device: opts.stems_device } : {}) };
   if (opts.tailVocals) body.tail_vocals = true;
   const stems = opts.stems_dir ? { stems_dir: opts.stems_dir, stems_require_marker: true } : {};
   const url = subsonic.getRawStreamUrl(songId);
@@ -1358,8 +1381,9 @@ export async function assessSubbeats(stateDir:string, cacheId:string, trackId:st
   return {...result,addedBytes:0};
 }
 
-export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0' = 'classic', upgrade?:{bundle_key:string;cue_key:string}) {
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0' = 'classic', upgrade?:{bundle_key:string;cue_key:string;refresh_cues?:boolean;reuse_coverage_key?:string}) {
   if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
+  if (upgrade?.refresh_cues && (_backend === 'sidecar' ? !_sidecarSubbeatsTimingRefresh : !_localSubbeatsTimingRefresh)) throw new Error('Update the analyzer to refresh timing while reusing saved coverage');
   const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared,...(method === 'classic' ? {} : {method}), ...upgrade };
   const timeoutMs = 30 * 60_000;
   let answer: WorkerMessage;
@@ -1375,7 +1399,7 @@ export async function prepareSubbeats(path: string, stateDir: string, cacheId: s
   const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
   if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
   if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
-  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 13)) throw new Error('Update the heavy analyzer for natural-start cue preparation');
+  if (method !== 'classic' && (!upgrade || upgrade.refresh_cues) && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== SUBBEATS_CUE_ALGORITHM_VERSION || result.cuePoints.model !== method)) throw new Error('Update the heavy analyzer for natural-start cue preparation');
   if (method !== 'classic' && !result.cueCoverage) throw new Error('Update the heavy analyzer to save cue coverage and vocal measurements');
   return {...result, addedBytes:cacheGrowth(answer)};
 }

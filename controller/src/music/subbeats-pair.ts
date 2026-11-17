@@ -11,6 +11,7 @@ import { endingKeyFrom, openingKeyFrom, parseCamelot, keyCompat } from './mix.js
 import { planSubbeatsPairFromEvidence } from './analyzer.js';
 import { readSubbeatsQueue } from './subbeats-store.js';
 import { withSubbeatsLyrics } from './subbeats-lyrics.js';
+import { savedSubbeatsTimingForPlayback } from './subbeats-refresh-policy.js';
 
 type KeyTrack = Pick<TrackRecord,'musicalKey'|'keyRanges'|'durationSec'>;
 
@@ -39,7 +40,7 @@ export function subbeatsPairSnapshot(outgoingId:string,incomingId:string) {
   const prepared = readSubbeatsQueue(config.stateDir).jobs;
   const jobs = withSubbeatsLyrics([outgoingId,incomingId].flatMap(id => {
     const job = prepared.find(item => item.id === id);
-    return job ? [job] : [];
+    return job ? [savedSubbeatsTimingForPlayback(job)] : [];
   }),config.stateDir);
   const choice = subbeatsHarmonicChoice(outgoing,incoming);
   const evidenceFingerprint = createHash('sha256').update(JSON.stringify({version:1,

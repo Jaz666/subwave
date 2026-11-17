@@ -8,6 +8,38 @@
 
 import { z } from 'zod';
 
+// ─── from controller/src/schemas/beat-grid.ts ────────────────────────────
+
+// Optional evidence attached to a measured window. Neither this metadata nor
+// agreement with librosa qualifies a track for any kind of stem transition.
+
+export const beatGridProvenanceSchema = z.object({
+  version: z.literal(1),
+  backend: z.literal('beat-this-onnx'),
+  model: z.enum(['small0', 'custom']),
+  modelSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  preprocessingVersion: z.literal(1),
+  windowStartMs: z.number().int().nonnegative(),
+  windowEndMs: z.number().int().positive(),
+  evidence: z.object({
+    medianBpm: z.number().positive().nullable(),
+    intervalSupport: z.number().min(0).max(1).nullable(),
+    librosaBeatSupport: z.number().min(0).max(1).nullable(),
+  }),
+  source: z.object({
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    bytes: z.number().int().nonnegative(),
+    complete: z.boolean().nullable(),
+  }).optional(),
+}).refine(v => v.windowEndMs > v.windowStartMs);
+
+export type BeatGridProvenance = z.infer<typeof beatGridProvenanceSchema>;
+
+export function parseBeatGridProvenance(value: unknown): BeatGridProvenance | null {
+  const result = beatGridProvenanceSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
 // ─── from controller/src/schemas/blocklist.ts ────────────────────────────
 
 // Shared never-play blocklist schema (#1300 FR 1): the rule-entry shape
@@ -5742,7 +5774,10 @@ export const subFlowInputSchema = subFlowNameSchema.extend({
 // ─── from controller/src/schemas/subbeats.ts ─────────────────────────────
 
 export const SUBBEATS_BATCH_LIMIT = 1000;
+// Mirror subbeats_cues.ALGORITHM_VERSION when the cue algorithm changes.
 export const SUBBEATS_QUEUE_LIMIT = 20000;
+// Mirror subbeats_cues.ALGORITHM_VERSION when the cue algorithm changes.
+export const SUBBEATS_CUE_ALGORITHM_VERSION = 13;
 export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
@@ -5830,7 +5865,8 @@ export const subbeatsCueCoverageSchema = z.object({
 export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
   lyricEvidence:subbeatsLyricEvidenceSchema.optional(),
-  task:z.enum(['assess','coverage']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
+  task:z.enum(['assess','coverage','timing']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
+  refreshFrom:z.enum(['prepared','unmeasurable']).optional(),
   preparationMethod:z.union([subbeatsPreparationMethodSchema,z.literal('final0')]).optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),

@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 export const SUBBEATS_BATCH_LIMIT = 1000;
+// Mirror subbeats_cues.ALGORITHM_VERSION when the cue algorithm changes.
 export const SUBBEATS_QUEUE_LIMIT = 20000;
+// Mirror subbeats_cues.ALGORITHM_VERSION when the cue algorithm changes.
+export const SUBBEATS_CUE_ALGORITHM_VERSION = 13;
 export const SUBBEATS_MATCH_LIMIT = 500;
 export const SUBBEATS_PAGE_SIZE = 50;
 
@@ -89,7 +92,8 @@ export const subbeatsCueCoverageSchema = z.object({
 export const subbeatsJobSchema = z.object({
   id: z.string().min(1).max(200), title: z.string(), artist: z.string(), album: z.string(),
   lyricEvidence:subbeatsLyricEvidenceSchema.optional(),
-  task:z.enum(['assess','coverage']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
+  task:z.enum(['assess','coverage','timing']).optional(), cueCoverage:subbeatsCueCoverageSchema.optional(), suitability:subbeatsSuitabilitySchema.optional(),
+  refreshFrom:z.enum(['prepared','unmeasurable']).optional(),
   preparationMethod:z.union([subbeatsPreparationMethodSchema,z.literal('final0')]).optional(),cuePoints:subbeatsCuePointsSchema.optional(),
   status: subbeatsStatusSchema, attempts: z.number().int().nonnegative(),
   bundleKey: z.string().regex(/^[a-f0-9]{64}$/).nullable(), error: z.string().nullable(), updatedAt: z.string(),

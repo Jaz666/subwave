@@ -690,6 +690,7 @@ async def health():
         # controller keeps sending flat requests to them.
         "analyze_facets_capable": analyzer_pool.capability("facets_capable", "facets"),
         "analyze_subbeats_suitability_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_suitability_version") == 1 for w in analyzer_pool.ready_workers) else None),
+        "analyze_subbeats_timing_refresh_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_timing_refresh_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
         "analyze_subbeats_cache_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_cache_version") == 2 for w in analyzer_pool.ready_workers) else None),
         # Best-effort residency (#1204): whether CLAP/Demucs are believed
@@ -747,6 +748,7 @@ class AnalyzeRequest(BaseModel):
     # Facet requests only: a tail measured without the vocal/stems facets also
     # carries the outro's vocal ranges (Demucs on the tail window only).
     tail_vocals: bool = False
+    stems_device: str | None = None
 
 
 @app.post("/analyze")
@@ -784,6 +786,8 @@ async def analyze(req: AnalyzeRequest):
     facets = getattr(req, "facets", None)
     if facets is not None:
         payload["facets"] = facets
+        if req.stems_device is not None:
+            payload["stems_device"] = req.stems_device
         if req.tail_vocals:
             payload["tail_vocals"] = True
     msg = await analyzer_pool.request(payload)
@@ -802,7 +806,7 @@ async def analyze(req: AnalyzeRequest):
     # the client maps omissions to null.
     for k in (
         "loudness_lufs", "peak_db", "sections", "vocal_ranges",
-        "pace_curve", "beats", "bars", "key_ranges", "outro", "stems_cached",
+        "pace_curve", "beats", "bars", "grid_provenance", "key_ranges", "outro", "stems_cached",
         "lead_silence_ms", "tail_silence_ms", "tail_start_ms",
     ):
         if k in msg:
@@ -828,6 +832,8 @@ async def migrate_subbeats(req: SubbeatsCacheRequest):
 
 
 class SubbeatsPrepareRequest(SubbeatsCacheRequest):
+    refresh_cues: bool = False
+    reuse_coverage_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
     bundle_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
     cue_key: str | None = Field(default=None, pattern="^[a-f0-9]{64}$")
     method: str = Field(default='classic',pattern=r'^(classic|small0)$')
@@ -933,6 +939,7 @@ class RenderTransitionRequest(BaseModel):
     in_: dict[str, Any] = Field(alias="in")
     out_dir: str
     clip_name: str | None = None
+    regular_style: str | None = None
     target_lufs: float | None = None
 
     model_config = {"populate_by_name": True}
@@ -952,6 +959,8 @@ async def render_transition(req: RenderTransitionRequest):
     }
     if req.clip_name is not None:
         payload["clip_name"] = req.clip_name
+    if req.regular_style is not None:
+        payload["regular_style"] = req.regular_style
     if req.target_lufs is not None:
         payload["target_lufs"] = req.target_lufs
     msg = await analyzer_pool.request(payload)
@@ -960,13 +969,16 @@ async def render_transition(req: RenderTransitionRequest):
         # outcome, not a server fault — pass the reason through as 200 so the
         # controller can distinguish fallback from failure.
         return {"ok": False, "error": msg.get("error") or "render failed"}
-    return {
+    result = {
         "ok": True,
         "path": msg.get("path"),
         "blend_start_sec": msg.get("blend_start_sec"),
         "in_cue_sec": msg.get("in_cue_sec"),
         "clip_sec": msg.get("clip_sec"),
     }
+    if msg.get("regular_style") is not None:
+        result["regular_style"] = msg["regular_style"]
+    return result
 
 
 class StemBlendPreviewRequest(BaseModel):
