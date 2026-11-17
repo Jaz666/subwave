@@ -749,6 +749,7 @@ class AnalyzeRequest(BaseModel):
     # carries the outro's vocal ranges (Demucs on the tail window only).
     tail_vocals: bool = False
     stems_device: str | None = None
+    regular_stem_window: dict[str, Any] | None = None
 
 
 @app.post("/analyze")
@@ -786,6 +787,8 @@ async def analyze(req: AnalyzeRequest):
     facets = getattr(req, "facets", None)
     if facets is not None:
         payload["facets"] = facets
+        if req.regular_stem_window is not None:
+            payload["regular_stem_window"] = req.regular_stem_window
         if req.stems_device is not None:
             payload["stems_device"] = req.stems_device
         if req.tail_vocals:

@@ -208,3 +208,32 @@ extraction windows in this combined branch, then the deadline-safe coordinator
 and current-plus-eight lifecycle. Keep the exact-pair trial restriction until
 that workflow and its migration/cleanup tests pass. This baseline is not yet
 the completed replacement for existing regular stem caching.
+
+
+### Explicit extraction and working retention foundation
+
+Added a separate version-one regular extraction request with CPU-only separation,
+explicit head/tail source bounds and a caller-supplied identity key. Malformed
+jobs are rejected before opening audio. The worker requires a complete source,
+checks decoded sample coverage and all four finite stem arrays, and publishes a
+regular completion record last. It requires a dedicated regular-root marker and
+never enters the legacy head/tail analysis/cache path. The initial per-window
+safety bound is 120 seconds; it is not a measured performance guarantee.
+
+Added serialized working-set retention for current plus eight queued identities.
+Worker/mixer leases defer retirement after queue removal; duplicate release is
+safe. Restart reconciliation removes retired hashed track directories while
+leaving miscellaneous files and links alone. These components are not yet wired
+into the queue: no station behavior or legacy cache files changed.
+
+Validation: six regular-policy/retention tests pass; controller lint/type check
+passes with the existing 1,919 warnings. Analyzer Python suites exercise exact
+32-second CPU extraction, duplicate publication refusal, malformed contracts and
+short decoding. Real model execution remains outstanding.
+
+Still required before activation: capability negotiation before expensive jobs,
+verified recording/model identity and response matching, isolated job publication
+and preview handling, queue admission/order/cancellation/completion wakeups,
+deadline-safe render integration and legacy settings/backfill migration. The
+retention class must receive only the dedicated regular working root; its leases
+are process-local and startup must reconcile mixer-owned artifacts before sweep.

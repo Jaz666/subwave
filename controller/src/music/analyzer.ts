@@ -1168,6 +1168,7 @@ export interface FacetAnalysis {
 
 export interface FacetRequestOpts {
   stems_device?: 'cpu';
+  regular_stem_window?: { version: 1; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string };
   facets: FacetName[];
   // Tail facet also carries the outro's vocal ranges (Demucs on the tail only).
   tailVocals?: boolean;
@@ -1255,7 +1256,7 @@ export async function analyzeFacets(
   opts: FacetRequestOpts,
   localPath?: string,
 ): Promise<FacetAnalysis> {
-  const body: Record<string, unknown> = { facets: opts.facets, ...(opts.stems_device ? { stems_device: opts.stems_device } : {}) };
+  const body: Record<string, unknown> = { ...(opts.regular_stem_window ? { regular_stem_window: opts.regular_stem_window } : {}), facets: opts.facets, ...(opts.stems_device ? { stems_device: opts.stems_device } : {}) };
   if (opts.tailVocals) body.tail_vocals = true;
   const stems = opts.stems_dir ? { stems_dir: opts.stems_dir, stems_require_marker: true } : {};
   const url = subsonic.getRawStreamUrl(songId);
