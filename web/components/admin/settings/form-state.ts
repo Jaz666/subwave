@@ -52,6 +52,9 @@ export function settingsForm(v: NonNullable<SettingsData['values']>): FormState 
       stemBlends: v.transitions?.stemBlends ?? false,
       pickTimeStems: v.transitions?.pickTimeStems === true,
       equalPowerCrossfade: v.transitions?.equalPowerCrossfade === true,
+      fadeAudibleEnd: v.transitions?.fadeAudibleEnd === true,
+      fadeAudibleEndDb: String(v.transitions?.fadeAudibleEndDb ?? 20),
+      tailFromCurve: v.transitions?.tailFromCurve === true,
       // Absent reads as ON, matching the controller's resolver
       // (settings/transition-effects.ts) — a station that has never saved
       // this block has the whole kit.
@@ -305,6 +308,10 @@ export function settingsForm(v: NonNullable<SettingsData['values']>): FormState 
       confidenceThreshold: String(v.embedding?.confidenceThreshold ?? 0.35),
       maxActiveLearningRounds: String(v.embedding?.maxActiveLearningRounds ?? 3),
       audioFusionWeight: String(v.embedding?.audioFusionWeight ?? 0.5),
+      audioEnergy: {
+        fillEmpty: v.embedding?.audioEnergy?.fillEmpty === true,
+        overruleLlm: v.embedding?.audioEnergy?.overruleLlm === true,
+      },
       batchSize: String(v.embedding?.batchSize ?? 25),
       enrichment: {
         // Unset is auto, never off: loading it as false wrote false on the next

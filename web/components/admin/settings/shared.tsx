@@ -212,6 +212,12 @@ export interface EmbeddingEnrichmentForm {
   lyrics: boolean;
 }
 
+/** Energy from the measured audio (music/propagated-energy.ts); both opt-in. */
+export interface AudioEnergyForm {
+  fillEmpty: boolean;
+  overruleLlm: boolean;
+}
+
 export interface EmbeddingForm {
   enabled: boolean;
   provider: string;          // empty → follow llm.provider
@@ -225,6 +231,7 @@ export interface EmbeddingForm {
   confidenceThreshold: string;
   maxActiveLearningRounds: string;
   audioFusionWeight: string; // '0' = text-only vote (fusion off)
+  audioEnergy: AudioEnergyForm;
   batchSize: string;         // '5', '10', or '25'
   enrichment: EmbeddingEnrichmentForm;
 }
@@ -318,6 +325,9 @@ export interface TransitionsForm {
   stemBlends: boolean;  // pre-rendered stem-blend seams (needs pairDrain + stem cache)
   pickTimeStems: boolean;  // separate a held pick's missing stems while it waits (#2197)
   equalPowerCrossfade: boolean;  // plain crossfade curve: false = linear, true = equal-power (mixer restart)
+  fadeAudibleEnd: boolean;  // cut a fade ending at its audible end (controller cue point, no restart)
+  fadeAudibleEndDb: string; // dB under the track's loudness where a fade stops being audible (15..35)
+  tailFromCurve: boolean;   // read the ending's levels off the whole-file loudness curve (no restart)
   stemCache: boolean;   // settings.audio.stemCache — persist Demucs stems during analysis
   stemCacheGb: string;  // settings.audio.stemCacheGb — byte budget the LRU sweep enforces
   /** settings.transitions.effects — which gestures the DJ may reach for. Always
@@ -463,6 +473,9 @@ export interface SettingsData {
       stemBlends?: boolean;
       pickTimeStems?: boolean;
       equalPowerCrossfade?: boolean;
+      fadeAudibleEnd?: boolean;
+      fadeAudibleEndDb?: number;
+      tailFromCurve?: boolean;
       effects?: Partial<Record<TransitionEffect, boolean>>;
     };
     audio?: {
@@ -555,6 +568,7 @@ export interface SettingsData {
       confidenceThreshold?: number;
       maxActiveLearningRounds?: number;
       audioFusionWeight?: number;
+      audioEnergy?: Partial<AudioEnergyForm>;
       batchSize?: number;
       enrichment?: Partial<EmbeddingEnrichmentForm>;
     };
@@ -631,7 +645,7 @@ export interface SettingsData {
     // Where the key a Firecrawl search sends comes from; null when the slot holds
     // none, or holds another provider's, which searches refuse.
     firecrawlKeySource?: 'settings' | 'env' | null;
-    // The keyed providers (Tavily, Brave, Firecrawl, Outcrawl) whose searches would refuse
+    // The keyed providers (Tavily, Brave, Firecrawl, Outcrawl, SpecStream) whose searches would refuse
     // the key on file, because it is another provider's. Empty with no key.
     keyRefusedBy?: string[];
   };
