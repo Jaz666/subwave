@@ -4331,6 +4331,64 @@ def analyze_facets(librosa, source, facets, stems_dir=None, want_tail_vocals=Fal
     return {name: out[name] for name in FACET_NAMES if name in out}
 
 
+def parse_regular_stem_window(req, facets):
+    """Reject unsupported jobs before opening/downloading audio or loading Demucs.
+    This independent contract never calls the legacy fixed-window cache path.
+    """
+    window = req.get("regular_stem_window")
+    if window is None:
+        return None
+    if (not isinstance(window, dict) or window.get("version") != 1
+            or facets != ["stems"] or req.get("stems_device") != "cpu"
+            or not req.get("stems_dir")):
+        raise FacetRequestError("regular stems require version 1, CPU, stems-only and a destination")
+    start, end = window.get("start_ms"), window.get("end_ms")
+    if (window.get("side") not in ("head", "tail")
+            or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                   or not math.isfinite(v) for v in (start, end))
+            or start < 0 or end <= start or end - start > 120000
+            or not isinstance(window.get("key"), str) or not window["key"]
+            or len(window["key"]) > 256):
+        raise FacetRequestError("invalid regular stem window")
+    return window
+
+
+def extract_regular_stem_window(librosa, source, window, destination):
+    """Separate only the requested source span. Completion is published last.
+    Callers supply a fresh job directory; incomplete jobs have no usable stamp.
+    No vocal/grid analysis and no legacy cache reads or writes happen here.
+    """
+    import numpy as np
+    start, end = window["start_ms"] / 1000.0, window["end_ms"] / 1000.0
+    if source.complete is not True or not source.duration_s or end > source.duration_s + 0.001:
+        raise FacetRequestError("regular stems require a complete source covering the window")
+    marker = os.path.join(os.path.dirname(destination), ".subwave-regular-stems")
+    if not os.path.isfile(marker):
+        raise FacetRequestError("regular working root marker missing")
+    stamp = os.path.join(destination, window["side"] + "-regular.json")
+    if os.path.exists(stamp):
+        raise FacetRequestError("regular stem destination already published")
+    audio, sr = source.load(librosa, sr=DEMUCS_SR, mono=False, offset=start, duration=end-start)
+    expected = round((end-start) * DEMUCS_SR)
+    if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
+        raise FacetRequestError("decoded regular stem window is incomplete")
+    detector = get_vocal_detector(force=True)
+    if detector is None:
+        raise FacetRequestError("Demucs unavailable")
+    stems = detector.separate(audio, device="cpu")
+    if set(stems) != {"drums", "bass", "other", "vocals"} or any(
+            np.shape(v) != np.shape(audio) or not np.isfinite(v).all() for v in stems.values()):
+        raise FacetRequestError("invalid regular separation output")
+    if not os.path.isfile(marker):
+        raise FacetRequestError("regular working root disappeared")
+    write_stems(stems, window["side"], destination)
+    evidence = {**window, "device": "cpu", "sample_rate": DEMUCS_SR,
+                "samples": audio.shape[-1], "source": source.describe()}
+    with shared_output(stamp) as tmp, open(tmp, "w") as handle:
+        json.dump(evidence, handle)
+    return evidence
+
+
 def analyze_facet_request(librosa, req):
     """The worker's facet entry point: parse, open the source, compute, close.
     Raises FacetRequestError for a malformed request. Fetch / source-open
@@ -4352,8 +4410,16 @@ def analyze_facet_request(librosa, req):
         }
     source = FileSource.from_request(url=req.get("url"), path=req.get("path"), complete=req.get("complete"),
                                      stream_url=req.get("stream_url"))
+    stems_device = req.get("stems_device")
+    if stems_device is not None and (stems_device != "cpu" or facets != ["stems"]):
+        raise FacetRequestError("stems_device supports only cpu on stems-only requests")
+    regular_window = parse_regular_stem_window(req, facets)
     try:
         source.open(librosa)
+        if regular_window is not None:
+            evidence = extract_regular_stem_window(librosa, source, regular_window, req["stems_dir"])
+            return {"facets": {"stems": {"status": "ok", "data": {"regular_window": evidence}}},
+                    "source": {**source.describe(), "stems_device": "cpu"}}
         result = analyze_facets(
             librosa, source, facets, stems_dir=req.get("stems_dir"),
             want_tail_vocals=req.get("tail_vocals") is True,

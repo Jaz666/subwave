@@ -1353,6 +1353,8 @@ export function tailWindowFor(t: { edgeTailMs?: number | null; decodedDurationMs
 export type StemWindow = 'head' | 'tail';
 
 export interface FacetRequestOpts {
+  stems_device?: 'cpu';
+  regular_stem_window?: { version: 1; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string };
   facets: FacetName[];
   // Tail facet: place the window from the stored edges.
   tailWindow?: TailWindow | null;
@@ -1447,7 +1449,11 @@ export async function analyzeFacets(
   opts: FacetRequestOpts,
   localPath?: string,
 ): Promise<FacetAnalysis> {
-  const body: Record<string, unknown> = { facets: opts.facets };
+  const body: Record<string, unknown> = {
+    ...(opts.regular_stem_window ? { regular_stem_window: opts.regular_stem_window } : {}),
+    facets: opts.facets,
+    ...(opts.stems_device ? { stems_device: opts.stems_device } : {}),
+  };
   if (opts.tailVocals) body.tail_vocals = true;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };

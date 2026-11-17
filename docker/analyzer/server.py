@@ -854,6 +854,8 @@ class AnalyzeRequest(BaseModel):
     # on the stem windows it writes (#2238). Untyped like stems_windows: the
     # worker judges it, and a bad value stamps unknown rather than a 422.
     source_size: Any = None
+    stems_device: str | None = None
+    regular_stem_window: dict[str, Any] | None = None
 
 
 @app.post("/analyze")
@@ -899,6 +901,10 @@ async def analyze(req: AnalyzeRequest):
     facets = getattr(req, "facets", None)
     if facets is not None:
         payload["facets"] = facets
+        if req.regular_stem_window is not None:
+            payload["regular_stem_window"] = req.regular_stem_window
+        if req.stems_device is not None:
+            payload["stems_device"] = req.stems_device
         if req.tail_vocals:
             payload["tail_vocals"] = True
         if req.stream_url and "url" not in payload:

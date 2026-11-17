@@ -632,6 +632,88 @@ test("stems facet, unmarked root: unavailable, nothing written, vocal still ok",
      t_stems_facet_unmarked_root_is_unavailable_and_writes_nothing)
 test("stems facet, share lost mid-pass: unavailable, no further writes", t_stems_facet_mount_lost_mid_pass_is_unavailable)
 
+test("request-scoped CPU stems do not change subsequent analysis", t_cpu_override_does_not_leak)
+
+
+def t_regular_explicit_window():
+    import json
+    calls = []
+    window = {"version": 1, "side": "tail", "start_ms": 100000,
+              "end_ms": 132000, "key": "recording-window-model"}
+    class Source:
+        complete = True
+        duration_s = 200
+        def load(self, _librosa, **kw):
+            calls.append(kw)
+            return np.zeros((2, round(kw["duration"] * aw.DEMUCS_SR))), aw.DEMUCS_SR
+        def describe(self):
+            return {"complete": True, "duration_s": self.duration_s}
+    class Detector:
+        def separate(self, audio, *, device):
+            assert device == "cpu"
+            return {name: audio for name in ("drums", "bass", "other", "vocals")}
+    with tempfile.TemporaryDirectory() as directory:
+        Path(directory, ".subwave-regular-stems").touch()
+        directory = str(Path(directory, "job"))
+        Path(directory).mkdir()
+        written = []
+        with Patched(get_vocal_detector=lambda force=False: Detector(),
+                     write_stems=lambda stems, side, dest: written.append((side, dest))):
+            evidence = aw.extract_regular_stem_window(None, Source(), window, directory)
+            assert calls == [{"sr": aw.DEMUCS_SR, "mono": False, "offset": 100.0, "duration": 32.0}]
+            assert written == [("tail", directory)]
+            assert json.loads(Path(directory, "tail-regular.json").read_text()) == evidence
+            try:
+                aw.extract_regular_stem_window(None, Source(), window, directory)
+            except aw.FacetRequestError:
+                pass
+            else:
+                raise AssertionError("published destination was overwritten")
+
+
+def t_regular_rejects_bad_requests():
+    good = {"version": 1, "side": "head", "start_ms": 0, "end_ms": 32000, "key": "key"}
+    req = {"stems_device": "cpu", "stems_dir": "/unused", "regular_stem_window": good}
+    assert aw.parse_regular_stem_window(req, ["stems"]) == good
+    for changes in ({"version": 2}, {"start_ms": -1}, {"end_ms": float("nan")},
+                    {"end_ms": 120001}, {"start_ms": True}, {"key": ""}, {"side": "both"}):
+        try:
+            aw.parse_regular_stem_window({**req, "regular_stem_window": {**good, **changes}}, ["stems"])
+        except aw.FacetRequestError:
+            continue
+        raise AssertionError(changes)
+    for changes in ({"stems_device": "cuda"}, {"stems_dir": None}):
+        try:
+            aw.parse_regular_stem_window({**req, **changes}, ["stems"])
+        except aw.FacetRequestError:
+            continue
+        raise AssertionError(changes)
+
+
+def t_regular_short_source_never_publishes():
+    class Source:
+        complete = True
+        duration_s = 100
+        def load(self, *_args, **_kwargs):
+            return np.zeros((2, 100)), aw.DEMUCS_SR
+    with tempfile.TemporaryDirectory() as directory:
+        Path(directory, ".subwave-regular-stems").touch()
+        directory = str(Path(directory, "job"))
+        Path(directory).mkdir()
+        with Patched(get_vocal_detector=lambda **kw: (_ for _ in ()).throw(AssertionError("model loaded"))):
+            try:
+                aw.extract_regular_stem_window(None, Source(),
+                    {"side": "head", "start_ms": 0, "end_ms": 32000}, directory)
+            except aw.FacetRequestError:
+                pass
+            else:
+                raise AssertionError("short decode accepted")
+        assert list(Path(directory).iterdir()) == []
+
+
+test("regular stems decode only the explicit CPU window and publish last", t_regular_explicit_window)
+test("regular stem contract rejects unsupported and malformed jobs", t_regular_rejects_bad_requests)
+test("short regular audio never loads Demucs or publishes completion", t_regular_short_source_never_publishes)
 if failures:
     print(f"✗ analyzer_facets_test.py: {failures} failure(s)")
     sys.exit(1)
