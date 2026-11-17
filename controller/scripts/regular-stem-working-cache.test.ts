@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { access, mkdir, readdir, symlink } from 'node:fs/promises';
+import { access, mkdir, readdir, symlink, writeFile } from 'node:fs/promises';
 import { createTempDir, removeTempDir } from './test-utils/temp-dir.js';
 import { RegularStemWorkingCache } from '../src/broadcast/regular-stem-working-cache.js';
 
@@ -42,5 +42,27 @@ test('nine identities retained; restart cleans retired dirs but preserves links 
     await symlink(path.join(root, 'operator-notes'), path.join(root, 'a'.repeat(64)));
     await new RegularStemWorkingCache(root).reconcile('current', []);
     assert.equal((await readdir(root)).length, 3);
+  } finally { await removeTempDir(root); }
+});
+
+
+test('bounded durable busy stamp protects a sidecar job across controller restart', async () => {
+  const root = createTempDir(path.join(tmpdir(), 'regular-working-'));
+  try {
+    const cache = new RegularStemWorkingCache(root);
+    await cache.reconcile(null,['active']);
+    const lease = await cache.acquire('active');
+    assert.ok(lease);
+    const busy = path.join(lease.directory,'.regular-busy.json');
+    await writeFile(busy,JSON.stringify({until:Date.now()+60_000}));
+    await lease.release();
+    const restarted = new RegularStemWorkingCache(root);
+    await restarted.reconcile(null,[]);
+    assert.equal(await restarted.hasBusyJob(),true);
+    await access(lease.directory);
+    await writeFile(busy,JSON.stringify({until:Date.now()-1}));
+    assert.equal(await restarted.hasBusyJob(),false);
+    await restarted.reconcile(null,[]);
+    await assert.rejects(access(lease.directory));
   } finally { await removeTempDir(root); }
 });

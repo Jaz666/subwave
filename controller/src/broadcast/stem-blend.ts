@@ -17,6 +17,7 @@ import { renderStandsDown } from './pick-stems-policy.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
 import type { SubbeatsPlayback } from './subbeats-clock.js';
+import { regularStemRuntime } from './regular-stem-runtime.js';
 import { regularStemPairDecision } from './regular-stem-policy.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
@@ -26,6 +27,34 @@ export { CLIP_SEAM_CROSS_SEC };
 // bpmCompat floor: the beat-carry loop is retriggered on the incoming grid, so
 // only near-locked (or clean half/double) tempos read as intentional.
 const BPM_COMPAT_MIN = 0.7;
+
+export type RegularStemBlendStyle = 'drums-late' | 'rhythm-late' | 'vocals-late';
+const REGULAR_TEST_STYLES: RegularStemBlendStyle[] = ['drums-late', 'rhythm-late', 'vocals-late'];
+
+interface RegularStemTestPair { out: string; in: string }
+
+function regularStemTestPairs(): RegularStemTestPair[] {
+  try {
+    const parsed: unknown = JSON.parse(process.env.SUBWAVE_REGULAR_STEM_TEST_PAIRS ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((pair): pair is RegularStemTestPair =>
+      !!pair && typeof pair.out === 'string' && !!pair.out
+      && typeof pair.in === 'string' && !!pair.in);
+  } catch {
+    return [];
+  }
+}
+
+export function regularStemTestEnabled(): boolean { return regularStemTestPairs().length > 0; }
+
+export function regularStemTestTrack(id: string): boolean {
+  return regularStemTestPairs().some(pair => pair.out === id || pair.in === id);
+}
+
+export function regularStemTestStyle(outId: string, inId: string): RegularStemBlendStyle | null {
+  const index = regularStemTestPairs().findIndex((pair) => pair.out === outId && pair.in === inId);
+  return index < 0 ? null : REGULAR_TEST_STYLES[index % REGULAR_TEST_STYLES.length];
+}
 
 // Only identity fields and loudness inputs are read here.
 export type BlendTrack = loudness.LoudnessTrack & {
@@ -46,11 +75,18 @@ function transitionsDir(): string {
 
 // bars/outro/lufs are never on the slim track objects, so they resolve from
 // library.db here.
-export async function maybeRenderBlend(
+async function renderBlend(
   outTrack: BlendTrack,
   inTrack: BlendTrack,
   remainingSec: number | null,
-  opts: { outCapped?: boolean; outTrimEndSec?: number | null; inHeadTrimmed?: boolean } = {},
+  opts: {
+    outCapped?: boolean;
+    outTrimEndSec?: number | null;
+    inHeadTrimmed?: boolean;
+    regularStyle?: RegularStemBlendStyle;
+    workingSources?: { tail: { stemsDir: string; regularKey: string }; head: { stemsDir: string; regularKey: string } };
+    log?: (kind: 'warn', message: string) => void;
+  } = {},
 ): Promise<BlendPlan | null> {
   const s = settings.get();
   if (s?.transitions?.stemBlends !== true) return null;
@@ -83,7 +119,7 @@ export async function maybeRenderBlend(
   // Tempo gate: near-locked or clean half/double only.
   if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return null;
   // Cache-hit-only: both windows must already be separated.
-  const [outStems, inStems] = await Promise.all([
+  const [outStems, inStems] = opts.workingSources ? [opts.workingSources.tail, opts.workingSources.head] : await Promise.all([
     stemCache.renderSource(outTrack.id, 'tail'),
     stemCache.renderSource(inTrack.id, 'head'),
   ]);
@@ -121,6 +157,7 @@ export async function maybeRenderBlend(
   const result = await analyzer.renderTransition({
     out: {
       stems_dir: outStems.stemsDir,
+      ...('regularKey' in outStems && typeof outStems.regularKey === 'string' ? { regular_key: outStems.regularKey } : {}),
       ...('subbeatsBundleDir' in outStems ? {
         subbeats_bundle_dir: outStems.subbeatsBundleDir,
         subbeats_bundle_key: outStems.subbeatsBundleKey,
@@ -140,6 +177,7 @@ export async function maybeRenderBlend(
     },
     in: {
       stems_dir: inStems.stemsDir,
+      ...('regularKey' in inStems && typeof inStems.regularKey === 'string' ? { regular_key: inStems.regularKey } : {}),
       ...('subbeatsBundleDir' in inStems ? {
         subbeats_bundle_dir: inStems.subbeatsBundleDir,
         subbeats_bundle_key: inStems.subbeatsBundleKey,
@@ -195,4 +233,29 @@ export async function cleanupOldClips(
     }
   } catch { /* no transitions dir yet */ }
   return removed;
+}
+
+// New-style renders consume only this queue's verified working windows. Hold
+// both source leases until the independent transition WAV has been written.
+export async function maybeRenderBlend(
+  out: BlendTrack, incoming: BlendTrack, remaining: number | null,
+  opts: Omit<NonNullable<Parameters<typeof renderBlend>[3]>, 'workingSources'> = {},
+): Promise<BlendPlan | null> {
+  if (!opts.regularStyle) return renderBlend(out, incoming, remaining, opts);
+  // Run admission before looking at any working files, including when missing.
+  if (db.subbeatsEligibleTrack(String(out.id)) || db.subbeatsEligibleTrack(String(incoming.id))) {
+    opts.log?.('warn', 'regular stem test: subbeats-reserved');
+    return null;
+  }
+  const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));
+  if (!sources) {
+    opts.log?.('warn', 'regular stem test: working windows not ready at handoff; using ordinary transition');
+    return null;
+  }
+  let completed = false;
+  try {
+    const result = await renderBlend(out, incoming, remaining, { ...opts, workingSources: sources });
+    completed = !!result;
+    return result;
+  } finally { await sources.release(completed); }
 }

@@ -109,6 +109,10 @@ import {
 } from './skip-policy.js';
 import type { SkipRefusalReason } from '../schemas/dj.js';
 import * as stemBlend from './stem-blend.js';
+import { regularStemRuntime } from './regular-stem-runtime.js';
+import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
+import * as regularStemDb from '../music/library-db.js';
+import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
 import * as subbeats from './subbeats.js';
 import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
 import { subbeatsPlaybackSeconds, subbeatsSourceSeconds, subbeatsEntryMs, type SubbeatsPlayback } from './subbeats-clock.js';
@@ -2218,7 +2222,38 @@ class Queue {
     return true;
   }
 
+  // Staged rollout uses the existing exact-pair audition allowlist. Preparation
+  // is never awaited by the sender. The ordinary watcher updates deadlines and
+  // membership after skips/removals as well as additions.
+  private syncRegularStemPreparation(): void {
+    if (!stemBlend.regularStemTestEnabled()) return;
+    const enabled = settings.get().transitions.stemBlends === true
+      && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
+      && this.pairDrainActive() && !!settings.getEffectivePersona()?.djMode;
+    try {
+      const rows = this.upcoming.map(item => regularStemDb.getTrack(String(item.track.id)));
+      const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
+        const row = rows[index], next = rows[index+1];
+        return {
+          id: String(item.track.id), sent: !!item.sent,
+          remainingSec: this.remainingUntilItemAirs(item),
+          regularEligible: enabled && !item.flow && stemBlend.regularStemTestTrack(String(item.track.id)),
+          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
+          pairToNextAllowed: !!row && !!next && mix.bpmCompat(row.outro?.bpm ?? row.bpm,next.bpm) >= 0.7
+            && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
+          durationMs: (row?.durationSec ?? 0)*1000,
+          bars: row?.bars ?? [], tailBars: row?.outro?.bars ?? [],
+          windDownMs: row?.outro?.startMs ?? (row?.durationSec ?? 0)*1000,
+          headGrid: row?.gridProvenance ?? null, tailGrid: row?.outro?.gridProvenance ?? null,
+        };
+      });
+      regularStemRuntime.update(this.current?.track.id ? String(this.current.track.id) : null, evidence,
+        () => { void this.drainToLiquidsoap(); }, message => this.log('mix',message));
+    } catch (error) { this.log('warn',`Regular stems preparation unavailable: ${String(error)}`); }
+  }
+
   async drainToLiquidsoap(force = false) {
+    this.syncRegularStemPreparation();
     this.invalidateObsoleteHostSpeech();
     if (this.senderBusy) {
       // A forced drain (the clip-as-track recovery) must not vanish into a
@@ -2265,6 +2300,11 @@ class Queue {
               remainingSec: this.remainingUntilItemAirs(item),
             });
         if (action === 'hold') break;
+        const regularSuccessor = this.upcoming[idx+1];
+        const regularRemaining = this.remainingUntilItemAirs(item);
+        if (!force && regularRemaining != null && regularRemaining > HARD_DEADLINE_SEC + 10
+            && regularSuccessor && stemBlend.regularStemTestStyle(String(item.track.id),String(regularSuccessor.track.id))
+            && regularStemRuntime.pending(String(item.track.id),String(regularSuccessor.track.id))) break;
         // A recovered, unpublished proposal owns no audio yet. Restore its
         // original exit and successor head before assessing today's pair.
         if (item.stemBlend?.subbeats) await this.discardUnpublishedBlend(item);
@@ -2667,7 +2707,7 @@ class Queue {
               hasSuccessor: false,
               remainingSec: this.remainingUntilItemAirs(successor),
             }) === 'hold';
-          void this._pickStems(successor.track, {
+          if (!stemBlend.regularStemTestTrack(String(successor.track.id))) void this._pickStems(successor.track, {
             pairDrainActive: this.pairDrainActive(),
             held,
             log: (kind, message) => this.log(kind, message),

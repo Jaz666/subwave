@@ -416,7 +416,7 @@ function startWorker(): Promise<void> {
           _localFacetsCapable = msg.facets_capable === true;
           _localWholeFileCapable = typeof msg.whole_file_capable === 'boolean' ? msg.whole_file_capable : null;
           _localLoudnessCurveCapable = typeof msg.loudness_curve_capable === 'boolean' ? msg.loudness_curve_capable : null;
-          _localRegularStems = msg.regular_stems_version === 1;
+          _localRegularStems = msg.regular_stems_version === 2;
           _localSubbeatsShared = msg.subbeats_cache_version === 2;
           _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
           _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
@@ -661,7 +661,7 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarLoudnessCurveCapable = typeof body.analyze_loudness_curve_capable === 'boolean' ? body.analyze_loudness_curve_capable : null;
       _sidecarWholeFileConcurrency = Number.isInteger(body.analyze_whole_file_concurrency) && (body.analyze_whole_file_concurrency as number) > 0
         ? (body.analyze_whole_file_concurrency as number) : null;
-      _sidecarRegularStems = body.analyze_regular_stems_version === 1;
+      _sidecarRegularStems = body.analyze_regular_stems_version === 2;
       _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
       _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
       _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
@@ -987,6 +987,7 @@ export async function embedTexts(
 export interface RenderTransitionPayload {
   out: {
     stems_dir: string;
+    regular_key?: string;
     subbeats_bundle_dir?: string;
     subbeats_bundle_key?: string;
     duration_s: number; // tagged duration, advisory — source alignment comes from cache metadata
@@ -996,6 +997,7 @@ export interface RenderTransitionPayload {
   };
   in: {
     stems_dir: string;
+    regular_key?: string;
     subbeats_bundle_dir?: string;
     subbeats_bundle_key?: string;
     bars: number[];
@@ -1359,7 +1361,7 @@ export type StemWindow = 'head' | 'tail';
 
 export interface FacetRequestOpts {
   stems_device?: 'cpu';
-  regular_stem_window?: { version: 1; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string };
+  regular_stem_window?: { version: 2; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string; source_sha256: string; source_bytes: number; model: string };
   facets: FacetName[];
   // Tail facet: place the window from the stored edges.
   tailWindow?: TailWindow | null;
@@ -1486,7 +1488,7 @@ export async function analyzeFacets(
     facets: opts.facets,
     ...(opts.stems_device ? { stems_device: opts.stems_device } : {}),
   };
-  if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 1');
+  if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 2');
   if (opts.tailVocals) body.tail_vocals = true;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };

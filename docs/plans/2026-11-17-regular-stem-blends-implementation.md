@@ -272,3 +272,73 @@ and model provenance, attach the lane/cache to queue lifecycle and existing hard
 deadlines, then switch regular render input to verified working windows and
 suspend legacy preparation/backfill. Do not activate the isolated components
 before those consumers and restart/mixer ownership handling are complete.
+
+
+### Queue and working-render integration (audition rollout)
+
+The existing exact-pair audition mode now uses the actual preparation owner.
+Queue drain supplies current-plus-queued membership, shared-grid evidence and
+live clocks without awaiting separation. It holds an eligible pending pair only
+before the preparation deadline, re-enters on completion, and has independent
+force/unknown-clock/hard-deadline fallbacks. Once handed over, ordinary queue
+ownership still prevents any late change to that seam. Legacy pick-time caching
+is skipped for these audition tracks; other tracks retain existing behaviour
+until the broad migration step. This is deliberately not broad activation yet.
+
+The snapshot planner requests tails first and incoming heads only for the actual
+eligible predecessor. A rejected pair still leaves the incoming tail available
+for the next pair. At native tempo, incoming head coverage follows the outgoing
+eight-bar duration, which can exceed the incoming track's own eight bars. A
+missing/short/stale source grid gives an ordinary transition, not invented timing.
+Only grids carrying complete encoded-recording fingerprints produce jobs.
+
+The runner uses a dedicated `regular-stems-working` root, keyed by track identity
+and recording/window/grid/model/protocol evidence. It stages complete original
+audio and asks explicitly for CPU/htdemucs with shifts zero. It verifies completion
+stamps before reuse, holds source leases during rendering, and does not read,
+refresh or delete the old persistent cache. Sub/Beats storage is unchanged. Mono
+masters are normalized to stereo for separation rather than rejected.
+
+The protocol is now **version two**: the preceding version could echo a caller's
+fingerprint without verifying it. Version-two requests require the recording
+hash/size and expected model; the worker compares encoded bytes before loading
+Demucs and again before publication. Version-one/unknown workers are refused
+before job submission. Replaced recordings fail without a completion stamp.
+
+Styled renders require their working-window identity keys. The worker loads
+absolute head/tail coverage from the new stamps and never falls through to
+legacy/Sub/Beats files on a working-cache miss. The native-tempo renderer runs
+before legacy beat-carry checks, so legacy loop-length and fixed-head limits no
+longer veto these windows. Both rendered sources remain leased until the separate
+transition WAV is complete; the mixer then needs the WAV, not those source stems.
+
+Bounded durable busy stamps protect extraction/render source files across a
+controller restart, and stop new regular work from overtaking an unresolved old
+job. Successful work clears its stamp. A failed/timed-out request leaves it to
+expire (extraction: ten minutes; render: at least one minute). This is conservative
+recovery, not proof of cancellation of an arbitrarily hung external worker. Keep
+that limitation in the real-station timeout/restart validation gate. Ordinary
+playback always retains its existing fallback deadline. Bulk analysis defers work
+at job boundaries rather than causing immediate retry loops. Processing and
+wait/download time are logged separately for later workload observation.
+
+New validation includes queue hold/release/force/deadline tests; a simulated
+sidecar exercising the real download/request/cache owner, tail/head order,
+render priority and source leases; native working-window alignment without
+legacy sidecars; replaced-source refusal; mono input; and durable lease expiry.
+The simulated sidecar does not establish real Demucs performance or audio quality.
+
+Remaining before broad activation: finish source/queue mutation and restart
+fault tests, preview/waveform handling and status presentation; retire the legacy
+regular renderer/backfill and migrate settings/UI; remove the exact-pair rollout
+gate only after those checks; then build and validate on the station when
+explicitly requested. No deployment or operator action has been performed here.
+
+
+Checkpoint checks: 249 stem-related tests pass; the final 19 focused regular
+checks pass after adding quiet-only handling; analyzer Python suites pass,
+including mono and recording-identity checks. Live CPU preparation respects
+both the quiet-only setting and environment override. Controller lint/type
+validation passes with no errors (1,920 warnings, including the new queue-test
+fixture cast). No real-model CPU
+benchmark, Docker rebuild or live stream test was performed in this pass.

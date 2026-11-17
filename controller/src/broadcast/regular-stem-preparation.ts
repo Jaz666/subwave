@@ -18,10 +18,11 @@ export class RegularStemPreparation {
   private pumping = false;
 
   constructor(private readonly options: {
-    run: (need: RegularStemNeed) => Promise<boolean>;
+    run: (need: RegularStemNeed) => Promise<boolean | 'deferred'>;
     ready: (need: RegularStemNeed) => void;
     failed: (need: RegularStemNeed, error: unknown) => void;
     now?: () => number;
+    available?: () => boolean;
   }) {}
 
   /** Order is queue urgency: nearest outgoing tail, its eligible incoming
@@ -49,15 +50,17 @@ export class RegularStemPreparation {
     this.pumping = true;
     try {
       while (true) {
+        if (this.options.available?.() === false) return;
         const need = [...this.wanted.values()].find(item => !this.settled.has(item.key)
           && item.deadlineMs > this.now());
         if (!need) return;
         this.running = need;
-        let ok = false;
+        let ok: boolean | 'deferred' = false;
         let error: unknown = null;
         try { ok = await this.options.run(need); }
         catch (caught) { error = caught; }
         this.running = null;
+        if (ok === 'deferred') return; // retry at a later queue tick, never spin
         const current = this.wanted.get(need.key);
         // Queue mutation, skip or handoff while separation ran. No stale
         // callback may turn a committed ordinary crossfade into a blend.

@@ -14,6 +14,7 @@ render_transition is array arithmetic, and a missing one fails rather than skips
 (analyzer_silence_test.py beside it): npm test installs it.
 """
 
+from pathlib import Path
 import atexit
 import contextlib
 import io
@@ -288,4 +289,34 @@ test("a failed write leaves no partial .tmp", t_failed_write_leaves_no_tmp)
 test("a link planted at the temp name is not followed", t_planted_tmp_not_followed)
 test("render_transition writes its folder and clip shared", t_transition_output)
 test("render_transition in a root-owned 777 folder refuses silently", t_transition_refused_chmod)
+def t_regular_working_windows():
+    sr = aw.DEMUCS_SR
+    out_stems = os.path.join(root, "working-out")
+    in_stems = os.path.join(root, "working-in")
+    audio = np.ones((8 * sr, 2), dtype=np.float32) * .1
+    for side, directory, start, key in (("tail", out_stems, 170000, "tail-key"), ("head", in_stems, 1000, "head-key")):
+        os.makedirs(directory, exist_ok=True)
+        for name in ("drums", "bass", "other", "vocals"):
+            Path(directory, f"{side}-{name}.flac").touch()
+        Path(directory, f"{side}-regular.json").write_text(json.dumps({"version": 2,
+            "side": side, "key": key, "device": "cpu", "model": "htdemucs", "sample_rate": sr,
+            "samples": len(audio), "start_ms": start, "end_ms": start+8000,
+            "source": {"duration_s": 240}}))
+    request = {"out": {"stems_dir": out_stems, "regular_key": "tail-key", "gain_db": 0,
+        "outro": {"bars": [170000+i*1000 for i in range(9)], "start_ms": 190000}},
+        "in": {"stems_dir": in_stems, "regular_key": "head-key", "gain_db": 0,
+               "bars": [1000+i*4000 for i in range(9)]},
+        "out_dir": os.path.join(root,"working-render"), "regular_style": "drums-late"}
+    with patch.object(sf,"read",lambda *_args,**kw: (audio,sr),create=True):
+        result = aw.render_transition(request)
+        assert result.get("ok"), result
+        assert result["blend_start_sec"] == 170 and result["in_cue_sec"] == 9, result
+        # No legacy sidecars exist: new aligned windows stand on their own.
+        request["out"]["regular_key"] = "wrong-key"
+        assert aw.render_transition(request).get("error") == "stems-missing"
+
+
+test("working stems align nonzero head offsets and do not enter legacy beat-carry gates", t_regular_working_windows)
+
+test("regular styles and earlier valid tail window", t_regular_transition_styles)
 sys.exit(1 if failures else 0)

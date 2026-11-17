@@ -773,7 +773,7 @@ async def health():
         "analyze_loudness_curve_capable": analyzer_pool.capability("loudness_curve_capable", "whole_file"),
         # How many whole-file requests this host runs at once (its own lane).
         "analyze_whole_file_concurrency": WHOLE_FILE_CONCURRENCY,
-        "analyze_regular_stems_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("regular_stems_version") == 1 for w in analyzer_pool.ready_workers) else None),
+        "analyze_regular_stems_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("regular_stems_version") == 2 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_suitability_version": (1 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_suitability_version") == 1 for w in analyzer_pool.ready_workers) else None),
         "analyze_subbeats_capable": analyzer_pool.capability("subbeats_capable", "vocal_activity"),
         "analyze_subbeats_cache_version": (2 if analyzer_pool.ready_workers and all(w.ready_meta.get("subbeats_cache_version") == 2 for w in analyzer_pool.ready_workers) else None),
