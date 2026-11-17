@@ -37,12 +37,15 @@ test('regular jobs reject old workers before POST and verify CPU/window acknowle
   const analyzer = await import('../src/music/analyzer.js');
   const opts = { facets: ['stems'] as ['stems'], stems_device: 'cpu' as const,
     stems_dir: '/test-only/working/job', complete: true,
-    regular_stem_window: { version: 1 as const, side: 'tail' as const,
-      start_ms: 100000, end_ms: 132000, key: 'recording-window-model' } };
+    regular_stem_window: { version: 2 as const, side: 'tail' as const,
+      start_ms: 100000, end_ms: 132000, key: 'recording-window-model', source_sha256: 'a'.repeat(64), source_bytes: 123, model: 'htdemucs' } };
   try {
     await assert.rejects(analyzer.analyzeFacets('track', opts, '/test/audio.flac'), /does not support/);
     assert.equal(posts, 0);
-    version = 1;
+    version = 1; // earlier window protocol did not verify the encoded recording
+    await assert.rejects(analyzer.analyzeFacets('track', opts, '/test/audio.flac'), /does not support/);
+    assert.equal(posts, 0);
+    version = 2;
     await analyzer.analyzeFacets('track', opts, '/test/audio.flac');
     assert.equal(posts, 1);
     for (const failure of ['key', 'samples', 'cpu']) {

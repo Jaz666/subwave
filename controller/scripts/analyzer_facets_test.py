@@ -603,22 +603,23 @@ test("stems facet, share lost mid-pass: unavailable, no further writes", t_stems
 test("request-scoped CPU stems do not change subsequent analysis", t_cpu_override_does_not_leak)
 
 
-def t_regular_explicit_window():
+def t_regular_explicit_window(mono=False):
     import json
     calls = []
-    window = {"version": 1, "side": "tail", "start_ms": 100000,
+    window = {"version": 2, "side": "tail", "start_ms": 100000,
               "end_ms": 132000, "key": "recording-window-model"}
     class Source:
         complete = True
         duration_s = 200
         def load(self, _librosa, **kw):
             calls.append(kw)
-            return np.zeros((2, round(kw["duration"] * aw.DEMUCS_SR))), aw.DEMUCS_SR
+            return np.zeros(round(kw["duration"] * aw.DEMUCS_SR) if mono else (2, round(kw["duration"] * aw.DEMUCS_SR))), aw.DEMUCS_SR
         def describe(self):
             return {"complete": True, "duration_s": self.duration_s}
     class Detector:
         def separate(self, audio, *, device):
             assert device == "cpu"
+            assert audio.shape[0] == 2
             return {name: audio for name in ("drums", "bass", "other", "vocals")}
     with tempfile.TemporaryDirectory() as directory:
         Path(directory, ".subwave-regular-stems").touch()
@@ -640,10 +641,11 @@ def t_regular_explicit_window():
 
 
 def t_regular_rejects_bad_requests():
-    good = {"version": 1, "side": "head", "start_ms": 0, "end_ms": 32000, "key": "key"}
+    good = {"version": 2, "side": "head", "start_ms": 0, "end_ms": 32000, "key": "key",
+            "model": aw.DEMUCS_MODEL, "source_sha256": "a" * 64, "source_bytes": 123}
     req = {"stems_device": "cpu", "stems_dir": "/unused", "regular_stem_window": good}
     assert aw.parse_regular_stem_window(req, ["stems"]) == good
-    for changes in ({"version": 2}, {"start_ms": -1}, {"end_ms": float("nan")},
+    for changes in ({"version": 1}, {"model": "unsupported"}, {"start_ms": -1}, {"end_ms": float("nan")},
                     {"end_ms": 120001}, {"start_ms": True}, {"key": ""}, {"side": "both"}):
         try:
             aw.parse_regular_stem_window({**req, "regular_stem_window": {**good, **changes}}, ["stems"])
@@ -680,8 +682,35 @@ def t_regular_short_source_never_publishes():
 
 
 test("regular stems decode only the explicit CPU window and publish last", t_regular_explicit_window)
+test("mono masters use the same regular CPU window", lambda: t_regular_explicit_window(mono=True))
 test("regular stem contract rejects unsupported and malformed jobs", t_regular_rejects_bad_requests)
 test("short regular audio never loads Demucs or publishes completion", t_regular_short_source_never_publishes)
+
+
+def t_regular_rejects_replaced_recording_before_model():
+    class Source:
+        complete = True
+        duration_s = 200
+        src_path = "/fake/encoded"
+        def load(self, *_args, **kw):
+            return np.zeros((2, round(kw["duration"] * aw.DEMUCS_SR))), aw.DEMUCS_SR
+    with tempfile.TemporaryDirectory() as directory:
+        Path(directory, ".subwave-regular-stems").touch()
+        dest = Path(directory, "job")
+        dest.mkdir()
+        with Patched(source_fingerprint=lambda *_args: {"sha256": "b" * 64, "bytes": 123, "complete": True},
+                     get_vocal_detector=lambda **kw: (_ for _ in ()).throw(AssertionError("loaded model for replaced recording"))):
+            try:
+                aw.extract_regular_stem_window(None, Source(), {"side": "tail", "start_ms": 100000,
+                    "end_ms": 132000, "source_sha256": "a" * 64, "source_bytes": 123}, str(dest))
+            except aw.FacetRequestError as error:
+                assert "differs from measured" in str(error), error
+            else:
+                raise AssertionError("replaced recording accepted")
+        assert list(dest.iterdir()) == []
+
+
+test("replaced recording is rejected before loading Demucs", t_regular_rejects_replaced_recording_before_model)
 
 if failures:
     print(f"✗ analyzer_facets_test.py: {failures} failure(s)")

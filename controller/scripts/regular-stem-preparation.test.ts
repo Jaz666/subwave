@@ -68,3 +68,14 @@ test('failure never hot-retries; fresh need can retry after removal', async () =
   assert.deepEqual(h.failures, ['broken']);
   assert.deepEqual(h.ready, ['broken']);
 });
+
+
+test('deferred work waits for a later tick rather than spinning or becoming failed', async () => {
+  let calls=0,ready=0;
+  const lane=new RegularStemPreparation({run:async()=>++calls===1 ? 'deferred' : true,
+    ready:()=>{ready++;},failed:()=>{throw new Error('deferred work failed');},now:()=>0});
+  lane.update([need('waiting')]); await tick();
+  assert.equal(calls,1); assert.equal(lane.state('waiting'),'pending');
+  lane.update([need('waiting')]); await tick();
+  assert.equal(calls,2); assert.equal(ready,1);
+});

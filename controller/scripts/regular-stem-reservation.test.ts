@@ -31,6 +31,6 @@ test('live regular renderer reserves unprepared Sub/Beats tracks in either direc
     const messages: string[] = [];
     await maybeRenderBlend({ id: 'regular' }, { id: 'other' }, 120,
       { regularStyle: 'drums-late', log: (_kind, message) => messages.push(message) });
-    assert.match(messages.join('\n'), /beat grid or track duration is missing/);
+    assert.doesNotMatch(messages.join('\n'), /subbeats-reserved/);
   } finally { db.close(); }
 });

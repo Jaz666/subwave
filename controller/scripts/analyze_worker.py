@@ -1976,7 +1976,18 @@ def render_transition(req, *, observe=None):
 
     stem_names = ("drums", "bass", "other", "vocals")
 
-    def load_regular_window(stems_dir, window):
+    def load_regular_window(stems_dir, window, expected_key=None):
+        meta = None
+        if expected_key is not None:
+            try:
+                with open(os.path.join(stems_dir, window + "-regular.json")) as handle:
+                    meta = json.load(handle)
+                if (meta.get("key") != expected_key or meta.get("side") != window
+                        or meta.get("version") != 2 or meta.get("device") != "cpu"
+                        or meta.get("model") != "htdemucs" or meta.get("sample_rate") != DEMUCS_SR):
+                    return None
+            except (OSError, ValueError, TypeError):
+                return None
         stems = {}
         for name in stem_names:
             p = os.path.join(stems_dir, f"{window}-{name}.flac")
@@ -1985,7 +1996,15 @@ def render_transition(req, *, observe=None):
             data, sr_f = sf.read(p, dtype="float32", always_2d=True)  # (N, ch)
             if sr_f != DEMUCS_SR or data.shape[0] == 0:
                 return None
+            if meta is not None and (data.shape[0] != meta.get("samples") or not np.isfinite(data).all()):
+                return None
             stems[name] = data
+        if meta is not None:
+            start, end = meta["start_ms"] / 1000.0, meta["end_ms"] / 1000.0
+            if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+                return None
+            return {"stems": stems, "start_sec": start, "end_sec": end,
+                    "duration_sec": meta["source"]["duration_s"]}
         if window == "tail":
             try:
                 with open(os.path.join(stems_dir, "tail-meta.json")) as f:
@@ -2002,7 +2021,9 @@ def render_transition(req, *, observe=None):
                 "duration_sec": duration}
 
     def load_window(spec, window, fallback_region):
-        regular = load_regular_window(spec["stems_dir"], window)
+        regular = load_regular_window(spec["stems_dir"], window, spec.get("regular_key"))
+        if spec.get("regular_key") is not None:
+            return regular  # A new working miss never falls through to an old cache.
         if regular is not None:
             return regular
         return load_subbeats_stem_region(spec, fallback_region, stem_names, sf)
@@ -2036,6 +2057,105 @@ def render_transition(req, *, observe=None):
         if a.shape[0] < n:
             a = np.vstack([a, np.zeros((n - a.shape[0], 2), np.float32)])
         return a
+
+    # --- Per-source gains (before summing, so the borrowed loop and the new
+    # track each land at their own corrected level; the brick-wall limiter
+    # upstream only ever sees sane material) --------------------------------
+    #
+    # `gain_db` is the station's OWN answer for that track — the same dB the
+    # queue stamps as liq_amplify (controller music/loudness.ts), resolved
+    # through the operator's loudness.source, boost cap and peak headroom cap.
+    # Using it is what keeps a clip at the level of the tracks either side of
+    # it (#1240). The lufs fallback below is the pre-#1240 maths, kept for an
+    # older controller talking to this worker: it normalises from the leading
+    # 40s window alone and ignores ReplayGain tags, so it drifts.
+    def gain_for(spec):
+        gd = spec.get("gain_db")
+        if isinstance(gd, (int, float)):
+            return float(10.0 ** (float(gd) / 20.0))
+        lufs = spec.get("lufs")
+        if target_lufs is None or not isinstance(lufs, (int, float)):
+            return 1.0
+        g = 10.0 ** ((float(target_lufs) - float(lufs)) / 20.0)
+        return float(min(4.0, max(0.25, g)))  # ±12 dB sanity clamp
+
+    outro = out_spec.get("outro") or {}
+    regular_style = req.get("regular_style")
+    if regular_style is not None:
+        # Experimental regular-blend path, used only for explicitly selected
+        # station test pairs. Full-mix is deliberately not an available style.
+        delays = {
+            "drums-late": {"drums": 0.5},
+            "rhythm-late": {"drums": 0.5, "bass": 0.5},
+            "vocals-late": {"vocals": 0.75},
+        }
+        if regular_style not in delays:
+            return {"ok": False, "error": "unknown-regular-style"}
+        out_bars = [b / 1000.0 for b in (outro.get("bars") or [])]
+        in_bars = [b / 1000.0 for b in (in_spec.get("bars") or [])
+                   if head_source["start_sec"] <= b / 1000.0]
+        if len(out_bars) < 9 or len(in_bars) < 9:
+            return {"ok": False, "error": "no-eight-bar-grid"}
+        # Search earlier spans when the final markers cross the wind-down.
+        in_bars = in_bars[:9]
+        in_start_s = in_bars[0]
+        wind_down_s = float(outro.get("start_ms") or (dur_s - 10.0) * 1000.0) / 1000.0
+        if any(not math.isfinite(b) or b < 0 or (i and b <= out_bars[i - 1])
+               for i, b in enumerate(out_bars)):
+            return {"ok": False, "error": "invalid-out-grid"}
+        if any(not math.isfinite(b) or b < 0 or (i and b <= in_bars[i - 1])
+               for i, b in enumerate(in_bars)):
+            return {"ok": False, "error": "invalid-in-grid"}
+        tail_end_s = tail_start_s + min(x.shape[0] for x in tail.values()) / sr
+        candidates = [out_bars[i:i + 9] for i in range(len(out_bars) - 8)
+                      if out_bars[i] >= tail_start_s
+                      and out_bars[i + 8] <= min(wind_down_s, dur_s, tail_end_s)]
+        if not candidates:
+            return {"ok": False, "error": "no-usable-out-eight-bar-window"}
+        out_bars = candidates[-1]
+        out_start_s = out_bars[0]
+        duration_s = out_bars[-1] - out_start_s
+        if duration_s <= 0 or in_start_s + duration_s > head_source["end_sec"] + 0.001:
+            return {"ok": False, "error": "eight-bar-window-outside-stems"}
+        out_offset = int(round((out_start_s - tail_start_s) * sr))
+        in_offset = int(round((in_start_s - head_source["start_sec"]) * sr))
+        count = int(round(duration_s * sr))
+        if in_offset < 0 or in_offset + count > min(x.shape[0] for x in head.values()):
+            return {"ok": False, "error": "eight-bar-window-outside-head"}
+        if out_offset < 0 or out_offset + count > min(x.shape[0] for x in tail.values()):
+            return {"ok": False, "error": "eight-bar-window-outside-tail"}
+        position = np.linspace(0.0, 1.0, count, endpoint=True, dtype=np.float32)
+        out_gain = np.cos(position * (np.pi / 2)).astype(np.float32)
+        g_in = gain_for(in_spec)
+        g_out = gain_for(out_spec)
+        mixed = np.zeros((count, 2), dtype=np.float32)
+        for name in stem_names:
+            outgoing = to_stereo(tail[name][out_offset:out_offset + count], count) * g_out
+            ramp_start = delays[regular_style].get(name, 0.0)
+            ramp = np.clip((position - ramp_start) / (1.0 - ramp_start), 0.0, 1.0)
+            incoming_gain = np.sin(ramp * (np.pi / 2)).astype(np.float32)
+            incoming = to_stereo(head[name][in_offset:in_offset + count], count) * g_in
+            mixed += outgoing * out_gain[:, None] + incoming * incoming_gain[:, None]
+        peak = float(np.max(np.abs(mixed))) if mixed.size else 0.0
+        ceiling = 10.0 ** (-1.0 / 20.0)
+        if peak > ceiling:
+            mixed *= ceiling / peak
+        edge = max(1, int(0.01 * sr))
+        ramp = np.linspace(0.0, 1.0, edge, dtype=np.float32)[:, None]
+        mixed[:edge] *= ramp
+        mixed[-edge:] *= ramp[::-1]
+        make_shared_dir(out_dir)
+        out_path = os.path.join(out_dir, os.path.basename(clip_name))
+        with shared_output(out_path) as tmp:
+            sf.write(tmp, mixed, sr, subtype="PCM_16", format="WAV")
+        return {
+            "ok": True,
+            "path": out_path,
+            "blend_start_sec": round(out_start_s, 3),
+            "in_cue_sec": round(in_start_s + duration_s, 3),
+            "clip_sec": round(count / sr, 3),
+            "regular_style": regular_style,
+        }
 
     # --- Outgoing side: the drum-loop source bar + the blend start --------
     outro = out_spec.get("outro") or {}
@@ -2073,102 +2193,6 @@ def render_transition(req, *, observe=None):
     n = int(in_cue_s * sr)
     if n <= sr:  # a sub-second clip means the grids are degenerate
         return {"ok": False, "error": "clip-too-short"}
-
-    # --- Per-source gains (before summing, so the borrowed loop and the new
-    # track each land at their own corrected level; the brick-wall limiter
-    # upstream only ever sees sane material) --------------------------------
-    #
-    # `gain_db` is the station's OWN answer for that track — the same dB the
-    # queue stamps as liq_amplify (controller music/loudness.ts), resolved
-    # through the operator's loudness.source, boost cap and peak headroom cap.
-    # Using it is what keeps a clip at the level of the tracks either side of
-    # it (#1240). The lufs fallback below is the pre-#1240 maths, kept for an
-    # older controller talking to this worker: it normalises from the leading
-    # 40s window alone and ignores ReplayGain tags, so it drifts.
-    def gain_for(spec):
-        gd = spec.get("gain_db")
-        if isinstance(gd, (int, float)):
-            return float(10.0 ** (float(gd) / 20.0))
-        lufs = spec.get("lufs")
-        if target_lufs is None or not isinstance(lufs, (int, float)):
-            return 1.0
-        g = 10.0 ** ((float(target_lufs) - float(lufs)) / 20.0)
-        return float(min(4.0, max(0.25, g)))  # ±12 dB sanity clamp
-
-    regular_style = req.get("regular_style")
-    if regular_style is not None:
-        # Experimental regular-blend path, used only for explicitly selected
-        # station test pairs. Full-mix is deliberately not an available style.
-        delays = {
-            "drums-late": {"drums": 0.5},
-            "rhythm-late": {"drums": 0.5, "bass": 0.5},
-            "vocals-late": {"vocals": 0.75},
-        }
-        if regular_style not in delays:
-            return {"ok": False, "error": "unknown-regular-style"}
-        out_bars = [b / 1000.0 for b in (outro.get("bars") or [])]
-        in_bars = [b / 1000.0 for b in (in_spec.get("bars") or [])
-                   if 0.0 <= b / 1000.0 <= ANALYZE_SECONDS - 1.0]
-        if len(out_bars) < 9 or len(in_bars) < 9:
-            return {"ok": False, "error": "no-eight-bar-grid"}
-        # Search earlier spans when the final markers cross the wind-down.
-        in_bars = in_bars[:9]
-        in_start_s = in_bars[0]
-        wind_down_s = float(outro.get("start_ms") or (dur_s - 10.0) * 1000.0) / 1000.0
-        if any(not math.isfinite(b) or b < 0 or (i and b <= out_bars[i - 1])
-               for i, b in enumerate(out_bars)):
-            return {"ok": False, "error": "invalid-out-grid"}
-        if any(not math.isfinite(b) or b < 0 or (i and b <= in_bars[i - 1])
-               for i, b in enumerate(in_bars)):
-            return {"ok": False, "error": "invalid-in-grid"}
-        tail_end_s = tail_start_s + min(x.shape[0] for x in tail.values()) / sr
-        candidates = [out_bars[i:i + 9] for i in range(len(out_bars) - 8)
-                      if out_bars[i] >= tail_start_s + 0.05
-                      and out_bars[i + 8] <= min(wind_down_s, dur_s, tail_end_s)]
-        if not candidates:
-            return {"ok": False, "error": "no-usable-out-eight-bar-window"}
-        out_bars = candidates[-1]
-        out_start_s = out_bars[0]
-        duration_s = out_bars[-1] - out_start_s
-        if duration_s <= 0 or in_start_s + duration_s > min(x.shape[0] for x in head.values()) / sr + 0.001:
-            return {"ok": False, "error": "eight-bar-window-outside-stems"}
-        out_offset = int(round((out_start_s - tail_start_s) * sr))
-        in_offset = int(round(in_start_s * sr))
-        count = int(round(duration_s * sr))
-        if out_offset < 0 or out_offset + count > min(x.shape[0] for x in tail.values()):
-            return {"ok": False, "error": "eight-bar-window-outside-tail"}
-        position = np.linspace(0.0, 1.0, count, endpoint=True, dtype=np.float32)
-        out_gain = np.cos(position * (np.pi / 2)).astype(np.float32)
-        g_in = gain_for(in_spec)
-        g_out = gain_for(out_spec)
-        mixed = np.zeros((count, 2), dtype=np.float32)
-        for name in stem_names:
-            outgoing = to_stereo(tail[name][out_offset:out_offset + count], count) * g_out
-            ramp_start = delays[regular_style].get(name, 0.0)
-            ramp = np.clip((position - ramp_start) / (1.0 - ramp_start), 0.0, 1.0)
-            incoming_gain = np.sin(ramp * (np.pi / 2)).astype(np.float32)
-            incoming = to_stereo(head[name][in_offset:in_offset + count], count) * g_in
-            mixed += outgoing * out_gain[:, None] + incoming * incoming_gain[:, None]
-        peak = float(np.max(np.abs(mixed))) if mixed.size else 0.0
-        ceiling = 10.0 ** (-1.0 / 20.0)
-        if peak > ceiling:
-            mixed *= ceiling / peak
-        edge = max(1, int(0.01 * sr))
-        ramp = np.linspace(0.0, 1.0, edge, dtype=np.float32)[:, None]
-        mixed[:edge] *= ramp
-        mixed[-edge:] *= ramp[::-1]
-        make_shared_dir(out_dir)
-        out_path = os.path.join(out_dir, os.path.basename(clip_name))
-        with shared_output(out_path) as tmp:
-            sf.write(tmp, mixed, sr, subtype="PCM_16", format="WAV")
-        return {
-            "ok": True,
-            "path": out_path,
-            "blend_start_sec": round(out_start_s, 3),
-            "in_cue_sec": round(in_start_s + duration_s, 3),
-            "clip_sec": round(count / sr, 3),
-            "regular_style": regular_style,
-        }
 
     g_in = gain_for(in_spec)
     g_out = gain_for(out_spec) * (10.0 ** (-3.0 / 20.0))  # loop sits under the new track
@@ -3140,10 +3164,10 @@ def parse_regular_stem_window(req, facets):
     window = req.get("regular_stem_window")
     if window is None:
         return None
-    if (not isinstance(window, dict) or window.get("version") != 1
+    if (not isinstance(window, dict) or window.get("version") != 2
             or facets != ["stems"] or req.get("stems_device") != "cpu"
             or not req.get("stems_dir")):
-        raise FacetRequestError("regular stems require version 1, CPU, stems-only and a destination")
+        raise FacetRequestError("regular stems require version 2, CPU, stems-only and a destination")
     start, end = window.get("start_ms"), window.get("end_ms")
     if (window.get("side") not in ("head", "tail")
             or any(isinstance(v, bool) or not isinstance(v, (int, float))
@@ -3152,6 +3176,14 @@ def parse_regular_stem_window(req, facets):
             or not isinstance(window.get("key"), str) or not window["key"]
             or len(window["key"]) > 256):
         raise FacetRequestError("invalid regular stem window")
+    if window.get("model") != DEMUCS_MODEL:
+        raise FacetRequestError("regular stem model does not match worker")
+    if (
+            not isinstance(window.get("source_sha256"), str)
+            or len(window["source_sha256"]) != 64
+            or any(c not in "0123456789abcdef" for c in window["source_sha256"])
+            or type(window.get("source_bytes")) is not int or window["source_bytes"] <= 0):
+        raise FacetRequestError("invalid regular recording fingerprint")
     return window
 
 
@@ -3171,9 +3203,19 @@ def extract_regular_stem_window(librosa, source, window, destination):
     if os.path.exists(stamp):
         raise FacetRequestError("regular stem destination already published")
     audio, sr = source.load(librosa, sr=DEMUCS_SR, mono=False, offset=start, duration=end-start)
+    # Mono masters remain eligible; normalize exactly as the separator does.
+    if audio is not None and np.ndim(audio) == 1:
+        audio = np.repeat(np.asarray(audio)[None, :], 2, axis=0)
+    elif audio is not None and np.ndim(audio) == 2 and audio.shape[0] == 1:
+        audio = np.repeat(audio, 2, axis=0)
     expected = round((end-start) * DEMUCS_SR)
     if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
         raise FacetRequestError("decoded regular stem window is incomplete")
+    fingerprint = None
+    if "source_sha256" in window:
+        fingerprint = source_fingerprint(getattr(source, "src_path", None), source.complete)
+        if not fingerprint or fingerprint["sha256"] != window["source_sha256"] or fingerprint["bytes"] != window["source_bytes"]:
+            raise FacetRequestError("regular stem source differs from measured recording")
     detector = get_vocal_detector(force=True)
     if detector is None:
         raise FacetRequestError("Demucs unavailable")
@@ -3181,11 +3223,13 @@ def extract_regular_stem_window(librosa, source, window, destination):
     if set(stems) != {"drums", "bass", "other", "vocals"} or any(
             np.shape(v) != np.shape(audio) or not np.isfinite(v).all() for v in stems.values()):
         raise FacetRequestError("invalid regular separation output")
+    if fingerprint is not None and source_fingerprint(getattr(source, "src_path", None), source.complete) != fingerprint:
+        raise FacetRequestError("regular source changed during separation")
     if not os.path.isfile(marker):
         raise FacetRequestError("regular working root disappeared")
     write_stems(stems, window["side"], destination)
     evidence = {**window, "device": "cpu", "sample_rate": DEMUCS_SR,
-                "samples": audio.shape[-1], "source": source.describe()}
+                "samples": audio.shape[-1], "source": source.describe(), "model": DEMUCS_MODEL}
     with shared_output(stamp) as tmp, open(tmp, "w") as handle:
         json.dump(evidence, handle)
     return evidence
@@ -3275,7 +3319,7 @@ def main():
         "text_embedding_capable": text_capable,
         # Version signal: this worker understands {"facets": [...]} requests.
         "facets_capable": True,
-        "regular_stems_version": 1,
+        "regular_stems_version": 2,
         "subbeats_capable": vocal_capable,
         "subbeats_cache_version": 2,
         "subbeats_suitability_version": 1,
