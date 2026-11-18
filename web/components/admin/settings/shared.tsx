@@ -323,6 +323,8 @@ export interface LoudnessForm {
 export interface TransitionsForm {
   pairDrain: boolean;   // hold picks until the successor is known (#749 fix)
   stemBlends: boolean;  // pre-rendered stem-blend seams (needs pairDrain + stem cache)
+  subbeatsLive: boolean;
+  subbeatsOnAirCaching: boolean;
   pickTimeStems: boolean;  // separate a held pick's missing stems while it waits (#2197)
   equalPowerCrossfade: boolean;  // plain crossfade curve: false = linear, true = equal-power (mixer restart)
   fadeAudibleEnd: boolean;  // cut a fade ending at its audible end (controller cue point, no restart)
@@ -471,6 +473,8 @@ export interface SettingsData {
     transitions?: {
       pairDrain?: boolean;
       stemBlends?: boolean;
+      subbeatsLive?: boolean;
+      subbeatsOnAirCaching?: boolean;
       pickTimeStems?: boolean;
       equalPowerCrossfade?: boolean;
       fadeAudibleEnd?: boolean;

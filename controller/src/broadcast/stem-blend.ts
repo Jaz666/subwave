@@ -3,6 +3,9 @@
 // docs/stem-transitions-research.md.
 
 import path from 'node:path';
+import { regularStemWorkingMode } from './regular-stem-mode.js';
+import { createHash, randomUUID } from 'node:crypto';
+import { readRegularStemPreview, type RegularStemPreview } from './regular-stem-preview.js';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
@@ -17,6 +20,9 @@ import { separationInFlight } from './pick-stems.js';
 import { renderStandsDown } from './pick-stems-policy.js';
 import { HARD_DEADLINE_SEC } from './drain-policy.js';
 import { CLIP_SEAM_CROSS_SEC, clipSeamCues, type ClipSeamCues } from './stem-seam.js';
+import type { SubbeatsPlayback } from './subbeats-clock.js';
+import { regularStemRuntime } from './regular-stem-runtime.js';
+import { regularStemPairDecision } from './regular-stem-policy.js';
 
 // Cross length at the two clip seams (X→clip, clip→Y); the overlap arithmetic
 // lives with it in broadcast/stem-seam.ts.
@@ -26,15 +32,47 @@ export { CLIP_SEAM_CROSS_SEC };
 // only near-locked (or clean half/double) tempos read as intentional.
 const BPM_COMPAT_MIN = 0.7;
 
+export type RegularStemBlendStyle = 'drums-late' | 'rhythm-late' | 'vocals-late';
+const REGULAR_TEST_STYLES: RegularStemBlendStyle[] = ['drums-late', 'rhythm-late', 'vocals-late'];
+
+interface RegularStemTestPair { out: string; in: string }
+
+function regularStemTestPairs(): RegularStemTestPair[] {
+  try {
+    const parsed: unknown = JSON.parse(process.env.SUBWAVE_REGULAR_STEM_TEST_PAIRS ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((pair): pair is RegularStemTestPair =>
+      !!pair && typeof pair.out === 'string' && !!pair.out
+      && typeof pair.in === 'string' && !!pair.in);
+  } catch {
+    return [];
+  }
+}
+
+export function regularStemTestEnabled(): boolean { return regularStemWorkingMode() || regularStemTestPairs().length > 0; }
+
+export function regularStemTestTrack(id: string): boolean {
+  return regularStemWorkingMode() || regularStemTestPairs().some(pair => pair.out === id || pair.in === id);
+}
+
+export function regularStemTestStyle(outId: string, inId: string): RegularStemBlendStyle | null {
+  if (regularStemWorkingMode()) return REGULAR_TEST_STYLES[createHash('sha256').update(JSON.stringify([outId,inId])).digest()[0] % REGULAR_TEST_STYLES.length];
+  const index = regularStemTestPairs().findIndex((pair) => pair.out === outId && pair.in === inId);
+  return index < 0 ? null : REGULAR_TEST_STYLES[index % REGULAR_TEST_STYLES.length];
+}
+
 // Only identity fields and loudness inputs are read here.
 export type BlendTrack = loudness.LoudnessTrack & {
   title?: string | null;
   gainDb?: number;
 };
 
-interface BlendPlan extends ClipSeamCues {
+export interface BlendPlan extends ClipSeamCues {
+  regular?: RegularStemPreview;
   clipPath: string;
   clipSec: number;
+  leadPath?: string;
+  subbeats?: SubbeatsPlayback;
 }
 
 function transitionsDir(): string {
@@ -54,11 +92,18 @@ export function blendSides(outId: string, inId: string) {
   return { out: { ...out, outro: library.get(outId)?.outro ?? out.outro }, inn };
 }
 
-export async function maybeRenderBlend(
+async function renderBlend(
   outTrack: BlendTrack,
   inTrack: BlendTrack,
   remainingSec: number | null,
-  opts: { outCapped?: boolean; outTrimEndSec?: number | null; inHeadTrimmed?: boolean } = {},
+  opts: {
+    outCapped?: boolean;
+    outTrimEndSec?: number | null;
+    inHeadTrimmed?: boolean;
+    regularStyle?: RegularStemBlendStyle;
+    workingSources?: { tail: { stemsDir: string; regularKey: string }; head: { stemsDir: string; regularKey: string } };
+    log?: (kind: 'warn', message: string) => void;
+  } = {},
 ): Promise<BlendPlan | null> {
   const s = settings.get();
   if (s?.transitions?.stemBlends !== true) return null;
@@ -77,6 +122,11 @@ export async function maybeRenderBlend(
   const sides = blendSides(outTrack.id, inTrack.id);
   if (!sides) return null;
   const { out, inn } = sides;
+  const admission = regularStemPairDecision(
+    { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(outTrack.id) },
+    { regularEligible: true, subbeatsEligible: !!db.subbeatsEligibleTrack(inTrack.id) },
+  );
+  if (!admission.eligible) return null;
   // Alignment data both sides. The render re-checks all of it; these gates only
   // avoid pointless round-trips.
   if (!out.outro?.bars?.length || !out.durationSec || !inn.bars?.length) return null;
@@ -86,11 +136,11 @@ export async function maybeRenderBlend(
   // Tempo gate: near-locked or clean half/double only.
   if (mix.bpmCompat(out.outro.bpm ?? out.bpm, inn.bpm) < BPM_COMPAT_MIN) return null;
   // Cache-hit-only: both windows must already be separated.
-  const [haveTail, haveHead] = await Promise.all([
-    stemCache.hasWindow(outTrack.id, 'tail'),
-    stemCache.hasWindow(inTrack.id, 'head'),
+  const [outStems, inStems] = opts.workingSources ? [opts.workingSources.tail, opts.workingSources.head] : await Promise.all([
+    stemCache.renderSource(outTrack.id, 'tail'),
+    stemCache.renderSource(inTrack.id, 'head'),
   ]);
-  if (!haveTail || !haveHead) return null;
+  if (!outStems || !inStems) return null;
   // A pick-time separation (broadcast/pick-stems.ts) holds a worker for a
   // minute or more. Only a cache hit gets this far, so this costs exactly the
   // seams that would have blended; with one worker the render would lose the
@@ -123,7 +173,12 @@ export async function maybeRenderBlend(
 
   const result = await analyzer.renderTransition({
     out: {
-      stems_dir: stemCache.dirFor(outTrack.id),
+      stems_dir: outStems.stemsDir,
+      ...('regularKey' in outStems && typeof outStems.regularKey === 'string' ? { regular_key: outStems.regularKey } : {}),
+      ...('subbeatsBundleDir' in outStems ? {
+        subbeats_bundle_dir: outStems.subbeatsBundleDir,
+        subbeats_bundle_key: outStems.subbeatsBundleKey,
+      } : {}),
       // Advisory only: the worker aligns the tail window from the stems' own
       // tail-meta.json, and treats stems without that sidecar as a cache miss.
       duration_s: out.durationSec,
@@ -138,13 +193,19 @@ export async function maybeRenderBlend(
       lufs: out.loudnessLufs ?? null,
     },
     in: {
-      stems_dir: stemCache.dirFor(inTrack.id),
+      stems_dir: inStems.stemsDir,
+      ...('regularKey' in inStems && typeof inStems.regularKey === 'string' ? { regular_key: inStems.regularKey } : {}),
+      ...('subbeatsBundleDir' in inStems ? {
+        subbeats_bundle_dir: inStems.subbeatsBundleDir,
+        subbeats_bundle_key: inStems.subbeatsBundleKey,
+      } : {}),
       bars: inn.bars,
       gain_db: inGainDb,
       lufs: inn.loudnessLufs ?? null,
     },
     out_dir: transitionsDir(),
-    clip_name: `${path.basename(String(outTrack.id))}-${path.basename(String(inTrack.id))}.wav`,
+    clip_name: `${path.basename(String(outTrack.id))}-${path.basename(String(inTrack.id))}${opts.regularStyle ? `-${randomUUID()}` : ''}.wav`,
+    ...(opts.regularStyle ? { regular_style: opts.regularStyle } : {}),
     target_lufs: s?.loudness?.targetLufs ?? -14,
   }, { timeoutMs });
   if (!result) return null;
@@ -160,6 +221,8 @@ export async function maybeRenderBlend(
   // cue would cut X before the seam overlap (or the clip's source region) plays.
   if (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec) return null;
   return {
+    ...(opts.regularStyle ? { regular: { id: path.basename(result.path), gainsDb: [outGainDb ?? 0, inGainDb ?? 0].map(db => Math.max(-12, Math.min(12, db))) as [number, number], style: opts.regularStyle,
+      outgoingStartSec: result.blendStartSec, incomingStartSec: result.inCueSec-result.clipSec } } : {}),
     clipPath: result.path,
     ...cues,
     clipSec: result.clipSec,
@@ -190,4 +253,47 @@ export async function cleanupOldClips(
     }
   } catch { /* no transitions dir yet */ }
   return removed;
+}
+
+// New-style renders consume only this queue's verified working windows. Hold
+// both source leases until the independent transition WAV has been written.
+export async function maybeRenderBlend(
+  out: BlendTrack, incoming: BlendTrack, remaining: number | null,
+  opts: Omit<NonNullable<Parameters<typeof renderBlend>[3]>, 'workingSources'> = {},
+): Promise<BlendPlan | null> {
+  if (!opts.regularStyle) return regularStemWorkingMode() ? null : renderBlend(out, incoming, remaining, opts);
+  // Run admission before looking at any working files, including when missing.
+  if (db.subbeatsEligibleTrack(String(out.id)) || db.subbeatsEligibleTrack(String(incoming.id))) {
+    opts.log?.('warn', 'regular stem test: subbeats-reserved');
+    return null;
+  }
+  const sources = await regularStemRuntime.sources(String(out.id), String(incoming.id));
+  if (!sources) {
+    opts.log?.('warn', 'regular stem test: working windows not ready at handoff; using ordinary transition');
+    return null;
+  }
+  // A library refresh can replace timing/source evidence without changing
+  // the queue objects. Recheck it after the async render, before arming.
+  const evidence=() => JSON.stringify([out.id,incoming.id].map(id => {
+    const row=db.getTrack(String(id));
+    const outro=library.get(String(id))?.outro ?? row?.outro;
+    return [row?.durationSec,row?.bpm,row?.bars,row?.gridProvenance,outro,
+      !!db.subbeatsEligibleTrack(String(id))];
+  }));
+  const before=evidence();
+  let completed = false;
+  try {
+    const result = await renderBlend(out, incoming, remaining, { ...opts, workingSources: sources });
+    completed = !!result;
+    if (result?.regular) result.regular.envelopes = {
+      outgoing: await readRegularStemPreview(sources.tail, 'tail'),
+      incoming: await readRegularStemPreview(sources.head, 'head'),
+    };
+    if (result && (!sources.valid() || evidence() !== before)) {
+      await unlink(result.clipPath).catch(() => {});
+      opts.log?.('warn','regular stem test: queue or analysis changed during render; using ordinary transition');
+      return null;
+    }
+    return result;
+  } finally { await sources.release(completed); }
 }

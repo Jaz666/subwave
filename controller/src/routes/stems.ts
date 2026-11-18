@@ -10,7 +10,12 @@
 // dry run here too, and the empty-id-set / offline refusals are the module's,
 // reported verbatim. requireAdmin, like every operator surface.
 
+import { regularStemWorkingMode } from '../broadcast/regular-stem-mode.js';
 import { Router } from 'express';
+import { regularStemRuntime } from '../broadcast/regular-stem-runtime.js';
+import { regularStemTestEnabled } from '../broadcast/stem-blend.js';
+import { regularStemStatusSchema } from '../schemas/regular-stems.js';
+import { router as stemBlendPreviewRouter } from './stem-blend-preview.js';
 import { queue } from '../broadcast/queue.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { allTrackIdsOrdered } from '../music/library-db.js';
@@ -19,6 +24,14 @@ import { resolveOrphanNames } from '../music/orphan-names.js';
 import * as settings from '../settings.js';
 
 export const router = Router();
+router.use(stemBlendPreviewRouter);
+
+router.get('/stems/regular/status', requireAdmin, (_req, res) => {
+  res.json(regularStemStatusSchema.parse({
+    audition: regularStemTestEnabled(), workingCache: regularStemWorkingMode(), trackLimit: 9,
+    windows: regularStemRuntime.statusWindows(),
+  }));
+});
 
 router.get('/stems/orphans', requireAdmin, async (_req, res) => {
   try {

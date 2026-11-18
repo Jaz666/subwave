@@ -63,6 +63,16 @@ test('voice levelling hydrates OFF for older stations and preserves the explicit
   assert.equal(restorePaths(enabled, baseline, ['tts']).tts.voiceLevelling, false);
 });
 
+test('Live Sub/Beats hydrates off and saves independently of ordinary Stem Blend', () => {
+  const baseline=settingsForm({});
+  assert.equal(baseline.transitions.subbeatsLive,false);
+  const selected=settingsForm({transitions:{subbeatsLive:true,stemBlends:false}});
+  const patch=stemsSavePayload(selected).patch;
+  assert.equal(patch.transitions.subbeatsLive,true);
+  assert.equal(patch.transitions.stemBlends,false);
+  assert.ok(dirtyPaths(selected,baseline,sectionById('stems')!.formKeys).includes('transitions.subbeatsLive'));
+});
+
 test('whole-block saves refuse blank numbers and preserve explicit zero and decimal coercion', () => {
   const form = settingsForm({ crossfadeDuration: 10 });
   form.stream.bufferSeconds = ' ';
@@ -240,7 +250,7 @@ test('the Stems save and the Broadcast save post disjoint fields, so neither com
   const form = settingsForm({});
   const stems = stemsSavePayload(form).patch;
   const danger = dangerSavePayload(form).patch;
-  assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'pickTimeStems', 'stemBlends']);
+  assert.deepEqual(Object.keys(stems.transitions).sort(), ['pairDrain', 'pickTimeStems', 'stemBlends', 'subbeatsLive', 'subbeatsOnAirCaching']);
   assert.deepEqual(Object.keys(stems.audio).sort(), ['stemCache', 'stemCacheGb']);
   assert.deepEqual(Object.keys(danger.transitions).sort(), ['effects', 'equalPowerCrossfade', 'fadeAudibleEnd', 'fadeAudibleEndDb', 'tailFromCurve']);
   assert.equal('audio' in danger, false);
@@ -281,4 +291,17 @@ test('pick-time stems (#2197) hydrates off unless saved true, and saves from the
   const { STEM_FORM_KEYS } = await import('../components/admin/settings/registry');
   assert.deepEqual(ownedFieldErrors({ 'transitions.pickTimeStems': 'bad' }, STEM_FORM_KEYS).map(([path]) => path),
     ['transitions.pickTimeStems']);
+});
+
+
+test('saving regular blend changes retains held legacy cache values and Sub/Beats preferences', () => {
+  const form=settingsForm({audio:{stemCache:true,stemCacheGb:42},
+    transitions:{pickTimeStems:true,subbeatsLive:true,subbeatsOnAirCaching:true}});
+  form.transitions.stemBlends=true;
+  const patch=stemsSavePayload(form).patch;
+  assert.equal(patch.audio.stemCache,true);
+  assert.equal(patch.audio.stemCacheGb,42);
+  assert.equal(patch.transitions.pickTimeStems,true);
+  assert.equal(patch.transitions.subbeatsLive,true);
+  assert.equal(patch.transitions.subbeatsOnAirCaching,true);
 });

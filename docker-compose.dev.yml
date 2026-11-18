@@ -283,6 +283,7 @@ services:
       - ANALYZE_WHOLE_FILE_TIMEOUT_S=${ANALYZE_WHOLE_FILE_TIMEOUT_S:-}
       - ANALYZE_CLAP_WINDOWS=${ANALYZE_CLAP_WINDOWS:-}
       - ANALYZE_OUTRO_SECONDS=${ANALYZE_OUTRO_SECONDS:-}
+      - ANALYZE_DOWNBEAT_THREADS=${ANALYZE_DOWNBEAT_THREADS:-}
       # Anonymous HF downloads are rate-limited; same var as tts-heavy.
       - HF_TOKEN=${HF_TOKEN:-}
     volumes:

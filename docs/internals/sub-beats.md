@@ -1,0 +1,2122 @@
+# Sub/Beats development
+
+## Navidrome playlist export
+
+The Sub/Beats Playlist Export tab creates or replaces a Navidrome playlist from
+the current preparation list. The controller rechecks at save time and includes
+only jobs with `status: prepared`, a saved bundle key, and a track still present
+in the library. Replacing a playlist removes any generated-playlist sync recipe
+for it, so a later recipe sync cannot restore the previous contents.
+
+## Earlier incoming loop support — 7 November 2026
+
+Station source commits `7cf715f9` and `29a89048` apply the reviewed PR #10
+loop-timing and preview-cache fix on top of `9dd2b326`. When a two-bar incoming
+drum loop resolves vocal overlap, preview selects the earliest safe grid-aligned
+section in the intro and starts the incoming rhythm there; it retries later
+sections if audio or remeasurement rejects an earlier choice. Preview cache
+version 14 invalidates version-13 renders, so the updated renderer runs without
+manual cache clearing or rescanning prepared tracks. This is preview-only.
+Running containers remain unchanged until the owner rebuilds. Roll back the loop
+timing with `git revert 7cf715f9` (or return to `9dd2b326` before later station
+commits).
+
+## Cue preparation and 1.30.0 source candidate — 3 November 2026
+
+See the [cue-point preparation and preview guide](subbeats-cue-methods.md) for the new optional methods. This candidate incorporates upstream release `v1.30.0` through `03a48c21` and preserves station-specific Sub/Flow, Sub/Shows and Sleeve Notes behaviour. Beat This! for normal Stem Blend remains an unmerged upstream draft; these methods are separate auditions.
+
+The source rollback point is `e4e22d34`. The owner performs builds/restarts; source integration alone does not update running services. The new upstream pick-time stem preparation setting remains off by default. Quarantine restoration now requires matching recording evidence, including for selective cleanup.
+
+## Afro-Left sparse-intro challenge — 2 November 2026
+
+Owner reference: Leftfield, **Afro-Left**, **Leftism**, 454s, library ID
+`05ul3rSoyemxeaWWNIMdyo`; sporadic opening beats, main beat at approximately 59s.
+It remains outside the preparation queue. The existing library BPM is 172.3.
+Offline full-mix probes found no supported 64-beat fit for tested opening
+hypotheses (0–40s), but two post-entry fits (59–110s) at ~130 BPM with ~7ms RMS
+timing residuals. The first stable fit projects to a candidate downbeat at
+59.091s and first bar at 0.018s, giving 32 complete intro bar candidates.
+The main-entry beat-one assignment and backwards intro timing await listening;
+do not overwrite library BPM or automatically approve a mix from this probe.
+A 75-second counting audition and reproducible diagnostics are in the existing
+phrase-evaluation directory. No separation, queue or library/cache writes occurred.
+
+## Three reference grids listening-confirmed — 2 November 2026
+
+The owner confirmed the Urban Cookie Collective and Gusto counting auditions as
+**spot on**, including Gusto's proposed natural release near 22.96s. Together
+with Rozalla, all three exact reference openings now have human-confirmed
+beat/bar alignment. Urban Cookie Collective: ~129.885 BPM, four-bar boundaries
+~0.238, 7.630, 15.021, 22.412s. Gusto: ~126.072 BPM, boundaries ~0.120, 7.735,
+15.349, 22.964s; the final boundary is an owner-confirmed release point.
+Keep the earlier approximate groove-count wording separate from this confirmed
+quarter-note grid; do not rescale its tempo to force that wording to fit.
+
+These are three positive references, not calibrated automatic confidence or
+approval of complete mixed pairs. Next compare negative/ambiguous examples,
+competing phases and tempo drift before assigning machine confidence. Vocal
+cuts and other phrase boundaries still need their own evidence. Runtime flags
+and live preview behaviour remain unchanged. Updated annotations, auditions and
+findings are retained in the existing evaluation directory outside Git.
+
+## Rozalla projected-grid listening confirmation — 2 November 2026
+
+The owner confirmed the counting audition as **spot on**: projected beats align
+with the intro tambourine and the accented ticks land on beat one. For this
+exact recording, the ~130 BPM backwards timing and bar alignment are now
+human-validated. Four-bar boundaries: ~0.654, 8.039, 15.423 and 22.808 seconds.
+This is one positive timing reference, not calibrated automatic confidence or
+verification of every musical phrase, vocal cut point or mixed pair. Runtime
+projection flags remain unverified; no automatic approval or playback changed.
+Owner annotations and the evaluation report record this listening confirmation.
+
+## Intro timing projection prototype — 2 November 2026
+
+Structure cache version 3 now records `grid_entries` separately from arrangement
+novelty. Overlapping sliding fits form one measured coverage run, not multiple
+section starts. This retains Rozalla's first supported beat around 22.8s even
+when no preceding beat context exists for the novelty detector. A supported-grid
+start does not establish the first audible percussion, a downbeat or a phrase.
+
+`intro_grid_projection` extends that later grid backwards, preserving possible
+four-beat bars and a partial opening bar. All inferred timing, bar alignment and
+phrasing remain explicitly unverified. A bounded cached-stem high-frequency
+onset probe found pre-drop activity in Rozalla but insufficient discrimination
+between phase shifts to approve it automatically. The owner hears a subtle
+tambourine there. No model, new separation or song-specific threshold was added.
+
+Owner direction: introduce Rozalla from source zero over outgoing drums/bass,
+then hand over rhythm at its beat drop near 22s. Do not skip its opening vocals
+by selecting only the late kick-grid cue. For Gusto, the owner confirms four
+instrumental bars before four bars of the repeating vocal groove, with the
+natural release ~22s. Preserve that listening reference; reconcile exact timing
+anchors and the detector's bar interpretation before labelling inferred bars.
+
+The existing registered Python suite passes, including three new projection and
+coverage checks. A 32-second counting audition and projection JSON are in
+`/home/jaz666/codex/subbeats-phrase-evaluation-20261102/`. No live preview, matching
+or renderer behaviour has changed. Current preparations need no recheck for this
+listening experiment; the new fields apply to newly generated structural audits.
+
+## Phrase-confidence reference investigation — 2 November 2026
+
+Owner reference set: Rozalla, **Everybody’s Free (To Feel Good)**; Urban Cookie
+Collective, **The Key, the Secret**; Gusto, **Disco’s Revenge (Mole Hole radio
+edit)**. Keep these exact versions; the other Gusto mixes are separate recordings.
+Existing structural detection was evaluated on their six cached head/exit
+regions, without new separation or cache writes. Bar-phase votes remain
+ambiguous; no musical phrases have been verified. All 103 prepared tracks have
+assessments, but none has verified bar alignment. The normal library's bar grid
+is every fourth tracked beat from its first beat, not a detected musical downbeat.
+First obtain listening anchors for downbeats and phrase starts, then assess bar
+alignment and 4/8/16-bar phrase evidence separately, allowing unknown outcomes.
+Do not interpret existing structural low/medium labels as calibrated confidence.
+Diagnostics, six clean audition clips and the blank listening-anchor sheet live
+outside Git at `/home/jaz666/codex/subbeats-phrase-evaluation-20261102/`.
+No analysis, matching, preview or playback behaviour changed in this investigation.
+
+Owner listening anchors (approximate head/source seconds): Rozalla vocals ~6s,
+phrase change ~22s (interpreting `0.22s` as `0:22`); Urban Cookie Collective vocals
+~7s, phrase change ~22s. Gusto clarification: a repeating background vocal groove
+fades in from ~7s; ~22s ends its fourth bar and is a natural release point, not
+a new-section onset. The fade-in time is not an exact groove-bar anchor. At the
+measured ~126 BPM, four 4/4 bars span ~7.62s: do not infer a 15-second four-bar
+grid from the two approximate observations. These are not exact downbeat labels.
+The full existing landmark list has its nearest candidates at 25.565s, 22.396s
+and 26.749s respectively. Only the Urban Cookie Collective landmark closely
+matches the owner's approximate change. Gusto is a repeating-vocal release
+example: distinguish completed-cycle endpoints from section entrances. Its vocal
+gate first reports activity at 41.95s, missing the earlier soft vocal groove.
+Absence of detected activity cannot prove instrumental audio; continued repeated
+vocals need not prohibit a release at a confirmed completed cycle. Separate
+phrase/counting position from arrangement changes and vocal-gate accuracy.
+Listening anchors are saved with the evaluation artifacts.
+
+## Station deployment preparation — 2 November 2026
+
+The tested upstream integration delta from `81264cca` is applied on top of
+station source `2951284a`, preserving its additional Sub/Shows, Sub/Flow,
+Sleeve Notes and measured TTS-rate features. Station conflict resolutions retain
+upstream stand-in speech filtering alongside local reservation release, host
+ownership and speech-budget checks. TTS pace summaries and per-presenter rates
+are carried into the new Stats Engine room. Older show-test fixtures now provide
+the diagnostic artist count. The shared schema mirror includes the station's
+additional schema modules, not just the Sub/Beats development subset.
+
+Station validation: controller/web type checks and scoped lint pass; 276 focused
+checks cover stand-in speech, Sub/Flow, cohosted skills, TTS measurements and
+speech budgets. Compose configuration validates with the existing overlays.
+
+The GPU and Discord compose overlays are unchanged. The owner performs rebuilds
+as recorded in the handover; source preparation does not deploy containers.
+Rebuild **analyzer, controller, web, broadcast and caddy**: upstream changes include
+Liquidsoap/stream encoding, broadcast startup and edge routing. Recreating
+broadcast briefly interrupts the stream. Use the existing compose overlays and
+serial builds. Pre-deploy containers were running; controller and broadcast were
+healthy. Source rollback point: `2951284a` (images must also be rebuilt to roll
+back running behaviour).
+
+## Phrase preparation rebuild — 4 November 2026
+
+Owner-approved rescans replace older cue evidence with algorithm 5 and preview 13.
+The accepted Launch/Children grids now drive fitted opening/closing passage
+selection, source-zero intro preservation and natural outro tails. Preparation
+saves narrow passage stems plus necessary follow-through, with no legacy broad
+base separation. Preview compares the selected pair's cue combinations, uses
+drum looping when it clears a vocal conflict, and falls back to the configured
+regular crossfade when no Sub/Beat plan fits. Manual cue auditions remain.
+Normal Stem Blend, broadcast and pickers are unchanged. See [the current method
+and rescan workflow](subbeats-cue-methods.md#phrase-preparation-and-preview--algorithm-5--preview-13).
+
+## Upstream integration review — 2 November 2026
+
+Integration branch `integrate/subbeats-upstream-20261102` merges upstream
+`develop` through `2d81afff` into the Sub/Beats development history. This is
+source integration only: the station checkout and running containers are not
+updated by this work.
+
+The final upstream orphan-cleanup implementation replaces the earlier imported
+PR version, retaining its foreign-folder checks, ID-rotation protection, release
+stamps, actual freed-byte reporting, fresh-copy collision handling and stored
+usage marked stale after cleanup. The shared engine also retains our separate
+selective-cleanup consent, retention predicate, pre-mutation refresh, policy
+change/deletion checks, collision preservation and snapshot invalidation after
+an interrupted pass. Regular stem folders may include the managed `subbeats`
+subdirectory; unrelated subdirectories still disqualify a cleanup candidate.
+Analyzer temporary files with unique suffixes are recognised too. Extended-only
+folders with no ordinary stem files remain conservatively outside orphan cleanup.
+
+Upstream replaced-file handling clears audio measurements and removes the old
+track cache. It now also invalidates that track's prepared Sub/Beats bundle,
+even when the shared cache is offline or deletion fails. Per-track/bundle
+invalidation markers avoid a library child overwriting the controller-owned
+preparation queue. Invalidated entries read as failed with a Recheck explanation,
+no bundle or suitability evidence, and cannot be used for cache-only assessment
+or matching. Successful fresh preparation clears its marker; another track with
+the same bundle key is unaffected.
+
+Upstream tail-aware instrumental classification and shared regular-stem output
+permissions are retained. Settings uses upstream's unified Stems page and
+independent save scope. Duplicate maintenance registration introduced by the
+merge is removed; selective cleanup and ordinary orphan cleanup run in sequence
+in the existing daily slot. Vocal-led mixing, phrase confidence and playlist
+search remain deferred below; preview audio is unchanged by our resolutions.
+
+Validation: focused Sub/Beats, orphan-cleanup, stem-cache, replaced-file,
+selective-admission, tail-vocal classification and analyzer Python suites pass.
+Web settings, orphan panel and admin-query audit tests pass; the admin query
+static audit and controller/web lint/type checks pass. Schema mirror regenerated.
+No full application suites, production builds, live library scans, real-audio
+listening or station operations were performed.
+
+## Suggested vocal handovers — 1 November 2026
+
+Find matches now compares vocal evidence across every structurally valid
+candidate-window combination. The earliest structural plan remains the renderer's
+plan. A separate `vocalSuggestion` records the best provisional vocal candidate;
+Preview displays its source windows, passage limits and direct/4n-bar spacing,
+explicitly marked **not applied to audio**. Incoming matches with a suggestion
+are listed first; all structurally valid matches remain available for listening.
+No vocal envelopes, audio timelines or live selection behavior have changed.
+
+The planner preserves the first incoming passage rather than skipping an
+incomplete opening. It requires resolved incoming start/end observations and a
+resolved outgoing release; an outgoing beginning before cached coverage does not
+prevent preserving its observed ending. No proposed outgoing boundary may cross
+another passage or ignore a later passage before that boundary. Guarded tails
+must not overlap. Incoming observations are mapped through the proposed tempo
+adjustment and bar shift before spacing is tested.
+
+Outgoing boundaries follow the observed release on the provisional beat-derived
+bar grid; incoming core onsets must be near a boundary without trimming pickups.
+Direct means no silent bar between adjoining vocal bars (gap 0); separated
+entries require 4, 8, 12… bars. Source and measurement coverage are checked.
+Results distinguish coverage problems, timing conflicts, missing measurements
+and uncertain empty detections. Empty detections never establish vocal-free audio.
+All suggestions retain `approved:false` and `barAlignment:unverified`; neither
+musical downbeats nor complete lyrical phrases are established by these gates.
+The next renderer step must use confirmed quiet boundaries and preserve passages;
+this change deliberately stops at inspectable suggestions.
+
+Deploy analyzer/controller/web together. Existing reassessed measurements are
+sufficient; no new separation or assessment is required. Owner deploys; no live
+station operations or listening tests are performed by this source change.
+
+Focused validation: five provisional planner cases plus the registered Python
+suites, controller/web type checks, scoped schema/UI lint and admin-query audit
+with its nine tests. Desktop/mobile checks confirmed the four-bar suggestion,
+unapproved/not-applied labels, source limits, match clearing and empty results.
+Required Library search and all six query-cache browser checks passed on isolated
+fixtures. No full build or live-library compatibility scan.
+
+## Vocal-passage measurement foundation — 1 November 2026
+
+Preparation and cache-only Assess suitability now record optional `vocalActivity`
+evidence per cached role. This first stage changes no preview envelopes, match
+ranking, suitability levels or playback behavior. Existing entries remain valid;
+batch assessment adds measurements without downloads or new separation.
+
+The detector reuses Subwave's existing stem-versus-mix RMS gate, breathing-gap
+merge and short-artefact rejection. It measures 50ms stereo-energy frames from
+the reconstructed mix and vocal stem, uses positive vocal energy as the loudness
+reference so sparse passages survive a mostly silent region, then applies a
+lower release gate (one fifth of the configured core thresholds). A 200ms guard
+extends each observed passage; overlapping guards merge. Core activity bounds
+are retained separately from the conservative passage/tail bounds.
+
+All positions are original-track seconds and coverage describes the actual
+loaded preview region (including the existing 90-second read limit). Passages
+reaching either cached boundary are open/uncertain; internal boundaries are
+estimated, never verified lyrical phrase ends. No detections do not establish
+that a region is vocal-free. Bar alignment remains explicitly unverified.
+The standard library analyzer's gate behavior is unchanged: new optional gate
+arguments are used only by this Sub/Beats measurement pass. No models are loaded.
+
+Next: inspect measurements and build suggested handovers using complete-passage
+and bar-spacing constraints. No handover approval or new rendering is enabled by
+this stage. Deploy analyzer/controller/web together for the shared schema; the
+web UI itself is unchanged. Owner rebuilds; no live cache or station operations.
+
+Minimal validation: three focused synthetic passage/edge/sparse-activity cases,
+the registered Python suites including existing vocal-gate checks, controller/web
+type checks, scoped schema lint and diff checks. No browser, build or listening
+checks were needed for this data-only stage.
+
+## Preview match finder — 1 November 2026
+
+Preview now selects an assessed outgoing Sub/Beat track, then explicitly finds
+structurally compatible incoming tracks. Results show measured BPM and incoming
+speed adjustment, sorted by smallest adjustment. The search reports exclusions
+for tempo, prepared coverage, missing assessment and incoming-role unsuitability.
+Changing the outgoing track, bar shift or saved suitability invalidates the UI
+results. Incoming selection no longer resets the chosen bar shift.
+
+The admin-only match route reads controller-owned queue evidence and excludes
+blocked entries. `subbeats_matching.find_matches` runs as a CPU-only analyzer
+operation and calls the same `select_windows` used by rendering: no cache walk,
+source downloads, audio reads, separation, stretching or rendering per candidate.
+New assessments save up to eight measured windows per role, including relative
+lead, source cue and post coverage. Old assessments remain usable through their
+single verified window; Assess suitability refreshes alternatives without new
+separation. These measurements do not approve vocals, phrasing or harmonic fit.
+
+Matched preview requests resolve the pair again from fresh server-owned evidence,
+then pin the selected cues/tempo in preview v7. The renderer verifies them against
+the cached stems and checks the stretched incoming window; it rejects a failed
+pin rather than silently switching to another source window. Existing preview
+requests without `matched` retain automatic candidate selection. Broadcast and
+Track Picker behavior is unchanged; the shared matcher is available for later use.
+Deploy analyzer, controller and web together; older analyzer match endpoints give
+an update error. The owner performs deployment; no live station operations.
+
+Minimal validation: registered Python suites (including saved matching and pinned
+stretch checks), 15 Sub/Beats route tests, admin-query audit and its nine tests,
+focused desktop/mobile matching/empty/shift checks, required Library search and
+six query-cache browser checks, and scoped lint plus controller/web type checks.
+No full application build, listening test or live-library compatibility scan.
+
+## Preparation batch actions — 1 November 2026
+
+Preparation now has row checkboxes, Select page, Select matching (up to 100),
+Clear selection and a selected count including entries on other pages/filters.
+Selection lives in the Library workspace and is separate from Explore's queue
+selection. Fresh queue state excludes running/queued/deleted entries from actions.
+Recheck/retry uses the existing bounded queue endpoint; Assess suitability uses
+the existing cache-only endpoint and only selected entries with a saved bundle.
+Successful admissions clear those IDs from selection; other selected entries stay.
+
+Remove selected uses one count-based confirmation and the existing guarded
+single-entry deletion endpoint, sequentially. It stops at the first failure,
+reports confirmed removals and retains the remaining selection for retry. Library
+tracks and regular stems remain untouched. State/list/cache projections refresh
+once after the batch, including a partial failure. No new API or queue semantics.
+Validation: 34 Library web tests, nine admin-query audit tests and the query
+read audit passed. Focused desktop/mobile browser checks covered batch admission,
+selection across pages/tabs, confirmation cancellation and partial-removal retry.
+Library search and all six query-cache browser checks passed on isolated fixtures.
+Web lint/typecheck passed. Only web needs rebuilding; no live station operations.
+
+## Pair-aware beat windows — 1 November 2026
+
+Preparation stores up to eight incoming and eight outgoing beat-supported
+16-bar suggestions in `analysis.json`, with original-track positions, tempo,
+timing/onset evidence and surrounding source coverage. These are beat windows,
+not verified downbeats or musical phrases. New preparations retain up to 90
+seconds in the outgoing region, ending at the existing measured outro boundary.
+The preparation identity includes that coverage, so an explicit Recheck builds
+a new bundle; existing bundles are neither changed nor automatically regenerated.
+The larger outgoing region uses more of the existing shared cache budget.
+
+Standard preview v6 verifies up to eight kick-grid windows per cached role and
+tries combinations in incoming preference order, choosing a compatible outgoing
+window for each. Checks cover the existing ±8% tempo limit, bar shift, outgoing
+lead and incoming eight-second follow-through. Geometry is checked before time
+stretching; the stretched incoming grid is then verified against actual coverage.
+Selected source positions are saved in preview metadata. Existing cached bundles
+can use this selection immediately, within their existing audio boundaries.
+A lead rejection now gives required/available seconds and identifies missing
+prepared coverage instead of suggesting the track itself is unmixable. No loop,
+new vocal detector, waveform controls or changed mix envelopes are introduced.
+
+Validation is deliberately minimal at the owner's request: the registered
+analyzer Python suites, including focused candidate/coverage/selection tests.
+No UI, TypeScript or live playback changes; no browser/build/listening tests or
+station operations. Owner rebuilds analyzer (controller too for local workers).
+
+## Analysis suitability — 1 November 2026
+
+Deep Sub/Beats preparation now records versioned suitability evidence for each
+incoming and outgoing role. Existing entries have no inferred classification:
+they show **Not assessed** until checked. “Prepared” still means cached resources,
+not approval of a mix. Ordinary library analysis and broadcast selection are
+unchanged by this step.
+
+- **Regular transitions only:** no supported 16-bar grid in that prepared role.
+- **Basic beat matching:** supported 16-bar rhythm evidence in the cached region,
+  but the strict stem-preview checks do not pass.
+- **Sub/Beat · stems + beat matching:** the actual preview loader/kick fitter
+  passes a 64-beat run, including outgoing lead or incoming eight-second
+  follow-through at native tempo.
+
+Each role retains its measured BPM/cue/coverage and a reason. Lists and their
+server-side suitability filter use the higher role capability; expanded evidence
+and the corresponding preview selector identify the individual role. Filtering
+happens before pagination and bounded matching selection, and survives bookmarks.
+These flags do not approve vocals, phrasing, harmonic fit or any particular pair.
+The preview still checks pair tempo (±8%), shifted alignment and incoming-prefix/
+outgoing-lead coverage, including coverage after stretching. No mixing envelopes,
+transition methods or live playback policy have changed.
+
+Prepared tracks offers **Assess saved stems**, up to 100 missing assessments per
+batch; Preparation also offers a per-entry assessment/retry. The controller-owned
+queue persists an `assess` task with the original bundle key, uses the managed
+analysis slot/quiet-time/pause rules, and does no source download or separation.
+Cached manifests and audio stay immutable. Technical/integrity failures remain
+failed and unassessed rather than being labelled “Regular transitions only”.
+A saved bundle keeps its selective-cache protection during assessment and retry;
+normal cache quota eviction is unchanged. Successful read-only assessments leave
+the trusted usage baseline intact.
+
+Analyzer workers advertise suitability protocol version 1 alongside shared-cache
+version 2. Old analyzers cannot silently produce newly prepared entries without
+flags; existing previews and migration retain their storage-only compatibility.
+Deploy analyzer, controller and web together using the existing compose overlays.
+No assessment of the owner’s live 103 tracks or listening test was performed as
+part of this source change.
+
+Validation: 53 Sub/Beats and 124 stem-cache tests, registered analyzer Python
+suites, 32 Library web tests, nine admin-query audit tests and the query audit
+passed. Desktop/mobile browser checks covered role differences, unknown entries,
+filter/bookmark persistence and paused cache-only assessment admission. Library
+search and all six query-cache browser checks passed against isolated fixtures.
+Controller and web lint/typecheck passed (existing controller lint warnings).
+The owner rebuilds; no station services or live cache entries were changed.
+
+## Preview baseline — 31 October 2026
+
+Owner decision: return to the earlier 16-bar stem mix as the development baseline.
+The Library preview now requests that existing renderer for every prepared pair,
+including the annotated reference tracks. The manual incoming ±2-bar shift and
+seekable stage timeline remain. Incoming tempo stays matched through the preview;
+native-tempo return remains future work. No new separation or preparation is needed.
+
+The annotated full-mix/rhythm-loop experiment below and the 30 October handover
+remain historical evidence, not the current browser behavior. Its renderer and
+explicit reference API requests remain available for comparison, but the page no
+longer chooses them automatically. No automatic planner or playback integration
+is introduced. Next, listen to the existing 16-bar stem previews before changing
+timing or selection policy.
+
+Validation: 29 Library web tests, web lint/typecheck and the registered analyzer
+Python suites passed, including six original stem-preview checks. No new browser
+or listening validation was run. Source is intended for cherry-pick onto
+`test-station/sleeve-notes-clean-20261014`; the owner rebuilds only `web` with the
+existing compose overlays. Until then, the running page remains the previous
+annotated preview. Roll back this page change by reverting its scoped commit;
+prepared caches and analyzer/controller services do not need changes.
+
+## Dance-music discovery — 31 October 2026
+
+Owner scope: Sub/Beats primarily targets the broad dance-music umbrella. Beat
+metadata alone must not suggest unrelated rock/pop tracks for preparation.
+Default “Tracks to explore” suggestions now require an ingested dance-family
+genre as well as the existing stored 90–180 BPM range. Existing beat data and
+analysis confidence order those suggestions. Matching uses all stored genres,
+with the existing one-directional, word-aligned genre matching rules.
+
+The discovery vocabulary includes broad Dance/Electronic/Electronica/EDM tags,
+house, techno, trance, disco, electro styles, big beat/breakbeat, UK garage,
+drum and bass/jungle, dubstep, harder dance and related club styles. Bare
+Garage/Electro/Acid tags are accepted exactly; Garage Rock and Acid Rock do not
+qualify through those labels. This vocabulary is a discovery hint, not a new
+station-wide taxonomy. A broad Electronic tag can still include unsuitable
+music; audio qualification remains a separate step. Missing genre tags do not
+qualify automatically. No inference is made from artist names.
+
+Explicit search still finds any library track, including missing/mislabelled
+genres and missing tempo, and manual queue admission stays open. Existing
+prepared tracks and saved jobs are retained. No four-to-the-floor approval,
+analysis thresholds, picker rules or station playback policy are changed.
+
+Deployment: this filter requires rebuilding `controller` and `web` through the
+existing compose overlays; the analyzer and prepared caches need no changes.
+The owner runs rebuilds. Revert the scoped dance-discovery commit to restore
+previous default suggestions; leave saved preparation jobs intact.
+
+Validation: Sub/Beats controller suites passed, followed by all nine route/genre
+checks after the final matcher change. Controller and web lint/typechecks and
+29 Library web tests passed. Controller lint retains its existing warnings.
+No browser or live-library inspection was run. Development source on
+`feat/sub-beats` is to be cherry-picked onto the test-station branch; no rebuild
+or restart is performed by the agent.
+
+## Remove a Sub/Beats entry — 31 October 2026
+
+Owner choice: removal deletes the preparation entry and its extended cached
+files, while retaining the library recording, ordinary head/tail stems and
+manual regular-cache inclusion. Prepared Tracks offers Remove alongside the
+pair selectors; Preparation also offers it for terminal entries, including
+failed jobs and entries whose catalogue row has disappeared. A standard
+confirmation names the artist/track and explains deletion and later re-preparation.
+Queued/running work is excluded. Active maintenance, preview rendering and
+selective cache work refuse a conflicting removal; the existing manager defers
+new preparation while removal runs. Queue admissions and new preview/cache
+operations are also gated during removal.
+
+`DELETE /library/subbeats/entries/:id` is admin-only and returns the existing
+Sub/Beats view. The removal module preflights the marked cache, safe track ID,
+real parent directories and legacy paths before deleting anything. It removes
+only `<track>/subbeats`, never `<track>` or the ordinary stem files. A legacy
+active bundle is removed only when no other queue entry references its key;
+unrelated legacy structure/experimental artifacts and bounded preview outputs
+are retained. Existing quarantine is untouched. The queue record is removed
+through the store only after file deletion succeeds. A partial filesystem
+failure retains the entry for retry; ordinary stems remain outside every delete
+path. Missing entries/files are harmless on repeat requests. Failed final queue
+writes also retain the saved entry so removal can be retried.
+
+Usage and reclaim estimates are invalidated after deletion. The UI refreshes
+prepared/explore rows, preparation state and cache views, and clears a removed
+track from either preview selector, including changes observed by polling.
+Tracks return to their ordinary Explore eligibility and can be prepared again;
+removal does not block them or automatically requeue them. Explicit removal
+is separate from automatic seven-day selective quarantine.
+
+Deployment changes controller and web only. No real entry/cache deletion or
+station restart is performed by the agent. Previous station source: `4c7a1280`.
+
+Verification: all 47 Sub/Beats checks passed, then all six removal regressions
+passed after adding the no-files snapshot case. Controller lint/typecheck and
+web lint/typecheck passed (controller's existing warnings remain). Library web
+tests (32), admin-query audit and its nine tests passed. Isolated desktop/mobile
+browser checks exercised cancel, confirmed file deletion, regular-stem retention,
+preview selection clearing and re-preparation eligibility, with no page errors
+or horizontal overflow. Library search verification and all six query-cache
+checks passed. Screenshots and `removal-results.json` are in the existing
+`/home/jaz666/codex/subbeats-cleanup-evaluation-20261031/` evidence folder outside
+Git. Clearing an entry without artifacts preserves the usage snapshot, avoiding
+an unnecessary full cache walk. The owner rebuilds controller/web and verifies
+health before trying Remove on a chosen real entry.
+
+
+## Shared-cache migration lock correction — 31 October 2026
+
+The first station migration stopped before copying any bundle: the analyzer
+(uid 10001) could not open the existing `.prepare.lock` for append. The normal
+publisher intentionally opens this file read-only, which still supports Linux
+exclusive flock and works when the file belongs to another UID. Migration now
+uses the identical `O_RDONLY | O_CREAT` lock mode, with no permission changes.
+The shared-path conversion command uses the same correction.
+A regression check makes the existing lock read-only, runs migration, and checks
+that its mode is unchanged. The failed station run was
+`tagger-run-20261031-194310-analyze.log`; its error was EACCES on the lock.
+Rebuild the analyzer, then resume preparation to retry (or restart controller
+to schedule the migration again). The agent does not run either operation.
+Previous station source: `865c93a0`.
+Validation: all registered analyzer Python suites passed, including 32
+cache/preparation checks. Controller typecheck passed. No station restart,
+permission change or live migration is performed by the agent.
+
+## Shared regular and extended stem storage — 31 October 2026
+
+Managed Sub/Beats now stores each track's integrity-checked extended bundles in
+`<stemsRoot>/<trackId>/subbeats/v1/<bundleKey>`. Ordinary head/tail files retain
+their existing names and coverage. The extended files are not interchangeable
+with the shorter ordinary windows, so no files are renamed over normal stems.
+Both use `audio.stemCacheGb` (currently 1,000 GiB on the owner's station); the
+managed path no longer uses the old separate 5 GiB limit. Queue, policy, shared
+volume proof and bounded preview outputs remain under `state/subbeats`.
+Standalone development commands retain their old default paths and 5 GiB cap;
+reference audit/conversion accept `--stems-root` for shared-cache artifacts.
+
+On restart, the existing managed maintenance slot schedules a migration when
+legacy `state/subbeats/v1` exists, even with no queued work or with preparation
+paused. Every managed batch also checks migration before preparation. It takes
+the old publisher's nonblocking lock, maps referenced bundles to track IDs,
+includes structure evidence for those recordings, copies into a staging folder
+on the destination disk, verifies file hashes, publishes atomically, verifies
+the destination again, and only then removes the old bundle. This works across
+filesystems and is safe to retry after partial success. A shared bundle linked
+to several tracks is removed only after every destination is verified. Damaged
+or unreferenced development bundles remain in the legacy folder for inspection;
+no blanket directory deletion or symlink redirection is performed. Insufficient
+budget, collisions, copy errors or a missing share preserve the old source.
+A failed migration stops preparation; queue/resume manually to retry once the
+cause is fixed. Migration logs its verified bundle count in the analysis log.
+
+The controller obtains live-cache usage once per managed batch, marks its usage
+snapshot as being written, and supplies remaining bytes to the analyzer. Each
+publication consumes that allowance; cache hits consume none. Failures stop the
+batch and invalidate the snapshot because partial publications may exist. The
+normal size walk and incremental accounting now include nested extended files;
+the snapshot is invalidated after all Sub/Beats writes, including failures.
+There is no new quota sweep or eviction algorithm. Normal budget eviction still
+applies to the whole track folder. Prepared tracks retain their existing
+protection from selective quarantine; that protection is not a quota exemption.
+No quarantine folder is moved into live storage or counted as free space.
+
+The controller requires the analyzer's shared-cache protocol version 2 before
+new preparation or migration; an older analyzer cannot silently keep writing to
+the small cache. Preview requests carry track IDs and the shared stems root,
+read the migrated location first, and fall back to legacy bundles while a
+migration is waiting. Preview reading does not require working Demucs models.
+Both the state-volume cache ID and stems-volume marker remain required.
+The cache chart's purple segment now includes the extended files in prepared
+track folders. Earlier separate-cache descriptions below are historical.
+
+Deployment requires rebuilding **analyzer, controller and web**, with the
+existing GPU and Discord overlays. No agent-run restart or live migration is
+performed. The previous station source is `97f72cf3`. Reverting code alone does
+not move migrated files back: preserve the shared cache and queue and reverse
+only verified bundle copies if an old analyzer is deliberately restored.
+
+Verification: controller Sub/Beats suites passed (41 tests), stem suites passed
+(123 tests), and the final managed-worker checks passed (4 tests). All registered
+analyzer Python suites passed, including 31 cache/preparation checks covering
+migration, interrupted copies, shared references, quota limits and shared/legacy
+bundle lookup. Controller and web lint/typechecks passed; controller keeps its
+1,741 existing warnings. All 32 Library web tests passed. No live station, real
+cache migration, container build
+or listening test was run. Source is developed on `feat/sub-beats` and then
+cherry-picked to the station integration branch; both are pushed. The next
+acceptance step is the owner-run analyzer/controller/web rebuild, `/api/health`,
+then checking the analysis log's migration result and an existing prepared-pair
+preview before starting a larger preparation batch.
+
+## Cache colour breakdown — 31 October 2026
+
+The Cache page uses a labelled stacked bar: blue for kept regular stems, purple
+for regular stems belonging to prepared Sub/Beats tracks, amber for cleanup
+candidates, orange for quarantine, and neutral for remaining live-cache budget.
+Recently written, otherwise unsuitable folders have their own slate segment;
+they are excluded from the deletion estimate. Categories never overlap.
+Quarantine includes both selective and upstream orphan namespaces and is shown
+in addition to the configured live-cache budget. Over-budget live usage expands
+the chart rather than hiding occupied bytes. Disk-wide used/free space remains
+separate. Each segment has a visible name/size, a hover title and an accessible
+chart description, so colour is not the only indication.
+
+The existing explicit background estimate now measures the full breakdown;
+ordinary polling remains read-only and never walks the cache. Before a scan,
+the bar identifies usage as unclassified. A failed or expired scan does not
+present a new classification. Extended Sub/Beats bundles remain in the separate
+5 GiB cache and are explicitly excluded, pending consolidation; purple does not
+claim those bytes. Cleanup policy, consent and timing are unchanged.
+
+Verification: all 39 controller Sub/Beats checks passed, including exact category
+accounting and quarantine measurement. Controller and web lint/typechecks passed
+(controller retains its 1,741 existing warnings). The admin-query audit and all
+nine audit tests passed. Library search verification and all six query-cache
+checks passed. Isolated desktop/mobile checks confirmed distinct
+segment fills, visible legends, no page errors and no horizontal overflow;
+captures are `desktop-colour.png` and `mobile-colour.png` in the existing
+external evidence folder. Station source rollback for this colour change is
+`3c4e26a0`; the owner rebuilds controller and web, with no agent-run deployment
+or changes to the real cache. The next storage step remains consolidation.
+
+## Explicit cleanup consent and reclaim estimate — 31 October 2026
+
+The Cache opt-in now describes the actual deletion workflow. An operator first
+requests “Calculate reclaimable space”, sees the number of eligible-to-remove
+folders and their approximate file bytes, then confirms “Enable and quarantine”.
+Enabling starts quarantine immediately, as requested by the owner. Space is
+reclaimed only after seven days, never by the initial move. The estimate is an
+explicit background walk; GET/polling endpoints return stored in-memory progress
+and never repeat that walk. Estimates expire after 15 minutes so an old visit
+cannot authorise a cleanup using stale figures. Recently written folders are skipped and unreadable
+candidate sizes fail the estimate rather than silently reporting zero.
+
+`cleanupEnabled` is separate durable consent in the existing stem-policy file,
+defaulting false even when an old `enabled: true` admission opt-in already exists.
+An API enable needs `confirmCleanup: true`; the UI requires a successful estimate
+and a confirmation dialog. Old installations do not acquire deletion permission
+on upgrade. An existing admission-only opt-in remains in force until changed.
+
+The shared quarantine engine now accepts a retention predicate and pre-mutation
+revalidation. Selective cleanup owns `.subbeats-quarantine`, separate from the
+upstream `.orphan-quarantine`. It protects any historical play (including a
+missing catalogue row), Navidrome stars, operator hearts, prepared Sub/Beats
+tracks, manual inclusions and the existing dance/BPM/grid fallback. Stars and
+curation/preparation state must be verified before any cleanup; source failures
+refuse the pass. Protections are refreshed after planning and before mutations;
+new plays/hearts are checked at each candidate. A changed policy stops the pass.
+Analysis writes, an empty library and an offline cache also refuse cleanup.
+
+The initial confirmed pass and manual retries can process the operator-approved
+large plan. Later daily passes share the 04:47 maintenance slot and its existing
+mass-move ceiling. Ordinary orphan cleanup remains independent and runs after
+the selective job. Turning the option off stops further deletion and restores
+quarantined folders into free live slots where possible. Collisions are retained;
+selective cleanup never directly deletes the newer live copy. Unknown quarantine
+dates retain the folder. Usage snapshots are invalidated even if a policy change
+interrupts an already-mutating pass. Normal byte-budget eviction still applies,
+so the played/starred protection is explicitly scoped to this cleanup.
+
+No live cache operation is run by the agent. The separate extended Sub/Beats
+cache is not migrated by this change; consolidation is the next storage step.
+The admission-only section below records the preceding behaviour and is
+superseded by this explicit cleanup consent where it describes deletion.
+
+Verification: controller Sub/Beats tests passed (39), stem tests passed (121),
+and orphan tests passed (39). The final cleanup-only run passed all 10 cases.
+Controller and web lint/typechecks passed; controller retains 1,741 existing
+warnings. Web settings tests (32), admin-query audit and its nine tests passed.
+Isolated desktop/mobile browser checks verified estimate, cancel, immediate
+quarantine, disable/restore and reload, with no page errors or overflow.
+Library search verification and all six query-cache checks passed. Evidence is
+in `/home/jaz666/codex/subbeats-cleanup-evaluation-20261031/` outside Git.
+
+Source integration: commit this scoped change on `feat/sub-beats`, push it, then
+cherry-pick onto `test-station/sleeve-notes-clean-20261014`. The preceding station
+source rollback is `005a1141`. No station rebuild, restart or real cache/state
+mutation is part of this integration. The owner rebuilds controller and web
+using the existing compose overlays and checks `/api/health`. After acceptance,
+continue extended-cache consolidation from `/home/jaz666/codex/subwave-sub-beats`.
+
+## Optional selective cache policy and manual inclusions — 31 October 2026
+
+Selective regular-stem admission now requires explicit operator opt-in in
+Library → Sub/Beats → Cache. Missing policy state defaults OFF, preserving the
+upstream admission of every library track, subject to its unchanged cache
+budget, attempt stamps and priority. The earlier admission sections describe
+what happens only after opt-in. No migration enables this policy, and neither
+enabling nor disabling it deletes files or starts analysis. Orphan cleanup
+continues to use library membership and its separate opt-in; no exclusion-based
+purge has been added.
+
+The controller owns `state/subbeats/stem-policy.json`, separately from the
+500-entry extended-preparation queue. It stores `enabled` and manual `regularIds`.
+Reads do not create it. Writes validate and atomically persist the document;
+malformed state is surfaced and preserved. Analysis snapshots the policy once
+per pass. An unreadable policy falls back to original unrestricted admission,
+so uncertain state never opts an installation into exclusions.
+
+With selective caching enabled, any historical play, operator heart, Navidrome
+star, completed Sub/Beats preparation or manual regular inclusion bypasses the
+genre/BPM/grid fallback. In Explore (including Entire library) and Prepared
+tracks, “Include in regular stem caching” toggles a per-track exception. It
+does not queue extended preparation, alter tags/stars or guarantee retention
+against ordinary budget eviction. Unchecking removes only this exception;
+played/starred/prepared/dance tracks can still qualify independently. Attempt
+stamps and normal resumption behaviour remain unchanged.
+
+The Cache page shows the saved regular-stem measurement against its budget and
+available space on the mounted cache filesystem. Reads never walk the cache;
+usage is the existing snapshot, with its age and freshness, and capacity comes
+from a filesystem stat only after the root is confirmed online. Unknown usage
+and offline disks are explicit states. Quarantine is excluded from the ordinary
+budget but still occupies disk. Extended Sub/Beats stems remain in their separate
+5 GiB cache and are explicitly excluded from this regular-stem measurement.
+Physical cache consolidation is still subsequent work.
+
+Verification: 112 stem tests, 33 analysis-plan tests, 29 Sub/Beats tests,
+32 Settings tests and 32 Library web tests passed, alongside nine admin-query
+tests and the static query audit. Controller/web lint and typechecks passed
+(controller retains its existing 1,741 warnings); the final themed-bar change
+also passed focused lint and a further web typecheck. Desktop/mobile browser
+checks cover saved opt-in, non-dance manual inclusion/removal, reloads, failed
+writes, offline/unmeasured states and horizontal overflow. Library search and
+all six browser query-cache checks pass. Evidence is under
+`/home/jaz666/codex/subbeats-cache-policy-evaluation-20261031/`.
+
+The candidate is pushed on `feat/sub-beats` and integrated into the test-station
+source checkout. No rebuild, restart, station policy write or cache cleanup is
+performed by the agent. The preceding station source is `f6763e56`. After rebuild,
+selective admission stays OFF until the operator enables it on Sub/Beats → Cache.
+Physical extended-stem cache consolidation remains the next storage increment.
+
+## Upstream stem-cache management integration — 31 October 2026
+
+Integrated the three commits of upstream PR #2178 at reviewed head
+`22c8c6ea5c1112b1ef8619fadadc0a19a5c760c9` individually, avoiding unrelated
+upstream branch changes. Settings → Stems now owns cache/blend settings,
+measured usage, budget-cut confirmation and optional orphan cleanup. Broadcast
+and Stems save only their own fields. Existing admission rules below and their
+Settings explanation are preserved; cleanup still considers library membership,
+not admission eligibility. Adapting cleanup to those rules and consolidating the
+separate extended Sub/Beats cache remain subsequent work.
+
+Two reviewed bugs are fixed: the quarantine timestamp must be written before
+moving a live folder, and unknown quarantine dates never fall back to old
+folder mtimes. Missing, malformed or unreadable dates retain the quarantine
+until repaired. Failed deletions do not report their directory size as reclaimed.
+Automatic orphan cleanup remains disabled by default; no cleanup was run.
+
+Verification: 39 orphan tests (including three new filesystem regressions),
+109 stem tests, 32 Settings tests and nine admin-query tests passed. The static
+admin-query audit and controller/web lint plus typechecks passed; controller
+retains its existing 1,741 lint warnings. No full-suite or browser run was made.
+Development commits are integrated into the test-station source checkout after
+push; no rebuild, restart, settings write or cache mutation is performed.
+Rollback is the preceding station commit `58e7f40c`. Next: adapt cache management
+to the owner-approved admission rules and shared extended-stem storage.
+
+## Played/starred exceptions to stem admission — 31 October 2026
+
+This supersedes the genre-only admission restriction below. The owner requires:
+
+- Any historically played track, regardless of genre, BPM or beat grid.
+- Any operator-hearted or Navidrome-starred track, with the same exemption.
+- Any other ordinary track only when it passes the dance-family, 90–180 BPM and
+  measured-grid fallback introduced earlier.
+- Sub/Beats-prepared tracks remain admitted independently of that fallback.
+
+The shared SQL predicate applies these OR conditions before the existing ranked
+backfill and per-track write allocation. Any historical play counts, without a
+7/90-day admission cutoff. Those windows still contribute to the unchanged
+priority score. Listener likes retain their existing priority signal; a listener
+like alone is not a star exemption unless it has a corresponding Navidrome star.
+
+Analysis loads likes read-only (never minting or rewriting a second secret),
+refreshes Navidrome stars once per pass and reads completed Sub/Beats admissions.
+If Navidrome is unavailable, local operator hearts still qualify; if the saved
+Sub/Beats list is unreadable, it is preserved and that exception is deferred.
+Pair-specific tempo, alignment and rendering checks remain unchanged, so
+non-dance stem blends remain possible. Cache admission does not approve a pair.
+
+Verification: all 83 stem/cache/seam tests and 33 acoustic-plan tests passed.
+New SQL checks cover arbitrarily old plays, operator hearts, Navidrome stars,
+Sub/Beats-prepared ids, absent BPM/grids, and listener-only likes. The real mocked
+analysis pass creates stems for three non-dance tracks via play/star/Sub/Beats
+exceptions without changing saved Sub/Beats preparation. Existing dance fallback,
+non-dance exclusion and priority/eviction checks still pass. Controller lint and
+typecheck passed with the existing 1,741 warnings. Web lint/typecheck and all
+25 Settings tests passed; the Settings detector reported no findings.
+
+The previous 57,472 rejected folders / 84.3% figure used the stricter dance-only
+rule and must not be quoted as the count under this corrected policy. No files
+were reclaimed during either policy change. Extended Sub/Beats files remain in
+the separate 5 GB cache; physical consolidation/reuse and a unified byte budget
+are the next storage increment, not implemented by this admission correction.
+
+## Selective ordinary stem admission — 31 October 2026
+
+Owner-approved first step toward sharing the existing cache: ordinary library
+analysis still creates stems automatically, but only for dance-family genres,
+90–180 BPM, and a usable measured head OR tail bar grid. This uses the same broad
+genre matcher as Sub/Beats discovery; it does not require a completed deeper
+Sub/Beats preparation. A grid needs at least two finite, nonnegative, strictly
+increasing bar positions within known duration. Tail-only admission also needs
+valid outro metadata and a known duration.
+
+One pure predicate is registered in SQLite and used by both the ranked backfill
+query and the per-track allocator. Routine analysis, explicit facet plans and
+existing cached directories all obey that admission gate. Only eligible ordinary
+analysis work reserves new cache slots; noneligible tracks still receive their
+usual beat, loudness, embedding and vocal analysis. Fresh recordings establish
+beat evidence first, then become eligible for a later automatic stem backfill.
+An excluded track receives no false stem-attempt stamp, so new evidence can
+qualify it later.
+
+The original September 7 stem-priority policy (`f8339d17`, #1622/#1630) remains
+unchanged: head/tail seam sides multiply the existing airplay and curation score,
+with operator hearts, listener likes, recent rotation and historical plays all
+retained. Random ties in backfill and the same ranking for eviction remain.
+Admission filters candidates before that ranking; it does not replace it.
+
+Verification: 81 stem/cache/seam tests, 33 acoustic-plan tests and 13 facet-planner
+regressions passed. New checks cover admission in both JS and SQLite, malformed
+and missing evidence, automatic later backfill after initial measurement,
+continued non-dance analysis, and explicit-plan/existing-directory bypasses.
+The played/starred ranking and its scan/eviction regression tests still pass.
+Controller lint/typecheck passed with the existing 1,741 warnings. Web lint/typecheck,
+25 Settings tests and the Settings UI detector passed too.
+
+Existing cached audio and the byte budget are unchanged. This increment does not
+reclaim existing files or move Sub/Beats bundles out of their separate 5 GB cache.
+Shared storage, safe reuse of compatible regions and reclaim management remain
+follow-up work. Rebuild controller and web for the admission change and corrected
+Settings copy; no analyzer rebuild is needed. The owner runs station commands.
+
+## Library sorting — 31 October 2026
+
+Explore and Prepared tracks now offer Sort by: beat evidence first (the existing
+order), artist A–Z/Z–A, title A–Z/Z–A, album A–Z and BPM low/high. The controller
+sorts the full filtered collection before pagination and before choosing the
+bounded matching-selection rows. Stable title/artist/id ties prevent duplicate
+or missing rows when paging an unchanged collection; missing BPM sorts last in
+both tempo directions. The validated sort enum selects fixed SQL fragments.
+Counts and facets are unchanged by sort choice.
+
+Each browsing page retains its independent sort in the workspace and query
+string. Refresh/bookmarks restore it, invalid URL sort values return to the
+existing default, and Reset filters also resets sorting. A sort change returns
+to page one without dropping selections. Changing other filters keeps the sort.
+
+Preparation offers active/needs-attention first (existing priority), recently
+updated, oldest update first, artist A–Z and title A–Z. This sorts the full saved
+list before its 20-entry pagination; changing sort resets the page. Its choice
+persists while moving between the Sub/Beats pages, like its other list controls,
+and resets on refresh/leaving the workspace.
+
+Verification: existing Sub/Beats tests passed (25), followed by all seven browse
+checks including the two new sorting regressions. These cover all eight track
+orders, missing BPMs, stable ties, pagination, matching-selection order, unchanged
+facets and invalid sort rejection. Controller/web lint and typechecks passed
+(controller retains 1,741 existing warnings), as did 32 Library tests, nine query
+audit tests, the static query audit, Library search checks and all six query-cache
+checks. Isolated browser checks at 1440/768/390/320 pixels cover independent sort
+state, refresh, filtering, pagination reset, retained selection, preparation sort,
+invalid URL recovery, 44-pixel sort controls and no overflow. Evidence lives in
+`/home/jaz666/codex/subbeats-sorting-evaluation-20261031/` outside Git.
+
+This increment requires controller and web rebuilds, with no analyzer change.
+The owner runs station builds/restarts.
+
+## Library usability audit fixes — 31 October 2026
+
+The five UI audit findings are addressed within the existing Library styles:
+
+- Explore/Prepared use compact desktop result columns and stacked mobile rows.
+  Previous/Next controls appear above and below the results.
+- Explore/Prepared search, genre, collection, analysis status and result offset
+  are mirrored into the route query string using Library's replaceState pattern.
+  Refresh/bookmarks restore the current view; malformed values fall back safely.
+  Each page retains independent filters. Bulk selections remain temporary and
+  clear on refresh or when leaving Sub/Beats; pair/shift behavior is unchanged.
+- Page selection disables when no additional rows can be admitted and none are
+  selected on that page. Partially selected pages at capacity still allow
+  deselection. Batch/list capacity feedback appears beside the bulk controls.
+- Feature actions, search inputs, preview timeline and touch row-selection hit
+  areas have at least 44-pixel height. Desktop row checkboxes retain the shared
+  compact appearance; mobile/coarse-pointer hit areas grow without enlarging
+  the checkbox artwork. No global shared-control sizes changed.
+- Empty Preparation/Preview views link to Explore; empty Prepared results also
+  provide a direct way to prepare more tracks.
+
+Verification used the isolated 2,500-track fixture, with desktop/mobile workflow
+checks and focused checks at 1440, 768, 390 and 320 pixels: filter refresh and
+bookmarks, malformed URL recovery, selection/deselection at the batch limit,
+empty-state links and no horizontal overflow. A full 500-entry list blocks new
+selection but permits failed-entry retry selection; measured mobile controls
+meet the 44-pixel hit-area height. Existing pair/shift persistence,
+audio cleanup, independent filters and page-specific candidate reads still pass.
+The Library tests (32), admin-query tests (9), static query audit, Library search
+browser checks and all six query-cache checks passed. Web lint/typecheck and the
+UI detector passed. Scripts, screenshots and results are under
+`/home/jaz666/codex/subbeats-audit-fixes-evaluation-20261031/` outside Git.
+
+Source is prepared on `feat/sub-beats` for the test-station checkout. Only `web`
+needs rebuilding for this increment. The owner runs station builds/restarts.
+The deferred transition-method chooser, waveform editing and audio clash judging
+remain outside this UI refinement.
+
+## Library sub-pages — 31 October 2026
+
+Sub/Beats stays under the existing Library sidebar entry and uses the Library's
+`lib-tabs` navigation styling. Four real routes replace the combined page:
+
+- `/admin/library/subbeats` — Explore: dance/whole-library discovery, filters,
+  persistent cross-page selection and bounded queue admission.
+- `/admin/library/subbeats/preparation` — Preparation: progress, pause/resume,
+  saved-list search/status filters, pagination and explicit retries.
+- `/admin/library/subbeats/prepared` — Prepared tracks: searchable prepared
+  recordings, genre filter, and Use as outgoing/incoming controls.
+- `/admin/library/subbeats/preview` — Preview: the chosen pair, track search,
+  existing bar-shift control and seekable browser audition.
+
+The existing Sub/Beats URL remains Explore. The sidebar remains one Library
+child; no extra sidebar hierarchy or new global style is introduced. Links have
+an active-page indicator, wrap on phones using the existing Library pattern,
+and update the admin breadcrumb and document title. The admin motion frame keeps
+a stable key within Sub/Beats so it does not remount the nested layout on each
+internal navigation. Each route renders only its own controls. Preparation/Preview do not issue candidate-list reads.
+
+A small provider in the nested route layout retains in-memory selections,
+separate Explore/Prepared filters, preparation filters/page and the chosen pair
+and shift while navigating between these pages. Leaving Sub/Beats clears these
+unsaved choices, as leaving the previous combined page did. The provider holds
+no audio: the preview hook remains page-owned, so navigating away cancels an
+in-flight audition or stops/releases completed audio. Browser back restores the
+chosen pair/shift without restarting playback. No mix method, preparation policy,
+API contract or cache limits change in this increment. Deploy only `web` for
+this navigation change; any earlier unbuilt controller changes still require the
+controller rebuild already supplied.
+
+Verification: 32 Library web tests, nine admin-query tests, the static query audit
+and web lint/typecheck passed. Desktop/mobile browser checks covered all four
+direct routes, active links/sidebar highlighting, cross-page selection, separate
+Explore/Prepared filters, preparation filters, pair/shift persistence, browser
+back, stopped/released audition audio on exit, and no candidate reads on the
+Preparation page. Both viewports had no page errors or horizontal overflow.
+The existing Library search browser checks and all six query-cache checks passed.
+Tests used an isolated 2,500-track fixture API and temporary state, with test:test
+auth. Both temporary servers were stopped and generated Next type-file changes
+restored. Fixture scripts, results and screenshots are under
+`/home/jaz666/codex/subbeats-subpages-evaluation-20261031/` outside Git.
+
+Source belongs to `feat/sub-beats` and is to be cherry-picked into the test
+station checkout. No station rebuild or restart is performed by the agent.
+Next: open Library → Sub/Beats and use the in-tool page navigation after the
+owner's web rebuild; verify the selected pair survives Prepared tracks → Preview.
+
+## Browsing and selection at library scale — 31 October 2026
+
+The Library page now has explicit Dance candidates, Prepared tracks and Entire
+library collections. Search stays within the chosen collection. Dance uses the
+existing genre/90–180 BPM policy; Prepared tracks includes saved prepared jobs
+that still exist in the library. Entire library is the manual override, including
+recordings with no dance tag or tempo data. Legacy API searches without an
+explicit scope retain their previous whole-library behavior.
+
+`GET /library/subbeats/candidates` accepts `q`, `offset`, `scope` (`dance`,
+`prepared`, `library`), `genre` (exact stored label, case-insensitive) and `status`
+(`all`, `not-started`, or an existing preparation status). It returns 50 rows,
+the matching total, genre and status counts, and up to 100 selectable rows from
+the complete filtered result. Genre options describe the collection/search before
+genre/status filtering; status counts describe the chosen genre/search before
+status filtering. All filters apply before pagination. An out-of-range offset
+falls back to the last page. Invalid filters return 400; unavailable state returns
+503 without touching it. Rows/counts/bulk suggestions use one SQL snapshot.
+
+Selections carry across pages, collections, search and filters. A review list
+shows selected titles with individual removal, plus the number currently outside
+the visible page. Select this page affects only the page; Select matching adds
+from the full filtered result but stops at the batch/list limits. No action
+silently queues the full catalogue. Queued, running, prepared and unmeasurable
+entries are excluded from bulk selection; explicit Recheck remains available in
+Preparation. Failed/unavailable entries can be retried even at the 500-entry
+limit because they already own a slot. The controller remains authoritative at
+admission, and failed requests retain the selection. Retrying one sidebar entry
+does not clear unrelated selections.
+
+The existing 100-track submission, 500-entry list and separate 5 GB prepared-cache
+limits are shown before submission. This increment does not enlarge them, evict
+prepared audio or automatically admit thousands of tracks. Preparation has its
+own search/status counts and 20-entry pages. Preview controls now live on their own sub-page and have a prepared-track
+search that retains the selected pair. No audio
+rendering or mix policy changes are part of this increment.
+
+A compact SQLite browse index is ensured on database open after migration,
+covering metadata, tempo, confidence and the computed beat-data flag. It avoids
+reading the large stored beat arrays for every row during counts/filtering. It
+uses only built-in SQLite functions so child writers can maintain it. Index
+creation failure warns and preserves the existing fallback read path. Deploy
+`controller` and `web` together through the existing overlays; the owner runs
+rebuilds. Revert this increment to restore the previous page/API; the extra
+index is harmless and saved jobs/audio remain intact.
+
+Verification: all 25 controller Sub/Beats tests, 32 Library web tests, nine
+admin-query tests and the static query audit passed. Controller and web
+lint/typechecks passed; controller retains existing warnings. Desktop/mobile
+browser checks with 2,500 dance fixtures covered cross-page/filter selections,
+100-track single submissions, scoped search, prepared browsing, status counts,
+preparation search/pages, searchable preview choices and overflow/page errors.
+The existing Library search checks and all six query-cache browser checks passed.
+All browser writes used a separate temporary state directory and test:test auth;
+temporary servers were stopped and generated Next type-file changes restored.
+
+A read-only extraction of 69,344 station metadata records into an isolated RAM
+projection (without original audio or large beat arrays) gave 11,055 dance
+matches, 1,610 exact House-tagged matches and 49 prepared records. Indexed browse
+queries took approximately 263 ms, 211 ms and 2 ms respectively; the entire
+library took 536 ms. These are isolated scale checks, not a guarantee of live
+cold-disk latency. The station DB was opened read-only and was not indexed or
+otherwise changed by this check. Repeatable browser fixtures, checks, screenshots
+and scale results are retained outside Git under
+`/home/jaz666/codex/subbeats-usability-evaluation-20261031/`.
+
+Development is on `feat/sub-beats`; the scoped source increment is intended for
+cherry-pick into `test-station/sleeve-notes-clean-20261014`. Runtime remains on
+the owner's installed images until they rebuild `controller` and `web`. Next,
+use the new genre/status filters to select a small batch within the existing
+cache limit, then check the preparation results before admitting more.
+
+## TODO: phrase confidence and vocal-led stem transitions — 2 November 2026
+
+Deferred work, in this order; these are proposed rules, not current preview behaviour:
+
+1. **Investigate confidence in musical phrase boundaries first.** Distinguish
+   beat timing, bar/downbeat alignment and musical phrase starts. Existing beat
+   fits and vocal activity measurements do not establish complete phrases or
+   reliable phrase boundaries. Validate against listening examples before using
+   these positions to approve automatic handovers or loops.
+2. Explore keeping only one track's vocals audible during the 16-bar overlap.
+   Prefer preserving the outgoing vocal at its natural level through its complete
+   phrase ending and audible tail while introducing incoming drums. Exchange bass
+   at a suitable musical boundary and handle accompaniment separately, avoiding
+   competing basslines at full level. Also consider incoming-vocal and instrumental
+   alternatives according to the pair's arrangement.
+3. Preserve complete vocals on both sides: never cut the outgoing ending or
+   unmute an incoming verse partway through. Choose the incoming source window so
+   its first retained vocal starts as a complete phrase after the outgoing vocal
+   finishes. Reposition the overlap or use another transition if this cannot fit;
+   do not force a vocal swap inside every 16-bar window or a fixed vocal gap.
+4. If an instrumental loop is needed before the incoming vocal, find a vocal-free
+   section with no pickup or vocal tail crossing its boundaries. Add time only in
+   multiples of four bars (4, 8, 12, 16...), with loop entry, exit and the eventual
+   vocal entrance respecting musical phrasing. Track loop length and total added
+   bars separately. Bar counts alone do not prove phrase alignment. If a safe loop
+   cannot be identified, choose another overlap or transition method.
+
+## Deferred search enhancement — owner decision, 1 November 2026
+
+Add playlist search alongside artist, track and album in the Sub/Beats search
+functions. Recorded for later implementation; current search behaviour is unchanged.
+
+## Deferred preview controls — owner decisions, 31 October 2026
+
+Pause mixing work while improving which tracks qualify for Sub/Beats analysis.
+Return to these controls later:
+
+- Offer a preview method choice: simple beat-matched crossfade or the existing
+  16-bar stem exchange. Do not assume stem mixing is necessary for every pair.
+- Display each track as a waveform with coloured intro/outro blocks. Each block
+  spans **16 bars**, not 16 beats, and moves forwards/backwards in one-bar steps.
+- Keep automatic positions as the default; optionally save per-track adjustments
+  and provide a reset to detected positions. Manual tweaking must not be required.
+- Leave LLM listening/clash judging aside; do not add work to the station LLM.
+
+Earlier qualification baseline (before the dance-music filter, 31 October):
+unfiltered discovery suggests tracks with stored BPM between 90 and 180, ordered by presence of at
+least 16 stored beats, then existing analysis confidence. Searching bypasses that
+BPM restriction; queue admission accepts any known library track. These are
+suggestions, not a four-to-the-floor eligibility test. Full preparation seeks
+64-beat local timing fits with RMS residual below 35 ms and relatively strong
+percussive onset support. That evidence alone does not verify a kick on each
+quarter note, usable mixing windows, or pair suitability. Dance-family discovery
+above supersedes that suggestion rule; deeper audio qualification still needs validation before changing admission or analysis.
+
+Earlier listening evidence: [2026-10-30 session handover](../investigations/2026-10-30-subbeats-handover.md).
+
+Sub/Beats identifies likely sustained four-to-the-floor tracks, prepares deeper
+Librosa analysis and dedicated stem regions, and eventually offers a prepared
+beat-matched transition when suitable. The operator selects tracks to prepare;
+playback should then run unattended. This is separate from protected Sub/Flow
+sequences. Never alter a protected sequence's internal joins.
+
+## Library location
+
+Owner decision, 29 October 2026: place the Sub/Beats page in **Library →
+Sub/Beats**, alongside the other library tools. Candidate discovery, queuing
+deeper analysis and preparation progress belong on this page. Keep protected
+Sub/Flow management separate. This records the navigation requirement; the page
+is not implemented by the initial cache increment.
+
+## Agreed audio direction
+
+Development listening favoured a 16-bar stem exchange, four extra bars of vocal
+separation, and a gradual 16-bar return to the incoming recording's native tempo.
+Preserve the incoming recording from source zero. An established incoming
+instrumental loop can hold back incoming vocals; alternatively, outgoing drums
+can support incoming vocals before its first established beat. Confirm sustained
+kick attacks independently of a beat tracker's grid. Grid evidence alone cannot
+approve a driving beat or a pair.
+
+When any Sub/Beats preparation or confidence check fails, return no upgrade to
+the existing transition plan. Preserve the normal effects, eligible standard
+Stem Blend, cue points, loudness and settings. Commit cue changes only after a
+prepared pair passes checks and before publication to the mixer. Keep native
+playback untouched until queue integration is implemented and validated.
+
+## Current Library preparation workflow
+
+The development branch now includes **Library → Sub/Beats** at
+`/admin/library/subbeats`, linked from the Library page and its navigation group.
+It suggests starting points using existing tempo/beat evidence (not a confirmed
+drive score), supports artist/title/album search, and queues selected recordings
+for deeper preparation. Search can find tracks without existing tempo analysis.
+
+The controller alone owns `state/subbeats/queue.json`, saving admissions, pause
+state, per-track attempts and results atomically. Managed children read that file
+and report outcomes on the existing stdio/progress channel; they never overwrite
+it. This preserves tracks added or paused while another is processing. The saved
+list has at most 500 tracks and each admission accepts at most 100 IDs. Only
+known library IDs can be admitted. Duplicate queued/running tracks are ignored;
+explicit Recheck/Retry can refresh terminal results without automatic retry loops.
+
+Sub/Beats uses the normal tagger/analyzer single-flight process slot, pidfile,
+process-group Stop/restart handling, run logs, and quiet-time policy. Preparation
+runs one track at a time and waits behind ordinary maintenance. Pause finishes
+the current track and leaves the rest queued. The normal Stop control also
+pauses the saved Sub/Beats list. On controller restart an interrupted active
+track becomes a visible failure requiring explicit retry, while queued work
+resumes after normal maintenance recovery. Closing the browser does not stop it.
+Sub/Beats completion skips normal catalogue/playlist refreshes and stem sweeps.
+
+The existing analyzer worker and sidecar accept the optional `prepare_subbeats`
+operation / `/prepare-subbeats` endpoint. Only an explicitly capable heavy
+analyzer is used; older/lean backends are unavailable for this job. It reuses the
+normal capped source downloader with a separate 256 MiB / five-minute allowance
+for these full-recording jobs (ordinary analysis retains its 12 MiB default). It
+requires the complete recording, never a byte
+prefix or a URL fallback. A cache UUID marker must match on both sides of the
+shared state volume, including a check before publication. Unshared remote
+analyzers decline rather than creating a private cache elsewhere. Preparation has
+a separate 30-minute request deadline, leaving normal analysis deadlines intact.
+The sidecar image includes both preparation modules; no dependency pins changed.
+
+The Library page distinguishes queued, preparing, prepared, unmeasurable,
+unavailable and failed results. Prepared means track resources were validated;
+it does not mean any pair is ready for playback. Completed results can be
+rechecked explicitly, using the cache when source and analysis identities match.
+No automatic pair selection or rendered transition has been connected to playback.
+
+Admin-only endpoints:
+
+- `GET /library/subbeats` — saved list and current maintenance progress.
+- `GET /library/subbeats/candidates?q=…&offset=…` — bounded discovery pages.
+- `POST /library/subbeats/queue` with `{ "ids": ["track-id"] }` — persist selection.
+- `POST /library/subbeats/pause` with `{ "paused": true }` — pause/resume admission.
+
+Both container bootstraps prepare `subbeats/` and `subbeats/v1/` for the shared
+controller/analyzer users. The cache lock works through a readable descriptor,
+so a cache initially created by the developer's user can be reused by the
+analyzer without rewriting existing stem files. Runtime folder permissions are
+applied only when the owner deploys/restarts; this source change does not operate
+the live station.
+
+## Live preparation timing and waveform display — 12 November 2026
+
+Live Sub/Beats successor selection now reserves the ordinary 75-second selection
+allowance, the configured render timeout (capped at 120 seconds), the existing
+45-second handover deadline and 10-second commit margin. On the test station's
+60-second render timeout this starts selection with 190 seconds left, instead
+of 120; a 120-second render ceiling gives 250 seconds. The single held-track
+rule, retry cooldown and hard fallback deadline remain in force. This is pair
+rendering from saved stems; it does not launch new stem separation at pick time.
+
+The expanded waveform now uses the same verified cue-coverage/legacy artifact
+reader as the Queue tooltip, including source offsets and storage gain. Its
+previous base-bundle-only reader incorrectly reported cue-prepared audio as
+unavailable. The display publishes the incoming entry time and positions the
+Sub/Beats bar around that entry frame, instead of ending the entire clip there.
+For the observed 39.48-second clip with a four-second outgoing lead, the bar
+starts four seconds before entry and continues about 35.48 seconds after it.
+
+The active pair remains readable across incoming metadata and the maximum
+60-second listener buffer. Only the current pair or its immediately preceding
+Sub/Beats overlap is admitted; unrelated/expired track requests are refused.
+The shared query retains its previous response while the listener catches up.
+These changes preserve preview availability through the mixed clip; the
+controller's played label alone does not establish what a listener heard.
+
+Focused verification passes: live playback/transport (17), cache and expanded
+waveform HTTP contracts (7), existing file/audio routes (16), drain policy,
+regular stem sources (3), web timeline (7), and admin query audit (9), plus both
+package typechecks and scoped lint. The waveform fixture verifies all eight
+stem responses before the seam, retained access across metadata, refusal of
+unrelated/expired requests, and the incoming-entry timestamp. No real-time
+listening test, production build or browser verification is included.
+
+Development remains in `fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`. The source is delivered
+to `/home/jaz666/Docker/subwave`; the owner rebuilds controller and web and then
+checks the next compatible pair with the expanded display open. No agent-run
+rebuild or on-air intervention is part of this change. Immediate source rollback
+is `180b21c0`.
+
+## Live admission: speech and analyzer readiness — 12 November 2026
+
+Pending speech and track-tied intros do not veto either regular Stem Blend or
+Sub/Beats. The previous Sub/Beats checks rejected any pending segment, including
+an ident waiting for a suitable vocal opening, and checked it again before
+publication. Station logs showed this rejecting several consecutive pairs even
+after the analyzer was healthy. Those speech checks are removed from both live
+admission stages. The Sub/Beats-only hold on boundary speech is also removed;
+speech uses the existing ducked channel, vocal-runway and track-intro collision
+rules. An option to keep speech away from stem transitions remains a future
+owner decision, with no new setting or suppression policy in this candidate.
+
+Committed stem seams still cannot have a music bed or silence inserted between
+their rendered parts and native continuation. Existing pause-and-talk handling
+therefore falls back to ducked boundary delivery for either stem type. Already
+published silence retains its matching speech and exactly-once recovery. Track
+caps, source trims, show boundaries, pair identity and evidence changes remain
+independent audio/timing checks.
+
+A separate cold-start issue rejected the first pair merely because cached
+analyzer capability was unknown. The live path now checks readiness for up to
+five seconds within the existing render deadline, with cancellation when the
+pair changes. A ready analyzer can render that first pair; unsupported or slow
+backends still fall through to regular Stem Blend. Fallback log records include
+both track IDs and distinguish cuts from incoming silence trims.
+
+Regression checks cover speech at final admission, both stem types arming with
+pending/attached speech, ducked speech delivery on either committed seam, and
+cold/unsupported/slow/cancelled analyzer checks. The focused live/transport suite
+passes all 19 tests; the existing ident/link collision suite passes all 12 and
+pause-and-talk/recovery passes all 18. Controller typechecking and scoped lint
+also pass. Development stays in
+`fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`; the source candidate is
+delivered to `/home/jaz666/Docker/subwave` for the owner to rebuild. Immediate
+rollback is `670979dd`. No build, restart, scan or listening test is run by the
+agent. After rebuilding, check the next prepared compatible pair for attempt,
+rendered and committed messages and confirm the actual transition by listening.
+
+## Live stem display fixes and speech follow-up — 12 November 2026
+
+The Mixing Desk keeps an expanded stem pair open across queue changes and
+incoming metadata. Source stems are decoded into small peak arrays through the
+authenticated admin Query cache; closing/reopening reuses those arrays, while
+audio buffers and the decoder context are released. The cache is keyed by the
+pair, selected timing and source coverage, rather than a changing air-time
+forecast. It remains isolated by the existing authenticated Query provider.
+
+Outgoing/incoming source detail now occupies separate, full-width traces for
+each stem. The display restores storage gain, selects the actual outgoing
+source offset, and maps incoming samples through the saved tempo release and
+drum repetitions. Inserted drum-only sections show silence in the other stems.
+Per-stem visual boosting makes quiet traces readable and is explicitly labelled
+as detail, not an output level meter. Approximate gain-envelope drawings have
+been removed; the header still reports the saved station gains. HTML marker
+labels replace the overlapping, dark SVG text. A shared seconds ruler and live
+playhead show progress across the four rows.
+
+The space between Stems and Expand shows the mix type and current saved timing
+stage: lead, incoming entry, handover, solo incoming, tempo return and completion
+where applicable. Style labels/descriptions are shared with the audition page.
+The detailed charts clear after both the outgoing track's 30-second visible
+history and the complete rendered transition have ended. The initial display
+fix cleared charts at the history cutoff even when a longer mix was still
+running; the owner observed that premature unload. The corrected lifetime
+retains the charts, playhead and cached drawing data through handover, tempo
+return and native-audio resume, using the same listener-adjusted end time as
+the mix bar. Unrelated tracks cannot retain an old pair. A different pair does
+not inherit the old expansion choice.
+
+The main timeline scrolls continuously around a fixed central playhead instead
+of jumping every 30 seconds; reduced-motion mode uses one-second steps. A
+Sub/Beats outgoing waveform is clipped to its planned incoming entry, keeping
+the next waveform aligned before metadata changes. Playback elapsed time and
+decoded source length are labelled separately, so a planned early exit no
+longer silently changes the recording's apparent duration. The Queue says
+“Next station transition” and explains its live station clock, whereas the
+Mixing Desk applies the listener buffer. Sonos may have its own additional
+delay; the owner's screen recordings intentionally contain no audio.
+
+**Follow-up after the stem display fixes: advance notice for speech.** The
+current speech marker is based on confirmed air time and can arrive only as
+speech begins. Investigate exposing prepared/pending segments with an estimated
+start and duration, distinguishing forecast markers from confirmed air markers
+and updating or removing them when placement changes or speech is cancelled.
+Preserve the existing speech collision, handoff and actual-air bookkeeping;
+forecast speech must not veto either stem transition. This follow-up does not
+introduce a speech-avoidance setting or claim to predict an external speaker's
+buffer delay.
+
+Development remains in `fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`, delivered to
+`/home/jaz666/Docker/subwave` for an owner-run web rebuild. Rollback is
+`0c9b1035`; controller/analyzer audio behaviour is unchanged. Isolated browser
+fixtures exercise both stem types, eight one-time stem reads, reopen/metadata
+cache reuse, visible-history expiry, completion, full chart width and very quiet
+source traces on desktop/mobile and light/dark themes. Actual station listening
+and production rebuilds are left to the owner. All 23 focused web tests pass
+(stem display clocks/source mapping, waveform timeline and admin-query audit),
+along with web typechecking, scoped lint and the production admin-query audit.
+The lifetime correction adds regressions for a 61.3-second mix extending past
+the outgoing history cutoff and for a short mix ending before that cutoff.
+
+The owner then requested that waveform height include predicted volume. The
+display now multiplies each trace by its own style-specific stem fader and
+saved track gain. Detail boosting is fixed before those faders, so a fade to
+zero becomes visually silent rather than being normalised back to full height.
+Sub/Beats follows the renderer's four-beat bass/melody exchange, one-beat bass
+swap, gradual drum entry and retained vocal/drum tails. The saved eight-beat
+tempo release (or native-tempo four-beat ending) supplies the beat period to
+sample-rounding precision. Regular Stem Blend shows its drum-carry pattern:
+outgoing drums under incoming melody/vocals, then incoming drums; its internal
+handover time remains explicitly estimated. Incoming regular source detail
+therefore starts at clip zero, rather than at the old estimated midpoint.
+
+These are predicted mix contributions, not live meters: final bus limiting,
+speech ducking and any additional regular-loop peak protection are not measured
+by this view. Source peaks remain reusable across reopening and metadata
+changes. The combined correction passes 19 focused web tests (12 stem display
+and seven waveform clock cases), web typechecking, scoped lint and isolated
+browser checks for the long-mix lifetime, separate fade shapes, cache reuse,
+desktop/mobile layouts and both stem types. The immediate source rollback is
+`a43fc98c`; deployment needs only an owner-run web rebuild.
+
+## Clip join volume correction — 12 November 2026
+
+The owner heard a brief stutter or volume dip as the dashboard changed tracks
+during a stem transition. This coincides with the outgoing/incoming split in
+the rendered Sub/Beats WAV. Read-only mixer logs showed the expected 300 ms
+overlap inside a roughly 380–400 ms buffer; the split files themselves share
+identical samples. The mixer nevertheless started its outgoing fade before the
+delayed incoming part, and the two standard fade operators also prepared their
+clocks differently. Isolated Liquidsoap 2.4.6 renders reproduced a 3.5–4.4 dB
+dip on a constant-level test signal across four frame phases.
+
+Aligned clip joins now apply complementary linear weights in `add`, on one
+clock after the incoming delay. The outgoing stays at unity while the incoming
+waits. Both weights sum to one, and their ramp finishes one frame before the
+outgoing buffer ends: otherwise a partial last frame still left a short dip.
+This applies to regular Stem Blend and all three Sub/Beats clip joins, including
+the internal metadata change. The source split, cue alignment, tempo release,
+track gain and speech admission policies stay the same. Ordinary song and
+jingle crossfades retain their existing paths.
+
+`scripts/stem-seam-test.sh split` now uses the production Python splitter and
+lifts the actual mixer implementation. A constant channel checks volume;
+a tone plus seeded noise checks sample continuity across the join. All four
+frame phases preserve the original audio to 16-bit output precision (maximum
+sample error 0.00003368; minimum test level −0.0021 dB from quantisation).
+The command accepts the existing `STEM_SEAM_RADIO_REF` for regression comparisons.
+Eight outer-seam renders also pass (FLAC/MP3, station crossfades 0/6 seconds,
+predecessor trims 0/661 samples): maximum beat error is 0.4 ms, and the return
+to the original incoming track is within one sample. All 27 focused seam,
+recovery, equal-power and gain-override tests pass, together with controller
+typechecking, scoped test lint and a full Liquidsoap 2.4.6 script check in an
+isolated container. The equal-power source contract was updated
+to recognise the clip-only bypass while still requiring both ordinary faders.
+
+Development remains in `fix/library-stems-queue-20261112` at
+`/home/jaz666/codex/subwave-library-stems-audit-20261112`. The source candidate
+is delivered to `/home/jaz666/Docker/subwave`; the owner rebuilds **broadcast**.
+No live restart, queue edit or scan is performed by the agent. The immediate
+source rollback is `88b04d24`. Listening confirmation remains an owner check
+after rebuilding; legitimate speech ducking can still occur during a mix.
+
+## First development increment: local preparation/cache (historical foundation)
+
+
+`controller/scripts/subbeats_prepare.py` is an explicit local development job,
+not an installed background service, API or playback hook. It reuses the normal
+worker's Demucs separator and uses Librosa for full-recording rhythm evidence.
+It writes only beneath `<state-dir>/subbeats/v1/`; source audio, ordinary library
+analysis, settings and the regular stem folder are never written. The owner
+approved the host development location:
+
+```
+/home/jaz666/Docker/subwave/state/subbeats/
+```
+
+The recording is decoded from sample zero, independently at 22.05 kHz mono for
+analysis and 44.1 kHz stereo for stems. This avoids MP3 seek-offset errors seen
+in the experiments. Local input must be a complete recording. Jobs are limited
+to 20 minutes of decoded audio and FFmpeg has a 180-second decode timeout.
+
+Analysis stores full-recording onset/beat evidence, supported local 64-beat fits
+(timing residual below 35 ms and sufficient onset support), and a conservative
+late percussion-loss candidate. These remain experimental measurements, not a
+calibrated drive score. Unsupported/silent input records `unmeasurable` and skips
+separation. Every result explicitly has `pair_ready: false`.
+
+The initial requested stem coverage is source zero through 68 seconds, plus an
+exit region ending at the latest supported grid before any detected sustained
+percussion loss. The exit includes a 16-bar overlap plus eight seconds of lead
+and two seconds of tail. Separation includes four seconds of source context on
+each available side; the saved stems contain only the requested interval.
+`--head-seconds` accepts 40–600 seconds for longer openings. This is an explicit
+coverage request, not proof that it suffices for every pair: the later pair
+planner must derive its required coverage from the entire timing map and request
+more when needed. No fixed 68-second ceiling should reach playback integration.
+
+Bundles are keyed by source SHA-256, algorithm/Librosa version, requested coverage
+and separator model/settings/package versions. A manifest records absolute source
+sample ranges, reconstruction error, file lengths and SHA-256 hashes. Stem shape,
+finite samples, clipping-free storage, written coverage and reconstruction are checked
+before publication. A source change during preparation fails the job. Cache
+reuse verifies the manifest and every saved file; damaged bundles are declined
+with their path for inspection, never silently trusted or overwritten.
+
+A nonblocking local file lock allows one preparation at a time. Complete bundles
+are published by directory rename; failed jobs clean their own staging files.
+A killed process may leave a `.pending-*` directory, which remains unpublished
+and counts against capacity. Automatic cleanup of abandoned staging directories remains later cache
+maintenance work. Managed queue recovery does not adopt incomplete bundles.
+
+The initial budget is **5 GiB**. Existing bundles are never automatically evicted
+in this increment: a full cache declines new work, and publication beyond the
+budget fails and removes the new staging directory. Staging can temporarily
+exceed the budget during a job, so allow 1–2 GB of working headroom. Model weights
+remain in the analyzer's model cache, outside this budget. No prepared pair
+clips are retained by this increment.
+
+Run with an analyzer environment containing Librosa, SoundFile, FFmpeg and,
+for stems, the existing heavy Demucs dependencies and model cache:
+
+```sh
+nice -n 10 /path/to/analyzer/python controller/scripts/subbeats_prepare.py \
+  /path/to/complete-recording.mp3 --state-dir /path/to/station/state
+```
+
+`--analysis-only` needs no Demucs and produces a separate, small analysis bundle.
+It does not require a Librosa upgrade or change normal analysis defaults. The
+Librosa 1.0 variable-rate rendering used in auditions is a separate future
+integration concern; this preparation step does not render transitions.
+
+## Later development on this feature branch
+
+1. Broaden driving-beat validation and negative fixtures, and evaluate the
+   existing-data candidate ordering. Preparation/page integration is implemented
+   above; it still needs owner deployment and listening-led development.
+2. Derive/expand stem coverage from the pair timing map, confirm four-bar kick
+   loops, validate source-zero release and vocal separation, and prepare pair
+   clips before playback deadlines. Apply the normal shared loudness gain.
+3. Integrate successful prepared upgrades into the queue, preserving the normal
+   transition plan on every decline and protecting unpublished proposal rollback.
+4. Improve the **general stem cache**. Existing priority-based preparation and
+   eviction (#1622/#1630) ranks beat-grid usefulness, airplay and curation, but a
+   full cache stops backfill and only over-budget data is swept. Allow valuable
+   missing tracks to replace lower-value unused entries within the budget,
+   consider upcoming demand, and prevent repeated separation/eviction churn.
+   This is explicitly deferred; do not clear the current cache as part of early
+   Sub/Beats development.
+
+Near-real-time rendering remains a later measured experiment. Broad automatic
+library preparation and a production-ready drive score remain unproven.
+
+## Verification
+
+`subbeats_prepare_test.py` runs through the existing `analyzer-python.test.ts`
+shim under `npm test -- analyzer-python`. It covers atomic publication/reuse,
+changed identities, corrupt/missing artifacts, failure cleanup, budget refusal,
+concurrent writer refusal, separation from ordinary state, and supported exit
+coverage including early calm outros. Real recording preparation and reuse are
+checked separately during development; numerical checks do not replace listening
+validation of eventual rendered pairs.
+
+### First increment evidence — 29 October 2026
+
+Development branch `feat/sub-beats` starts at `jaz666/feat/sub-flow` (`03fc02c6`),
+with its original plan retained. Worktree:
+`/home/jaz666/codex/subwave-sub-beats`.
+
+A selected real recording, Sash! — La Primavera, was prepared at the approved
+state location. Its analysis again identified the sustained percussion drop at
+180 seconds of a 213.53-second recording. The 68-second head and 38.22-second
+exit region produced eight validated FLACs; analysis and stems together occupy
+69,832,005 bytes (about 70 MB, plus the small manifest). Relative stem
+reconstruction errors were 0.0222 and 0.0284. A second invocation returned a cache
+hit with identical file hashes and no separation. A separate analysis-only job
+under the existing Librosa 0.11.0 also succeeded, finding the same drop and using
+79,247 bytes. The full stems trial used the isolated Librosa 1.0.0/Demucs 4.0.1
+CPU environment from the listening experiments. No model download was needed.
+
+No broad library preparation, normal-cache sweep, database change, station
+source deployment, Docker rebuild/restart or playback integration was performed.
+The only runtime writes were the approved new Sub/Beats cache and local evidence
+logs. Existing ordinary stems and analysis remain in place.
+
+Verification for this increment: `npm test -- analyzer-python` passed, including
+20 new cache/preparation checks and the existing analyzer Python suites;
+`npm run lint` passed (existing warnings, no errors, including TypeScript checks);
+Python compilation and `git diff --check` passed. The full controller/web suites
+and production builds were not run for this local Python development entrypoint.
+
+That increment established the local cache foundation. The next increment
+implemented the managed preparation/page workflow described above. Pair-render
+integration and general-cache replacement policy remain separate later work.
+
+### Managed preparation and Library page evidence — 29 October 2026
+
+The next increment adds the workflow above without operating the station.
+Verified with isolated state and fixture audio/analyzer endpoints:
+
+- 14 Sub/Beats checks: admin-only routes, bounded/validated admission, discovery
+  with missing or malformed existing analysis, durable state and retries, real
+  managed-child stdio delivery, admissions during an active job, pause/resume,
+  Stop preserving queued work, and a refused process-lock write failing safely.
+- 45 analyzer checks, including the existing Python suites and 21 cache/
+  preparation cases. New contracts cover unsupported/older backends, shared
+  cache proof, complete-source requirements, sidecar forwarding, actual heavy
+  model-use accounting, and larger job-specific downloads leaving normal caps
+  unchanged.
+- 50 existing tagger checks, 16 bootstrap checks (both container entrypoints),
+  and 14 quiet-time checks passed.
+- 29 web Library checks and nine admin-query audit checks passed; the static
+  admin-query ownership audit passed. Controller and web `npm run lint` passed,
+  including TypeScript (controller retains its pre-existing lint warnings).
+- Existing browser scripts passed: all 24 Library search checks and all six
+  query-cache checks, including tagging/blocking cache propagation, tab reuse
+  and signed-out request behaviour. They ran against the temporary fixture
+  library on ports 7791/7793, with no live library or service credentials.
+- Desktop (1440 px) and mobile (390 px) screens rendered without horizontal
+  overflow or uncaught page errors; admission survived a reload. Empty candidate
+  and failed-progress states were exercised; unknown queue state disables
+  admission. A bounded follow-up confirmed the shared checkbox controls and
+  Library/Sub/Beats breadcrumb. The UI detector reported no findings.
+- A real Python worker protocol smoke test used hard-linked copies of the
+  validated La Primavera cache in a temporary state directory. It advertised
+  support, verified the matching cache marker and returned the same prepared
+  bundle with `subbeats_used_models: false`. No fresh separation was needed.
+
+Temporary preview servers were stopped. Screenshots/logs remain in the isolated
+experiment directory, outside Git. No full production build, deployment, station
+restart or real playback test was performed. Normal transitions and general stem
+cache retention are unchanged. Pair planning/rendering and playback integration
+remain the next development stage.
+
+## Test station deployment — 2026-10-29
+
+The preparation UI/queue candidate from `feat/sub-beats` (`6969aab8`,
+`b5146aa1`, `0d1b47d4`) is integrated onto the station's existing
+`test-station/sleeve-notes-clean-20261014` branch. The station's Sub/Flow
+routes, Library card and schemas are retained; its retired original plan
+document is not restored. Both remotes were fetched before integration.
+
+The route is `/admin/library/subbeats` (Library → Sub/Beats), behind the
+existing admin login. No tracks are automatically admitted by deployment.
+Preparation remains separate from playback. The state/cache location is
+`/home/jaz666/Docker/subwave/state/subbeats/`.
+
+Rollback source is `rollback/pre-subbeats-20261029` (`8f55bffa`). Original
+controller, web and CUDA analyzer images are retained locally as
+`subwave-local/{controller,web,analyzer}:pre-subbeats-20261029`. The running
+Compose configuration uses `docker-compose.yml`,
+`docker-compose.analyzer-gpu.yml` and `docker-compose.discord.yml`. Recreate
+only controller, web and analyzer for this deployment; broadcast stays live.
+The two new cache directories receive the same writable permissions as the
+updated bootstrap script, without requiring a broadcast restart.
+
+Pre-integration verification is recorded above. Deployment checks and final
+service status are appended after the candidate is built and started.
+
+Operator preference (2026-10-29): for future deployments, provide the exact
+rebuild and health-check commands for the owner to run; avoid spending agent
+usage waiting on image builds. The current deployment was already building
+when this preference was given.
+
+Deployment completed: controller, CUDA analyzer and web images built
+successfully and were recreated with `--no-deps --no-build`. Broadcast was
+not restarted and retains two active stream mounts. Edge health is 200
+`on-air`; both Library Sub/Beats and Sub/Flow pages return 200. Authenticated
+Sub/Beats state/candidate reads return 200, with 50 candidate rows and more
+available. Preparation list is empty. Analyzer health reports
+`analyze_subbeats_capable: true`; controller capability remains unknown until
+its normal lazy backend probe, with admission available. No audio job was
+started for deployment verification.
+
+Integrated checks: all 14 Sub/Beats tests passed; web lint/typecheck and its
+production build passed. Controller ESLint has zero errors, but its full
+typecheck remains blocked by 13 existing missing-`artists` errors in four
+show test files. Those files and `show-candidates.ts` are byte-identical to
+rollback source; no Sub/Beats type errors were reported. Controller runtime
+build and health passed. Previous feature-branch verification is preserved
+above. The next acceptance step is selecting a small batch in Library →
+Sub/Beats and checking preparation results; playback integration remains
+future development.
+
+## Preparation error reporting
+
+Station attempts returned HTTP 422 after Demucs selected CUDA on the RTX
+3060. The HTTP status alone does not identify the underlying failure.
+Sub/Beats now uses the existing sidecar error reader, preserving the worker's
+error detail in the managed log and failed queue row. Previously this path
+discarded that detail and misleadingly directed the operator to an analysis
+log that did not contain it. Retry one failed track after updating the
+controller to establish the cause; no GPU-memory or audio-validation changes
+are justified without that evidence. Future image rebuilds are run by the
+owner, using supplied commands.
+
+Docker build contexts must exclude runtime state after the `.env.example`
+exception, including `state/**`. A private prepared bundle exposed traversal
+of `state/subbeats/v1` during an owner-run controller rebuild. The final
+exclusions prevent inspecting or sending runtime caches; do not broaden
+bundle permissions to work around a build-context error.
+
+Correction: final state exclusions alone did not prevent BuildKit traversal.
+An isolated context with an unreadable `state/subbeats/v1/private` directory
+reproduced the sender error with the previous rules. Replacing the broad
+`!**/.env.example` exception with explicit root/controller/web example-file
+paths passed the same context-only build. This test rebuilt no station
+services and read no real cache files. Cache permissions remain unchanged.
+
+## Over-range separated stems
+
+Ayla preparation exposed a validator rejecting finite separated stems at or
+above full scale. Those values can cancel when the stems reconstruct the
+source. Preserve over-range stems as 32-bit floating-point WAV, keeping
+24-bit FLAC for stems below full scale. Do not clip or independently scale
+stems. Validate the saved/reloaded sum against the source, retaining the
+existing 10% reconstruction tolerance and finite/shape/coverage guards. The
+storage policy is part of the separator cache identity, so existing bundles
+are retained but new requests use a distinct key. Consumers must use each
+bundle's listed filenames rather than assume every stem ends in `.flac`.
+
+Verification: all 22 Sub/Beats Python checks and the registered analyzer Python suites pass, including over-range cancellation, unscaled float storage and invalid-sample rejection.
+
+## Endpoint rounding after overnight preparation (2026-10-30)
+
+The station queue contains 40 prepared tracks and nine failed tracks, all with
+`requested region is outside decoded source coverage`. Independent 22.05 kHz
+analysis and 44.1 kHz stem decodes can round their end samples differently.
+A real FFmpeg reproduction using 48,001 input samples at 48 kHz gives
+22,051 analysis samples and 44,101 stem samples: the inferred stem endpoint
+is one sample beyond actual coverage.
+
+Allow at most one analysis sample (two stem samples, about 45 microseconds)
+of end rounding, and record the actual decoded endpoint. Do not pad audio or
+alter start positions. Larger overruns, negative starts and empty regions
+still fail. Existing successful bundles remain valid; no cache identity
+change or repeat separation is needed for those 40 tracks. Retry only failed
+tracks after the owner rebuilds the analyzer. This fixes a demonstrated
+rounding case; successful retries confirm its application to the nine tracks.
+
+## Prepared-library review and consistent FLAC storage (2026-10-30)
+
+All 49 admitted tracks are prepared, each with both head and exit regions.
+Their listed artifacts total 4,299,780,520 bytes. The whole versioned cache
+including earlier development bundles occupies 4,369,818,223 bytes of the
+5 GiB budget. All 49 bundles contain WAVs (106 floating-point stems overall).
+The largest saved-stem reconstruction relative error is 0.05723, within the
+0.1 guard. Two tracks have late percussion-drop candidates. These results
+verify preparation coverage, not four-to-the-floor classification, downbeat
+phase, vocal separation suitability or readiness of any transition pair.
+
+New preparations now store all four stems as 24-bit FLAC. For each region,
+measure the largest absolute sample across all four cropped stems. When it
+reaches full scale, multiply every stem by `0.999 / peak`; otherwise gain is
+one. Record this multiplier as `stem_regions[].storage_gain`. A consumer
+must divide decoded samples by that value before mixing. Existing bundles
+without this field have gain one and may contain floating-point WAVs. Never
+normalize stems independently or apply a limiter at preparation time.
+
+Reconstruction validation uses saved/reloaded PCM with the recorded gain
+restored, so quantization is included in the check. The storage policy changes
+the cache identity to `PCM_24-shared-gain-v1`. Existing bundles are retained,
+not rewritten, and the 49 prepared tracks need no repeat GPU work. Readers
+must support both versions before pair rendering is integrated. An explicit
+CPU-only conversion of existing bundles can be considered separately if disk
+pressure warrants it; no migration or eviction is performed by this change.
+
+Verification: the registered analyzer Python suites pass, including all 22
+Sub/Beats checks. The shared-gain regression models 24-bit PCM quantization
+and verifies restored stem balance and reconstructed source level. No GPU
+job, cache migration, image rebuild or station restart was performed.
+
+## CPU-only conversion of existing prepared bundles
+
+`subbeats_convert.py --state-dir PATH` converts the paused preparation list's
+verified mixed FLAC/WAV bundles, without downloading tracks or importing GPU
+models. It holds the existing preparation lock. The same FLAC writer is used
+by new separation and conversion, including saved-sample and restored-level
+validation. Conversion checks both individual stems and their summed audio.
+
+Bundle keys and original preparation identity remain stable: identity records
+preparation provenance, while `metadata.storage_format` records current
+encoding and each region's `storage_gain` records reversible attenuation.
+Artifacts and hashes are regenerated; analysis files are copied unchanged.
+New preparation requests recognize a verified converted legacy bundle and
+reuse it without separation. Prepared queue entries are never rewritten.
+
+Publication uses Linux `renameat2(RENAME_EXCHANGE)` on the same cache
+filesystem. Stage and original are hash-checked before exchange, and the
+published bundle is checked again before deleting the old files. A failed
+post-publication check swaps the original back. If rollback itself fails,
+the old staging directory is retained rather than deleted. A killed process
+may leave a `.convert-*` directory for inspection; no automatic cleanup is
+performed. Unsupported atomic exchange fails before changing the original.
+Only conversions which reduce artifact size are published.
+
+The isolated tests exercise retained keys, restored levels, unchanged analysis,
+cache integrity, repeated conversion, corrupt input, refused exchange and
+pre-publication conversion failure. The registered analyzer Python suites
+pass. Live conversion results are recorded after execution.
+
+Live conversion completed 2026-10-30: all 49 prepared bundles converted on
+CPU using the analyzer's existing NumPy/SoundFile runtime; no model load,
+separation, image build or service restart. Listed artifacts reduced from
+4,299,780,520 to 3,346,483,816 bytes: 953,296,704 bytes saved (22.17%).
+The whole versioned cache now occupies 3,416,533,383 bytes, including earlier
+development bundles. All 392 listed stem files are FLAC. Maximum conversion
+sum RMS error was 9.386e-8, below the 1e-6 absolute guard. Every original,
+staged and published bundle passed its integrity checks. Analysis files,
+source clocks, prepared statuses and bundle keys were retained; no conversion
+stages remain. Preparation was paused for conversion then restored to its
+previous unpaused state. Controller reports 49 prepared, no active maintenance;
+edge health is `on-air`.
+
+All 23 Sub/Beats checks and the registered analyzer Python suites pass,
+including post-publication rollback and converted-bundle reuse without
+analysis/separation. Source is integrated into the station checkout, but the
+running analyzer image has not been rebuilt with the legacy reuse lookup;
+avoid Recheck of these completed tracks until a future analyzer rebuild.
+No rebuild or recheck is needed to use these converted cache artifacts in the
+future pair reader. Next development step: consume verified bundle files and
+region storage gains when evaluating beat/phrase alignment, before playback
+integration.
+
+## Browser transition auditions
+
+Library → Sub/Beats now offers two prepared-track selectors and a Play/Stop/
+Cancel preview button. It reuses Sub/Flow's browser join player, with an
+optional endpoint argument retaining Sub/Flow's existing default. Changing
+tracks, leaving the page or losing authentication aborts the request and
+releases its audio/object URL. Only one audition plays in that player.
+
+`POST /library/subbeats/join-preview` is admin-only. It accepts two distinct
+prepared library IDs, checks current availability and the blocklist, resolves
+the normal `resolveGainDb` playback gains, and sends only their saved bundle
+keys, gains and shared-cache marker to the analyzer. It never calls queue,
+picker, source download, ordinary analysis, settings writes or mixer controls.
+One controller preview request is admitted at a time; client disconnect aborts
+the HTTP wait. A worker already rendering may finish its bounded cached clip.
+
+Preview admission distinguishes a Library worker doing work from one waiting
+between tracks for quiet time. Structured progress reports `waitingForQuiet`
+while the quiet gate holds, and the resumed progress replaces it. Cue previews
+are allowed during that confirmed managed wait without stopping or resuming the
+scan, or changing the saved Sub/Beats pause/jobs. Active Library work and external
+workers with no confirmed pause retain their preparation-slot guard.
+
+The Preview search now has **Populate from Live Station** beside it. Clicking
+reads fresh `/state` data through the admin query layer, selects the current
+track as Outgoing and the first queued track as Incoming, and resets the cue
+selectors and search filter. Each exact library ID must be prepared with a saved
+bundle. A missing/unprepared role is cleared with a readable explanation; no
+later queued track or duplicate rip is silently substituted. Loading the pair
+does not start preview playback or change the station queue. A failed live read
+keeps the existing pair and offers a retry.
+
+Focused checks pass: Sub/Beats routes (20, including a live process lock while
+quiet-paused and refusal after resuming), quiet gate (14), web selection (10),
+admin query audit (9), both package typechecks and scoped lint (nine existing
+controller warnings). The static query audit passes. No production build or
+verify-stack browser run is included; no isolated browser stack was running.
+
+The follow-up uses the same development/station paths as the timing change
+above. Its immediate source rollback is `8bddde5d`. The owner rebuilds controller
+and web; no live preview, scan, queue edit or service restart is run by the agent.
+
+The analyzer's `/subbeats-preview` endpoint dispatches `preview_subbeats` to
+the existing worker. This operation does not request/load GPU models. It reads
+and hash-verifies dedicated cached head/exit stems, restores region storage
+gains, and uses existing NumPy/SciPy/Librosa/SoundFile packages on CPU. A
+low-frequency drum-attack grid must support the first 16 consecutive quarter
+notes and at least 85% of a 64-beat span; grid fitting and prepared-coverage
+checks can decline a pair. Outgoing BPM is held as master; incoming stems are
+pitch-preservingly stretched to match and their kick phase is checked again.
+Tempo differences above 8% are declined.
+
+The experimental 16-bar exchange includes outgoing lead and eight seconds of
+incoming follow-through. Normal vocal exchange leaves four bars of separation;
+when source-zero incoming vocals precede its first beat, this first version
+withholds outgoing vocals for the audition rather than overlap them. Drum,
+bass and other-stem envelopes and one constant output headroom gain are used.
+There is no per-stem normalisation, clipping or output limiter. Playback gains
+and both source manifests participate in cache identity, so conversion or
+loudness-setting changes cannot reuse an obsolete preview.
+
+This is a bounded listening experiment, not the complete automatic pair
+planner. Phrase/downbeat numbering and vocal handling are experimental. It
+has no instrumental-loop extension or gradual native-BPM return yet; the
+incoming track stays at matched tempo until the clip ends. Insufficient
+coverage or confidence produces a readable decline, without changing the
+station's normal transition choice. The page states these limits explicitly.
+
+WAV auditions live separately under `<stateDir>/subbeats/previews/`, with a
+200 MiB cap and atomic publication; they are returned as no-store audio and
+are not added to the prepared queue. There is no automatic preview eviction
+in this increment. No new package or analyzer dependency pin is required.
+Controller, analyzer and web need rebuilding to expose the feature; the owner
+runs rebuilds. Broadcast does not need restarting.
+
+Audition decoding is capped at 90 seconds per region, including long heads
+explicitly prepared by development tools; this prevents an unusually long
+head from making the pitch-preserving preview allocate unbounded memory.
+The full bundle is still integrity-checked and its file coverage verified.
+
+Verification for this increment: 17 controller Sub/Beats tests pass; the
+registered analyzer Python suites pass, including 23 cache/conversion checks,
+four numerical preview checks and preview sidecar transport/model-use checks.
+Controller ESLint reports zero errors (existing warnings), and the final
+controller typecheck passes. Web lint/typecheck, 29 Library tests, nine
+admin-query tests and the static query audit pass. All 24 browser Library
+search checks and six query-cache checks pass against an isolated fixture.
+The new preview controls pass play/stop/cancel, duplicate-selection, decline
+and overflow checks at 1440px and 390px; no browser page errors or mechanical
+UI detector findings. Temporary API/web servers are stopped.
+
+A real full-stdio worker audition of Ayla → Love Stimulation from the
+converted cache returns a 39.351-second, 44.1 kHz stereo WAV in about 21 seconds
+on CPU (first direct cold render took about 38 seconds). Worker stderr reports
+only readiness, with no model load. The experiment used standalone copies in
+`/tmp` inside the analyzer; its installed service/image was not changed.
+Prepared queue data and on-air playback remain unchanged. No production image
+build or service restart was performed. The candidate is copied into the test
+station checkout for the owner to rebuild; pre-preview source rollback is
+`e6ddfee8` (also retained as `rollback/pre-subbeats-preview-20261030`).
+
+## Testing timeline for browser auditions
+
+Each rendered preview now includes a timeline derived from the same cue,
+beat-period and intro-vocal mode used by its mix envelopes. It marks incoming
+entry, beat alignment, vocal-gap/fade stages, incoming instruments reaching
+full level, outgoing instruments fading, and the incoming-only follow-through.
+Simultaneous events share one row. Intro-vocal previews omit the normal vocal
+gap labels and explain that outgoing vocals are withheld. These are planned
+mix stages, not detected phrases or promises that a vocal stem is non-silent.
+
+The worker stores timing in the preview manifest and returns it on both render
+and cache hit. The analyzer and authenticated controller expose validated
+`X-Subbeats-Timeline` metadata alongside the existing WAV; it is explicitly
+exposed for cross-origin development access. The shared schema checks finite,
+bounded, sorted timestamps starting at zero. Preview version 3 gives old clips
+a new cache identity, so timings are generated on the next CPU audition; the
+49 prepared stem bundles need no further work.
+
+The browser adds elapsed/total time, a seek slider, the current stage, and
+clickable timestamp rows. It retains the loaded Sub/Beats clip after the end
+for seeking and replay without another render. Stop, pair change, auth change
+and unmount still release the audio and object URL. Sub/Flow previews without
+timing metadata retain their previous end/cleanup behaviour and do not acquire
+playhead-driven UI updates.
+
+Verified: six controller route tests, numerical timeline tests for normal and
+intro-vocal exchanges, analyzer transport tests and the registered Python
+suites pass. Controller types and web lint/types pass. Desktop/mobile browser
+checks cover live position, timestamp seeking, stage highlight, retained timing
+after finish, replay without another request, and clearing on pair change;
+there are no page errors or horizontal overflow. All 24 Library search and six
+query-cache browser checks pass on the isolated fixture. The mechanical UI
+detector reports no findings. No deployment build or station restart is run;
+the owner rebuilds analyzer, controller and web to expose the timeline.
+
+Real-worker smoke verification: Ayla → Love Stimulation renders a 39.351s
+clip whose timing includes beat alignment at 4.000s, the normal vocal gap
+starting at 7.419s, incoming vocal fade at 14.257s, and incoming-only playback
+at 31.351s. A second request returns identical timing from the verified cache.
+The standalone worker completes both requests in about 19s on CPU, with no
+model load reported. Temporary fixture servers are stopped. Final focused
+controller/web ESLint checks pass; the pre-timeline test-station source is
+retained as `rollback/pre-subbeats-timeline-20261030` before integration.
+
+## Preview bar alignment control
+
+Browser auditions offer an incoming bar shift from −2 to +2, default zero.
+Negative brings the incoming audio earlier; positive brings it later. Each bar
+is four beats at the matched tempo. This moves the actual incoming source and
+its instrumental entry ramp relative to the outgoing exchange. Vocal fade
+windows remain fixed to preserve the four-bar vocal gap. Opening vocals still
+use the original detected cue, with outgoing vocals withheld.
+
+Changing the shift stops/cancels the loaded preview; Play renders or retrieves
+that alignment. Changing either track resets the shift to zero. The timeline
+shows the shifted incoming beat reference and entry/full-level times. Available
+outgoing lead and incoming coverage are checked for every shift; unsupported
+coverage declines rather than silently padding or trimming the source.
+
+The authenticated request accepts integer `barShift` in [−2, 2], default zero;
+controller forwards `bar_shift` through both analyzer paths. Worker validates
+again, stores the shift in metadata, and includes it in the version-4 preview
+cache identity. Existing prepared FLAC bundles are reused unchanged. This is
+preview-only and does not alter station playback or saved transition settings.
+
+Validation: numerical audio-marker checks cover all five shifts, default-zero
+parity and invalid values; authenticated route tests cover forwarding and input
+rejection. Analyzer Python suite, controller typecheck, focused controller lint,
+full web lint/typecheck and nine query-audit tests pass. Desktop/mobile browser
+checks cover all shift requests, clearing stale audio, cancelling pending work,
+pair reset, and layout without horizontal overflow.
+
+## Full-recording structural landmark candidates
+
+The requested planning model is destination-first: choose an incoming musical
+arrival/natural release, place a 16-bar exchange around it, and sustain an
+appropriate outgoing instrumental loop until that destination when needed.
+Markers are not restricted to an intro/outro window. Beat matching and multiples
+of four beats alone cannot resolve a one-bar phrase ambiguity.
+
+`controller/scripts/subbeats_structure.py` adds an independent CPU-only map to
+managed preparation/recheck. It reuses verified full-recording beat evidence,
+decodes the complete recording at 11.025 kHz, and uses Librosa STFT, mel spectra
+and chroma to measure beat-synchronous energy, bass, texture and harmonic
+changes. It compares 4-, 16- and 32-beat contexts around each measured beat and
+retains multiple local peaks across the whole recording. There is no first/last
+16-bar search restriction or fixed phrase spacing. Candidate context is bounded
+by actual measured beats; it does not extrapolate a grid through missing audio.
+
+Each candidate records its source position, beat index, evidence, strength,
+available surrounding beats, supported rhythm coverage, and tentative local
+four-beat phase support. Confidence is a heuristic low/medium label, not a
+calibrated probability. Changes without supported beat evidence remain low
+confidence. No candidate claims verified phrasing, vocal safety, a suitable loop
+seam, or pair readiness. A track without sufficient evidence reports
+`no_clear_landmarks` instead of inventing a resolve point. There is no trained
+musical-resolution or downbeat model here; audible validation remains necessary.
+
+Structure maps and compact beat feature arrays are separate integrity-checked
+artifacts in the existing `state/subbeats/v1` cache, keyed by source hash,
+structure algorithm/Librosa version and rhythm artifact hash. They use the same
+budget, single-writer lock and atomic publication as existing bundles. Changing
+this detector does not invalidate or rewrite prepared stems. Managed Recheck
+adds the map after reusing a valid stem bundle; subsequent rechecks reuse both.
+A changed source retains the existing full-preparation invalidation behavior.
+The worker exposes the structure artifact key as `subbeats_structure_key` for
+development tooling. No preview alignment is changed by this map yet.
+
+For CPU-only development runs on a complete source with matching verified rhythm:
+
+```bash
+python controller/scripts/subbeats_structure.py /path/to/complete.audio \
+  --state-dir /path/to/state --bundle-dir /path/to/state/subbeats/v1/BUNDLE_KEY
+```
+
+Results are `structure.json` (all candidate landmarks) and
+`structure-features.npz` (compact energy/spectrum/chroma per measured beat).
+
+Validation: five numerical/isolated-cache tests cover arrivals/releases beyond
+intro/outro windows, nearby fill release/arrival preservation, harmonic changes
+without a level jump, steady/silent input, invalid data, independent cache reuse,
+algorithm invalidation, and unchanged stem files/manifests. The full analyzer
+Python suite and controller lint/typecheck pass (existing lint warnings only).
+
+A CPU-only evaluation of the three reference recordings retained:
+
+| Recording | Candidates across full track | After 1 minute | Nearest to owner's reference |
+| --- | ---: | ---: | --- |
+| Liquid Child — Diving Faces | 48 | 34 | 27.330 s, medium confidence |
+| Planet Perfecto — Bullet in the Gun (Saturday remix) | 58 | 56 | 28.050 s, low confidence |
+| B.B.E. — 7 Days and 1 Week | 31 | 20 | 24.044 s, low confidence |
+
+These are retained candidates, not 137 verified mix points. In particular,
+B.B.E.'s 25-second reference remains unresolved, and Planet Perfecto's nearby
+arrival lacks supported local rhythm in this analysis. Repeated runs returned
+verified cache hits. Evaluation used temporary analysis-only bundles and did not
+load Demucs, change the 49 prepared library bundles, or alter previews/playback.
+The next planner still needs to select compatible phrase positions, establish
+loop safety/coverage, and validate audible results before automatic use.
+
+## Rejected phrase-counting attempt: pre-mixed compilation sources
+
+The owner rejected the phrase-counted preview implementation after listening.
+It has been reverted completely, including its opening-phase assumption, new
+loop mixer and post-stretch cue correction. The earlier manual bar-shift preview
+and full-recording structure maps remain. Rechecked prepared bundles are retained;
+rejected version-6 preview artifacts are no longer selected by the restored
+version-4 renderer. No cache files are deleted during rollback.
+
+These tracks come from a pre-mixed compilation. Source zero and the first
+sustained kick do not establish a clean musical phrase origin. An edit may have
+shortened an intro or outro, and boundaries must be established independently
+for each usable region. Preferred 4/8/16-bar mixing sections are a planning goal;
+they must not force an edited recording to have a complete sixteen-bar intro.
+
+The owner's revised listening references, explicitly as displayed in MixMeister:
+
+| Recording / role | Reference | Required behavior |
+| --- | --- | --- |
+| Bullet in the Gun, outgoing | Outro starts 03:41 | Let the recording play naturally while bringing in the next track. When its available audio ends, extend drums and bass with a loop until the incoming full sixteen-bar intro reaches its destination. |
+| 7 Days and 1 Week, incoming | Natural complete sixteen-bar intro | Play the existing opening as recorded; do not replace it with a counted reconstruction. |
+| 7 Days and 1 Week, outgoing | Natural sixteen-bar outro starts 04:09 | Use that natural outro. |
+| Diving Faces, incoming | **Later corrected to 00:27**, display count approximately 15 | Use a suitable 16-bar window. The displayed count does not establish a shortened phrase. See the current reference fixture and session handover. |
+
+The later eight-track annotation table supersedes the intermediate Diving Faces
+25-second interpretation: use **00:27**, with the displayed bar count only an
+estimate. A source-zero kick count does not establish either recording's phrase phase.
+Before another render, reconcile MixMeister display/clip positions with the
+exact prepared source and stem coverage; do not silently equate display time,
+raw-source time and preview time. For example, the currently prepared Bullet
+recording decodes to about 04:31.8, so the stated short outgoing runway needs
+its actual MixMeister clip/end position established. Existing fixed exit stems
+must be checked against the owner's earlier outro positions before reuse.
+
+Next development should begin with these manually specified reference cases,
+including partial phrases and a drums+bass extension after the actual outgoing
+end. Validate those auditions first, then improve automatic landmark selection
+against the accepted placements. No replacement automatic planner is deployed
+as part of this rollback.
+
+Rollback checks: the restored runtime/UI files match commit `ef969239` exactly;
+the analyzer Python suite and Library web tests pass. Read-only cache inspection
+also confirms why existing exit stems cannot simply be reused for the corrected
+references: Bullet's exit covers source 234.353–271.805 seconds (starts after
+03:41), and B.B.E.'s covers 234.009–271.677 seconds (stops before the complete
+natural outro from 04:09). Preserve these bundles; prepare appropriate extra
+coverage only after the reference/source coordinates are confirmed.
+
+## Annotated browser preview with sustained rhythm
+
+The browser preview now has an explicit reference mode for the eight owner
+annotations in `controller/scripts/subbeats-reference-tracks.json`. These are
+listening fixtures, not picker rules, track approvals or automatic phrase
+analysis. If both selected tracks have references, the page shows the outgoing
+outro and incoming release times and offers only the incoming track's supplied
+4/8/16/32-bar lengths. The longest supplied length is the default. Other pairs
+retain the existing 16-bar stem audition and its manual bar shift. Reference
+mode does not apply bar shifts or guess an absolute bar origin from file zero.
+
+`referenceBars` requests are validated against the server-owned annotations.
+Clients cannot supply source URLs or substitute timestamps. The controller
+continues to enforce prepared status, library availability, the blocklist and
+normal playback gains. It supplies raw original-recording URLs privately to the
+analyzer for this mode. Old analyzer responses without the reference timeline
+marker are declined instead of silently playing the earlier preview method.
+
+The CPU renderer repeats the accepted offline approach: snap annotations only
+to the nearby quarter-note grid, work backwards by the selected complete bars,
+blend original musical audio over that window, and retain drums+bass support
+through the incoming release. The rhythm hands over across the following bar.
+The original outgoing recording plays to its natural end; if it ends earlier,
+a one-beat blend moves into a phase-continuous four-bar drums+bass extension.
+The same loop fills lost rhythm as the musical fade progresses. Its seam is
+10ms without shortening the beat cycle. One constant composite loop gain and
+one constant output headroom gain are used, without independent stem leveling.
+Incoming tempo remains matched through the preview. This is a full-mix blend
+with rhythm support, not the earlier Stem Blend vocal policy.
+
+Original sources are fetched serially to bounded temporary files (256 MiB each),
+decoded from sample zero, and removed on success or failure. Completeness and
+prepared duration are required. An exact source hash is accepted directly. If
+container or tag bytes differ, decoded audio is checked against the saved stem
+sum at the start, middle and end of each available passage, using up to eight
+seconds per window and a 10% relative RMS limit. At least one non-silent window
+must match, and every checked window must match; a source with no usable saved
+coverage or an audible mismatch is declined. This keeps harmless container
+changes from requiring another scan while guarding previews against a changed
+recording. No source URLs or credentials enter cache identity, metadata or
+browser responses. Cached previews need no source fetch.
+
+The timeline reports actual source entry times, the loop source, original EOF
+extension when used, the annotated incoming release and the one-bar handover.
+It remains seekable and browser-only. Changing either track or transition length
+cancels and discards the current audition, as does leaving the page or losing
+authentication. No broadcast, picker, settings or preparation-list writes occur;
+no GPU models or new separation are requested.
+
+Preview format is version 5. The 200 MiB preview cache now recycles its oldest
+verified generated audition folders under the existing preview lock. Only
+hash-valid fingerprint-named folders containing exactly a manifest and the
+listed `preview.wav` qualify. Unrecognised files, preparation bundles and ordinary
+stems are never removed. A saved clip already downloaded by the browser keeps
+playing when its disk cache entry is recycled. Publication stays atomic.
+
+The eight annotations do not establish pair suitability: 1998 → Universal Nation
+(16 and 32 bars) and Diving Faces → Beachball (4 bars) passed listening.
+The 16-bar 1998 → Universal Nation browser preview was accepted at session end;
+32 bars was the earlier preferred audition, not a universal default rule.
+Mystery Land → 1998 failed, including a full-pattern loop trial because an unwanted effect
+repeats with the useful pattern. Retain this as a negative reference for later
+selection work, not an automatic rule excluding either track with other partners.
+Windows before source zero, ambiguous kick grids, unsuitable loop level/coverage
+and excessive tempo adjustments produce readable declines. Station playback
+continues using its normal transitions; automatic selection and native-tempo
+return are separate future work.
+
+Verification: the controller Sub/Beats route/manager suites pass (18 tests), as
+do all registered analyzer Python suites, including five sustained-reference
+checks and the explicit-download-cap regression. Controller and web lint and
+typechecks pass; controller retains its existing lint warnings. All 29 Library
+web tests, nine admin-query tests, the static query audit, Library search checks
+and all six browser query-cache checks pass. Desktop/mobile browser checks cover
+reference defaults and allowed lengths, source/EOF timing, seeking and replay,
+cancellation on length changes, the four-bar pair, unchanged legacy bar shifts
+and horizontal overflow. Both accepted real-source pairs reproduce their offline
+WAVs within one PCM16 sample step; repeated requests use saved audio without
+fetching originals. No image rebuild or service restart was run.

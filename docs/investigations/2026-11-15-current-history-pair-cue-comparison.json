@@ -1,0 +1,1159 @@
+{
+  "date": "2026-11-15",
+  "scope": "Fresh exact-source cue-generation comparison for three recent dance-related Stem Blend history pairs. No stem separation or rendered mix.",
+  "code": {
+    "old_subbeats_revision": "030b3bd83e40d954e12cd1190373973d650316ec",
+    "new_shared_inference_revision": "e5024dbb12324b6e15743e59043aeed7dbc0f46d",
+    "old_model": "Beat This small0 PyTorch checkpoint",
+    "old_model_sha256": "6074be2c4d490c5f6101fcc374a1ec72ae93456e23bb6019783b849f5dc7d47b",
+    "new_model": "Beat This small0 ONNX",
+    "new_model_sha256": "5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf"
+  },
+  "runtime": {
+    "image": "ghcr.io/perminder-klair/subwave-analyzer-cuda:latest",
+    "image_id": "sha256:5ab5be0706fd85581a54f7bad1aca02fe0fa981a6cf7531f14ad583a826ab355",
+    "cpu_limit": 2,
+    "memory_limit_gib": 3,
+    "network": "none",
+    "source_audio": "read-only bind mount",
+    "station_state": "not mounted",
+    "output": "/tmp only"
+  },
+  "source_validation": "Selected each file by its current Navidrome media_file row and exact current library path. File size matched both Navidrome and Sub/Wave library records; SHA-256 recorded per source.",
+  "summary": {
+    "source_tracks": 6,
+    "history_pairs": 3,
+    "all_beat_arrays_equal": true,
+    "all_downbeat_arrays_equal": true,
+    "all_cue_decisions_equal": true,
+    "all_pair_cues_equal": true
+  },
+  "pairs": [
+    {
+      "outgoing_cues_equal": true,
+      "incoming_cues_equal": true,
+      "outgoing_cues": [
+        {
+          "sourceSeconds": 205.84,
+          "bpm": 138.56421312726457,
+          "strength": 1.0,
+          "reason": "ending",
+          "timingSource": "fitted-grid",
+          "timingValidated": true,
+          "phraseEndSeconds": 234.89414965986396
+        },
+        {
+          "sourceSeconds": 209.32,
+          "bpm": 138.55908609200128,
+          "strength": 1.0,
+          "reason": "ending",
+          "timingSource": "fitted-grid",
+          "timingValidated": true,
+          "phraseEndSeconds": 234.89414965986396
+        },
+        {
+          "sourceSeconds": 198.92,
+          "bpm": 138.57246576371298,
+          "strength": 1.0,
+          "reason": "ending",
+          "timingSource": "fitted-grid",
+          "timingValidated": true,
+          "phraseEndSeconds": 234.89414965986396
+        },
+        {
+          "sourceSeconds": 192.0,
+          "bpm": 138.59727245058443,
+          "strength": 1.0,
+          "reason": "ending",
+          "timingSource": "fitted-grid",
+          "timingValidated": true,
+          "phraseEndSeconds": 234.89414965986396
+        }
+      ],
+      "incoming_cues": [
+        {
+          "sourceSeconds": 43.02,
+          "bpm": 134.6215284659852,
+          "strength": 0.9493827160493827,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 14.495587569411292
+        }
+      ]
+    },
+    {
+      "outgoing_cues_equal": true,
+      "incoming_cues_equal": true,
+      "outgoing_cues": [
+        {
+          "sourceSeconds": 188.7869944203647,
+          "bpm": 127.37028510075383,
+          "strength": 0.9934782608695653,
+          "reason": "ending",
+          "phraseBars": 16,
+          "barNumber": 100,
+          "timingSource": "fitted-grid",
+          "phraseEndSeconds": 218.93531352762304
+        },
+        {
+          "sourceSeconds": 203.86115397399385,
+          "bpm": 127.37028510075383,
+          "strength": 0.9934782608695653,
+          "reason": "ending",
+          "phraseBars": 8,
+          "barNumber": 108,
+          "timingSource": "fitted-grid",
+          "phraseEndSeconds": 218.93531352762304
+        }
+      ],
+      "incoming_cues": [
+        {
+          "sourceSeconds": 74.0,
+          "bpm": 126.9862937362805,
+          "strength": 1.0,
+          "reason": "opening",
+          "barNumber": 19,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 38.090612728094854
+        },
+        {
+          "sourceSeconds": 53.21035473731808,
+          "bpm": 126.9862937362805,
+          "strength": 1.0,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "fitted-grid",
+          "phraseStartSeconds": 38.090612728094854
+        }
+      ]
+    },
+    {
+      "outgoing_cues_equal": true,
+      "incoming_cues_equal": true,
+      "outgoing_cues": [
+        {
+          "sourceSeconds": 157.25627476113013,
+          "bpm": 128.4721692457992,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 16,
+          "barNumber": 84,
+          "timingSource": "fitted-grid",
+          "phraseEndSeconds": 187.1460168161049
+        },
+        {
+          "sourceSeconds": 172.2011457886175,
+          "bpm": 128.4721692457992,
+          "strength": 1.0,
+          "reason": "ending",
+          "phraseBars": 8,
+          "barNumber": 92,
+          "timingSource": "fitted-grid",
+          "phraseEndSeconds": 187.1460168161049
+        }
+      ],
+      "incoming_cues": [
+        {
+          "sourceSeconds": 24.16052785923754,
+          "bpm": 130.25313735944547,
+          "strength": 0.8571428571428571,
+          "reason": "opening",
+          "phraseBars": 8,
+          "barNumber": 8,
+          "timingSource": "opening-grid",
+          "phraseStartSeconds": 9.42,
+          "timingValidated": true
+        },
+        {
+          "sourceSeconds": 38.9,
+          "bpm": 130.25780189959295,
+          "strength": 0.8571428571428571,
+          "reason": "opening",
+          "phraseBars": 16,
+          "barNumber": 16,
+          "timingSource": "opening-grid",
+          "phraseStartSeconds": 9.42,
+          "timingValidated": true
+        }
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "source": {
+        "artist": "Armin van Buuren",
+        "title": "Communication",
+        "album": "Gatecrasher Classics",
+        "genres": [
+          "Electronic",
+          "Progressive Trance",
+          "Trance"
+        ],
+        "sha256": "260df1d17479994c35815cac4f2967b71fe7f29b40c163d59dad50c71950f8a2",
+        "size": 5185595,
+        "duration_seconds": 235.0,
+        "bit_rate": 174,
+        "library_bpm": 136.0
+      },
+      "old": {
+        "artist": "Armin van Buuren",
+        "title": "Communication",
+        "source_sha256": "260df1d17479994c35815cac4f2967b71fe7f29b40c163d59dad50c71950f8a2",
+        "duration_seconds": 234.89414965986396,
+        "beat_count": 595,
+        "downbeat_count": 160,
+        "beats_sha256": "7eb0ecc4f4c883fad82827cce1097600b0a9cfd940777aa5401c5f027f236bbe",
+        "downbeats_sha256": "edfb3d4611103851690d453c46299e92d5a54ca8bfecb370d71684db4bfa45d7",
+        "incoming": [
+          {
+            "sourceSeconds": 13.82070381231671,
+            "bpm": 139.1233393681312,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 0.02,
+            "timingValidated": false
+          },
+          {
+            "sourceSeconds": 27.68,
+            "bpm": 138.82863340563992,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 0.02,
+            "timingValidated": false
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 205.84,
+            "bpm": 138.56421312726457,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          },
+          {
+            "sourceSeconds": 209.32,
+            "bpm": 138.55908609200128,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          },
+          {
+            "sourceSeconds": 198.92,
+            "bpm": 138.57246576371298,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          },
+          {
+            "sourceSeconds": 192.0,
+            "bpm": 138.59727245058443,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          }
+        ],
+        "grid": null,
+        "ending": null,
+        "route": "incoming-fallback"
+      },
+      "new": {
+        "artist": "Armin van Buuren",
+        "title": "Communication",
+        "source_sha256": "260df1d17479994c35815cac4f2967b71fe7f29b40c163d59dad50c71950f8a2",
+        "duration_seconds": 234.89414965986396,
+        "beat_count": 595,
+        "downbeat_count": 160,
+        "beats_sha256": "7eb0ecc4f4c883fad82827cce1097600b0a9cfd940777aa5401c5f027f236bbe",
+        "downbeats_sha256": "edfb3d4611103851690d453c46299e92d5a54ca8bfecb370d71684db4bfa45d7",
+        "incoming": [
+          {
+            "sourceSeconds": 13.82070381231671,
+            "bpm": 139.1233393681312,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 0.02,
+            "timingValidated": false
+          },
+          {
+            "sourceSeconds": 27.68,
+            "bpm": 138.82863340563992,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 0.02,
+            "timingValidated": false
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 205.84,
+            "bpm": 138.56421312726457,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          },
+          {
+            "sourceSeconds": 209.32,
+            "bpm": 138.55908609200128,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          },
+          {
+            "sourceSeconds": 198.92,
+            "bpm": 138.57246576371298,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          },
+          {
+            "sourceSeconds": 192.0,
+            "bpm": 138.59727245058443,
+            "strength": 1.0,
+            "reason": "ending",
+            "timingSource": "fitted-grid",
+            "timingValidated": true,
+            "phraseEndSeconds": 234.89414965986396
+          }
+        ],
+        "grid": null,
+        "ending": null,
+        "route": "incoming-fallback"
+      },
+      "comparison": {
+        "beat_count_equal": true,
+        "downbeat_count_equal": true,
+        "beat_timestamps_sha256_equal": true,
+        "downbeat_timestamps_sha256_equal": true,
+        "cue_decisions_equal": true
+      }
+    },
+    {
+      "source": {
+        "artist": "JX",
+        "title": "There's Nothing I Won't Do (JX Original mix)",
+        "album": "There's Nothing I Won't Do",
+        "genres": [
+          "Progressive Trance"
+        ],
+        "sha256": "177e34502bcdb89cee54fe8d77bc5af610524c35d4fccf3ef080232996172ce7",
+        "size": 16280544,
+        "duration_seconds": 405.32000732421875,
+        "bit_rate": 320,
+        "library_bpm": 136.0
+      },
+      "old": {
+        "artist": "JX",
+        "title": "There's Nothing I Won't Do (JX Original mix)",
+        "source_sha256": "177e34502bcdb89cee54fe8d77bc5af610524c35d4fccf3ef080232996172ce7",
+        "duration_seconds": 405.26666666666665,
+        "beat_count": 923,
+        "downbeat_count": 228,
+        "beats_sha256": "95ac8b0365012d71778ea11f974c9c4e92df23b1fcbcbf6f9ba42363ecfdfd63",
+        "downbeats_sha256": "359ca7c981723fb979bd3645dd602e1b708a811cfe08c315f792ff07be899919",
+        "incoming": [
+          {
+            "sourceSeconds": 43.02,
+            "bpm": 134.6215284659852,
+            "strength": 0.9493827160493827,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 14.495587569411292
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 363.91963984412297,
+            "bpm": 134.6215284659852,
+            "strength": 0.9493827160493827,
+            "reason": "ending",
+            "phraseBars": 16,
+            "barNumber": 196,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 392.4440522747117
+          },
+          {
+            "sourceSeconds": 378.18184605941735,
+            "bpm": 134.6215284659852,
+            "strength": 0.9493827160493827,
+            "reason": "ending",
+            "phraseBars": 8,
+            "barNumber": 204,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 392.4440522747117
+          }
+        ],
+        "grid": {
+          "originSeconds": 14.495587569411292,
+          "anchorSeconds": 43.02,
+          "drivingBeatSeconds": 43.02,
+          "bpm": 134.6215284659852,
+          "fitFraction": 0.9493827160493827,
+          "p95ErrorSeconds": 0.01737834461333135,
+          "phaseDisagreements": 0,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 392.4440522747117,
+          "audibleEndSeconds": 401.41786848072564,
+          "tailSeconds": 12.822614391954971,
+          "bodyEndSeconds": 392.821768707483,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "new": {
+        "artist": "JX",
+        "title": "There's Nothing I Won't Do (JX Original mix)",
+        "source_sha256": "177e34502bcdb89cee54fe8d77bc5af610524c35d4fccf3ef080232996172ce7",
+        "duration_seconds": 405.26666666666665,
+        "beat_count": 923,
+        "downbeat_count": 228,
+        "beats_sha256": "95ac8b0365012d71778ea11f974c9c4e92df23b1fcbcbf6f9ba42363ecfdfd63",
+        "downbeats_sha256": "359ca7c981723fb979bd3645dd602e1b708a811cfe08c315f792ff07be899919",
+        "incoming": [
+          {
+            "sourceSeconds": 43.02,
+            "bpm": 134.6215284659852,
+            "strength": 0.9493827160493827,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 14.495587569411292
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 363.91963984412297,
+            "bpm": 134.6215284659852,
+            "strength": 0.9493827160493827,
+            "reason": "ending",
+            "phraseBars": 16,
+            "barNumber": 196,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 392.4440522747117
+          },
+          {
+            "sourceSeconds": 378.18184605941735,
+            "bpm": 134.6215284659852,
+            "strength": 0.9493827160493827,
+            "reason": "ending",
+            "phraseBars": 8,
+            "barNumber": 204,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 392.4440522747117
+          }
+        ],
+        "grid": {
+          "originSeconds": 14.495587569411292,
+          "anchorSeconds": 43.02,
+          "drivingBeatSeconds": 43.02,
+          "bpm": 134.6215284659852,
+          "fitFraction": 0.9493827160493827,
+          "p95ErrorSeconds": 0.01737834461333135,
+          "phaseDisagreements": 0,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 392.4440522747117,
+          "audibleEndSeconds": 401.41786848072564,
+          "tailSeconds": 12.822614391954971,
+          "bodyEndSeconds": 392.821768707483,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "comparison": {
+        "beat_count_equal": true,
+        "downbeat_count_equal": true,
+        "beat_timestamps_sha256_equal": true,
+        "downbeat_timestamps_sha256_equal": true,
+        "cue_decisions_equal": true
+      }
+    },
+    {
+      "source": {
+        "artist": "Livin’ Joy",
+        "title": "Dreamer (7\" mix)",
+        "album": "Dreamer (UK)",
+        "genres": [
+          "House"
+        ],
+        "sha256": "9b6a8ef3c2a1f8463eb408213b1fa7ee01cf50d460df1edd8e60d299e72c2b4d",
+        "size": 9146747,
+        "duration_seconds": 221.47000122070312,
+        "bit_rate": 320,
+        "library_bpm": 129.2
+      },
+      "old": {
+        "artist": "Livin’ Joy",
+        "title": "Dreamer (7\" mix)",
+        "source_sha256": "9b6a8ef3c2a1f8463eb408213b1fa7ee01cf50d460df1edd8e60d299e72c2b4d",
+        "duration_seconds": 221.44,
+        "beat_count": 460,
+        "downbeat_count": 116,
+        "beats_sha256": "fd817bb5b2e3a1371c65a64c7e7b62a4d96fa5e5ab380e0d5db53e4b47789155",
+        "downbeats_sha256": "7e100038460448f57a6d8b5383beeb34c9b1ed86f59cee5f2ba73774ad005047",
+        "incoming": [
+          {
+            "sourceSeconds": 30.508319107258348,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.36
+          },
+          {
+            "sourceSeconds": 15.434159553629174,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.36
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 188.7869944203647,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "ending",
+            "phraseBars": 16,
+            "barNumber": 100,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 218.93531352762304
+          },
+          {
+            "sourceSeconds": 203.86115397399385,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "ending",
+            "phraseBars": 8,
+            "barNumber": 108,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 218.93531352762304
+          }
+        ],
+        "grid": {
+          "originSeconds": 0.36,
+          "anchorSeconds": 0.36,
+          "drivingBeatSeconds": 0.36,
+          "bpm": 127.37028510075383,
+          "fitFraction": 0.9934782608695653,
+          "p95ErrorSeconds": 0.03166632486412624,
+          "phaseDisagreements": 0,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 218.93531352762304,
+          "audibleEndSeconds": 219.9002267573696,
+          "tailSeconds": 2.50468647237696,
+          "bodyEndSeconds": 215.25233560090703,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "new": {
+        "artist": "Livin’ Joy",
+        "title": "Dreamer (7\" mix)",
+        "source_sha256": "9b6a8ef3c2a1f8463eb408213b1fa7ee01cf50d460df1edd8e60d299e72c2b4d",
+        "duration_seconds": 221.44,
+        "beat_count": 460,
+        "downbeat_count": 116,
+        "beats_sha256": "fd817bb5b2e3a1371c65a64c7e7b62a4d96fa5e5ab380e0d5db53e4b47789155",
+        "downbeats_sha256": "7e100038460448f57a6d8b5383beeb34c9b1ed86f59cee5f2ba73774ad005047",
+        "incoming": [
+          {
+            "sourceSeconds": 30.508319107258348,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.36
+          },
+          {
+            "sourceSeconds": 15.434159553629174,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.36
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 188.7869944203647,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "ending",
+            "phraseBars": 16,
+            "barNumber": 100,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 218.93531352762304
+          },
+          {
+            "sourceSeconds": 203.86115397399385,
+            "bpm": 127.37028510075383,
+            "strength": 0.9934782608695653,
+            "reason": "ending",
+            "phraseBars": 8,
+            "barNumber": 108,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 218.93531352762304
+          }
+        ],
+        "grid": {
+          "originSeconds": 0.36,
+          "anchorSeconds": 0.36,
+          "drivingBeatSeconds": 0.36,
+          "bpm": 127.37028510075383,
+          "fitFraction": 0.9934782608695653,
+          "p95ErrorSeconds": 0.03166632486412624,
+          "phaseDisagreements": 0,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 218.93531352762304,
+          "audibleEndSeconds": 219.9002267573696,
+          "tailSeconds": 2.50468647237696,
+          "bodyEndSeconds": 215.25233560090703,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "comparison": {
+        "beat_count_equal": true,
+        "downbeat_count_equal": true,
+        "beat_timestamps_sha256_equal": true,
+        "downbeat_timestamps_sha256_equal": true,
+        "cue_decisions_equal": true
+      }
+    },
+    {
+      "source": {
+        "artist": "Basement Jaxx",
+        "title": "We Are Not Alone",
+        "album": "Junto",
+        "genres": [
+          "House"
+        ],
+        "sha256": "0b63f4f805d7c1132bfd0e68b2b3d66019e013da85a6c03baaa34291e74e205e",
+        "size": 7163929,
+        "duration_seconds": 222.22000122070312,
+        "bit_rate": 256,
+        "library_bpm": 129.2
+      },
+      "old": {
+        "artist": "Basement Jaxx",
+        "title": "We Are Not Alone",
+        "source_sha256": "0b63f4f805d7c1132bfd0e68b2b3d66019e013da85a6c03baaa34291e74e205e",
+        "duration_seconds": 222.22367346938776,
+        "beat_count": 444,
+        "downbeat_count": 113,
+        "beats_sha256": "e641da4cc6a7ec21b3762ec0652d12f119afe644fed0b3cd59a8d700b5f03c64",
+        "downbeats_sha256": "0f84b37b95f95b95da695f51ebcb12c2311609d6b6b86eb6ef5ccfbad1a27d04",
+        "incoming": [
+          {
+            "sourceSeconds": 74.0,
+            "bpm": 126.9862937362805,
+            "strength": 1.0,
+            "reason": "opening",
+            "barNumber": 19,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 38.090612728094854
+          },
+          {
+            "sourceSeconds": 53.21035473731808,
+            "bpm": 126.9862937362805,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 38.090612728094854
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 179.84089510489517,
+            "bpm": 126.996813978531,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 16,
+            "phraseEndSeconds": 210.07787412587405,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          },
+          {
+            "sourceSeconds": 194.9593846153846,
+            "bpm": 126.996813978531,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 8,
+            "phraseEndSeconds": 210.07787412587405,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          }
+        ],
+        "grid": {
+          "originSeconds": 38.090612728094854,
+          "anchorSeconds": 74.0,
+          "drivingBeatSeconds": 74.0,
+          "bpm": 126.9862937362805,
+          "fitFraction": 1.0,
+          "p95ErrorSeconds": 0.02139547698693889,
+          "phaseDisagreements": 1,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 210.07787412587405,
+          "audibleEndSeconds": 219.30049886621316,
+          "tailSeconds": 12.145799343513715,
+          "bodyEndSeconds": 209.95473922902494,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "new": {
+        "artist": "Basement Jaxx",
+        "title": "We Are Not Alone",
+        "source_sha256": "0b63f4f805d7c1132bfd0e68b2b3d66019e013da85a6c03baaa34291e74e205e",
+        "duration_seconds": 222.22367346938776,
+        "beat_count": 444,
+        "downbeat_count": 113,
+        "beats_sha256": "e641da4cc6a7ec21b3762ec0652d12f119afe644fed0b3cd59a8d700b5f03c64",
+        "downbeats_sha256": "0f84b37b95f95b95da695f51ebcb12c2311609d6b6b86eb6ef5ccfbad1a27d04",
+        "incoming": [
+          {
+            "sourceSeconds": 74.0,
+            "bpm": 126.9862937362805,
+            "strength": 1.0,
+            "reason": "opening",
+            "barNumber": 19,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 38.090612728094854
+          },
+          {
+            "sourceSeconds": 53.21035473731808,
+            "bpm": 126.9862937362805,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 38.090612728094854
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 179.84089510489517,
+            "bpm": 126.996813978531,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 16,
+            "phraseEndSeconds": 210.07787412587405,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          },
+          {
+            "sourceSeconds": 194.9593846153846,
+            "bpm": 126.996813978531,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 8,
+            "phraseEndSeconds": 210.07787412587405,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          }
+        ],
+        "grid": {
+          "originSeconds": 38.090612728094854,
+          "anchorSeconds": 74.0,
+          "drivingBeatSeconds": 74.0,
+          "bpm": 126.9862937362805,
+          "fitFraction": 1.0,
+          "p95ErrorSeconds": 0.02139547698693889,
+          "phaseDisagreements": 1,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 210.07787412587405,
+          "audibleEndSeconds": 219.30049886621316,
+          "tailSeconds": 12.145799343513715,
+          "bodyEndSeconds": 209.95473922902494,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "comparison": {
+        "beat_count_equal": true,
+        "downbeat_count_equal": true,
+        "beat_timestamps_sha256_equal": true,
+        "downbeat_timestamps_sha256_equal": true,
+        "cue_decisions_equal": true
+      }
+    },
+    {
+      "source": {
+        "artist": "The Tamperer featuring Maya",
+        "title": "Feel It (Blunt edit)",
+        "album": "Feel It (UK)",
+        "genres": [
+          "House"
+        ],
+        "sha256": "82985395b866e6469c315bca399994ce71606ac61932415ebc4cee40fa2ccbfe",
+        "size": 8091764,
+        "duration_seconds": 193.30999755859375,
+        "bit_rate": 320,
+        "library_bpm": 129.2
+      },
+      "old": {
+        "artist": "The Tamperer featuring Maya",
+        "title": "Feel It (Blunt edit)",
+        "source_sha256": "82985395b866e6469c315bca399994ce71606ac61932415ebc4cee40fa2ccbfe",
+        "duration_seconds": 193.26666666666668,
+        "beat_count": 414,
+        "downbeat_count": 105,
+        "beats_sha256": "fefa86e64abe35a3cf1752693ccbf7f9ce987d5b3b057d2e7afda212b5bf144d",
+        "downbeats_sha256": "77353f1ddcf79e58c0de1146870daa2617ea56f591996a5c5c1b6ac87c40df52",
+        "incoming": [
+          {
+            "sourceSeconds": 30.22487102748738,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.3351289725126172
+          },
+          {
+            "sourceSeconds": 15.28,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.3351289725126172
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 157.25627476113013,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 16,
+            "barNumber": 84,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 187.1460168161049
+          },
+          {
+            "sourceSeconds": 172.2011457886175,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 8,
+            "barNumber": 92,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 187.1460168161049
+          }
+        ],
+        "grid": {
+          "originSeconds": 0.3351289725126172,
+          "anchorSeconds": 15.28,
+          "drivingBeatSeconds": 15.28,
+          "bpm": 128.4721692457992,
+          "fitFraction": 1.0,
+          "p95ErrorSeconds": 0.015683696714046392,
+          "phaseDisagreements": 1,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 187.1460168161049,
+          "audibleEndSeconds": 191.41315192743764,
+          "tailSeconds": 6.12064985056179,
+          "bodyEndSeconds": 187.26503401360543,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "new": {
+        "artist": "The Tamperer featuring Maya",
+        "title": "Feel It (Blunt edit)",
+        "source_sha256": "82985395b866e6469c315bca399994ce71606ac61932415ebc4cee40fa2ccbfe",
+        "duration_seconds": 193.26666666666668,
+        "beat_count": 414,
+        "downbeat_count": 105,
+        "beats_sha256": "fefa86e64abe35a3cf1752693ccbf7f9ce987d5b3b057d2e7afda212b5bf144d",
+        "downbeats_sha256": "77353f1ddcf79e58c0de1146870daa2617ea56f591996a5c5c1b6ac87c40df52",
+        "incoming": [
+          {
+            "sourceSeconds": 30.22487102748738,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.3351289725126172
+          },
+          {
+            "sourceSeconds": 15.28,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "fitted-grid",
+            "phraseStartSeconds": 0.3351289725126172
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 157.25627476113013,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 16,
+            "barNumber": 84,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 187.1460168161049
+          },
+          {
+            "sourceSeconds": 172.2011457886175,
+            "bpm": 128.4721692457992,
+            "strength": 1.0,
+            "reason": "ending",
+            "phraseBars": 8,
+            "barNumber": 92,
+            "timingSource": "fitted-grid",
+            "phraseEndSeconds": 187.1460168161049
+          }
+        ],
+        "grid": {
+          "originSeconds": 0.3351289725126172,
+          "anchorSeconds": 15.28,
+          "drivingBeatSeconds": 15.28,
+          "bpm": 128.4721692457992,
+          "fitFraction": 1.0,
+          "p95ErrorSeconds": 0.015683696714046392,
+          "phaseDisagreements": 1,
+          "confidence": "estimated"
+        },
+        "ending": {
+          "phraseEndSeconds": 187.1460168161049,
+          "audibleEndSeconds": 191.41315192743764,
+          "tailSeconds": 6.12064985056179,
+          "bodyEndSeconds": 187.26503401360543,
+          "confidence": "estimated"
+        },
+        "route": "fitted-grid"
+      },
+      "comparison": {
+        "beat_count_equal": true,
+        "downbeat_count_equal": true,
+        "beat_timestamps_sha256_equal": true,
+        "downbeat_timestamps_sha256_equal": true,
+        "cue_decisions_equal": true
+      }
+    },
+    {
+      "source": {
+        "artist": "808 State",
+        "title": "10 x 10 (Gorgeous mix)",
+        "album": "808:88:98",
+        "genres": [
+          "Techno"
+        ],
+        "sha256": "aa49784106cba3b9cb865f2ee52c71291aaf29005e1bc3e4cdbb81efe2f461ce",
+        "size": 7275404,
+        "duration_seconds": 213.6199951171875,
+        "bit_rate": 268,
+        "library_bpm": 129.2
+      },
+      "old": {
+        "artist": "808 State",
+        "title": "10 x 10 (Gorgeous mix)",
+        "source_sha256": "aa49784106cba3b9cb865f2ee52c71291aaf29005e1bc3e4cdbb81efe2f461ce",
+        "duration_seconds": 213.6,
+        "beat_count": 459,
+        "downbeat_count": 115,
+        "beats_sha256": "e21412d2ad4489e36ab79dfbb7f32b95e8516916412032b8f0a5f104cff5b808",
+        "downbeats_sha256": "c004c6116d02f6bff39196ee6e81dc1dc8816ad7d4abc86a6d9872a65e4749c3",
+        "incoming": [
+          {
+            "sourceSeconds": 24.16052785923754,
+            "bpm": 130.25313735944547,
+            "strength": 0.8571428571428571,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 9.42,
+            "timingValidated": true
+          },
+          {
+            "sourceSeconds": 38.9,
+            "bpm": 130.25780189959295,
+            "strength": 0.8571428571428571,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 9.42,
+            "timingValidated": true
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 178.97762237762242,
+            "bpm": 129.98178285619122,
+            "strength": 0.96875,
+            "reason": "ending",
+            "phraseBars": 16,
+            "phraseEndSeconds": 208.52022377622367,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          },
+          {
+            "sourceSeconds": 193.74892307692303,
+            "bpm": 129.98178285619122,
+            "strength": 0.96875,
+            "reason": "ending",
+            "phraseBars": 8,
+            "phraseEndSeconds": 208.52022377622367,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          }
+        ],
+        "grid": null,
+        "ending": {
+          "phraseEndSeconds": 208.52022377622367,
+          "audibleEndSeconds": 213.30321995464854,
+          "tailSeconds": 5.079776223776321,
+          "bodyEndSeconds": 208.30548752834468,
+          "confidence": "estimated"
+        },
+        "route": "incoming-fallback"
+      },
+      "new": {
+        "artist": "808 State",
+        "title": "10 x 10 (Gorgeous mix)",
+        "source_sha256": "aa49784106cba3b9cb865f2ee52c71291aaf29005e1bc3e4cdbb81efe2f461ce",
+        "duration_seconds": 213.6,
+        "beat_count": 459,
+        "downbeat_count": 115,
+        "beats_sha256": "e21412d2ad4489e36ab79dfbb7f32b95e8516916412032b8f0a5f104cff5b808",
+        "downbeats_sha256": "c004c6116d02f6bff39196ee6e81dc1dc8816ad7d4abc86a6d9872a65e4749c3",
+        "incoming": [
+          {
+            "sourceSeconds": 24.16052785923754,
+            "bpm": 130.25313735944547,
+            "strength": 0.8571428571428571,
+            "reason": "opening",
+            "phraseBars": 8,
+            "barNumber": 8,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 9.42,
+            "timingValidated": true
+          },
+          {
+            "sourceSeconds": 38.9,
+            "bpm": 130.25780189959295,
+            "strength": 0.8571428571428571,
+            "reason": "opening",
+            "phraseBars": 16,
+            "barNumber": 16,
+            "timingSource": "opening-grid",
+            "phraseStartSeconds": 9.42,
+            "timingValidated": true
+          }
+        ],
+        "outgoing": [
+          {
+            "sourceSeconds": 178.97762237762242,
+            "bpm": 129.98178285619122,
+            "strength": 0.96875,
+            "reason": "ending",
+            "phraseBars": 16,
+            "phraseEndSeconds": 208.52022377622367,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          },
+          {
+            "sourceSeconds": 193.74892307692303,
+            "bpm": 129.98178285619122,
+            "strength": 0.96875,
+            "reason": "ending",
+            "phraseBars": 8,
+            "phraseEndSeconds": 208.52022377622367,
+            "timingSource": "fitted-grid",
+            "timingValidated": true
+          }
+        ],
+        "grid": null,
+        "ending": {
+          "phraseEndSeconds": 208.52022377622367,
+          "audibleEndSeconds": 213.30321995464854,
+          "tailSeconds": 5.079776223776321,
+          "bodyEndSeconds": 208.30548752834468,
+          "confidence": "estimated"
+        },
+        "route": "incoming-fallback"
+      },
+      "comparison": {
+        "beat_count_equal": true,
+        "downbeat_count_equal": true,
+        "beat_timestamps_sha256_equal": true,
+        "downbeat_timestamps_sha256_equal": true,
+        "cue_decisions_equal": true
+      }
+    }
+  ],
+  "limits": [
+    "Cue preparation does not regenerate separated stems.",
+    "Identical cues do not establish that either historical transition sounds good.",
+    "Sub/Beats pair rendering/audio was not performed."
+  ]
+}

@@ -1,0 +1,245 @@
+{
+  "date": "2026-11-13",
+  "subbeats_revision": "e797a6461c3c2d07b979db858f69991760c94013",
+  "upstream_pr": "https://github.com/perminder-klair/subwave/pull/2244",
+  "upstream_revision": "dc4bbbc4443eeb6e1f811315d0fae3e6c5f27a8a",
+  "environment": {
+    "cpu": "AMD Ryzen 5 2600 Six-Core Processor",
+    "architecture": "x86_64",
+    "container_cpu_limit": 2,
+    "container_memory_limit_gib": 3,
+    "cpu_threads_per_library": 2,
+    "gpu_used": false,
+    "network_enabled": false,
+    "image_id": "sha256:6417ddae7c08dbce16ce2f55f84f9d200245d14733cc778dd18715dff38df709",
+    "versions": {
+      "numpy": "2.4.6",
+      "librosa": "0.11.0",
+      "onnxruntime": "1.27.0",
+      "torch": "2.7.1+cu128",
+      "beat-this": "1.1.0"
+    }
+  },
+  "models": {
+    "checkpoint_sha256": "6074be2c4d490c5f6101fcc374a1ec72ae93456e23bb6019783b849f5dc7d47b",
+    "checkpoint_bytes": 8451101,
+    "onnx_sha256": "5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf",
+    "onnx_bytes": 9588293
+  },
+  "methodology": {
+    "warmup_seconds": 40,
+    "inferences_per_input_per_backend": 1,
+    "backend_order": [
+      "torch",
+      "onnx"
+    ],
+    "sample_rate": 22050,
+    "decode": "production subbeats_prepare.decode (ffmpeg, source zero)",
+    "full_preparation_measured": false,
+    "demucs_inference_run": false,
+    "live_playback_tested": false
+  },
+  "comparison": [
+    {
+      "id": "rozalla",
+      "duration_seconds": 213.6,
+      "source_sha256": "46856df8eb4796e0b49969c988d7ca7b931d4fcada6fcf5556cad0ce1e7c0fc1",
+      "torch_inference_seconds": 11.19808189291507,
+      "onnx_inference_seconds": 9.4554513245821,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 473,
+      "downbeat_count": 117
+    },
+    {
+      "id": "gusto",
+      "duration_seconds": 231.69333333333333,
+      "source_sha256": "23e6e73c55f52d53b8efbbc55a90c89c85cb935b7d21150238bef84911510109",
+      "torch_inference_seconds": 11.685553630813956,
+      "onnx_inference_seconds": 9.490228845737875,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 482,
+      "downbeat_count": 124
+    },
+    {
+      "id": "cubik",
+      "duration_seconds": 213.53333333333333,
+      "source_sha256": "8a02d4869893c0237d3a53d629ad46478a8989f229cd959b4ea17abbdf9d4227",
+      "torch_inference_seconds": 11.74131678044796,
+      "onnx_inference_seconds": 9.633980192244053,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 426,
+      "downbeat_count": 109
+    },
+    {
+      "id": "afro-left",
+      "duration_seconds": 454.50448979591835,
+      "source_sha256": "90134cdc190cffa53ccf0f11b58624e8f6cfd7b636429ac4cf11acc3eacdb8c1",
+      "torch_inference_seconds": 23.66765835788101,
+      "onnx_inference_seconds": 19.094813036732376,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 948,
+      "downbeat_count": 246
+    },
+    {
+      "id": "urban-cookie-collective",
+      "duration_seconds": 222.53333333333333,
+      "source_sha256": "4d58b14ac75b247b9fd18da757bceda67dfbce6167e23f2ecc79cc1215b37cf8",
+      "torch_inference_seconds": 12.577957996167243,
+      "onnx_inference_seconds": 9.964522507041693,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 478,
+      "downbeat_count": 120
+    },
+    {
+      "id": "the-launch",
+      "duration_seconds": 193.26666666666668,
+      "source_sha256": "6ada974674bd7adbec62b135096e0d55d4e45d64267a73ed60b3b3c167396db2",
+      "torch_inference_seconds": 10.131350317969918,
+      "onnx_inference_seconds": 9.001562514342368,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 430,
+      "downbeat_count": 118
+    },
+    {
+      "id": "el-nino",
+      "duration_seconds": 226.54666666666665,
+      "source_sha256": "137ea6466899c3d46ce3d3cfc9602549a155111ba252bb428f95597ce9c1e74c",
+      "torch_inference_seconds": 12.725765647366643,
+      "onnx_inference_seconds": 9.907677222974598,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": true,
+      "beat_count": 504,
+      "downbeat_count": 140
+    },
+    {
+      "id": "rozalla-12s",
+      "duration_seconds": 12.0,
+      "source_sha256": "46856df8eb4796e0b49969c988d7ca7b931d4fcada6fcf5556cad0ce1e7c0fc1",
+      "torch_inference_seconds": 0.4642623635008931,
+      "onnx_inference_seconds": 0.3522923830896616,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": null,
+      "beat_count": 23,
+      "downbeat_count": 7
+    },
+    {
+      "id": "rozalla-20s",
+      "duration_seconds": 20.0,
+      "source_sha256": "46856df8eb4796e0b49969c988d7ca7b931d4fcada6fcf5556cad0ce1e7c0fc1",
+      "torch_inference_seconds": 0.8317846739664674,
+      "onnx_inference_seconds": 0.8323165876790881,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": null,
+      "beat_count": 42,
+      "downbeat_count": 11
+    },
+    {
+      "id": "rozalla-40s",
+      "duration_seconds": 40.0,
+      "source_sha256": "46856df8eb4796e0b49969c988d7ca7b931d4fcada6fcf5556cad0ce1e7c0fc1",
+      "torch_inference_seconds": 3.4993294086307287,
+      "onnx_inference_seconds": 2.486747753806412,
+      "beats_equal": true,
+      "downbeats_equal": true,
+      "fitted_passages_equal": null,
+      "beat_count": 86,
+      "downbeat_count": 22
+    }
+  ],
+  "full_recording_totals": {
+    "recordings": 7,
+    "audio_seconds": 1755.6778231292517,
+    "torch_inference_seconds": 93.7276846235618,
+    "onnx_inference_seconds": 76.54823564365506,
+    "onnx_reduction_percent": 18.329108468756594,
+    "beats": 3741,
+    "downbeats": 974
+  },
+  "inference_plus_passage_processes": {
+    "torch": {
+      "imports_seconds": 0.32953021209686995,
+      "model_session_load_seconds": null,
+      "first_40s_call_seconds": 11.464378575794399,
+      "rss_after_warm_mib": 920.61328125,
+      "peak_rss_mib": 1279.0625,
+      "rss_end_mib": 1079.97265625,
+      "total_seconds": 124.94422345981002
+    },
+    "onnx": {
+      "imports_seconds": 0.3721957476809621,
+      "model_session_load_seconds": 1.2057562293484807,
+      "first_40s_call_seconds": 22.271126083098352,
+      "rss_after_warm_mib": 578.97265625,
+      "peak_rss_mib": 940.98046875,
+      "rss_end_mib": 641.88671875,
+      "total_seconds": 114.72586540225893
+    }
+  },
+  "torch_resident_probe": {
+    "torch": {
+      "backend": "torch",
+      "torch_stack_imported": true,
+      "demucs_model_loaded": false,
+      "baseline_rss_mib": 519.7421875,
+      "peak_rss_mib": 1033.2109375,
+      "end_rss_mib": 974.8359375,
+      "warm_40s_times": [
+        2.84619646333158,
+        2.829297363758087,
+        2.8855722062289715
+      ],
+      "full_track_seconds": 213.6,
+      "full_track_inference_seconds": 11.06678724475205
+    },
+    "onnx": {
+      "backend": "onnx",
+      "torch_stack_imported": true,
+      "demucs_model_loaded": false,
+      "baseline_rss_mib": 523.12890625,
+      "peak_rss_mib": 1109.7890625,
+      "end_rss_mib": 1056.90234375,
+      "warm_40s_times": [
+        2.416580774821341,
+        2.4246219284832478,
+        2.3475412474945188
+      ],
+      "full_track_seconds": 213.6,
+      "full_track_inference_seconds": 9.48402780201286
+    }
+  },
+  "upstream_downbeat_tests": {
+    "passed": 12,
+    "real_model_case_ran": true
+  },
+  "tail_route_probe": {
+    "legacy_tempo_failure": true,
+    "tail_tracker_calls": 0,
+    "tail_bars": null,
+    "available_helper_bars": [
+      180100,
+      182100
+    ],
+    "production_tail_route_bypasses_available_tracker": true
+  },
+  "limitations": [
+    "Seven dance/electronic recordings, one warm inference per input/backend, not a library-wide or listening evaluation.",
+    "Cold first-use figures include fresh process preprocessing/JIT work and are not operational queue-to-ready latency.",
+    "Torch-resident probe imports torch/torchaudio/demucs but does not load the Demucs model or run separation.",
+    "The full preparation, idle unload, AIO packaging, ARM64 and CUDA integration have not been tested here."
+  ]
+}

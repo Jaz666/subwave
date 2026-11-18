@@ -385,6 +385,7 @@ services:
       - ANALYZE_WHOLE_FILE_TIMEOUT_S=\${ANALYZE_WHOLE_FILE_TIMEOUT_S:-}
       - ANALYZE_CLAP_WINDOWS=\${ANALYZE_CLAP_WINDOWS:-}
       - ANALYZE_OUTRO_SECONDS=\${ANALYZE_OUTRO_SECONDS:-}
+      - ANALYZE_DOWNBEAT_THREADS=\${ANALYZE_DOWNBEAT_THREADS:-}
       # CLAP isn't gated, but anonymous HF downloads are rate-limited. Same var
       # as tts-heavy — set once and both sidecars pick it up.
       - HF_TOKEN=\${HF_TOKEN:-}
@@ -748,6 +749,7 @@ services:
       - ANALYZE_WHOLE_FILE_TIMEOUT_S=\${ANALYZE_WHOLE_FILE_TIMEOUT_S:-}
       - ANALYZE_CLAP_WINDOWS=\${ANALYZE_CLAP_WINDOWS:-}
       - ANALYZE_OUTRO_SECONDS=\${ANALYZE_OUTRO_SECONDS:-}
+      - ANALYZE_DOWNBEAT_THREADS=\${ANALYZE_DOWNBEAT_THREADS:-}
       # Anonymous HF downloads are rate-limited; same var as tts-heavy.
       - HF_TOKEN=\${HF_TOKEN:-}
     volumes:
@@ -1047,6 +1049,7 @@ services:
       - ANALYZE_WHOLE_FILE_TIMEOUT_S=\${ANALYZE_WHOLE_FILE_TIMEOUT_S:-}
       - ANALYZE_CLAP_WINDOWS=\${ANALYZE_CLAP_WINDOWS:-}
       - ANALYZE_OUTRO_SECONDS=\${ANALYZE_OUTRO_SECONDS:-}
+      - ANALYZE_DOWNBEAT_THREADS=\${ANALYZE_DOWNBEAT_THREADS:-}
       # Anonymous HF downloads are rate-limited; same var as tts-heavy.
       - HF_TOKEN=\${HF_TOKEN:-}
     volumes:
@@ -1520,8 +1523,12 @@ SITE_URL=
 # CLAP_MODEL=laion-clap
 # DEMUCS_MODEL=htdemucs   # vocal separation is the slow pass, and the default
 #                         # is also the fastest on CPU we've measured — the
-#                         # mdx*/*_q alternatives are bags of 4 sub-models and
-#                         # run ~3x SLOWER despite the smaller download
+#                         # mdx* alternatives are bags of 4 sub-models and
+#                         # run ~3x SLOWER. The quantised *_q models (mdx_q,
+#                         # mdx_extra_q) aren't supported: the analyzer doesn't
+#                         # ship diffq, so a *_q name loads htdemucs instead
+#                         # and logs one line saying so. mdx and mdx_extra are
+#                         # the same models unquantised
 # DEMUCS_OVERLAP=0.25     # share of each Demucs chunk that overlaps the next
 #                         # (0-0.9; anything else warns and uses 0.25). 0.1
 #                         # measured ~14% faster on CPU with near-identical
@@ -1545,6 +1552,9 @@ SITE_URL=
 #                         # complete file for outro analysis (fade-vs-cold
 #                         # ending, tail loudness/tempo — drives the
 #                         # ending-aware crossfade). Pure librosa, cheap
+# Beat This! is required for the shared head/tail beat grid in every analyzer
+# image. This limits its inference to CPU; BPM and key remain librosa-based.
+# ANALYZE_DOWNBEAT_THREADS=2 # onnxruntime threads per analyzer worker
 #
 # Which heavy-TTS engines the tts-heavy sidecar loads. Chatterbox AND PocketTTS
 # are both baked into the image, but each costs RAM + a first-boot weight

@@ -441,3 +441,25 @@ export async function clear(): Promise<number> {
   if (removed) scheduleFlush();
   return removed;
 }
+
+/** Cleanup must refuse corrupt curation state instead of interpreting it as no hearts. */
+export async function operatorHeartsForCleanup(): Promise<string[]> {
+  const disk: string[] = [];
+  try {
+    if (existsSync(STORE_FILE)) {
+      const value = JSON.parse(await readFile(STORE_FILE, 'utf8'));
+      if (!Array.isArray(value.likes)) throw new Error('Operator hearts could not be verified; cleanup stopped');
+      for (const record of value.likes) {
+        if (record?.via === 'operator') {
+          if (typeof record.songId !== 'string' || !record.songId) throw new Error('Operator hearts could not be verified; cleanup stopped');
+          disk.push(record.songId);
+        }
+      }
+    }
+  } catch { throw new Error('Saved stars could not be verified. Cleanup stopped.'); }
+  await load({readOnly:true});
+  return [...new Set([...disk, ...records.filter(isOperator).map(r => r.songId)])];
+}
+export function isOperatorHearted(id: string): boolean {
+  return records.some(r => r.songId === id && isOperator(r));
+}

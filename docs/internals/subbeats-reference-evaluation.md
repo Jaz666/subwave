@@ -1,0 +1,101 @@
+# Annotated compilation reference evaluation
+
+The eight owner references in `controller/scripts/subbeats-reference-tracks.json` are development
+fixtures, not production overrides. Their timestamps anchor the proposed windows;
+MixMeister's displayed bar counts are estimates, not a verified phrase origin.
+In particular, Diving Faces resolves at **00:27**, with a suitable 16-bar window.
+This supersedes the earlier 00:25 / shortened-intro interpretation in the rollback
+notes. A displayed count of 15 does not establish that a bar is missing.
+
+Madagascar's measured sustained kick tempo is **140.30 BPM**, independently
+confirmed by the owner's MixMeister reading of **140.3**. Its cached 105.25 BPM
+reading is a 3:4 alias. The preferred resolve is 01:36 because earlier entry points
+leave a long unchanged drum pattern before musical variation; earlier resolves
+remain possible.
+
+## Read-only cache audit
+
+Run `controller/scripts/subbeats_reference.py --state-dir PATH --references
+controller/scripts/subbeats-reference-tracks.json` in the analyzer Python environment.
+It verifies prepared bundle integrity and reads stems without modifying the cache.
+Tempo candidates require kick evidence. A short four-bar fit is explicitly marked;
+the production preview still requires its existing default 64-beat fit.
+
+| Track | Kick BPM | Nominal intro start | Limitation |
+| --- | --- | --- | --- |
+| Mystery Land | unconfirmed | 00:28.87 (16 bars, cached tempo estimate) | No sustained kick fit |
+| Suburban Train | 136.51 | −00:01.13 (16) | Listen and align near source boundary |
+| 1998 | 140.31 | 00:13.63 (16) | Window covered |
+| Diving Faces | 140.35 | −00:00.36 (16) | Listen and align near source boundary |
+| Beachball | 140.21 | 00:13.15 (4) | Window covered |
+| The Orange Theme | 140.32 | 00:00.32 (8) | Window covered |
+| Madagascar | 140.30 | 01:08.63 (16), 00:41.26 (32) | Resolve beyond cached head |
+| Universal Nation | 140.34 | 00:40.64 (16), 00:13.28 (32) | No cached followthrough after resolve |
+
+Negative nominal starts expose uncertainty in whole-second annotations and source
+alignment; they do not prove a shortened musical phrase. All eight existing exit
+stem regions end before the actual file ends, so a natural-outro audition cannot
+simply stop at the prepared exit boundary.
+
+## Controlled auditions
+
+Two offline controls use **1998 → Universal Nation**, with the former's 03:39
+outro and the latter's 01:08 resolve. Quarter-beat alignment adjusts these to
+218.883 and 67.990 seconds respectively; no phrase origin is inferred from zero.
+The incoming window is either 16 or 32 bars. Original outgoing audio plays to its
+real end, handing over across one beat to a four-bar drums+bass loop. Both clips
+share the same final peak gain.
+
+These controls use a full-mix equal-power crossfade with a drums+bass extension,
+**not Stem Blend or an automatic phrase detector**. Incoming tempo remains matched
+throughout the audition. Placement and musical suitability still require listening.
+
+| Preview event | 16 bars | 32 bars |
+| --- | --- | --- |
+| Transition begins | 00:04 | 00:04 |
+| Original outgoing file ends; loop continues | 00:17.95 | 00:17.95 |
+| Incoming resolve | 00:31.38 | 00:58.75 |
+
+Development audio, the renderer, audit JSON and render results are saved outside
+Git in `/home/jaz666/codex/driving-beat-evaluation-20261028/`. Full source decoding,
+time stretching and rendering ran on the test machine's CPU. Existing prepared
+stems were read; there was no new separation, GPU work, live playback change or
+cache rewrite. At this initial evaluation, the browser preview remained at the rolled-back
+version 4 behavior; the later annotated version 5 is described below.
+
+The analyzer test runner includes reference-window arithmetic, tempo-alias kick
+evidence, unchanged default long-fit behavior, fixture checks and a read-only
+cache audit. These do not establish that automatic resolve detection is solved.
+
+## Listening correction: sustain rhythm to the release
+
+The owner preferred the 32-bar placement but heard the beat disappear before the
+release. The eventual station mixer must control the musical crossfade and the
+outgoing rhythm's lifetime separately. Retain rhythm through the incoming release,
+extending beyond source EOF when needed, then hand over rhythm separately from
+vocals and other musical content. Crossfade progress alone is not evidence that
+the incoming rhythm can take over.
+
+`reference-1998-to-universal-32-bars-held-beat.wav` is a controlled correction in
+the external evaluation directory. It preserves the placement and full-mix fade,
+adding back the loop's lost rhythm as that fade progresses. Support continues
+through 00:58.75, then fades over one bar, ending at 01:00.46. The renderer checks
+the support envelope numerically and applies one constant output gain to prevent
+clipping. It does not suppress incoming drums or automatically detect readiness;
+listening must establish whether the combined rhythm and release are suitable.
+This offline trial initially left playback and the browser renderer unchanged.
+The owner accepted the sustained-rhythm result; it now informs the browser
+reference renderer, while production station transitions remain unchanged.
+
+The accepted reference envelope is now available in the browser's annotated
+preview mode; see `sub-beats.md` → Annotated browser preview with sustained
+rhythm. The fixture JSON moved to `controller/scripts/` so the controller image
+ships the same reference data as the evaluation tests. No broadcast integration
+or automatic track approval follows from these annotations.
+
+Latest listening result: **1998 → Universal Nation also works at 16 bars** in the
+browser preview. Both 16 and 32 bars are accepted for this pair. Diving Faces →
+Beachball at four bars is accepted. Mystery Land → 1998 remains incompatible for
+this approach after the full-pattern loop trial. See the
+[session handover](../investigations/2026-10-30-subbeats-handover.md) for the current
+continuation plan, implementation state and evidence locations.

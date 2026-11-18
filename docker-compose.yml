@@ -376,6 +376,7 @@ services:
       - ANALYZE_WHOLE_FILE_TIMEOUT_S=${ANALYZE_WHOLE_FILE_TIMEOUT_S:-}
       - ANALYZE_CLAP_WINDOWS=${ANALYZE_CLAP_WINDOWS:-}
       - ANALYZE_OUTRO_SECONDS=${ANALYZE_OUTRO_SECONDS:-}
+      - ANALYZE_DOWNBEAT_THREADS=${ANALYZE_DOWNBEAT_THREADS:-}
       # CLAP isn't gated, but anonymous HF downloads are rate-limited. Same var
       # as tts-heavy — set once and both sidecars pick it up.
       - HF_TOKEN=${HF_TOKEN:-}

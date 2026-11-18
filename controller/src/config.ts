@@ -195,6 +195,9 @@ export const config = {
     sfxFile: `${STATE_DIR}/sfx.txt`,
     autoPlaylist: `${STATE_DIR}/auto.m3u`,
     nowPlayingFile: `${STATE_DIR}/now-playing.json`,
+    // Final shared-mix track boundary from radio.liq, before each mount's
+    // encoder/network buffers; matched to now-playing by subsonic_id.
+    streamClockFile: `${STATE_DIR}/stream-clock.json`,
     // Written by radio.liq when a jingle starts (#997). Jingles play outside the
     // voice serialiser, so airVoice reads this to hold spoken segments until the
     // clip clears. TWO writers (rotate playlist + jingle_now_queue), both

@@ -1,0 +1,790 @@
+{
+  "pairs": [
+    {
+      "number": 1,
+      "focus": "Bass swap",
+      "outgoing": "Sash! — Encore une fois (Future Breeze edit)",
+      "incoming": "Faithless — Insomnia (radio edit)",
+      "tracks": [
+        {
+          "id": "0KUsUv7L4BrgKe6WC2EXrM",
+          "bundleKey": "a285588684c7df845e11deda3e7f47838d085e793a3b7d27e25dc684ab68db22",
+          "coverageKey": "81baed9c8bbce1800eba8ba2d7bb623f75194e388af9535577160e0e75e2530a",
+          "key": "1A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "G#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "B",
+              "mode": "minor"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "G#",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "2bMGqIxYFp3CnUZhMdjlMz",
+          "bundleKey": "35ed0f3c429a65fec68097ac2353840425105ffaf706a2c0966597e01a6094ac",
+          "coverageKey": "2bb1a673c693f1731629b01cb76d83e43eda1e9b67944ebbd36f817813356744",
+          "key": "10A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "D#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "B",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "B",
+              "mode": "minor"
+            }
+          ]
+        }
+      ],
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 2,
+      "styles": [
+        "long-blend",
+        "bass-swap"
+      ],
+      "plan": {
+        "first": 181.02,
+        "end": 222.53260139860137,
+        "out_end": 218.88,
+        "entry": 189.32507107278016,
+        "handover": 218.88,
+        "out_cue": 185.02,
+        "incoming_end": 34.33994322466394,
+        "rate": 1.0341010875464653,
+        "period": 0.45657517482517374
+      },
+      "listeningReview": "both fine",
+      "extractStartSeconds": 181.02,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 189.32507107278016,
+          "endSeconds": 218.88,
+          "key": "10A",
+          "separation": 0.14310413599014282
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 30.562784145996517,
+          "key": "10A",
+          "separation": 0.07899332046508789
+        }
+      ],
+      "commonPeakGain": 0.6910287396698765,
+      "loudnessGainsDb": [
+        0,
+        0
+      ],
+      "renders": [
+        {
+          "style": "long-blend",
+          "label": "Long blend",
+          "file": "01-long-blend.mp3",
+          "timeline": {
+            "mixStyle": "long-blend",
+            "duration": 41.51260770975057,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 4.0,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 8.305071072780152,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 36.03369930069929,
+                "label": "Rhythm handover begins"
+              },
+              {
+                "at": 37.859999999999985,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 37.859999999999985,
+                "label": "Outgoing recording finishes naturally"
+              },
+              {
+                "at": 41.51260139860136,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        },
+        {
+          "style": "bass-swap",
+          "label": "Bass swap",
+          "file": "01-bass-swap.mp3",
+          "timeline": {
+            "mixStyle": "bass-swap",
+            "duration": 41.51260770975057,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 4.0,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 8.305071072780152,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 36.03369930069929,
+                "label": "Rhythm handover begins"
+              },
+              {
+                "at": 37.6317124125874,
+                "label": "Bass exchange begins"
+              },
+              {
+                "at": 37.859999999999985,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 37.859999999999985,
+                "label": "Outgoing recording ends · vocal and drum tails retained"
+              },
+              {
+                "at": 38.08828758741257,
+                "label": "Bass exchange complete"
+              },
+              {
+                "at": 41.51260139860136,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        }
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "no clear preference",
+        "comment": "Both fine; the owner struggled to hear a difference."
+      }
+    },
+    {
+      "number": 2,
+      "focus": "Bass swap",
+      "outgoing": "Agnelli & Nelson — El Nino",
+      "incoming": "Steve Angello & Laidback Luke feat. Robin S — Show Me Love",
+      "tracks": [
+        {
+          "id": "75cQfewXIS03M3D1qiDnO8",
+          "bundleKey": "9f687ea78f57965e3b34d402690297ff981ca2829a9c6a865b351ca1baff7be9",
+          "coverageKey": "4254e9520e6fcabc9ed71758c74970c9ec514b1c1541250c1836b351d1284f9a",
+          "key": "8A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 30023,
+              "tonic": "A",
+              "mode": "major"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "A",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "0mmLLJ4Yi2ugzsKaGvSN43",
+          "bundleKey": "85b62fd7731effb8e59eda3fb97e19b5829927f9ce7ed7c031e907a016c8f137",
+          "coverageKey": "379e3110af798147e1f707c4f13308deb56c7df309752b631b45f6215ecc31aa",
+          "key": "8A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "G#",
+              "mode": "major"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "C",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 30023,
+              "tonic": "F",
+              "mode": "major"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "A",
+              "mode": "minor"
+            }
+          ]
+        }
+      ],
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 1,
+      "styles": [
+        "long-blend",
+        "bass-swap"
+      ],
+      "plan": {
+        "first": 188.2029731640497,
+        "end": 226.54666666666665,
+        "out_end": 226.54666666666665,
+        "entry": 206.04304687189872,
+        "handover": 220.65378400316817,
+        "out_cue": 192.2029731640497,
+        "incoming_end": 21.28412396038445,
+        "rate": 1.0380666522998874,
+        "period": 0.4445439193612261
+      },
+      "listeningReview": "both fine",
+      "extractStartSeconds": 192.20297052154194,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 206.04304687189872,
+          "endSeconds": 226.54666666666665,
+          "key": "8A",
+          "separation": 0.03416496515274048
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 21.28412396038445,
+          "key": "8B",
+          "separation": 0.1422465443611145
+        }
+      ],
+      "commonPeakGain": 0.7943943339738735,
+      "loudnessGainsDb": [
+        0,
+        0
+      ],
+      "renders": [
+        {
+          "style": "long-blend",
+          "label": "Long blend",
+          "file": "02-long-blend.mp3",
+          "timeline": {
+            "mixStyle": "long-blend",
+            "duration": 34.34369614512472,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 2.6425077521707863e-06,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 13.840076350356782,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 26.672637804181324,
+                "label": "Rhythm handover begins"
+              },
+              {
+                "at": 28.450813481626227,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Outgoing recording finishes naturally"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        },
+        {
+          "style": "bass-swap",
+          "label": "Bass swap",
+          "file": "02-bass-swap.mp3",
+          "timeline": {
+            "mixStyle": "bass-swap",
+            "duration": 34.34369614512472,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 2.6425077521707863e-06,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 13.840076350356782,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 26.672637804181324,
+                "label": "Rhythm handover begins"
+              },
+              {
+                "at": 28.228541521945616,
+                "label": "Bass exchange begins"
+              },
+              {
+                "at": 28.450813481626227,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 28.67308544130684,
+                "label": "Bass exchange complete"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Outgoing recording ends · vocal and drum tails retained"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        }
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "no clear preference",
+        "comment": "Both fine; the owner struggled to hear a difference."
+      }
+    },
+    {
+      "number": 3,
+      "focus": "Drums first",
+      "outgoing": "Urban Cookie Collective — The Key, the Secret",
+      "incoming": "Faithless — Insomnia (radio edit)",
+      "tracks": [
+        {
+          "id": "4wCdFuyqXRNbyIkPtGCdxQ",
+          "bundleKey": "02f3df0689f925be94078919afb44042a4f697bb76209246fde87fdd486749d7",
+          "coverageKey": "bd72d7ff6016cedb98b0d97f87e477fca0746ec44ddae8aee0def37368f15b8a",
+          "key": "7B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 40008,
+              "tonic": "F",
+              "mode": "major"
+            }
+          ]
+        },
+        {
+          "id": "2bMGqIxYFp3CnUZhMdjlMz",
+          "bundleKey": "35ed0f3c429a65fec68097ac2353840425105ffaf706a2c0966597e01a6094ac",
+          "coverageKey": "2bb1a673c693f1731629b01cb76d83e43eda1e9b67944ebbd36f817813356744",
+          "key": "10A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 10008,
+              "tonic": "D#",
+              "mode": "minor"
+            },
+            {
+              "startMs": 10008,
+              "endMs": 20016,
+              "tonic": "B",
+              "mode": "major"
+            },
+            {
+              "startMs": 20016,
+              "endMs": 40008,
+              "tonic": "B",
+              "mode": "minor"
+            }
+          ]
+        }
+      ],
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 2,
+      "styles": [
+        "short-exchange",
+        "drums-first"
+      ],
+      "plan": {
+        "first": 180.65581702444743,
+        "end": 222.53333333333333,
+        "out_end": 222.53333333333333,
+        "entry": 184.65581702444743,
+        "handover": 214.55635861552963,
+        "out_cue": 184.99384190544816,
+        "incoming_end": 38.71643432974499,
+        "rate": 1.0221481792527745,
+        "period": 0.46191432359502316
+      },
+      "listeningReview": "both fine",
+      "extractStartSeconds": 184.9938321995465,
+      "incomingPrefixOmittedSeconds": 0.3455015957873111,
+      "sectionKeys": [
+        {
+          "startSeconds": 184.9938321995465,
+          "endSeconds": 222.53333333333333,
+          "key": "7B",
+          "separation": 0.08316540718078613
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 38.71643432974499,
+          "key": "10A",
+          "separation": 0.08452069759368896
+        }
+      ],
+      "commonPeakGain": 1.0,
+      "loudnessGainsDb": [
+        0,
+        0
+      ],
+      "renders": [
+        {
+          "style": "short-exchange",
+          "label": "Short exchange",
+          "file": "03-short-exchange.mp3",
+          "timeline": {
+            "mixStyle": "short-exchange",
+            "duration": 37.53950113378685,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 0.0,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 9.705901675260975e-06,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 27.71486912160305,
+                "label": "Rhythm handover begins"
+              },
+              {
+                "at": 28.638697768793097,
+                "label": "Bass and melody exchange begins"
+              },
+              {
+                "at": 29.562526415983143,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 30.48635506317319,
+                "label": "Bass and melody exchange complete"
+              },
+              {
+                "at": 37.53950113378684,
+                "label": "Outgoing recording ends · vocal and drum tails retained"
+              },
+              {
+                "at": 37.53950113378684,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        },
+        {
+          "style": "drums-first",
+          "label": "Drums first",
+          "file": "03-drums-first.mp3",
+          "timeline": {
+            "mixStyle": "drums-first",
+            "duration": 37.53950113378685,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 0.0,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 9.705901675260975e-06,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 14.781268060942402,
+                "label": "Incoming drums begin entering"
+              },
+              {
+                "at": 28.638697768793097,
+                "label": "Bass and melody exchange begins"
+              },
+              {
+                "at": 29.562526415983143,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 30.48635506317319,
+                "label": "Bass and melody exchange complete"
+              },
+              {
+                "at": 37.53950113378684,
+                "label": "Outgoing recording ends · vocal and drum tails retained"
+              },
+              {
+                "at": 37.53950113378684,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        }
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "both",
+        "strength": "no clear preference",
+        "comment": "Both fine; the owner struggled to hear a difference."
+      }
+    },
+    {
+      "number": 4,
+      "focus": "Drums first",
+      "outgoing": "Agnelli & Nelson — El Nino",
+      "incoming": "Agnelli & Nelson — Everyday",
+      "tracks": [
+        {
+          "id": "75cQfewXIS03M3D1qiDnO8",
+          "bundleKey": "9f687ea78f57965e3b34d402690297ff981ca2829a9c6a865b351ca1baff7be9",
+          "coverageKey": "4254e9520e6fcabc9ed71758c74970c9ec514b1c1541250c1836b351d1284f9a",
+          "key": "8A",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 30023,
+              "tonic": "A",
+              "mode": "major"
+            },
+            {
+              "startMs": 30023,
+              "endMs": 40008,
+              "tonic": "A",
+              "mode": "minor"
+            }
+          ]
+        },
+        {
+          "id": "3CZAByVhRxf1wrPPNX1PUG",
+          "bundleKey": "4a8144e80f5447af3e88f72ef17e0c37499d4fc167d4180882ed16bfbc08453a",
+          "coverageKey": "d2bc9803c344a2d26bcfa289ba100cf022531f5e6b133d99c1878e08e5559783",
+          "key": "9B",
+          "keyRanges": [
+            {
+              "startMs": 0,
+              "endMs": 40008,
+              "tonic": "G",
+              "mode": "major"
+            }
+          ]
+        }
+      ],
+      "outgoingCueIndex": 0,
+      "incomingCueIndex": 0,
+      "styles": [
+        "short-exchange",
+        "drums-first"
+      ],
+      "plan": {
+        "first": 188.2029731640497,
+        "end": 226.54666666666665,
+        "out_end": 226.54666666666665,
+        "entry": 206.32828401111064,
+        "handover": 220.65378400316817,
+        "out_cue": 192.2029731640497,
+        "incoming_end": 20.199279692116377,
+        "rate": 0.9990551685678782,
+        "period": 0.4445439193612261
+      },
+      "listeningReview": "drums-first preferred",
+      "extractStartSeconds": 192.20297052154194,
+      "incomingPrefixOmittedSeconds": 0.0,
+      "sectionKeys": [
+        {
+          "startSeconds": 206.32828401111064,
+          "endSeconds": 226.54666666666665,
+          "key": "8A",
+          "separation": 0.06627172231674194
+        },
+        {
+          "startSeconds": 0,
+          "endSeconds": 20.199279692116377,
+          "key": "9B",
+          "separation": 0.31516438722610474
+        }
+      ],
+      "commonPeakGain": 0.7255913930662051,
+      "loudnessGainsDb": [
+        0,
+        0
+      ],
+      "renders": [
+        {
+          "style": "short-exchange",
+          "label": "Short exchange",
+          "file": "04-short-exchange.mp3",
+          "timeline": {
+            "mixStyle": "short-exchange",
+            "duration": 34.34369614512472,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 2.6425077521707863e-06,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 14.125313489568697,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 26.672637804181324,
+                "label": "Rhythm handover begins"
+              },
+              {
+                "at": 27.561725642903774,
+                "label": "Bass and melody exchange begins"
+              },
+              {
+                "at": 28.450813481626227,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 29.33990132034868,
+                "label": "Bass and melody exchange complete"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Outgoing recording ends · vocal and drum tails retained"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        },
+        {
+          "style": "drums-first",
+          "label": "Drums first",
+          "file": "04-drums-first.mp3",
+          "timeline": {
+            "mixStyle": "drums-first",
+            "duration": 34.34369614512472,
+            "events": [
+              {
+                "at": 0.0,
+                "label": "Outgoing track"
+              },
+              {
+                "at": 2.6425077521707863e-06,
+                "label": "Selected outgoing closing cue"
+              },
+              {
+                "at": 14.125313489568697,
+                "label": "Incoming opening begins"
+              },
+              {
+                "at": 14.225408062066991,
+                "label": "Incoming drums begin entering"
+              },
+              {
+                "at": 27.561725642903774,
+                "label": "Bass and melody exchange begins"
+              },
+              {
+                "at": 28.450813481626227,
+                "label": "Incoming arrival meets outgoing closing change"
+              },
+              {
+                "at": 29.33990132034868,
+                "label": "Bass and melody exchange complete"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Outgoing recording ends · vocal and drum tails retained"
+              },
+              {
+                "at": 34.34369614512471,
+                "label": "Preview complete"
+              }
+            ]
+          }
+        }
+      ],
+      "ownerReview": {
+        "date": "2026-11-09",
+        "reviewer": "owner",
+        "preference": "drums-first",
+        "strength": "not specified",
+        "comment": "Drums first preferred."
+      }
+    }
+  ],
+  "investigation": {
+    "date": "2026-11-09",
+    "purpose": "Audition Bass swap and Drums first before automatic style selection",
+    "reviewStatus": "complete",
+    "audioDirectory": "/home/jaz666/codex/subbeats-style-auditions-20261109",
+    "renderSource": "controller/scripts/subbeats_cue_preview.py::mix_passages",
+    "renderSourceSha256": "7e2bb46d5574c779ab3b48ebfcec66e1bf46554a17c1c6b05af15509dcbe04c0",
+    "levelPolicy": "Unity per-track gain and the same peak reduction for both versions of each pair.",
+    "keyEvidence": "Diagnostic estimates over overlapping bass/other/vocal stems; compatible labels are not proof of musical fit.",
+    "ownerReview": {
+      "date": "2026-11-09",
+      "reviewer": "owner",
+      "bothFinePairs": [
+        1,
+        2,
+        3
+      ],
+      "preferredDrumsFirstPairs": [
+        4
+      ],
+      "comment": "I struggle to tell any difference in the first three.",
+      "scope": "Preference between the rendered styles on these four pairs; not proof of equivalence or a universal style advantage."
+    }
+  }
+}

@@ -40,6 +40,7 @@ def ensure_tmp_dir(p) =
 end
 
 np_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/now-playing")
+stream_clock_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/stream-clock")
 jingle_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/jingle")
 bed_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/bed")
 pause_talk_tmp_dir = ensure_tmp_dir("#{state_dir}/tmp/pause-talk")
@@ -59,6 +60,8 @@ music_starved = ref(false)
 idle_mode = ref(false)
 stream_on = ref(false)
 overlay_music_timestamp = ref(0)
+stream_clock_track_id = ref("")
+stream_clock_started_at = ref(0.)
 
 # Live safety gates shared by on-demand jingles and the automatic rotate.
 # Declared before the queue sources; on_meta and voice_marker update them.
@@ -651,10 +654,10 @@ music = fallback(
 # outgoing at full level while the incoming ramps: +6 dB, audible doubling. To
 # vary the blend, vary the cross BUFFER, never the fade inside it. Two measured
 # exceptions in dj_transition: the chop's incoming fade (the outgoing is already
-# gone), and a stem-blend clip seam, where both sides fade over the cue lead
-# inside a slightly longer buffer (CLIP SEAM ALIGNMENT). The delayed side is
-# silent until it enters, so both fades share one window and the +6 dB hazard
-# can't arise.
+# gone), and a stem-blend clip seam, where complementary weights share the
+# cue-lead window inside a slightly longer buffer (CLIP SEAM ALIGNMENT). The
+# outgoing stays at unity until the incoming enters; their weights then sum
+# to one, reaching the incoming alone one frame before the outgoing ends.
 #
 # Low-level `cross`, NOT the `crossfade` wrapper: crossfade(smart=false) routes
 # through its internal simple_transition and ignores a custom callback. `a`/`b`
@@ -792,8 +795,8 @@ def dj_transition(a, b) =
   # starts `d` before its end, the incoming side waits `d - lead`, and both
   # reach the same instant of the music whatever whole number of frames
   # `cross` buffered. Without it each clip seam was off by the frame cross
-  # dropped (~20ms flam, scripts/stem-seam-test.sh). Both fades run over the
-  # lead, from the clip's entry, so they end together and sum to unity.
+  # dropped (~20ms flam, scripts/stem-seam-test.sh). Complementary clip weights
+  # below hold unity while the incoming waits and throughout the overlap.
   # The delay is a blank(), which is sample-accurate on 2.4.6 only: on 2.4.5 a
   # transition that starts mid-frame counts its partial first frame whole, so
   # the clip arrives up to one frame early (savonet/liquidsoap#5296's family).
@@ -899,13 +902,28 @@ def dj_transition(a, b) =
   # stab at full level. Loop takes NO fader here: it captures the raw outgoing
   # bar and applies its own complementary ride after the cascade; the hot fade
   # made every loop transition jump in level at its start.
-  # A delayed clip seam (b_delay > 0) fades the outgoing side over the lead
-  # too, so both fades start where the clip enters and sum to unity; over the
-  # full d it was already down to (d - b_delay)/d when the clip came in (0.75,
-  # -2.5 dB, at the 0.4s/0.3s clip seam; arithmetic for linear fades).
+  # Aligned clip seams use complementary weights on ONE clock in add below.
+  # Independent fade.out/fade.in clocks dipped 3.5-4.4 dB on split WAVs:
+  # fade.out started before the delayed incoming part, and its first-frame
+  # preparation also shifted the ramp. Keep both branches dry until add.
+  clip_fading = b_delay > 0. and not jingle_in and not jingle_out
+  clip_clock_start = ref(-1.)
+  def clip_gain(~rising) =
+    now = source.time(a.source)
+    if clip_clock_start() < 0. then clip_clock_start := now end
+    # Gain getters run per frame. Finish one frame before the outgoing buffer
+    # ends, so an end mid-frame cannot leave the incoming below unity for the
+    # rest of that frame. The weights still sum to one throughout.
+    span = max(frame.duration(), d - b_delay - frame.duration())
+    x = (now - clip_clock_start() - b_delay) / span
+    x = if x < 0. then 0. elsif x > 1. then 1. else x end
+    if rising then x else 1. - x end
+  end
   a_fade = d - b_delay
   a_source =
-    if washing then
+    if clip_fading then
+      a.source
+    elsif washing then
       fade.out(duration=a_fade, type="exp", initial_metadata=a.metadata, a.source)
     elsif sweeping or chopping then
       fade.out(duration=a_fade, type="log", initial_metadata=a.metadata, a.source)
@@ -1408,13 +1426,14 @@ def dj_transition(a, b) =
   # outgoing still up when the incoming arrives; here it is already gone. For
   # d <= 10, chop_dd == d and the render is byte-identical.
   b_fade = if chopping then chop_dd else d end
-  # A clip seam's incoming side waits b_delay (CLIP SEAM ALIGNMENT above) and
-  # fades over the lead, so both fades still end together. b_delay > 0 only on
-  # a clip seam, which equal_power_seam never takes, so the equal-power branch
-  # always spans the full d.
+  # An aligned clip seam bypasses these independent fades: add applies its
+  # common-clock weights after the incoming delay. Keep the old span for a
+  # clip interrupted by a jingle; equal-power always spans the full d.
   b_fade = if b_delay > 0. then d - b_delay else b_fade end
   b_source =
-    if equal_power_seam then
+    if clip_fading then
+      b.source
+    elsif equal_power_seam then
       equal_power_fade(span=b_fade, rising=true, b.source)
     else
       fade.in(duration=b_fade, initial_metadata=b.metadata, b.source)
@@ -1512,6 +1531,8 @@ def dj_transition(a, b) =
   seam =
     if jingle_in or jingle_out then
       (sequence([(if jingle_out then a.source else a_source end), b.source]) : source)
+    elsif clip_fading then
+      add(normalize=false, weights=[{clip_gain(rising=false)}, {clip_gain(rising=true)}], [a_source, b_source])
     else
       add(normalize=false, [a_source, b_source])
     end
@@ -1622,7 +1643,11 @@ music = switch(
   ]
 )
 # A jingle on air also means the playlist has moved past its last track.
-music.on_track(synchronous=true, fun (m) -> if m["subwave_jingle"] == "true" then auto_on_air := false end)
+music.on_track(synchronous=true, fun (m) ->
+  if m["subwave_jingle"] == "true" then
+    auto_on_air := false
+  end
+)
 # Holds the rotate's gate open for the clip on air (see the rotate). Set where a
 # clip is chosen, never on the playlist, which starts its next clip as this one
 # ends. Every other track releases it, a press included.
@@ -2305,6 +2330,40 @@ radio = compress(
   radio
 )
 
+# Record the track mark on the final shared mix, after transitions, beds and
+# ducking have been composed, but BEFORE metadata.map strips track metadata and
+# insert_metadata turns the root into the continuous ICY output track. The
+# public player applies its listener buffer to this anchor; the Admin applies
+# that buffer plus its saved manual correction.
+#
+# Capture the wall time synchronously at the final-mix metadata boundary, then
+# write from its asynchronous metadata callback so disk I/O never blocks the
+# streaming thread. The callback uses the metadata it received and verifies it
+# against the current music candidate: cross can re-emit the outgoing song's
+# metadata after the incoming song has already been selected.
+radio.on_metadata(synchronous=true, fun (m) -> begin
+  track_id = m["subsonic_id"]
+  if track_id != "" and track_id == stream_clock_track_id() then
+    stream_clock_started_at := time()
+  end
+end)
+radio.on_metadata(synchronous=false, fun (m) -> begin
+  track_id = m["subsonic_id"]
+  if track_id != "" then
+    if track_id == stream_clock_track_id() and stream_clock_started_at() > 0. then
+      file.write(
+        data=json.stringify(compact=true, {
+          subsonic_id = track_id,
+          startedAtMs = int_of_float(stream_clock_started_at() * 1000.)
+        }),
+        atomic=true,
+        temp_dir=stream_clock_tmp_dir,
+        "#{state_dir}/stream-clock.json"
+      )
+    end
+  end
+end)
+
 # METADATA — ICY title driven explicitly from the pre-cross on_meta hook so it
 # matches now-playing.json. BOTH operators are load-bearing:
 #  1. metadata.map strip kills ALL metadata still flowing through the chain.
@@ -2351,7 +2410,8 @@ def on_meta(m) =
     file.write(
       data=json.stringify(compact=true, {
         filename = filename,
-        startedAt = time()
+        startedAt = time(),
+        durationSec = m["subwave_bed_sec"]
       }),
       atomic=true,
       temp_dir=bed_tmp_dir,
@@ -2400,7 +2460,25 @@ end
 # on_metadata rather than on_track, because on_track gets swallowed by source
 # switches (request queue -> auto playlist). synchronous=false: on_meta does
 # file I/O, so it runs on the task queue, not the streaming thread.
-music_meta.on_metadata(synchronous=false, on_meta)
+music_meta.on_metadata(synchronous=true, fun (m) ->
+  if m["subwave_kind"] == "pause-talk" or m["subwave_kind"] == "bed" then
+    stream_clock_track_id := ""
+  elsif m["title"] != "" or m["artist"] != "" then
+    stream_clock_track_id := m["subsonic_id"]
+  else
+    stream_clock_track_id := ""
+  end
+)
+music_meta.on_metadata(synchronous=false, fun(m) -> begin
+  if m["subwave_flow"] == "" or int_of_string(default=0, m["subwave_flow_index"]) == 0 then on_meta(m) end
+end)
+flow_output.on_metadata(synchronous=false, fun(m) -> begin
+  token = "#{m[\"subwave_flow\"]}:#{m[\"subwave_flow_index\"]}"
+  if m["subwave_flow"] != "" and int_of_string(default=0, m["subwave_flow_index"]) > 0 and flow_last_event() != token then
+    flow_last_event := token
+    on_meta(m)
+  end
+end)
 
 # OUTPUT — broadcast to Icecast.
 #

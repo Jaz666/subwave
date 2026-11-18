@@ -20,9 +20,11 @@ const round3 = (x: number) => Math.round(x * 1000) / 1000;
 export function clipSeamCues(
   render: { blendStartSec: number; inCueSec: number },
   crossSec: number = CLIP_SEAM_CROSS_SEC,
+  sampleRate?: number,
 ): ClipSeamCues {
+  const round = sampleRate ? (x:number) => Math.round(x*sampleRate)/sampleRate : round3;
   return {
-    outCueSec: round3(render.blendStartSec + crossSec),
-    inCueSec: round3(render.inCueSec - crossSec),
+    outCueSec: round(render.blendStartSec + crossSec),
+    inCueSec: round(render.inCueSec - crossSec),
   };
 }

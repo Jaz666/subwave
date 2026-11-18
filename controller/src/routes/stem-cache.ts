@@ -8,9 +8,11 @@
 // pass has measured it once.
 
 import { Router } from 'express';
+import { config } from '../config.js';
 import { requireAdmin } from '../middleware/auth.js';
 import * as settings from '../settings.js';
 import * as stemCache from '../music/stem-cache.js';
+import { readSubbeatsQueue } from '../music/subbeats-store.js';
 import { designedOvershootBytes } from '../broadcast/pick-stems-policy.js';
 
 export const router = Router();
@@ -26,4 +28,26 @@ router.get('/stem-cache/usage', requireAdmin, async (_req, res) => {
     ? { pickTimeOvershootBytes: designedOvershootBytes(budgetBytes, usage.estTrackBytes) }
     : {};
   res.json({ usage, budgetBytes, ...pickTime });
+});
+
+router.get('/stem-cache/coverage', requireAdmin, async (req, res) => {
+  const ids = typeof req.query.ids === 'string' ? [...new Set(req.query.ids.split(',').filter(Boolean))] : [];
+  if (ids.length > 8 || ids.some(id => id.length > 200)) {
+    res.status(400).json({ error: 'Provide up to 8 track ids' });
+    return;
+  }
+  const coverage: Record<string, { regular: { head: boolean; tail: boolean }; subbeats: { head: boolean; exit: boolean } }> = {};
+  let jobs: ReturnType<typeof readSubbeatsQueue>['jobs'] = [];
+  try { jobs = readSubbeatsQueue(config.stateDir).jobs; } catch { /* report unavailable Sub/Beats coverage as empty */ }
+  await Promise.all(ids.map(async id => {
+    const [regularHead, regularTail, subbeats] = await Promise.all([
+      stemCache.hasWindow(id, 'head'), stemCache.hasWindow(id, 'tail'),
+      stemCache.subbeatsCachedCoverage(id, jobs.find(job => job.id === id)),
+    ]);
+    coverage[id] = {
+      regular: { head: regularHead, tail: regularTail },
+      subbeats,
+    };
+  }));
+  res.json({ coverage });
 });

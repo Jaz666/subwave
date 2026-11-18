@@ -40,6 +40,7 @@ import array
 import collections
 import contextlib
 import ctypes
+import hashlib
 import importlib.util
 import json
 import math
@@ -53,6 +54,8 @@ import threading
 import time
 import urllib.request
 import warnings
+
+from beat_this_grid import DownbeatTracker, PREPROCESSING_VERSION, SMALL0_SHA256, grid_evidence
 
 # 40s is enough for stable BPM (beat_track) / key (chroma); intro detection
 # only needs the first ~20-30s. Env-overridable; the window is shared by
@@ -132,7 +135,7 @@ VOCAL_ENABLED = os.environ.get("ANALYZE_VOCAL_ACTIVITY", "").strip().lower() in 
     "1", "true", "yes",
 )
 DEMUCS_SR = 44100
-DEMUCS_MODEL = os.environ.get("DEMUCS_MODEL", "").strip() or "htdemucs"
+DEFAULT_DEMUCS_MODEL = "htdemucs"
 
 
 def _env_float(name, default, minimum=None, maximum=None):
@@ -179,6 +182,36 @@ DEMUCS_OVERLAP = demucs_overlap()
 DEMUCS_SHIFTS = 0
 
 
+def demucs_model(have_diffq=None):
+    """The Demucs checkpoint to load. Demucs names its quantised checkpoints
+    `*_q` (mdx_q, mdx_extra_q), and only diffq can unpack them. The heavy images
+    don't ship diffq (non-commercial licence, sdist-only build), so a `_q` name
+    would make demucs fatal() at load and switch vocal activity off for the run.
+    Swap it for the default instead, with one line saying so: the station keeps
+    its vocal ranges and stems. Nothing downstream keys on the model name: stems
+    are filed by source name, and both models write drums/bass/other/vocals.
+    Only when diffq is missing, though: a worker run outside the images with
+    diffq installed keeps the model it asked for. `have_diffq` is the test seam;
+    None probes with find_spec, which imports nothing."""
+    raw = os.environ.get("DEMUCS_MODEL", "").strip()
+    if not raw:
+        return DEFAULT_DEMUCS_MODEL
+    if raw.endswith("_q"):
+        if have_diffq is None:
+            have_diffq = importlib.util.find_spec("diffq") is not None
+        if not have_diffq:
+            # Runs at module load, before log() is defined — write stderr directly.
+            sys.stderr.write(
+                f"[analyze-worker] DEMUCS_MODEL={raw!r} is a quantised checkpoint, which needs "
+                f"diffq, and diffq is not installed; using {DEFAULT_DEMUCS_MODEL} instead\n"
+            )
+            return DEFAULT_DEMUCS_MODEL
+    return raw
+
+
+DEMUCS_MODEL = demucs_model()
+
+
 def _env_int(name, default, minimum=1):
     """Whole-number env var, warn-and-fall-back — the Python half of the
     controller's `envInt` (controller/src/util/env.ts). A bare `int(raw)`
@@ -215,6 +248,30 @@ def _env_int(name, default, minimum=1):
 ANALYZE_MAX_BYTES = _env_int("ANALYZE_MAX_BYTES", 12 * 1024 * 1024)
 
 
+# --- Shared beat grid (required) --------------------------------------------
+# Beat This! (CPJKU, ISMIR 2024) supplies the beat and bar grid for every
+# analysis tier. librosa still supplies tempo and key, but its arbitrary-phase
+# four-beat bar guess is no longer persisted or used for transition cues.
+# The model is a small ONNX export run by onnxruntime on CPU, no torch involved.
+# A missing model or failed inference makes the grid facet fail; it must never
+# silently stamp a legacy librosa grid as current.
+#
+# The beat grid is mandatory and ANALYZE_DOWNBEATS is intentionally ignored.
+# The name remains in old deployment files, but it can no longer opt out.
+# Shared-grid mode is a constant so a stale env file cannot switch it off.
+DOWNBEATS = "beat-this"
+# Baked into every analyzer image by docker/Dockerfile.analyzer and
+# docker/Dockerfile.aio. A local offline venv points this at its own copy.
+BEAT_THIS_MODEL = (
+    os.environ.get("BEAT_THIS_MODEL", "").strip() or "/opt/analyzer/models/beat_this-small0.onnx"
+)
+# onnxruntime's intra-op threads per worker. 2 keeps a 40 s window near 2 s on
+# a modest CPU (tools/beat-this/README.md has the measurements) without
+# letting one analysis take every core of a small host away from the mixer.
+# Each ANALYZE_CONCURRENCY worker holds its own session, so N workers use 2N.
+DOWNBEAT_THREADS = _env_int("ANALYZE_DOWNBEAT_THREADS", 2)
+
+
 # Vocal-stem gate thresholds (issue #1125). The stem is thresholded against BOTH
 # its own loud level (self-relative, catches quiet-but-present vocals) AND a
 # fraction of the FULL-MIX loud level (an absolute-ish floor). Demucs never
@@ -249,6 +306,9 @@ VOCAL_STEM_REL = _env_float("VOCAL_STEM_REL", 0.15)  # x 90th-pct of vocal-stem 
 # before the split keeps that value on both windows unless they also set
 # VOCAL_HEAD_MIX_FLOOR, because it was their explicit choice for both.
 TAIL_VOCAL_MIX_FLOOR = _env_float("VOCAL_MIX_FLOOR", 0.06)
+# Sub/Beats passage scoring historically uses the tail gate as its shared
+# baseline; keep this name for its independent energy-based assessment.
+VOCAL_MIX_FLOOR = TAIL_VOCAL_MIX_FLOOR
 HEAD_VOCAL_MIX_FLOOR = _env_float(
     "VOCAL_HEAD_MIX_FLOOR",
     TAIL_VOCAL_MIX_FLOOR if (os.environ.get("VOCAL_MIX_FLOOR") or "").strip() else 0.15,
@@ -1358,8 +1418,8 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
     the controller's audible-end cut of a fade; omitted without pyloudnorm.
 
     A track too short for a distinct outro returns only the edge-silence
-    fields. Pure librosa (+ optional pyloudnorm), so this runs on the LEAN tier
-    too."""
+    fields. The shared grid needs Beat This ONNX; optional loudness curves need
+    pyloudnorm."""
     import numpy as np
 
     if y_src is None:
@@ -1419,19 +1479,24 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
     curve = loudness_curve(y_src, sr, offset)
 
     # Tail tempo + grid (absolute ms) — the truer anchor for bar-aligning the
-    # exit than the leading window's tempo (outros drift/ritard).
+    # exit than the leading window's tempo (outros drift/ritard). The grid's
+    # source is bar_grid's call, the same one the head window makes.
     bpm_t = None
     beats_ms = []
     bars_ms = []
+    beat_frames = []
+    provenance = None
     try:
-        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+        tempo, tracked_frames = librosa.beat.beat_track(y=y, sr=sr)
         t = float(np.atleast_1d(tempo)[0])
         bpm_t = round(t, 1) if 30 <= t <= 300 else None
-        bt = librosa.frames_to_time(beat_frames, sr=sr)
-        beats_ms = [int(round((offset + float(x)) * 1000.0)) for x in bt]
-        bars_ms = beats_ms[::4]
-    except Exception as e:  # noqa: BLE001 — the grid is garnish, never a gate
-        log(f"outro beat grid failed: {e}")
+        beat_frames = tracked_frames
+    except Exception as e:  # noqa: BLE001 — tempo does not gate the learned grid
+        log(f"outro tempo tracking failed: {e}")
+    try:
+        beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames, offset_s=offset)
+    except Exception as e:  # noqa: BLE001 — never persist a legacy grid
+        log(f"outro shared beat grid failed: {e}")
 
     out = {"startMs": int(round(wind_start_s * 1000.0)), "ending": ending}
     # Trailing dead air (absolute floor — see SILENCE_DBFS). Rides this decode
@@ -1456,6 +1521,8 @@ def facet_tail(y_src, sr, offset, duration_s, librosa):
         out["beats"] = beats_ms
     if bars_ms:
         out["bars"] = bars_ms
+    if provenance is not None:
+        out["gridProvenance"] = provenance
     if curve is not None:
         out["loudnessCurve"] = curve
     elif tail_loudness_curve_capable():
@@ -1691,16 +1758,20 @@ def get_embedder(force=False):
 # doesn't split a phrase); sub-300ms blips are dropped as separation artefacts.
 # `mix_floor` is the window's own fraction (HEAD_ or TAIL_VOCAL_MIX_FLOOR):
 # required, so no caller can fall back to the other window's value.
-def vocal_ranges_from_rms(rms, mix_rms, sr, hop, mix_floor):
+def vocal_ranges_from_rms(rms, mix_rms, sr, hop, mix_floor, *, stem_rel=None, loud_reference=None):
     import numpy as np
 
     if rms.size == 0:
         return []
-    loud = float(np.percentile(rms, 90))
+    reference = rms if loud_reference is None else loud_reference
+    if reference.size == 0:
+        return []
+    loud = float(np.percentile(reference, 90))
     if loud <= 0:
         return []
     mix_loud = float(np.percentile(mix_rms, 90)) if mix_rms.size else 0.0
-    thr = max(VOCAL_STEM_REL * loud, mix_floor * mix_loud)
+    rel = VOCAL_STEM_REL if stem_rel is None else stem_rel
+    thr = max(rel * loud, mix_floor * mix_loud)
     # frames → seconds; librosa.frames_to_time's default is frames * hop / sr.
     times = np.arange(rms.size) * (hop / float(sr))
     active = rms >= thr
@@ -1746,7 +1817,7 @@ class VocalActivityDetector:
         if "vocals" not in self.sources:
             raise RuntimeError(f"demucs model {DEMUCS_MODEL} has no 'vocals' stem")
 
-    def separate(self, stereo):
+    def separate(self, stereo, *, device=None):
         """audio: float32 array shaped (channels, N) at DEMUCS_SR. One apply_model
         pass → {stem_name: float32 ndarray (channels, N)} for all model stems
         (drums/bass/other/vocals for htdemucs). The single separation is
@@ -1781,7 +1852,7 @@ class VocalActivityDetector:
             # the same file read 2.9 to 7.0 s of singing over five runs, across
             # the 5 s instrumental line. Unshifted, one file gives one answer.
             est = apply_model(
-                self.model, wav.unsqueeze(0), device=resolve_device(), overlap=DEMUCS_OVERLAP,
+                self.model, wav.unsqueeze(0), device=device if device is not None else resolve_device(), overlap=DEMUCS_OVERLAP,
                 shifts=DEMUCS_SHIFTS,
             )[0]
         return {
@@ -1873,7 +1944,8 @@ def get_vocal_detector(force=False):
             _vocal_detector = d
             _maybe_start_idle_release()
         # BaseException, not Exception: demucs' fatal() raises SystemExit on an
-        # unusable model (e.g. a *_q quantized checkpoint without diffq), which
+        # unusable model (e.g. a quantised checkpoint named by its signature,
+        # which demucs_model() can't recognise, with no diffq installed), which
         # sails past `except Exception` and killed the whole worker — every
         # later request (bpm/key included) then 500'd "worker not ready".
         except BaseException as ex:  # noqa: BLE001 — degrade, never crash the worker
@@ -1884,6 +1956,179 @@ def get_vocal_detector(force=False):
     # Fresh load AND cache hit — see get_embedder (#1204).
     _touch_heavy()
     return _vocal_detector
+
+
+# ---------------------------------------------------------------------------
+# Shared beat grid — Beat This! without torch.
+# Mirrors beat_this v1.1.0's own inference path (tools/beat-this/ pins it):
+# preprocessing.LogMelSpect, inference.split_piece / aggregate_prediction and
+# model/postprocessor.Postprocessor("minimal"). tools/beat-this/parity.py
+# proves this reproduces upstream's File2Beats(dbn=False) times on real audio,
+# so a change here is a change against that proof: rerun it.
+# A missing model or inference error is contained to the grid facet; there is
+# no librosa-grid fallback because that would make old and new data indistinguishable.
+# ---------------------------------------------------------------------------
+# Lazily loaded, at most once — None means the shared grid is unavailable. A load failure is
+# logged once and never retried (one missing model must not cost every track
+# a load attempt). Its own clock, NOT the heavy one: this runs on every
+# analysis, and stamping _heavy_last_used would keep CLAP/Demucs resident on
+# any station with steady analysis traffic, the exact #1204 failure.
+_downbeat_tracker = None
+_downbeat_failed = False
+_downbeat_infer_logged = False
+_downbeat_last_used = time.time()
+_downbeat_release_started = False
+
+
+def get_downbeat_tracker():
+    global _downbeat_tracker, _downbeat_failed, _downbeat_last_used
+    if _downbeat_failed:
+        return None
+    if _downbeat_tracker is None:
+        try:
+            tracker = DownbeatTracker(BEAT_THIS_MODEL, DOWNBEAT_THREADS)
+            tracker.load()
+            _downbeat_tracker = tracker
+            log(
+                f"Beat This downbeat model loaded: {BEAT_THIS_MODEL} "
+                f"({DOWNBEAT_THREADS} threads)"
+            )
+            _maybe_start_downbeat_release()
+        except (ImportError, FileNotFoundError) as ex:
+            log(f"Required Beat This grid unavailable ({ex})")
+            _downbeat_failed = True
+            return None
+        except Exception as ex:  # noqa: BLE001 — degrade, never crash the worker
+            log(f"Required Beat This grid failed to load ({ex})")
+            _downbeat_failed = True
+            return None
+    _downbeat_last_used = time.time()
+    return _downbeat_tracker
+
+
+def _downbeat_idle_seconds():
+    """The tracker is CPU-only (onnxruntime's CPU provider), so it takes the
+    CPU window. Deliberately not _idle_unload_seconds(): that resolves the
+    torch device, and importing torch to time out a torch-free model would add
+    hundreds of MB to a worker that otherwise never loads it."""
+    if _IDLE_UNLOAD_ENV:
+        try:
+            return float(_IDLE_UNLOAD_ENV)
+        except ValueError:
+            pass  # _idle_unload_seconds() names the bad value if a heavy model loads
+    return IDLE_UNLOAD_CPU_S
+
+
+def _release_downbeat_tracker(idle_s):
+    global _downbeat_tracker
+    if _downbeat_tracker is None:
+        return
+    _downbeat_tracker = None
+    import gc
+
+    gc.collect()
+    try:
+        ctypes.CDLL(None).malloc_trim(0)
+    except Exception:  # noqa: BLE001 — best-effort, absent on musl/macOS
+        pass
+    # Worded apart from _release_models' line on purpose: the sidecar reads
+    # "released … reloads on next use" as CLAP/Demucs leaving memory
+    # (docker/analyzer/server.py _pump_stderr), and they may still be loaded.
+    log(f"idle {int(idle_s)}s — unloaded the Beat This downbeat model (loads again when next needed)")
+
+
+def _downbeat_release_loop(idle_s):
+    while True:
+        time.sleep(30)
+        if _downbeat_tracker is None or time.time() - _downbeat_last_used < idle_s:
+            continue
+        with _model_lock:
+            if time.time() - _downbeat_last_used >= idle_s:
+                _release_downbeat_tracker(idle_s)
+
+
+def _maybe_start_downbeat_release():
+    global _downbeat_release_started
+    if _downbeat_release_started:
+        return
+    idle_s = _downbeat_idle_seconds()
+    if idle_s <= 0:
+        return
+    _downbeat_release_started = True
+    threading.Thread(
+        target=_downbeat_release_loop, args=(idle_s,), daemon=True, name="downbeat-release"
+    ).start()
+
+
+def measure_bar_grid(y, sr, librosa, beat_frames, offset_s=0.0):
+    """The ONE place the beat and bar grid is chosen, for the head window and
+    the tail window alike: `(beats_ms, bars_ms, provenance)`, absolute ms (`offset_s` is
+    the window's start in the file).
+
+    Both lists come from Beat This, so bars are real downbeats and a subset of
+    the beats. Its beats are used rather than librosa's because a librosa beat
+    list beside Beat This bars could contain bars that are not beats. Failure
+    raises so the facet is not persisted with legacy timing."""
+    global _downbeat_infer_logged
+    tracker = get_downbeat_tracker()
+    if tracker is None:
+        raise RuntimeError("required Beat This beat grid is unavailable")
+    try:
+        beats_s, downs_s = tracker.track(y, sr, librosa)
+        beats_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in beats_s]
+        bars_ms = [int(round((offset_s + float(t)) * 1000.0)) for t in downs_s]
+        provenance = None
+        if getattr(tracker, "model_sha256", None):
+            try:
+                reference = librosa.frames_to_time(beat_frames, sr=sr)
+            except Exception:  # evidence must not veto a successful learned grid
+                reference = []
+            provenance = {
+                "version": 1, "backend": "beat-this-onnx",
+                "model": "small0" if tracker.model_sha256 == SMALL0_SHA256 else "custom",
+                "modelSha256": tracker.model_sha256,
+                "preprocessingVersion": PREPROCESSING_VERSION,
+                "windowStartMs": int(round(offset_s * 1000)),
+                "windowEndMs": int(round((offset_s + len(y) / sr) * 1000)),
+                "evidence": grid_evidence(beats_s, reference),
+            }
+        return beats_ms, bars_ms, provenance
+    except Exception as e:  # noqa: BLE001 — never persist the legacy grid
+        if not _downbeat_infer_logged:
+            _downbeat_infer_logged = True
+            log(f"Beat This inference failed; shared beat grid facet unavailable ({e})")
+        raise
+
+
+def bar_grid(y, sr, librosa, beat_frames, offset_s=0.0):
+    """Back-compatible array-only API for tools and older callers."""
+    beats, bars, _provenance = measure_bar_grid(y, sr, librosa, beat_frames, offset_s)
+    return beats, bars
+
+
+def source_fingerprint(path, complete):
+    """Bind learned grids to the staged encoded bytes, not a file path.
+
+    A capped/unknown source remains explicitly so. No proof of the current
+    recording, or of full-track Sub/Beats coverage, follows from this alone.
+    """
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as source:
+            size = os.fstat(source.fileno()).st_size
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        return {"sha256": digest, "bytes": size, "complete": complete}
+    except OSError as e:
+        log(f"grid source fingerprint unavailable: {e}")
+        return None
+
+
+def bind_grid_source(head, outro, source):
+    if source is not None:
+        for data, key in ((head, "grid_provenance"), (outro, "gridProvenance")):
+            if data and data.get(key):
+                data[key]["source"] = source
 
 
 # Marker file at the stem cache root (controller music/stem-cache.ts). A stems
@@ -2150,7 +2395,73 @@ def write_head_meta(dest_dir, stamp):
         }, f)
 
 
-def render_transition(req):
+def load_subbeats_stem_region(spec, name, stem_names, sf):
+    """Load an integrity-checked Sub/Beats head or exit region for a blend.
+
+    The returned start is the region's absolute source offset. Cache corruption,
+    changed identities and partial coverage are ordinary cache misses.
+    """
+    import math
+    import numpy as np
+    from pathlib import Path
+    try:
+        folder = Path(spec["subbeats_bundle_dir"])
+        key = spec["subbeats_bundle_key"]
+        if folder.name != key or not re.fullmatch(r"[a-f0-9]{64}", key):
+            return None
+        track_root = Path(spec["stems_dir"]).resolve(strict=True)
+        bundle = folder.resolve(strict=True)
+        if bundle != track_root / "subbeats" / "v1" / key or any(
+            part.is_symlink() for part in (track_root, track_root / "subbeats", track_root / "subbeats" / "v1", folder)
+        ):
+            return None
+        from subbeats_cache import cache_key, cached_entry
+        record = json.loads((bundle / "manifest.json").read_text())
+        identity = record.get("identity")
+        if (not isinstance(identity, dict) or cache_key(identity) != key
+                or identity.get("mode") != "analysis_and_stems"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(identity.get("source_sha256", "")))
+                or identity.get("separator", {}).get("sample_rate") != DEMUCS_SR
+                or identity.get("separator", {}).get("subtype") != "PCM_24-shared-gain-v1"
+                or cached_entry(bundle, identity) is None):
+            return None
+        region = next((item for item in record["metadata"].get("stem_regions", [])
+                       if item.get("name") == name), None)
+        if (not isinstance(region, dict) or region.get("sample_rate") != DEMUCS_SR
+                or type(region.get("start_sample")) is not int
+                or type(region.get("end_sample")) is not int
+                or region["start_sample"] < 0 or region["end_sample"] <= region["start_sample"]):
+            return None
+        gain = region.get("storage_gain", 1.)
+        if not isinstance(gain, (int, float)) or not math.isfinite(gain) or not 0 < gain <= 1:
+            return None
+        stems = {}
+        expected_frames = region["end_sample"] - region["start_sample"]
+        for stem in stem_names:
+            filename = f"{name}-{stem}.flac"
+            if filename not in record.get("files", {}):
+                return None
+            path = bundle / filename
+            info = sf.info(path)
+            if (info.samplerate, info.channels, info.frames) != (DEMUCS_SR, 2, expected_frames):
+                return None
+            data, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+            if sample_rate != DEMUCS_SR or data.shape != (expected_frames, 2) or not np.isfinite(data).all():
+                return None
+            stems[stem] = data / gain
+        duration = json.loads((bundle / "analysis.json").read_text())["duration_seconds"]
+        if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
+            return None
+        start = region["start_sample"] / DEMUCS_SR
+        end = region["end_sample"] / DEMUCS_SR
+        if end > duration + 1 / DEMUCS_SR or (name == "head" and region["start_sample"] != 0):
+            return None
+        return {"stems": stems, "start_sec": start, "end_sec": end, "duration_sec": float(duration)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, ImportError):
+        return None
+
+
+def render_transition(req, *, observe=None):
     """Pre-rendered stem-blend transition (feature: stem-blend transitions —
     docs/stem-transitions-research.md Option B). Mixes the OUTGOING track's
     cached tail stems with the INCOMING track's cached head stems into one
@@ -2181,7 +2492,18 @@ def render_transition(req):
 
     stem_names = ("drums", "bass", "other", "vocals")
 
-    def load_window(stems_dir, window):
+    def load_regular_window(stems_dir, window, expected_key=None):
+        meta = None
+        if expected_key is not None:
+            try:
+                with open(os.path.join(stems_dir, window + "-regular.json")) as handle:
+                    meta = json.load(handle)
+                if (meta.get("key") != expected_key or meta.get("side") != window
+                        or meta.get("version") != 2 or meta.get("device") != "cpu"
+                        or meta.get("model") != "htdemucs" or meta.get("sample_rate") != DEMUCS_SR):
+                    return None
+            except (OSError, ValueError, TypeError):
+                return None
         stems = {}
         for name in stem_names:
             p = os.path.join(stems_dir, f"{window}-{name}.flac")
@@ -2190,26 +2512,54 @@ def render_transition(req):
             data, sr_f = sf.read(p, dtype="float32", always_2d=True)  # (N, ch)
             if sr_f != DEMUCS_SR or data.shape[0] == 0:
                 return None
+            if meta is not None and (data.shape[0] != meta.get("samples") or not np.isfinite(data).all()):
+                return None
             stems[name] = data
-        return stems
+        if meta is not None:
+            start, end = meta["start_ms"] / 1000.0, meta["end_ms"] / 1000.0
+            if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+                return None
+            return {"stems": stems, "start_sec": start, "end_sec": end,
+                    "duration_sec": meta["source"]["duration_s"]}
+        if window == "tail":
+            try:
+                with open(os.path.join(stems_dir, "tail-meta.json")) as f:
+                    meta = json.load(f)
+                start = float(meta["tail_start_sec"])
+                duration = float(meta["duration_sec"])
+                if not math.isfinite(start) or not math.isfinite(duration) or start < 0 or duration <= start:
+                    return None
+            except (OSError, ValueError, KeyError, TypeError):
+                return None
+        else:
+            start, duration = 0., None
+        return {"stems": stems, "start_sec": start, "end_sec": start + len(next(iter(stems.values()))) / DEMUCS_SR,
+                "duration_sec": duration}
 
-    tail = load_window(out_spec["stems_dir"], "tail")
-    head = load_window(in_spec["stems_dir"], "head")
-    if tail is None or head is None:
+    def load_window(spec, window, fallback_region):
+        regular = load_regular_window(spec["stems_dir"], window, spec.get("regular_key"))
+        if spec.get("regular_key") is not None:
+            return regular  # A new working miss never falls through to an old cache.
+        if regular is not None:
+            return regular
+        return load_subbeats_stem_region(spec, fallback_region, stem_names, sf)
+
+    tail_source = load_window(out_spec, "tail", "exit")
+    head_source = load_window(in_spec, "head", "head")
+    if tail_source is None or head_source is None:
         return {"ok": False, "error": "stems-missing"}
+    tail = tail_source["stems"]
+    head = head_source["stems"]
 
     sr = DEMUCS_SR
-    # Alignment comes from the meta sidecar written WITH the stems (decoded
-    # duration + the exact tail offset) — never from out_spec's duration_s,
+    # Alignment comes from the regular stem sidecar or verified Sub/Beats
+    # analysis bundle (decoded duration + exact source offset) — never from out_spec's duration_s,
     # which is the library's tagged integer and can sit ~1s off the decoded
     # timeline the bar grid was measured on. Stems without the sidecar (an
     # older cache) are a clean miss; a re-analysis pass refreshes them.
-    try:
-        with open(os.path.join(out_spec["stems_dir"], "tail-meta.json")) as f:
-            tail_meta = json.load(f)
-        tail_start_s = float(tail_meta["tail_start_sec"])
-        dur_s = float(tail_meta["duration_sec"])
-    except Exception:
+    tail_start_s = tail_source["start_sec"]
+    dur_s = tail_source["duration_sec"]
+    if dur_s is None:
         return {"ok": False, "error": "stems-meta-missing"}
     if dur_s <= OUTRO_SECONDS + 1.0 or tail_start_s < 0.0:
         return {"ok": False, "error": "out-track-too-short"}
@@ -2223,6 +2573,105 @@ def render_transition(req):
         if a.shape[0] < n:
             a = np.vstack([a, np.zeros((n - a.shape[0], 2), np.float32)])
         return a
+
+    # --- Per-source gains (before summing, so the borrowed loop and the new
+    # track each land at their own corrected level; the brick-wall limiter
+    # upstream only ever sees sane material) --------------------------------
+    #
+    # `gain_db` is the station's OWN answer for that track — the same dB the
+    # queue stamps as liq_amplify (controller music/loudness.ts), resolved
+    # through the operator's loudness.source, boost cap and peak headroom cap.
+    # Using it is what keeps a clip at the level of the tracks either side of
+    # it (#1240). The lufs fallback below is the pre-#1240 maths, kept for an
+    # older controller talking to this worker: it normalises from the leading
+    # 40s window alone and ignores ReplayGain tags, so it drifts.
+    def gain_for(spec):
+        gd = spec.get("gain_db")
+        if isinstance(gd, (int, float)):
+            return float(10.0 ** (float(gd) / 20.0))
+        lufs = spec.get("lufs")
+        if target_lufs is None or not isinstance(lufs, (int, float)):
+            return 1.0
+        g = 10.0 ** ((float(target_lufs) - float(lufs)) / 20.0)
+        return float(min(4.0, max(0.25, g)))  # ±12 dB sanity clamp
+
+    outro = out_spec.get("outro") or {}
+    regular_style = req.get("regular_style")
+    if regular_style is not None:
+        # Experimental regular-blend path, used only for explicitly selected
+        # station test pairs. Full-mix is deliberately not an available style.
+        delays = {
+            "drums-late": {"drums": 0.5},
+            "rhythm-late": {"drums": 0.5, "bass": 0.5},
+            "vocals-late": {"vocals": 0.75},
+        }
+        if regular_style not in delays:
+            return {"ok": False, "error": "unknown-regular-style"}
+        out_bars = [b / 1000.0 for b in (outro.get("bars") or [])]
+        in_bars = [b / 1000.0 for b in (in_spec.get("bars") or [])
+                   if head_source["start_sec"] <= b / 1000.0]
+        if len(out_bars) < 9 or len(in_bars) < 9:
+            return {"ok": False, "error": "no-eight-bar-grid"}
+        # Search earlier spans when the final markers cross the wind-down.
+        in_bars = in_bars[:9]
+        in_start_s = in_bars[0]
+        wind_down_s = float(outro.get("start_ms") or (dur_s - 10.0) * 1000.0) / 1000.0
+        if any(not math.isfinite(b) or b < 0 or (i and b <= out_bars[i - 1])
+               for i, b in enumerate(out_bars)):
+            return {"ok": False, "error": "invalid-out-grid"}
+        if any(not math.isfinite(b) or b < 0 or (i and b <= in_bars[i - 1])
+               for i, b in enumerate(in_bars)):
+            return {"ok": False, "error": "invalid-in-grid"}
+        tail_end_s = tail_start_s + min(x.shape[0] for x in tail.values()) / sr
+        candidates = [out_bars[i:i + 9] for i in range(len(out_bars) - 8)
+                      if out_bars[i] >= tail_start_s
+                      and out_bars[i + 8] <= min(wind_down_s, dur_s, tail_end_s)]
+        if not candidates:
+            return {"ok": False, "error": "no-usable-out-eight-bar-window"}
+        out_bars = candidates[-1]
+        out_start_s = out_bars[0]
+        duration_s = out_bars[-1] - out_start_s
+        if duration_s <= 0 or in_start_s + duration_s > head_source["end_sec"] + 0.001:
+            return {"ok": False, "error": "eight-bar-window-outside-stems"}
+        out_offset = int(round((out_start_s - tail_start_s) * sr))
+        in_offset = int(round((in_start_s - head_source["start_sec"]) * sr))
+        count = int(round(duration_s * sr))
+        if in_offset < 0 or in_offset + count > min(x.shape[0] for x in head.values()):
+            return {"ok": False, "error": "eight-bar-window-outside-head"}
+        if out_offset < 0 or out_offset + count > min(x.shape[0] for x in tail.values()):
+            return {"ok": False, "error": "eight-bar-window-outside-tail"}
+        position = np.linspace(0.0, 1.0, count, endpoint=True, dtype=np.float32)
+        out_gain = np.cos(position * (np.pi / 2)).astype(np.float32)
+        g_in = gain_for(in_spec)
+        g_out = gain_for(out_spec)
+        mixed = np.zeros((count, 2), dtype=np.float32)
+        for name in stem_names:
+            outgoing = to_stereo(tail[name][out_offset:out_offset + count], count) * g_out
+            ramp_start = delays[regular_style].get(name, 0.0)
+            ramp = np.clip((position - ramp_start) / (1.0 - ramp_start), 0.0, 1.0)
+            incoming_gain = np.sin(ramp * (np.pi / 2)).astype(np.float32)
+            incoming = to_stereo(head[name][in_offset:in_offset + count], count) * g_in
+            mixed += outgoing * out_gain[:, None] + incoming * incoming_gain[:, None]
+        peak = float(np.max(np.abs(mixed))) if mixed.size else 0.0
+        ceiling = 10.0 ** (-1.0 / 20.0)
+        if peak > ceiling:
+            mixed *= ceiling / peak
+        edge = max(1, int(0.01 * sr))
+        ramp = np.linspace(0.0, 1.0, edge, dtype=np.float32)[:, None]
+        mixed[:edge] *= ramp
+        mixed[-edge:] *= ramp[::-1]
+        make_shared_dir(out_dir)
+        out_path = os.path.join(out_dir, os.path.basename(clip_name))
+        with shared_output(out_path) as tmp:
+            sf.write(tmp, mixed, sr, subtype="PCM_16", format="WAV")
+        return {
+            "ok": True,
+            "path": out_path,
+            "blend_start_sec": round(out_start_s, 3),
+            "in_cue_sec": round(in_start_s + duration_s, 3),
+            "clip_sec": round(count / sr, 3),
+            "regular_style": regular_style,
+        }
 
     # --- Outgoing side: the drum-loop source bar + the blend start --------
     outro = out_spec.get("outro") or {}
@@ -2239,6 +2688,8 @@ def render_transition(req):
     blend_start_s = loop_b2        # out cue_out lands on this bar boundary
     i1 = int((loop_b1 - tail_start_s) * sr)
     i2 = int((loop_b2 - tail_start_s) * sr)
+    if i1 < 0 or i2 > len(tail["drums"]) or i2 <= i1:
+        return {"ok": False, "error": "out-bar-outside-cached-coverage"}
     drum_loop = to_stereo(tail["drums"], tail["drums"].shape[0])[i1:i2]
     if drum_loop.shape[0] < sr // 8:
         return {"ok": False, "error": "loop-too-short"}
@@ -2342,14 +2793,19 @@ def render_transition(req):
                 else:
                     lo = midpoint
             duck = lo
+    # Audition-only observation: retain the two contributions without changing
+    # the upstream mix arithmetic or allocating this copy during live renders.
+    observed_incoming = mix_buf.copy() if observe is not None else None
     mix_buf += loop_buf * duck
 
     # Backstop: whatever the duck settled on, never hand the encoder a sample
     # that clips in 16-bit. Between the ceiling and here is ~1 dB of real
     # headroom, so this engages only when the duck floor wasn't enough.
     final_peak = float(np.max(np.abs(mix_buf)))
+    final_scale = 1.0
     if final_peak > 0.995:
-        mix_buf *= 0.995 / final_peak
+        final_scale = 0.995 / final_peak
+        mix_buf *= final_scale
 
     # 10ms edge declicks (the clip meets its neighbours through ~0.3s
     # crossfades, but a hard first/last sample still clicks through them).
@@ -2357,6 +2813,18 @@ def render_transition(req):
     ramp = np.linspace(0.0, 1.0, e, dtype=np.float32)[:, None]
     mix_buf[:e] *= ramp
     mix_buf[-e:] *= ramp[::-1]
+
+    if observe is not None:
+        observe({
+            "incoming": observed_incoming * final_scale,
+            "outgoing": loop_buf * duck * final_scale,
+            "head": head, "tail": tail, "tail_start": tail_start_s,
+            "loop_start": loop_b1, "loop_end": loop_b2,
+            "bars": in_bars[:CARRY_BARS + TAIL_FULL_BARS + 1],
+            "incoming_drums": carry_end_s, "loop_duck": duck,
+            "whole_scale": min(1.0, ceiling / max(head_peak, 1e-15)) * final_scale,
+            "gains_db": [20.0 * math.log10(gain_for(out_spec)), 20.0 * math.log10(g_in)],
+        })
 
     make_shared_dir(out_dir)
     out_path = os.path.join(out_dir, os.path.basename(clip_name))
@@ -2371,10 +2839,13 @@ def render_transition(req):
     }
 
 
-def fetch_audio(url):
+def fetch_audio(url, max_bytes=None):
     """Download (capped) to a temp file. Returns (path, complete) — `complete`
     is False when the byte cap truncated the download, which vetoes outro
     analysis (the file's "tail" would be mid-song audio)."""
+    max_bytes = ANALYZE_MAX_BYTES if max_bytes is None else max_bytes
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError('Invalid audio download limit')
     suffix = ".audio"
     fd, path = tempfile.mkstemp(suffix=suffix, prefix="swanalyze_")
     try:
@@ -2388,9 +2859,9 @@ def fetch_audio(url):
                         break
                     out.write(chunk)
                     read += len(chunk)
-                    if read >= ANALYZE_MAX_BYTES:
+                    if read >= max_bytes:
                         break
-        return path, read < ANALYZE_MAX_BYTES
+        return path, read < max_bytes
     except BaseException:
         try:
             os.remove(path)
@@ -2817,20 +3288,14 @@ def facet_head(y, sr, librosa):
     except Exception as e:  # noqa: BLE001 — tempo/grid are garnish, never a gate
         log(f"main beat tracking failed: {e}")
 
-    # Per-beat timestamps (ms) — already computed by beat_track, previously
-    # discarded. Downbeats are a 4/4 heuristic (every 4th beat from the first):
-    # librosa gives no true downbeat, but a bar grid is enough to bar-align a
-    # crossfade. Best-effort: an empty/odd grid simply yields fewer/no bars.
+    # Per-beat and per-bar timestamps (ms), both from the required shared grid.
     beats_ms = []
     bars_ms = []
+    provenance = None
     try:
-        bt = librosa.frames_to_time(beat_frames, sr=sr)
-        beats_ms = [int(round(float(t) * 1000.0)) for t in bt]
-        bars_ms = beats_ms[::4]
-    except Exception as e:  # noqa: BLE001 — beat grid is best-effort
-        log(f"beat grid failed: {e}")
-        beats_ms = []
-        bars_ms = []
+        beats_ms, bars_ms, provenance = measure_bar_grid(y, sr, librosa, beat_frames)
+    except Exception as e:  # noqa: BLE001 — never persist a legacy grid
+        log(f"shared beat grid failed: {e}")
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     chroma_mean = [float(x) for x in np.mean(chroma, axis=1)]
@@ -2880,6 +3345,8 @@ def facet_head(y, sr, librosa):
         out["bars"] = bars_ms
     if key_ranges:
         out["key_ranges"] = key_ranges
+    if provenance is not None:
+        out["grid_provenance"] = provenance
     return out
 
 
@@ -3615,6 +4082,7 @@ def analyze(
     # decode-length validation; False = definitively truncated → skipped.
     owned = path is None
     src_path = None
+    fingerprint = None
     decoded_tmp = None
     audio_embedding = None
     vocal_ranges = None
@@ -3668,6 +4136,8 @@ def analyze(
             librosa, path, sr=ANALYZE_SR, mono=False, duration=ANALYZE_SECONDS
         )
         y = librosa.to_mono(y_src)
+        if DOWNBEATS and get_downbeat_tracker() is not None:
+            fingerprint = source_fingerprint(src_path, complete)
         # Outro (tail) features — only meaningful off a complete file; a
         # byte-capped download's "tail" is mid-song. Best-effort like the rest.
         # With an UNKNOWN completeness (old caller) the original path's
@@ -3752,6 +4222,7 @@ def analyze(
         raise RuntimeError("decoded empty audio")
 
     result = facet_head(y, sr, librosa)
+    bind_grid_source(result, outro, fingerprint)
     # When vocal activity was measured, the start of the first vocal range is a
     # truer intro than the energy heuristic (an instrumental intro is exactly
     # the vocal-free leading region). Prefer it; fall back to the heuristic for
@@ -4235,7 +4706,90 @@ def analyze_facets(librosa, source, facets, stems_dir=None, want_tail_vocals=Fal
             except Exception as e:  # noqa: BLE001
                 out["clap"] = _failed(e)
 
+    head = out.get("head", {}).get("data", {})
+    outro = out.get("tail", {}).get("data", {}).get("outro")
+    if head.get("grid_provenance") or (outro and outro.get("gridProvenance")):
+        bind_grid_source(head, outro, source_fingerprint(
+            getattr(source, "src_path", None), getattr(source, "complete", None)))
     return {name: out[name] for name in FACET_NAMES if name in out}
+
+
+def parse_regular_stem_window(req, facets):
+    """Reject unsupported jobs before opening/downloading audio or loading Demucs.
+    This independent contract never calls the legacy fixed-window cache path.
+    """
+    window = req.get("regular_stem_window")
+    if window is None:
+        return None
+    if (not isinstance(window, dict) or window.get("version") != 2
+            or facets != ["stems"] or req.get("stems_device") != "cpu"
+            or not req.get("stems_dir")):
+        raise FacetRequestError("regular stems require version 2, CPU, stems-only and a destination")
+    start, end = window.get("start_ms"), window.get("end_ms")
+    if (window.get("side") not in ("head", "tail")
+            or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                   or not math.isfinite(v) for v in (start, end))
+            or start < 0 or end <= start or end - start > 120000
+            or not isinstance(window.get("key"), str) or not window["key"]
+            or len(window["key"]) > 256):
+        raise FacetRequestError("invalid regular stem window")
+    if window.get("model") != DEMUCS_MODEL:
+        raise FacetRequestError("regular stem model does not match worker")
+    if (
+            not isinstance(window.get("source_sha256"), str)
+            or len(window["source_sha256"]) != 64
+            or any(c not in "0123456789abcdef" for c in window["source_sha256"])
+            or type(window.get("source_bytes")) is not int or window["source_bytes"] <= 0):
+        raise FacetRequestError("invalid regular recording fingerprint")
+    return window
+
+
+def extract_regular_stem_window(librosa, source, window, destination):
+    """Separate only the requested source span. Completion is published last.
+    Callers supply a fresh job directory; incomplete jobs have no usable stamp.
+    No vocal/grid analysis and no legacy cache reads or writes happen here.
+    """
+    import numpy as np
+    start, end = window["start_ms"] / 1000.0, window["end_ms"] / 1000.0
+    if source.complete is not True or not source.duration_s or end > source.duration_s + 0.001:
+        raise FacetRequestError("regular stems require a complete source covering the window")
+    marker = os.path.join(os.path.dirname(destination), ".subwave-regular-stems")
+    if not os.path.isfile(marker):
+        raise FacetRequestError("regular working root marker missing")
+    stamp = os.path.join(destination, window["side"] + "-regular.json")
+    if os.path.exists(stamp):
+        raise FacetRequestError("regular stem destination already published")
+    audio, sr = source.load(librosa, sr=DEMUCS_SR, mono=False, offset=start, duration=end-start)
+    # Mono masters remain eligible; normalize exactly as the separator does.
+    if audio is not None and np.ndim(audio) == 1:
+        audio = np.repeat(np.asarray(audio)[None, :], 2, axis=0)
+    elif audio is not None and np.ndim(audio) == 2 and audio.shape[0] == 1:
+        audio = np.repeat(audio, 2, axis=0)
+    expected = round((end-start) * DEMUCS_SR)
+    if sr != DEMUCS_SR or audio is None or np.ndim(audio) != 2 or abs(audio.shape[-1] - expected) > 2:
+        raise FacetRequestError("decoded regular stem window is incomplete")
+    fingerprint = None
+    if "source_sha256" in window:
+        fingerprint = source_fingerprint(getattr(source, "src_path", None), source.complete)
+        if not fingerprint or fingerprint["sha256"] != window["source_sha256"] or fingerprint["bytes"] != window["source_bytes"]:
+            raise FacetRequestError("regular stem source differs from measured recording")
+    detector = get_vocal_detector(force=True)
+    if detector is None:
+        raise FacetRequestError("Demucs unavailable")
+    stems = detector.separate(audio, device="cpu")
+    if set(stems) != {"drums", "bass", "other", "vocals"} or any(
+            np.shape(v) != np.shape(audio) or not np.isfinite(v).all() for v in stems.values()):
+        raise FacetRequestError("invalid regular separation output")
+    if fingerprint is not None and source_fingerprint(getattr(source, "src_path", None), source.complete) != fingerprint:
+        raise FacetRequestError("regular source changed during separation")
+    if not os.path.isfile(marker):
+        raise FacetRequestError("regular working root disappeared")
+    write_stems(stems, window["side"], destination)
+    evidence = {**window, "device": "cpu", "sample_rate": DEMUCS_SR,
+                "samples": audio.shape[-1], "source": source.describe(), "model": DEMUCS_MODEL}
+    with shared_output(stamp) as tmp, open(tmp, "w") as handle:
+        json.dump(evidence, handle)
+    return evidence
 
 
 def analyze_facet_request(librosa, req):
@@ -4259,8 +4813,16 @@ def analyze_facet_request(librosa, req):
         }
     source = FileSource.from_request(url=req.get("url"), path=req.get("path"), complete=req.get("complete"),
                                      stream_url=req.get("stream_url"))
+    stems_device = req.get("stems_device")
+    if stems_device is not None and (stems_device != "cpu" or facets != ["stems"]):
+        raise FacetRequestError("stems_device supports only cpu on stems-only requests")
+    regular_window = parse_regular_stem_window(req, facets)
     try:
         source.open(librosa)
+        if regular_window is not None:
+            evidence = extract_regular_stem_window(librosa, source, regular_window, req["stems_dir"])
+            return {"facets": {"stems": {"status": "ok", "data": {"regular_window": evidence}}},
+                    "source": {**source.describe(), "stems_device": "cpu"}}
         result = analyze_facets(
             librosa, source, facets, stems_dir=req.get("stems_dir"),
             want_tail_vocals=req.get("tail_vocals") is True,
@@ -4319,6 +4881,11 @@ def main():
     if VOCAL_ENABLED:
         log("ANALYZE_VOCAL_ACTIVITY on — loading Demucs model...")
         get_vocal_detector()
+    # Loaded at boot so a missing model or onnxruntime is in the log before
+    # the first track rather than in the middle of a pass. A load failure is
+    # logged here and makes only the beat-grid facets unavailable.
+    log("Loading required Beat This shared beat grid...")
+    get_downbeat_tracker()
 
     # Tell the controller whether this worker can actually emit "sounds-like"
     # audio embeddings, so the admin UI can warn *before* a fruitless run rather
@@ -4341,8 +4908,7 @@ def main():
         importlib.util.find_spec(m) is not None for m in ("torch", "transformers")
     )
 
-    log("ready")
-    emit({
+    ready = {
         "id": None,
         "ready": True,
         "audio_embedding_capable": audio_capable,
@@ -4362,11 +4928,22 @@ def main():
         # Older workers never emit the key; the controller re-plans a v2
         # figure stored without a curve only on `=== true`.
         "loudness_curve_capable": shutil.which("ffmpeg") is not None,
+        "regular_stems_version": 2,
+        "subbeats_capable": vocal_capable,
+        "shared_beat_grid_capable": _downbeat_tracker is not None and not _downbeat_failed,
+        "subbeats_cache_version": 2,
+        "subbeats_suitability_version": 1,
         # Version signal: tail answers carry the short-term loudness curve
         # (tail v3). Older workers never emit the key; the controller re-plans
         # a placed tail stored without a curve only on `=== true`.
         "tail_loudness_curve_capable": tail_loudness_curve_capable(),
-    })
+    }
+    # Retained for older diagnostics; the grid is required rather than
+    # operator-configured.
+    if _downbeat_tracker is not None:
+        ready["downbeats"] = DOWNBEATS
+    log("ready")
+    emit(ready)
 
     for line in sys.stdin:
         line = line.strip()
@@ -4378,6 +4955,61 @@ def main():
             emit({"id": None, "ok": False, "error": f"bad json: {e}"})
             continue
         rid = req.get("id")
+        if req.get("op") == "match_subbeats":
+            try:
+                from subbeats_matching import find_matches
+                if req.get('method') == 'live-pair':
+                    from subbeats_cue_matching import plan_live_pair
+                    matches = plan_live_pair(req['jobs'], req['outgoing_id'], req['incoming_id'], req['mix_style'])
+                elif req.get('method') == 'cue-points':
+                    from subbeats_cue_matching import find_cue_matches
+                    matches = find_cue_matches(req['jobs'],req['outgoing_id'],req.get('outgoing_cue_index',0))
+                else:
+                    matches = find_matches(req['jobs'],req['outgoing_id'],req.get('bar_shift',0))
+                emit({"id":rid,"ok":True,"subbeats_matches":matches})
+            except Exception as error:
+                emit({"id":rid,"ok":False,"error":str(error)})
+            continue
+        if req.get("op") == "assess_subbeats":
+            try:
+                from subbeats_suitability import assess_request
+                emit({"id": rid, **assess_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "migrate_subbeats":
+            try:
+                from subbeats_cache import shared_context, migrate_shared
+                from subbeats_prepare import require_shared_cache
+                require_shared_cache(req['state_dir'], req['cache_id'])
+                allowance = shared_context(req)
+                moved = migrate_shared(req['state_dir'], req['stems_root'], allowance)
+                emit({"id": rid, "ok": True, "migrated": moved,
+                      "cache_added_bytes": req['remaining_bytes'] - allowance['bytes']})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "preview_subbeats":
+            try:
+                from subbeats_preview import render_preview
+                emit({"id": rid, **render_preview(req, fetch_source=fetch_audio)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "prepare_subbeats":
+            try:
+                from subbeats_prepare import prepare_request
+                emit({"id": rid, **prepare_request(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
+        if req.get("op") == "preview_stem_blend":
+            try:
+                from stem_blend_preview import render_preview
+                emit({"id": rid, **render_preview(req)})
+            except Exception as error:
+                emit({"id": rid, "ok": False, "error": str(error)})
+            continue
         # Transition render (feature: stem-blend transitions) — dispatched by
         # op key; a pure mix of cached stems, seconds of CPU, no model.
         if req.get("op") == "render_transition":

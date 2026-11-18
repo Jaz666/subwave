@@ -629,6 +629,17 @@ see basic BPM/key working but vocal or "sounds-like" data missing, you're on the
 lean analyzer — enable the heavy tier with `ANALYZER_HEAVY=1`
 ([above](#enabling-sounds-like--vocals-the-heavy-tier)), not by pulling `tts-heavy`.
 
+### Shared beat grid
+
+Every analyzer tier now uses Beat This! for head and tail beat/bar grids. The small0 ONNX model and CPU ONNX Runtime are included in lean, heavy and CUDA images; this grid inference stays on CPU even when Demucs uses a GPU. `ANALYZE_DOWNBEATS` no longer controls the grid. BPM and key continue to come from librosa.
+
+New Library Analysis results use the shared grid automatically. Existing rows are not mass-rescanned: Pick Time refreshes every library track's stale or missing head/tail grid in the background as it enters the working queue, one at a time on CPU. Until refresh succeeds, a track cannot use Sub/Beats or Stem Blend transitions and takes the ordinary transition. Tracks that are never queued remain on their previous analysis until a later scan or queue entry.
+
+On GTZAN's held-out human labels, Beat This! raised downbeat F-score from 13.9 to 77.2 and the share of clips with both blend cues on a real downbeat from 11.9% to 69.2% (`tools/beat-this/README.md`). The analyzer uses two CPU threads by default per worker (`ANALYZE_DOWNBEAT_THREADS`); the model adds roughly 225 MB peak memory while loaded.
+
+A local-venv backend needs `onnxruntime==1.27.0` and `BEAT_THIS_MODEL` pointing at the checksum-pinned model:
+[`beat_this-small0.onnx`](https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx) (sha256 `5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf`).
+
 ### Running analysis without a sidecar (dev / offline)
 
 The analyzer has a third backend: a **local Python venv** with `librosa`

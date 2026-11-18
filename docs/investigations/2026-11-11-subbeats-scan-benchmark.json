@@ -1,0 +1,591 @@
+{
+  "track": "Agnelli & Nelson \u2014 El Nino",
+  "source_duration_seconds": 226.586122,
+  "source_bytes": 9153392,
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "gpu_vram_gib": 12,
+    "container_cpu_limit": 2,
+    "beat_this_device": "cpu",
+    "demucs_device": "cuda"
+  },
+  "station_snapshot": {
+    "budget_gib": 800,
+    "live_cache_bytes": 514730521038,
+    "measurement": "2026-11-11T14:48:51.815Z"
+  },
+  "first_run": {
+    "bootstrap_seconds": 3.341739392839372,
+    "copy_seconds": 0.09951139707118273,
+    "device": "cuda",
+    "runs": [
+      {
+        "method": "small0",
+        "attempt": "fresh",
+        "seconds": 46.99132324475795,
+        "added_bytes": 52451973,
+        "phases": {
+          "decode_audio": 2.102375372312963,
+          "source_preparation": 0.7129191420972347,
+          "beat_this_cpu": 16.95197402499616,
+          "cue_detection_total": 20.27754506934434,
+          "demucs_gpu": 4.236844823695719,
+          "silero_vad_cpu": 17.43136969767511,
+          "coverage_total": 25.990953750908375
+        },
+        "events": [
+          {
+            "phase": "decode_audio",
+            "seconds": 0.6945928568020463
+          },
+          {
+            "phase": "source_preparation",
+            "seconds": 0.7129191420972347
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.5731288809329271
+          },
+          {
+            "phase": "beat_this_cpu",
+            "seconds": 16.95197402499616
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 20.27754506934434
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.8346536345779896
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 2.9005439411848783
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.336300882510841
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 17.11830790899694
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.31306178867816925
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 25.990953750908375
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "small0",
+        "attempt": "cache-hit",
+        "seconds": 0.05173296108841896,
+        "added_bytes": 0,
+        "phases": {
+          "source_preparation": 0.008092270232737064,
+          "cue_detection_total": 0.00045470520853996277,
+          "coverage_total": 0.04283786565065384
+        },
+        "events": [
+          {
+            "phase": "source_preparation",
+            "seconds": 0.008092270232737064
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 0.00045470520853996277
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 0.04283786565065384
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "final0",
+        "attempt": "fresh",
+        "seconds": 29.71181001700461,
+        "added_bytes": 52461621,
+        "phases": {
+          "decode_audio": 2.0749252354726195,
+          "source_preparation": 0.6228802045807242,
+          "beat_this_cpu": 20.993481259793043,
+          "cue_detection_total": 22.1364728147164,
+          "demucs_gpu": 3.0650288723409176,
+          "silero_vad_cpu": 0.7539833160117269,
+          "coverage_total": 6.952075628563762
+        },
+        "events": [
+          {
+            "phase": "decode_audio",
+            "seconds": 0.6072779148817062
+          },
+          {
+            "phase": "source_preparation",
+            "seconds": 0.6228802045807242
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.5831659082323313
+          },
+          {
+            "phase": "beat_this_cpu",
+            "seconds": 20.993481259793043
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 22.1364728147164
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.884481412358582
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.7262755911797285
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.338753281161189
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.4345072014257312
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.3194761145859957
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 6.952075628563762
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "final0",
+        "attempt": "cache-hit",
+        "seconds": 0.053987196646630764,
+        "added_bytes": 0,
+        "phases": {
+          "source_preparation": 0.007962871342897415,
+          "cue_detection_total": 0.0004743831232190132,
+          "coverage_total": 0.045173912309110165
+        },
+        "events": [
+          {
+            "phase": "source_preparation",
+            "seconds": 0.007962871342897415
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 0.0004743831232190132
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 0.045173912309110165
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      }
+    ],
+    "ordinary": {
+      "seconds": 13.549893226474524,
+      "edges_seconds": 1.4704405860975385,
+      "phases": {
+        "demucs_gpu": 2.171105295419693
+      },
+      "answer": {
+        "stems": {
+          "status": "ok",
+          "data": {
+            "stems_cached": true,
+            "tail_stems": true
+          }
+        }
+      },
+      "bytes": 18421077
+    },
+    "total_seconds": 95.27673918195069
+  },
+  "repeated_run": {
+    "bootstrap_seconds": 3.5052246414124966,
+    "copy_seconds": 0.07642968837171793,
+    "device": "cuda",
+    "runs": [
+      {
+        "method": "small0",
+        "attempt": "fresh-1",
+        "seconds": 51.95345939323306,
+        "added_bytes": 52451973,
+        "phases": {
+          "decode_audio": 3.0745038902387023,
+          "source_preparation": 0.8671613456681371,
+          "beat_this_cpu": 16.538233472034335,
+          "cue_detection_total": 20.77298927027732,
+          "demucs_gpu": 4.6072330214083195,
+          "silero_vad_cpu": 18.302232537418604,
+          "coverage_total": 30.303930782712996
+        },
+        "events": [
+          {
+            "phase": "decode_audio",
+            "seconds": 0.8492131363600492
+          },
+          {
+            "phase": "source_preparation",
+            "seconds": 0.8671613456681371
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.7007768163457513
+          },
+          {
+            "phase": "beat_this_cpu",
+            "seconds": 16.538233472034335
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 20.77298927027732
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 1.5245139375329018
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 3.243108798749745
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.3641242226585746
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 17.986943628638983
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.3152889087796211
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 30.303930782712996
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "small0",
+        "attempt": "fresh-2",
+        "seconds": 28.030856925994158,
+        "added_bytes": 52451973,
+        "phases": {
+          "decode_audio": 3.8939060578122735,
+          "source_preparation": 0.6179314022883773,
+          "beat_this_cpu": 12.264110506512225,
+          "cue_detection_total": 15.80539049115032,
+          "demucs_gpu": 3.1224844697862864,
+          "silero_vad_cpu": 0.7338111465796828,
+          "coverage_total": 11.60706383548677
+        },
+        "events": [
+          {
+            "phase": "decode_audio",
+            "seconds": 0.5930193392559886
+          },
+          {
+            "phase": "source_preparation",
+            "seconds": 0.6179314022883773
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.5822801506146789
+          },
+          {
+            "phase": "beat_this_cpu",
+            "seconds": 12.264110506512225
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 15.80539049115032
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 2.718606567941606
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.7349506253376603
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.387533844448626
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.415136368945241
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.31867477763444185
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 11.60706383548677
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "small0",
+        "attempt": "cache-hit",
+        "seconds": 0.05579403601586819,
+        "added_bytes": 0,
+        "phases": {
+          "source_preparation": 0.008337740786373615,
+          "cue_detection_total": 0.00045621953904628754,
+          "coverage_total": 0.0466255284845829
+        },
+        "events": [
+          {
+            "phase": "source_preparation",
+            "seconds": 0.008337740786373615
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 0.00045621953904628754
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 0.0466255284845829
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "final0",
+        "attempt": "fresh-1",
+        "seconds": 43.72768270969391,
+        "added_bytes": 52461621,
+        "phases": {
+          "decode_audio": 4.189863317646086,
+          "source_preparation": 1.7211591927334666,
+          "beat_this_cpu": 27.568145082332194,
+          "cue_detection_total": 30.292356110177934,
+          "demucs_gpu": 3.7638952918350697,
+          "silero_vad_cpu": 0.8088505687192082,
+          "coverage_total": 11.713715577498078
+        },
+        "events": [
+          {
+            "phase": "decode_audio",
+            "seconds": 1.7059725699946284
+          },
+          {
+            "phase": "source_preparation",
+            "seconds": 1.7211591927334666
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.5991521347314119
+          },
+          {
+            "phase": "beat_this_cpu",
+            "seconds": 27.568145082332194
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 30.292356110177934
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 1.8847386129200459
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 2.1399365719407797
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.62395871989429
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.4403431601822376
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.3685074085369706
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 11.713715577498078
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "final0",
+        "attempt": "fresh-2",
+        "seconds": 30.67186451330781,
+        "added_bytes": 52461621,
+        "phases": {
+          "decode_audio": 2.368103859014809,
+          "source_preparation": 0.7253908002749085,
+          "beat_this_cpu": 21.846478920429945,
+          "cue_detection_total": 23.113004536367953,
+          "demucs_gpu": 3.0082597648724914,
+          "silero_vad_cpu": 0.7733742371201515,
+          "coverage_total": 6.832985796965659
+        },
+        "events": [
+          {
+            "phase": "decode_audio",
+            "seconds": 0.7065288396552205
+          },
+          {
+            "phase": "source_preparation",
+            "seconds": 0.7253908002749085
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.6748119741678238
+          },
+          {
+            "phase": "beat_this_cpu",
+            "seconds": 21.846478920429945
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 23.113004536367953
+          },
+          {
+            "phase": "decode_audio",
+            "seconds": 0.9867630451917648
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.6821632366627455
+          },
+          {
+            "phase": "demucs_gpu",
+            "seconds": 1.3260965282097459
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.4230203740298748
+          },
+          {
+            "phase": "silero_vad_cpu",
+            "seconds": 0.3503538630902767
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 6.832985796965659
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      },
+      {
+        "method": "final0",
+        "attempt": "cache-hit",
+        "seconds": 0.056178124621510506,
+        "added_bytes": 0,
+        "phases": {
+          "source_preparation": 0.00991321261972189,
+          "cue_detection_total": 0.0006092935800552368,
+          "coverage_total": 0.04526449088007212
+        },
+        "events": [
+          {
+            "phase": "source_preparation",
+            "seconds": 0.00991321261972189
+          },
+          {
+            "phase": "cue_detection_total",
+            "seconds": 0.0006092935800552368
+          },
+          {
+            "phase": "coverage_total",
+            "seconds": 0.04526449088007212
+          }
+        ],
+        "status": "prepared",
+        "cue_counts": {
+          "incoming": 2,
+          "outgoing": 2
+        }
+      }
+    ],
+    "ordinary": {
+      "seconds": 13.910701124928892,
+      "edges_seconds": 1.5327403359115124,
+      "phases": {
+        "demucs_gpu": 2.125859547406435
+      },
+      "answer": {
+        "stems": {
+          "status": "ok",
+          "data": {
+            "stems_cached": true,
+            "tail_stems": true
+          }
+        }
+      },
+      "bytes": 18421077
+    },
+    "total_seconds": 173.50732726044953
+  },
+  "illustrative_projection": {
+    "bytes_per_selected_track": 52451973,
+    "twelve_thousand_gib": 586.1964784562588,
+    "live_cache_gib": 479.3801540862769,
+    "remaining_budget_gib": 320.6198459137231,
+    "additional_tracks_at_example_size": 6563,
+    "limitations": "Single track; not a library-average capacity or timing estimate. Ordinary cache sharing, duration, coverage and compressibility change the marginal size."
+  }
+}

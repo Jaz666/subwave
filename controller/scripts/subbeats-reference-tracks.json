@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "purpose": "Owner-supplied listening references for development; never production track rules",
+  "timing_source": "MixMeister display; whole-second annotations need local audio alignment",
+  "bar_counts": "Estimated display counts; not proof of absolute musical bar numbering",
+  "tracks": [
+    {
+      "id": "4vFKlFqXJoBRkGHAamuZJa",
+      "artist": "Y Traxx",
+      "title": "Mystery Land (original mix)",
+      "intro_resolve_seconds": 57,
+      "estimated_intro_bar_count": 32,
+      "intro_lengths_bars": [
+        16
+      ],
+      "outro_seconds": 240,
+      "estimated_outro_bars": 16
+    },
+    {
+      "id": "0OMLjHZRtotztsQwt1npEW",
+      "artist": "Tiësto",
+      "title": "Suburban Train",
+      "intro_resolve_seconds": 27,
+      "estimated_intro_bar_count": 16,
+      "intro_lengths_bars": [
+        16
+      ],
+      "outro_seconds": 234,
+      "estimated_outro_bars": 15
+    },
+    {
+      "id": "4yJmvI0lrITSbffov6oEO6",
+      "artist": "Binary Finary",
+      "title": "1998 (Matt Darey mix)",
+      "intro_resolve_seconds": 41,
+      "estimated_intro_bar_count": 24,
+      "intro_lengths_bars": [
+        16
+      ],
+      "outro_seconds": 219,
+      "estimated_outro_bars": 8
+    },
+    {
+      "id": "4Vy15ilh1DAhLYvL0MRIVu",
+      "artist": "Liquid Child",
+      "title": "Diving Faces",
+      "intro_resolve_seconds": 27,
+      "estimated_intro_bar_count": 15,
+      "intro_lengths_bars": [
+        16
+      ],
+      "outro_seconds": 234,
+      "estimated_outro_bars": 16
+    },
+    {
+      "id": "7qL43GqMQDTmdXNmy2q9N7",
+      "artist": "Nalin & Kane",
+      "title": "Beachball",
+      "intro_resolve_seconds": 20,
+      "estimated_intro_bar_count": 11,
+      "intro_lengths_bars": [
+        4
+      ],
+      "outro_seconds": 260,
+      "estimated_outro_bars": 7
+    },
+    {
+      "id": "3VpJk9xr1lpnho9Cn84VSn",
+      "artist": "Cygnus X",
+      "title": "The Orange Theme (Moonman’s Orange Juice mix)",
+      "intro_resolve_seconds": 14,
+      "estimated_intro_bar_count": 8,
+      "intro_lengths_bars": [
+        8
+      ],
+      "outro_seconds": 240,
+      "estimated_outro_bars": 16
+    },
+    {
+      "id": "6PCEx3o7sfTMEBIQVbGcH3",
+      "artist": "Art of Trance",
+      "title": "Madagascar (Ferry Corsten remix)",
+      "intro_resolve_seconds": 96,
+      "estimated_intro_bar_count": 56,
+      "intro_lengths_bars": [
+        16,
+        32
+      ],
+      "outro_seconds": 234,
+      "estimated_outro_bars": 16,
+      "confirmed_bpm": 140.3,
+      "bpm_confirmation": "Owner reports MixMeister 140.3; agrees with independent sustained-quarter kick fit",
+      "earlier_resolves_possible": true,
+      "preferred_resolve_reason": "Earlier entries leave a long, largely unchanged drum pattern before musical variation"
+    },
+    {
+      "id": "4d45b9VOH8reQ0PSjcuOB4",
+      "artist": "Push",
+      "title": "Universal Nation (Ferry Corsten 99 remix)",
+      "intro_resolve_seconds": 68,
+      "estimated_intro_bar_count": 40,
+      "intro_lengths_bars": [
+        16,
+        32
+      ],
+      "outro_seconds": 219,
+      "estimated_outro_bars": 16
+    }
+  ]
+}

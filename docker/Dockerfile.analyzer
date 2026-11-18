@@ -19,13 +19,17 @@
 # huggingface.co, which is documented (and given an offline pre-seed recipe) in
 # docs/tts-heavy.md — a host without reach fails there, and the analyzer now
 # reports the reason on /health rather than degrading silently.
+#
+# Beat This! is the required shared beat grid for Library Analysis and
+# pick-time upgrades. Every analyzer flavour includes CPU ONNX Runtime and its
+# checksum-pinned model; this inference remains CPU-only on GPU builds.
 
 FROM python:3.11-slim-bookworm
 
 # ffmpeg + libsndfile1: librosa codec coverage for the Navidrome stream
-# formats. curl: operator healthchecks.
+# formats. rubberband-cli: mapped-tempo handoff auditions. curl: healthchecks.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates ffmpeg libsndfile1 \
+    curl ca-certificates ffmpeg libsndfile1 rubberband-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Analyzer venv ----------------------------------------------------------
@@ -61,28 +65,24 @@ RUN TORCH_INDEX="https://download.pytorch.org/whl/cpu" && \
     fi && \
     python3 -m venv /opt/analyzer/venv && \
     /opt/analyzer/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/analyzer/venv/bin/pip install --no-cache-dir librosa==0.11.0 soundfile==0.14.0 pyloudnorm==0.2.0 && \
+    /opt/analyzer/venv/bin/pip install --no-cache-dir librosa==0.11.0 soundfile==0.14.0 pyloudnorm==0.2.0 onnxruntime==1.27.0 && \
+    /opt/analyzer/venv/bin/python -c "import onnxruntime" && \
     if [ "$WITH_CLAP" = "1" ]; then \
-      # onnxruntime stays the CPU build even under WITH_CUDA: the ONNX path is
-      # only the CLAP_MODEL_PATH custom-export route, and onnxruntime-gpu drags
-      # in a fragile CUDA/cuDNN matrix. The transformers path runs on the GPU.
       /opt/analyzer/venv/bin/pip install --no-cache-dir \
         --index-url "$TORCH_INDEX" \
         --extra-index-url https://pypi.org/simple \
-        torch==$TORCH_VER transformers==5.13.0 onnxruntime==1.27.0 && \
+        torch==$TORCH_VER transformers==5.13.0 && \
       /opt/analyzer/venv/bin/python -c "import torch, transformers, onnxruntime" ; \
     fi && \
     if [ "$WITH_DEMUCS" = "1" ]; then \
-      # diffq decompresses demucs' quantized checkpoints — without it a
-      # DEMUCS_MODEL=*_q override makes demucs fatal() at load. It ships
-      # sdist-only (Cython ext): lend it gcc and purge in the SAME layer.
-      apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && \
+      # No diffq: it only unpacks demucs' quantised *_q checkpoints, is
+      # licensed non-commercial, and needs a compiler to build. The worker
+      # swaps a DEMUCS_MODEL=*_q for htdemucs (analyze_worker.py demucs_model).
       /opt/analyzer/venv/bin/pip install --no-cache-dir \
         --index-url "$TORCH_INDEX" \
         --extra-index-url https://pypi.org/simple \
-        torch==$TORCH_VER torchaudio==$TORCH_VER demucs==4.0.1 diffq==0.2.4 && \
-      /opt/analyzer/venv/bin/python -c "import torch, torchaudio, demucs, diffq" && \
-      apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* ; \
+        torch==$TORCH_VER torchaudio==$TORCH_VER demucs==4.0.1 && \
+      /opt/analyzer/venv/bin/python -c "import torch, torchaudio, demucs" ; \
     fi && \
     find /opt/analyzer/venv -depth -type d -name __pycache__ -exec rm -rf {} +
 
@@ -99,8 +99,22 @@ ENV PATH=/opt/analyzer/venv/bin:/opt/server/venv/bin:$PATH \
 
 WORKDIR /app
 COPY docker/analyzer/server.py /app/server.py
+COPY docker/analyzer/subbeats_live_service.py /app/subbeats_live_service.py
 # The SAME worker the controller runs in-process — single source of truth.
 COPY controller/scripts/analyze_worker.py /app/workers/analyze_worker.py
+COPY controller/scripts/subbeats_live.py /app/workers/subbeats_live.py
+COPY controller/scripts/stem_blend_preview.py /app/workers/stem_blend_preview.py
+COPY controller/scripts/beat_this_grid.py controller/scripts/subbeats_models.py controller/scripts/subbeats_cues.py controller/scripts/subbeats_cue_preview.py controller/scripts/subbeats_cue_matching.py controller/scripts/subbeats_handoff.py controller/scripts/subbeats_vocal_confidence.py controller/scripts/subbeats_coverage.py controller/scripts/subbeats_vocal_plan.py controller/scripts/subbeats_vocals.py controller/scripts/subbeats_matching.py controller/scripts/subbeats_suitability.py controller/scripts/subbeats_prepare.py controller/scripts/subbeats_cache.py controller/scripts/subbeats_preview.py controller/scripts/subbeats_structure.py controller/scripts/subbeats_reference.py controller/scripts/subbeats_reference_preview.py /app/workers/
+# The Beat This! downbeat model at the worker's default BEAT_THIS_MODEL:
+# tools/beat-this/export.py's small0 export, published as a prerelease asset
+# on this repo. --checksum fails the build on any other bytes, and --chmod
+# because ADD gives a downloaded file mode 600 and the server runs as 10001.
+# One file for every architecture. Keep the URL and hash in lockstep with
+# docker/Dockerfile.aio; tools/beat-this/README.md says how to publish a new
+# version.
+ADD --chmod=644 --checksum=sha256:5cff50fb031bc4a43b036f0af4835cf60bf8d43e6ccc8a7e676ed89db53f6eaf \
+    https://github.com/perminder-klair/subwave/releases/download/beat-this-small0-v1/beat_this-small0.onnx \
+    /opt/analyzer/models/beat_this-small0.onnx
 
 # Shared state mount — the controller pre-fetches tracks into
 # /var/sub-wave/analyze-tmp. mkdir'd here so the image runs standalone too.

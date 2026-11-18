@@ -63,8 +63,8 @@ test('both sides span the full buffer and keep the linear fade otherwise', () =>
     // equals d on every seam that is not a clip seam, so on every equal-power one.
     'outgoing: equal-power over d, else the unchanged linear fade.out');
   assert.match(radio,
-    /b_source =\s+if equal_power_seam then\s+equal_power_fade\(span=b_fade, rising=true, b\.source\)\s+else\s+fade\.in\(duration=b_fade, initial_metadata=b\.metadata, b\.source\)\s+end/,
-    'incoming: equal-power over b_fade, else the unchanged linear fade.in');
+    /b_source =\s+if clip_fading then\s+b\.source\s+elsif equal_power_seam then\s+equal_power_fade\(span=b_fade, rising=true, b\.source\)\s+else\s+fade\.in\(duration=b_fade, initial_metadata=b\.metadata, b\.source\)\s+end/,
+    'incoming: clips use the shared weights; plain seams retain equal-power over b_fade or the linear fade.in');
 });
 
 test('only a plain song-to-song seam takes the curve', () => {

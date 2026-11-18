@@ -10,6 +10,7 @@ import { cn } from '../../lib/cn';
 import type { Batch, BudgetMode, RescanOpts, TagSteps } from './LibraryTaggingPanel';
 import { num } from './LibraryTaggingPanel';
 import ScheduledTaggingCard from './library/ScheduledTaggingCard';
+import { useRegularStemStatus } from './RegularStemStatusPanel';
 
 type Tab = 'run' | 'rescan' | 'reset';
 
@@ -54,11 +55,14 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function LibraryTaggingModal(p: Props) {
   const [tab, setTab] = useState<Tab>('run');
+  const regularStemStatus = useRegularStemStatus(p.open);
+  const workingStems = regularStemStatus.data?.workingCache === true;
+  const stemOptionsUnknown = !regularStemStatus.data || regularStemStatus.isError;
 
   // All on by default EXCEPT the Demucs vocal pass, measured at ~90% of the
   // whole acoustics phase (~10s/track on a 24-thread CPU).
   const [steps, setSteps] = useState<TagSteps>({
-    reconcile: true, enrich: true, tagMoods: true, analyze: true, vocal: false,
+    reconcile: true, enrich: true, tagMoods: true, analyze: true, stems: false, stemWaveforms: false, vocal: false,
   });
   const toggleStep = (k: keyof TagSteps) => setSteps(s => ({ ...s, [k]: !s[k] }));
 
@@ -111,11 +115,14 @@ export default function LibraryTaggingModal(p: Props) {
   const effSteps: TagSteps = {
     ...steps,
     analyze: effAnalyze,
+    stems: !analyzeLocked && !stemOptionsUnknown && steps.stems,
     // Otherwise send false — a harmless --no-vocal the backend ignores.
     vocal: effAnalyze && p.vocalWanted ? steps.vocal : false,
   };
-  const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze;
-  const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
+  const anyStep = effSteps.reconcile || effSteps.enrich || effSteps.tagMoods || effSteps.analyze || effSteps.stems || effSteps.stemWaveforms;
+  const onlyReconcile = effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze && !effSteps.stems && !effSteps.stemWaveforms;
+  const stemsOnly = effSteps.stems && !effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze;
+  const waveformsOnly = effSteps.stemWaveforms && !effSteps.reconcile && !effSteps.enrich && !effSteps.tagMoods && !effSteps.analyze && !effSteps.stems;
 
   // Run-tab cost preview. seedEst is the up-front LLM seed budget tag-library.ts
   // spends before propagation carries the rest; the batch-of-25 divisor mirrors
@@ -192,8 +199,13 @@ export default function LibraryTaggingModal(p: Props) {
         {tab === 'run' && (
           <>
             <p className="text-[12px] leading-[1.55] text-muted">
-              Process new / untagged tracks. Untick a step to skip it this run — the
-              badge shows what each one costs.
+              {stemsOnly
+                ? workingStems
+                  ? 'Process queued Sub/Beats selections within the track limit and saved cache budget. Regular Stem Blends are prepared from the queue when needed.'
+                  : 'Process queued Sub/Beats selections and missing regular stems. Queued selections take priority within the track limit; the shared cache budget also applies.'
+                : waveformsOnly
+                  ? 'Prepare waveform data for already cached Sub/Beats stems. No Demucs work is started.'
+                  : 'Process new / untagged tracks. Untick a step to skip it this run — the badge shows what each one costs.'}
             </p>
             <div className="grid gap-2.5">
               <Pass on={steps.reconcile} onClick={() => toggleStep('reconcile')}
@@ -221,6 +233,12 @@ export default function LibraryTaggingModal(p: Props) {
                   : p.soundsLikeActive
                     ? 'Tempo, key & intro, plus sounds-like fingerprints. The slow step; vocal separation is split out below.'
                     : 'Tempo, key & intro for every track — the slow step. Sounds-like fingerprints are off; enable them on the library page to include them.'} />
+              <Pass on={effSteps.stems} onClick={() => toggleStep('stems')}
+                name="Prepare stem caches" tag="very slow · Demucs"
+                hint="Run the library Demucs stem pass on eligible tracks and queued Sub/Beats selections. Can run on its own; the shared stem-cache budget applies." />
+              <Pass on={effSteps.stemWaveforms} onClick={() => toggleStep('stemWaveforms')}
+                name="Prepare Sub/Beats stem waveforms" tag="light · prepared stems"
+                hint="Save compact waveform data for already prepared Sub/Beats stems. No audio separation; this can run on its own." />
               {p.vocalWanted && (
                 <div className="pl-6">
                   <Pass on={effAnalyze && steps.vocal} onClick={() => toggleStep('vocal')}
@@ -230,16 +248,27 @@ export default function LibraryTaggingModal(p: Props) {
                       : 'Source-separate each track to detect instrumental vs vocal. Very heavy on CPU (~10-30s/track) — untick to do bpm/key + sounds-like without it.'} />
                 </div>
               )}
+              <Pass on={effSteps.stems} onClick={() => toggleStep('stems')} disabled={analyzeLocked || stemOptionsUnknown}
+                name={workingStems ? 'Prepare saved Sub/Beats stems' : 'Prepare stems (regular + Sub/Beats)'} tag="very slow · disk budget"
+                hint={stemOptionsUnknown
+                  ? regularStemStatus.isError
+                    ? 'Stem preparation options are unavailable. Reopen this dialog to retry; other scan steps remain available.'
+                    : 'Loading stem preparation options…'
+                  : analyzeLocked
+                    ? 'No analysis engine running — start the analyzer sidecar or configure an in-process backend.'
+                    : workingStems
+                      ? 'Process queued Sub/Beats selections only. Regular Stem Blends use CPU preparation when tracks are queued; library stem caching is on hold. Existing stem files are retained.'
+                       : 'Cache missing regular stems for eligible tracks, then process queued Sub/Beats selections. Can run on its own. Tracks awaiting Sub/Beats skip regular stem creation. Requires the heavy Demucs analyzer; the shared disk budget applies.'} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
               <div className="lib-batch">
-                <label htmlFor="modal-batch">Limit</label>
+                <label htmlFor="modal-batch">{stemsOnly || waveformsOnly ? 'Track limit' : 'Limit'}</label>
                 <select id="modal-batch" value={p.batch} onChange={e => p.setBatch(e.target.value as Batch)}>
                   <option value="100">next 100</option>
                   <option value="500">next 500</option>
                   <option value="5000">next 5,000</option>
                   <option value="10000">next 10,000</option>
-                  <option value="all">all{p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining</option>
+                  <option value="all">{waveformsOnly ? 'all prepared Sub/Beats tracks' : stemsOnly ? 'all pending stem work' : `all${p.remaining != null ? ` ${num(p.remaining)}` : ''} remaining`}</option>
                 </select>
               </div>
               <div className="flex items-center gap-2.5">

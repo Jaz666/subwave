@@ -42,6 +42,9 @@ interface CliFlags {
   // db.blindTaggedIds), instead of the rows with a stale prompt or model.
   upgradeBlind: boolean;
   skipAnalyze: boolean;
+  stems: boolean;
+  noStems: boolean;
+  stemWaveforms: boolean;
   reAnalyze: boolean;
   reconcileOnly: boolean;
   // Skip embed + mood tagging (phases 1-4); walk, enrich and analyze still run
@@ -81,6 +84,9 @@ export function parseFlags(): CliFlags {
     upgrade: args.includes('--upgrade'),
     upgradeBlind: args.includes('--upgrade-blind'),
     skipAnalyze: args.includes('--skip-analyze'),
+    stems: args.includes('--stems'),
+    noStems: args.includes('--no-stems'),
+    stemWaveforms: args.includes('--stem-waveforms'),
     reAnalyze: args.includes('--re-analyze'),
     // Walk Navidrome, prune rows for tracks it no longer contains, then exit —
     // no embeddings, no LLM.

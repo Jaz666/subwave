@@ -24,12 +24,14 @@ export interface PublicLyricsOptions {
   source?: LyricsSource;
   /** An LRCLIB lookup for this track is still in flight. */
   pending?: boolean;
+  /** Source milliseconds to elapsed time through a prepared handoff. */
+  playbackTimeMs?: (sourceMs: number) => number;
 }
 
 export function toPublicLyricsPayload(
   songId: string | null,
   lyrics: StructuredLyricsInput | null,
-  { offsetMs = 0, cueInSec = null, source = 'music-server', pending = false }: PublicLyricsOptions = {},
+  { offsetMs = 0, cueInSec = null, source = 'music-server', pending = false, playbackTimeMs }: PublicLyricsOptions = {},
 ): PublicLyricsPayload {
   if (!songId || !lyrics) {
     return { songId: songId || null, synced: false, offsetMs, lines: [], source: null, pending };
@@ -47,7 +49,9 @@ export function toPublicLyricsPayload(
   // into the file. Shifted here so every client gets the played timeline.
   const lines = lyrics.lines
     .map((line) => ({
-      startMs: Number.isFinite(line.startMs) ? shiftOnsetByCueMs(cueInSec, line.startMs) : null,
+      startMs: Number.isFinite(line.startMs)
+        ? playbackTimeMs ? playbackTimeMs(line.startMs-offsetMs)+offsetMs : shiftOnsetByCueMs(cueInSec, line.startMs)
+        : null,
       text: typeof line.text === 'string' ? line.text.trim() : '',
     }))
     .filter((line) => line.text.length > 0 && !isInstrumentalMarker(line.text));

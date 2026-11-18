@@ -12,6 +12,8 @@
 #
 # `stem-seam-test.sh cuein` is a separate measurement mode: where
 # liq_cue_in really lands per format, against the controller's prediction.
+# `stem-seam-test.sh split` measures level and sample continuity at the
+# Sub/Beats outgoing/incoming metadata join across four frame phases.
 #
 # Requires #1774's mixer buffer fix for short station crossfades. To validate
 # both PRs without merging commits, set STEM_SEAM_RADIO_REF to the pinned
@@ -112,6 +114,20 @@ else
   echo "Mixer source: this checkout ($ROOT/liquidsoap/radio.liq)"
 fi
 default_cross=$(py mixer /work/radio-source.liq /work)
+if [ "${1:-}" = split ]; then
+  py split-prepare /work /repo
+  for trim in 0 1 221 661; do
+    name="split-$trim"
+    rm -f "$WORK/seam-$name.wav"
+    if ! liq "seam-$name.liq" > "$WORK/seam-$name.log"; then
+      tail -20 "$WORK/seam-$name.log"
+      exit 1
+    fi
+  done
+  py split-analyse /work
+  echo "STEMSEAM SPLIT PASS: level and samples continuous across four frame phases"
+  exit 0
+fi
 echo "== preparing tracks + real analyze_worker.render_transition clip"
 plan=$(py prepare /work /repo)
 echo "   worker: $plan"

@@ -60,14 +60,15 @@ in the `package.json` files, lockfiles, and `docker/Dockerfile.*`, not here.
 | Project | Used for | Licence |
 | --- | --- | --- |
 | [librosa](https://librosa.org) | BPM, key, onsets, endings, and silence measurement | ISC |
+| [Beat This!](https://github.com/CPJKU/beat_this) (CPJKU): `small0`, `final0` | Optional Sub/Beats cue-point preparation in heavy images | MIT (code and released weights) |
 | [pyloudnorm](https://github.com/csteinmetz1/pyloudnorm) | LUFS loudness measurement | MIT |
 | [NumPy](https://numpy.org) and [SciPy](https://scipy.org) | Numerical work in the analyzer and TTS workers | BSD-3-Clause |
 | [PyTorch](https://pytorch.org) and torchaudio | Model runtime for CLAP, Demucs, Chatterbox, and Pocket TTS | BSD-3-Clause |
 | [Hugging Face Transformers](https://github.com/huggingface/transformers) | Loads the CLAP model | Apache-2.0 |
-| [ONNX Runtime](https://onnxruntime.ai) | Runs Kokoro and custom CLAP exports | MIT |
+| [ONNX Runtime](https://onnxruntime.ai) | Runs Kokoro, the Beat This downbeat model and custom CLAP exports | MIT |
 | [CLAP](https://github.com/LAION-AI/CLAP) (LAION): [`laion/clap-htsat-unfused`](https://huggingface.co/laion/clap-htsat-unfused) | Audio embeddings for mood tagging (heavy analyzer tier) | Apache-2.0 |
 | [Demucs](https://github.com/facebookresearch/demucs) (Meta AI): `htdemucs` | Vocal detection and stem blends (heavy analyzer tier) | MIT |
-| [diffq](https://github.com/facebookresearch/diffq) (Meta AI) | Decompresses Demucs' quantised checkpoints (heavy analyzer tier) | CC BY-NC 4.0 |
+| [Beat This!](https://github.com/CPJKU/beat_this) (CPJKU, Johannes Kepler University Linz): `small0`, exported to ONNX by `tools/beat-this` | Required head and tail beat/bar grid in every analyzer image; CPU ONNX inference | Code and weights MIT. The maintainers say commercial use and redistribution are fine ([#21](https://github.com/CPJKU/beat_this/issues/21)); the training data includes commercial recordings, and that question is still open ([#18](https://github.com/CPJKU/beat_this/issues/18)) |
 | [FastAPI](https://fastapi.tiangolo.com), [Uvicorn](https://www.uvicorn.org), [Pydantic](https://docs.pydantic.dev) | HTTP front of the analyzer and `tts-heavy` sidecars | MIT / BSD-3-Clause / MIT |
 | [Cython](https://cython.org) | Build-time only, for Chatterbox's dependencies | Apache-2.0 |
 
@@ -228,9 +229,6 @@ the documented deployment and Workers for the CLI installer,
   processes. SUB/WAVE talks to them over files, telnet, and HTTP.
 - eSpeak NG (GPL-3.0) is loaded by the Kokoro worker, a separate Python
   process the controller spawns.
-- diffq is licensed for non-commercial use only. It ships only in the heavy
-  analyzer images (`ANALYZER_HEAVY=1`, `subwave-aio-heavy`, `subwave-aio-cuda`),
-  not in the default build.
 - Pocket TTS model weights are CC-BY-4.0, which requires attribution to Kyutai.
 - Tracks pulled with `tools/jamendo` carry their own Creative Commons licences.
   The tool writes a separate attribution file for them.

@@ -163,13 +163,16 @@ export function useStationFeed({ leadTrimMs = 0 }: StationFeedOptions = {}): Sta
           setLeadMs(leadMsRef.current);
         }
         const trackKey = np ? `${np.title}\u0000${np.artist}` : null;
-        // Prefer the queue's start time over "first seen by this client": a tab
-        // hidden at the transition would stamp Date.now() mid-track. Guarded to
-        // the matching track and to plausible values; a server clock skewed into
-        // the future falls back to first-seen.
+        // Prefer the final shared-mix mark, then the matching queue start, over
+        // "first seen by this client": a hidden tab must not stamp Date.now()
+        // mid-track. Both are live-edge timestamps and are shifted into this
+        // listener's time below. A future server clock falls back to first-seen.
         const cur = (stRes as StationState & { current?: { title?: string; startedAt?: string } }).current;
         let serverStart = NaN;
-        if (np?.title && cur && cur.title === np.title && cur.startedAt) {
+        const hasOutputStart = !!np && Number.isFinite(np.outputStartedAt) && np.outputStartedAt! <= Date.now();
+        if (hasOutputStart) {
+          serverStart = np.outputStartedAt!;
+        } else if (np?.title && cur && cur.title === np.title && cur.startedAt) {
           const t = Date.parse(cur.startedAt);
           if (Number.isFinite(t) && t <= Date.now()) serverStart = t;
         }
@@ -200,10 +203,11 @@ export function useStationFeed({ leadTrimMs = 0 }: StationFeedOptions = {}): Sta
           }
         } else {
           if (Number.isFinite(serverStart)) {
-            // Same track: converge on the server stamp without re-render noise
-            // inside ±2.5s.
+            // The output mark is the precise shared-mix anchor, so converge to
+            // it even for sub-second differences. Keep the wider deadband for
+            // the older queue timestamp, whose precision is coarser.
             setTrackStartedAt(prev =>
-              prev != null && Math.abs(audibleAt - prev) <= 2500 ? prev : audibleAt,
+              prev != null && Math.abs(audibleAt - prev) <= (hasOutputStart ? 0 : 2500) ? prev : audibleAt,
             );
           }
           // Metadata enrichment (genres, bpm, cover) lands on later polls for a

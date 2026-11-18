@@ -94,6 +94,7 @@ export async function getPath(name: string) {
 export function bedUri(path: string, { bedSec, crossSec }: { bedSec: number; crossSec: number }): string {
   const fields = [
     'subwave_kind="bed"',
+    `subwave_bed_sec="${escAnnotate(bedSec.toFixed(2))}"`,
     `liq_cue_out="${escAnnotate(bedSec.toFixed(2))}"`,
     `liq_cross_duration="${escAnnotate(crossSec.toFixed(2))}"`,
   ];

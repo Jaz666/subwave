@@ -1,0 +1,399 @@
+.deck {
+  position: relative;
+  isolation: isolate;
+}
+
+.viewport,
+.eventsViewport {
+  overflow: clip;
+}
+
+.eventsViewport {
+  height: 10px;
+}
+
+.eventsTimeline {
+  position: relative;
+  height: 100%;
+}
+
+.viewport,
+.segment,
+.timeline {
+  position: relative;
+  height: 44px;
+}
+
+.segment {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.timeline {
+  display: flex;
+  align-items: center;
+}
+
+.eventLane {
+  position: absolute;
+  inset: 1px 0;
+  height: 8px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.eventMarker {
+  position: absolute;
+  inset-block: 0;
+  border-radius: 2px;
+}
+
+.estimatedSpeechMarker {
+  background-color: color-mix(in oklab, var(--marker-color) 24%, transparent);
+  background-image: repeating-linear-gradient(135deg,
+    transparent 0 3px,
+    color-mix(in oklab, var(--marker-color) 92%, transparent) 3px 5px);
+}
+
+.eventLegend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.laneLabel {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.stemFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.stemDescription {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 12px;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: center;
+}
+
+.stemDescription span { color: var(--muted); }
+
+.expandButton {
+  min-height: 32px;
+  padding-inline: 4px;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.expandButton:focus-visible,
+.expandedStatus button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.expandedLanes {
+  margin-top: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--ink) 14%, transparent);
+  padding-top: 8px;
+}
+
+.expandedLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+
+.outgoingLegend { color: var(--outgoing-color); }
+.incomingLegend { color: var(--incoming-color); }
+
+.sourceNote {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.stageLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-block: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.expandedDuration {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.expandedStatus {
+  padding-block: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.expandedStatus button {
+  min-height: 32px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.expandedPlot {
+  --stem-progress: 0%;
+}
+
+.stemRuler {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 64px;
+  padding-block: 4px;
+  color: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stemDetailRow {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  border-top: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.stemDetailName {
+  color: var(--ink);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.stemDetailChart {
+  position: relative;
+  min-width: 0;
+  height: 76px;
+  overflow: clip;
+}
+
+.stemDetailChart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.stemDetailChart .expandedStatus {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  margin: 0;
+  padding: 4px;
+  background: color-mix(in oklab, var(--bg) 88%, transparent);
+  text-align: center;
+}
+
+.outgoingWave { stroke: var(--outgoing-color); }
+.incomingWave { stroke: var(--incoming-color); }
+
+@media (max-width: 640px) {
+  .outgoingWave,
+  .incomingWave { stroke-width: 1; }
+}
+
+.stemLivePlayhead {
+  display: none;
+  position: absolute;
+  inset-block: 0;
+  left: var(--stem-progress);
+  width: 2px;
+  background: var(--ink);
+  box-shadow: 1px 0 0 var(--bg);
+  pointer-events: none;
+}
+
+.expandedPlot[data-active="true"] .stemLivePlayhead { display: block; }
+
+.chartRule {
+  stroke: color-mix(in oklab, var(--ink) 12%, transparent);
+  stroke-width: 1;
+}
+
+.chartMarker {
+  stroke: color-mix(in oklab, var(--ink) 65%, transparent);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.trackTime {
+  margin-left: auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.preparedSpeech {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.estimatedLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.estimatedLegend i {
+  width: 10px;
+  height: 8px;
+  border-radius: 2px;
+  background-color: color-mix(in oklab, var(--marker-color) 24%, transparent);
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in oklab, var(--marker-color) 92%, transparent) 3px 5px);
+}
+
+.stemActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.autoEnabled { color: var(--ink); font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
+
+.syncControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.syncControls button {
+  min-width: 28px;
+  min-height: 28px;
+  padding-inline: 5px;
+  color: var(--ink);
+  border: 1px solid color-mix(in oklab, var(--ink) 18%, transparent);
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.syncControls button:disabled { opacity: .45; }
+.syncControls output { min-width: 48px; text-align: center; color: var(--ink); }
+.syncControls .syncReset { min-width: 40px; color: var(--accent); }
+
+.syncControls button:focus-visible,
+.expandButton:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .eventLegend { flex-wrap: wrap; gap: 5px 10px; }
+  .syncControls { justify-content: flex-start; }
+}
+
+.transitionMarker {
+  position: absolute;
+  z-index: 3;
+  inset-block: 0;
+  border-inline-start: 1px dashed var(--ink);
+}
+
+.transitionLabel {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  padding-inline: 3px;
+  color: var(--ink);
+  background: var(--bg);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.observedTransitionMarker {
+  border-inline-start-style: solid;
+}
+
+.stemLane {
+  inset-block: 0;
+  height: 10px;
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+}
+
+.stemMarker {
+  position: absolute;
+  inset-block: 0;
+  min-width: 2px;
+  overflow: visible;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    var(--outgoing-color) 0 var(--out-width),
+    color-mix(in oklab, var(--outgoing-color) 50%, var(--incoming-color)) var(--out-width) calc(var(--out-width) + var(--overlap-width)),
+    var(--incoming-color) calc(var(--out-width) + var(--overlap-width)) 100%);
+}
+
+.stemMarker > span {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  color: var(--bg);
+  font-size: 9px;
+  line-height: 10px;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px var(--ink);
+}
+
+.playhead {
+  position: absolute;
+  z-index: 3;
+  inset-block: 0;
+  left: 50%;
+  width: 5px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: var(--bg);
+}
+
+.playhead::before {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--ink);
+  content: '';
+}
+
+.playhead::after {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%);
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
+}
