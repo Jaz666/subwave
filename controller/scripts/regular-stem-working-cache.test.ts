@@ -46,14 +46,14 @@ test('nine identities retained; restart cleans retired dirs but preserves links 
 });
 
 
-test('bounded durable busy stamp protects a sidecar job across controller restart', async () => {
+for (const busyName of ['.regular-busy.json','.regular-render-busy.json']) test(`bounded ${busyName} protects a sidecar job across controller restart`, async () => {
   const root = createTempDir(path.join(tmpdir(), 'regular-working-'));
   try {
     const cache = new RegularStemWorkingCache(root);
     await cache.reconcile(null,['active']);
     const lease = await cache.acquire('active');
     assert.ok(lease);
-    const busy = path.join(lease.directory,'.regular-busy.json');
+    const busy = path.join(lease.directory,busyName);
     await writeFile(busy,JSON.stringify({until:Date.now()+60_000}));
     await lease.release();
     const restarted = new RegularStemWorkingCache(root);

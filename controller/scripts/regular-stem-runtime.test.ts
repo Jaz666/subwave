@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createServer } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RegularStemQueueEvidence } from '../src/broadcast/regular-stem-needs.js';
+import type { FacetRequestOpts } from '../src/music/analyzer.js';
+import { regularStemNeeds, type RegularStemQueueEvidence } from '../src/broadcast/regular-stem-needs.js';
 import type { BeatGridProvenance } from '../src/schemas/beat-grid.js';
 
 test('real preparation owner orders tail/head, pauses for render, leases sources and ignores old cache', async () => {
   const audio = Buffer.alloc(2048,1);
   const fingerprint = createHash('sha256').update(audio).digest('hex');
+  let hold=false;
+  let held: {directory:string;window:NonNullable<FacetRequestOpts['regular_stem_window']>;response:ServerResponse} | undefined;
+  let onHeld=()=>{},onClosed=()=>{};
   const posts: Array<{side:string;start_ms:number;end_ms:number}> = [];
   const server = createServer(async (req,res) => {
     if(req.url === '/health') {
@@ -25,6 +29,10 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     assert.equal(window.source_sha256,fingerprint);
     assert.equal(window.source_bytes,audio.length);
     posts.push(window);
+    if(hold) {
+      held={directory:request.stems_dir,window,response:res};
+      res.on('close',()=>onClosed());onHeld();return;
+    }
     const stamp={...window,device:'cpu',sample_rate:44100,
       samples:Math.round((window.end_ms-window.start_ms)*44.1),source:{duration_s:240}};
     for(const name of ['drums','bass','other','vocals']) await writeFile(path.join(request.stems_dir,`${window.side}-${name}.flac`),'fixture');
@@ -60,11 +68,61 @@ test('real preparation owner orders tail/head, pauses for render, leases sources
     assert.equal(runtime.pending('a','b'),false);
     const sources=await runtime.sources('a','b');assert.ok(sources);
     assert.notEqual(sources.tail.stemsDir,old);
+    assert.equal(sources.valid(),true);
+    runtime.update(null,[track('a'),track('c'),track('b')],()=>{},()=>{});
+    assert.equal(runtime.pair('a','b'),null,'matching reusable windows are not permission for a non-adjacent pair');
+    assert.equal(sources.valid(),false,'reordering invalidates an in-flight render');
+    runtime.update(null,[{...track('a'),occurrence:'new-a'},{...track('b'),occurrence:'new-b'}],()=>{},()=>{});
+    assert.equal(sources.valid(),false,'readding the same recordings does not revive the old seam');
     runtime.update(null,[],()=>{},()=>{});
     await access(sources.tail.stemsDir);
     await sources.release();
     await assert.rejects(access(sources.tail.stemsDir));
     assert.equal(await readFile(path.join(old,'tail-drums.flac'),'utf8'),'old cache');
+    if(timeout)clearTimeout(timeout);
+
+    // Real HTTP timeout: the controller loses the reply while the sidecar may
+    // still be working. A fresh runtime must defer, not submit a second job.
+    hold=true;
+    const submitted=new Promise<void>(resolve=>{onHeld=resolve;});
+    const closed=new Promise<void>(resolve=>{onClosed=resolve;});
+    const slow=new RegularStemRuntime();
+    let oldWakes=0;
+    slow.update(null,[{...track('slow'),remainingSec:56}],()=>{oldWakes++;},()=>{});
+    const limit=new Promise<never>((_resolve,reject)=>{timeout=setTimeout(()=>reject(new Error('timeout recovery did not settle')),5000);});
+    await Promise.race([submitted,limit]);
+    await Promise.race([closed,limit]);
+    assert.ok(held);
+    const busy=path.join(path.dirname(held.directory),'.regular-busy.json');
+    assert.ok(JSON.parse(await readFile(busy,'utf8')).until>Date.now());
+    const restarted=new RegularStemRuntime();
+    const evidence=track('slow');
+    const key=regularStemNeeds([evidence],Date.now())[0].key;
+    let recovered:()=>void=()=>{};
+    const recoveryReady=new Promise<void>(resolve=>{recovered=resolve;});
+    restarted.update(null,[evidence],()=>recovered(),()=>{});
+    const deferred=async()=>{
+      const until=Date.now()+4000;
+      while(restarted.lane.state(key)!=='pending') {
+        if(Date.now()>until)throw new Error('restarted preparation did not defer');
+        await new Promise(resolve=>setTimeout(resolve,5));
+      }
+    };
+    await Promise.race([deferred(),limit]);
+    assert.equal(posts.length,3,'restart does not overlap a timed-out sidecar job');
+    assert.equal(oldWakes,0,'a completion past the deadline cannot wake the old seam');
+    // Late partial output is retained safely, but cannot be treated as ready.
+    await writeFile(path.join(held.directory,'tail-drums.flac'),'late partial');
+    await writeFile(busy,JSON.stringify({until:Date.now()-1}));
+    hold=false;held.response.destroy();
+    restarted.update(null,[evidence],()=>recovered(),()=>{});
+    await Promise.race([recoveryReady,limit]);
+    assert.equal(posts.length,4,'expired lease permits one fresh extraction');
+    assert.equal(restarted.lane.state(key),'ready');
+    assert.equal(await readFile(path.join(held.directory,'tail-drums.flac'),'utf8'),'fixture');
+    await assert.rejects(access(busy));
+    slow.update(null,[],()=>{},()=>{});
+    restarted.update(null,[],()=>{},()=>{});
   } finally {
     if(timeout)clearTimeout(timeout);
     runtime.update(null,[],()=>{},()=>{});

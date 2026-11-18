@@ -10,6 +10,7 @@ import type { RegularStemNeed } from './regular-stem-preparation.js';
 
 export interface RegularStemQueueEvidence {
   id: string;
+  occurrence?: string; // queue occurrence, independent of reusable recording windows
   sent: boolean;
   remainingSec: number | null;
   regularEligible: boolean;

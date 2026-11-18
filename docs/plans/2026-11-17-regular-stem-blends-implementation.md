@@ -342,3 +342,41 @@ both the quiet-only setting and environment override. Controller lint/type
 validation passes with no errors (1,920 warnings, including the new queue-test
 fixture cast). No real-model CPU
 benchmark, Docker rebuild or live stream test was performed in this pass.
+
+### 2026-11-18 — queue mutation and timeout/restart reliability
+
+Closed two races exposed by the new fault tests. Preparation needs now carry an
+ownership revision: removing and reintroducing the same audio window cannot let
+the cancelled job settle the new need or wake its old seam. A still-valid completed
+window can subsequently be revalidated by the new need without forcing another
+separation.
+
+Queue snapshots now identify individual occurrences independently of reusable
+recording/window keys. The runtime records only actual eligible adjacent pairs;
+matching audio windows elsewhere in the queue are not permission to render a
+non-adjacent pair. Source acquisition rechecks pair revision and window identity
+after asynchronous filesystem reads, and returns a validity check for the render.
+Replacing occurrences, reordering or changing the required source windows makes
+an existing render proposal obsolete.
+
+The regular renderer also compares fresh library timing, source-grid and admission
+evidence before and after its asynchronous request. A completed clip is removed
+and declined if that evidence or the pair changed. The test covers unchanged
+pairs, cancelled/replaced pair ownership, a changed analysis row, and newly acquired
+Sub/Beats eligibility. Confirmed worker completion releases source protection even
+when its now-obsolete WAV is discarded.
+
+Extended the simulated sidecar test with an actual HTTP timeout followed by a new
+runtime instance. The durable busy marker prevents overlapping another regular
+extraction; the expired original job cannot wake its old seam. After lease expiry,
+one fresh extraction replaces late partial output and reaches verified readiness.
+Both extraction and render busy markers now have explicit restart/expiry tests.
+These are controller/protocol tests; they do not demonstrate termination of a
+physically hung external analyzer or real Demucs performance. The bounded lease
+limitation recorded above remains a station-validation concern.
+
+Validation: all 22 focused regular tests and all 252 stem-related tests pass.
+Controller lint/type checks pass with no errors (1,920 warnings). Python and web code were
+unchanged in this pass; no Docker rebuild, live station request, deployment or
+library/cache migration was performed. Continue with the remaining settings,
+status/preview and broad-activation work before proposing station rollout.

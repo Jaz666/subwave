@@ -2351,6 +2351,7 @@ class Queue {
   // Staged rollout uses the existing exact-pair audition allowlist. Preparation
   // is never awaited by the sender. The ordinary watcher updates deadlines and
   // membership after skips/removals as well as additions.
+  private regularStemOccurrences = new WeakMap<QueueItem,string>();
   private syncRegularStemPreparation(): void {
     if (!stemBlend.regularStemTestEnabled()) return;
     const enabled = settings.get().transitions.stemBlends === true
@@ -2360,8 +2361,9 @@ class Queue {
       const rows = this.upcoming.map(item => regularStemDb.getTrack(String(item.track.id)));
       const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
         const row = rows[index], next = rows[index+1];
+        if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
         return {
-          id: String(item.track.id), sent: !!item.sent,
+          id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
           remainingSec: this.remainingUntilItemAirs(item),
           regularEligible: enabled && !item.flow && stemBlend.regularStemTestTrack(String(item.track.id)),
           subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
