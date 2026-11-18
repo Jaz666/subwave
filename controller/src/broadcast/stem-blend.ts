@@ -3,6 +3,8 @@
 // docs/stem-transitions-research.md.
 
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readRegularStemPreview, type RegularStemPreview } from './regular-stem-preview.js';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
@@ -63,6 +65,7 @@ export type BlendTrack = loudness.LoudnessTrack & {
 };
 
 export interface BlendPlan extends ClipSeamCues {
+  regular?: RegularStemPreview;
   clipPath: string;
   clipSec: number;
   leadPath?: string;
@@ -191,7 +194,7 @@ async function renderBlend(
       lufs: inn.loudnessLufs ?? null,
     },
     out_dir: transitionsDir(),
-    clip_name: `${path.basename(String(outTrack.id))}-${path.basename(String(inTrack.id))}.wav`,
+    clip_name: `${path.basename(String(outTrack.id))}-${path.basename(String(inTrack.id))}${opts.regularStyle ? `-${randomUUID()}` : ''}.wav`,
     ...(opts.regularStyle ? { regular_style: opts.regularStyle } : {}),
     target_lufs: s?.loudness?.targetLufs ?? -14,
   }, {
@@ -211,6 +214,8 @@ async function renderBlend(
   // cue would cut X before the seam overlap (or the clip's source region) plays.
   if (opts.outTrimEndSec != null && opts.outTrimEndSec < cues.outCueSec) return miss('outgoing silence trim would cut the rendered seam');
   return {
+    ...(opts.regularStyle ? { regular: { id: path.basename(result.path), gainsDb: [outGainDb ?? 0, inGainDb ?? 0].map(db => Math.max(-12, Math.min(12, db))) as [number, number], style: opts.regularStyle,
+      outgoingStartSec: result.blendStartSec, incomingStartSec: result.inCueSec-result.clipSec } } : {}),
     clipPath: result.path,
     ...cues,
     clipSec: result.clipSec,
@@ -272,6 +277,10 @@ export async function maybeRenderBlend(
   try {
     const result = await renderBlend(out, incoming, remaining, { ...opts, workingSources: sources });
     completed = !!result;
+    if (result?.regular) result.regular.envelopes = {
+      outgoing: await readRegularStemPreview(sources.tail, 'tail'),
+      incoming: await readRegularStemPreview(sources.head, 'head'),
+    };
     if (result && (!sources.valid() || evidence() !== before)) {
       await unlink(result.clipPath).catch(() => {});
       opts.log?.('warn','regular stem test: queue or analysis changed during render; using ordinary transition');

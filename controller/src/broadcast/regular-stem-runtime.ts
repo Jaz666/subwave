@@ -3,6 +3,7 @@
  * leases need survive rendering, not subsequent mixer playback of that WAV.
  */
 import path from 'node:path';
+import { prepareRegularStemPreview } from './regular-stem-preview.js';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { config } from '../config.js';
 import * as settings from '../settings.js';
@@ -135,7 +136,10 @@ export class RegularStemRuntime {
     if (!lease) return false;
     let staged: Awaited<ReturnType<typeof analyzer.downloadCapped>> | null = null;
     try {
-      if (await this.verified(need)) return true;
+      if (await this.verified(need)) {
+        await prepareRegularStemPreview(this.directory(need), need).catch(() => {});
+        return true;
+      }
       if (await this.cache.hasBusyJob()) return 'deferred';
       if (Date.now() >= need.deadlineMs || !this.wanted.has(key)) return false;
       staged = await analyzer.downloadCapped(need.trackId);
@@ -156,8 +160,11 @@ export class RegularStemRuntime {
         regular_stem_window: { version: 2, side: need.side, start_ms: need.startMs, end_ms: need.endMs,
           key: need.key, source_sha256: need.sourceSha256, source_bytes: need.sourceBytes, model: 'htdemucs' },
       }, staged.path);
-      await rm(busy, { force: true });
       const verified = await this.verified(need);
+      if (verified) await prepareRegularStemPreview(directory, need).catch(() => {
+        this.log(`Regular stems: ${need.trackId} ${need.side} preview unavailable; audio remains ready`);
+      });
+      await rm(busy, { force: true });
       if (verified) this.log(`Regular stems: ${need.trackId} ${need.side} ready; processing ${((Date.now()-processingStarted)/1000).toFixed(1)}s, wait/download ${(waitedMs/1000).toFixed(1)}s`);
       return verified;
     } finally {

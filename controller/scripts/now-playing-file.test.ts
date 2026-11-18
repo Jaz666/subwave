@@ -311,3 +311,51 @@ test('stem waveform peaks: a stalled decoder is aborted and the next retry start
     assert.equal(calls, 2);
   } finally { t.mock.timers.reset(); await s.close(); }
 });
+
+test('working regular envelopes never consult the old cache and survive incoming entry', async () => {
+  let onAir='working-out', available=true;
+  const transition={kind:'stem-blend' as const,durationSec:24,incomingAtSec:0,outgoingUntilSec:24,
+    outgoingId:'working-out',incomingId:'working-in',regular:{id:'render-1',style:'drums-late' as const,
+      gainsDb:[0,0] as [number,number],outgoingStartSec:200,incomingStartSec:3}};
+  const s=await serve({nowPlaying:async()=>({subsonic_id:onAir}),lookup:async()=>null,
+    nextTrackId:()=>onAir==='working-out'?'working-in':'later',stemTransition:()=>transition,
+    stemSource:()=>{throw new Error('legacy cache must not be consulted');},
+    regularStemPeaks:()=>available?{durationSec:24,peaks:[.25]}:null});
+  try {
+    for(const current of ['working-out','working-in']) {
+      onAir=current;
+      const response=await get(s,'/now-playing/stem-waveform-peaks?side=incoming&stem=drums&outgoingId=working-out');
+      assert.equal(response.status,200);
+      assert.deepEqual(await response.json(),{durationSec:24,peaks:[.25],startSec:3,endSec:27,storageGain:1});
+      assert.equal((await get(s,'/now-playing/visual-events?id=working-out')).status,200);
+      assert.equal((await get(s,'/now-playing/stem-audio?side=incoming&stem=drums&outgoingId=working-out')).status,404);
+    }
+    available=false;
+    assert.equal((await get(s,'/now-playing/stem-waveform-peaks?side=incoming&stem=drums&outgoingId=working-out')).status,404);
+    onAir='unrelated';
+    assert.equal((await get(s,'/now-playing/stem-waveform-peaks?side=incoming&stem=drums&outgoingId=working-out')).status,409);
+  } finally {await s.close();}
+});
+
+test('live regular metadata projects exact render timing and gains without copying waveform arrays', async () => {
+  const {queue}=await import('../src/broadcast/queue.js');
+  const {nowPlayingStemTransition}=await import('../src/routes/now-playing-file.js');
+  const saved={current:queue.current,upcoming:queue.upcoming,history:queue.history};
+  try {
+    queue.current={track:{id:'project-out'},stemBlend:{clipPath:'/test/clip.wav',clipSec:24,
+      outCueSec:200.3,inCueSec:26.7,regular:{id:'render-proof',style:'rhythm-late',gainsDb:[-2,1],
+        outgoingStartSec:200,incomingStartSec:3,envelopes:{outgoing:null,incoming:null}}}};
+    queue.upcoming=[{track:{id:'project-in'},stemSeam:true}];
+    queue.history=[];
+    const visual=await nowPlayingStemTransition('project-out');assert.ok(visual);
+    assert.deepEqual(visual.sources,{outgoing:{startSec:200,endSec:224,storageGain:1},
+      incoming:{startSec:3,endSec:27,storageGain:1}});
+    assert.deepEqual(visual.gainsDb,[-2,1]);
+    assert.equal(visual.incomingAtSec,0);assert.equal(visual.outgoingUntilSec,24);
+    assert.ok(!JSON.stringify(visual).includes('envelopes'));
+    queue.history=[queue.current];
+    queue.current={...queue.upcoming[0],startedAt:new Date().toISOString()};
+    queue.upcoming=[];
+    assert.equal((await nowPlayingStemTransition('project-out'))?.regular?.id,'render-proof');
+  } finally {queue.current=saved.current;queue.upcoming=saved.upcoming;queue.history=saved.history;}
+});

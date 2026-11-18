@@ -1,3 +1,4 @@
+import { REGULAR_STEM_PREVIEW_RETAIN_MS } from './regular-stem-preview.js';
 import { notebookRendered, notebookVoiceId, notebookCanPublish, notebookAir, cancelNotebookClip, type RecoveredNotebookSpeech } from '../skills/notebook.js';
 import { lookAheadStampsCurrent } from '../skills/look-ahead.js';
 import { fitsSpeechDeadline, type SpeechDeadline } from './speech-budget.js';
@@ -2353,6 +2354,13 @@ class Queue {
   // membership after skips/removals as well as additions.
   private regularStemOccurrences = new WeakMap<QueueItem,string>();
   private syncRegularStemPreparation(): void {
+    // Source stems retire with queue membership. Keep only the immediately
+    // previous seam's tiny envelope snapshot through the listener buffer.
+    const retainPrevious = !!this.current?.stemSeam
+      && Date.now() < Date.parse(this.current.startedAt ?? '') + REGULAR_STEM_PREVIEW_RETAIN_MS;
+    this.history.forEach((item, index) => {
+      if (item.stemBlend?.regular && (index > 0 || !retainPrevious)) delete item.stemBlend.regular.envelopes;
+    });
     if (!stemBlend.regularStemTestEnabled()) return;
     const enabled = settings.get().transitions.stemBlends === true
       && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)

@@ -91,8 +91,9 @@ function decodeCache(data: Buffer, sourceBytes: number, sourceMtime: number): St
     || data.readUInt32LE(4) !== sourceBytes || data.readDoubleLE(8) !== sourceMtime) return null;
   const durationSec = data.readDoubleLE(16);
   const count = data.readUInt32LE(24);
-  if (!(durationSec > 0) || data.length !== HEADER_BYTES + count * 4) return null;
+  if (!(durationSec > 0) || count === 0 || data.length !== HEADER_BYTES + count * 4) return null;
   const peaks = Array.from({ length: count }, (_, index) => data.readFloatLE(HEADER_BYTES + index * 4));
+  if (peaks.some(peak => !Number.isFinite(peak) || peak < 0 || peak > 1)) return null;
   return { durationSec, peaks };
 }
 
@@ -182,4 +183,15 @@ export async function backfillSubbeatsStemWaveforms(limit?: number): Promise<{ d
   }
   console.log(`[analyze] Sub/Beats stem preview waveforms: ${selected.length - failed}/${selected.length} track(s) ready`);
   return { done: selected.length, total: selected.length, failed };
+}
+
+/** Read an already prepared envelope without starting a decoder on the broadcast path. */
+export async function readStemWaveform(sourcePath: string, cachePath: string): Promise<StemWaveform | null> {
+  try {
+    const source = await lstat(sourcePath);
+    if (!source.isFile() || source.isSymbolicLink()) return null;
+    const cached = await lstat(cachePath);
+    if (!cached.isFile() || cached.isSymbolicLink()) return null;
+    return decodeCache(await readFile(cachePath), source.size, source.mtimeMs);
+  } catch { return null; }
 }

@@ -3,6 +3,7 @@
 //
 // Part of the queue/ split - see ../queue.ts, which owns the Queue class.
 
+import type { RegularStemPreview } from '../regular-stem-preview.js';
 import type { TrackOutro, TrackKeyRange } from '../../music/library-db.js';
 import type { HostSpeechStamp } from '../session.js';
 import type { ClipSeamCues } from '../stem-seam.js';
@@ -203,6 +204,7 @@ export interface QueueItem {
   // its entry-side effects are stripped at its own drain (the seam INTO it
   // is pre-rendered) and it cues in past the head the clip already played.
   stemBlend?: ClipSeamCues & {
+    regular?: RegularStemPreview;
     clipPath: string;
     clipSec?: number;
     leadPath?: string;

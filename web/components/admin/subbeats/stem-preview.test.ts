@@ -142,3 +142,19 @@ test('quiet source detail is retained, storage gain is restored, and silence is 
   samples.fill(0);
   assert.deepEqual(stemPeaks(buffer,transition,'outgoing',16),Array(16).fill(0));
 });
+
+test('native regular patterns use exact source offsets and the auditioned equal-power faders', () => {
+  const regular: StemTransition={kind:'stem-blend',durationSec:32,incomingAtSec:0,outgoingUntilSec:32,
+    outgoingId:'out',incomingId:'in',regular:{id:'render-1',gainsDb:[0,0],style:'drums-late',outgoingStartSec:200,incomingStartSec:3}};
+  assert.equal(stemSourceSeconds(regular,'incoming',4),7);
+  assert.equal(stemSourceSeconds(regular,'outgoing',4),204);
+  assert.equal(stemVolumes(regular,'drums',8).incoming,0);
+  assert.ok(Math.abs(stemVolumes(regular,'vocals',8).incoming-Math.sin(Math.PI/8))<1e-9);
+  assert.ok(Math.abs(stemVolumes(regular,'drums',24).incoming-Math.sin(Math.PI/4))<1e-9);
+  assert.ok(Math.abs(stemVolumes(regular,'other',8).outgoing-Math.cos(Math.PI/8))<1e-9);
+  assert.equal(stemVolumes({...regular,regular:{...regular.regular!,style:'rhythm-late'}},'bass',8).incoming,0);
+  assert.equal(stemVolumes({...regular,regular:{...regular.regular!,style:'vocals-late'}},'vocals',20).incoming,0);
+  assert.equal(stemVolumes(regular,'other',0).outgoing,0,'10ms clip edge fade');
+  assert.notDeepEqual(waveformKeys.stems(regular),waveformKeys.stems({...regular,regular:{...regular.regular!,id:'render-2'}}));
+  assert.notEqual(stemPairKey(regular),stemPairKey({...regular,regular:{...regular.regular!,id:'render-2'}}));
+});
