@@ -110,7 +110,9 @@ export function checkFacets(sample = 10): FacetCheckReport {
         && cell.version >= db.FACET_VERSIONS[facet]);
     }));
     // Nor a version bump: see `outdated` above.
-    const b = new Set(db.facetNeedsIds(facet).filter(id => !outdated.get(facet)?.has(id)));
+    // Stem attempts remain historical facts; admission is a separate policy.
+    const b = new Set(db.facetNeedsIds(facet).filter(id =>
+      !outdated.get(facet)?.has(id) && (facet !== 'stems' || db.canCacheStems(id))));
     const onlyLegacy = [...a].filter(id => !b.has(id));
     const onlyFacet = [...b].filter(id => !a.has(id));
     return {

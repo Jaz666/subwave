@@ -1,0 +1,63 @@
+{
+  "sourceSha256": "3904b492af33b2ef18f4e50cb5a677599acfdff4d7fc43acea6f889edb7f9cba",
+  "bpm": 137.08296124463112,
+  "projectedGridOriginSeconds": 14.587765910984842,
+  "drivingBeatSeconds": 42.6,
+  "method": "Fixed grid from saved offline fit anchored at driving-beat entry; backward-projected bar zero and owner-labelled/proposed closing markers; original audio before grid zero and after phrase end retained",
+  "lastPredictedBeatSeconds": 240.48,
+  "musicGain": 0.6807809376603543,
+  "clips": [
+    {
+      "file": "/home/jaz666/codex/subbeats-beat-this-20261103/children/children-head-metronome.wav",
+      "sourceStartSeconds": 0.0,
+      "durationSeconds": 49.60306122448979,
+      "peak": 0.8476243615150452,
+      "markers": [
+        {
+          "bar": 0,
+          "sourceSeconds": 14.587765910984842,
+          "clipSeconds": 14.587765910984842,
+          "label": "Back-projected bar zero; opening before it retained"
+        },
+        {
+          "bar": 16,
+          "sourceSeconds": 42.6,
+          "clipSeconds": 42.6,
+          "label": "Driving beat enters"
+        }
+      ]
+    },
+    {
+      "file": "/home/jaz666/codex/subbeats-beat-this-20261103/children/children-tail-metronome.wav",
+      "sourceStartSeconds": 203.67034013605442,
+      "durationSeconds": 43.03632653061224,
+      "peak": 0.8318331837654114,
+      "markers": [
+        {
+          "bar": 112,
+          "sourceSeconds": 210.67340453409096,
+          "clipSeconds": 7.003064398036543,
+          "label": "Owner 16-bar outro reference on proposed grid"
+        },
+        {
+          "bar": 120,
+          "sourceSeconds": 224.67952157859852,
+          "clipSeconds": 21.009181442544104,
+          "label": "Proposed 8-bar closing start"
+        },
+        {
+          "bar": 128,
+          "sourceSeconds": 238.68563862310612,
+          "clipSeconds": 35.015298487051695,
+          "label": "Proposed phrase end; original ending and outro echo retained"
+        }
+      ]
+    }
+  ],
+  "listeningAcceptance": {
+    "date": "2026-11-04",
+    "source": "owner feedback in this conversation",
+    "quote": "previews are spot on",
+    "scope": "Both original-mix head/tail metronome previews; fitted reference markers and retained opening/ending, not automatic detector or stem-pair approval"
+  }
+}

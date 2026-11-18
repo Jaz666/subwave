@@ -112,6 +112,6 @@ export function drainAction(opts: {
 
 // Whether the deadline routine fires the successor pick this tick: inside the
 // deadline window and not past the hard deadline, which owns the endgame.
-export function shouldDeadlinePick(remaining: number | null): boolean {
-  return remaining != null && remaining < DRAIN_DEADLINE_SEC && remaining >= HARD_DEADLINE_SEC;
+export function shouldDeadlinePick(remaining: number | null, leadSec = DRAIN_DEADLINE_SEC): boolean {
+  return remaining != null && remaining < leadSec && remaining >= HARD_DEADLINE_SEC;
 }

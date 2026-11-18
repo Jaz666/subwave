@@ -18,6 +18,11 @@ export interface StemScanOpts {
   operatorLikedIds?: readonly string[];
   listenerLikedIds?: readonly string[];
   nowMs?: number;
+  // Selective admission is opt-in; priority weights remain unchanged.
+  selectiveStems?: boolean;
+  regularStemIds?: readonly string[];
+  starredIds?: readonly string[];
+  subbeatsIds?: readonly string[];
 }
 
 // Use CASE with json_valid before JSON functions; SQLite does not guarantee AND
@@ -105,6 +110,21 @@ function dedupe(ids: readonly string[] | undefined): string[] {
   return [...new Set(ids.map(String).filter(Boolean))];
 }
 
+const STEM_ELIGIBLE_SQL = `(EXISTS (SELECT 1 FROM plays WHERE track_id = t.id)
+  OR t.id IN (SELECT value FROM json_each(:stemAdmissionIds))
+  OR stem_cache_eligible(t.genres, t.bpm, t.bars_json, t.outro_json, t.duration_sec) = 1)`;
+
+function admissionParams(opts: StemScanOpts): { stemAdmissionIds: string } {
+  return { stemAdmissionIds: JSON.stringify(dedupe([
+    ...(opts.operatorLikedIds ?? []), ...(opts.starredIds ?? []), ...(opts.subbeatsIds ?? []), ...(opts.regularStemIds ?? []),
+  ])) };
+}
+
+export function canCacheStems(id: string, opts: StemScanOpts = {}): boolean {
+  return !!requireDb().prepare(`SELECT 1 FROM tracks t WHERE t.id = :id AND ${opts.selectiveStems === true ? STEM_ELIGIBLE_SQL : '1 = 1'}`)
+    .get({id, ...(opts.selectiveStems === true ? admissionParams(opts) : {})});
+}
+
 // Scan tracks with no stems_at attempt, independent of other analysis scopes. Disk absence is
 // not eligibility because eviction would otherwise cause endless re-separation. Rank by stem
 // priority and randomize ties; attempt stamps make resumption independent of order. #1622.
@@ -112,10 +132,10 @@ export function needsStemsIds(limit?: number, opts: StemScanOpts = {}): string[]
   const { expr, join, params } = buildPriority(opts);
   const sql =
     `SELECT t.id FROM tracks t${join}
-      WHERE t.stems_at IS NULL AND ${analysisFailureExclusion('t')}
+      WHERE t.stems_at IS NULL AND ${opts.selectiveStems === true ? STEM_ELIGIBLE_SQL : '1 = 1'} AND ${analysisFailureExclusion('t')}
       ORDER BY ${expr} DESC, RANDOM()` +
     (limit && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : '');
-  const rows = requireDb().prepare(sql).all(params) as Array<{ id: string }>;
+  const rows = requireDb().prepare(sql).all({ ...params, ...(opts.selectiveStems === true ? admissionParams(opts) : {}) }) as Array<{ id: string }>;
   return rows.map(r => r.id);
 }
 
@@ -211,4 +231,16 @@ function outroTailBars(s: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+// Cleanup also protects historical plays whose catalogue row has disappeared.
+export function stemCleanupKeepIds(opts: StemScanOpts): Set<string> {
+  const rows = requireDb().prepare(`SELECT t.id FROM tracks t WHERE ${STEM_ELIGIBLE_SQL}`)
+    .all(admissionParams(opts)) as Array<{id:string}>;
+  const plays = requireDb().prepare("SELECT DISTINCT track_id AS id FROM plays WHERE track_id IS NOT NULL AND track_id != ''").all() as Array<{id:string}>;
+  return new Set([...rows, ...plays].map(row => row.id).concat(
+    opts.operatorLikedIds ?? [], opts.starredIds ?? [], opts.subbeatsIds ?? [], opts.regularStemIds ?? []));
+}
+export function trackHasPlayed(id: string): boolean {
+  return !!requireDb().prepare('SELECT 1 FROM plays WHERE track_id = ? LIMIT 1').get(id);
 }

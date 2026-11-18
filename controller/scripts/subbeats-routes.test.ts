@@ -1,0 +1,515 @@
+import assert from 'node:assert/strict';
+import test, { after } from 'node:test';
+import express from 'express';
+import { subbeatsCandidatePageSchema, subbeatsCueMatchesSchema, subbeatsViewSchema } from '../src/schemas/subbeats.js';
+
+process.env.ANALYZE_URL = 'http://127.0.0.1:9';
+process.env.ANALYZE_PYTHON = '';
+process.env.ADMIN_USER = 'test';
+process.env.ADMIN_PASS = 'test';
+const db = await import('../src/music/library-db.js');
+const library = await import('../src/music/library.js');
+const { subbeatsStore } = await import('../src/music/subbeats-manager.js');
+const { router } = await import('../src/routes/library/subbeats.js');
+await library.load();
+subbeatsStore.pause(true); // This test never launches a real analysis job.
+for (const [id, bpm, beats] of [
+  ['beat-grid', 138, JSON.stringify(Array.from({ length: 20 }, (_, i) => i * 440))],
+  ['tempo-only', 135, 'broken'], ['quiet-intro', null, null],
+] as const) {
+  db.upsertTrackMeta(id, { title: id, artist: 'Test artist', album: 'Test collection', genres: ['Trance'] });
+  db.getDb()!.prepare('UPDATE tracks SET bpm=?, beats_json=? WHERE id=?').run(bpm, beats, id);
+}
+const app = express();
+app.use(express.json()); app.use(router);
+const server = app.listen(0, '127.0.0.1');
+await new Promise<void>(resolve => server.once('listening', resolve));
+const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+const headers = { Authorization: `Basic ${Buffer.from('test:test').toString('base64')}`, 'Content-Type': 'application/json' };
+after(async () => { await new Promise<void>(resolve => server.close(() => resolve())); db.close(); });
+
+const post = (path: string, body: unknown) => fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) });
+
+test('dance discovery handles genre variants and refuses malformed or unrelated tags', async () => {
+  const { subbeatsDanceGenresFromJson: matches } = await import('../src/music/subbeats-eligibility.js');
+  for (const genre of ['Progressive House', 'Tech-House', 'Uplifting Trance', 'Nu-Disco',
+    'Drum & Bass', 'Drum and Bass', 'D&B', 'DnB', 'Big Beat', 'UK Garage', 'Garage',
+    'Dubstep', 'Dance-Pop', 'Jungle', 'Disco', 'EDM', 'Electronica']) {
+    assert.equal(matches(JSON.stringify([genre])), 1, genre);
+  }
+  for (const genre of ['Rock', 'Pop', 'Garage Rock', 'Acid Rock', 'Hardcore Punk',
+    'Ambient', 'Jazz', 'Country', 'Warehouse', 'Trancey']) {
+    assert.equal(matches(JSON.stringify([genre])), 0, genre);
+  }
+  for (const value of [null, '', 'broken', '{}', 'null', '"Dance"', '[1,null,{}]']) assert.equal(matches(value), 0);
+  assert.equal(matches(JSON.stringify(['Rock', 'Breakbeat'])), 1);
+});
+
+test('all Sub/Beats reads and writes require admin authentication', async () => {
+  for (const path of ['/library/subbeats', '/library/subbeats/candidates']) assert.equal((await fetch(base + path)).status, 401);
+  assert.equal((await fetch(base + '/library/subbeats/join-preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"trackIds":["beat-grid","tempo-only"]}' })).status, 401);
+  assert.equal((await fetch(base + '/library/subbeats/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"ids":["beat-grid"]}' })).status, 401);
+});
+
+test('discovery uses existing evidence and search can find tracks without a BPM', async () => {
+  const suggestions = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates', { headers })).json());
+  assert.deepEqual(suggestions.rows.map((r: { id: string }) => r.id), ['beat-grid', 'tempo-only']);
+  assert.equal(suggestions.rows[0].hasBeatGrid, true);
+  assert.equal(suggestions.rows[1].hasBeatGrid, false);
+  const searched = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates?q=quiet-intro', { headers })).json());
+  assert.equal(searched.rows[0].id, 'quiet-intro');
+  assert.equal(searched.rows[0].bpm, null);
+});
+
+test('default suggestions require dance-family genres even with strong beat evidence; search remains open', async () => {
+  const fixtures: Array<[string, string[]]> = [
+    ['kinks', ['Rock']], ['unknown-genre', []], ['punk-hardcore', ['Hardcore Punk']],
+    ['garage-rock', ['Garage Rock']], ['fatboy', ['Big Beat']],
+    ['deep-house', ['Deep House']], ['multi-genre', ['Pop', 'Drum & Bass']],
+    ['broad-electronic', ['Electronic']],
+  ];
+  try {
+    for (const [id, genres] of fixtures) {
+      db.upsertTrackMeta(id, { title: id, artist: id, genres });
+      db.getDb()!.prepare('UPDATE tracks SET bpm=138, beats_json=?, analysis_confidence=1 WHERE id=?')
+        .run(JSON.stringify(Array.from({length:64}, (_,i) => i * 435)), id);
+    }
+    const page = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates', {headers})).json());
+    const ids = new Set(page.rows.map(row => row.id));
+    for (const id of ['fatboy', 'deep-house', 'multi-genre', 'broad-electronic']) assert.ok(ids.has(id), id);
+    for (const id of ['kinks', 'unknown-genre', 'punk-hardcore', 'garage-rock']) assert.ok(!ids.has(id), id);
+    const search = subbeatsCandidatePageSchema.parse(await (await fetch(base + '/library/subbeats/candidates?q=kinks', {headers})).json());
+    assert.equal(search.rows[0]?.id, 'kinks');
+  } finally {
+    for (const [id] of fixtures) db.getDb()!.prepare('DELETE FROM tracks WHERE id=?').run(id);
+  }
+});
+
+test('invalid and missing IDs cannot enqueue work; valid admission is durable and idempotent', async () => {
+  assert.equal((await post('/library/subbeats/queue', { ids: [] })).status, 400);
+  assert.equal((await post('/library/subbeats/queue', { ids: ['beat-grid'], method:'untrusted-model' })).status, 400);
+  assert.equal((await post('/library/subbeats/queue', { ids: ['missing'] })).status, 400);
+  const accepted = await post('/library/subbeats/queue', { ids: ['beat-grid', 'beat-grid'] });
+  assert.equal(accepted.status, 202);
+  const view = subbeatsViewSchema.parse(await accepted.json());
+  assert.equal(view.jobs.length, 1); assert.equal(view.jobs[0].status, 'queued'); assert.equal(view.paused, true);
+  await post('/library/subbeats/queue', { ids: ['beat-grid'] });
+  assert.equal(subbeatsStore.read().jobs.length, 1);
+  assert.equal(subbeatsStore.read().jobs[0].attempts, 0);
+  assert.equal(db.getTrack('beat-grid')?.bpm, 138);
+});
+
+test('pause accepts only a boolean and remains visible after reloading', async () => {
+  assert.equal((await post('/library/subbeats/pause', { paused: 'false' })).status, 400);
+  assert.equal((await post('/library/subbeats/pause', { paused: true })).status, 200);
+  const view = subbeatsViewSchema.parse(await (await fetch(base + '/library/subbeats', { headers })).json());
+  assert.equal(view.paused, true); assert.equal(view.jobs[0].id, 'beat-grid');
+});
+
+test('preview refuses invalid, duplicate and unprepared pairs without changing preparation', async () => {
+  const before = subbeatsStore.read();
+  for (const body of [
+    {trackIds:['beat-grid','tempo-only'],method:'unknown'},
+    {trackIds:['beat-grid','tempo-only'],method:'cue-points',cueIndices:[0,99]},
+    {trackIds:['beat-grid','tempo-only'],method:'cue-points',cueIndices:[0.5,0]},
+  ]) assert.equal((await post('/library/subbeats/join-preview',body)).status,400);
+  for (const trackIds of [[], ['beat-grid'], ['beat-grid', 'beat-grid'], ['beat-grid', 'tempo-only']]) {
+    assert.equal((await post('/library/subbeats/join-preview', { trackIds })).status, 400);
+  }
+  assert.deepEqual(subbeatsStore.read(), before);
+});
+
+test('prepared preview returns isolated audio without changing the preparation list', async () => {
+  const analyzer = await import('../src/music/analyzer.js');
+  analyzer._resetBackendCacheForTests();
+  subbeatsStore.enqueue(['beat-grid', 'tempo-only'].map(id => ({ id, title: id, artist: 'Test', album: '' })));
+  for (const [id, key] of [['beat-grid', 'a'], ['tempo-only', 'b']]) {
+    subbeatsStore.event({ id, status: 'running' }, [id!]);
+    subbeatsStore.event({ id, status: 'prepared', bundleKey: key!.repeat(64) }, [id!]);
+  }
+  const before = subbeatsStore.read();
+  const realFetch = globalThis.fetch;
+  const audio = Buffer.alloc(44); audio.write('RIFF'); audio.write('WAVE', 8);
+  let payload: unknown;
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ ok: true, engines: ['analyze'], analyze_subbeats_cache_version:2 });
+      payload = JSON.parse(String(init?.body));
+      const timeline = JSON.stringify({ duration: 44, events: [{ at: 0, label: 'Outgoing lead' }, { at: 36, label: 'Exchange → complete' }] }).replace('→', '\\u2192');
+      return new Response(audio, { headers: { 'Content-Type': 'audio/wav', 'X-Subbeats-Timeline': timeline } });
+    }
+    return realFetch(url, init);
+  }) as typeof fetch;
+  try {
+    const response = await post('/library/subbeats/join-preview', { trackIds: ['beat-grid', 'tempo-only'] });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type')!, /audio\/wav/);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(JSON.parse(response.headers.get('x-subbeats-timeline')!).events[1].at, 36);
+    assert.equal(JSON.parse(response.headers.get('x-subbeats-timeline')!).events[1].label, 'Exchange → complete');
+    assert.equal(response.headers.get('access-control-expose-headers'), 'X-Subbeats-Timeline');
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), audio);
+    assert.deepEqual(subbeatsStore.read(), before);
+    assert.equal((payload as { out_key: string }).out_key, 'a'.repeat(64));
+    assert.equal((payload as { in_key: string }).in_key, 'b'.repeat(64));
+    assert.equal((payload as { bar_shift: number }).bar_shift, 0);
+    for (const barShift of [-2, -1, 1, 2]) {
+      const shifted = await post('/library/subbeats/join-preview', { trackIds: ['beat-grid', 'tempo-only'], barShift });
+      assert.equal(shifted.status, 200);
+      await shifted.arrayBuffer();
+      assert.equal((payload as { bar_shift: number }).bar_shift, barShift);
+    }
+    for (const barShift of [-3, 3, .5, true, '1', null]) {
+      assert.equal((await post('/library/subbeats/join-preview', { trackIds: ['beat-grid', 'tempo-only'], barShift })).status, 400);
+    }
+    assert.deepEqual(subbeatsStore.read(), before);
+  } finally { globalThis.fetch = realFetch; analyzer.shutdown(); }
+});
+
+test('annotated preview resolves server-owned points and URLs, rejects unsuitable windows and old analyzers', async () => {
+  const analyzer = await import('../src/music/analyzer.js');
+  const { subbeatsReferences } = await import('../src/music/subbeats-references.js');
+  const ids = ['4yJmvI0lrITSbffov6oEO6', '4d45b9VOH8reQ0PSjcuOB4'];
+  for (const [index, id] of ids.entries()) {
+    db.upsertTrackMeta(id, { title:id, artist:'Reference artist',album:'Reference collection' });
+    subbeatsStore.enqueue([{ id, title:id, artist:'Reference artist',album:'' }]);
+    subbeatsStore.event({ id, status:'running' }, [id]);
+    subbeatsStore.event({ id, status:'prepared', bundleKey:(index ? 'd' : 'c').repeat(64) }, [id]);
+  }
+  const view = subbeatsViewSchema.parse(await (await fetch(base+'/library/subbeats', {headers})).json());
+  assert.deepEqual(view.references, subbeatsReferences);
+  const before = subbeatsStore.read();
+  const realFetch = globalThis.fetch;
+  let seen: Record<string, unknown> | undefined;
+  let oldAnalyzer = false;
+  const audio = Buffer.alloc(44); audio.write('RIFF'); audio.write('WAVE',8);
+  globalThis.fetch = (async (url, init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      seen = JSON.parse(String(init?.body));
+      return new Response(audio, {headers:{'Content-Type':'audio/wav','X-Subbeats-Timeline':JSON.stringify({
+        ...(oldAnalyzer ? {} : {kind:'reference'}), duration:76,events:[{at:0,label:'Outgoing original'},{at:59,label:'Incoming release'}],
+      })}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  analyzer._resetBackendCacheForTests();
+  try {
+    const response = await post('/library/subbeats/join-preview', { trackIds:ids, referenceBars:32,
+      reference:{out_url:'http://untrusted',in_resolve:1} });
+    assert.equal(response.status,200); await response.arrayBuffer();
+    const ref = seen!.reference as Record<string,unknown>;
+    assert.equal(ref.out_seconds,219); assert.equal(ref.in_resolve,68); assert.equal(ref.bars,32);
+    assert.ok(String(ref.out_url).includes(ids[0])); assert.ok(String(ref.in_url).includes(ids[1]));
+    assert.ok(!JSON.stringify(ref).includes('untrusted'));
+    for (const body of [
+      {trackIds:ids,referenceBars:4}, {trackIds:ids,referenceBars:15},
+      {trackIds:ids,referenceBars:32,barShift:1},
+      {trackIds:['beat-grid','tempo-only'],referenceBars:16},
+    ]) assert.equal((await post('/library/subbeats/join-preview',body)).status,400);
+    oldAnalyzer=true;
+    const stale = await post('/library/subbeats/join-preview',{trackIds:ids,referenceBars:32});
+    assert.equal(stale.status,400); assert.match((await stale.json() as {error:string}).error,/Update the analyzer/);
+    assert.deepEqual(subbeatsStore.read(),before);
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('regular stem policy is opt-in, persists exceptions separately and never edits the preparation queue', async () => {
+  const { readSubbeatsStemPolicy } = await import('../src/music/subbeats-stem-policy.js');
+  const before = subbeatsStore.read();
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:[]});
+  for (const path of ['/library/subbeats/cache', '/library/subbeats/cache/cleanup', '/library/subbeats/cache/estimate']) {
+    if (!path.endsWith('/estimate')) assert.equal((await fetch(base + path)).status, 401);
+    assert.equal((await fetch(base + path, {method:'POST',headers:{'Content-Type':'application/json'},body:'{"enabled":true}'})).status, 401);
+  }
+  assert.equal((await post('/library/subbeats/cache', {track:{id:'missing',include:true}})).status, 400);
+  assert.equal((await post('/library/subbeats/cache', {enabled:'true'})).status, 400);
+  assert.equal((await post('/library/subbeats/cache', {enabled:true})).status, 400, 'old admission consent must not authorise deletion');
+  assert.equal((await post('/library/subbeats/cache', {enabled:true,confirmCleanup:true})).status, 200);
+  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
+  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:true}});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:true,cleanupEnabled:true,regularIds:['quiet-intro']});
+  await post('/library/subbeats/cache', {enabled:false});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:['quiet-intro']});
+  await post('/library/subbeats/cache', {track:{id:'quiet-intro',include:false}});
+  assert.deepEqual(readSubbeatsStemPolicy(), {enabled:false,cleanupEnabled:false,regularIds:[]});
+  assert.deepEqual(subbeatsStore.read(), before);
+  const { subbeatsCacheViewSchema } = await import('../src/schemas/subbeats.js');
+  const cache = await import('../src/music/stem-cache.js');
+  const walks = cache._cacheWalksForTests();
+  const response = await fetch(base + '/library/subbeats/cache', {headers});
+  assert.equal(response.status, 200);
+  const view = subbeatsCacheViewSchema.parse(await response.json());
+  assert.equal(view.policy.enabled, false);
+  assert.equal(cache._cacheWalksForTests(), walks, 'disk visualization must not walk the cache');
+  assert.equal(view.disk, null, 'an unmarked cache must not report the underlying disk as connected');
+});
+
+test('an unreadable policy is surfaced and never replaced by an edit', async () => {
+  const { config } = await import('../src/config.js');
+  const { writeFileSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const file = join(config.stateDir, 'subbeats', 'stem-policy.json');
+  const before = readFileSync(file, 'utf8');
+  try {
+    writeFileSync(file, '{broken');
+    assert.equal((await fetch(base + '/library/subbeats/cache', {headers})).status, 503);
+    assert.equal((await post('/library/subbeats/cache', {enabled:true,confirmCleanup:true})).status, 503);
+    assert.equal(readFileSync(file, 'utf8'), '{broken');
+    const cache = await import('../src/music/stem-cache.js');
+    assert.notEqual((await cache.admissionSignals()).selectiveStems, true, 'unreadable opt-in preserves upstream admission');
+  } finally { writeFileSync(file, before); }
+});
+
+
+test('entry removal is authenticated, rejects active preparation and returns updated state', async () => {
+  const route = '/library/subbeats/entries/remove-route';
+  assert.equal((await fetch(base+route,{method:'DELETE'})).status,401);
+  subbeatsStore.enqueue([{id:'remove-route',title:'Remove',artist:'Artist',album:''}]);
+  assert.equal((await fetch(base+route,{method:'DELETE',headers})).status,409);
+  subbeatsStore.event({id:'remove-route',status:'running'},['remove-route']);
+  subbeatsStore.event({id:'remove-route',status:'prepared',bundleKey:'e'.repeat(64)},['remove-route']);
+  const cache = await import('../src/music/stem-cache.js');
+  const {mkdirSync,writeFileSync} = await import('node:fs');
+  const {join} = await import('node:path');
+  mkdirSync(cache.stemsRoot(),{recursive:true});writeFileSync(join(cache.stemsRoot(),cache.STEMS_MARKER),'{}');
+  const response = await fetch(base+route,{method:'DELETE',headers});
+  assert.equal(response.status,200);
+  assert.equal(subbeatsViewSchema.parse(await response.json()).jobs.some(job=>job.id==='remove-route'),false);
+});
+
+test('cache-only assessment requires authentication and saved bundles and preserves queue pause', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/assess',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ids":["beat-grid"]}'})).status,401);
+  assert.equal((await post('/library/subbeats/assess',{ids:[]})).status,400);
+  const before = subbeatsStore.read();
+  assert.equal((await post('/library/subbeats/assess',{ids:['beat-grid','missing']})).status,409);
+  assert.deepEqual(subbeatsStore.read(),before);
+  const response = await post('/library/subbeats/assess',{ids:['beat-grid']});
+  assert.equal(response.status,202);
+  const view = subbeatsViewSchema.parse(await response.json());
+  assert.equal(view.paused,true);
+  const job = view.jobs.find(job=>job.id==='beat-grid')!;
+  assert.equal(job.task,'assess'); assert.equal(job.status,'queued');
+  assert.equal(job.bundleKey,'a'.repeat(64));
+});
+
+test('match search is authenticated, validates input and returns analyzer measurements', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/matches?outgoingId=beat-grid')).status,401);
+  assert.equal((await fetch(base+'/library/subbeats/matches?outgoingId=beat-grid&barShift=3',{headers})).status,400);
+  const analyzer = await import('../src/music/analyzer.js');
+  analyzer._resetBackendCacheForTests();
+  const realFetch=globalThis.fetch;
+  let seen:Record<string,unknown>|undefined;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      seen=JSON.parse(String(init?.body));
+      return Response.json({ok:true,subbeats_matches:{outgoingId:'beat-grid',barShift:1,matches:[],excluded:{tempo:1,coverage:0,unassessed:0,unsuitable:0}}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const response=await fetch(base+'/library/subbeats/matches?outgoingId=beat-grid&barShift=1',{headers});
+    assert.equal(response.status,200);
+    assert.equal((await response.json() as {excluded:{tempo:number}}).excluded.tempo,1);
+    assert.equal(seen?.outgoing_id,'beat-grid'); assert.equal(seen?.bar_shift,1);
+    assert.ok(Array.isArray(seen?.jobs));
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('cue candidate search pins the saved cue and refuses old analyzer results', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/cue-matches?outgoingId=beat-grid')).status,401);
+  assert.equal((await fetch(base+'/library/subbeats/cue-matches?outgoingId=beat-grid&outgoingCueIndex=8',{headers})).status,400);
+  const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
+  const realFetch=globalThis.fetch;let seen:Record<string,unknown>|undefined;let old=false;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      seen=JSON.parse(String(init?.body));
+      return Response.json({ok:true,subbeats_matches:old ? {} : {method:'cue-points',outgoingId:'beat-grid',outgoingCueIndex:3,
+        matches:[],excluded:{tempo:0,coverage:0,unassessed:0,vocals:1}}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const url=base+'/library/subbeats/cue-matches?outgoingId=beat-grid&outgoingCueIndex=3';
+    const response=await fetch(url,{headers});assert.equal(response.status,200);
+    assert.equal(seen?.method,'cue-points');assert.equal(seen?.outgoing_cue_index,3);
+    assert.equal(subbeatsCueMatchesSchema.parse(await response.json()).excluded.vocals,1);
+    assert.ok((seen?.jobs as Array<{id:string}>).every(job=>db.getTrack(job.id)));
+    old=true;const stale=await fetch(url,{headers});assert.equal(stale.status,400);
+    assert.match((await stale.json() as {error:string}).error,/Update the analyzer/);
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('matched preview resolves fresh server-owned windows and passes them to rendering', async () => {
+  const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
+  for (const id of ['pin-out','pin-in']) {
+    db.upsertTrackMeta(id,{title:id,artist:'Pin artist',genres:['House']});
+    subbeatsStore.enqueue([{id,title:id,artist:'Pin artist',album:''}]);
+    subbeatsStore.event({id,status:'running'},[id]);
+    subbeatsStore.event({id,status:'prepared',bundleKey:(id==='pin-out'?'a':'b').repeat(64)},[id]);
+  }
+  const realFetch=globalThis.fetch;const plan={outCue:20,inCue:2,period:.5,rate:1};
+  const audio=Buffer.alloc(44);audio.write('RIFF');audio.write('WAVE',8);
+  let rendered:Record<string,unknown>|undefined;
+  globalThis.fetch=(async (url,init)=>{
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      if (String(url).endsWith('/match-subbeats')) return Response.json({ok:true,subbeats_matches:{outgoingId:'pin-out',barShift:0,matches:[{id:'pin-in',artist:'Pin artist',title:'pin-in',bpm:120,tempoAdjustmentPercent:0,plan}],excluded:{tempo:0,coverage:0,unassessed:0,unsuitable:0}}});
+      rendered=JSON.parse(String(init?.body));return new Response(audio,{headers:{'Content-Type':'audio/wav'}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const response=await post('/library/subbeats/join-preview',{trackIds:['pin-out','pin-in'],matched:true,window_plan:{outCue:999}});
+    assert.equal(response.status,200);await response.arrayBuffer();
+    assert.deepEqual(rendered?.window_plan,plan,'client-supplied points cannot override saved matches');
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+test('cue preview validates saved artifacts and allows quiet-paused Library analysis', async () => {
+  const analyzer=await import('../src/music/analyzer.js');analyzer._resetBackendCacheForTests();
+  const ids=['cue-route-out','cue-route-in'];
+  const point={sourceSeconds:30,bpm:120,strength:1,phraseBars:8,phraseEndSeconds:46,reason:'repetition'};
+  for (const [i,id] of ids.entries()) {
+    db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:50});
+    subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
+    subbeatsStore.event({id,status:'running'},[id]);
+    subbeatsStore.event({id,status:'prepared',bundleKey:(i?'b':'a').repeat(64),cuePoints:{version:1,model:'small0',artifactKey:(i?'d':'c').repeat(64),algorithmVersion:i?6:5,durationSeconds:50,incoming:[point],outgoing:[point,{...point,sourceSeconds:10}]}},[id]);
+  }
+  const {config}=await import('../src/config.js');
+  const {selectSubbeatsLyrics,saveSubbeatsLyrics}=await import('../src/music/subbeats-lyrics.js');
+  const evidence=selectSubbeatsLyrics('b'.repeat(64),{title:ids[1]!,artist:'Cue artist',durationSec:50},
+    {synced:true,lines:[{startMs:1000,text:'Reviewed opening'}]},[],false);
+  evidence.reviewedHeadSeconds=1;
+  await saveSubbeatsLyrics(config.stateDir,{[ids[1]!]:evidence});
+  const realFetch=globalThis.fetch;let rendered:Record<string,unknown>|undefined;
+  const audio=new Uint8Array(44);audio.set(Buffer.from('RIFF'),0);audio.set(Buffer.from('WAVE'),8);
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith('http://127.0.0.1:9/')) {
+      if (String(url).endsWith('/health')) return Response.json({ok:true,engines:['analyze'],analyze_subbeats_cache_version:2});
+      rendered=JSON.parse(String(init?.body));return new Response(audio,{headers:{'Content-Type':'audio/wav'}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    for (const extra of [{matched:true},{barShift:1},{referenceBars:4},{cueIndices:[1,0]}]) {
+      assert.equal((await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',...extra})).status,400);
+    }
+    assert.equal(Boolean(rendered),false);
+    const response=await post('/library/subbeats/join-preview',{trackIds:ids,method:'cue-points',cueIndices:[0,0],cue_keys:['forged','forged'],source_urls:['http://forged/out','http://forged/in'],lyric_evidence:[{reviewedHeadSeconds:999},{reviewedHeadSeconds:999}]});
+    assert.equal(response.status,200);await response.arrayBuffer();
+    assert.deepEqual(rendered?.cue_keys,['c'.repeat(64),'d'.repeat(64)]);
+    assert.equal((rendered?.lyric_evidence as Array<{reviewedHeadSeconds:number}|null>)[0],null);
+    assert.equal((rendered?.lyric_evidence as Array<{reviewedHeadSeconds:number}|null>)[1]?.reviewedHeadSeconds,1,'client cannot forge reviewed confidence');
+    assert.equal((rendered?.source_urls as string[]).length,2);
+    assert.ok((rendered?.source_urls as string[]).every(url=>!url.includes('forged')));
+    assert.deepEqual(rendered?.cue_indices,[0,0]);assert.equal(rendered?.method,'cue-points');
+    const fallbackId='cue-route-no-cues';
+    db.upsertTrackMeta(fallbackId,{title:fallbackId,artist:'Cue artist',genres:['House'],duration:50});
+    subbeatsStore.enqueue([{id:fallbackId,title:fallbackId,artist:'Cue artist',album:''}],'small0');
+    subbeatsStore.event({id:fallbackId,status:'running'},[fallbackId]);
+    subbeatsStore.event({id:fallbackId,status:'prepared',bundleKey:'e'.repeat(64)},[fallbackId]);
+    const automatic=await post('/library/subbeats/join-preview',{trackIds:[fallbackId,ids[1]],method:'cue-points',autoPlan:true});
+    assert.equal(automatic.status,200);await automatic.arrayBuffer();
+    assert.equal(rendered?.auto_plan,true);
+    assert.deepEqual(rendered?.cue_keys,[null,'d'.repeat(64)]);
+    assert.equal(rendered?.crossfade_seconds,10);
+    assert.ok((rendered?.source_urls as string[]).every(url=>url.includes(fallbackId) || url.includes(ids[1])));
+    const { tagger } = await import('../src/broadcast/tagger.js');
+    const { writePidfile, clearPidfile, bulkPassRunning } = await import('../src/music/tagger-lock.js');
+    const saved = { running: tagger.running, progress: tagger.progress };
+    const before = subbeatsStore.read();
+    try {
+      writePidfile({ pid: process.pid, mode: 'analyze', startedAt: new Date().toISOString(), args: [] });
+      tagger.running = true;
+      tagger.progress = { phase: 'analyze', label: 'Waiting for quiet (1 listening)', waitingForQuiet: true, updatedAt: new Date().toISOString() };
+      assert.equal(bulkPassRunning(), true, 'the paused Library worker still owns its live process lock');
+      const paused = await post('/library/subbeats/join-preview', { trackIds: ids, method: 'cue-points', cueIndices: [0, 0] });
+      assert.equal(paused.status, 200, 'a quiet-time wait must not block prepared previews');
+      await paused.arrayBuffer();
+      assert.deepEqual(subbeatsStore.read(), before, 'preview leaves the preparation pause and jobs unchanged');
+      assert.equal(tagger.progress.waitingForQuiet, true, 'preview does not resume the Library scan');
+      tagger.progress = { ...tagger.progress, waitingForQuiet: false, label: 'Analysing audio' };
+      assert.equal((await post('/library/subbeats/join-preview', { trackIds: ids, method: 'cue-points' })).status, 409, 'active analysis still holds its slot');
+      tagger.running = false;
+      assert.equal((await post('/library/subbeats/join-preview', { trackIds: ids, method: 'cue-points' })).status, 409, 'an external worker with no confirmed pause remains protected');
+    } finally {
+      tagger.running = saved.running; tagger.progress = saved.progress; clearPidfile();
+    }
+  } finally {globalThis.fetch=realFetch;analyzer.shutdown();}
+});
+
+
+test('source auditions support cue gaps, preserve authentication and keep the outgoing alias', async () => {
+  const id='incoming-source-audition';
+  db.upsertTrackMeta(id,{title:id,artist:'Cue artist',genres:['House'],duration:80});
+  subbeatsStore.enqueue([{id,title:id,artist:'Cue artist',album:''}],'small0');
+  subbeatsStore.event({id,status:'running'},[id]);
+  subbeatsStore.event({id,status:'prepared',bundleKey:'a'.repeat(64),cuePoints:{version:1,algorithmVersion:5,model:'small0',artifactKey:'c'.repeat(64),durationSeconds:80,
+    incoming:[{sourceSeconds:30,bpm:120,strength:1,reason:'arrangement',phraseBars:16,phraseStartSeconds:0}],outgoing:[]}},[id]);
+  const noCuesId='source-audition-no-cues';
+  db.upsertTrackMeta(noCuesId,{title:noCuesId,artist:'Cue artist',genres:['House'],duration:80});
+  subbeatsStore.enqueue([{id:noCuesId,title:noCuesId,artist:'Cue artist',album:''}],'small0');
+  subbeatsStore.event({id:noCuesId,status:'running'},[noCuesId]);
+  subbeatsStore.event({id:noCuesId,status:'prepared',bundleKey:'b'.repeat(64)},[noCuesId]);
+  const unmeasurableId='source-audition-unmeasurable';
+  db.upsertTrackMeta(unmeasurableId,{title:unmeasurableId,artist:'Cue artist',genres:['House'],duration:80});
+  subbeatsStore.enqueue([{id:unmeasurableId,title:unmeasurableId,artist:'Cue artist',album:''}],'small0');
+  subbeatsStore.event({id:unmeasurableId,status:'unmeasurable',bundleKey:'d'.repeat(64),error:'No reliable beat data'},[unmeasurableId]);
+  const before=JSON.stringify(subbeatsStore.read());
+  const realFetch=globalThis.fetch;let loads=0;let badType=false;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).startsWith(base)) return realFetch(url,init);
+    loads++;
+    return new Response(new Uint8Array([1,2,3,4]),{headers:{'Content-Type':badType?'application/json':'audio/mpeg'}});
+  }) as typeof fetch;
+  try {
+    assert.equal((await realFetch(base+'/library/subbeats/source-audio/'+id)).status,401);
+    assert.equal((await realFetch(base+'/library/subbeats/source-audio/missing',{headers})).status,400);
+    assert.equal(loads,0);
+    for (const route of ['source-audio','outgoing-audio']) {
+      const response=await realFetch(base+'/library/subbeats/'+route+'/'+id,{headers});
+      assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+      assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[1,2,3,4]);
+    }
+    for (const cueGapId of [noCuesId,unmeasurableId]) {
+      const response=await realFetch(base+'/library/subbeats/source-audio/'+cueGapId,{headers});
+      assert.equal(response.status,200,cueGapId);
+      assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[1,2,3,4]);
+    }
+    badType=true;
+    assert.equal((await realFetch(base+'/library/subbeats/source-audio/'+id,{headers})).status,400);
+    assert.equal(JSON.stringify(subbeatsStore.read()),before);
+  } finally {globalThis.fetch=realFetch;}
+});
+
+
+test('playlist preparation filters rows, counts and bulk selection before pagination', async () => {
+  const realFetch=globalThis.fetch;
+  globalThis.fetch=(async (url,init) => {
+    if (String(url).includes('/rest/getPlaylist')) {
+      const id=new URL(String(url)).searchParams.get('id');
+      return Response.json({'subsonic-response':id==='broken' ? {status:'failed',error:{code:70,message:'Playlist unavailable'}} : {status:'ok',playlist:{entry:id==='empty'?[]:[{id:'quiet-intro'},{id:'quiet-intro'},{id:'missing-library-track'}]}}});
+    }
+    return realFetch(url,init);
+  }) as typeof fetch;
+  try {
+    const read=async (id:string) => subbeatsCandidatePageSchema.parse(await (await fetch(base+'/library/subbeats/candidates?scope=playlist&playlistId='+id,{headers})).json());
+    const page=await read('chosen');assert.equal(page.total,1);assert.deepEqual(page.rows.map(row=>row.id),['quiet-intro']);
+    assert.deepEqual(page.selectableRows.map(row=>row.id),['quiet-intro']);
+    assert.equal((await read('empty')).total,0);assert.equal((await read('')).total,0);
+    assert.equal((await fetch(base+'/library/subbeats/candidates?scope=playlist&playlistId=broken',{headers})).status,503);
+  } finally {globalThis.fetch=realFetch;}
+});
+
+test('coverage upgrades require admin and preserve saved cue identity', async () => {
+  assert.equal((await fetch(base+'/library/subbeats/coverage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"ids":["incoming-source-audition"]}'})).status,401);
+  assert.equal((await post('/library/subbeats/coverage',{ids:['quiet-intro']})).status,409);
+  const id='incoming-source-audition';const before=subbeatsStore.read().jobs.find(job=>job.id===id)!;
+  const response=await post('/library/subbeats/coverage',{ids:[id]});assert.equal(response.status,202);
+  const job=subbeatsViewSchema.parse(await response.json()).jobs.find(job=>job.id===id)!;
+  assert.equal(job.task,'coverage');assert.equal(job.bundleKey,before.bundleKey);
+  assert.deepEqual(job.cuePoints,before.cuePoints);assert.equal(job.preparationMethod,'small0');
+});

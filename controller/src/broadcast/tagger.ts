@@ -17,7 +17,9 @@ import { refreshTaggerFallback, runTaggerFollowups, type MaintenanceMode } from 
 import { PROGRESS_PREFIX, EVENT_PREFIX, ROTATION_PREFIX, CATALOGUE_PREFIX, type TaggerProgress, type TaggerEvent, type TaggerRotation } from '../music/tagger-progress.js';
 import { writePidfile, clearPidfile, readPidfile, isPidAlive, MANAGED_ENV } from '../music/tagger-lock.js';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { STATE_DIR } from '../config.js';
+import { SUBBEATS_EVENT_PREFIX, SUBBEATS_SCAN_PREFIX, subbeatsScanReadySchema } from '../schemas/subbeats.js';
 import {
   openRunLog, listRunLogs, runLogPath, RUN_LOG_DIR_NAME,
   type RunLog, type RunLogPage, type RunLogFileInfo,
@@ -249,12 +251,20 @@ export function startTagger(
     enrich?: boolean;
     tagMoods?: boolean;
     analyze?: boolean;
+    stems?: boolean;
+    stemWaveforms?: boolean;
     // Per-run Demucs override; undefined defers to the setting.
     vocal?: boolean;
     onExit?: OnExit;
   } & ReplacedAnswer = {},
 ) {
-  const { limit, reseed, reEnrich, reAnalyze, upgrade, upgradeBlind, thenTag, reconcile, enrich, tagMoods, analyze, vocal } = opts;
+  const { limit, reseed, reEnrich, reAnalyze, upgrade, upgradeBlind, thenTag, reconcile, enrich, tagMoods, analyze, stems, stemWaveforms, vocal } = opts;
+  if (!reseed && !reEnrich && !reAnalyze && !upgrade && reconcile === false && enrich === false
+    && tagMoods === false && (analyze !== false || stems === true || stemWaveforms === true)) {
+    startAnalyzer({ limit, vocal, stems, stemsOnly: analyze === false && stems === true,
+      stemWaveforms, stemWaveformsOnly: analyze === false && stems !== true && stemWaveforms === true });
+    return;
+  }
   const args = ['src/music/tag-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (reseed) args.push('--reseed');
@@ -274,6 +284,9 @@ export function startTagger(
   if (enrich === false) args.push('--skip-enrich');
   if (tagMoods === false) args.push('--skip-tag');
   if (analyze === false) args.push('--skip-analyze');
+  if (stems === true) args.push('--stems');
+  if (stems === false) args.push('--no-stems');
+  if (stemWaveforms === true) args.push('--stem-waveforms');
   if (reconcile === false) args.push('--no-prune');
   if (analyze !== false && vocal === true) args.push('--vocal');
   if (analyze !== false && vocal === false) args.push('--no-vocal');
@@ -305,12 +318,16 @@ export function startTagger(
 // Standalone analysis pass (bpm/key/intro + CLAP audio embeddings). `audio` and
 // `vocal` force backfill scopes that re-target rows missing an audio vector /
 // vocal_ranges_json. Same single-flight slot; caller rejects when tagger.running.
-export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: boolean } = {}) {
-  const { limit, audio, vocal } = opts;
+export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: boolean; stems?: boolean; stemsOnly?: boolean; stemWaveforms?: boolean; stemWaveformsOnly?: boolean } = {}) {
+  const { limit, audio, vocal, stems, stemsOnly, stemWaveforms, stemWaveformsOnly } = opts;
   const args = ['src/music/analyze-library.ts'];
   if (Number.isFinite(limit) && (limit as number) > 0) args.push('--limit', String(limit));
   if (audio) args.push('--audio');
   if (vocal) args.push('--vocal');
+  if (stemWaveformsOnly) args.push('--stem-waveforms-only', '--skip-walk');
+  else if (stemsOnly) args.push('--stems-only', '--skip-walk');
+  else if (stems) args.push('--stems');
+  if (stemWaveforms && !stemWaveformsOnly) args.push('--stem-waveforms');
   const detail = [
     Number.isFinite(limit) && (limit as number) > 0 ? `limit=${limit}` : null,
     audio ? 'audio' : null,
@@ -319,6 +336,14 @@ export function startAnalyzer(opts: { limit?: number; audio?: boolean; vocal?: b
     .filter(Boolean)
     .join(', ');
   spawnChild('analyze', args, detail);
+}
+
+// Same managed process slot and process-group cancellation as ordinary analysis.
+export function startSubbeats(ids: string[], onEvent: (raw: unknown) => void, onClose: (stopped: boolean) => void) {
+  if (tagger.running) throw new Error('Library analysis is already running');
+  spawnChild('analyze', ['src/music/subbeats-library.ts', ...ids], 'Sub/Beats', {
+    subbeats: { onEvent, onClose },
+  });
 }
 
 // Walk Navidrome and prune library rows it no longer contains. No embeddings, no
@@ -338,15 +363,19 @@ function spawnChild(
   mode: TaggerMode,
   args: string[],
   detail: string,
-  opts: { automaticIdRotation?: RotatedIdEvidence; onExit?: OnExit } = {},
+  opts: {
+    automaticIdRotation?: RotatedIdEvidence;
+    onExit?: OnExit;
+    subbeats?: { onEvent: (raw: unknown) => void; onClose: (stopped: boolean) => void };
+  } = {},
 ) {
   const label = mode === 'tag' ? 'tagger' : mode === 'analyze' ? 'analyzer' : 'reconcile';
   // detached:true makes the child a process-GROUP leader so stopTagger can signal the
   // whole tree (npx → npm → sh → node tsx); child.pid alone is just the npx wrapper and
   // killing it orphans the real worker. Keep the stdio pipes and never unref().
   // MANAGED_ENV tells the CLI we own the pidfile written below.
-  const child = spawn('npx', ['tsx', ...args], {
-    cwd: '/app',
+  const child = spawn(opts.subbeats ? 'nice' : 'npx', opts.subbeats ? ['-n', '10', 'npx', 'tsx', ...args] : ['tsx', ...args], {
+    cwd: opts.subbeats ? fileURLToPath(new URL('../..', import.meta.url)) : '/app',
     detached: true,
     env: { ...process.env, [MANAGED_ENV]: '1' },
   });
@@ -380,6 +409,7 @@ function spawnChild(
   );
 
   let catalogueReady = false;
+  const subbeatsScanIds = new Set<string>();
   let earlyRefresh: Promise<boolean> | null = null;
   const invalidatePools = async () => {
     clearPoolCache();
@@ -399,11 +429,7 @@ function spawnChild(
 
   // A never-counted library nulls every panel percentage for the whole run. Guarded
   // on hasCount() so it fires at most once per install, not on every run.
-  if (!coverage.hasCount()) coverage.refresh().catch(() => {});
-
-  // Cross-restart lock: pid is the detached leader, so recoverFromRestart can
-  // SIGTERM the whole group.
-  if (child.pid) writePidfile({ pid: child.pid, mode, startedAt, args });
+  if (!opts.subbeats && !coverage.hasCount()) coverage.refresh().catch(() => {});
 
   // Per-stream line buffering: a `data` chunk can end mid-line, so each stream keeps
   // its own remainder. [progress] and [event] sentinels are kept out of the raw log.
@@ -416,6 +442,20 @@ function spawnChild(
       for (const raw of lines) {
         const line = raw.trim();
         if (!line) continue;
+        if (opts.subbeats && line.startsWith(SUBBEATS_EVENT_PREFIX)) {
+          try { opts.subbeats.onEvent(JSON.parse(line.slice(SUBBEATS_EVENT_PREFIX.length))); }
+          catch (error) { queue.log('error', `Sub/Beats result refused: ${error instanceof Error ? error.message : String(error)}`); }
+          continue;
+        }
+        if (!opts.subbeats && line.startsWith(SUBBEATS_SCAN_PREFIX)) {
+          try {
+            const parsed = subbeatsScanReadySchema.parse(JSON.parse(line.slice(SUBBEATS_SCAN_PREFIX.length)));
+            for (const id of parsed) subbeatsScanIds.add(id);
+          } catch (error) {
+            queue.log('error', `Sub/Beats scan handoff refused: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          continue;
+        }
         if (line.startsWith(PROGRESS_PREFIX)) {
           try {
             tagger.progress = JSON.parse(line.slice(PROGRESS_PREFIX.length)) as TaggerProgress;
@@ -499,6 +539,12 @@ function spawnChild(
   child.on('close', (code, signal) => {
     thisRunLog.raw(`[exit ${signal || code}]`);
     thisRunLog.close();
+    if (!opts.subbeats && code === 0 && signal === null && subbeatsScanIds.size) {
+      void import('../music/subbeats-manager.js').then(({ kickSubbeats }) => kickSubbeats(0, [...subbeatsScanIds]))
+        .catch(error => queue.log('error', `Queued Sub/Beats work could not start: ${error instanceof Error ? error.message : String(error)}`));
+    }
+    try { opts.subbeats?.onClose(signal !== null || code === 130 || code === 143); }
+    catch (error) { queue.log('error', `Sub/Beats completion could not be saved: ${error instanceof Error ? error.message : String(error)}`); }
     runEnd.closed();
   });
   child.on('exit', (code, signal) => {
@@ -521,6 +567,10 @@ function spawnChild(
     };
     // The run just walked the catalogue, and nothing else recounts unattended
     // (#1570), so this is the one moment the total can refresh unasked.
+    if (opts.subbeats) {
+      queue.log('scheduler', `Sub/Beats finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
+      return;
+    }
     coverage.refresh().catch(() => {});
     // Apply even after Stop/failure: adoption may already have committed.
     // Recipes must be migrated before sync can classify a playlist as missing.
@@ -569,6 +619,15 @@ function spawnChild(
     queue.log('scheduler', `${label} finished (${signal ? `signal ${signal}` : `exit ${code}`})`);
     runEnd.exited(tagger.lastRun);
   });
+  // Register completion/error handlers before the cross-restart lock write:
+  // a refused/full state folder must not orphan a child or its error event.
+  if (child.pid) {
+    try { writePidfile({ pid: child.pid, mode, startedAt, args }); }
+    catch (error) {
+      queue.log('error', `${label} could not save its process lock: ${error instanceof Error ? error.message : String(error)}`);
+      try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+    }
+  }
   queue.log('scheduler', `${label} started${detail ? ` (${detail})` : ''}`);
 }
 

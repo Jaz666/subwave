@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **Fork session protocol:** Before planning or changing this repository, read [`STARTHERE.md`](STARTHERE.md). At the end of a development session, follow [`HANDOFF.md`](HANDOFF.md).
+
 SUB/WAVE is a personal internet radio station: one Icecast stream that every listener hears, with an AI DJ that picks the tracks and talks between them.
 
 This file loads into every session, so it holds the map, the commands and one line per invariant. The reasoning behind each invariant lives in the doc named beside it, or in the module's own header comment, and you read it before changing the thing it describes: most of those paragraphs exist because the obvious fix shipped first and was wrong. New rules go in the same shape: one line here, the reasoning in the doc.
@@ -42,6 +44,23 @@ The compose files sit at the repo root: `docker-compose.yml` (prod, with Caddy a
 
 Use `gh pr create --base develop`. `main` is the release branch, and `enforce-main-source.yml` fails any PR into it from anything but `develop` or release-please. Ignore the session preamble's "Main branch: main" line: it is computed locally and is wrong for this repo. The release PR (`develop` → `main`) is merged with a merge commit, never squashed (CONTRIBUTING.md explains), and is cut with the `subwave-release-pr` skill, which now lives in the maintainers' shared skills repo.
 
+## Code Review Rules
+
+- Before reviewing, read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+  [`PR template`](.github/PULL_REQUEST_TEMPLATE.md) for contribution and
+  verification expectations. Read the applicable scoped guides from
+  **Where the detail lives** above for the files and behaviour being changed.
+- Apply the fork's [Contribution Practices](https://github.com/Jaz666/subwave/blob/docs/contribution-practices/docs/CONTRIBUTION_PRACTICES.md),
+  using `docs/CONTRIBUTION_PRACTICES.md` when it exists in the reviewed checkout.
+  If that guide cannot be retrieved, say so rather than claiming it was checked.
+- Prioritise actionable regressions in user behaviour, compatibility, data
+  safety and broadcast timing. Check shared callers and optional-feature-off
+  behaviour where relevant; distinguish existing base-branch failures from
+  failures introduced by the PR.
+- Assess the reported test evidence against the changed behaviour. Passing
+  lint or a large test count does not establish runtime compatibility. State
+  checks that were not run; do not operate the live station during a review.
+
 ## Architecture
 
 The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeScript), Web (Next.js). The native iOS + Android app is its own repo, [getsubwave/app](https://github.com/getsubwave/app), and talks to the controller over the same HTTP API as the web player. Controller and Liquidsoap share the `state/` dir (`/var/sub-wave` in containers) and must mount the same host path. Data passes as files in it; control (reloads, restart, skip, probes) goes over Liquidsoap's telnet on `broadcast:1234` (`broadcast/liquidsoap-control.ts`).
@@ -61,6 +80,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 
 **Liquidsoap → Controller.** Marker files written by `radio.liq` (the rules are in `liquidsoap/CLAUDE.md`):
 - `now-playing.json`: the live track, from `music_meta`, the pre-cross handle.
+- `stream-clock.json`: the song's track mark on the final shared mix, just before the Icecast mounts encode it; the controller joins it to `now-playing.json` only for the same track and same boundary.
 - `jingle-playing.json`: a jingle is on air, so `airVoice` holds speech until its window passes.
 - `bed-playing.json`: an instrumental bed started. Beds never reach `now-playing.json`, so this is the only signal that airs the link over one.
 - `voice-playing.json`: a spoken clip started, which is what makes air-time stamps real (#1382).
@@ -116,6 +136,8 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 **Library, picker, LLM, TTS** (`music.md`, `broadcast.md`)
 - Write `genres`, never `genre` (a generated column); `subsonic.songGenres()` is the one ingest normaliser. Genre matching is one-directional.
 - Judge era with `resolveEraYear` and `yearUntrusted`, never raw `year`, and keep the JS and SQL era filters in agreement.
+- Silence trim measures against an absolute floor, and `music/silence-trim.ts` owns every onset shift.
+- The bar grid is chosen once, in `analyze_worker.measure_bar_grid()` (`bar_grid()` is the array-only compatibility wrapper): off is librosa's beats with every 4th as a bar, and `ANALYZE_DOWNBEATS=beat-this` takes beats and bars together from the ONNX model that only the heavy (`WITH_DEMUCS=1`) builds of both Dockerfiles fetch, sha256-pinned, from a `beat-this-*` prerelease, which only `tools/beat-this/export.py` may produce (`infrastructure.md`).
 - Silence trim measures against an absolute floor, and `music/silence-trim.ts` owns every onset shift. The one relative level is a fade's audible end (`transitions.fadeAudibleEnd`, off by default), read off the tail's R128 loudness curve, only ever earlier than the floor's cut, through the same resolver (`music.md`, tail v3).
 - A track's instrumental verdict is `isInstrumental` over both measured windows, each judged alone (`music/lyric-vocal.ts`). A row carrying `vocalRanges` carries the tail evidence too, and SQL reads it through `SQL_TAIL_VOCAL_RANGES`, never the whole `outro_json`.
 - The opening and closing vocal gates have their own mix floors (`HEAD_`/`TAIL_VOCAL_MIX_FLOOR`); never unify them. Demucs separates with `shifts=0`, so one file gives one verdict (`music.md`, #2237).
@@ -144,7 +166,7 @@ The pieces are Broadcast (Icecast + Liquidsoap), Controller (Express, ESM, TypeS
 - Pick-time stems start only after the pair is sent, for the held track, and the drain never awaits them. They may take a full stem cache over its budget, by a bounded allowance the hourly sweep evicts, judged on the bytes it can evict (folders it cannot delete are recorded beside the total, `unevictableBytes`), and never touch the pass's own budget rule; while they are on, both sweeps evict a queued track's stems last; quiet-only analysis switches them off, and the blend render stands down while one runs unless the sidecar pool has a spare member (`broadcast/pick-stems-policy.ts`, `broadcast.md`).
 - Track-level Last.fm tags are opt-in and `lastfm_tags` stays the one list: `lastfm.getMergedTags` is the bulk pass's and the retag route's one read, `db.recordLastfmTrackTags` their one write, and only a genuine answer stamps `lastfm_track_tags_at`. A failure never does, or an outage marks the library done. The merge is additive, the song's own tags ahead of the artist's whole list, so turning this on can only make a `tag` rule match more, never less. On both paths only tags replace a stored list: an empty or failed artist lookup, or Last.fm tags off, keeps it (`lastfm-tag-policy.listAfterArtistLookup`, `music.md`).
 - The orphan purge moves only what reads as a stem dir, deletes only from its quarantine, only what still reads as stems, and only past the grace (one exception: a newer live copy replaces a quarantined one of the same id, on a fresh stamp), releases only stems proven to be the returning row's audio (`sameAudio`, failing closed: a returning id is not returning audio), and keeps quarantine bytes outside the budget (`music/orphan-purge.ts`).
-- LRCLIB lyrics reach the listener Lyrics panel only, never the analyzer, and are looked up when a track is queued and again at air time, never on the read path (`music/lyrics-sources.ts`).
+- LRCLIB listener lyrics are looked up when a track is queued and again at air time, never on the read path (`music/lyrics-sources.ts`). The separate Sub/Beats audition evidence uses version-ranked lyrics during preparation or explicit scans; it never changes main-library vocal ranges or DJ talk-over safety (`music/subbeats-lyric-refresh.ts`).
 - `getLocalPath()` is for Liquidsoap: it answers only for a mount the mixer proved it can read (`music/library-mount.ts`), and anything short of that proof streams. The proof covers the mount, not a file, so the drain also asks about each pick's own file (`mixerReadablePath`) within its budget, decides local or stream once per handoff, and streams on anything but a timely yes. A reader in the controller uses `findLibraryFile()`. A file existing is not proof it is the track: a real path outside the mount plays only when its size matches and its tags give it the title stock Navidrome reports (the subtitle appended, cut at 1,024 bytes), and every tag shape the reader knows Navidrome reads another way streams (`music/tag-title.ts` lists them, and the shapes that still play a wrong file; `music.md`).
 - LLM calls go through the `llm/sdk` primitives, and provider quirks live only in `llm/internal/provider/capabilities.ts`. The default provider is a slow homelab Ollama, so add no aggressive retry.
 - TTS goes through `tts.speak(text, {kind})`. The rescue chain is a list of voice slots, and a rescue target is engine + provider.

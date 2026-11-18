@@ -49,6 +49,7 @@ export interface LrclibRecord {
   id?: number | null;
   trackName?: string | null;
   artistName?: string | null;
+  albumName?: string | null;
   duration?: number | null;
   instrumental?: boolean | null;
   plainLyrics?: string | null;
@@ -57,6 +58,8 @@ export interface LrclibRecord {
 
 export interface LrclibClient {
   find(track: LrclibTrack): Promise<LrclibRecord | null>;
+  /** Sub/Beats preparation/scans: compare versions even when /get has a hit. */
+  candidates(track: LrclibTrack): Promise<LrclibRecord[]>;
 }
 
 // Case, accents and punctuation folded away, letters of every script kept: a
@@ -90,6 +93,22 @@ export function bestSearchMatch(results: readonly LrclibRecord[], track: LrclibT
     && agrees(searchTitle(track.title), r.trackName)
     && agrees(leadArtist(track.artist), r.artistName));
   return same.find((r) => r.syncedLyrics) ?? same.find((r) => r.instrumental) ?? same.find((r) => r.plainLyrics) ?? null;
+}
+
+// Opt-in Sub/Beats ranking. Album is supporting evidence, never proof that
+// different masters with the same length have identical lyric timing.
+export function rankVersionMatches(results: readonly LrclibRecord[], track: LrclibTrack): LrclibRecord[] {
+  const rank = (r:LrclibRecord) => [
+    r.syncedLyrics?.trim() ? 0 : 1,
+    fold(searchTitle(track.title)) === fold(searchTitle(r.trackName ?? '')) ? 0 : 1,
+    track.album && fold(track.album) === fold(r.albumName) ? 0 : 1,
+    Math.abs(Number(r.duration)-track.durationSec),
+  ];
+  return results.filter(r => bestSearchMatch([r],track) !== null).sort((a,b) => {
+    const aa=rank(a),bb=rank(b);
+    for (let i=0;i<aa.length;i++) if (aa[i]!==bb[i]) return aa[i]!-bb[i]!;
+    return (a.id ?? 0)-(b.id ?? 0);
+  });
 }
 
 export interface LrclibClientOptions {
@@ -166,6 +185,13 @@ export function createLrclibClient({
   }
 
   return {
+    async candidates(track) {
+      if (!track.artist?.trim() || !track.title?.trim() || !(track.durationSec > 0) || !Number.isFinite(track.durationSec)) return [];
+      const results = await request<LrclibRecord[]>('search', {
+        track_name:searchTitle(track.title),artist_name:leadArtist(track.artist),
+      });
+      return rankVersionMatches(Array.isArray(results) ? results : [],track);
+    },
     async find(track) {
       const durationSec = Math.round(track.durationSec);
       if (!track.artist?.trim() || !track.title?.trim() || !(durationSec > 0)) return null;

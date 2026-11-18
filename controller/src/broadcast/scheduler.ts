@@ -1,6 +1,7 @@
 import { captureSpeechBudget } from './speech-timing.js';
 import { fitsSpeechBudget } from './speech-budget.js';
 import { spokenWordCount } from '../audio/tts-measurements.js';
+import { regularStemWorkingMode } from './regular-stem-mode.js';
 import { prepareEpisodeContext, prepareUpcomingGeneratedShows, showPreparation, onPreparationChange, preparationIdentity, preparationSkillAt } from './show-preparation.js';
 import { autoPlaylistShowKey } from './auto-playlist-show.js';
 // Scheduler: the auto-playlist refresh, the per-minute talk tick over
@@ -32,6 +33,7 @@ import { getFullContext } from '../context.js';
 import { queue } from './queue.js';
 import { createPoolBuilder } from './auto-pool.js';
 import { applyTrackFloor, capCueOutSec, trackLengthSeconds } from '../music/track-floor.js';
+import { startSubbeatsCleanup } from '../music/subbeats-stem-cleanup.js';
 import { purgeSummary, runScheduledOrphanPurge } from '../music/orphan-purge.js';
 import { allTrackIdsOrdered } from '../music/library-db.js';
 import { airableAnchorTracks, coastFloor, COAST_MIN_SEC, rotationCoast, rotationOrder, showNoRepeatGuard } from '../music/show-recency.js';
@@ -1385,7 +1387,9 @@ export async function stemCacheSweepTick() {
 // cache it cannot see. 04:47 keeps it clear of the hourly cleanup at :02 and the
 // 04:17 doctor.
 export async function stemOrphanPurgeTick() {
+  if (regularStemWorkingMode()) return;
   try {
+    await startSubbeatsCleanup(true);
     if (settings.get()?.audio?.stemOrphanPurgeEnabled !== true) return;
     const r = await runScheduledOrphanPurge(allTrackIdsOrdered());
     if (r.refused) { queue.log('error', `Stem orphan purge: ${purgeSummary(r)}`); return; }

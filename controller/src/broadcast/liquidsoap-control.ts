@@ -285,6 +285,9 @@ interface DjQueueSnapshot {
   // clip's rid and a cancel would remove the clip, not the track. Kept here
   // instead and excluded from ids/ridBySubsonicId.
   clipRidBySubsonicId: Map<string, string>;
+  clipRidsBySubsonicId: Map<string, string[]>;
+  subbeatsParts: Map<string, Set<string>>;
+  complete: boolean;
   // Request ids in FIFO push order, so the entry immediately ahead of a track
   // (where a bed rides) can be found. dj_queue.queue lists oldest-first.
   orderedRids: string[];
@@ -305,6 +308,9 @@ async function fetchDjQueue(): Promise<DjQueueSnapshot> {
   const ids = new Set<string>();
   const ridBySubsonicId = new Map<string, string>();
   const clipRidBySubsonicId = new Map<string, string>();
+  const clipRidsBySubsonicId = new Map<string, string[]>();
+  const subbeatsParts = new Map<string, Set<string>>();
+  let complete = true;
   const bedRids = new Set<string>();
 
   for (const rid of rids) {
@@ -317,7 +323,15 @@ async function fetchDjQueue(): Promise<DjQueueSnapshot> {
       if (match && match[1]) {
         // Clips masquerade as their incoming track; route to the clip map.
         if (/subwave_clip=\\?"1/.test(meta)) {
-          if (!clipRidBySubsonicId.has(match[1])) clipRidBySubsonicId.set(match[1], rid);
+          const owner = /subwave_clip_for=\\?"([^"\\]+)/.exec(meta)?.[1] ?? match[1];
+          if (!clipRidBySubsonicId.has(owner)) clipRidBySubsonicId.set(owner, rid);
+          clipRidsBySubsonicId.set(owner,[...(clipRidsBySubsonicId.get(owner) ?? []),rid]);
+          const transition = /subwave_transition=\\?"([^"\\]+)/.exec(meta)?.[1];
+          const part = /subwave_part=\\?"(out|in)/.exec(meta)?.[1];
+          if (transition && part) {
+            const parts = subbeatsParts.get(transition) ?? new Set<string>();
+            parts.add(part);subbeatsParts.set(transition,parts);
+          }
         } else {
           ids.add(match[1]);
           if (!ridBySubsonicId.has(match[1])) ridBySubsonicId.set(match[1], rid);
@@ -325,11 +339,12 @@ async function fetchDjQueue(): Promise<DjQueueSnapshot> {
       }
       if (/subwave_kind=\\?"bed/.test(meta)) bedRids.add(rid);
     } catch (ridErr: any) {
+      complete = false;
       console.warn(`[liquidsoap] request.metadata ${rid} failed: ${ridErr.message}`);
     }
   }
 
-  return { ids, ridBySubsonicId, clipRidBySubsonicId, orderedRids: rids, bedRids };
+  return { ids, ridBySubsonicId, clipRidBySubsonicId, clipRidsBySubsonicId, subbeatsParts, complete, orderedRids: rids, bedRids };
 }
 
 // Returns a Set of subsonic_ids currently in the queue (cached ~4s).
@@ -375,6 +390,17 @@ export async function resolveClipRid(subsonicId: string): Promise<string | null>
   const snap = await fetchDjQueue();
   _djQueueCache = { timestamp: Date.now(), ...snap };
   return snap.clipRidBySubsonicId.get(subsonicId) ?? null;
+}
+
+export async function resolveClipRids(subsonicId: string): Promise<string[]> {
+  const snap = await fetchDjQueue();
+  return snap.clipRidsBySubsonicId.get(subsonicId) ?? [];
+}
+
+export async function subbeatsPublicationState(transitionId: string, outgoingId: string): Promise<{parts:Set<string>;outgoingQueued:boolean}> {
+  const snap = await fetchDjQueue();
+  if (!snap.complete) throw new Error('The mixer queue could not be checked for the pending Sub/Beats handoff.');
+  return {parts:snap.subbeatsParts.get(transitionId) ?? new Set(),outgoingQueued:snap.ids.has(outgoingId)};
 }
 
 // False when Liquidsoap replies NOT_FOUND: the request already left the queue

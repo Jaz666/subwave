@@ -1,0 +1,516 @@
+[
+  {
+    "name": "rozalla",
+    "model": "small0",
+    "sourceSha256": "0361d84927462004952db64b2d44acbd1af9b3e5a7325d65ab86029278971d74",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 15.44,
+        "bpm": 130.28483842125442,
+        "strength": 2.8219168651589435,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 0.5
+      },
+      {
+        "sourceSeconds": 44.92,
+        "bpm": 130.06885998469815,
+        "strength": 5.251934444545516,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 15.44
+      },
+      {
+        "sourceSeconds": 52.3,
+        "bpm": 130.1601480252666,
+        "strength": 5.740340202462263,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 22.78
+      },
+      {
+        "sourceSeconds": 26.48,
+        "bpm": 129.9611390711602,
+        "strength": 3.077139677275962,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 11.74
+      },
+      {
+        "sourceSeconds": 41.24,
+        "bpm": 130.23493360572033,
+        "strength": 3.2704211730870885,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 11.74
+      },
+      {
+        "sourceSeconds": 48.62,
+        "bpm": 130.06885998469812,
+        "strength": 3.3632460144869905,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 19.12
+      },
+      {
+        "sourceSeconds": 30.16,
+        "bpm": 129.91975544516637,
+        "strength": 1.1445007560615426,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 0.5
+      },
+      {
+        "sourceSeconds": 22.78,
+        "bpm": 130.8950914340713,
+        "strength": 10.533111419156713,
+        "reason": "repetition"
+      }
+    ]
+  },
+  {
+    "name": "urban-cookie-collective",
+    "model": "small0",
+    "sourceSha256": "3d68dd0dbbd466efa54caff332d5f716cc56684d8cd5159f21a1f9be19d9eb7c",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 15.0,
+        "bpm": 129.99426495889898,
+        "strength": 1.6125787492632617,
+        "reason": "arrangement",
+        "phraseBars": 8,
+        "phraseStartSeconds": 0.2
+      },
+      {
+        "sourceSeconds": 22.4,
+        "bpm": 129.63080637986926,
+        "strength": 11.124821358202613,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 7.6
+      },
+      {
+        "sourceSeconds": 39.02,
+        "bpm": 129.80402137948587,
+        "strength": 3.356224838098385,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 9.46
+      },
+      {
+        "sourceSeconds": 29.78,
+        "bpm": 130.2349336057202,
+        "strength": 1.579584524447247,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 0.2
+      },
+      {
+        "sourceSeconds": 18.7,
+        "bpm": 130.02740773790563,
+        "strength": 2.0310743358558314,
+        "reason": "arrangement",
+        "phraseBars": 8,
+        "phraseStartSeconds": 3.9
+      },
+      {
+        "sourceSeconds": 55.64,
+        "bpm": 129.92803006177988,
+        "strength": 2.148466437236319,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 26.08
+      },
+      {
+        "sourceSeconds": 42.72,
+        "bpm": 129.93630573248458,
+        "strength": 12.003555017729868,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 59.34,
+        "bpm": 129.85359643539167,
+        "strength": 11.564150782927369,
+        "reason": "repetition"
+      }
+    ]
+  },
+  {
+    "name": "gusto",
+    "model": "small0",
+    "sourceSha256": "2a1b142700d54bd9bf70b35939baf32361b5f62a5b4579b4fdea949a1677203c",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 30.56,
+        "bpm": 125.89484078005448,
+        "strength": 1.823821584551939,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 0.06
+      },
+      {
+        "sourceSeconds": 15.34,
+        "bpm": 125.94924986108545,
+        "strength": 0.9153785210092495,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 0.06
+      },
+      {
+        "sourceSeconds": 22.94,
+        "bpm": 126.08158220024715,
+        "strength": 0.9840958431005995,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 7.72
+      },
+      {
+        "sourceSeconds": 52.46,
+        "bpm": 125.98036188476522,
+        "strength": 3.041785213376189,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 7.72,
+        "bpm": 125.92592592592594,
+        "strength": 2.50981956485725,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 26.76,
+        "bpm": 126.14395251051202,
+        "strength": 1.3899982144921212,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 44.86,
+        "bpm": 126.12835414863387,
+        "strength": 0.9216446173071546,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 61.98,
+        "bpm": 126.0737902478216,
+        "strength": 0.6629102520234877,
+        "reason": "arrangement"
+      }
+    ]
+  },
+  {
+    "name": "afro-left",
+    "model": "small0",
+    "sourceSha256": "90134cdc190cffa53ccf0f11b58624e8f6cfd7b636429ac4cf11acc3eacdb8c1",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 59.32,
+        "bpm": 129.96941896024487,
+        "strength": 2.960933983806262,
+        "reason": "arrangement"
+      },
+      {
+        "sourceSeconds": 35.28,
+        "bpm": 129.35134106905102,
+        "strength": 1.1832309359802764,
+        "reason": "arrangement"
+      }
+    ]
+  },
+  {
+    "name": "cubik",
+    "model": "small0",
+    "sourceSha256": "8a02d4869893c0237d3a53d629ad46478a8989f229cd959b4ea17abbdf9d4227",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 40.8,
+        "bpm": 123.61388838393042,
+        "strength": 2.3069653872805653,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 25.3
+      },
+      {
+        "sourceSeconds": 25.3,
+        "bpm": 124.32201840453405,
+        "strength": 4.176286471116777,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 46.62,
+        "bpm": 124.15555961292702,
+        "strength": 1.8325874296678302,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 52.4,
+        "bpm": 124.31444241316294,
+        "strength": 1.4684091307287246,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 29.18,
+        "bpm": 123.95940936987306,
+        "strength": 0.4542463492589017,
+        "reason": "repetition"
+      }
+    ]
+  },
+  {
+    "name": "rozalla",
+    "model": "final0",
+    "sourceSha256": "0361d84927462004952db64b2d44acbd1af9b3e5a7325d65ab86029278971d74",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 15.44,
+        "bpm": 130.201684962982,
+        "strength": 2.8626690853829437,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 0.5
+      },
+      {
+        "sourceSeconds": 22.78,
+        "bpm": 130.9118911634475,
+        "strength": 10.523389594378013,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 8.02
+      },
+      {
+        "sourceSeconds": 44.92,
+        "bpm": 130.43478260869608,
+        "strength": 5.220771076307597,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 15.44
+      },
+      {
+        "sourceSeconds": 52.3,
+        "bpm": 129.85359643539158,
+        "strength": 5.636411859522661,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 22.78
+      },
+      {
+        "sourceSeconds": 26.46,
+        "bpm": 130.0522759148285,
+        "strength": 3.0402749634353974,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 11.74
+      },
+      {
+        "sourceSeconds": 48.6,
+        "bpm": 130.1103386695582,
+        "strength": 3.4647654176626483,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 19.14
+      },
+      {
+        "sourceSeconds": 41.24,
+        "bpm": 130.20168496298226,
+        "strength": 3.308050733997836,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 11.74
+      },
+      {
+        "sourceSeconds": 30.16,
+        "bpm": 129.59786544692233,
+        "strength": 1.3560204269537548,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 0.5
+      }
+    ]
+  },
+  {
+    "name": "urban-cookie-collective",
+    "model": "final0",
+    "sourceSha256": "3d68dd0dbbd466efa54caff332d5f716cc56684d8cd5159f21a1f9be19d9eb7c",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 15.0,
+        "bpm": 130.00254906958955,
+        "strength": 1.5880164596538011,
+        "reason": "arrangement",
+        "phraseBars": 8,
+        "phraseStartSeconds": 0.2
+      },
+      {
+        "sourceSeconds": 22.38,
+        "bpm": 129.51558631198026,
+        "strength": 11.200420961672549,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 7.6
+      },
+      {
+        "sourceSeconds": 39.02,
+        "bpm": 129.80402137948587,
+        "strength": 3.290985561973969,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 9.46
+      },
+      {
+        "sourceSeconds": 29.78,
+        "bpm": 129.70498474059008,
+        "strength": 1.6892683623668627,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 0.2
+      },
+      {
+        "sourceSeconds": 18.68,
+        "bpm": 129.87012987012997,
+        "strength": 2.012688419983411,
+        "reason": "arrangement",
+        "phraseBars": 8,
+        "phraseStartSeconds": 3.92
+      },
+      {
+        "sourceSeconds": 55.64,
+        "bpm": 129.92803006177976,
+        "strength": 2.3089486206730014,
+        "reason": "repetition",
+        "phraseBars": 16,
+        "phraseStartSeconds": 26.08
+      },
+      {
+        "sourceSeconds": 42.7,
+        "bpm": 129.9445824574817,
+        "strength": 12.033919386327375,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 59.34,
+        "bpm": 130.05227591482853,
+        "strength": 11.882452452546604,
+        "reason": "repetition"
+      }
+    ]
+  },
+  {
+    "name": "gusto",
+    "model": "final0",
+    "sourceSha256": "2a1b142700d54bd9bf70b35939baf32361b5f62a5b4579b4fdea949a1677203c",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 15.32,
+        "bpm": 125.94924986108545,
+        "strength": 0.8960474241142244,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 0.04
+      },
+      {
+        "sourceSeconds": 22.94,
+        "bpm": 126.00370599135276,
+        "strength": 0.8591614428282988,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 7.7
+      },
+      {
+        "sourceSeconds": 52.46,
+        "bpm": 126.0114892828466,
+        "strength": 3.1792963881658354,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 7.7,
+        "bpm": 125.8404786873111,
+        "strength": 2.3308396223187997,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 46.74,
+        "bpm": 126.07379024782169,
+        "strength": 1.6305016299278825,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 56.26,
+        "bpm": 126.01148928284654,
+        "strength": 0.7510334943101836,
+        "reason": "arrangement"
+      },
+      {
+        "sourceSeconds": 39.14,
+        "bpm": 125.97258243794023,
+        "strength": 0.5581895073616894,
+        "reason": "repetition"
+      }
+    ]
+  },
+  {
+    "name": "afro-left",
+    "model": "final0",
+    "sourceSha256": "90134cdc190cffa53ccf0f11b58624e8f6cfd7b636429ac4cf11acc3eacdb8c1",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 59.32,
+        "bpm": 129.91975544516671,
+        "strength": 2.983836838497247,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 53.76,
+        "bpm": 130.27651829618762,
+        "strength": 1.6377758226909092,
+        "reason": "arrangement"
+      }
+    ]
+  },
+  {
+    "name": "cubik",
+    "model": "final0",
+    "sourceSha256": "8a02d4869893c0237d3a53d629ad46478a8989f229cd959b4ea17abbdf9d4227",
+    "coverageEndSeconds": 68,
+    "candidates": [
+      {
+        "sourceSeconds": 40.8,
+        "bpm": 123.62137922676067,
+        "strength": 2.08511150143694,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 25.3
+      },
+      {
+        "sourceSeconds": 25.3,
+        "bpm": 123.77138696760107,
+        "strength": 4.980139662801428,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 54.32,
+        "bpm": 124.40541529454839,
+        "strength": 2.663609833545826,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 46.6,
+        "bpm": 124.24630001827161,
+        "strength": 1.8332880872925843,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 50.48,
+        "bpm": 124.29929320009765,
+        "strength": 1.2192784370103782,
+        "reason": "repetition"
+      }
+    ]
+  }
+]

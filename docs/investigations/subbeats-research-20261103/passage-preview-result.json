@@ -1,0 +1,108 @@
+{
+  "scope": "Original Rozalla audio with missing coverage; previously verified Gusto head stems; isolated parent manifests, no station cache writes",
+  "elapsedSeconds": 90.90411663986742,
+  "librosa": "1.0.0",
+  "torch": "2.7.1+cpu",
+  "fetches": [
+    0
+  ],
+  "selectedIncoming": {
+    "sourceSeconds": 30.56,
+    "bpm": 125.89484078005432,
+    "strength": 1.8233357236041008,
+    "reason": "repetition",
+    "phraseBars": 16,
+    "phraseStartSeconds": 0.06
+  },
+  "metadata": {
+    "timeline": {
+      "duration": 54.63628117913832,
+      "events": [
+        {
+          "at": 0.0,
+          "label": "Outgoing track"
+        },
+        {
+          "at": 4.0,
+          "label": "Incoming opening \u00b7 complete source prefix retained"
+        },
+        {
+          "at": 4.076277462355222,
+          "label": "Selected outgoing closing cue"
+        },
+        {
+          "at": 31.75004216823757,
+          "label": "Rhythm handover begins"
+        },
+        {
+          "at": 33.59627746235523,
+          "label": "Incoming arrival meets outgoing closing change"
+        },
+        {
+          "at": 54.636277462355224,
+          "label": "Outgoing recording finishes naturally"
+        },
+        {
+          "at": 54.636277462355224,
+          "label": "Preview complete"
+        }
+      ]
+    },
+    "experimental": true,
+    "phrase_verified": false,
+    "method": "cue-points",
+    "incoming_rate": 1.0325622889186172,
+    "bpm": 129.99426495889776,
+    "used_models": true,
+    "extended_regions": {
+      "outgoing": true,
+      "incoming": false
+    },
+    "selected_windows": {
+      "outgoing_seconds": 163.04,
+      "outgoing_handover_seconds": 192.56,
+      "incoming_seconds": 30.56,
+      "outgoing_end_seconds": 213.6,
+      "incoming_start_seconds": 0.0,
+      "outgoing_preview_start_seconds": 158.96372253764477
+    }
+  },
+  "result": {
+    "ok": true,
+    "subbeats_preview": "/home/jaz666/codex/subbeats-beat-this-20261103/passage-preview/state/subbeats/previews/2249ebc58825af6049183ec49dffc2f575e58e10227c5242f9bdb4a1f05cb036/preview.wav",
+    "subbeats_timeline": {
+      "duration": 54.63628117913832,
+      "events": [
+        {
+          "at": 0.0,
+          "label": "Outgoing track"
+        },
+        {
+          "at": 4.0,
+          "label": "Incoming opening \u00b7 complete source prefix retained"
+        },
+        {
+          "at": 4.076277462355222,
+          "label": "Selected outgoing closing cue"
+        },
+        {
+          "at": 31.75004216823757,
+          "label": "Rhythm handover begins"
+        },
+        {
+          "at": 33.59627746235523,
+          "label": "Incoming arrival meets outgoing closing change"
+        },
+        {
+          "at": 54.636277462355224,
+          "label": "Outgoing recording finishes naturally"
+        },
+        {
+          "at": 54.636277462355224,
+          "label": "Preview complete"
+        }
+      ]
+    },
+    "subbeats_used_models": true
+  }
+}

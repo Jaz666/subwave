@@ -212,10 +212,10 @@ router.get('/now-playing', async (req, res) => {
       if (nowPlaying.duration == null) {
         const cur = queue.current;
         const tracked = cur?.track?.id === nowPlaying.subsonic_id ? cur : null;
-        const duration = tracked?.track?.duration ?? rec?.durationSec ?? null;
+        const duration = tracked?.subbeatsHandoff?.incomingDurationSeconds ?? tracked?.track?.duration ?? rec?.durationSec ?? null;
         if (typeof duration === 'number' && duration > 0) {
           const playable = tracked
-            ? playableDurationSec(duration, tracked.cueOutSec ?? null, tracked.cueInSec ?? null)
+            ? queue.playableSecOf(tracked)
             : (() => {
                 const trim = resolveSilenceTrim(rec);
                 return playableDurationSec(duration, trim.cueOutSec, trim.cueInSec);

@@ -1,0 +1,68 @@
+{
+  "date": "2026-11-10",
+  "scope": "Isolated production one-shot live worker; no controller HTTP, browser or Liquidsoap playback verification.",
+  "stationChanged": false,
+  "controllerAutomaticStyleSelectionExercised": false,
+  "sourceGainsDb": [
+    0,
+    0
+  ],
+  "mixStyle": "short-exchange",
+  "image": "sha256:2c33331db61743d87954e7a54893a47c19074917849107feb7b110b41c3ad7f1",
+  "resources": {
+    "cpus": 2,
+    "memoryGiB": 4,
+    "network": "none",
+    "sourceMounts": "read-only",
+    "stemMount": "read-only"
+  },
+  "renderBudgetSeconds": 60,
+  "codeSha256": {
+    "controller/scripts/subbeats_live.py": "e1acc9365bb98b02b186318b3135d28e25cb931099c026e4ac519565933aa9a2",
+    "controller/scripts/subbeats_handoff.py": "cafcf0953af8a281fa3697e6c447766eff53d2deb5f38cc10e790c49e3d99e42",
+    "controller/scripts/subbeats_preview.py": "1ce84cc580c75fb8db552047406c397020b0bd26ab6b913e33ba681b4bfb8d2f",
+    "controller/scripts/subbeats_cue_matching.py": "e030e173e269630ed2e96923fbb6a58f2a24bf7ef868e6e0d305dd90d2701223",
+    "docker/analyzer/subbeats_live_service.py": "1a16598cdda433414883f01afa0e12259ab4cc0cb44c3c5dc9e9af7ffd71c4a8"
+  },
+  "pairs": [
+    {
+      "case": 1,
+      "pair": "Sash! — Encore une fois → Faithless — Insomnia",
+      "status": "rendered",
+      "elapsedSeconds": 24.849,
+      "incomingTempoAdjustmentPercent": 3.3191959877979516,
+      "audioChecks": {
+        "overlapMaxError": 0,
+        "acceptedAuditionMaxError": 0,
+        "sourceGuardMaxError": [
+          0,
+          0
+        ],
+        "outgoingFrames": 217813,
+        "incomingFrames": 1589331,
+        "sampleRate": 44100,
+        "verification": "Isolated analyzer numerical comparison passed against accepted audition and decoded originals; identical overlap bytes rechecked on host."
+      }
+    },
+    {
+      "case": 4,
+      "pair": "Faithless — Insomnia → Agnelli & Nelson — El Nino",
+      "status": "rendered",
+      "elapsedSeconds": 15.695,
+      "incomingTempoAdjustmentPercent": -5.845867732304477,
+      "audioChecks": {
+        "overlapMaxError": 0,
+        "acceptedAuditionMaxError": 0,
+        "sourceGuardMaxError": [
+          0,
+          0
+        ],
+        "outgoingFrames": 189630,
+        "incomingFrames": 988759,
+        "sampleRate": 44100,
+        "verification": "Isolated analyzer numerical comparison passed against accepted audition and decoded originals; identical overlap bytes rechecked on host."
+      }
+    }
+  ],
+  "listening": "Earlier complete handoffs accepted by owner; new live-worker audio numerically identical. No live station listening claimed."
+}

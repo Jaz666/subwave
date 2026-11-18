@@ -1,0 +1,511 @@
+"""Isolated cache/preparation checks, registered in analyzer-python.test.ts."""
+import fcntl
+import json
+from pathlib import Path
+import tempfile
+import types
+import unittest
+from unittest.mock import patch
+
+import subbeats_cache as cache
+import subbeats_prepare as prepare
+
+
+class CacheTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = Path(self.tmp.name)
+        self.identity = {'source_sha256': 'a', 'analysis_version': 1}
+
+    def build(self, dest):
+        (dest / 'analysis.json').write_text('{"pair_ready":false}')
+        return {'pair_ready': False}
+
+    def run_job(self, identity=None, build=None, budget=10000):
+        return cache.prepare_cached(self.state, identity or self.identity, build or self.build, budget)
+
+    def test_atomic_publish_and_reuse(self):
+        result = self.run_job()
+        self.assertFalse(result['cache_hit'])
+        reused = self.run_job(build=lambda _: self.fail('builder called on a cache hit'))
+        self.assertTrue(reused['cache_hit'])
+        self.assertEqual(result['files'], reused['files'])
+        self.assertFalse(list((self.state / 'subbeats/v1').glob('.pending-*')))
+
+    def test_failed_job_never_publishes_or_removes_existing(self):
+        kept = self.run_job()
+        def fail(stage):
+            (stage / 'partial.flac').write_bytes(b'partial')
+            raise RuntimeError('separator failed')
+        with self.assertRaisesRegex(RuntimeError, 'separator failed'):
+            self.run_job({'source': 'b'}, fail)
+        self.assertTrue(Path(kept['directory']).exists())
+        self.assertFalse(list((self.state / 'subbeats/v1').glob('.pending-*')))
+
+    def test_budget_declines_without_changing_old_bundle(self):
+        old = self.run_job()
+        def large(stage):
+            (stage / 'large.flac').write_bytes(b'x' * 20000)
+            return {}
+        with self.assertRaisesRegex(RuntimeError, 'budget'):
+            self.run_job({'source': 'new'}, large)
+        self.assertTrue(Path(old['directory']).exists())
+        self.assertLess(cache.tree_bytes(self.state / 'subbeats/v1'), 10000)
+
+    def test_full_cache_does_not_start_expensive_work(self):
+        self.run_job()
+        with self.assertRaisesRegex(RuntimeError, 'budget'):
+            self.run_job({'source': 'new'}, lambda _: self.fail('work started'), budget=1)
+
+    def test_damage_is_not_a_hit(self):
+        result = self.run_job()
+        target = Path(result['directory']) / 'analysis.json'
+        target.write_bytes(b'corrupt')
+        with self.assertRaisesRegex(RuntimeError, 'integrity'):
+            self.run_job()
+        self.assertEqual(target.read_bytes(), b'corrupt')
+
+    def test_malformed_manifest_is_not_a_hit(self):
+        result = self.run_job()
+        manifest = Path(result['directory']) / 'manifest.json'
+        for malformed in [[], {'identity': self.identity, 'files': ['not-a-map']}]:
+            manifest.write_text(json.dumps(malformed))
+            with self.assertRaisesRegex(RuntimeError, 'integrity'):
+                self.run_job()
+
+    def test_missing_file_is_not_a_hit(self):
+        result = self.run_job()
+        (Path(result['directory']) / 'analysis.json').unlink()
+        with self.assertRaisesRegex(RuntimeError, 'integrity'):
+            self.run_job()
+
+    def test_source_version_or_region_change_invalidates_identity(self):
+        first = self.run_job()
+        for name, value in [('source_sha256', 'b'), ('analysis_version', 2), ('head_seconds', 120)]:
+            changed = self.run_job({**self.identity, name: value})
+            self.assertNotEqual(first['directory'], changed['directory'])
+            self.assertFalse(changed['cache_hit'])
+
+    def test_lock_prevents_second_writer(self):
+        root = self.state / 'subbeats/v1'
+        root.mkdir(parents=True)
+        with open(root / '.prepare.lock', 'a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(RuntimeError, 'another'):
+                self.run_job(build=lambda _: self.fail('second writer started'))
+
+    def test_regular_stems_and_state_files_are_untouched(self):
+        regular = self.state / 'stems/track'
+        regular.mkdir(parents=True)
+        (regular / 'head-drums.flac').write_bytes(b'keep')
+        (self.state / 'settings.json').write_text('{}')
+        self.run_job()
+        self.assertEqual((regular / 'head-drums.flac').read_bytes(), b'keep')
+        self.assertEqual((self.state / 'settings.json').read_text(), '{}')
+
+    def test_symlink_cache_is_refused(self):
+        (self.state / 'stems').mkdir()
+        (self.state / 'subbeats').symlink_to(self.state / 'stems', target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            self.run_job()
+        self.assertEqual(list((self.state / 'stems').iterdir()), [])
+
+    def test_invalid_output_and_budget_are_refused(self):
+        with self.assertRaises(ValueError):
+            self.run_job(budget=-1)
+        with self.assertRaisesRegex(ValueError, 'no artifacts'):
+            self.run_job(build=lambda _: {})
+        def nonfinite(stage):
+            self.build(stage)
+            return {'bad': float('nan')}
+        with self.assertRaises(ValueError):
+            self.run_job(build=nonfinite)
+        self.assertFalse(list((self.state / 'subbeats/v1').glob('.pending-*')))
+
+
+class CoverageTests(unittest.TestCase):
+    def analysis(self, drop=None):
+        return {'duration_seconds': 220., 'late_percussion_drop_seconds': drop,
+                'supported_regions': [{'start_seconds': 100., 'end_seconds': 128., 'bpm': 138.},
+                                      {'start_seconds': 170., 'end_seconds': 198., 'bpm': 138.}]}
+
+    def test_calm_outro_uses_supported_region_before_drop(self):
+        regions = prepare.requested_regions(self.analysis(drop=180), 68.)
+        self.assertEqual(regions[0], ('head', 0., 68.))
+        self.assertEqual(regions[1][2], 130.)
+        self.assertLess(regions[1][1], 100.)
+
+    def test_preparation_keeps_bounded_candidates_and_more_outgoing_lead(self):
+        analysis = self.analysis()
+        windows = prepare.mixing_windows(analysis)
+        self.assertEqual(windows['incoming'][0]['start_seconds'],100.)
+        self.assertEqual(windows['outgoing'][0]['start_seconds'],170.)
+        self.assertAlmostEqual(windows['outgoing'][0]['end_seconds']-170.,64*60/138)
+        region = prepare.requested_regions(analysis,68.)[-1]
+        self.assertEqual(region[2]-region[1],90.)
+        self.assertEqual(prepare.mixing_windows(self.analysis(drop=180))['outgoing'][0]['start_seconds'],100.)
+
+    def test_exit_never_extrapolates_past_measured_grid(self):
+        self.assertEqual(prepare.requested_regions(self.analysis(), 68.)[-1][2], 200.)
+
+    def test_requested_head_can_cover_long_intro(self):
+        self.assertEqual(prepare.requested_regions(self.analysis(), 120.)[0][2], 120.)
+        self.assertEqual(prepare.requested_regions(self.analysis(), 600.)[0][2], 220.)
+
+    def test_unmeasurable_track_has_no_stems(self):
+        self.assertEqual(prepare.requested_regions({**self.analysis(), 'supported_regions': []}, 68.), [])
+
+    def test_missing_exit_evidence_does_not_fabricate_tail(self):
+        self.assertEqual(prepare.requested_regions(self.analysis(drop=80), 68.), [('head', 0., 68.)])
+
+    def test_overrange_stems_share_one_reversible_flac_gain(self):
+        import numpy as np
+        audio = np.full((2, prepare.STEM_SR), .2, dtype=np.float32)
+        levels = dict(zip(prepare.STEMS, [1.25, -1.15, .05, .05]))
+        detector = types.SimpleNamespace(separate=lambda y: {
+            name: np.full_like(y, level) for name, level in levels.items()})
+        written, subtypes = {}, {}
+        def write(path, data, sr, **kwargs):
+            subtypes[path.name] = kwargs['subtype']
+            written[path.name] = (np.floor(np.clip(data, -1, 1 - 2**-23) * 2**23) / 2**23).astype(np.float32)
+        fake_sf = types.SimpleNamespace(write=write,
+            read=lambda p, **_: (written[p.name], prepare.STEM_SR),
+            info=lambda p: types.SimpleNamespace(frames=len(written[p.name]), channels=2, samplerate=prepare.STEM_SR))
+        with tempfile.TemporaryDirectory() as folder, patch.object(prepare, 'decode', return_value=audio), \
+                patch.dict('sys.modules', {'soundfile': fake_sf}):
+            coverage = prepare.separate_regions('unused', Path(folder), [('head', 0., 1.)], detector)
+        self.assertEqual(subtypes['head-drums.flac'], 'PCM_24')
+        self.assertEqual(subtypes['head-bass.flac'], 'PCM_24')
+        self.assertEqual(subtypes['head-vocals.flac'], 'PCM_24')
+        gain = coverage[0]['storage_gain']
+        self.assertAlmostEqual(gain, .999 / 1.25)
+        self.assertEqual(len(written), 4)
+        for name, level in levels.items():
+            stored = written[f'head-{name}.flac']
+            self.assertLess(float(np.max(np.abs(stored))), 1.)
+            np.testing.assert_allclose(stored / gain, level, rtol=1e-6, atol=1e-7)
+        self.assertLess(coverage[0]['reconstruction_error_relative'], 1e-6)
+        detector.separate = lambda y: {name: np.full_like(y, np.nan) for name in prepare.STEMS}
+        with tempfile.TemporaryDirectory() as folder, patch.object(prepare, 'decode', return_value=audio), \
+                patch.dict('sys.modules', {'soundfile': fake_sf}):
+            with self.assertRaisesRegex(ValueError, 'invalid separated stem'):
+                prepare.separate_regions('unused', Path(folder), [('head', 0., 1.)], detector)
+
+    def test_stem_slices_retain_exact_source_clock_and_validate_reconstruction(self):
+        import numpy as np
+        audio = np.ones((2, 8 * prepare.STEM_SR), dtype=np.float32) * .2
+        detector = types.SimpleNamespace(separate=lambda y: {name: y / 4 for name in prepare.STEMS})
+        written = {}
+        def write(path, data, sr, **_kw):
+            written[path.name] = data.copy()
+        fake_sf = types.SimpleNamespace(write=write, read=lambda p, **_: (written[p.name], prepare.STEM_SR), info=lambda p: types.SimpleNamespace(
+            frames=len(written[p.name]), channels=2, samplerate=prepare.STEM_SR))
+        with tempfile.TemporaryDirectory() as folder, patch.object(prepare, 'decode', return_value=audio), \
+                patch.dict('sys.modules', {'soundfile': fake_sf}):
+            coverage = prepare.separate_regions('unused', Path(folder), [('head', 0., 2.), ('exit', 5., 7.)], detector)
+            self.assertEqual(coverage[1]['start_sample'], 5 * prepare.STEM_SR)
+            self.assertEqual(coverage[1]['end_sample'], 7 * prepare.STEM_SR)
+            self.assertLess(coverage[1]['reconstruction_error_relative'], 1e-6)
+            self.assertEqual(coverage[0]['storage_gain'], 1.)
+            self.assertEqual(len(written), 8)
+            for extra in (1, 2):
+                rounded = prepare.separate_regions('unused', Path(folder),
+                    [('exit', 5., 8. + extra / prepare.STEM_SR)], detector)
+                self.assertEqual(rounded[0]['end_sample'], audio.shape[1])
+                self.assertEqual(len(written['exit-drums.flac']), 3 * prepare.STEM_SR)
+            for region in [('bad', 5., 8. + 3 / prepare.STEM_SR), ('bad', 8., 8. + 1 / prepare.STEM_SR), ('bad', -1., 2.)]:
+                with self.assertRaisesRegex(ValueError, 'coverage'):
+                    prepare.separate_regions('unused', Path(folder), [region], detector)
+            with self.assertRaisesRegex(ValueError, 'coverage'):
+                prepare.separate_regions('unused', Path(folder), [('bad', 0., 9.)], detector)
+            broken = types.SimpleNamespace(separate=lambda y: {name: np.zeros_like(y) for name in prepare.STEMS})
+            with self.assertRaisesRegex(ValueError, 'reconstruct'):
+                prepare.separate_regions('unused', Path(folder), [('head', 0., 2.)], broken)
+
+    def test_source_change_cannot_publish(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'track.mp3'
+            source.write_bytes(b'original')
+            state = Path(folder) / 'state'
+            def changed(path, stage, _librosa):
+                (stage / 'analysis.json').write_text('{}')
+                path.write_bytes(b'replaced')
+                return {'status': 'unmeasurable', 'supported_regions': []}
+            with patch.dict('sys.modules', {'librosa': types.SimpleNamespace(__version__='test')}), \
+                    patch.object(prepare, 'analyze', side_effect=changed):
+                with self.assertRaisesRegex(ValueError, 'source changed'):
+                    prepare.prepare(source, state, analysis_only=True)
+            self.assertEqual(list((state / 'subbeats/v1').iterdir()), [state / 'subbeats/v1/.prepare.lock'])
+
+    def test_managed_jobs_require_matching_shared_cache_and_complete_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'subbeats'
+            root.mkdir()
+            (root / '.cache-id').write_text('shared-cache-identity')
+            req = {'state_dir': folder, 'path': 'unused', 'cache_id': 'other-cache-identity', 'complete': True}
+            with self.assertRaisesRegex(ValueError, 'not shared'):
+                prepare.prepare_request(req)
+            req['cache_id'] = 'shared-cache-identity'
+            req['complete'] = False
+            with self.assertRaisesRegex(ValueError, 'complete'):
+                prepare.prepare_request(req)
+            req['complete'] = True
+            stems = Path(folder) / 'stems'
+            stems.mkdir()
+            (stems / '.subwave-stems').touch()
+            req.update(stems_root=str(stems), track_id='track', remaining_bytes=10000)
+            result = {'directory': str(root / 'v1' / ('a' * 64)), 'metadata': {'stem_regions': [{'name': 'head'}]}}
+            with patch.object(prepare, 'prepare', return_value=result), \
+                    patch('subbeats_suitability.assess_bundle',return_value={}), \
+                    patch('subbeats_structure.prepare_structure', return_value={'directory': str(root / 'v1' / ('b' * 64))}) as structure:
+                self.assertEqual(prepare.prepare_request(req)['subbeats_result']['status'], 'prepared')
+                result['cache_hit'] = True
+                self.assertFalse(prepare.prepare_request(req)['subbeats_used_models'])
+                self.assertEqual(structure.call_args.kwargs['cache_root'], stems / 'track/subbeats/v1')
+                self.assertEqual(structure.call_args.kwargs['expected_cache_id'], req['cache_id'])
+
+    def test_sparse_and_regular_grids_keep_distinct_confidence(self):
+        import numpy as np
+        class FakeLibrosa:
+            @staticmethod
+            def frames_to_time(frames, **_kw):
+                return np.asarray(frames) / 2
+        self.assertEqual(prepare.timing_regions(FakeLibrosa, np.arange(20), np.ones(20)), ([], []))
+        _, supported = prepare.timing_regions(FakeLibrosa, np.arange(80), np.ones(80))
+        self.assertTrue(supported)
+        self.assertAlmostEqual(supported[0]['bpm'], 120)
+        self.assertLess(supported[0]['timing_error_ms'], .001)
+        _, silent = prepare.timing_regions(FakeLibrosa, np.arange(80), np.zeros(80))
+        self.assertEqual(silent, [])
+
+    def test_grid_guided_tempo_search_falls_back_to_global_evidence(self):
+        import numpy as np
+        requested=[]
+        def beat_track(**kwargs):
+            requested.append(kwargs['bpm'])
+            return None,np.arange(64)
+        ac=np.zeros(100);ac[30]=1
+        fake=types.SimpleNamespace(
+            __version__='test',
+            effects=types.SimpleNamespace(percussive=lambda y,**_: y),
+            onset=types.SimpleNamespace(onset_strength=lambda **_: np.ones(100)),
+            feature=types.SimpleNamespace(tempo=lambda **_: np.array([95.]),
+                rms=lambda **_: np.ones((1,100))),
+            autocorrelate=lambda *_,**__: ac,
+            beat=types.SimpleNamespace(beat_track=beat_track),
+            frames_to_time=lambda frames,**_: np.asarray(frames)*prepare.HOP/prepare.SR)
+        scipy=types.SimpleNamespace(ndimage=types.SimpleNamespace(
+            maximum_filter1d=lambda values,*_,**__: np.where(np.arange(len(values))==30,values,-1),
+            median_filter=lambda values,**__: values))
+        def support(_librosa,frames,_envelope):
+            if requested[-1] < 90:
+                return [],[]
+            region=dict(start_seconds=0.,end_seconds=40.,bpm=95.,timing_error_ms=1.,onset_support=1.)
+            return [region],[region]
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.dict('sys.modules',{'librosa':fake,'scipy':scipy}), \
+                patch.object(prepare,'decode',return_value=np.ones((1,prepare.SR))), \
+                patch.object(prepare,'timing_regions',side_effect=support):
+            result=prepare.analyze('unused',Path(folder),fake,preferred_bpm=140.)
+        self.assertIn(95.,requested)
+        self.assertEqual(result['supported_regions'][0]['bpm'],95.)
+
+
+class ConversionTests(unittest.TestCase):
+    def test_atomic_conversion_preserves_key_levels_and_analysis(self):
+        import numpy as np
+        import subbeats_convert as convert
+        def read(path, **_):
+            with np.load(path) as data:
+                return data['audio'].copy(), prepare.STEM_SR
+        def write(path, data, sr, **kw):
+            self.assertEqual(kw['subtype'], 'PCM_24')
+            with open(path, 'wb') as output:
+                np.savez_compressed(output, audio=data)
+        fake_sf = types.SimpleNamespace(read=read, write=write,
+            info=lambda p: types.SimpleNamespace(frames=read(p)[0].shape[0], channels=2, samplerate=prepare.STEM_SR))
+        with tempfile.TemporaryDirectory() as folder, patch.dict('sys.modules', {'soundfile': fake_sf}):
+            state = Path(folder)
+            levels = dict(zip(prepare.STEMS, [1.25, -1.15, .05, .05]))
+            source = state / 'source.mp3'
+            source.write_bytes(b'original source fixture')
+            identity = {'source_sha256': cache.digest(source), 'analysis_version': prepare.ANALYSIS_VERSION,
+                'librosa': 'test', 'mode': 'analysis_and_stems', 'head_seconds': 68., 'exit_seconds': 90,
+                'separator': {'model': 'test', 'overlap': .25, 'shifts': 1, 'context_seconds': 4,
+                    'sample_rate': prepare.STEM_SR, 'subtype': 'PCM_24-or-FLOAT-v1',
+                    'demucs': 'test', 'torch': 'test'}}
+            def build(stage):
+                for stem, level in levels.items():
+                    with (stage / f'head-{stem}.wav').open('wb') as output:
+                        np.savez(output, audio=np.full((441, 2), level, dtype=np.float32))
+                (stage / 'analysis.json').write_text('{"pair_ready":false}')
+                return {'stem_regions': [{'name': 'head', 'start_sample': 0, 'end_sample': 441}], 'pair_ready': False}
+            original = cache.prepare_cached(state, identity, build)
+            path = Path(original['directory']); key = path.name; root = path.parent
+            with patch.object(convert, 'exchange', side_effect=OSError('exchange refused')):
+                with self.assertRaisesRegex(OSError, 'exchange refused'):
+                    convert.convert_bundle(root, key)
+            self.assertIsNotNone(cache.cached_entry(path, identity))
+            self.assertEqual(len(list(root.glob('.convert-*'))), 0)
+            with patch.object(convert, 'write_flac_region', side_effect=ValueError('bad conversion')):
+                with self.assertRaisesRegex(ValueError, 'bad conversion'):
+                    convert.convert_bundle(root, key)
+            self.assertEqual(cache.cached_entry(path, identity)['files'], original['files'])
+            calls = []
+            def refuse_published(path, identity):
+                calls.append(path)
+                return None if len(calls) == 4 else cache.cached_entry(path, identity)
+            with patch.object(convert, 'cached_entry', side_effect=refuse_published):
+                with self.assertRaisesRegex(ValueError, 'restored original'):
+                    convert.convert_bundle(root, key)
+            self.assertEqual(cache.cached_entry(path, identity)['files'], original['files'])
+            result = convert.convert_bundle(root, key)
+            self.assertTrue(result['converted'])
+            self.assertLess(result['after'], result['before'])
+            record = cache.cached_entry(path, identity)
+            self.assertIsNotNone(record)
+            self.assertEqual(record['identity'], identity)
+            self.assertEqual((path / 'analysis.json').read_text(), '{"pair_ready":false}')
+            gain = record['metadata']['stem_regions'][0]['storage_gain']
+            self.assertFalse(list(path.glob('*.wav')))
+            for stem, level in levels.items():
+                values, _ = read(path / f'head-{stem}.flac')
+                np.testing.assert_allclose(values / gain, level, rtol=1e-6)
+            self.assertFalse(convert.convert_bundle(root, key)['converted'])
+            worker = types.SimpleNamespace(DEMUCS_MODEL='test', DEMUCS_OVERLAP=.25)
+            with patch.dict('sys.modules', {'librosa': types.SimpleNamespace(__version__='test'), 'analyze_worker': worker}), \
+                    patch.object(prepare.importlib.metadata, 'version', return_value='test'), \
+                    patch.object(prepare, 'analyze', side_effect=AssertionError('no re-analysis or separation')):
+                reused = prepare.prepare(source, state)
+            self.assertTrue(reused['cache_hit'])
+            self.assertEqual(Path(reused['directory']).name, key)
+            (path / 'head-drums.flac').write_bytes(b'corrupted')
+            with self.assertRaisesRegex(ValueError, 'integrity'):
+                convert.convert_bundle(root, key)
+
+
+class SharedCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = Path(self.tmp.name)
+        self.stems = self.state / 'shared-stems'
+        self.stems.mkdir()
+        (self.stems / '.subwave-stems').touch()
+        self.identity = {'source_sha256':'original', 'mode':'analysis_and_stems'}
+        self.old = cache.prepare_cached(self.state, self.identity, self.build)
+        self.key = Path(self.old['directory']).name
+        (self.state / 'subbeats/queue.json').write_text(json.dumps({'jobs':[{'id':'track','bundleKey':self.key}]}))
+        self.allowance = {'bytes':100000, 'root':self.stems}
+
+    def build(self, stage):
+        (stage / 'head-drums.flac').write_bytes(b'extended stems')
+        return {'stem_regions':[{'name':'head'}]}
+
+    def test_migration_reuses_verified_bundle_and_regular_stems_survive(self):
+        regular = self.stems / 'track'
+        regular.mkdir()
+        (regular / 'head-drums.flac').write_bytes(b'regular stems')
+        self.assertEqual(cache.bundle_folder(self.state,self.key,self.stems,'track'),Path(self.old['directory']))
+        before = self.allowance['bytes']
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+        dest = regular / 'subbeats/v1' / self.key
+        self.assertIsNotNone(cache.cached_entry(dest,self.identity))
+        self.assertEqual(cache.bundle_folder(self.state,self.key,self.stems,'track'),dest)
+        self.assertFalse(Path(self.old['directory']).exists())
+        self.assertEqual((regular / 'head-drums.flac').read_bytes(),b'regular stems')
+        self.assertEqual(before-self.allowance['bytes'],cache.tree_bytes(dest))
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),0)
+        reused = cache.prepare_cached(self.state,self.identity,lambda _:self.fail('separated again'),
+                                     cache_root=dest.parent,allowance=self.allowance)
+        self.assertTrue(reused['cache_hit'])
+
+    def test_migration_uses_an_existing_read_only_publisher_lock(self):
+        lock = self.state / 'subbeats/v1/.prepare.lock'
+        lock.chmod(0o444)
+        try:
+            self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+            self.assertEqual(lock.stat().st_mode & 0o777,0o444)
+        finally:
+            lock.chmod(0o644)
+
+    def test_structure_follows_its_source_and_unreferenced_experiments_remain(self):
+        structure_identity = {'source_sha256':'original','mode':'structure'}
+        structure = cache.prepare_cached(self.state,structure_identity,self.build)
+        unrelated = cache.prepare_cached(self.state,{'source_sha256':'experiment'},self.build)
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),2)
+        dest = cache.track_cache_root(self.stems,'track')
+        self.assertIsNotNone(cache.cached_entry(dest / Path(structure['directory']).name,structure_identity))
+        self.assertTrue(Path(unrelated['directory']).exists())
+
+    def test_budget_or_collision_never_removes_old_bundle(self):
+        self.allowance['bytes'] = 1
+        with self.assertRaisesRegex(RuntimeError,'budget'):
+            cache.migrate_shared(self.state,self.stems,self.allowance)
+        old = Path(self.old['directory'])
+        self.assertTrue(old.exists())
+        dest = cache.track_cache_root(self.stems,'track') / self.key
+        dest.mkdir(parents=True)
+        (dest / 'sentinel').write_text('keep')
+        self.allowance['bytes'] = 100000
+        with self.assertRaisesRegex(ValueError,'collision'):
+            cache.migrate_shared(self.state,self.stems,self.allowance)
+        self.assertTrue(old.exists())
+        self.assertEqual((dest / 'sentinel').read_text(),'keep')
+
+    def test_copy_failure_preserves_source_and_retry_finishes(self):
+        with patch.object(cache.shutil,'copytree',side_effect=OSError('disk full')):
+            with self.assertRaisesRegex(OSError,'disk full'):
+                cache.migrate_shared(self.state,self.stems,self.allowance)
+        self.assertTrue(Path(self.old['directory']).exists())
+        self.assertEqual(list(cache.track_cache_root(self.stems,'track').glob('.migrate-*')),[])
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+
+    def test_damaged_bundle_stays_in_legacy_cache(self):
+        (Path(self.old['directory']) / 'head-drums.flac').write_bytes(b'corrupt')
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),0)
+        self.assertTrue(Path(self.old['directory']).exists())
+
+    def test_shared_budget_charges_only_new_bytes_and_refuses_oversize(self):
+        dest = cache.track_cache_root(self.stems,'other')
+        before = self.allowance['bytes']
+        result = cache.prepare_cached(self.state,self.identity,self.build,budget=1,cache_root=dest,allowance=self.allowance)
+        self.assertEqual(before-self.allowance['bytes'],cache.tree_bytes(Path(result['directory'])))
+        after = self.allowance['bytes']
+        self.assertTrue(cache.prepare_cached(self.state,self.identity,self.build,cache_root=dest,allowance=self.allowance)['cache_hit'])
+        self.assertEqual(self.allowance['bytes'],after)
+        self.allowance['bytes'] = 1
+        with self.assertRaisesRegex(RuntimeError,'budget'):
+            cache.prepare_cached(self.state,{'new':'bundle'},self.build,cache_root=dest,allowance=self.allowance)
+        self.assertTrue(Path(result['directory']).exists())
+
+    def test_multiple_tracks_publish_before_the_original_is_removed(self):
+        (self.state / 'subbeats/queue.json').write_text(json.dumps({'jobs':[
+            {'id':'first','bundleKey':self.key},{'id':'second','bundleKey':self.key}]}))
+        size = cache.tree_bytes(Path(self.old['directory']))
+        self.allowance['bytes'] = size
+        with self.assertRaisesRegex(RuntimeError,'budget'):
+            cache.migrate_shared(self.state,self.stems,self.allowance)
+        self.assertTrue(Path(self.old['directory']).exists())
+        self.allowance['bytes'] = size
+        self.assertEqual(cache.migrate_shared(self.state,self.stems,self.allowance),1)
+        self.assertFalse(Path(self.old['directory']).exists())
+        for track_id in ['first','second']:
+            self.assertIsNotNone(cache.cached_entry(cache.track_cache_root(self.stems,track_id) / self.key,self.identity))
+
+    def test_unmounted_share_and_symlink_track_are_refused(self):
+        (self.stems / '.subwave-stems').unlink()
+        with self.assertRaisesRegex(ValueError,'offline'):
+            cache.track_cache_root(self.stems,'track')
+        (self.stems / '.subwave-stems').touch()
+        (self.stems / 'track').symlink_to(self.state,target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'symlink'):
+            cache.track_cache_root(self.stems,'track')
+        for track_id in ['../escape','.','..','/absolute','a/b']:
+            with self.assertRaisesRegex(ValueError,'track id'):
+                cache.track_cache_root(self.stems,track_id)
+
+
+if __name__ == '__main__':
+    unittest.main()

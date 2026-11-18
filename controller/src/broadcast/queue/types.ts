@@ -3,9 +3,11 @@
 //
 // Part of the queue/ split - see ../queue.ts, which owns the Queue class.
 
+import type { RegularStemPreview } from '../regular-stem-preview.js';
 import type { TrackOutro, TrackKeyRange } from '../../music/library-db.js';
 import type { HostSpeechStamp } from '../session.js';
 import type { ClipSeamCues } from '../stem-seam.js';
+import type { SubbeatsPlayback } from '../subbeats-clock.js';
 import type { TransitionEffect } from '../../settings/vocab.js';
 import type { MixDropReason } from '../../schemas/transitions.js';
 import type { FlowPlayback } from '../../music/sub-flow-playback.js';
@@ -211,7 +213,15 @@ export interface QueueItem {
   // its entry-side effects are stripped at its own drain (the seam INTO it
   // is pre-rendered) and it cues in past the head the clip already played.
   stemBlend?: ClipSeamCues & {
+    regular?: RegularStemPreview;
     clipPath: string;
+    clipSec?: number;
+    leadPath?: string;
+    subbeats?: SubbeatsPlayback;
+    // Persist publication progress separately from rendering. A restart can
+    // finish handing over parts after the outgoing source was committed.
+    partsPublished?: boolean;
+    partsWritten?: string[];
     // Persist the provisional exit so restart recovery can undo it exactly.
     originalExit?: Pick<Track, 'washout' | 'washoutAuto' | 'washoutDelay' | 'loop' | 'loopBar' | 'crossSec'>;
   } | null;
@@ -219,6 +229,7 @@ export interface QueueItem {
   // Outgoing music already committed an early ending into this clip/track.
   lengthPolicyCommitted?: boolean;
   stemCueInSec?: number;
+  subbeatsHandoff?: SubbeatsPlayback;
 }
 
 // The `steer` marker on a single queued track. No steer is stored for it, so

@@ -4,7 +4,9 @@
 //
 //   music-server synced > LRCLIB synced > music-server plain > LRCLIB plain
 //
-// This serves the listener Lyrics panel and nothing else. The analyzer reads
+// This serves the listener Lyrics panel. The separate Sub/Beats preparation
+// lookup reuses the source clients, but stores its own uncertain version evidence.
+// The standard analyzer reads
 // the music server's lyrics through `subsonic.getStructuredLyrics()` and never
 // these: a crowd file timed to a different cut only mistimes the panel, where
 // the station offset fixes it, but in the analyzer it would mistime the DJ

@@ -23,6 +23,9 @@
   analyse-render <wav> <log> <fixture.json> <clip-sec> <tolerance-ms>
       Locates seams from the measured overlaps, checks buffers and beat grid,
       and the sample-level placement of Y against the clip at clip -> Y.
+  split-prepare <work-dir> <repo-dir> / split-analyse <work-dir>
+      Render real Sub/Beats split WAVs across four frame phases and compare
+      level and samples against the unsplit audio at the metadata join.
   y-format <work-dir> <flac|flac-3600|mp3|mp3-v0>
       Re-encodes Y so its cue lands at another distance from a codec frame.
   cuein-prepare <work-dir> / cuein-script <work-dir> <case> /
@@ -320,6 +323,52 @@ thread.run(delay=10., fun() -> shutdown())
 '''
     with open(os.path.join(work, f"seam-{name}.liq"), "w") as f:
         f.write(script)
+
+
+def split_prepare(work, repo):
+    """Use the real Sub/Beats splitter; keep amplitude and sample placement observable."""
+    sys.path.insert(0, os.path.join(repo, 'controller', 'scripts'))
+    from subbeats_live import split_handoff
+
+    t = np.arange(10 * SR) / SR
+    rng = np.random.default_rng(42)
+    # DC exposes even a sub-frame gain hole. Tone + noise exposes a timing
+    # jump/comb filter that constant level or a periodic beat alone cannot.
+    audio = np.column_stack((np.full(len(t), .1),
+        .08 * np.sin(t * 2 * np.pi * 431) + .01 * rng.normal(size=len(t)))).astype(np.float32)
+    sf.write(os.path.join(work, 'split-reference.wav'), audio, SR, subtype='FLOAT')
+    for trim in (0, 1, 221, 661):
+        name = f'split-{trim}'
+        uris = []
+        for role, part in split_handoff(audio, 4 * SR - trim, SR):
+            path = os.path.join(work, f'{name}-{role}.wav')
+            sf.write(path, part, SR, subtype='FLOAT')
+            uris.append(f'annotate:title="{role}",subwave_clip="1",liq_cross_duration="0.3",'
+                f'liq_clip_lead="0.3",subwave_part="{role}":{path}')
+        fixture_path = os.path.join(work, f'fixture-{name}.json')
+        with open(fixture_path, 'w') as f:
+            json.dump(dict(libraryPath=work, uris=uris), f)
+        render_script(work, name, 6., fixture_path)
+
+
+def split_analyse(work):
+    reference, _ = sf.read(os.path.join(work, 'split-reference.wav'))
+    for trim in (0, 1, 221, 661):
+        audio, sr = sf.read(os.path.join(work, f'seam-split-{trim}.wav'))
+        # The queue's final empty tail is irrelevant; compare continuous music
+        # across the complete internal join, including its partial last frame.
+        n = 9 * SR
+        if sr != SR or len(audio) < n:
+            raise AssertionError(f'split-{trim}: incomplete render')
+        error = np.max(np.abs(audio[:n] - reference[:n]))
+        entry = 4 * SR - trim
+        gain = audio[entry - SR // 10:entry + SR, 0] / .1
+        print(f'split-{trim}: minimum gain {20 * np.log10(max(gain.min(), 1e-9)):.4f} dB, '
+              f'maximum sample error {error:.8f}')
+        # %wav quantises to 16-bit. The old mixer loses 3.5-4.4 dB and fails
+        # by three orders of magnitude; a displaced sample also fails here.
+        if error > .00005:
+            raise AssertionError(f'split-{trim}: gain dip or displaced audio at the metadata join')
 
 
 def analyse_render(path, log_path, fixture_path, clip_sec, tol_ms):
@@ -647,6 +696,10 @@ if __name__ == "__main__":
         mixer(sys.argv[2], sys.argv[3])
     elif cmd == "render-script":
         render_script(sys.argv[2], sys.argv[3], float(sys.argv[4]), sys.argv[5])
+    elif cmd == "split-prepare":
+        split_prepare(sys.argv[2], sys.argv[3])
+    elif cmd == "split-analyse":
+        split_analyse(sys.argv[2])
     elif cmd == "analyse-render":
         analyse_render(sys.argv[2], sys.argv[3], sys.argv[4], float(sys.argv[5]), float(sys.argv[6]))
     elif cmd == "cuein-prepare":

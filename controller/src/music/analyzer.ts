@@ -1,3 +1,4 @@
+import { subbeatsEventSchema, subbeatsMatchesSchema, subbeatsCueMatchesSchema, subbeatsPairPlanSchema, subbeatsTimelineSchema, type subbeatsHandoffInputSchema, type subbeatsJobSchema, type subbeatsWindowPlanSchema, type subbeatsLyricEvidenceSchema, type subbeatsMixStyleSchema } from '../schemas/subbeats.js';
 // Acoustic-analysis client. Two backends in priority order: the analysis
 // sidecar (POST /analyze, base URL from config.analyzer.urls), then a local
 // Python venv running scripts/analyze_worker.py over stdio. Neither available
@@ -13,9 +14,13 @@ import { recordHttpAttempt } from './subsonic-log.js';
 import { warnLimiter } from '../util/warn-limiter.js';
 import { describeFetchError, fetchWithTimeout } from '../util/fetch-timeout.js';
 import { envInt } from '../util/env.js';
+import { dirname, join } from 'node:path';
+import { subbeatsLiveRenderRequestSchema, subbeatsLiveRenderResultSchema } from '../schemas/subbeats.js';
+import { stemBlendPreviewReportSchema, type stemBlendPreviewModeSchema } from '../schemas/stem-blend-preview.js';
 import { parseLoudnessCurve, type LoudnessCurve } from './loudness-curve.js';
 import { parseWholeLoudnessCurve, type WholeLoudnessCurve } from './whole-loudness-curve.js';
 import { getDb, trackFileSize } from './library-db.js';
+import { parseBeatGridProvenance, type BeatGridProvenance } from '../schemas/beat-grid.js';
 
 // A structural span over the track, in ms. Contiguous over the analysed
 // window; the first is the intro/leading section.
@@ -58,6 +63,7 @@ export interface AnalysisResult {
   // Beat and downbeat (bar) timestamps in ms.
   beats: number[] | null;
   bars: number[] | null;
+  gridProvenance?: BeatGridProvenance | null;
   // Per-region key; the scalar musicalKey stays the back-compat dominant key.
   keyRanges: KeyRange[] | null;
   // Integrated loudness (LUFS, BS.1770) + peak (dBFS); needs pyloudnorm. null
@@ -131,6 +137,7 @@ export interface OutroInfo {
   bpm: number | null;          // tail tempo (outros drift/ritard vs the lead)
   beats: number[] | null;
   bars: number[] | null;
+  gridProvenance?: BeatGridProvenance | null;
   // Tail vocal spans. [] = analysed instrumental tail; the key must be OMITTED
   // (not null) when detection didn't run — outro_json is the JSON.stringify of
   // this object and the vocal backfill probes the raw text for '"vocalRanges"'.
@@ -225,6 +232,7 @@ function parseOutro(v: unknown): OutroInfo | null {
   // Omit the key when not computed, so outro_json never carries a bare
   // "vocalRanges" for the backfill probe.
   const vocalRanges = parseVocalRanges(o?.vocalRanges);
+  const gridProvenance = parseBeatGridProvenance(o?.gridProvenance);
   const loudnessCurve = parseLoudnessCurve(o?.loudnessCurve);
   return {
     startMs: Math.round(startMs),
@@ -234,6 +242,7 @@ function parseOutro(v: unknown): OutroInfo | null {
     beats: parseMsList(o?.beats),
     bars: parseMsList(o?.bars),
     ...(vocalRanges !== null ? { vocalRanges } : {}),
+    ...(gridProvenance ? { gridProvenance } : {}),
     ...(loudnessCurve ? { loudnessCurve } : {}),
   };
 }
@@ -253,10 +262,10 @@ function parseAudioEmbedding(v: unknown): number[] | null {
 // Mirrors ANALYZE_MAX_BYTES in the Python worker so both fetch paths read the
 // same envelope. Via envInt, never parseInt: a NaN disables the cap and flags
 // every download incomplete (#1549).
-const ANALYZE_MAX_BYTES = envInt('ANALYZE_MAX_BYTES', 12 * 1024 * 1024, { min: 1 });
+export const ANALYZE_MAX_BYTES = envInt('ANALYZE_MAX_BYTES', 12 * 1024 * 1024, { min: 1 });
 // Staging dir for pre-fetched audio, under the shared state dir so the path the
 // controller writes resolves to the same file inside the sidecar.
-const ANALYZE_TMP_DIR = `${config.stateRoot}/analyze-tmp`;
+export const ANALYZE_TMP_DIR = `${config.stateRoot}/analyze-tmp`;
 
 function localConfigured(): boolean {
   const { python, workerScript } = config.analyzer;
@@ -266,6 +275,10 @@ function localConfigured(): boolean {
 // A line of JSON from the stdio worker, or the sidecar's /analyze body — same
 // payload; ready/fatal/id are worker-only.
 interface WorkerMessage {
+  stem_blend_preview?: string;
+  stem_blend_report?: unknown;
+  subbeats_preview?: string;
+  subbeats_timeline?: unknown;
   id?: string;
   ok?: boolean;
   ready?: boolean;
@@ -298,6 +311,7 @@ interface WorkerMessage {
   edge_tail_ms?: unknown;
   decoded_duration_ms?: unknown;
   tail_window?: unknown;
+  regular_stems_version?: number;
   tail_curve_unavailable?: unknown;
   // Facet-shape answer.
   facets?: Record<string, { status?: string; reason?: string; data?: WorkerMessage }>;
@@ -317,6 +331,7 @@ interface WorkerMessage {
   pace_curve?: unknown;
   beats?: unknown;
   bars?: unknown;
+  grid_provenance?: unknown;
   key_ranges?: unknown;
   audio_embedding?: unknown;
   outro?: unknown;
@@ -324,8 +339,16 @@ interface WorkerMessage {
   tail_silence_ms?: unknown;
   tail_start_ms?: unknown;
   stems_cached?: boolean;
+  subbeats_capable?: boolean;
+  subbeats_cache_version?: number;
+  subbeats_suitability_version?:number;
+  cache_added_bytes?: number;
+  migrated?: number;
+  subbeats_matches?:unknown;
+  subbeats_result?: unknown;
   tail_stems_landed?: boolean;
   text_embeddings?: unknown;
+  regular_window?: unknown;
   // render_transition op fields
   path?: string;
   blend_start_sec?: number;
@@ -351,6 +374,10 @@ let _localTailVocalCapable: boolean | null = null;
 let _localFacetsCapable: boolean | null = null;
 let _localWholeFileCapable: boolean | null = null;
 let _localLoudnessCurveCapable: boolean | null = null;
+let _localRegularStems = false;
+let _localSubbeatsSuitability = false;
+let _localSubbeatsShared = false;
+let _localSubbeatsCapable: boolean | null = null;
 let _localTailCurveCapable: boolean | null = null;
 let _localTextCapable: boolean | null = null;
 // Local twins of _sidecarAudioError / _sidecarVocalError — see there.
@@ -414,6 +441,10 @@ function startWorker(): Promise<void> {
           _localFacetsCapable = msg.facets_capable === true;
           _localWholeFileCapable = typeof msg.whole_file_capable === 'boolean' ? msg.whole_file_capable : null;
           _localLoudnessCurveCapable = typeof msg.loudness_curve_capable === 'boolean' ? msg.loudness_curve_capable : null;
+          _localRegularStems = msg.regular_stems_version === 2;
+          _localSubbeatsShared = msg.subbeats_cache_version === 2;
+          _localSubbeatsSuitability = msg.subbeats_suitability_version === 1;
+          _localSubbeatsCapable = msg.subbeats_capable === true && _localSubbeatsShared && _localSubbeatsSuitability;
           _localTailCurveCapable = typeof msg.tail_loudness_curve_capable === 'boolean' ? msg.tail_loudness_curve_capable : null;
         }
         // After the ready assignments, so a reported loss always wins.
@@ -502,6 +533,7 @@ function toAnalysisResult(msg: WorkerMessage): AnalysisResult {
           paceCurve: parsePaceCurve(msg.pace_curve),
           beats: parseMsList(msg.beats),
           bars: parseMsList(msg.bars),
+          gridProvenance: parseBeatGridProvenance(msg.grid_provenance),
           keyRanges: parseKeyRanges(msg.key_ranges),
           audioEmbedding: parseAudioEmbedding(msg.audio_embedding),
           outro,
@@ -606,6 +638,10 @@ let _sidecarWholeFileCapable: boolean | null = null;
 let _sidecarLoudnessCurveCapable: boolean | null = null;
 let _sidecarTailCurveCapable: boolean | null = null;
 let _sidecarWholeFileConcurrency: number | null = null;
+let _sidecarRegularStems = false;
+let _sidecarSubbeatsSuitability = false;
+let _sidecarSubbeatsShared = false;
+let _sidecarSubbeatsCapable: boolean | null = null;
 // The sidecar's analysis pool size (ANALYZE_CONCURRENCY); null on a sidecar
 // that predates the field.
 let _sidecarConcurrency: number | null = null;
@@ -636,6 +672,10 @@ async function probeSidecar(url: string): Promise<boolean> {
       analyze_loudness_curve_capable?: boolean | null;
       analyze_tail_loudness_curve_capable?: boolean | null;
       analyze_whole_file_concurrency?: number | null;
+      analyze_regular_stems_version?: number | null;
+      analyze_subbeats_capable?: boolean | null;
+      analyze_subbeats_cache_version?: number;
+      analyze_subbeats_suitability_version?:number;
       analyze_concurrency?: number | null;
       analyze_audio_error?: string | null;
       analyze_vocal_error?: string | null;
@@ -652,6 +692,10 @@ async function probeSidecar(url: string): Promise<boolean> {
       _sidecarTailCurveCapable = typeof body.analyze_tail_loudness_curve_capable === 'boolean' ? body.analyze_tail_loudness_curve_capable : null;
       _sidecarWholeFileConcurrency = Number.isInteger(body.analyze_whole_file_concurrency) && (body.analyze_whole_file_concurrency as number) > 0
         ? (body.analyze_whole_file_concurrency as number) : null;
+      _sidecarRegularStems = body.analyze_regular_stems_version === 2;
+      _sidecarSubbeatsShared = body.analyze_subbeats_cache_version === 2;
+      _sidecarSubbeatsSuitability = body.analyze_subbeats_suitability_version === 1;
+      _sidecarSubbeatsCapable = body.analyze_subbeats_capable === true && _sidecarSubbeatsShared && _sidecarSubbeatsSuitability;
       _sidecarConcurrency = Number.isInteger(body.analyze_concurrency) && (body.analyze_concurrency as number) > 0
         ? (body.analyze_concurrency as number) : null;
       _sidecarTextCapable = typeof body.analyze_text_capable === 'boolean' ? body.analyze_text_capable : null;
@@ -715,30 +759,7 @@ async function sidecarRequest(body: ({ url: string } | { path: string }) & Analy
   if (!res.ok) return sidecarFailure(res);
   const resBody = (await res.json()) as WorkerMessage;
   if (!resBody.ok) throw new Error(resBody.error || 'analysis failed');
-  const outro = parseOutro(resBody.outro);
-  return {
-    bpm: resBody.bpm ?? null,
-    musicalKey: resBody.key ?? null,
-    introMs: resBody.intro_ms ?? null,
-    confidence: resBody.confidence ?? null,
-    loudnessLufs: parseFinite(resBody.loudness_lufs),
-    peakDb: parseFinite(resBody.peak_db),
-    sections: parseSections(resBody.sections),
-    vocalRanges: parseVocalRanges(resBody.vocal_ranges),
-    paceCurve: parsePaceCurve(resBody.pace_curve),
-    beats: parseMsList(resBody.beats),
-    bars: parseMsList(resBody.bars),
-    keyRanges: parseKeyRanges(resBody.key_ranges),
-    audioEmbedding: parseAudioEmbedding(resBody.audio_embedding),
-    outro,
-    leadSilenceMs: parseSilenceMs(resBody.lead_silence_ms),
-    tailSilenceMs: parseSilenceMs(resBody.tail_silence_ms),
-    tailStartMs: parseSilenceMs(resBody.tail_start_ms),
-    stemsCached: typeof resBody.stems_cached === 'boolean' ? resBody.stems_cached : null,
-    tailStemsLanded: typeof resBody.tail_stems_landed === 'boolean' ? resBody.tail_stems_landed : null,
-    tailPlaced: resBody.tail_window === 'edges',
-    tailCurveUnavailable: tailCurveUnavailableOf(resBody.outro, outro, resBody.tail_curve_unavailable),
-  };
+  return toAnalysisResult(resBody);
 }
 
 function analyzeViaSidecar(url: string, opts: AnalyzeRequestOpts = {}): Promise<AnalysisResult> {
@@ -1007,13 +1028,19 @@ export async function embedTexts(
 export interface RenderTransitionPayload {
   out: {
     stems_dir: string;
-    duration_s: number; // tagged duration, advisory — tail alignment comes from the stems' tail-meta.json
+    regular_key?: string;
+    subbeats_bundle_dir?: string;
+    subbeats_bundle_key?: string;
+    duration_s: number; // tagged duration, advisory — source alignment comes from cache metadata
     outro: { start_ms: number; bars: number[]; lufs?: number | null };
     gain_db?: number | null;
     lufs?: number | null;
   };
   in: {
     stems_dir: string;
+    regular_key?: string;
+    subbeats_bundle_dir?: string;
+    subbeats_bundle_key?: string;
     bars: number[];
     gain_db?: number | null;
     lufs?: number | null;
@@ -1066,6 +1093,39 @@ export async function renderTransition(
   } catch {
     return null;
   }
+}
+
+// Operator-only baseline audition. Uses the regular renderer, not Sub/Beats
+// planning or live queue gates. Files are temporary and never enter transitions/.
+export async function previewStemBlend(payload: Omit<RenderTransitionPayload, 'out_dir' | 'clip_name'>,
+  stateDir: string, mode: ReturnType<typeof stemBlendPreviewModeSchema.parse>, signal: AbortSignal) {
+  const backend = await resolveBackend();
+  if (!backend) throw new Error('Configure an analyzer before auditioning regular Stem Blends.');
+  const body = { ...payload, state_dir: stateDir, mode };
+  const timeoutMs = 60_000;
+  signal.throwIfAborted();
+  if (backend === 'sidecar') {
+    const response = await fetchWithTimeout(`${_sidecarBase}/stem-blend-preview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), timeoutMs, bodyDeadline: true, signal,
+    });
+    if (response.status === 404) throw new Error('Update the analyzer to enable the Stem Blend test.');
+    if (!response.ok) await sidecarFailure(response);
+    if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('The analyzer returned invalid audition audio.');
+    const report = stemBlendPreviewReportSchema.parse(JSON.parse(response.headers.get('x-stem-blend-report') ?? 'null'));
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (audio.length > 48 * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned invalid audition audio.');
+    return { audio, report };
+  }
+  const answer = await localRequestRaw({ op: 'preview_stem_blend', ...body }, timeoutMs);
+  const file = answer.stem_blend_preview;
+  const root = join(stateDir, 'stem-blend-previews');
+  if (typeof file !== 'string' || !file.startsWith(`${root}/audition-`) || file.includes('..')
+    || !/^audition-[\w-]+\/preview\.wav$/.test(file.slice(root.length + 1))) throw new Error('The analyzer returned an invalid audition path.');
+  try {
+    signal.throwIfAborted();
+    return { audio: readFileSync(file), report: stemBlendPreviewReportSchema.parse(answer.stem_blend_report) };
+  } finally { await rm(dirname(file), { recursive: true, force: true }); }
 }
 
 function coerceRenderResult(msg: WorkerMessage & { ok?: boolean }): RenderTransitionResult | null {
@@ -1147,12 +1207,15 @@ function subsonicErrorMessage(body: string): string {
 // any error; the caller falls back to the url path for that one track.
 export async function downloadCapped(
   songId: string,
+  opts: { maxBytes?: number; timeoutMs?: number } = {},
 ): Promise<{ path: string; complete: boolean }> {
+  const maxBytes = opts.maxBytes ?? ANALYZE_MAX_BYTES;
+  if (opts.maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || maxBytes <= 0)) throw new Error('Invalid analysis download limit');
   mkdirSync(ANALYZE_TMP_DIR, { recursive: true });
   const dest = `${ANALYZE_TMP_DIR}/${encodeURIComponent(songId)}.audio`;
   const url = subsonic.getRawStreamUrl(songId);
   const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), config.analyzer.requestTimeoutMs);
+  const t = setTimeout(() => ac.abort(), opts.timeoutMs ?? config.analyzer.requestTimeoutMs);
   try {
     recordHttpAttempt('stream', 'analysis-download');
     const res = await fetch(url, {
@@ -1179,7 +1242,7 @@ export async function downloadCapped(
       for await (const chunk of res.body as AsyncIterable<Uint8Array>) {
         read += chunk.length;
         yield chunk;
-        if (read >= ANALYZE_MAX_BYTES) return; // enough audio for the window
+        if (read >= maxBytes) return; // enough audio for the window
       }
     }
     await pipeline(capped(), createWriteStream(dest));
@@ -1197,7 +1260,7 @@ export async function downloadCapped(
     // A read that hit the cap stopped early, so the tail is missing. Exactly
     // cap bytes counts as incomplete too: that only skips outro analysis,
     // never mis-measures it.
-    return { path: dest, complete: read < ANALYZE_MAX_BYTES };
+    return { path: dest, complete: read < maxBytes };
   } catch (err) {
     // Drop the staging file on every failure: createWriteStream truncates
     // `dest` into existence, and only the success path hands a path back for
@@ -1338,6 +1401,8 @@ export function tailWindowFor(t: { edgeTailMs?: number | null; decodedDurationMs
 export type StemWindow = 'head' | 'tail';
 
 export interface FacetRequestOpts {
+  stems_device?: 'cpu';
+  regular_stem_window?: { version: 2; side: 'head' | 'tail'; start_ms: number; end_ms: number; key: string; source_sha256: string; source_bytes: number; model: string };
   facets: FacetName[];
   // Tail facet: place the window from the stored edges.
   tailWindow?: TailWindow | null;
@@ -1419,7 +1484,34 @@ async function facetRequest(
     msg = await localRequestRaw(body, timeoutMs);
   }
   if (!msg.ok) throw new Error(msg.error || 'analysis failed');
+  if (body.stems_device === 'cpu' && msg.source?.stems_device !== 'cpu') throw new Error('analyzer did not acknowledge CPU stem processing');
+  if (body.regular_stem_window) {
+    const wanted = body.regular_stem_window as NonNullable<FacetRequestOpts['regular_stem_window']>;
+    const evidence = msg.facets?.stems?.data?.regular_window as Record<string, unknown> | undefined;
+    if (msg.facets?.stems?.status !== 'ok' || !evidence || evidence.device !== 'cpu'
+        || Object.entries(wanted).some(([key, value]) => evidence[key] !== value)
+        || evidence.sample_rate !== 44100 || typeof evidence.samples !== 'number'
+        || !Number.isSafeInteger(evidence.samples) || evidence.samples <= 0
+        || Math.abs(evidence.samples - Math.round((wanted.end_ms - wanted.start_ms) * 44.1)) > 2) {
+      throw new Error('analyzer returned mismatched regular stem coverage');
+    }
+  }
   return parseFacetAnswer(msg);
+}
+
+// A version signal, not a promise that a separation will succeed. Probe before
+// downloading or submitting expensive regular work; old/mixed pools fail closed.
+export async function regularStemsAvailable(): Promise<boolean> {
+  const backend = await resolveBackend();
+  if (backend === 'sidecar') {
+    if (!await sidecarReachable()) return false;
+    return _sidecarRegularStems;
+  }
+  if (backend === 'local') {
+    if (!ready) await startWorker();
+    return _localRegularStems;
+  }
+  return false;
 }
 
 // Facet request for one track. A pre-fetched `localPath` is preferred, with
@@ -1432,7 +1524,12 @@ export async function analyzeFacets(
   opts: FacetRequestOpts,
   localPath?: string,
 ): Promise<FacetAnalysis> {
-  const body: Record<string, unknown> = { facets: opts.facets };
+  const body: Record<string, unknown> = {
+    ...(opts.regular_stem_window ? { regular_stem_window: opts.regular_stem_window } : {}),
+    facets: opts.facets,
+    ...(opts.stems_device ? { stems_device: opts.stems_device } : {}),
+  };
+  if (opts.regular_stem_window && !await regularStemsAvailable()) throw new Error('analyzer does not support regular stem windows version 2');
   if (opts.tailVocals) body.tail_vocals = true;
   if (opts.tailWindow && usesTailWindow(opts.facets)) {
     body.tail_window = { end_ms: opts.tailWindow.endMs, duration_ms: opts.tailWindow.durationMs };
@@ -1458,7 +1555,7 @@ export async function analyzeFacets(
       ...stems,
     }, timeoutMs);
   } catch (err) {
-    if (!(err instanceof AnalyzerPathUnavailableError)) throw err;
+    if (!(err instanceof AnalyzerPathUnavailableError) || opts.regular_stem_window) throw err;
     // Same degrade as analyzePathWithUrlFallback: no stems without shared state.
     const facets = opts.facets.filter(f => f !== 'stems');
     return facets.length ? facetRequest({ url, ...body, facets }, timeoutMs)
@@ -1470,4 +1567,246 @@ export function shutdown(): void {
   try { proc?.stdin.end(); } catch { /* ignore */ }
   try { proc?.kill(); } catch { /* ignore */ }
   proc = null; ready = false; booting = null;
+}
+
+
+// Explicit background work; never called from playback's deadline path.
+export async function subbeatsAvailable(): Promise<boolean> {
+  const backend = await resolveBackend();
+  if (backend === 'sidecar') {
+    await sidecarReachable();
+    return _sidecarSubbeatsCapable === true;
+  }
+  if (backend === 'local') {
+    if (!ready) await startWorker();
+    return _localSubbeatsCapable === true;
+  }
+  return false;
+}
+
+async function sharedSubbeatsBackend() {
+  const backend = await resolveBackend();
+  if (!backend) throw new Error('An analyzer is needed for Sub/Beats');
+  if (backend === 'sidecar') await sidecarReachable();
+  else if (!ready) await startWorker();
+  if (backend === 'sidecar' ? !_sidecarSubbeatsShared : !_localSubbeatsShared) throw new Error('Update the analyzer to use the shared Sub/Beats stem cache');
+  return backend;
+}
+
+export type SubbeatsSharedCache = {stems_root:string; remaining_bytes:number};
+export async function migrateSubbeatsCache(stateDir:string, cacheId:string, shared:SubbeatsSharedCache) {
+  await sharedSubbeatsBackend();
+  const payload = {state_dir:stateDir, cache_id:cacheId, ...shared};
+  let answer:WorkerMessage;
+  if (_backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/migrate-subbeats`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), timeoutMs:30*60_000});
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'migrate_subbeats', ...payload},30*60_000);
+  return {addedBytes:cacheGrowth(answer), migrated:answer.migrated ?? 0};
+}
+function cacheGrowth(answer:WorkerMessage):number {
+  if (!Number.isSafeInteger(answer.cache_added_bytes) || answer.cache_added_bytes! < 0) throw new Error('Analyzer did not report shared-cache usage; update the analyzer');
+  return answer.cache_added_bytes!;
+}
+async function requestSubbeatsMatches(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, barShift:number, outgoingCueIndex?:number) {
+  const backend = await sharedSubbeatsBackend();
+  const payload = {jobs,outgoing_id:outgoingId,bar_shift:barShift, ...(outgoingCueIndex === undefined ? {} : {method:'cue-points',outgoing_cue_index:outgoingCueIndex})};
+  let answer:WorkerMessage;
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/match-subbeats`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:30_000});
+    if (response.status === 404) throw new Error('Update the analyzer to find Sub/Beats matches');
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'match_subbeats',...payload},30_000);
+  return answer.subbeats_matches;
+}
+export async function matchSubbeats(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, barShift:number) {
+  return subbeatsMatchesSchema.parse(await requestSubbeatsMatches(jobs,outgoingId,barShift));
+}
+export async function matchSubbeatsCues(jobs: Array<ReturnType<typeof subbeatsJobSchema.parse>>, outgoingId:string, outgoingCueIndex:number) {
+  const result = subbeatsCueMatchesSchema.safeParse(await requestSubbeatsMatches(jobs,outgoingId,0,outgoingCueIndex));
+  if (!result.success) throw new Error('Update the analyzer to find cue-point candidates.');
+  return result.data;
+}
+
+// Metadata-only planning. This never renders, fetches recordings or loads models.
+export async function planSubbeatsPairFromEvidence(jobs:Array<ReturnType<typeof subbeatsJobSchema.parse>>,
+  outgoingId:string,incomingId:string,mixStyle:ReturnType<typeof subbeatsMixStyleSchema.parse>) {
+  const backend = await sharedSubbeatsBackend();
+  const payload = {method:'live-pair',jobs,outgoing_id:outgoingId,incoming_id:incomingId,mix_style:mixStyle};
+  let answer:WorkerMessage;
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/match-subbeats`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:5000,bodyDeadline:true,
+    });
+    if (response.status === 404) throw new Error('Update the analyzer to enable Sub/Beats live pair planning.');
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'match_subbeats',...payload},5000);
+  const result = subbeatsPairPlanSchema.safeParse(answer.subbeats_matches);
+  if (!result.success) throw new Error('The analyzer did not return a supported Sub/Beats pair plan. Update the analyzer.');
+  if (result.data.outgoingId !== outgoingId || result.data.incomingId !== incomingId || result.data.mixStyle !== mixStyle) {
+    throw new Error('The analyzer returned a plan for a different pair or mixing style.');
+  }
+  return result.data;
+}
+
+export async function assessSubbeats(stateDir:string, cacheId:string, trackId:string, bundleKey:string, stemsRoot:string, cueEvidence?:{cue_key:string;coverage_key:string}) {
+  const backend = await sharedSubbeatsBackend();
+  if (backend === 'sidecar' ? !_sidecarSubbeatsSuitability : !_localSubbeatsSuitability) throw new Error('Update the analyzer to assess Sub/Beats suitability');
+  const payload = {state_dir:stateDir,cache_id:cacheId,stems_root:stemsRoot,track_id:trackId,bundle_key:bundleKey,...cueEvidence};
+  let answer:WorkerMessage;
+  if (_backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/assess-subbeats`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),timeoutMs:5*60_000});
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else answer = await localRequestRaw({op:'assess_subbeats',...payload},5*60_000);
+  const result = subbeatsEventSchema.omit({id:true}).parse(answer.subbeats_result);
+  if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
+  return {...result,addedBytes:0};
+}
+
+export async function prepareSubbeats(path: string, stateDir: string, cacheId: string, trackId:string, shared:SubbeatsSharedCache, method: 'classic'|'small0' = 'classic', upgrade?:{bundle_key:string;cue_key:string}) {
+  if (!await subbeatsAvailable()) throw new Error('Sub/Beats needs an updated heavy analyzer');
+  const payload = { path, state_dir: stateDir, cache_id: cacheId, complete: true, track_id:trackId, ...shared,...(method === 'classic' ? {} : {method}), ...upgrade };
+  const timeoutMs = 30 * 60_000;
+  let answer: WorkerMessage;
+  if (_backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/prepare-subbeats`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeoutMs,
+    });
+    if (!response.ok) await sidecarFailure(response);
+    answer = await response.json() as WorkerMessage;
+  } else {
+    answer = await localRequestRaw({ op: 'prepare_subbeats', ...payload }, timeoutMs);
+  }
+  const result = subbeatsEventSchema.omit({ id: true }).parse(answer.subbeats_result);
+  if (!result.suitability) throw new Error('Analyzer did not report suitability; update the analyzer');
+  if (method !== 'classic' && !result.cuePoints) throw new Error('Update the heavy analyzer to prepare Beat This! cue points');
+  if (method !== 'classic' && !upgrade && (result.cuePoints?.durationSeconds == null || result.cuePoints.algorithmVersion !== 13)) throw new Error('Update the heavy analyzer for natural-start cue preparation');
+  if (method !== 'classic' && !result.cueCoverage) throw new Error('Update the heavy analyzer to save cue coverage and vocal measurements');
+  return {...result, addedBytes:cacheGrowth(answer)};
+}
+
+export function subbeatsCapability(): boolean | null {
+  if (_backend === 'sidecar') return _sidecarSubbeatsCapable;
+  if (_backend === 'local') return _localSubbeatsCapable;
+  return null;
+}
+
+// A live render gets its own killable CPU process, never the persistent
+// analysis pool. Call only after the queue's saved-cache/contention gates.
+export async function renderSubbeatsLive(
+  input: ReturnType<typeof subbeatsLiveRenderRequestSchema.parse>, signal: AbortSignal,
+) {
+  const request = subbeatsLiveRenderRequestSchema.parse(input);
+  const timeoutMs = Math.min(120_000, request.deadlineMs - Date.now());
+  signal.throwIfAborted();
+  if (timeoutMs < 1 || subbeatsCapability() !== true) throw new Error('The live handoff renderer is unavailable.');
+  let complete = false;
+  try {
+    let raw: unknown;
+    if (_backend === 'sidecar' && _sidecarBase) {
+      const response = await fetchWithTimeout(`${_sidecarBase}/render-subbeats-transition`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request),
+        timeoutMs, bodyDeadline:true, signal,
+      });
+      if (!response.ok) throw new Error('The live handoff renderer is busy, unavailable or exceeded its budget.');
+      raw = await response.json();
+    } else if (_backend === 'local') {
+      raw = await new Promise<unknown>((resolve, reject) => {
+        const child = spawn(config.analyzer.python, [join(dirname(config.analyzer.workerScript), 'subbeats_live.py')], {
+          detached:true, stdio:['pipe','pipe','ignore'],
+          env:{...process.env, OMP_NUM_THREADS:'1', OPENBLAS_NUM_THREADS:'1', NUMBA_NUM_THREADS:'1'},
+        });
+        let output = '', stopped = false;
+        const stop = () => {
+          stopped = true;
+          if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+        };
+        const timer = setTimeout(stop, timeoutMs);
+        signal.addEventListener('abort', stop, {once:true});
+        child.stdout.on('data', chunk => {
+          output += chunk.toString();
+          if (Buffer.byteLength(output) > 128 * 1024) stop();
+        });
+        child.on('error', reject);
+        child.stdin.on('error', () => {}); // close/error owns the result
+        child.on('close', code => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', stop);
+          // A decoder must not survive its direct parent, even on success.
+          if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group exited */ }
+          if (stopped || code !== 0) reject(new Error('The live handoff could not finish within its budget.'));
+          else try { resolve(JSON.parse(output.trim().split('\n').at(-1) ?? '')); }
+          catch { reject(new Error('The live handoff renderer returned no usable result.')); }
+        });
+        child.stdin.end(JSON.stringify(request) + '\n');
+        if (signal.aborted) stop();
+      });
+    } else throw new Error('The live handoff renderer is unavailable.');
+    signal.throwIfAborted();
+    const result = subbeatsLiveRenderResultSchema.parse(raw);
+    if (result.transitionId !== request.transitionId || result.evidenceFingerprint !== request.evidenceFingerprint
+      || result.mixStyle !== request.mixStyle || Date.now() >= request.deadlineMs) {
+      throw new Error('The live handoff result is stale or belongs to another pair.');
+    }
+    if (result.status === 'rendered' && (result.clipPath !== join(request.stateDir,'transitions',`subbeats-${request.transitionId}-in.wav`)
+      || (result.leadPath !== null && result.leadPath !== join(request.stateDir,'transitions',`subbeats-${request.transitionId}-out.wav`)))) {
+      throw new Error('The live handoff returned an invalid clip path.');
+    }
+    complete = result.status === 'rendered';
+    return result;
+  } finally {
+    if (_backend === 'local') await rm(join(request.stateDir,'transitions',`.subbeats-${request.transitionId}`), {recursive:true,force:true}).catch(() => {});
+    if (!complete) await Promise.all(['out','in'].map(role =>
+      rm(join(request.stateDir,'transitions',`subbeats-${request.transitionId}-${role}.wav`), {force:true}).catch(() => {})));
+  }
+}
+
+// Isolated audition; annotated previews also read original audio. Never used by the broadcast queue.
+export async function previewSubbeats(outKey: string, inKey: string, stateDir: string, cacheId: string, signal: AbortSignal, gains: number[] = [0, 0], barShift = 0,
+  reference?: { out_seconds: number; in_resolve: number; bars: number; out_id: string; in_id: string }, shared?: {handoff?:ReturnType<typeof subbeatsHandoffInputSchema.parse>;stems_root:string; track_ids:string[]; window_plan?:ReturnType<typeof subbeatsWindowPlanSchema.parse>;method?:'cue-points';auto_plan?:boolean;mix_style?:ReturnType<typeof subbeatsMixStyleSchema.parse>;cue_keys?:Array<string|null>;cue_indices?:number[];coverage_keys?:Array<string|null>;lyric_evidence?:Array<ReturnType<typeof subbeatsLyricEvidenceSchema.parse>|null>;crossfade_seconds?:number;equal_power_crossfade?:boolean}): Promise<{ audio: Buffer; timeline: ReturnType<typeof subbeatsTimelineSchema.parse> | null }> {
+  const backend = await sharedSubbeatsBackend();
+  signal.throwIfAborted();
+  const timeoutMs = shared?.handoff ? 240_000 : shared?.method === 'cue-points' ? 30*60_000 : 180_000;
+  const checkedTimeline = (raw:unknown) => {
+    const timeline = raw ? subbeatsTimelineSchema.parse(raw) : null;
+    if (shared?.handoff && (timeline?.kind !== 'subbeats-handoff'
+      || timeline.handoff?.evidenceFingerprint !== shared.handoff.evidenceFingerprint
+      || JSON.stringify(timeline.handoff?.timing) !== JSON.stringify(shared.handoff.candidate.timing))) {
+      throw new Error('The analyzer did not return the requested complete handoff. Update the analyzer and retry.');
+    }
+    if (reference && timeline?.kind !== 'reference') throw new Error('Update the analyzer to enable annotated Sub/Beats previews.');
+    if (shared?.method === 'cue-points' && timeline && timeline.kind !== 'regular-fallback'
+      && (timeline?.mixStyle ?? 'long-blend') !== (shared.mix_style ?? 'long-blend')) {
+      throw new Error('Update the analyzer to enable the selected Sub/Beats mixing style.');
+    }
+    return timeline;
+  };
+  const payload = { ...shared, out_key: outKey, in_key: inKey, state_dir: stateDir, cache_id: cacheId, out_gain_db: gains[0] ?? 0, in_gain_db: gains[1] ?? 0, bar_shift: barShift,
+    ...(shared?.method === 'cue-points' ? {source_urls:shared.track_ids.map(id => subsonic.getRawStreamUrl(id))} : {}),
+    ...(reference ? { reference: { out_seconds: reference.out_seconds, in_resolve: reference.in_resolve, bars: reference.bars,
+      out_url: subsonic.getRawStreamUrl(reference.out_id), in_url: subsonic.getRawStreamUrl(reference.in_id) } } : {}) };
+  if (backend === 'sidecar' && _sidecarBase) {
+    const response = await fetchWithTimeout(`${_sidecarBase}/subbeats-preview`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      timeoutMs, bodyDeadline: true, signal,
+    });
+    if (response.status === 404) throw new Error('Update the analyzer to enable Sub/Beats previews.');
+    if (!response.ok) await sidecarFailure(response);
+    if (!response.headers.get('content-type')?.startsWith('audio/wav')) throw new Error('The analyzer returned an invalid preview.');
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (audio.length > (shared?.handoff ? 48 : 24) * 1024 * 1024 || audio.subarray(0, 4).toString() !== 'RIFF' || audio.subarray(8, 12).toString() !== 'WAVE') throw new Error('The analyzer returned an invalid preview.');
+    const raw = response.headers.get('x-subbeats-timeline');
+    const timeline = checkedTimeline(raw ? JSON.parse(raw) : null);
+    return { audio, timeline };
+  }
+  const answer = await localRequestRaw({ op: 'preview_subbeats', ...payload }, timeoutMs);
+  signal.throwIfAborted();
+  const path = answer.subbeats_preview;
+  if (typeof path !== 'string' || !path.startsWith(`${stateDir}/subbeats/previews/`) || path.includes('..')) throw new Error('The analyzer returned an invalid preview.');
+  const timeline = checkedTimeline(answer.subbeats_timeline);
+  return { audio: readFileSync(path), timeline };
 }

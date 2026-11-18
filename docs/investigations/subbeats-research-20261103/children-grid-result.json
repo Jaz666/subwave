@@ -1,0 +1,236 @@
+{
+  "sourcePath": "/media/satadrive/Compilations/30 Years - Three Decades of Dance (2021)/CD 01/04 - Children.mp3",
+  "sourceSha256": "3904b492af33b2ef18f4e50cb5a677599acfdff4d7fc43acea6f889edb7f9cba",
+  "trackId": "7bfhXAe5NRn4ZGopPSY0WZ",
+  "durationSeconds": 246.70666666666668,
+  "ownerReferences": {
+    "drivingBeatSecondsApprox": 42,
+    "drivingBeatBar": 16,
+    "gridOriginSecondsApprox": 14,
+    "sixteenBarOutroStartBar": 112
+  },
+  "bpm": 137.08296124463112,
+  "beatPeriodSeconds": 0.43769115764086186,
+  "anchorSeconds": 42.6,
+  "anchorBar": 16,
+  "gridOriginSeconds": 14.587765910984842,
+  "fit": {
+    "rangeSeconds": [
+      42.6,
+      210
+    ],
+    "matchedBeats": 383,
+    "totalPredictions": 383,
+    "medianErrorSeconds": 0.012353694365522472,
+    "p95ErrorSeconds": 0.03699807564214551
+  },
+  "markers": [
+    {
+      "bar": 0,
+      "sourceSeconds": 14.587765910984842,
+      "kind": "back-projected origin"
+    },
+    {
+      "bar": 16,
+      "sourceSeconds": 42.6,
+      "kind": "model anchor with owner bar label"
+    },
+    {
+      "bar": 112,
+      "sourceSeconds": 210.67340453409096,
+      "kind": "provisional grid projection, unconfirmed by listening"
+    },
+    {
+      "bar": 120,
+      "sourceSeconds": 224.67952157859852,
+      "kind": "provisional grid projection, unconfirmed by listening"
+    },
+    {
+      "bar": 128,
+      "sourceSeconds": 238.68563862310612,
+      "kind": "provisional grid projection, unconfirmed by listening"
+    }
+  ],
+  "firstPredictedBeats": [
+    0.62,
+    1.06,
+    1.5,
+    1.94,
+    2.36,
+    2.82,
+    3.24,
+    4.12,
+    4.56,
+    5.0,
+    5.44,
+    5.88,
+    6.32,
+    6.74,
+    7.62
+  ],
+  "lastPredictedBeats": [
+    234.3,
+    234.72,
+    235.18,
+    235.64,
+    236.08,
+    236.52,
+    236.96,
+    237.4,
+    237.84,
+    238.28,
+    238.72,
+    239.16,
+    239.6,
+    240.06,
+    240.48
+  ],
+  "nearbyOutroDownbeats": [
+    195.78,
+    197.54,
+    199.28,
+    201.02,
+    202.78,
+    204.52,
+    206.3,
+    208.06,
+    209.76,
+    211.52,
+    213.26,
+    215.02,
+    216.76,
+    218.52,
+    220.28,
+    222.02,
+    223.78,
+    225.52,
+    227.28,
+    229.04,
+    230.78,
+    232.54,
+    234.3,
+    236.08,
+    237.84,
+    238.72,
+    240.48
+  ],
+  "savedCuePoints": {
+    "version": 1,
+    "model": "small0",
+    "artifactKey": "866519e17175ed7f42a7a71e9fec0e42a4377fea7d45e082d29c599cb26be7c8",
+    "durationSeconds": 246.70666666666668,
+    "algorithmVersion": 4,
+    "incoming": [
+      {
+        "sourceSeconds": 56.6,
+        "bpm": 136.29075360769582,
+        "strength": 0.8117723180107128,
+        "reason": "repetition",
+        "phraseBars": 8,
+        "phraseStartSeconds": 42.6
+      },
+      {
+        "sourceSeconds": 14.64,
+        "bpm": 136.71089666264572,
+        "strength": 2.7231562698202865,
+        "reason": "arrangement"
+      },
+      {
+        "sourceSeconds": 42.6,
+        "bpm": 138.48347023284225,
+        "strength": 2.206638661293256,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 39.14,
+        "bpm": 136.9771033371381,
+        "strength": 1.1086713459992958,
+        "reason": "arrangement"
+      }
+    ],
+    "outgoing": [
+      {
+        "sourceSeconds": 131.92,
+        "bpm": 136.839280922995,
+        "strength": 3.1224735999585747,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 187.94,
+        "bpm": 137.28129205921744,
+        "strength": 2.6170770372491803,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 182.64,
+        "bpm": 136.75672052021113,
+        "strength": 2.5448726901604974,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 154.64,
+        "bpm": 137.03231006918705,
+        "strength": 1.9972331885940366,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 151.14,
+        "bpm": 137.83783783783645,
+        "strength": 0.8784515130168463,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 179.14,
+        "bpm": 137.41075037047085,
+        "strength": 0.7767803162089676,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 168.66,
+        "bpm": 137.4292643492302,
+        "strength": 0.7403412145336491,
+        "reason": "repetition"
+      },
+      {
+        "sourceSeconds": 128.4,
+        "bpm": 136.44572269413393,
+        "strength": 0.6888337842086724,
+        "reason": "repetition"
+      }
+    ]
+  },
+  "phaseEvidence": {
+    "method": "Downbeat position relative to fixed owner-labelled grid, expressed as bar number",
+    "examples": [
+      {
+        "sourceSeconds": 42.6,
+        "projectedBar": 16.0
+      },
+      {
+        "sourceSeconds": 189.66,
+        "projectedBar": 99.99758450264773
+      },
+      {
+        "sourceSeconds": 206.3,
+        "projectedBar": 109.50200314894215
+      },
+      {
+        "sourceSeconds": 209.76,
+        "projectedBar": 111.47828250688558
+      },
+      {
+        "sourceSeconds": 211.52,
+        "projectedBar": 112.48355755601288
+      },
+      {
+        "sourceSeconds": 237.84,
+        "projectedBar": 127.51698897250742
+      },
+      {
+        "sourceSeconds": 238.72,
+        "projectedBar": 128.01962649707107
+      }
+    ],
+    "note": "Later model downbeats are near half-bar offsets. This is model phase disagreement, not proof of a musical time-signature change or permission to repair it automatically."
+  }
+}

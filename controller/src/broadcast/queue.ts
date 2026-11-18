@@ -2,6 +2,7 @@ import { fitsSpeechDeadline, type SpeechDeadline } from './speech-budget.js';
 import { recordSleeveNotesSegmentAir, releaseSleeveNotesSegment } from '../sleeve-notes/segment-ledger.js';
 import { notebookRendered, notebookVoiceId, notebookCanPublish, notebookAir, cancelNotebookClip, type RecoveredNotebookSpeech } from '../skills/notebook.js';
 import { lookAheadStampsCurrent } from '../skills/look-ahead.js';
+import { REGULAR_STEM_PREVIEW_RETAIN_MS } from './regular-stem-preview.js';
 import { prepareEpisodeContext } from './show-preparation.js';
 // Queue class and public singleton; helper implementations live in queue/.
 
@@ -47,6 +48,7 @@ import * as jingles from './jingles.js';
 import { jinglePlacement, pickRotateJingle, onJingleRotateOwnerChange } from './jingle-rotate.js';
 import { overlayDue, overlayEnabled, overlayOffer, overlayOpening, overlayFits, overlayMixerStatus } from './jingle-overlay.js';
 import * as beds from './beds.js';
+import { outputStartedAt } from './output-timeline.js';
 import * as bedPolicy from './bed-policy.js';
 import { vocalRunwayMs, segmentFitsRunway } from './vocal-runway.js';
 import * as session from './session.js';
@@ -102,6 +104,7 @@ import {
   remainingSec,
   shouldDeadlinePick,
   DEADLINE_PICK_COOLDOWN_SEC,
+  HARD_DEADLINE_SEC,
 } from './drain-policy.js';
 import {
   commitSatisfied,
@@ -115,6 +118,14 @@ import {
 } from './skip-policy.js';
 import type { SkipRefusalReason } from '../schemas/dj.js';
 import * as stemBlend from './stem-blend.js';
+import { regularStemRuntime } from './regular-stem-runtime.js';
+import type { RegularStemQueueEvidence } from './regular-stem-needs.js';
+import * as regularStemDb from '../music/library-db.js';
+import { quietOnlyEnabled } from '../music/analyze-quiet-pure.js';
+import * as subbeats from './subbeats.js';
+import { queueAiredTrack as queueSubbeatsFromAirplay } from '../music/subbeats-airplay.js';
+import { subbeatsPlaybackSeconds, subbeatsSourceSeconds, subbeatsEntryMs, type SubbeatsPlayback } from './subbeats-clock.js';
+import { subbeatsPlaybackSchema } from '../schemas/subbeats.js';
 import * as pickStems from './pick-stems.js';
 import type {
   DjLogEntry,
@@ -515,10 +526,15 @@ class Queue {
   _deadlinePickAt = 0;          // last deadline-pick ATTEMPT (ms epoch) — failure-retry cooldown, see maybeDeadlinePick
   _coastHandover = createHandoverEdge(); // armed by a queued track starting, fired by the first moment picking stops (#1975, #1992)
   _pendingVoice: PendingVoice | null = null; // one boundary-deferred segment awaiting the next track start — see announceAtNextTrack
+  _speechAwaitingAir = new Set<string>(); // handed-off voice IDs not yet confirmed by the mixer
+  _speechForecasts = new Map<string, { voiceId: string; expectedAt: string; durationMs: number; text: string }>();
   _handoffBoundaryTimer: NodeJS.Timeout | null = null;
   _handoffGenerationTimer: NodeJS.Timeout | null = null;
   _lengthDropped = new WeakSet<QueueItem>();
   _renderBlend = stemBlend.maybeRenderBlend;
+  _renderSubbeats = subbeats.maybeRenderSubbeats;
+  _probeCueLanding = cueLanding.probeCueLanding;
+  _subbeatsPublicationState = liquidsoapControl.subbeatsPublicationState;
   _pickStems = pickStems.maybeSeparateAtPick;
   _preparedBlends = new WeakMap<QueueItem, { successor: QueueItem; track: NonNullable<QueueItem['stemBlend']>['originalExit'] }>();
   _introRenders = new IntroRenderTracker<QueueItem>(); // timed-out pre-renders stay reusable by airIntro
@@ -799,6 +815,16 @@ class Queue {
             blend.outCueSec = blend.blendStartSec;
           }
           delete blend.blendStartSec;
+        }
+        if (item?.subbeatsHandoff) {
+          const parsed = subbeatsPlaybackSchema.safeParse(item.subbeatsHandoff);
+          if (parsed.success) item.subbeatsHandoff = parsed.data;
+          else delete item.subbeatsHandoff;
+        }
+        if (blend?.subbeats) {
+          const parsed = subbeatsPlaybackSchema.safeParse(blend.subbeats);
+          if (parsed.success) blend.subbeats = parsed.data;
+          else { delete item!.stemBlend; delete item!.cueOutSec; }
         }
       }
       // Restore the rotate's count (#1619). Repaired, not trusted: this file is
@@ -1473,6 +1499,7 @@ class Queue {
   async maybePushBed(item: QueueItem) {
     const cfg = settings.get()?.beds;
     if (!cfg?.enabled) return;
+    if (item.subbeatsHandoff) return; // a committed rendered head owns this seam
     // Already bedded: a crash between the bed push and the track write leaves
     // this item unsent, and the recovery re-drain would otherwise queue a
     // SECOND bed ahead of it (~bedSec of voiceless filler between them).
@@ -1956,13 +1983,12 @@ class Queue {
     const startedMs = Date.parse(cur.startedAt);
     let durSec = Number(cur.track?.duration) || 0;
     if (!durSec && cur.track?.id) durSec = Number(library.get(cur.track.id)?.durationSec) || 0;
-    return remainingSec(
-      Date.now(),
-      Number.isFinite(startedMs) ? startedMs : null,
-      durSec > 0 ? durSec : null,
-      cur.cueOutSec ?? null,
-      cur.cueInSec ?? null,
-    );
+    if (cur.subbeatsHandoff || cur.stemBlend?.subbeats) {
+      const playable = this.playableSecOf(cur);
+      return playable == null || !Number.isFinite(startedMs) ? null : (startedMs + playable*1000 - Date.now())/1000;
+    }
+    return remainingSec(Date.now(),Number.isFinite(startedMs) ? startedMs : null,
+      durSec > 0 ? durSec : null,cur.cueOutSec ?? null,cur.cueInSec ?? null);
   }
 
   // Seconds until ITEM airs: the on-air clock extended past every sent-but-
@@ -1992,7 +2018,15 @@ class Queue {
   playableSecOf(item: QueueItem): number | null {
     let d = Number(item.track?.duration) || 0;
     if (!d && item.track?.id) d = Number(library.get(item.track.id)?.durationSec) || 0;
+    if (item.subbeatsHandoff) d = item.subbeatsHandoff.incomingDurationSeconds;
     if (!d) return null;
+    // The next logical track starts at incoming entry, after an outgoing-only
+    // lead. This can sit later than the original source's stamped cue-out.
+    const exit = item.stemBlend?.subbeats?.timing;
+    const end = exit ? (exit.outgoingStartSample+exit.incomingEntryFrame)/exit.sampleRate
+      : Math.min(d,item.cueOutSec ?? d);
+    if (item.subbeatsHandoff) return Math.max(0,subbeatsPlaybackSeconds(item.subbeatsHandoff.timing,end));
+    if (exit) return Math.max(0,end-(item.cueInSec ?? 0));
     return playableDurationSec(d, item.cueOutSec ?? null, item.cueInSec ?? null);
   }
 
@@ -2036,11 +2070,14 @@ class Queue {
     // boundary has no overshoot to cut, and asking about the raw length would
     // invent one.
     const early = positiveCues([maxDurationSec, trim.cueOutSec]);
-    const playable = playableDurationSec(
+    const ordinaryPlayable = playableDurationSec(
       durSec,
       early.length ? Math.min(...early) : null,
       trim.cueInSec,
     );
+    const playable = item.subbeatsHandoff
+      ? subbeatsPlaybackSeconds(item.subbeatsHandoff.timing,early.length ? Math.min(durSec,...early) : durSec)
+      : ordinaryPlayable;
     if (playable == null || playable <= 0) return null;
     const boundaryMs = showBoundary.nextShowBoundaryMs(startMs, playable);
     // A tagged pick that started in time to be the outgoing show's still may not
@@ -2049,11 +2086,13 @@ class Queue {
     if (!fading && !intoCleanShow) return null;
     const cut = showBoundary.resolveBoundaryCueSec({
       startMs,
-      cueInSec: trim.cueInSec ?? 0,
+      cueInSec: item.subbeatsHandoff ? 0 : trim.cueInSec ?? 0,
       playableSec: playable,
       boundaryMs,
     });
     if (cut != null) {
+      if (item.subbeatsHandoff) cut.cueOutSec = Math.max(item.subbeatsHandoff.timing.incomingResumeSample/44100+1,
+        subbeatsSourceSeconds(item.subbeatsHandoff.timing,cut.cueOutSec));
       this.log('mix', `show boundary fade: "${item.track.title}" cued out at ${cut.cueOutSec}s — it would have run ${Math.round(cut.overshootSec)}s into the next show`);
     }
     return cut;
@@ -2119,8 +2158,10 @@ class Queue {
   // out-age the sweep window while still queued in dj_queue.
   pendingClipPaths(): Set<string> {
     const names = new Set<string>();
-    const collect = (i: { stemBlend?: { clipPath: string } | null } | null | undefined) => {
+    const collect = (i: QueueItem | null | undefined) => {
       if (i?.stemBlend?.clipPath) names.add(basename(i.stemBlend.clipPath));
+      if (i?.stemBlend?.leadPath) names.add(basename(i.stemBlend.leadPath));
+      if (i?.subbeatsHandoff?.clipPath) names.add(basename(i.subbeatsHandoff.clipPath));
     };
     collect(this.current);
     for (const u of this.upcoming) collect(u);
@@ -2224,7 +2265,7 @@ class Queue {
     if (!item.stemBlend || item.sent) return;
     const prepared = this._preparedBlends.get(item);
     const successor = prepared?.successor ?? this.upcoming[this.upcoming.indexOf(item) + 1];
-    const clipPath = item.stemBlend.clipPath;
+    const clips = item.stemBlend;
     const originalExit = prepared?.track ?? item.stemBlend.originalExit;
     delete item.stemBlend;
     delete item.cueOutSec;
@@ -2243,8 +2284,90 @@ class Queue {
       delete successor.stemSeam;
       delete successor.stemCueInSec;
       delete successor.cueInSec;
+      delete successor.subbeatsHandoff;
     }
-    await unlink(clipPath).catch(() => {});
+    await subbeats.discardSubbeatsClips(clips);
+  }
+
+  // Re-read live queue/trim/show policy before changing linked cues. The
+  // transition is optional; an existing bed, spoken head or boundary wins.
+  subbeatsFitsPair(item: QueueItem, successor: QueueItem, playback: SubbeatsPlayback): boolean {
+    if (!subbeats.subbeatsStillCurrent(playback) || !this.upcoming.includes(item)
+      || this.upcoming[this.upcoming.indexOf(item)+1] !== successor || successor.sent
+      || item.track.id !== playback.outgoingId || successor.track.id !== playback.incomingId
+      || this.automaticIneligible(item) || this.automaticIneligible(successor)) return false;
+    const outTrim = silenceTrim.resolveSilenceTrim(item.track), inTrim = silenceTrim.resolveSilenceTrim(successor.track);
+    if (inTrim.cueInSec != null) return false;
+    const timing = playback.timing, first = timing.outgoingStartSample/44100;
+    const outCap = item.requestedBy ? null : settings.effectiveTrackLengthLimits().playbackMaxSec;
+    const inCap = successor.requestedBy ? null : settings.effectiveTrackLengthLimits().playbackMaxSec;
+    const resume = timing.incomingResumeSample/44100;
+    if ((outCap != null && (timing.outgoingStartSample+timing.outgoingEndFrame)/44100 > outCap)
+      || (outTrim.cueOutSec != null && outTrim.cueOutSec < first+stemBlend.CLIP_SEAM_CROSS_SEC)
+      || first <= (item.stemCueInSec ?? item.cueInSec ?? 0)+1
+      || (inCap != null && inCap <= resume+1) || (inTrim.cueOutSec != null && inTrim.cueOutSec <= resume+1)) return false;
+    const until = this.remainingUntilItemAirs(item);
+    if (until == null || until <= HARD_DEADLINE_SEC+5) return false;
+    const sourceStart = item.subbeatsHandoff ? subbeatsPlaybackSeconds(item.subbeatsHandoff.timing,first)
+      : first-(item.cueInSec ?? 0);
+    const startMs = Date.now()+(until+this.hiddenDelayBeforeItemAirs(item))*1000;
+    // Keep a complete handoff inside one show. Its native continuation can
+    // receive the existing show-boundary cut later, after the clip has ended.
+    return showBoundary.nextShowBoundaryMs(startMs,sourceStart+timing.clipFrames/44100) == null;
+  }
+
+  async publishSubbeatsParts(item: QueueItem, successor: QueueItem, recovering = false): Promise<void> {
+    const blend = item.stemBlend;
+    if (!blend?.subbeats || blend.partsPublished) return;
+    const transition = blend.subbeats;
+    const parts = [
+      ...(blend.leadPath ? [{role:'out',path:blend.leadPath,track:item.track}] : []),
+      {role:'in',path:blend.clipPath,track:successor.track},
+    ];
+    let present = new Set<string>();
+    if (recovering || blend.partsWritten?.length) {
+      const pending = await this._subbeatsPublicationState(transition.transitionId,transition.outgoingId);
+      present = pending.parts;
+      const np = await this.readNowPlayingFromDisk();
+      if (np?.filename === blend.clipPath || this.current?.subbeatsHandoff?.transitionId === transition.transitionId) {
+        blend.partsPublished = true;this.persist();return;
+      }
+      if (np?.filename === blend.leadPath) present.add('out');
+      // A queued incoming part proves its preceding lead was handed over. A
+      // retry must never append that lead AFTER the incoming request.
+      if (present.has('in')) present.add('out');
+      if (!present.size && !pending.outgoingQueued && np?.subsonic_id !== transition.outgoingId) {
+        if (!successor.sent) {
+          delete successor.stemSeam;delete successor.stemCueInSec;delete successor.subbeatsHandoff;delete successor.cueInSec;
+        }
+        blend.partsPublished = true;
+        await subbeats.discardSubbeatsClips(blend);
+        this.log('mix','Sub/Beats recovery fell back: the mixer no longer has the outgoing track or either clip part.',
+          {subbeats:'recovery-fallback',transitionId:transition.transitionId});
+        this.persist();return;
+      }
+    }
+    for (const part of parts) {
+      if (present.has(part.role)) continue;
+      const written = await this._writeHandoff(config.liquidsoap.queueFile,
+        subsonic.getClipUri(part.track,part.path,stemBlend.CLIP_SEAM_CROSS_SEC,{
+          transitionId:transition.transitionId,part:part.role,incomingId:transition.incomingId,
+        }),{
+          maxWaitMs:5000,
+          beforeWrite:() => this.upcoming.includes(successor) && !this.automaticIneligible(successor),
+          onWritten:() => { blend.partsWritten = [...new Set([...(blend.partsWritten ?? []),part.role])];this.persist(); },
+        });
+      if (written === false) {
+        if (!successor.sent) {
+          delete successor.stemSeam;delete successor.stemCueInSec;delete successor.subbeatsHandoff;delete successor.cueInSec;
+        }
+        this.log('mix','Sub/Beats successor was removed during publication; the remaining clip parts were skipped.',
+          {subbeats:'publication-cancelled',transitionId:transition.transitionId});
+        break;
+      }
+    }
+    blend.partsPublished = true;
+    this.persist();
   }
 
   async dropAboveCeiling(item: QueueItem): Promise<boolean> {
@@ -2262,8 +2385,50 @@ class Queue {
     return true;
   }
 
+  // Staged rollout uses the existing exact-pair audition allowlist. Preparation
+  // is never awaited by the sender. The ordinary watcher updates deadlines and
+  // membership after skips/removals as well as additions.
+  private regularStemOccurrences = new WeakMap<QueueItem,string>();
+  private syncRegularStemPreparation(): void {
+    // Source stems retire with queue membership. Keep only the immediately
+    // previous seam's tiny envelope snapshot through the listener buffer.
+    const retainPrevious = !!this.current?.stemSeam
+      && Date.now() < Date.parse(this.current.startedAt ?? '') + REGULAR_STEM_PREVIEW_RETAIN_MS;
+    this.history.forEach((item, index) => {
+      if (item.stemBlend?.regular && (index > 0 || !retainPrevious)) delete item.stemBlend.regular.envelopes;
+    });
+    if (!stemBlend.regularStemTestEnabled()) return;
+    const enabled = settings.get().transitions.stemBlends === true
+      && !quietOnlyEnabled(process.env.ANALYZE_QUIET_ONLY,settings.get().audio)
+      && this.pairDrainActive() && !!settings.getEffectivePersona()?.djMode;
+    try {
+      const rows = this.upcoming.map(item => regularStemDb.getTrack(String(item.track.id)));
+      const outros = this.upcoming.map((item, index) =>
+        library.get(String(item.track.id))?.outro ?? rows[index]?.outro);
+      const evidence: RegularStemQueueEvidence[] = this.upcoming.map((item, index) => {
+        const row = rows[index], next = rows[index+1], outro = outros[index];
+        if (!this.regularStemOccurrences.has(item)) this.regularStemOccurrences.set(item,randomBytes(8).toString('hex'));
+        return {
+          id: String(item.track.id), occurrence: this.regularStemOccurrences.get(item), sent: !!item.sent,
+          remainingSec: this.remainingUntilItemAirs(item),
+          regularEligible: enabled && stemBlend.regularStemTestTrack(String(item.track.id)),
+          subbeatsEligible: !!regularStemDb.subbeatsEligibleTrack(String(item.track.id)),
+          pairToNextAllowed: !!row && !!next && mix.bpmCompat(outro?.bpm ?? row.bpm,next.bpm) >= 0.7
+            && !!stemBlend.regularStemTestStyle(String(item.track.id), String(this.upcoming[index+1]?.track.id)),
+          durationMs: (row?.durationSec ?? 0)*1000,
+          bars: row?.bars ?? [], tailBars: outro?.bars ?? [],
+          windDownMs: outro?.startMs ?? (row?.durationSec ?? 0)*1000,
+          headGrid: row?.gridProvenance ?? null, tailGrid: outro?.gridProvenance ?? null,
+        };
+      });
+      regularStemRuntime.update(this.current?.track.id ? String(this.current.track.id) : null, evidence,
+        () => { void this.drainToLiquidsoap(); }, message => this.log('mix',message));
+    } catch (error) { this.log('warn',`Regular stems preparation unavailable: ${String(error)}`); }
+  }
+
   async drainToLiquidsoap(force = false) {
     if (this._flowAdmission) return;
+    this.syncRegularStemPreparation();
     this.invalidateObsoleteHostSpeech();
     if (this.senderBusy) {
       // A forced drain (the clip-as-track recovery) must not vanish into a
@@ -2276,6 +2441,14 @@ class Queue {
     }
     this.senderBusy = true;
     try {
+      // A restart can occur between the outgoing URI and either clip part.
+      // Inspect the mixer's actual requests before finishing that sequence.
+      for (const owner of [this.current,...this.upcoming]) {
+        const pending = owner?.stemBlend;
+        if (!owner?.sent || !pending?.subbeats || pending.partsPublished) continue;
+        const successor = this.upcoming.find(i => i.track.id === pending.subbeats!.incomingId);
+        if (successor) await this.publishSubbeatsParts(owner,successor,true);
+      }
       while (true) {
         // Do not overwrite the Flow handoff with its successor while the mixer
         // waits for existing speech to finish and starts the first member.
@@ -2361,6 +2534,14 @@ class Queue {
               remainingSec: this.remainingUntilItemAirs(item),
             });
         if (action === 'hold') break;
+        const regularSuccessor = this.upcoming[idx+1];
+        const regularRemaining = this.remainingUntilItemAirs(item);
+        if (!force && regularRemaining != null && regularRemaining > HARD_DEADLINE_SEC + 10
+            && regularSuccessor && stemBlend.regularStemTestStyle(String(item.track.id),String(regularSuccessor.track.id))
+            && regularStemRuntime.pending(String(item.track.id),String(regularSuccessor.track.id))) break;
+        // A recovered, unpublished proposal owns no audio yet. Restore its
+        // original exit and successor head before assessing today's pair.
+        if (item.stemBlend?.subbeats) await this.discardUnpublishedBlend(item);
 
         // Render the track's intro/link WAV ahead of time but DON'T air it here
         // — airing now would play it over whatever's currently on-air, one (or
@@ -2430,6 +2611,7 @@ class Queue {
         // offset toward the target; subsonic.getAnnotatedUri folds it into
         // liq_amplify. No loudness from any source → no liq_amplify → unity.
         await this.applyLoudnessGain(item.track);
+        if (item.subbeatsHandoff) item.track.gainDb = item.subbeatsHandoff.gainsDb[1];
 
         // Revalidate before linked handoffs. Once a bed/silence is published
         // the item is committed; boundary forecasting must count its delay.
@@ -2473,6 +2655,7 @@ class Queue {
         if (action === 'send-pair') {
           successor = this.upcoming[this.upcoming.indexOf(item) + 1] ?? null;
           if (successor && !successor.flow) {
+            const previousPairCross = item.track.crossSec;
             this.applyPairStamps(item, successor);
             // Stem-blend seam (feature: stem-blend transitions): with the
             // pair known, try to upgrade this seam to a pre-rendered blend.
@@ -2492,17 +2675,35 @@ class Queue {
               // is baked into the clip, so the blend would air the very silence
               // the trim exists to remove.
               const inTrim = silenceTrim.resolveSilenceTrim(successor.track);
-              const blend = await this._renderBlend(
-                item.track, successor.track, this.remainingUntilItemAirs(item), {
+              const pairOptions = {
                   // A boundary cut is a capped exit as far as the blend is
                   // concerned — same veto, same reason: the clip describes a
                   // tail that will not air.
                   outCapped: cappedExit || boundaryCueSec != null,
                   outTrimEndSec: trim.cueOutSec,
                   inHeadTrimmed: inTrim.cueInSec != null,
-                },
-              );
-              if (blend && this.upcoming.includes(item) && this.upcoming.includes(successor) && !this.automaticIneligible(successor)) {
+              };
+              const selectedSuccessor = successor;
+              const adjacent = () => this.upcoming.includes(item)
+                && this.upcoming[this.upcoming.indexOf(item)+1] === selectedSuccessor
+                && !selectedSuccessor.sent && !this.automaticIneligible(item) && !this.automaticIneligible(selectedSuccessor);
+              let blend = await this._renderSubbeats(item.track,successor.track,this.remainingUntilItemAirs(item), {
+                ...pairOptions,outCueInSec:item.stemCueInSec ?? item.cueInSec,
+                valid:adjacent,log:(message,meta) => this.log('mix',message,meta),
+              });
+              if (!adjacent()) {
+                if (blend) await subbeats.discardSubbeatsClips(blend);
+                if (previousPairCross == null) delete item.track.crossSec;else item.track.crossSec=previousPairCross;
+                continue;
+              }
+              if (blend?.subbeats && !this.subbeatsFitsPair(item,successor,blend.subbeats)) {
+                await subbeats.discardSubbeatsClips(blend);
+                blend = null;
+                this.log('mix','Sub/Beats fallback: the rendered handoff conflicts with the live queue boundary.',{subbeats:'fallback'});
+              }
+              if (!blend && adjacent()) blend = await this._renderBlend(
+                item.track,successor.track,this.remainingUntilItemAirs(item),pairOptions);
+              if (blend && adjacent()) {
                 const previousBlend = item.stemBlend;
                 // A recovered proposal already stripped this track's exit.
                 // Keep the FIRST snapshot across re-renders; legacy proposals
@@ -2529,12 +2730,15 @@ class Queue {
                 item.cueOutSec = blend.outCueSec;
                 successor.stemSeam = true;
                 successor.stemCueInSec = blend.inCueSec;
-                this.log('mix', `stem blend armed: ${item.track.title} ✕ ${successor.track.title} (cut ${blend.outCueSec}s, cue-in ${blend.inCueSec}s, clip ${blend.clipSec}s)`);
+                if (blend.subbeats) successor.subbeatsHandoff = blend.subbeats;
+                this.log('mix', `${blend.subbeats ? 'Sub/Beats' : 'stem blend'} armed: ${item.track.title} ✕ ${successor.track.title} (cut ${blend.outCueSec}s, cue-in ${blend.inCueSec}s, clip ${blend.clipSec}s)`);
                 if (previousBlend && previousBlend.clipPath !== blend.clipPath) {
-                  await unlink(previousBlend.clipPath).catch(() => {});
+                  await subbeats.discardSubbeatsClips(previousBlend);
                 }
               } else if (blend) {
-                await unlink(blend.clipPath).catch(() => {});
+                await subbeats.discardSubbeatsClips(blend);
+                if (previousPairCross == null) delete item.track.crossSec;else item.track.crossSec=previousPairCross;
+                continue;
               }
             } catch (err) {
               this.log('error', `Stem blend failed (falling back to plain crossfade): ${(err as Error).message}`);
@@ -2605,7 +2809,7 @@ class Queue {
             ? { ok: false, codec: null, reason: 'no source' }
             : probeBudgetMs === 0
               ? { ok: false, codec: null, reason: 'airs too soon to probe' }
-              : await cueLanding.probeCueLanding(source, cueSec, { timeoutMs: probeBudgetMs });
+              : await this._probeCueLanding(source, cueSec, { timeoutMs: probeBudgetMs });
           if (landing.ok) {
             clipCueLate = { cueSec, lateSec: landing.lateSec };
             const ms = Math.abs(landing.lateSec * 1000).toFixed(1);
@@ -2661,13 +2865,19 @@ class Queue {
             beforeWrite: () => this.upcoming.includes(item)
               && !this.automaticIneligible(item)
               && JSON.stringify(lengthLimits) === JSON.stringify(settings.effectiveTrackLengthLimits())
-              && !(item.stemBlend && successor && (!this.upcoming.includes(successor) || this.automaticIneligible(successor))),
+              && !(item.stemBlend && successor && (this.upcoming[this.upcoming.indexOf(item)+1] !== successor || this.automaticIneligible(successor)))
+              && (!item.stemBlend?.subbeats || (!!successor && this.subbeatsFitsPair(item,successor,item.stemBlend.subbeats))),
             onWritten: () => {
               // Publication is the ownership boundary, before another await
               // can change settings or an operator can cancel the seam.
               item.sent = true;
               if (item.stemBlend && successor) successor.lengthPolicyCommitted = true;
               this._preparedBlends.delete(item);
+              if (item.stemBlend?.subbeats) {
+                this.log('mix','Sub/Beats committed: outgoing source and linked head cues published.',
+                  {subbeats:'committed',transitionId:item.stemBlend.subbeats.transitionId});
+                this.persist();
+              }
             },
           });
         } catch (err) {
@@ -2689,8 +2899,11 @@ class Queue {
           // whatever item slid into the slot (the clip would air carrying an
           // unrelated track's identity).
           if (successor && this.upcoming.includes(successor)) {
-            const clipUri = subsonic.getClipUri(successor.track, item.stemBlend.clipPath, stemBlend.CLIP_SEAM_CROSS_SEC);
-            await writeHandoff(config.liquidsoap.queueFile, clipUri, { maxWaitMs: 5000 });
+            if (item.stemBlend.subbeats) await this.publishSubbeatsParts(item,successor);
+            else {
+              const clipUri = subsonic.getClipUri(successor.track, item.stemBlend.clipPath, stemBlend.CLIP_SEAM_CROSS_SEC);
+              await writeHandoff(config.liquidsoap.queueFile, clipUri, { maxWaitMs: 5000 });
+            }
           } else {
             // Successor cancelled between the render and the clip write: skip
             // the clip. The early cue_out already annotated on the outgoing
@@ -2728,7 +2941,7 @@ class Queue {
               hasSuccessor: false,
               remainingSec: this.remainingUntilItemAirs(successor),
             }) === 'hold';
-          void this._pickStems(successor.track, {
+          if (!stemBlend.regularStemTestTrack(String(successor.track.id))) void this._pickStems(successor.track, {
             pairDrainActive: this.pairDrainActive(),
             held,
             log: (kind, message) => this.log(kind, message),
@@ -3043,6 +3256,13 @@ class Queue {
     // A jingle is one kind of event on air however it was placed (playJingle):
     // it is not DJ speech, so it reserves no song and publishes no voice.* event.
     if (kind === 'jingle') return;
+    this._speechAwaitingAir.add(q.voiceId);
+    this._speechForecasts.set(q.voiceId, {
+      voiceId: q.voiceId,
+      expectedAt: new Date(Date.now() + q.estimatedAirInMs).toISOString(),
+      durationMs: q.clipMs,
+      text: normalizeForDisplay(text),
+    });
     // Remember speech for the whole song, even after its handoff was consumed
     // or its clip finished. An optional ID never follows another voice on it.
     if (this._overlayBoundary) this._overlayBoundary.speech = true;
@@ -3070,6 +3290,8 @@ class Queue {
     const airedAt = await handoff.aired;
     try { notebookAir(meta, handoff.voiceId, airedAt); }
     catch (error) { this.log('error', `Notebook air commit failed: ${(error as Error).message}`); }
+    this._speechAwaitingAir.delete(handoff.voiceId);
+    this._speechForecasts.delete(handoff.voiceId);
     try {
       if (kind === 'sleeve-notes') {
         try { recordSleeveNotesSegmentAir(meta, normalizeForDisplay(text), airedAt); } catch {}
@@ -3548,6 +3770,23 @@ class Queue {
   pendingVoiceTalk(): PendingTalk | null {
     const p = this._pendingVoice;
     return p ? { kind: p.kind, queuedAt: p.t } : null;
+  }
+
+  hasPreparedSpeech(): boolean {
+    return this._speechAwaitingAir.size > 0
+      || this._pendingVoice?.clips.some(clip => existsSync(clip.wavPath)) === true
+      || (!!this.current && !this.current.introAired && !!this.current.introWav && existsSync(this.current.introWav))
+      || this.upcoming.some(item => !item.introAired && !!item.introWav && existsSync(item.introWav));
+  }
+
+  speechPreparing(): boolean { return this._talkInFlight > 0; }
+
+  speechForecasts(): Array<{ voiceId: string; expectedAt: string; durationMs: number; text: string }> {
+    const now = Date.now();
+    for (const [voiceId, forecast] of this._speechForecasts) {
+      if (Date.parse(forecast.expectedAt) + forecast.durationMs + 90_000 < now) this._speechForecasts.delete(voiceId);
+    }
+    return [...this._speechForecasts.values()];
   }
 
   // Discard a scheduled-but-unaired deferred segment. A mic-pass supersedes an
@@ -4420,7 +4659,14 @@ class Queue {
       }
       const item = consumed[consumed.length - 1];
       const source = item.aiPicked ? 'ai' : 'request';
-      this.current = { ...item, startedAt: new Date().toISOString(), source };
+      const markerMs = Number(np.timestamp)*1000;
+      const entryMs = subbeatsEntryMs(item,markerMs,np.filename);
+      const startedAt = (item.subbeatsHandoff || item.stemBlend?.subbeats)
+        && Number.isFinite(entryMs) && entryMs > 0 && entryMs <= Date.now()
+        ? new Date(entryMs).toISOString() : new Date().toISOString();
+      this.current = { ...item, startedAt, source };
+      if (item.subbeatsHandoff) this.log('mix',`Sub/Beats incoming entry observed: ${item.track.title}`,
+        {subbeats:'observed',transitionId:item.subbeatsHandoff.transitionId,style:item.subbeatsHandoff.mixStyle});
       // A timed-out intro pre-render is keyed by the queued item. The current
       // item is a spread clone, so carry the lifecycle across that identity
       // hand-off before airIntro tries to reuse it.
@@ -4547,6 +4793,9 @@ class Queue {
       transitionAsk,
       transitionDrops,
     });
+    // Airplay can select eligible Sub/Beats work, but all preparation remains
+    // in a later Library Demucs scan and never holds the now-playing watcher.
+    queueSubbeatsFromAirplay(this.current.track.id || null);
 
     // `sourceTrackId` is the id from the music backend (Subsonic/Navidrome, or
     // whatever a router fronts), so a relay can resolve the exact library item
@@ -4874,7 +5123,9 @@ class Queue {
     if (this.pickerBusy || this.pickGateClosed()) return;
     if (!this.pairDrainActive()) return;
     const rem = this.remainingSecOnAir();
-    if (!shouldDeadlinePick(rem)) return;
+    const leadSec = settings.get().transitions.subbeatsLive === true
+      ? subbeats.subbeatsPickLeadSeconds(config.analyzer.renderTimeoutMs) : undefined;
+    if (!shouldDeadlinePick(rem, leadSec)) return;
     // Attempt cooldown: the watcher tick re-enters every 1.5s for the whole
     // window, so a FAST-failing pick (LLM host down) would otherwise re-fire
     // dozens of times per window. A success stops matching the conditions
@@ -5223,8 +5474,10 @@ class Queue {
     // cue_out then airs as an abrupt-but-crossfaded exit (accepted, logged).
     if (item.stemSeam && item.track?.id) {
       try {
-        const clipRid = await liquidsoapControl.resolveClipRid(item.track.id);
-        if (clipRid && await liquidsoapControl.removeFromDjQueue(clipRid)) {
+        const clipRids = item.subbeatsHandoff ? await liquidsoapControl.resolveClipRids(item.track.id)
+          : [await liquidsoapControl.resolveClipRid(item.track.id)].filter((rid):rid is string => !!rid);
+        const removed = await Promise.all(clipRids.map(rid => liquidsoapControl.removeFromDjQueue(rid)));
+        if (clipRids.length && removed.every(Boolean)) {
           this.log('scheduler', `removed the rendered transition clip for ${item.track.title} along with it`);
         } else {
           this.log('scheduler', `transition clip for ${item.track.title} could not be removed — its predecessor will exit early into the clip`);
@@ -5248,12 +5501,16 @@ class Queue {
         if (!next.sent) {
           let clipRemoved = false;
           try {
-            const clipRid = await liquidsoapControl.resolveClipRid(next.track.id);
-            clipRemoved = !!clipRid && await liquidsoapControl.removeFromDjQueue(clipRid);
+            const clipRids = next.subbeatsHandoff ? await liquidsoapControl.resolveClipRids(next.track.id)
+              : [await liquidsoapControl.resolveClipRid(next.track.id)].filter((rid):rid is string => !!rid);
+            const removed = await Promise.all(clipRids.map(rid => liquidsoapControl.removeFromDjQueue(rid)));
+            clipRemoved = !!clipRids.length && removed.every(Boolean);
           } catch { /* best-effort */ }
           if (clipRemoved) {
             delete next.stemSeam;
             delete next.stemCueInSec;
+            delete next.subbeatsHandoff;
+            delete next.cueInSec;
             this.log('scheduler', `removed the rendered transition clip into ${next.track.title} along with it`);
           } else {
             // The clip stays queued, so the successor keeps its head-skip —
@@ -5983,6 +6240,7 @@ class Queue {
       // pair drain, cleared if the clip is pulled with a cancel, so it's
       // definitive, not a prediction; absent = plain crossfade.
       stemSeam: i.stemSeam || undefined,
+      subbeats: i.subbeatsHandoff ? true : undefined,
     });
     // Running-order timing. `duration` is the playable span in seconds,
     // the same measure as /now-playing's; `airsAt` is the upcoming item's
@@ -6027,14 +6285,31 @@ class Queue {
     const np = this._nowPlayingFresh
       ? this._nowPlaying
       : await this.readNowPlayingFromDisk();
-    return np ? { ...np } : null;
+    if (!np) return null;
+    const copy = {...np};
+    // Lead/native continuation metadata repeats one logical play. Keep the
+    // entry clock stable while the underlying requests change.
+    const cur = this.current;
+    if (cur && cur.track.id === copy.subsonic_id && cur.startedAt && (cur.subbeatsHandoff || cur.stemBlend?.subbeats)) {
+      copy.timestamp = Date.parse(cur.startedAt)/1000;
+    }
+    return copy;
   }
 
   // Read the now-playing JSON Liquidsoap writes
   async readNowPlayingFromDisk() {
     try {
       const raw = await readFile(config.liquidsoap.nowPlayingFile, 'utf8');
-      return JSON.parse(raw);
+      const nowPlaying = JSON.parse(raw);
+      if (typeof nowPlaying?.subsonic_id !== 'string') return nowPlaying;
+      try {
+        const output = JSON.parse(await readFile(config.liquidsoap.streamClockFile, 'utf8'));
+        // A previous play of the same song can leave the sidecar behind; only
+        // attach an output mark belonging to this just-published boundary.
+        const startedAtMs = outputStartedAt(nowPlaying, output);
+        if (startedAtMs != null) nowPlaying.outputStartedAt = startedAtMs;
+      } catch { /* older mixers have no final-mix clock; keep the feed timestamp */ }
+      return nowPlaying;
     } catch {
       return null;
     }

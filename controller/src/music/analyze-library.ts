@@ -50,6 +50,7 @@ import { analysisPart, formatPlan, parseFacets, parseWhere, planAcoustics, planS
 import { runYearLookups } from './original-year.js';
 import { acquireStandaloneLock, installPidfileCleanup } from './tagger-lock.js';
 import { walkFileInfo } from './tag-library/flags.js';
+import { backfillSubbeatsStemWaveforms } from './stem-waveform-peaks.js';
 import { reembedNewlyMarked } from './tag-library/embed.js';
 
 const logEvent = makeEventLogger('analyze');
@@ -171,6 +172,8 @@ async function main() {
   const audioBackfill = args.includes('--audio') ? true : undefined;
   // undefined → falls back to ANALYZE_VOCAL_ACTIVITY / settings.audio.vocalActivity.
   const vocalBackfill = args.includes('--vocal') ? true : undefined;
+  const stemOnly = args.includes('--stems-only');
+  const stemBackfill = args.includes('--stems') || stemOnly ? true : args.includes('--no-stems') ? false : undefined;
 
   await applyWizardOverlay();
   await settings.load();
@@ -178,6 +181,13 @@ async function main() {
   // adoptStoredDim so an embedding dim swap can't block analysis, which never
   // touches vectors (#319).
   await db.open({ embeddingDim, adoptStoredDim: true });
+
+  const stemWaveformsOnly = args.includes('--stem-waveforms-only');
+  const stemWaveforms = stemWaveformsOnly || args.includes('--stem-waveforms');
+  if (stemWaveformsOnly) {
+    const result = await backfillSubbeatsStemWaveforms(limit);
+    process.exit(result.failed ? 1 : 0);
+  }
 
   if (facetMode) {
     let plan: AcousticsPlan;
@@ -201,7 +211,7 @@ async function main() {
     // Audio first, then the MusicBrainz lookups: two independent passes.
     const audio = analysisPart(plan);
     const dirtyBefore = new Set(db.textVectorDirtyIds());
-    const stats = audio ? await runAnalysisPass({ plan: audio }) : null;
+    const stats = audio ? await runAnalysisPass({ plan: audio, subbeatsScopeIds: explicitIds(args) ?? undefined }) : null;
     analyzer.shutdown();
     if (stats) console.log('[analyze] stats:', JSON.stringify(stats));
     await reembedNewlyMarked(dirtyBefore, logEvent);
@@ -299,7 +309,9 @@ async function main() {
   }
 
   const dirtyBefore = new Set(db.textVectorDirtyIds());
-  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill });
+  const stats = await runAnalysisPass({ limit, reAnalyze, audioBackfill, vocalBackfill, stemBackfill, stemOnly,
+    subbeatsScopeIds: explicitIds(args) ?? undefined });
+  if (stemWaveforms) await backfillSubbeatsStemWaveforms(limit);
   analyzer.shutdown();
   console.log('[analyze] stats:', JSON.stringify(stats));
   // The vectors this pass's measurements marked (#2236) get their Sound: line now,
