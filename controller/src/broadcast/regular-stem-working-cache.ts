@@ -9,6 +9,7 @@ import { regularStemWorkingIds } from './regular-stem-policy.js';
 
 export class RegularStemWorkingCache {
   private members = new Set<string>();
+  private windows = new Map<string, Set<string>>();
   private leases = new Map<string, number>();
   private pending: Promise<unknown> = Promise.resolve();
   constructor(private readonly root: string) {}
@@ -21,10 +22,19 @@ export class RegularStemWorkingCache {
     this.pending = result.catch(() => undefined);
     return result;
   }
-  reconcile(current: string | null, queued: readonly string[]): Promise<void> {
+  reconcile(current: string | null, queued: readonly string[],
+    windows: readonly { trackId: string; key: string }[] = []): Promise<void> {
     const members = new Set([...regularStemWorkingIds(current, queued)].map(id => this.key(id)));
     return this.serial(async () => {
       this.members = members;
+      this.windows = new Map();
+      for (const window of windows) {
+        const track = this.key(window.trackId);
+        if (!members.has(track) || !/^[a-f0-9]{64}$/.test(window.key)) continue;
+        const keys = this.windows.get(track) ?? new Set<string>();
+        keys.add(window.key);
+        this.windows.set(track, keys);
+      }
       await this.sweep();
     });
   }
@@ -74,11 +84,23 @@ export class RegularStemWorkingCache {
     for (const entry of await readdir(this.root, { withFileTypes: true })) {
       // Never follow links or delete miscellaneous operator files.
       if (!entry.isDirectory() || !/^[a-f0-9]{64}$/.test(entry.name)) continue;
-      if (this.members.has(entry.name) || this.leases.has(entry.name)) continue;
+      if (this.leases.has(entry.name)) continue;
       // A controller restart loses process-local leases while a sidecar can
       // still be separating. The runner's bounded busy stamp protects it.
       if (await this.busyDirectory(path.join(this.root,entry.name))) continue;
-      await rm(path.join(this.root, entry.name), { recursive: true, force: true });
+      const directory = path.join(this.root, entry.name);
+      if (!this.members.has(entry.name)) {
+        await rm(directory, { recursive: true, force: true });
+        continue;
+      }
+      // A new queue/grid revision can replace a window without retiring its
+      // track. Only hash-named window dirs in this dedicated root are ours.
+      const keep = this.windows.get(entry.name);
+      for (const window of await readdir(directory, { withFileTypes: true })) {
+        if (window.isDirectory() && /^[a-f0-9]{64}$/.test(window.name) && !keep?.has(window.name)) {
+          await rm(path.join(directory, window.name), { recursive: true, force: true });
+        }
+      }
     }
   }
 }

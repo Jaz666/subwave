@@ -242,10 +242,10 @@ function parseAudioEmbedding(v: unknown): number[] | null {
 // Mirrors ANALYZE_MAX_BYTES in the Python worker so both fetch paths read the
 // same envelope. Via envInt, never parseInt: a NaN disables the cap and flags
 // every download incomplete (#1549).
-const ANALYZE_MAX_BYTES = envInt('ANALYZE_MAX_BYTES', 12 * 1024 * 1024, { min: 1 });
+export const ANALYZE_MAX_BYTES = envInt('ANALYZE_MAX_BYTES', 12 * 1024 * 1024, { min: 1 });
 // Staging dir for pre-fetched audio, under the shared state dir so the path the
 // controller writes resolves to the same file inside the sidecar.
-const ANALYZE_TMP_DIR = `${config.stateRoot}/analyze-tmp`;
+export const ANALYZE_TMP_DIR = `${config.stateRoot}/analyze-tmp`;
 
 function localConfigured(): boolean {
   const { python, workerScript } = config.analyzer;
