@@ -12,7 +12,8 @@ export interface RegularStemNeed {
 }
 
 export class RegularStemPreparation {
-  private wanted = new Map<string, RegularStemNeed>();
+  private wanted = new Map<string, RegularStemNeed & { revision: number }>();
+  private nextRevision = 0;
   private settled = new Map<string, 'ready' | 'failed'>();
   private running: RegularStemNeed | null = null;
   private pumping = false;
@@ -31,8 +32,9 @@ export class RegularStemPreparation {
    */
   update(needs: readonly RegularStemNeed[]): void {
     const now = this.now();
+    const previous = this.wanted;
     this.wanted = new Map(needs.filter(need => Number.isFinite(need.deadlineMs)
-      && need.deadlineMs > now).map(need => [need.key, { ...need }]));
+      && need.deadlineMs > now).map(need => [need.key, { ...need, revision: previous.get(need.key)?.revision ?? ++this.nextRevision }]));
     for (const key of this.settled.keys()) if (!this.wanted.has(key)) this.settled.delete(key);
     void this.pump();
   }
@@ -64,7 +66,7 @@ export class RegularStemPreparation {
         const current = this.wanted.get(need.key);
         // Queue mutation, skip or handoff while separation ran. No stale
         // callback may turn a committed ordinary crossfade into a blend.
-        if (!current || current.deadlineMs <= this.now()) continue;
+        if (!current || current.revision !== need.revision || current.deadlineMs <= this.now()) continue;
         this.settled.set(need.key, ok ? 'ready' : 'failed');
         try {
           if (ok) this.options.ready(current);

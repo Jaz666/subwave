@@ -252,10 +252,23 @@ export async function maybeRenderBlend(
     opts.log?.('warn', 'regular stem test: working windows not ready at handoff; using ordinary transition');
     return null;
   }
+  // A library refresh can replace timing/source evidence without changing
+  // the queue objects. Recheck it after the async render, before arming.
+  const evidence=() => JSON.stringify([out.id,incoming.id].map(id => {
+    const row=db.getTrack(String(id));
+    return [row?.durationSec,row?.bpm,row?.bars,row?.gridProvenance,row?.outro,
+      !!db.subbeatsEligibleTrack(String(id))];
+  }));
+  const before=evidence();
   let completed = false;
   try {
     const result = await renderBlend(out, incoming, remaining, { ...opts, workingSources: sources });
     completed = !!result;
+    if (result && (!sources.valid() || evidence() !== before)) {
+      await unlink(result.clipPath).catch(() => {});
+      opts.log?.('warn','regular stem test: queue or analysis changed during render; using ordinary transition');
+      return null;
+    }
     return result;
   } finally { await sources.release(completed); }
 }

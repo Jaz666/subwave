@@ -79,3 +79,17 @@ test('deferred work waits for a later tick rather than spinning or becoming fail
   lane.update([need('waiting')]); await tick();
   assert.equal(calls,2); assert.equal(ready,1);
 });
+
+test('removing and readding the same window does not accept the cancelled job completion', async () => {
+  const h=harness();
+  h.lane.update([need('same-recording')]);
+  h.lane.update([]);
+  h.lane.update([need('same-recording')]);
+  h.finish.shift()!(true);
+  await tick();
+  assert.deepEqual(h.ready,[],'old completion belongs to a cancelled need');
+  assert.deepEqual(h.starts,['same-recording','same-recording']);
+  h.finish.shift()!(true);
+  await tick();
+  assert.deepEqual(h.ready,['same-recording']);
+});

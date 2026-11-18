@@ -11,6 +11,7 @@ import * as analyzer from '../music/analyzer.js';
 import { bulkPassRunning } from '../music/tagger-lock.js';
 import { RegularStemPreparation } from './regular-stem-preparation.js';
 import { regularStemNeeds, type RegularStemQueueEvidence, type RegularStemWindowNeed } from './regular-stem-needs.js';
+import { regularStemPairDecision } from './regular-stem-policy.js';
 import { RegularStemWorkingCache } from './regular-stem-working-cache.js';
 
 export class RegularStemRuntime {
@@ -18,6 +19,8 @@ export class RegularStemRuntime {
   private queuedAt = new Map<string, number>();
   private wanted = new Map<string, RegularStemWindowNeed>();
   private membership: Promise<void> = Promise.resolve();
+  private pairRevisions = new Map<string,{ occurrence: string; revision: number }>();
+  private nextPairRevision = 0;
   private renderPair: [string, string] | null = null;
   private wake: () => void = () => {};
   private log: (message: string) => void = () => {};
@@ -37,6 +40,17 @@ export class RegularStemRuntime {
     this.wake = wake; this.log = log;
     const first = queue.findIndex(item => !item.sent);
     this.renderPair = first >= 0 && queue[first+1] ? [queue[first].id,queue[first+1].id] : null;
+    const pairs = new Map<string,{ occurrence: string; revision: number }>();
+    for (let index=0; index<queue.length-1; index++) {
+      const out=queue[index], incoming=queue[index+1];
+      if (out.sent || incoming.sent || out.pairToNextAllowed === false
+          || !regularStemPairDecision(out,incoming).eligible) continue;
+      const key=JSON.stringify([out.id,incoming.id]);
+      const occurrence=JSON.stringify([out.occurrence ?? out.id,incoming.occurrence ?? incoming.id]);
+      const old=this.pairRevisions.get(key);
+      pairs.set(key,{occurrence,revision:old?.occurrence === occurrence ? old.revision : ++this.nextPairRevision});
+    }
+    this.pairRevisions=pairs;
     const needs = regularStemNeeds(queue, Date.now());
     for (const need of needs) if (!this.queuedAt.has(need.key)) this.queuedAt.set(need.key, Date.now());
     const keys = new Set(needs.map(need => need.key));
@@ -49,6 +63,7 @@ export class RegularStemRuntime {
   }
 
   pair(outId: string, inId: string): { tail: RegularStemWindowNeed; head: RegularStemWindowNeed } | null {
+    if (!this.pairRevisions.has(JSON.stringify([outId,inId]))) return null;
     const tail = [...this.wanted.values()].find(n => n.trackId === outId && n.side === 'tail');
     const head = [...this.wanted.values()].find(n => n.trackId === inId && n.side === 'head'
       && tail && n.endMs-n.startMs === tail.endMs-tail.startMs);
@@ -78,6 +93,12 @@ export class RegularStemRuntime {
   }
   async sources(outId: string, inId: string) {
     const pair = this.pair(outId, inId);
+    const revision=this.pairRevisions.get(JSON.stringify([outId,inId]))?.revision;
+    const valid=() => {
+      const current=this.pair(outId,inId);
+      return !!current && this.pairRevisions.get(JSON.stringify([outId,inId]))?.revision === revision
+        && current.tail.key === pair?.tail.key && current.head.key === pair?.head.key;
+    };
     if (!pair || await this.cache.hasBusyJob()) return null;
     const tailLease = await this.cache.acquire(outId);
     const headLease = await this.cache.acquire(inId);
@@ -86,13 +107,14 @@ export class RegularStemRuntime {
       if (completed) for (const marker of markers) await rm(marker,{force:true}).catch(() => {});
       await tailLease?.release(); await headLease?.release();
     };
-    if (!tailLease || !headLease || !await this.verified(pair.tail) || !await this.verified(pair.head)) {
+    if (!tailLease || !headLease || !await this.verified(pair.tail) || !await this.verified(pair.head) || !valid()) {
       await release(); return null;
     }
     try {
       for (const marker of markers) await writeFile(marker,JSON.stringify({until:Date.now()+Math.max(60000,config.analyzer.renderTimeoutMs+5000)}));
     } catch { await release(); return null; }
-    return { tail: { stemsDir: this.directory(pair.tail), regularKey: pair.tail.key },
+    if (!valid()) { await release(); return null; }
+    return { valid, tail: { stemsDir: this.directory(pair.tail), regularKey: pair.tail.key },
       head: { stemsDir: this.directory(pair.head), regularKey: pair.head.key }, release };
   }
   private async prepare(key: string): Promise<boolean | 'deferred'> {
