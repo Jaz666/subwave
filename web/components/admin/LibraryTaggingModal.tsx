@@ -10,6 +10,7 @@ import { cn } from '../../lib/cn';
 import type { Batch, BudgetMode, RescanOpts, TagSteps } from './LibraryTaggingPanel';
 import { num } from './LibraryTaggingPanel';
 import ScheduledTaggingCard from './library/ScheduledTaggingCard';
+import { useRegularStemStatus } from './RegularStemStatusPanel';
 
 type Tab = 'run' | 'rescan' | 'reset';
 
@@ -54,6 +55,9 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function LibraryTaggingModal(p: Props) {
   const [tab, setTab] = useState<Tab>('run');
+  const regularStemStatus = useRegularStemStatus(p.open);
+  const workingStems = regularStemStatus.data?.workingCache === true;
+  const stemOptionsUnknown = !regularStemStatus.data || regularStemStatus.isError;
 
   // All on by default EXCEPT the Demucs vocal pass, measured at ~90% of the
   // whole acoustics phase (~10s/track on a 24-thread CPU).
@@ -111,6 +115,7 @@ export default function LibraryTaggingModal(p: Props) {
   const effSteps: TagSteps = {
     ...steps,
     analyze: effAnalyze,
+    stems: !analyzeLocked && !stemOptionsUnknown && steps.stems,
     // Otherwise send false — a harmless --no-vocal the backend ignores.
     vocal: effAnalyze && p.vocalWanted ? steps.vocal : false,
   };
@@ -195,7 +200,9 @@ export default function LibraryTaggingModal(p: Props) {
           <>
             <p className="text-[12px] leading-[1.55] text-muted">
               {stemsOnly
-                ? 'Cache missing regular stems and process queued Sub/Beats selections. The shared stem-cache budget applies.'
+                ? workingStems
+                  ? 'Process queued Sub/Beats selections within the track limit and saved cache budget. Regular Stem Blends are prepared from the queue when needed.'
+                  : 'Process queued Sub/Beats selections and missing regular stems. Queued selections take priority within the track limit; the shared cache budget also applies.'
                 : waveformsOnly
                   ? 'Prepare waveform data for already cached Sub/Beats stems. No Demucs work is started.'
                   : 'Process new / untagged tracks. Untick a step to skip it this run — the badge shows what each one costs.'}
@@ -241,6 +248,17 @@ export default function LibraryTaggingModal(p: Props) {
                       : 'Source-separate each track to detect instrumental vs vocal. Very heavy on CPU (~10-30s/track) — untick to do bpm/key + sounds-like without it.'} />
                 </div>
               )}
+              <Pass on={effSteps.stems} onClick={() => toggleStep('stems')} disabled={analyzeLocked || stemOptionsUnknown}
+                name={workingStems ? 'Prepare saved Sub/Beats stems' : 'Prepare stems (regular + Sub/Beats)'} tag="very slow · disk budget"
+                hint={stemOptionsUnknown
+                  ? regularStemStatus.isError
+                    ? 'Stem preparation options are unavailable. Reopen this dialog to retry; other scan steps remain available.'
+                    : 'Loading stem preparation options…'
+                  : analyzeLocked
+                    ? 'No analysis engine running — start the analyzer sidecar or configure an in-process backend.'
+                    : workingStems
+                      ? 'Process queued Sub/Beats selections only. Regular Stem Blends use CPU preparation when tracks are queued; library stem caching is on hold. Existing stem files are retained.'
+                       : 'Cache missing regular stems for eligible tracks, then process queued Sub/Beats selections. Can run on its own. Tracks awaiting Sub/Beats skip regular stem creation. Requires the heavy Demucs analyzer; the shared disk budget applies.'} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-separator-strong pt-3.5">
               <div className="lib-batch">
