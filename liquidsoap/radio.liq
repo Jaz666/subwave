@@ -2233,6 +2233,34 @@ radio = compress(
   radio
 )
 
+# Record the track mark on the final shared mix, after transitions, beds and
+# ducking have been composed, but BEFORE metadata.map strips track metadata and
+# insert_metadata turns the root into the continuous ICY output track. The
+# public player applies its listener buffer to this anchor; the Admin applies
+# that buffer plus its saved manual correction.
+#
+# Capture the wall time synchronously at the actual final-mix track boundary,
+# then write the marker from the asynchronous track callback so disk I/O never
+# blocks the streaming thread. These hooks must remain above metadata.map:
+# below it, the original track marks are gone and `on_track` never fires.
+radio.on_metadata(synchronous=true, fun (_) ->
+  if stream_clock_track_id() != "" then stream_clock_started_at := time() end
+)
+radio.on_track(synchronous=false, fun (_) -> begin
+  track_id = stream_clock_track_id()
+  if track_id != "" then
+    file.write(
+      data=json.stringify(compact=true, {
+        subsonic_id = track_id,
+        startedAtMs = int_of_float(stream_clock_started_at() * 1000.)
+      }),
+      atomic=true,
+      temp_dir=stream_clock_tmp_dir,
+      "#{state_dir}/stream-clock.json"
+    )
+  end
+end)
+
 # METADATA — ICY title driven explicitly from the pre-cross on_meta hook so it
 # matches now-playing.json. BOTH operators are load-bearing:
 #  1. metadata.map strip kills ALL metadata still flowing through the chain.
@@ -2339,31 +2367,6 @@ music_meta.on_metadata(synchronous=true, fun (m) ->
   end
 )
 music_meta.on_metadata(synchronous=false, on_meta)
-
-# Record the track mark on the final shared mix, after transitions, beds and
-# ducking have been composed. This is the station-side output boundary shared
-# by every Icecast mount, before per-mount encoding and network buffering. The
-# public player applies its listener buffer to this same anchor; the Admin
-# applies that buffer plus its saved manual correction. Capture the wall time
-# synchronously at the final metadata boundary, then write the marker from the
-# asynchronous track callback so disk I/O never blocks the streaming thread.
-radio.on_metadata(synchronous=true, fun (_) ->
-  if stream_clock_track_id() != "" then stream_clock_started_at := time() end
-)
-radio.on_track(synchronous=false, fun (_) -> begin
-  track_id = stream_clock_track_id()
-  if track_id != "" then
-    file.write(
-      data=json.stringify(compact=true, {
-        subsonic_id = track_id,
-        startedAtMs = int_of_float(stream_clock_started_at() * 1000.)
-      }),
-      atomic=true,
-      temp_dir=stream_clock_tmp_dir,
-      "#{state_dir}/stream-clock.json"
-    )
-  end
-end)
 
 # OUTPUT — broadcast to Icecast.
 #
